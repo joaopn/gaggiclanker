@@ -8,12 +8,12 @@ these, so the opening context, the search and the three shot tools can only
 ever render the same shot the same way.
 
 The diagnostics blob comes in **two shapes**, and both are real archive data.
-Ingest stores the full block (`per_phase`: nested `resistance`, `channeling`,
-`temperature`, … each with its own `annotations`); an older or hand-written row
-may hold the summary block (flat `resistance_avg`, `channeling_risk`, … with one
-`annotations` dict at the top). :meth:`ShotFacts.section` and
-:meth:`ShotFacts.flat` are the two ways in, and an item reads whichever the shot
-has — a reader that understood one shape would silently drop half the archive.
+Ingest stores the full block (`per_phase`: nested `resistance`, `extraction`,
+`weight` and `profile_compliance`); an older or hand-written row may hold the
+summary block (flat `resistance_avg`, `pressure_rmse_bar`, …).
+:meth:`ShotFacts.section` and :meth:`ShotFacts.flat` are the two ways in, and an
+item reads whichever the shot has — a reader that understood one shape would
+silently drop half the archive.
 """
 
 from __future__ import annotations
@@ -121,16 +121,11 @@ class ShotFacts:
         return value if isinstance(value, dict) else {}
 
     @property
-    def score(self) -> Mapping[str, Any]:
-        value = self.blob.get("score")
-        return value if isinstance(value, dict) else {}
-
-    @property
     def firmware(self) -> Mapping[str, Any]:
         """The firmware analyzer's values (machine puck resistance, water pumped).
 
         Empty for a shot derived before they existed; the boot re-derive fills
-        it in. Its own block, apart from the banded diagnostics.
+        it in. Its own block, apart from the engine's own numbers.
         """
         value = self.blob.get("firmware")
         return value if isinstance(value, dict) else {}
@@ -174,10 +169,10 @@ class ShotFacts:
     @property
     def full(self) -> bool:
         """True when the diagnostics are the full block rather than the summary."""
-        return isinstance(self.diagnostics.get("temperature"), dict)
+        return isinstance(self.diagnostics.get("weight"), dict)
 
     def section(self, name: str) -> Mapping[str, Any] | None:
-        """One sub-block of the full diagnostics (``resistance``, ``channeling``…).
+        """One sub-block of the full diagnostics (``resistance``, ``extraction``…).
 
         ``None`` on a summary-level blob and wherever the engine wrote ``None``
         — the pressure-derived blocks on a machine with no pressure sensor.
@@ -189,21 +184,9 @@ class ShotFacts:
         block = self.section(name)
         return None if block is None else number(block.get(key))
 
-    def section_band(self, name: str, key: str) -> str | None:
-        block = self.section(name)
-        if block is None:
-            return None
-        return _label((block.get("annotations") or {}).get(key))
-
     def flat(self, key: str) -> float | None:
         """A number from the summary-level blob; ``None`` on the full one."""
         return None if self.full else number(self.diagnostics.get(key))
-
-    def flat_band(self, key: str) -> str | None:
-        """An annotation from the summary-level blob; ``None`` on the full one."""
-        if self.full:
-            return None
-        return _label((self.diagnostics.get("annotations") or {}).get(key))
 
     def summary_value(self, block: str, key: str) -> float | None:
         """A number from the summary statistics (``summary.flow.avg_flow_ml_s``)."""
@@ -213,15 +196,3 @@ class ShotFacts:
     @property
     def phases(self) -> Sequence[Mapping[str, Any]]:
         return [phase for phase in self.shot.phases or [] if isinstance(phase, dict)]
-
-
-def _label(value: Any) -> str | None:
-    """A band label, or ``None`` for anything that is not one.
-
-    ``N/A`` is the engine's word for "not assessed" — no flow-steered
-    sample was left, or the window was too short — and it is treated as absent: the
-    number beside it is a placeholder zero, never a measurement.
-    """
-    if not isinstance(value, str) or not value or value == "N/A":
-        return None
-    return value

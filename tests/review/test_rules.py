@@ -28,7 +28,7 @@ LIGHT_NATURAL = SetContext(roast_level="light", process="natural", burr_type="co
 
 def test_the_shipped_seed_parses() -> None:
     rules = load_seed_rules()
-    assert len(rules) > 100, "the condensed heuristics are the whole point of the tier"
+    assert len(rules) > 70, "the condensed heuristics are the whole point of the tier"
     assert {rule.category for rule in rules} <= set(RULE_CATEGORIES)
     # Every shipped rule carries prose. The rendered fallback exists for a rule
     # somebody wrote through the API, not for one we ship.
@@ -101,7 +101,7 @@ async def test_selection_is_deterministic(db: Database) -> None:
     """Same inputs, same ids, same order — twice."""
     repo = RulesRepository(db)
     await seed_rules(repo)
-    signals = {"channeling_risk:HIGH", "taste:sour_fermented.sour", "first_drip:fast"}
+    signals = {"fault:fast_flow", "taste:sour_fermented.sour", "first_drip:fast"}
 
     first = await select_rules(repo, LIGHT_NATURAL, "bloom", signals)
     second = await select_rules(repo, LIGHT_NATURAL, "bloom", set(signals))
@@ -161,10 +161,35 @@ async def test_signal_rules_need_their_signal(db: Database) -> None:
     await seed_rules(repo)
 
     without = await select_rules(repo, LIGHT_NATURAL, "classic", set())
-    with_signal = await select_rules(repo, LIGHT_NATURAL, "classic", {"channeling_risk:HIGH"})
+    with_signal = await select_rules(repo, LIGHT_NATURAL, "classic", {"fault:fast_flow"})
 
-    assert "channeling_risk:HIGH" not in without.keys
-    assert "channeling_risk:HIGH" in with_signal.keys
+    assert "preinfusion" not in without.keys
+    assert "preinfusion" in with_signal.keys
+
+
+async def test_a_rule_with_an_empty_signal_list_is_never_selected_by_a_token(db: Database) -> None:
+    """Reached by topic only, through the chat's `get_rules`: no token selects it."""
+    repo = RulesRepository(db)
+    await seed_rules(repo)
+
+    every_token = {
+        "fault:over_target",
+        "fault:under_target",
+        "fault:skipped",
+        "fault:fast_flow",
+        "first_drip:fast",
+        "first_drip:slow",
+        "avg_flow:high",
+        "avg_flow:low",
+        "temp:cold",
+        "temp:hot",
+        "scale:absent",
+        "yield:tiny",
+    }
+    selection = await select_rules(repo, LIGHT_NATURAL, "classic", every_token)
+
+    for key in ("late_flow_runaway", "pressure_cliff", "resistance_high_and_falling", "ramp"):
+        assert key not in selection.keys, key
 
 
 async def test_the_channeling_rule_needs_both_sides_of_the_cup(db: Database) -> None:

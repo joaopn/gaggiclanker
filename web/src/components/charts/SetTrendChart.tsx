@@ -17,11 +17,9 @@ import { useTheme } from "@/lib/theme";
  * in it. The version boundaries are annotations rather than a second series
  * because "what changed here" is the question the chart is answering.
  *
- * Four series on three axes, which is one more axis than it looks like it
- * needs. The execution score and the rating share the left, because both are
- * small integers and reading them against each other is the point — a clean
- * shot that tasted bad is the interesting case. Duration is tens of seconds and
- * gets the right. The **ratio gets its own**: it lives around 2 while duration
+ * Three series on three axes, which is more axes than it looks like it
+ * needs. The rating is a small integer and gets the left. Duration is tens of
+ * seconds and gets the right. The **ratio gets its own**: it lives around 2 while duration
  * lives around 28, so sharing an axis with duration squashes it onto the
  * baseline and the one series that answers "did the recipe change" is drawn as
  * a flat line at zero. A hidden third axis costs nothing and is the difference
@@ -53,12 +51,6 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
     });
 
     const series = [
-      {
-        label: "Execution score",
-        data: trends.shots.map((point) => point.execution_score),
-        borderColor: palette.series[0],
-        yAxisID: "y",
-      },
       {
         label: "Your rating",
         data: trends.shots.map((point) => point.rating),
@@ -134,8 +126,8 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
           },
           y: {
             beginAtZero: true,
-            suggestedMax: 10,
-            title: { display: true, text: "score · rating", color: palette.text },
+            suggestedMax: 5,
+            title: { display: true, text: "rating", color: palette.text },
             ticks: { color: palette.text },
             grid: { color: palette.grid },
           },

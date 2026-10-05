@@ -767,7 +767,6 @@ class TestJudgementAndAssignment:
                 raw_slog=b"not-a-slog",
                 started_at="2026-04-01T08:00:00.000Z",
                 duration_ms=28_000,
-                execution_score=7.5,
                 final_weight_g=36.0,
             )
         )
@@ -1043,7 +1042,6 @@ class TestTrendsRoute:
                 raw_slog=b"not-a-slog",
                 started_at="2026-04-01T08:00:00.000Z",
                 duration_ms=28_000,
-                execution_score=8.2,
             )
         )
         await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id})

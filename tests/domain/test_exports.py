@@ -2,7 +2,7 @@
 
 The question every test here asks in one form or another: **is an imported shot
 the same shot as a fetched one?** If the export → `Slog` conversion rounds one
-sample differently from the binary parser, the same espresso scores differently
+sample differently from the binary parser, the same espresso reads differently
 depending on which door it came in through, and two shots in the archive stop
 being comparable. So the round trips are the subject, not a nicety.
 """
@@ -25,7 +25,6 @@ from gaggiclanker.domain.exports import (
     slog_to_raw,
 )
 from gaggiclanker.domain.models import Profile, profile_content_hash
-from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import FIELDS_MASK_ALL, FIELDS_MASK_V5, SlogError, parse_slog
 from tests.domain.helpers import PROFILE_FIXTURES, constructed_controls, load_export
 from tests.imports.helpers import (
@@ -132,14 +131,13 @@ def test_the_rebuilt_slog_is_what_the_parser_would_have_produced() -> None:
 
 
 def test_diagnostics_of_an_imported_shot_equal_those_of_the_binary() -> None:
-    """The acceptance that matters: one shot, one score, whichever door it came in."""
+    """The acceptance that matters: one shot, one set of numbers, whichever door it came in."""
     slog = shot_export_to_slog(shot_129())
     reparsed = parse_slog(slog_to_raw(slog), slog.shot_id)
 
     controls = constructed_controls("shot_129")
     shot = transform_shot(slog, "per_phase", phase_controls=controls)
     assert shot == transform_shot(reparsed, "per_phase", phase_controls=controls)
-    assert execution_score(shot).score == pytest.approx(9.3)
 
 
 def test_every_exported_sample_survives_the_rebuild() -> None:

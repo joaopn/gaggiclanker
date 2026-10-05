@@ -264,7 +264,7 @@ describe("ShotDetailPage chart", () => {
         diagnostics: {
           ...(shot129.shot.diagnostics as object),
           has_pressure: false,
-          diagnostics: { has_pressure: false, resistance: null, channeling: null },
+          diagnostics: { has_pressure: false, resistance: null },
         },
       },
     });
@@ -273,7 +273,7 @@ describe("ShotDetailPage chart", () => {
     renderShot();
 
     expect(await screen.findByTestId("no-pressure-notice")).toBeInTheDocument();
-    expect(screen.queryByTestId("channeling-risk")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("metric-level")).not.toBeInTheDocument();
   });
 
   it("names the header's own sample interval, not the nominal one", async () => {
@@ -284,67 +284,61 @@ describe("ShotDetailPage chart", () => {
 });
 
 describe("ShotDetailPage diagnostics", () => {
-  it("shows each band with what it means", async () => {
+  it("shows the resistance as numbers, with no label beside them", async () => {
     renderShot();
 
-    const resistance = await screen.findByTestId("band-level");
-    expect(resistance).toHaveTextContent("3.76");
-    expect(resistance).toHaveTextContent("high");
-    // The one-line meaning is the point: "HIGH" alone is a fact, not yet
-    // information.
-    expect(resistance).toHaveTextContent("3.0-5.0");
-
-    expect(screen.getByTestId("band-erosion")).toHaveTextContent("moderate decline");
-    expect(screen.getByTestId("band-erosion")).toHaveTextContent("part of the bed gave way");
+    const resistance = await screen.findByTestId("metric-level");
+    expect(resistance).toHaveTextContent("3.89");
+    expect(screen.getByTestId("metric-slope")).toHaveTextContent("-0.14");
+    // A number is a number: the bands and their one-line meanings are gone.
+    expect(resistance).not.toHaveTextContent(/high|low|moderate/i);
+    expect(screen.queryByTestId("channeling-risk")).not.toBeInTheDocument();
   });
 
-  it("leads channeling with its guidance and its primary signal", async () => {
+  it("shows the profile compliance as numbers when the shot has a profile to grade against", async () => {
+    const diagnostics = shot129.shot.diagnostics as { diagnostics: Record<string, unknown> };
+    getShot.mockResolvedValue(
+      detail({
+        diagnostics: {
+          ...diagnostics,
+          diagnostics: {
+            ...diagnostics.diagnostics,
+            profile_compliance: {
+              pressure_rmse_bar: 2.04,
+              flow_rmse_ml_s: null,
+              max_pressure_overshoot_bar: 0.2,
+              max_pressure_undershoot_bar: 6.3,
+              max_flow_overshoot_ml_s: null,
+              max_flow_undershoot_ml_s: null,
+              pressure_grading: "graded",
+              flow_grading: "not_applicable",
+            },
+          },
+        },
+      }),
+    );
     renderShot();
 
-    expect(await screen.findByTestId("channeling-risk")).toHaveTextContent("low");
-    expect(screen.getByTestId("channeling-guidance")).toHaveTextContent("Flat flow held steadily");
-    expect(screen.getByTestId("channeling-primary")).toHaveTextContent("none");
+    expect(await screen.findByTestId("metric-pressure_adherence")).toHaveTextContent("2.04 bar");
+    expect(screen.getByTestId("metric-flow_adherence")).toHaveTextContent("not applicable");
   });
 
-  it("shows the profile compliance the score was capped by", async () => {
+  it("has no execution score card, and no score anywhere", async () => {
     renderShot();
 
-    expect(await screen.findByTestId("band-flow_adherence")).toHaveTextContent("poor");
-    expect(screen.getByTestId("band-pressure_overshoot")).toHaveTextContent("severe overshoot");
-  });
-
-  it("breaks the execution score into its components", async () => {
-    renderShot();
-
-    const components = await screen.findByTestId("score-components");
-    expect(components).toHaveTextContent("flow adherence");
-    expect(components).toHaveTextContent("-1.32");
-    expect(components).toHaveTextContent("resistance erosion");
-  });
-
-  it("falls back to the stored reason for a shot derived earlier", async () => {
-    // Shots already in the archive have no `score` block in their diagnostics;
-    // the columns still carry the number and its one-line reason.
-    const withoutScore = { ...(shot129.shot.diagnostics as Record<string, unknown>) };
-    delete withoutScore.score;
-    getShot.mockResolvedValue(detail({ diagnostics: withoutScore }));
-
-    renderShot();
-
-    expect(
-      await screen.findByText("Execution capped by flow adherence (1.32 point penalty)."),
-    ).toBeInTheDocument();
+    await screen.findByTestId("metric-level");
     expect(screen.queryByTestId("score-components")).not.toBeInTheDocument();
+    expect(screen.queryByText(/execution score/i)).not.toBeInTheDocument();
   });
 
-  it("lists every phase with its own annotations", async () => {
+  it("lists every phase with its name and kind", async () => {
     renderShot();
 
     const rows = await screen.findAllByTestId("phase-row");
     expect(rows).toHaveLength(4);
     expect(rows[0]).toHaveTextContent("fill");
     expect(rows[0]).toHaveTextContent("preinfusion");
-    expect(rows[0]).toHaveTextContent("ramp rate");
+    expect(rows[0]).not.toHaveTextContent("ramp rate");
   });
 });
 
@@ -374,7 +368,6 @@ describe("ShotDetailPage quarantine", () => {
         quarantine_reason: "SlogError: sample size 26 does not match fieldsMask",
         phases: null,
         diagnostics: null,
-        execution_score: null,
       }),
     );
 
@@ -387,7 +380,7 @@ describe("ShotDetailPage quarantine", () => {
     );
     // No curve, no diagnostics, no phase table: there are no samples at all.
     expect(screen.queryByTestId("shot-chart")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("channeling-risk")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("metric-level")).not.toBeInTheDocument();
     expect(getShotSamples).not.toHaveBeenCalled();
   });
 });

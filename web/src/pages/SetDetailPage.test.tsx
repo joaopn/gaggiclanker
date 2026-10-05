@@ -213,7 +213,6 @@ describe("SetDetailPage", () => {
     // The canvas is invisible to a test, so each chart renders what it drew as
     // text (see web/README.md).
     const summary = await screen.findByTestId("set-trend-summary");
-    expect(summary).toHaveTextContent("Execution score: 4 points");
     // A shot with no rating is a gap, not a zero.
     expect(summary).toHaveTextContent("Your rating: 3 points");
     expect(summary).toHaveTextContent("v2 begins at shot 3");
@@ -703,9 +702,9 @@ describe("SetDetailPage", () => {
     // The ratio lives around 2 while duration lives around 28; sharing an axis
     // squashes the one series that answers "did the recipe change" onto the
     // baseline.
-    const axes = axisOf(["Duration (s)", "Ratio", "Execution score", "Your rating"]);
+    const axes = axisOf(["Duration (s)", "Ratio", "Your rating"]);
     expect(axes.Ratio).not.toBe(axes["Duration (s)"]);
-    expect(axes["Execution score"]).toBe(axes["Your rating"]);
+    expect(axes["Your rating"]).not.toBe(axes["Duration (s)"]);
   });
 
   it("says so when a Set has collected nothing yet", async () => {

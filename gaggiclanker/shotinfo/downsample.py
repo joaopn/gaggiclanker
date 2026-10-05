@@ -20,7 +20,7 @@ table is cut to a target number of rows, and cut on purpose:
   shot recorded; evenly in time when it recorded neither.
 
 A fixed stride would keep the general shape and step over a half-second
-pressure drop, the channeling signature; that is what this replaces.
+pressure drop, a channel opening; that is what this replaces.
 
 It is **deterministic**: plain functions of the samples, no randomness, ties
 broken towards the earlier sample, nothing iterated in set or dict order. The

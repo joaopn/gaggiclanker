@@ -25,17 +25,16 @@ shot. Three kinds, because a shot has three shapes of information:
 Two rules are load-bearing everywhere below.
 
 **Absent, never zero.** The engine writes ``0.0`` for an average over no
-samples, for a peak of an empty list and for an indicator it did not assess.
+samples and for a peak of an empty list.
 A value the machine did not record — no scale, no pressure sensor, too short a
 window — is left out of the rendering, never shown as a measurement of zero,
 because a model reads "0.0 bar" as a fact about the shot. Each accessor says
 which zero it is guarding against.
 
-**The numbers and the bands are the engine's.** A value is shown at the
-precision the vendored diagnostics round it to (or the Set page's vocabulary
-gives it, for the five measures the Set page shows), with the band label the
-engine derived from that same value; the band thresholds a meaning quotes are
-read from the vendored `_*_BANDS` tables, never retyped.
+**The numbers are the engine's, and they are only numbers.** A value is shown at
+the precision the diagnostics round it to (or the Set page's vocabulary gives
+it, for the five measures the Set page shows), with no grade beside it: no band
+label, no verdict. What a number means for a given profile is for the reader.
 """
 
 from __future__ import annotations
@@ -55,6 +54,7 @@ from gaggiclanker.domain.phase_metrics import (
     FAST_FLOW_SCALE_FLOW_G_S,
     FAST_FLOW_WINDOW_MS,
 )
+from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.slog import (
     FLOW_SCALE,
     PRESSURE_SCALE,
@@ -85,16 +85,13 @@ __all__ = [
     "ITEMS",
     "MEASURED_GROUPS",
     "REVIEW_GROUP",
-    "SHARED_BANDS",
     "TIERS",
     "WARNINGS_GROUP",
-    "BandTable",
     "Channel",
     "FieldValue",
     "Item",
     "ShotTier",
     "Tier",
-    "band_text",
     "default_tiers",
     "effective_tiers",
     "keys_in",
@@ -109,9 +106,6 @@ TIERS: tuple[Tier, ...] = ("base", "extended", "excluded")
 
 #: What a rendering asks for: one tier, or both at once.
 type ShotTier = Literal["base", "extended", "full"]
-
-#: A vendored threshold table: ``(bound, label)`` pairs.
-type BandTable = list[tuple[float, str]]
 
 type ShotRender = Callable[[ShotFacts], str | None]
 type PhaseRender = Callable[[ShotFacts, Mapping[str, Any]], str | None]
@@ -160,8 +154,6 @@ class Item:
     shot: ShotRender | None = None
     phase: PhaseRender | None = None
     channel: Channel | None = None
-    #: The vendored threshold tables this item's band label comes from.
-    bands: tuple[BandTable, ...] = ()
     #: The id of the computation behind the value (see :mod:`~gaggiclanker.shotinfo.methods`).
     #: A change to the computation changes the id, so a value read under one id
     #: is never compared with a value read under another as if they were one field.
@@ -278,14 +270,6 @@ def _qty(value: float | None, decimals: int, unit: str = "") -> str | None:
     return f"{text} {unit}" if unit else text
 
 
-def _banded(value: float | None, decimals: int, unit: str, band: str | None) -> str | None:
-    """A number with the band the engine gave it, or the number alone."""
-    text = _qty(value, decimals, unit)
-    if text is None:
-        return None
-    return f"{text} {band}" if band else text
-
-
 def _positive(value: float | None) -> float | None:
     """The engine's ``0.0`` for "nothing to average", read as nothing."""
     return value if value is not None and value > 0 else None
@@ -300,39 +284,6 @@ def _notes(notes: list[str]) -> str | None:
     """Flavour-wheel notes, each with its path from the centre of the wheel."""
     paths = [flavor_path(note) if note in FLAVOR_LABELS else note for note in notes]
     return "; ".join(paths) if paths else None
-
-
-def band_text(
-    table: BandTable, unit: str = "", *, descending: bool = False, scale: float = 1.0
-) -> str:
-    """Every label a threshold table can give, with the range behind each.
-
-    Written from the table itself, so a threshold in a meaning is the one the
-    engine applies. An ascending table is ``(upper bound, label)`` read with
-    ``value < bound``; a descending one is ``(lower bound, label)`` read with
-    ``value >= bound`` — :func:`engine._annotate_ascending` and
-    :func:`engine._annotate_descending`.
-    """
-
-    def num(bound: float) -> str:
-        return f"{bound * scale:g}"
-
-    suffix = f" {unit}" if unit else ""
-    parts: list[str] = []
-    edge: float | None = None
-    for bound, label in table:
-        if edge is None:
-            first = f"from {num(bound)}{suffix} up" if descending else f"under {num(bound)}{suffix}"
-            parts.append(f"{label} {first}")
-        elif math.isinf(bound):
-            last = f"under {num(edge)}{suffix}" if descending else f"from {num(edge)}{suffix} up"
-            parts.append(f"{label} {last}")
-        elif descending:
-            parts.append(f"{label} {num(bound)} to {num(edge)}{suffix}")
-        else:
-            parts.append(f"{label} {num(edge)} to {num(bound)}{suffix}")
-        edge = bound
-    return "; ".join(parts)
 
 
 # ── the Set page's vocabulary ────────────────────────────────────────
@@ -380,8 +331,19 @@ def brew_flow(f: ShotFacts) -> float | None:
     return f.section_value("extraction", "flow_avg_brew_ml_s") if f.puck_flow_recorded else None
 
 
-def execution_score(f: ShotFacts) -> float | None:
-    return f.shot.execution_score
+def resistance_level(f: ShotFacts) -> float | None:
+    """The puck's average resistance; absent where the shot has no flow to divide by."""
+    return _resistance_avg(f)
+
+
+def pressure_adherence(f: ShotFacts) -> float | None:
+    """RMSE of measured pressure against the profile's pressure target, in bar."""
+    return _pressure_rmse(f)
+
+
+def flow_adherence(f: ShotFacts) -> float | None:
+    """RMSE of pump flow against the profile's flow target, in ml/s."""
+    return _flow_rmse(f)
 
 
 def rating(f: ShotFacts) -> float | None:
@@ -398,38 +360,18 @@ def dose_out(f: ShotFacts) -> float | None:
 
 
 def ratio(f: ShotFacts) -> float | None:
-    return f.judgement.ratio if f.judgement is not None else None
+    """The yield over the dose, to two decimals.
 
-
-def channeling_risk(f: ShotFacts) -> str | None:
-    if f.full:
-        block = f.section("channeling")
-        risk = block.get("channeling_risk") if block is not None else None
-    else:
-        risk = f.diagnostics.get("channeling_risk")
-    return risk if isinstance(risk, str) and risk else None
-
-
-def resistance_band(f: ShotFacts) -> str | None:
-    if _resistance_avg(f) is None:
-        return None
-    return f.section_band("resistance", "level") if f.full else f.flat_band("resistance_level")
-
-
-def pressure_adherence_band(f: ShotFacts) -> str | None:
-    if _pressure_rmse(f) is None:
-        return None
-    if f.full:
-        return f.section_band("profile_compliance", "pressure_adherence")
-    return f.flat_band("pressure_adherence")
-
-
-def flow_adherence_band(f: ShotFacts) -> str | None:
-    if _flow_rmse(f) is None:
-        return None
-    if f.full:
-        return f.section_band("profile_compliance", "flow_adherence")
-    return f.flat_band("flow_adherence")
+    The dose is the judgement's when the person entered one and the filed
+    version's otherwise; the yield is the judgement's dose out when entered and
+    the scale's otherwise. No dose anywhere, or no yield, and there is no ratio.
+    """
+    return brew_ratio(
+        judged_dose_g=dose_in(f),
+        version_dose_g=f.version.dose_g if f.version is not None else None,
+        judged_yield_g=dose_out(f),
+        scale_yield_g=f.shot.volume_g,
+    )
 
 
 def balance(f: ShotFacts) -> str | None:
@@ -456,27 +398,9 @@ def _exit_reason(f: ShotFacts) -> str | None:
     return PHASE_EXIT_REASONS.get(code) if code else None
 
 
-def _penalties(f: ShotFacts) -> str | None:
-    components = f.score.get("components")
-    if not isinstance(components, dict):
-        return None
-    costs = sorted(
-        (value, str(key)) for key, raw in components.items() if (value := number(raw)) is not None
-    )
-    if not costs:
-        return "none"
-    return ", ".join(f"{key.replace('_', ' ')} {_fixed(value, 2)}" for value, key in costs)
-
-
 def _temperature(f: ShotFacts, key: str) -> float | None:
     """A temperature statistic; ``0.0`` means no temperature was recorded."""
     return _positive(f.summary_value("temperature", key))
-
-
-def _target_temperature_known(f: ShotFacts) -> bool:
-    # Overshoot and undershoot are measured against the target; with no target
-    # recorded the engine compares against nothing and writes 0.0 MINIMAL.
-    return _temperature(f, "target_avg_c") is not None
 
 
 def _flow_summary(f: ShotFacts, key: str) -> float | None:
@@ -486,11 +410,6 @@ def _flow_summary(f: ShotFacts, key: str) -> float | None:
 
 def _pressure_summary(f: ShotFacts, key: str) -> float | None:
     return f.summary_value("pressure", key) if f.has_pressure else None
-
-
-def _pressure_extraction(f: ShotFacts, key: str) -> float | None:
-    # With no sensor the engine writes 0.0 for the pressure-derived metrics.
-    return f.section_value("extraction", key) if f.has_pressure else None
 
 
 def _resistance_avg(f: ShotFacts) -> float | None:
@@ -514,7 +433,7 @@ def _with_resistance_source(text: str | None, source: object) -> str | None:
 
 
 def _resistance_level_text(f: ShotFacts) -> str | None:
-    text = _banded(_resistance_avg(f), 2, "", resistance_band(f))
+    text = _qty(_resistance_avg(f), 2)
     if f.full:
         block = f.section("resistance")
         source = block.get("source") if block is not None else None
@@ -523,41 +442,10 @@ def _resistance_level_text(f: ShotFacts) -> str | None:
     return _with_resistance_source(text, source)
 
 
-def _resistance(f: ShotFacts, key: str) -> float | None:
-    return f.section_value("resistance", key) if _resistance_avg(f) is not None else None
-
-
 def _resistance_slope(f: ShotFacts) -> float | None:
     if _resistance_avg(f) is None:
         return None
     return f.section_value("resistance", "slope") if f.full else f.flat("resistance_slope")
-
-
-def _resistance_slope_band(f: ShotFacts) -> str | None:
-    return f.section_band("resistance", "erosion") if f.full else f.flat_band("resistance_erosion")
-
-
-def _channeling_band(f: ShotFacts, key: str) -> str | None:
-    return f.section_band("channeling", key)
-
-
-def _indicator(f: ShotFacts, value_key: str, band_key: str, unit: str) -> str | None:
-    """A scored channeling indicator, only where the engine assessed it.
-
-    An unassessed indicator carries the band ``N/A`` beside a placeholder zero
-    (the window was too short, or no flow-steered sample was left).
-    """
-    band = _channeling_band(f, band_key)
-    if band is None:
-        return None
-    return _banded(f.section_value("channeling", value_key), 2, unit, band)
-
-
-def _flow_spread(f: ShotFacts) -> str | None:
-    value = f.section_value("channeling", "flow_spread_ml_s")
-    if value is None or (value == 0 and channeling_risk(f) == "INSUFFICIENT_DATA"):
-        return None
-    return _qty(value, 2, "ml/s")
 
 
 def _pressure_rmse(f: ShotFacts) -> float | None:
@@ -578,21 +466,12 @@ def _compliance(f: ShotFacts, full_key: str, flat_key: str | None) -> float | No
     return f.flat(flat_key) if flat_key is not None else None
 
 
-def _compliance_band(f: ShotFacts, key: str) -> str | None:
-    return f.section_band("profile_compliance", key) if f.full else f.flat_band(key)
-
-
 # ── per-phase accessors ──────────────────────────────────────────────
 
 
 def _phase_diag(phase: Mapping[str, Any]) -> Mapping[str, Any]:
     value = phase.get("diagnostics")
     return value if isinstance(value, dict) else {}
-
-
-def _phase_band(phase: Mapping[str, Any], key: str) -> str | None:
-    value = (_phase_diag(phase).get("annotations") or {}).get(key)
-    return value if isinstance(value, str) and value and value != "N/A" else None
 
 
 def _phase_number(phase: Mapping[str, Any], key: str) -> float | None:
@@ -623,48 +502,31 @@ def _phase_pressure(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
 
 
 def _phase_pressure_adherence(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
-    return _banded(
-        _phase_diag_number(phase, "pressure_rmse_bar"),
-        2,
-        "bar",
-        _phase_band(phase, "pressure_adherence"),
-    )
+    return _qty(_phase_diag_number(phase, "pressure_rmse_bar"), 2, "bar")
 
 
-def _phase_ramp(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
-    return _banded(
-        _phase_diag_number(phase, "ramp_rate_bar_s"), 2, "bar/s", _phase_band(phase, "ramp_rate")
-    )
+def _phase_resistance_level(phase: Mapping[str, Any]) -> float | None:
+    """A phase's resistance; ``0.0`` is an average over no sample with any flow."""
+    return _positive(_phase_diag_number(phase, "resistance_avg"))
 
 
 def _phase_taper(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
     rate = _qty(_phase_diag_number(phase, "taper_rate_bar_s"), 2, "bar/s")
-    smooth = _banded(
-        _phase_diag_number(phase, "taper_smoothness"),
-        2,
-        "bar/s",
-        _phase_band(phase, "taper_smoothness"),
-    )
+    smooth = _qty(_phase_diag_number(phase, "taper_smoothness"), 2, "bar/s")
     parts = [part for part in (rate, smooth) if part]
     return ", ".join(parts) if parts else None
 
 
 def _phase_resistance(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
-    level = _positive(_phase_diag_number(phase, "resistance_avg"))
-    if level is None:
-        return None
-    parts = [
-        _banded(level, 2, "", _phase_band(phase, "resistance_level")),
-        _banded(
-            _phase_diag_number(phase, "resistance_slope"),
-            2,
-            "/s",
-            _phase_band(phase, "resistance_erosion"),
-        ),
-    ]
     return _with_resistance_source(
-        ", ".join(part for part in parts if part), _phase_diag(phase).get("resistance_source")
+        _qty(_phase_resistance_level(phase), 2), _phase_diag(phase).get("resistance_source")
     )
+
+
+def _phase_resistance_slope(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
+    if _phase_resistance_level(phase) is None:
+        return None
+    return _qty(_phase_diag_number(phase, "resistance_slope"), 2, "/s")
 
 
 def _firmware_stats(block: object) -> str | None:
@@ -699,20 +561,6 @@ def _firmware_phase(f: ShotFacts, phase: Mapping[str, Any], stream: str) -> str 
 
 def _firmware_water(f: ShotFacts, key: str, unit: str) -> str | None:
     return _qty(number(f.firmware.get(key)), 1, unit)
-
-
-def _phase_channeling(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
-    risk = _phase_diag(phase).get("channeling_risk")
-    if not isinstance(risk, str) or not risk:
-        return None
-    parts = [risk]
-    signals = _phase_band(phase, "channeling_primary_signal")
-    if signals:
-        parts.append(f"signals {signals}")
-    shape = _phase_band(phase, "channeling_flow_shape")
-    if shape:
-        parts.append(f"flow shape {shape}")
-    return ", ".join(parts)
 
 
 def _decimals(scale: float) -> int:
@@ -845,32 +693,8 @@ def _firmware_stats_value(block: object) -> dict[str, Any] | None:
 #: "The brew phases" are every phase but pre-infusion: said once, in the
 #: glossary's preamble and in the phase type's meaning.
 _BREW = "over the brew phases"
-#: Defined once, in the Channeling group's note.
-_STEADY = "over the window"
 #: For the items outside the groups whose note already says it.
 _NEEDS_PRESSURE = "Needs a pressure sensor."
-
-#: The threshold tables more than one item is banded by, by the name their
-#: meanings refer to them with. The glossary lists each of these once, without
-#: a unit, and every item that uses one names it and gives its own unit — so a
-#: table is written out once however many items read it, and every label and
-#: threshold is still one reference away from each of them.
-SHARED_BANDS: Mapping[str, tuple[BandTable, bool]] = MappingProxyType(
-    {
-        "temperature deviation": (engine._TEMP_OVERSHOOT_BANDS, False),
-        "slope": (engine._RESISTANCE_SLOPE_BANDS, True),
-        "resistance level": (engine._RESISTANCE_LEVEL_BANDS, False),
-        "adherence": (engine._PROFILE_ADHERENCE_BANDS, False),
-        "flow deviation": (engine._FLOW_DEVIATION_BANDS, False),
-    }
-)
-
-
-def _shared(name: str, unit: str = "") -> str:
-    """How a meaning names a shared table: ``the adherence bands, in bar``."""
-    assert name in SHARED_BANDS, name
-    return f"the {name} bands, in {unit}" if unit else f"the {name} bands"
-
 
 #: The group the warnings are rendered under, first in every rendering that has any.
 WARNINGS_GROUP = "Warnings"
@@ -914,18 +738,12 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
         "Weight": "From the scale's readings: none of these exists without a scale.",
         "Puck resistance": (
             "Resistance R is the machine's own puck resistance squared (the firmware's "
-            "pr² = pressure / puck flow², on the scale of the bands) when the shot recorded it, "
+            "pr² = pressure / puck flow²) when the shot recorded it, "
             "and pressure / flow² from the logged pressure and flow otherwise; the level says "
             "which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a "
-            "unitless number. When the source is the machine, peak and its timing follow its "
-            "estimate, ramp spikes included. None of it exists without a pressure sensor. "
+            "unitless number. None of it exists without a pressure sensor. "
             "The machine puck resistance and liquid resistance are the firmware analyzer's, in "
-            "its units and unbanded: not comparable with R."
-        ),
-        "Channeling": (
-            "The indicators are measured over the steady-state window: the brew phases from where "
-            "pressure first reaches 90% of its peak, less leading and trailing samples under 0.1 "
-            "ml/s of flow. None of it exists without a pressure sensor."
+            "its own units: not comparable with R."
         ),
         "Profile compliance": (
             "How closely the machine followed the target each phase steered by, read from the "
@@ -937,7 +755,7 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
         "Phases": (
             "One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; start "
             "20.0 s; …`, with only the metrics that phase has. Pressure and pressure adherence "
-            "need a pressure sensor."
+            "need a pressure sensor; the scale lines (cup, scale flow) need a scale."
         ),
         REVIEW_GROUP: (
             "The newest finished review of the shot, or nothing when it was never reviewed. A "
@@ -971,14 +789,12 @@ def _items() -> tuple[Item, ...]:
     """The catalogue, in the order of the groups and of the rows within them."""
     identity = "Identity and status"
     outcome = "Outcome"
-    detail = "Execution score detail"
     timing = "Timing"
     temperature = "Temperature"
     pressure = "Pressure"
     flow = "Flow and volume"
     weight = "Weight"
     resistance = "Puck resistance"
-    channeling = "Channeling"
     compliance = "Profile compliance"
     phases = "Phases"
     curve = "Curve"
@@ -1188,71 +1004,6 @@ def _items() -> tuple[Item, ...]:
             default_tier="extended",
             shot=_phase_log_note,
         ),
-        Item(
-            key="execution_score",
-            group=outcome,
-            name="Execution score",
-            label="Execution score",
-            meaning=(
-                "How cleanly the machine executed the shot, out of 10: 10 less a capped penalty "
-                "for each fault the telemetry shows (channeling, temperature instability, "
-                "pressure and flow adherence, puck erosion), never below 1. Higher is cleaner. It "
-                "says nothing about taste, and it is computed, not judged: explain it, never "
-                "restate or contradict it."
-            ),
-            default_tier="base",
-            shot=lambda f: (
-                f"{_fixed(f.shot.execution_score, 1)} / 10"
-                if f.shot.execution_score is not None
-                else None
-            ),
-        ),
-        # ── execution score detail ───────────────────────────────────
-        Item(
-            key="score_confidence",
-            group=detail,
-            name="Score confidence",
-            label="Score confidence",
-            meaning=(
-                "How much of the telemetry the execution score could use. high: full diagnostics "
-                "and every adherence the profile calls for graded. medium: no profile to grade "
-                "against, an adherence that could not be worked out, or only the summary "
-                "diagnostics. low: no pressure sensor, a channeling window too short to "
-                "assess, or too little telemetry to score at all."
-            ),
-            default_tier="extended",
-            shot=lambda f: (
-                str(f.score["confidence"]) if isinstance(f.score.get("confidence"), str) else None
-            ),
-        ),
-        Item(
-            key="score_reason",
-            group=detail,
-            name="Score reason",
-            label="Score reason",
-            meaning=(
-                "The execution score's own sentence: which penalty cost the most, or that no "
-                "material fault was found."
-            ),
-            default_tier="extended",
-            shot=lambda f: (
-                str(f.score.get("reason") or f.shot.execution_reason or "").strip() or None
-            ),
-        ),
-        Item(
-            key="penalty_components",
-            group=detail,
-            name="Penalty components",
-            label="Penalty components",
-            meaning=(
-                "Each penalty the execution score subtracted, in points, largest first: "
-                "channeling, temperature stability, pressure adherence, flow adherence, "
-                "resistance erosion, and data quality when the telemetry was too sparse to score. "
-                "none means a clean 10."
-            ),
-            default_tier="extended",
-            shot=_penalties,
-        ),
         # ── timing ───────────────────────────────────────────────────
         Item(
             key="first_drip",
@@ -1340,79 +1091,6 @@ def _items() -> tuple[Item, ...]:
             default_tier="extended",
             shot=lambda f: _qty(_temperature(f, "max_c"), 1, "°C"),
         ),
-        Item(
-            key="temperature_overshoot",
-            group=temperature,
-            name="Temperature overshoot, with band",
-            label="Temperature overshoot",
-            meaning=(
-                f"The most the brew temperature rose above its target {_BREW}, in °C; lower is "
-                "better, and over 2 °C points at the boiler's control. Bands: "
-                f"{_shared('temperature deviation', '°C')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: (
-                _banded(
-                    f.section_value("temperature", "overshoot_c"),
-                    2,
-                    "°C",
-                    f.section_band("temperature", "overshoot"),
-                )
-                if _target_temperature_known(f)
-                else None
-            ),
-            bands=(engine._TEMP_OVERSHOOT_BANDS,),
-        ),
-        Item(
-            key="temperature_undershoot",
-            group=temperature,
-            name="Temperature undershoot, with band",
-            label="Temperature undershoot",
-            meaning=(
-                f"The most the brew temperature fell below its target {_BREW}, in °C; lower is "
-                "better, and over 2 °C suggests the machine was not fully heated. Bands: "
-                f"{_shared('temperature deviation', '°C')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: (
-                _banded(
-                    f.section_value("temperature", "undershoot_c"),
-                    2,
-                    "°C",
-                    f.section_band("temperature", "undershoot"),
-                )
-                if _target_temperature_known(f)
-                else None
-            ),
-            bands=(engine._TEMP_OVERSHOOT_BANDS,),
-        ),
-        Item(
-            key="temperature_stability",
-            group=temperature,
-            name="Temperature stability (std), with band",
-            label="Temperature stability",
-            meaning=(
-                f"The standard deviation of the brew temperature {_BREW}, in °C; lower is "
-                f"steadier. Bands: {band_text(engine._TEMP_STABILITY_BANDS, '°C')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: (
-                _banded(
-                    f.section_value("temperature", "stability_std_c"),
-                    2,
-                    "°C",
-                    f.section_band("temperature", "stability"),
-                )
-                if f.full
-                else _banded(
-                    f.flat("temperature_stability_c"),
-                    2,
-                    "°C",
-                    f.flat_band("temperature_stability"),
-                )
-            ),
-            bands=(engine._TEMP_STABILITY_BANDS,),
-        ),
         # ── pressure ─────────────────────────────────────────────────
         Item(
             key="peak_pressure",
@@ -1452,36 +1130,6 @@ def _items() -> tuple[Item, ...]:
             meaning="Seconds into the shot when the peak pressure was reached.",
             default_tier="extended",
             shot=lambda f: _qty(_pressure_summary(f, "peak_time_s"), 1, "s"),
-        ),
-        Item(
-            key="pressure_auc",
-            group=pressure,
-            name="Pressure under the curve (AUC)",
-            label="Pressure under the curve",
-            meaning=(
-                "Pressure summed over time for the whole shot, in bar·s: how much pressure the "
-                "puck was under in total."
-            ),
-            default_tier="extended",
-            shot=lambda f: _qty(_pressure_extraction(f, "pressure_auc_bar_s"), 2, "bar·s"),
-        ),
-        Item(
-            key="pressure_slope",
-            group=pressure,
-            name="Pressure slope during brew, with trend band",
-            label="Pressure slope during brew",
-            meaning=(
-                f"The least-squares slope of pressure {_BREW}, in bar per second; negative is a "
-                f"declining pressure. Bands: {_shared('slope', 'bar/s')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _banded(
-                _pressure_extraction(f, "pressure_slope_brew_bar_s"),
-                2,
-                "bar/s",
-                f.section_band("extraction", "pressure_trend") if f.has_pressure else None,
-            ),
-            bands=(engine._RESISTANCE_SLOPE_BANDS,),
         ),
         # ── flow and volume ──────────────────────────────────────────
         Item(
@@ -1541,25 +1189,6 @@ def _items() -> tuple[Item, ...]:
             default_tier="extended",
             shot=lambda f: _firmware_water(f, "water_pumped_ml", "ml"),
         ),
-        Item(
-            key="flow_slope",
-            group=flow,
-            name="Flow slope during brew, with trend band",
-            label="Flow slope during brew",
-            meaning=(
-                f"The least-squares slope of puck flow {_BREW}, in ml/s². Bands: DECLINING under "
-                "-0.02; STABLE -0.02 to 0.02; INCREASING from 0.02 up."
-            ),
-            default_tier="extended",
-            shot=lambda f: _banded(
-                f.section_value("extraction", "flow_slope_brew_ml_s2")
-                if f.puck_flow_recorded
-                else None,
-                2,
-                "ml/s²",
-                f.section_band("extraction", "flow_trend"),
-            ),
-        ),
         # ── weight ───────────────────────────────────────────────────
         Item(
             key="water_minus_weight",
@@ -1582,99 +1211,33 @@ def _items() -> tuple[Item, ...]:
             default_tier="extended",
             shot=lambda f: _qty(f.section_value("weight", "rate_avg_g_s"), 2, "g/s"),
         ),
-        Item(
-            key="weight_rate_variability",
-            group=weight,
-            name="Weight rate variability (std), with band",
-            label="Weight rate variability",
-            meaning=(
-                "The standard deviation of that weight rate, in g/s; lower is a steadier stream. "
-                f"Bands: {band_text(engine._FLOW_VOLATILITY_BANDS, 'g/s')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _banded(
-                f.section_value("weight", "rate_std_g_s"),
-                2,
-                "g/s",
-                f.section_band("weight", "rate_stability"),
-            ),
-            bands=(engine._FLOW_VOLATILITY_BANDS,),
-        ),
         # ── puck resistance ──────────────────────────────────────────
         Item(
             key="resistance_level",
             group=resistance,
-            name="Resistance level (average), with band",
+            name="Resistance level (average)",
             label="Resistance level",
             meaning=(
                 "The puck's average resistance, with where it came from: the machine's own "
                 "measurement, or computed from pressure and flow when the shot has none. It folds "
                 "grind, dose and puck prep into one reading: higher is a finer grind or a tighter "
-                "puck. Bands: "
-                f"{_shared('resistance level')}."
+                "puck. A number, not a grade: what is high or low depends on the profile and the "
+                "basket."
             ),
             default_tier="base",
             shot=_resistance_level_text,
-            bands=(engine._RESISTANCE_LEVEL_BANDS,),
         ),
         Item(
-            key="resistance_stability",
+            key="resistance_slope",
             group=resistance,
-            name="Resistance stability (std), with band",
-            label="Resistance stability",
+            name="Resistance slope",
+            label="Resistance slope",
             meaning=(
-                "The standard deviation of that resistance; lower is a more consistent puck, and "
-                "VOLATILE points at uneven prep or channeling. Bands: "
-                f"{band_text(engine._RESISTANCE_STABILITY_BANDS)}."
+                "The slope of the resistance over the brew phases, per second: negative is a "
+                "resistance falling through the shot, positive one rising. A number, not a grade."
             ),
             default_tier="extended",
-            shot=lambda f: _banded(
-                _resistance(f, "std"), 2, "", f.section_band("resistance", "stability")
-            ),
-            bands=(engine._RESISTANCE_STABILITY_BANDS,),
-        ),
-        Item(
-            key="resistance_erosion",
-            group=resistance,
-            name="Resistance erosion (slope), with band",
-            label="Resistance erosion",
-            meaning=(
-                "The slope of the resistance over the brew phases, per second. A gentle decline "
-                "is the puck eroding normally; a steep one is the bed giving way (channeling), "
-                f"and a rising one often a coarse grind. Bands: {_shared('slope', '/s')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _banded(_resistance_slope(f), 2, "/s", _resistance_slope_band(f)),
-            bands=(engine._RESISTANCE_SLOPE_BANDS,),
-        ),
-        Item(
-            key="resistance_peak",
-            group=resistance,
-            name="Peak resistance",
-            label="Peak resistance",
-            meaning="The highest resistance reached during the brew phases.",
-            default_tier="extended",
-            shot=lambda f: _qty(_resistance(f, "peak"), 2),
-        ),
-        Item(
-            key="saturation",
-            group=resistance,
-            name="Saturation (peak timing), with band",
-            label="Saturation",
-            meaning=(
-                "How far into the brew phases the resistance peaked, as a percentage (0 % is the "
-                "start of the brew, 100 % the end). An early peak is a puck saturated before the "
-                "brew got going. Bands: "
-                f"{band_text(engine._RESISTANCE_PEAK_TIMING_BANDS, '%', scale=100)}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _banded(
-                None if (value := _resistance(f, "peak_timing_pct")) is None else value * 100,
-                0,
-                "%",
-                f.section_band("resistance", "saturation"),
-            ),
-            bands=(engine._RESISTANCE_PEAK_TIMING_BANDS,),
+            shot=lambda f: _qty(_resistance_slope(f), 2, "/s"),
         ),
         Item(
             key="machine_puck_resistance",
@@ -1683,8 +1246,8 @@ def _items() -> tuple[Item, ...]:
             label="Machine puck resistance (s·√bar/mL)",
             meaning=(
                 "The firmware analyzer's machine puck resistance pr (s·√bar/mL): average, then "
-                "first, last, lowest, highest. Unbanded, and the square root of the level's "
-                "quantity, so not comparable with it."
+                "first, last, lowest, highest. The square root of the level's quantity, so not "
+                "comparable with it."
             ),
             default_tier="extended",
             shot=lambda f: _firmware_whole(f, "pr"),
@@ -1696,240 +1259,40 @@ def _items() -> tuple[Item, ...]:
             label="Liquid resistance (bar·s/mL)",
             meaning=(
                 "The firmware analyzer's liquid resistance, pr · √pressure (bar·s/mL): average, "
-                "then first, last, lowest, highest. Unbanded."
+                "then first, last, lowest, highest."
             ),
             default_tier="extended",
             shot=lambda f: _firmware_whole(f, "lr"),
-        ),
-        # ── channeling ───────────────────────────────────────────────
-        Item(
-            key="channeling_risk",
-            group=channeling,
-            name="Channeling risk",
-            label="Channeling risk",
-            meaning=(
-                "The risk that water found a channel through the puck, scored 0 to 8 from four "
-                "indicators (flow jitter; flow against target, or pressure jitter when no "
-                "flow-steered sample is left; the largest pressure drop; late flow acceleration), "
-                "each "
-                "adding 1 at its lower threshold and 2 at its upper: LOW 0-1, MODERATE 2-3, HIGH "
-                "4-5, VERY_HIGH 6-8. INSUFFICIENT_DATA: fewer than "
-                f"{engine._MIN_STEADY_STATE_SAMPLES} samples in the window, too short to judge, "
-                "which is not a fault."
-            ),
-            default_tier="base",
-            shot=channeling_risk,
-        ),
-        Item(
-            key="primary_signal",
-            group=channeling,
-            name="Primary signal",
-            label="Primary signal",
-            meaning=(
-                "Which channeling indicators reached their lower threshold, comma-separated: "
-                "flow_jitter, flow_vs_target, pressure_jitter_fallback (pressure jitter standing "
-                "in when no flow-steered sample is left), pressure_cliff, late_flow_runaway; or "
-                "none. One signal alone is usually noise; two or more aligned is a channel."
-            ),
-            default_tier="extended",
-            shot=lambda f: _channeling_band(f, "primary_signal"),
-        ),
-        Item(
-            key="flow_jitter",
-            group=channeling,
-            name="Flow jitter, with band",
-            label="Flow jitter",
-            meaning=(
-                f"Sample-to-sample instability of puck flow {_STEADY}: the standard deviation of "
-                "its successive differences, in ml/s, so a designed ramp scores nothing. Lower "
-                "is better; it adds to the channeling score from 0.05. Bands: "
-                f"{band_text(engine._FLOW_JITTER_BANDS, 'ml/s')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _indicator(f, "flow_jitter_ml_s", "flow_jitter", "ml/s"),
-            bands=(engine._FLOW_JITTER_BANDS,),
-        ),
-        Item(
-            key="flow_vs_target",
-            group=channeling,
-            name="Flow against target (residual), with band",
-            label="Flow against target",
-            meaning=(
-                f"The standard deviation of puck flow minus the commanded flow {_STEADY}, in "
-                "ml/s: a puck that cannot hold the flow curve. Lower is better; it adds to the "
-                "channeling score from 0.35. Read only over the samples of phases that steer by "
-                "flow (not those a pressure limit held); absent when there are none or the "
-                "profile is not known. Bands: "
-                f"{band_text(engine._FLOW_VS_TARGET_BANDS, 'ml/s')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _indicator(f, "flow_vs_target_residual_ml_s", "flow_vs_target", "ml/s"),
-            bands=(engine._FLOW_VS_TARGET_BANDS,),
-        ),
-        Item(
-            key="pressure_drop_rate",
-            group=channeling,
-            name="Largest pressure drop rate, with band",
-            label="Largest pressure drop rate",
-            meaning=(
-                f"The steepest single-sample fall in pressure {_STEADY}, in bar/s (negative): a "
-                "channel opening abruptly. Closer to zero is better; it adds to the channeling "
-                "score from -1.5. Bands: "
-                f"{band_text(engine._PRESSURE_DROP_RATE_BANDS, 'bar/s', descending=True)}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _indicator(f, "pressure_max_drop_rate_bar_s", "pressure_drop", "bar/s"),
-            bands=(engine._PRESSURE_DROP_RATE_BANDS,),
-        ),
-        Item(
-            key="late_flow_acceleration",
-            group=channeling,
-            name="Late flow acceleration, with band",
-            label="Late flow acceleration",
-            meaning=(
-                "How much faster flow was rising in the last 40 % of the window than over the "
-                "whole of it, in ml/s², so a designed ramp scores zero: a channel running away "
-                "late. Lower is better; it adds to the channeling score from 0.05. Bands: "
-                f"{band_text(engine._FLOW_ACCELERATION_BANDS, 'ml/s²')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _indicator(
-                f, "flow_acceleration_late_ml_s2", "late_flow_trend", "ml/s²"
-            ),
-            bands=(engine._FLOW_ACCELERATION_BANDS,),
-        ),
-        Item(
-            key="pressure_jitter",
-            group=channeling,
-            name="Pressure jitter, with band",
-            label="Pressure jitter",
-            meaning=(
-                f"Sample-to-sample instability of pressure {_STEADY}, in bar, measured like flow "
-                "jitter. It stands in for flow against target in the channeling score when no "
-                "flow-steered sample is left: a pressure profile, an unknown profile, or the "
-                "limit held (from 0.10). Bands: "
-                f"{band_text(engine._PRESSURE_JITTER_BANDS, 'bar')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _indicator(f, "pressure_jitter_bar", "pressure_jitter", "bar"),
-            bands=(engine._PRESSURE_JITTER_BANDS,),
-        ),
-        Item(
-            key="flow_spread",
-            group=channeling,
-            name="Flow spread",
-            label="Flow spread",
-            meaning=(
-                "The plain standard deviation of puck flow over the channeling window, in ml/s. "
-                "A descriptor, not scored: it includes any ramp the profile intended, so read it "
-                "with the flow shape."
-            ),
-            default_tier="extended",
-            shot=_flow_spread,
-        ),
-        Item(
-            key="flow_shape",
-            group=channeling,
-            name="Flow shape",
-            label="Flow shape",
-            meaning=(
-                "The overall trend of flow over the channeling window: RAMPING_UP when its slope "
-                "is over 0.03 ml/s², RAMPING_DOWN when under -0.03, otherwise FLAT. A high flow "
-                "spread on a ramping shape is the profile working, not the puck failing."
-            ),
-            default_tier="extended",
-            shot=lambda f: _channeling_band(f, "flow_shape"),
-        ),
-        Item(
-            key="window_confidence",
-            group=channeling,
-            name="Assessment window confidence",
-            label="Window confidence",
-            meaning=(
-                "How many samples the channeling assessment rests on: HIGH 15 or more, MEDIUM "
-                f"8-14, LOW {engine._MIN_STEADY_STATE_SAMPLES}-7, INSUFFICIENT fewer than "
-                f"{engine._MIN_STEADY_STATE_SAMPLES}. Discount a HIGH or VERY_HIGH risk read from "
-                "a LOW window."
-            ),
-            default_tier="extended",
-            shot=lambda f: _channeling_band(f, "window_confidence"),
-        ),
-        Item(
-            key="guidance",
-            group=channeling,
-            name="Guidance",
-            label="Guidance",
-            meaning=(
-                "The diagnostics engine's one-sentence reading of the channeling indicators "
-                "together; a cross-check for your own reading, not a verdict."
-            ),
-            default_tier="extended",
-            shot=lambda f: _quote(_channeling_band(f, "guidance")),
-        ),
-        Item(
-            key="processing_note",
-            group=channeling,
-            name="Processing note",
-            label="Processing note",
-            meaning=(
-                "How many samples were trimmed before the channeling assessment (the pressure "
-                "ramp-up, leading and trailing zero flow)."
-            ),
-            default_tier="excluded",
-            shot=lambda f: _quote(_channeling_band(f, "note")),
         ),
         # ── profile compliance ───────────────────────────────────────
         Item(
             key="pressure_adherence",
             group=compliance,
-            name="Pressure adherence (RMSE), with band",
+            name="Pressure adherence (RMSE)",
             label="Pressure adherence",
             meaning=(
                 "The root-mean-square difference between measured and target pressure over the "
                 "samples of pressure-steered phases, in bar; lower is closer to the profile. The "
                 "machine's controller drives the pump to hold pressure, so this says how well it "
-                "did, not what the puck did. "
-                f"Bands: {_shared('adherence', 'bar')}."
+                "did, not what the puck did."
             ),
             default_tier="base",
-            shot=lambda f: _banded(_pressure_rmse(f), 2, "bar", pressure_adherence_band(f)),
-            bands=(engine._PROFILE_ADHERENCE_BANDS,),
+            shot=lambda f: _qty(_pressure_rmse(f), 2, "bar"),
         ),
         Item(
             key="flow_adherence",
             group=compliance,
-            name="Flow adherence (RMSE), with band",
+            name="Flow adherence (RMSE)",
             label="Flow adherence",
             meaning=(
                 "The root-mean-square difference between pump flow and target flow over the "
                 "samples of flow-steered phases, in ml/s; lower is closer. The pump flow is the "
                 "machine's own estimate, not a measurement: it leaves the target only when the "
                 "pump runs out of power or a pressure limit takes over, so it is not a grind "
-                f"signal. Bands: {_shared('adherence', 'ml/s')}."
+                "signal."
             ),
             default_tier="base",
-            shot=lambda f: _banded(_flow_rmse(f), 2, "ml/s", flow_adherence_band(f)),
-            bands=(engine._PROFILE_ADHERENCE_BANDS,),
-        ),
-        Item(
-            key="pressure_overshoot_max",
-            group=compliance,
-            name="Largest pressure overshoot, with band",
-            label="Largest pressure overshoot",
-            meaning=(
-                "The most measured pressure rose above the target pressure, in bar. Over 0.5 "
-                "is unusual and over 1 almost always a grind too fine, a dose too big or a prep "
-                "problem. Bands: "
-                f"{band_text(engine._PRESSURE_OVERSHOOT_BANDS, 'bar')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _banded(
-                _compliance(f, "max_pressure_overshoot_bar", "max_overshoot_bar"),
-                2,
-                "bar",
-                _compliance_band(f, "pressure_overshoot"),
-            ),
-            bands=(engine._PRESSURE_OVERSHOOT_BANDS,),
+            shot=lambda f: _qty(_flow_rmse(f), 2, "ml/s"),
         ),
         Item(
             key="pressure_undershoot_max",
@@ -1942,45 +1305,6 @@ def _items() -> tuple[Item, ...]:
             ),
             default_tier="extended",
             shot=lambda f: _qty(_compliance(f, "max_pressure_undershoot_bar", None), 2, "bar"),
-        ),
-        Item(
-            key="flow_overshoot_max",
-            group=compliance,
-            name="Largest flow overshoot, with band",
-            label="Largest flow overshoot",
-            meaning=(
-                "The most the pump flow rose above the target flow, in ml/s, over the flow-steered "
-                "phases. Bands: "
-                f"{_shared('flow deviation', 'ml/s')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _banded(
-                _compliance(f, "max_flow_overshoot_ml_s", "max_flow_overshoot_ml_s"),
-                2,
-                "ml/s",
-                _compliance_band(f, "flow_overshoot"),
-            ),
-            bands=(engine._FLOW_DEVIATION_BANDS,),
-        ),
-        Item(
-            key="flow_undershoot_max",
-            group=compliance,
-            name="Largest flow undershoot, with band",
-            label="Largest flow undershoot",
-            meaning=(
-                "The most the pump flow fell below the target flow, in ml/s, over the flow-steered "
-                "phases: the pump could not deliver what was asked (out of power, or a pressure "
-                "limit took over). Bands: "
-                f"{_shared('flow deviation', 'ml/s')}."
-            ),
-            default_tier="extended",
-            shot=lambda f: _banded(
-                _compliance(f, "max_flow_undershoot_ml_s", None),
-                2,
-                "ml/s",
-                _compliance_band(f, "flow_undershoot"),
-            ),
-            bands=(engine._FLOW_DEVIATION_BANDS,),
         ),
         # ── phases ───────────────────────────────────────────────────
         Item(
@@ -2005,9 +1329,9 @@ def _items() -> tuple[Item, ...]:
                 f"{', '.join(engine._PREINFUSION_KEYWORDS)}; decline when it contains "
                 f"{', '.join(engine._DECLINE_KEYWORDS)}; otherwise read from the pressure trace "
                 "(a first phase under 5 bar and rising is preinfusion, a last phase falling "
-                "faster than 0.3 bar per sample is decline), else brew. It decides which of the "
-                "per-phase metrics below the phase gets. Every phase but a preinfusion one is one "
-                "of the shot's brew phases."
+                "faster than 0.3 bar per sample is decline), else brew. A description only: "
+                "every phase gets the same metrics. Every phase but a preinfusion one is one of "
+                "the shot's brew phases."
             ),
             default_tier="extended",
             phase=_phase_type,
@@ -2218,15 +1542,14 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="phase_pressure_adherence",
             group=phases,
-            name="Phase pressure adherence (RMSE), with band",
+            name="Phase pressure adherence (RMSE)",
             label="pressure adherence",
             meaning=(
-                "Pressure adherence (as above) within a pressure-steered phase, in bar. Bands: "
-                f"{_shared('adherence', 'bar')}."
+                "Pressure adherence (as above) within a pressure-steered phase, in bar. Needs a "
+                "pressure sensor and the shot's profile."
             ),
             default_tier="extended",
             phase=_phase_pressure_adherence,
-            bands=(engine._PROFILE_ADHERENCE_BANDS,),
         ),
         Item(
             key="phase_flow_error",
@@ -2243,16 +1566,14 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="phase_ramp",
             group=phases,
-            name="Phase ramp rate, with band (pre-infusion)",
+            name="Phase ramp rate (pre-infusion)",
             label="ramp",
             meaning=(
                 "Pre-infusion phases only: how fast pressure rose over the phase (its "
-                "least-squares slope), in bar/s. Banded on its size: "
-                f"{band_text(engine._RAMP_RATE_BANDS, 'bar/s')}."
+                "least-squares slope), in bar/s."
             ),
             default_tier="extended",
-            phase=_phase_ramp,
-            bands=(engine._RAMP_RATE_BANDS,),
+            phase=lambda _, p: _qty(_phase_diag_number(p, "ramp_rate_bar_s"), 2, "bar/s"),
         ),
         Item(
             key="phase_saturation",
@@ -2270,31 +1591,39 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="phase_taper",
             group=phases,
-            name="Phase taper rate and smoothness, with band (decline)",
+            name="Phase taper rate and smoothness (decline)",
             label="taper",
             meaning=(
                 "Decline phases only: how fast pressure fell (its slope, bar/s), then how evenly "
-                "(the standard deviation of its sample-to-sample rate, bar/s; lower is smoother). "
-                f"Smoothness bands: {band_text(engine._TAPER_SMOOTHNESS_BANDS, 'bar/s')}."
+                "(the standard deviation of its sample-to-sample rate, bar/s; lower is smoother)."
             ),
             default_tier="extended",
             phase=_phase_taper,
-            bands=(engine._TAPER_SMOOTHNESS_BANDS,),
         ),
         Item(
             key="phase_resistance",
             group=phases,
-            name="Phase resistance level and erosion, with bands (brew)",
+            name="Phase resistance level",
             label="resistance",
             meaning=(
-                "Brew phases only: the puck resistance level and its slope within the phase, "
-                "banded as the shot's resistance level and erosion are: "
-                f"{_shared('resistance level')}, then {_shared('slope', '/s')}. Ends with where "
-                "the phase's resistance came from, as the shot's level does."
+                "The puck resistance within the phase, as the shot's resistance level is, with "
+                "where it came from (the machine's own measurement, or computed). Only a phase "
+                "with flow to divide by has one."
             ),
             default_tier="extended",
             phase=_phase_resistance,
-            bands=(engine._RESISTANCE_LEVEL_BANDS, engine._RESISTANCE_SLOPE_BANDS),
+        ),
+        Item(
+            key="phase_resistance_slope",
+            group=phases,
+            name="Phase resistance slope",
+            label="resistance slope",
+            meaning=(
+                "The slope of the puck resistance within the phase, per second, as the shot's "
+                "resistance slope is."
+            ),
+            default_tier="extended",
+            phase=_phase_resistance_slope,
         ),
         Item(
             key="phase_machine_resistance",
@@ -2303,7 +1632,7 @@ def _items() -> tuple[Item, ...]:
             label="machine puck resistance (s·√bar/mL)",
             meaning=(
                 "The machine puck resistance over this phase, as the shot's: average, then first, "
-                "last, lowest, highest. Every phase; unbanded."
+                "last, lowest, highest. Every phase."
             ),
             default_tier="extended",
             phase=lambda f, p: _firmware_phase(f, p, "pr"),
@@ -2313,23 +1642,9 @@ def _items() -> tuple[Item, ...]:
             group=phases,
             name="Phase liquid resistance (firmware analyzer)",
             label="liquid resistance (bar·s/mL)",
-            meaning=("The liquid resistance over this phase, as the shot's. Unbanded."),
+            meaning="The liquid resistance over this phase, as the shot's.",
             default_tier="extended",
             phase=lambda f, p: _firmware_phase(f, p, "lr"),
-        ),
-        Item(
-            key="phase_channeling",
-            group=phases,
-            name="Phase channeling risk and signals (brew)",
-            label="channeling",
-            meaning=(
-                "Brew phases only: the channeling risk assessed on this phase alone (the same "
-                "labels as the shot's, INSUFFICIENT_DATA included), the indicators that fired "
-                "and the flow shape. A short phase is often INSUFFICIENT_DATA, which is not a "
-                "fault."
-            ),
-            default_tier="extended",
-            phase=_phase_channeling,
         ),
         Item(
             key="phase_samples",
@@ -2428,7 +1743,11 @@ def _items() -> tuple[Item, ...]:
             group=judgement,
             name="Ratio",
             label="Ratio",
-            meaning="Dose out divided by dose in, written 1:2.00. Longer ratios extract more.",
+            meaning=(
+                "Dose out divided by dose in, written 1:2.00. Longer ratios extract more. The dose "
+                "in is the person's when entered, else the version's; the dose out is the "
+                "person's when entered, else the scale's yield. Absent without both."
+            ),
             default_tier="base",
             shot=lambda f: f"1:{_fixed(value, 2)}" if (value := ratio(f)) is not None else None,
         ),
@@ -2792,7 +2111,7 @@ _UNITS: Mapping[str, str] = MappingProxyType(
         "weight_rate": "g/s",
         "machine_puck_resistance": "s·√bar/mL",
         "liquid_resistance": "bar·s/mL",
-        "resistance_erosion": "1/s",
+        "resistance_slope": "1/s",
         "pressure_adherence": "bar",
         "flow_adherence": "ml/s",
         "pressure_undershoot_max": "bar",
@@ -2819,6 +2138,10 @@ _UNITS: Mapping[str, str] = MappingProxyType(
         "phase_first_drip": "s",
         "phase_pressure_adherence": "bar",
         "phase_flow_error": "ml/s",
+        "phase_ramp": "bar/s",
+        "phase_saturation": "s",
+        "phase_taper": "bar/s",
+        "phase_resistance_slope": "1/s",
         "phase_machine_resistance": "s·√bar/mL",
         "phase_liquid_resistance": "bar·s/mL",
     }
@@ -2854,9 +2177,8 @@ _SHOT_VALUES: Mapping[str, ShotValue] = MappingProxyType(
         "water_minus_weight": lambda f: number(f.firmware.get("water_minus_weight_g")),
         "weight_rate": lambda f: f.section_value("weight", "rate_avg_g_s"),
         "shot_id": lambda f: f.shot_id,
-        "resistance_peak": lambda f: _resistance(f, "peak"),
         "resistance_level": _resistance_avg,
-        "resistance_erosion": _resistance_slope,
+        "resistance_slope": _resistance_slope,
         "machine_puck_resistance": lambda f: _firmware_stats_value(f.firmware.get("pr")),
         "liquid_resistance": lambda f: _firmware_stats_value(f.firmware.get("lr")),
         "pressure_adherence": _pressure_rmse,
@@ -2899,8 +2221,17 @@ _PHASE_VALUES: Mapping[str, PhaseValue] = MappingProxyType(
             int(count) if (count := _phase_number(p, "sample_count")) is not None else None
         ),
         "phase_first_drip": lambda _, p: _phase_metric(p, "first_drip_s"),
+        "phase_resistance": lambda _, p: _phase_resistance_level(p),
+        "phase_resistance_slope": lambda _, p: (
+            _phase_diag_number(p, "resistance_slope")
+            if _phase_resistance_level(p) is not None
+            else None
+        ),
         "phase_pressure_adherence": lambda _, p: _phase_diag_number(p, "pressure_rmse_bar"),
         "phase_flow_error": lambda _, p: _phase_diag_number(p, "flow_rmse_ml_s"),
+        "phase_ramp": lambda _, p: _phase_diag_number(p, "ramp_rate_bar_s"),
+        "phase_saturation": lambda _, p: _phase_diag_number(p, "saturation_time_s"),
+        "phase_taper": lambda _, p: _phase_diag_number(p, "taper_rate_bar_s"),
         "phase_machine_resistance": lambda f, p: _firmware_phase_value(f, p, "pr"),
         "phase_liquid_resistance": lambda f, p: _firmware_phase_value(f, p, "lr"),
     }

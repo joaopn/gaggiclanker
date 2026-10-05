@@ -72,10 +72,10 @@ async def test_get_shot_is_the_base_rendering_of_the_shot(
     assert data["tier"] == "base"
     assert data["text"].startswith(f"shot {archive.shots[0]}\n")
     assert "Rating: 2/5" in data["text"]
-    assert "Channeling risk: MODERATE" in data["text"]
+    assert "Resistance level: 2.40" in data["text"]
     # Nothing extended, and no curve: that is what the other two tools are for.
     assert "[Curve]" not in data["text"]
-    assert "Score confidence" not in data["text"]
+    assert "Average pressure" not in data["text"]
     assert set(data) == {"shot_id", "tier", "text"}, "the old analysis field is gone"
 
 
@@ -87,7 +87,7 @@ async def test_get_shot_extended_adds_only_what_base_leaves_out(
     extended = await call(ctx, "get_shot_extended", shot_id=archive.shots[-1])
 
     assert extended["tier"] == "extended"
-    assert "Score confidence: high" in extended["text"]
+    assert "Average pressure: 7.8 bar" in extended["text"]
     assert "[Curve]\n" in extended["text"]
     heading = extended["text"].split("[Curve]\n", 1)[1].splitlines()[0]
     assert re.fullmatch(r"\d+ of 112 samples, shape-preserving; always kept: .+", heading)
@@ -124,7 +124,7 @@ async def test_get_shot_full_is_both(ctx: ToolContext, archive: Fixture) -> None
 
     assert full["tier"] == "full"
     assert "Rating: 3/5" in full["text"]
-    assert "Score confidence: high" in full["text"]
+    assert "Average pressure: 7.8 bar" in full["text"]
     assert "[Curve]" in full["text"]
 
 
@@ -135,15 +135,15 @@ async def test_the_next_shot_tool_call_follows_a_tier_moved_since_the_last(
     shot = archive.shots[-1]
     before = (await call(ctx, "get_shot", shot_id=shot))["text"]
     repo = ShotInfoTiersRepository(archive.db)
-    await repo.set_tier(ShotInfoTierWrite(item_key="score_confidence", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="average_pressure", tier="base"))
     await repo.set_tier(ShotInfoTierWrite(item_key="rating", tier="excluded"))
 
     after = (await call(ctx, "get_shot", shot_id=shot))["text"]
     extended = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
 
-    assert "Score confidence: high" not in before
-    assert "Score confidence: high" in after
-    assert "Score confidence" not in extended, "an item sits in one tier at a time"
+    assert "Average pressure: 7.8 bar" not in before
+    assert "Average pressure: 7.8 bar" in after
+    assert "Average pressure" not in extended, "an item sits in one tier at a time"
     assert "Rating: 3/5" in before
     assert "Rating:" not in after
     assert "Rating:" not in (await call(ctx, "get_shot_full", shot_id=shot))["text"]
@@ -171,7 +171,7 @@ async def test_compare_shots_renders_each_in_full_in_the_order_given(
     assert [shot["shot_id"] for shot in data["shots"]] == wanted
     assert all(shot["tier"] == "full" for shot in data["shots"])
     assert all(shot["text"].startswith(f"shot {shot['shot_id']}\n") for shot in data["shots"])
-    assert "Score confidence" in data["shots"][0]["text"]
+    assert "Average pressure" in data["shots"][0]["text"]
     assert "Rating:" in data["shots"][0]["text"]
 
 

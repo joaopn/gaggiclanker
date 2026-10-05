@@ -40,17 +40,20 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
         await database.close()
 
 
-def test_the_derivation_version_moved_with_the_per_phase_metrics() -> None:
+def test_the_derivation_version_moved_with_the_per_phase_metrics_and_the_retired_score() -> None:
     # Stored verdicts change (undershoot at 5, the channeling flow residual at
-    # 6, the per-phase metrics at 7): every shot derived at 6 or earlier is
-    # derived again on the next boot.
-    assert DERIVATION_VERSION == 7
+    # 6, the per-phase metrics at 7, the score and the bands gone at 8): every
+    # shot derived at 7 or earlier is derived again on the next boot.
+    assert DERIVATION_VERSION == 8
 
 
-async def test_a_shot_derived_at_version_six_gains_its_phase_metrics(db: Database) -> None:
+async def test_a_shot_derived_at_version_seven_is_derived_again_without_its_score(
+    db: Database,
+) -> None:
     shot_id = await unlinked_shot(db)
     await db.execute(
-        "UPDATE shots SET derivation_version = 6, phases_json = '[]', diagnostics_json = '{}' "
+        "UPDATE shots SET derivation_version = 7, phases_json = '[]', "
+        'diagnostics_json = \'{"score": {"score": 9.3}, "diagnostics": {"channeling": {}}}\' '
         "WHERE id = ?",
         (shot_id,),
     )
@@ -61,7 +64,10 @@ async def test_a_shot_derived_at_version_six_gains_its_phase_metrics(db: Databas
         "SELECT phases_json, diagnostics_json FROM shots WHERE id = ?", (shot_id,)
     )
     assert row is not None
-    assert json.loads(row["diagnostics_json"])["metrics"]["per_phase"] is True
+    blob = json.loads(row["diagnostics_json"])
+    assert "score" not in blob
+    assert "channeling" not in blob["diagnostics"]
+    assert blob["metrics"]["per_phase"] is True
     assert all("metrics" in phase for phase in json.loads(row["phases_json"]))
 
 
@@ -83,18 +89,15 @@ async def test_a_shot_stored_at_the_previous_version_is_derived_again_with_its_p
     assert block["pressure_grading"] == "graded"
     assert block["flow_grading"] == "not_applicable"
     assert await derivation_version(db, shot_id) == DERIVATION_VERSION
-    # And it is now the score of a shot derived with the profile in the first place.
+    # And it is now what a shot derived with the profile in the first place has.
     fresh = derive_shot(
         parse_slog(SLOG_204.read_bytes()),
         SLOG_204.read_bytes(),
         device_id="000204",
         profile=constructed_profile("shot_204"),
     ).shot
-    row = await db.fetch_one(
-        "SELECT execution_score, diagnostics_json FROM shots WHERE id = ?", (shot_id,)
-    )
+    row = await db.fetch_one("SELECT diagnostics_json FROM shots WHERE id = ?", (shot_id,))
     assert row is not None
-    assert row["execution_score"] == fresh.execution_score
     assert row["diagnostics_json"] == fresh.diagnostics_json
 
 

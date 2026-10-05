@@ -9,6 +9,7 @@ every chat would be told differently about every shot.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -288,10 +289,12 @@ async def test_a_shot_with_no_scale_has_no_weight_derived_values(archive: Archiv
 
     assert "yield" not in keys
     assert "weight_rate" not in keys
-    assert "weight_rate_variability" not in keys
+    assert "phase_cup_end" not in keys
+    assert "phase_scale_flow" not in keys
+    assert "yield_share" not in keys
     assert "weight (g)" not in rendered, "a scale that was not there reads as absent, not zero"
     # Everything the scale does not feed is still there.
-    assert {"shot_time", "peak_pressure", "brew_flow", "channeling_risk"} <= keys
+    assert {"shot_time", "peak_pressure", "brew_flow", "resistance_level"} <= keys
     assert "puck flow (ml/s)" in rendered
 
 
@@ -309,18 +312,17 @@ async def test_a_shot_with_no_pressure_sensor_has_no_pressure_derived_values(
         "average_pressure",
         "minimum_pressure",
         "peak_pressure_time",
-        "pressure_auc",
-        "pressure_slope",
         "preinfusion_time",
         "main_extraction_time",
         "resistance_level",
-        "resistance_erosion",
-        "channeling_risk",
-        "flow_jitter",
+        "resistance_slope",
         "pressure_adherence",
-        "pressure_overshoot_max",
+        "pressure_undershoot_max",
         "phase_pressure",
+        "phase_pressure_peak",
+        "phase_pressure_end",
         "phase_pressure_adherence",
+        "phase_resistance",
     ):
         assert absent not in keys, absent
     assert "pressure (bar)," not in rendered.replace("target pressure (bar),", "")
@@ -408,22 +410,10 @@ async def test_summary_level_diagnostics_are_read_as_well(archive: Archive) -> N
             "has_pressure": True,
             "resistance_avg": 2.4,
             "resistance_slope": -0.04,
-            "channeling_risk": "LOW",
-            "temperature_stability_c": 0.42,
             "pressure_rmse_bar": 0.31,
             "max_overshoot_bar": 0.22,
             "flow_rmse_ml_s": 0.41,
             "max_flow_overshoot_ml_s": 0.55,
-            "annotations": {
-                "resistance_level": "MODERATE",
-                "resistance_erosion": "GRADUAL_DECLINE",
-                "channeling_risk": "LOW",
-                "pressure_adherence": "EXCELLENT",
-                "pressure_overshoot": "WITHIN_TOLERANCE",
-                "temperature_stability": "STABLE",
-                "flow_adherence": "GOOD",
-                "flow_overshoot": "MINOR_DEVIATION",
-            },
         },
         "has_pressure": True,
     }
@@ -440,53 +430,14 @@ async def test_summary_level_diagnostics_are_read_as_well(archive: Archive) -> N
         await _one(archive.db, shot_id), "full", default_tiers(), curve_points=CURVE_POINTS
     )
 
-    assert "Resistance level: 2.40 MODERATE" in rendered
-    assert "Resistance erosion: -0.04 /s GRADUAL_DECLINE" in rendered
-    assert "Channeling risk: LOW" in rendered
-    assert "Temperature stability: 0.42 °C STABLE" in rendered
-    assert "Pressure adherence: 0.31 bar EXCELLENT" in rendered
-    assert "Flow adherence: 0.41 ml/s GOOD" in rendered
-    assert "Largest pressure overshoot: 0.22 bar WITHIN_TOLERANCE" in rendered
-    assert "Largest flow overshoot: 0.55 ml/s MINOR_DEVIATION" in rendered
+    assert "Resistance level: 2.40" in rendered.splitlines()
+    assert "Resistance slope: -0.04 /s" in rendered
+    assert "Pressure adherence: 0.31 bar" in rendered.splitlines()
+    assert "Flow adherence: 0.41 ml/s" in rendered.splitlines()
     assert "Peak pressure: 9.20 bar" in rendered
     assert "Set version: not filed in a Set" in rendered
-
-
-async def test_an_indicator_the_engine_did_not_assess_is_absent_not_zero(
-    archive: Archive,
-) -> None:
-    """A window too short to judge carries placeholder zeros beside `N/A`."""
-    facts = await _one(archive.db, archive.shot, samples=False)
-    blob = json.loads(json.dumps(facts.blob))
-    channeling = blob["diagnostics"]["channeling"]
-    channeling.update(
-        {
-            "channeling_risk": "INSUFFICIENT_DATA",
-            "flow_jitter_ml_s": 0.0,
-            "flow_vs_target_residual_ml_s": None,
-            "pressure_max_drop_rate_bar_s": 0.0,
-            "flow_acceleration_late_ml_s2": 0.0,
-            "pressure_jitter_bar": 0.0,
-            "flow_spread_ml_s": 0.0,
-        }
-    )
-    for key in ("flow_jitter", "flow_vs_target", "pressure_drop", "late_flow_trend"):
-        channeling["annotations"][key] = "N/A"
-    channeling["annotations"]["pressure_jitter"] = "N/A"
-    starved = ShotFacts(shot=facts.shot.model_copy(update={"diagnostics": blob}))
-
-    keys = {line.key for line in shot_lines(starved, keys_in("full", default_tiers()))}
-
-    assert "channeling_risk" in keys
-    for absent in (
-        "flow_jitter",
-        "flow_vs_target",
-        "pressure_drop_rate",
-        "late_flow_acceleration",
-        "pressure_jitter",
-        "flow_spread",
-    ):
-        assert absent not in keys, absent
+    # No grade beside any number.
+    assert not re.findall(r"\b[A-Z]{3,}_[A-Z_]{3,}\b", rendered)
 
 
 def _with(facts: ShotFacts, **update: Any) -> ShotFacts:
@@ -496,9 +447,9 @@ def _with(facts: ShotFacts, **update: Any) -> ShotFacts:
 @pytest.mark.parametrize(
     ("source", "said"),
     [
-        ("machine", "Resistance level: 2.10 MODERATE, from the machine"),
-        ("computed", "Resistance level: 2.10 MODERATE, computed from pressure and flow"),
-        (None, "Resistance level: 2.10 MODERATE"),
+        ("machine", "Resistance level: 2.10, from the machine"),
+        ("computed", "Resistance level: 2.10, computed from pressure and flow"),
+        (None, "Resistance level: 2.10"),
     ],
 )
 async def test_a_summary_level_shot_says_where_its_resistance_came_from(
@@ -510,7 +461,6 @@ async def test_a_summary_level_shot_says_where_its_resistance_came_from(
         "has_pressure": True,
         "resistance_avg": 2.1,
         "resistance_slope": -0.03,
-        "annotations": {"resistance_level": "MODERATE", "resistance_erosion": "FLAT"},
     }
     if source is not None:
         diagnostics["resistance_source"] = source
@@ -594,11 +544,11 @@ async def test_an_example_is_absent_wherever_the_rendering_leaves_the_line_out(
     assert item_example(no_pressure, "curve_pressure", curve_points=CURVE_POINTS) is None
     assert item_example(unsampled, "curve_pressure", curve_points=CURVE_POINTS) is None
     # A phase item is one line per phase that has it, and no line for one that
-    # does not: the ramp rate belongs to pre-infusion phases only.
-    ramps = item_example(full, "phase_ramp", curve_points=CURVE_POINTS)
-    assert ramps is not None
-    assert all(": ramp " in line for line in ramps.splitlines())
-    assert len(ramps.splitlines()) < len(full.phases)
+    # does not: only the phase holding the first drip has its time.
+    drips = item_example(full, "phase_first_drip", curve_points=CURVE_POINTS)
+    assert drips is not None
+    assert all(": first drip " in line for line in drips.splitlines())
+    assert len(drips.splitlines()) == 1 < len(full.phases)
     assert len(
         (item_example(full, "phase_name", curve_points=CURVE_POINTS) or "").splitlines()
     ) == len(full.phases)

@@ -7,7 +7,6 @@ package; it depends on nothing of ours.
 """
 
 from gaggiclanker.domain.diagnostics import (
-    ChannelingIndicators,
     PhaseData,
     PhaseDiagnostics,
     ProfileComplianceMetrics,
@@ -55,7 +54,6 @@ from gaggiclanker.domain.models import (
     canonical_profile_json,
     profile_content_hash,
 )
-from gaggiclanker.domain.scoring import ExecutionScore, Recipe, execution_score
 from gaggiclanker.domain.slog import (
     FIELDS_MASK_ALL,
     FIELDS_MASK_V5,
@@ -80,9 +78,7 @@ __all__ = [
     "INDEX_MAGIC",
     "MAGIC",
     "PHASE_EXIT_REASONS",
-    "ChannelingIndicators",
     "DeviceWarning",
-    "ExecutionScore",
     "IndexEntry",
     "IndexHeader",
     "LiveStatus",
@@ -96,7 +92,6 @@ __all__ = [
     "Profile",
     "ProfileComplianceMetrics",
     "Pump",
-    "Recipe",
     "ResistanceDiagnostics",
     "Sample",
     "ShotDiagnostics",
@@ -122,7 +117,6 @@ __all__ = [
     "compute_summary_diagnostics",
     "encode_index",
     "encode_slog",
-    "execution_score",
     "pad6",
     "parse_index",
     "parse_slog",

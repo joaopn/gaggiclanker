@@ -122,9 +122,7 @@ class ShotInsert(BaseModel):
 
     phases_json: JsonText | None = None
     diagnostics_json: JsonText | None = None
-    execution_score: float | None = None
-    execution_reason: str | None = None
-    #: The derivation version that wrote the four columns above (see
+    #: The derivation version that wrote the two columns above (see
     #: `sync/derive.py`). A shot stored without diagnostics keeps 0.
     derivation_version: int = 0
 
@@ -168,8 +166,6 @@ class ShotDerivationUpdate(BaseModel):
 
     phases_json: JsonText | None
     diagnostics_json: JsonText | None
-    execution_score: float | None
-    execution_reason: str | None
     derivation_version: int
 
 
@@ -210,8 +206,6 @@ class ShotListRow(BaseModel):
     index_avg_temp_c: float | None = None
     index_max_pressure_bar: float | None = None
     index_avg_flow_ml_s: float | None = None
-    execution_score: float | None = None
-    execution_reason: str | None = None
     sample_count: int = 0
     scale_connected: bool = False
     incomplete: bool = False
@@ -367,7 +361,6 @@ _LIST_COLUMNS = f"""
     s.final_weight_g,
     COALESCE(s.final_weight_g, s.index_volume_g) AS volume_g,
     s.index_rating, s.index_avg_temp_c, s.index_max_pressure_bar, s.index_avg_flow_ml_s,
-    s.execution_score, s.execution_reason,
     s.sample_count, s.scale_connected, s.incomplete,
     s.quarantined, s.quarantine_reason, s.deleted_on_device,
     n.rating AS rating,
@@ -429,7 +422,6 @@ _RATING_KEY = "COALESCE(j.rating, n.rating, s.index_rating)"
 
 SORT_KEYS: dict[str, str] = {
     "started_at": _ORDER_KEY,
-    "execution_score": "s.execution_score",
     "duration": "s.duration_ms",
     # The same expression the list's Rating column renders and the `min_rating`
     # filter applies, in that order of authority: this box's verdict, then the
@@ -517,8 +509,6 @@ class ShotsRepository(Repository):
             "quarantine_reason": shot.quarantine_reason,
             "phases_json": shot.phases_json,
             "diagnostics_json": shot.diagnostics_json,
-            "execution_score": shot.execution_score,
-            "execution_reason": shot.execution_reason,
             "derivation_version": shot.derivation_version,
             "updated_at": utc_now(),
         }
@@ -655,7 +645,7 @@ class ShotsRepository(Repository):
     async def rewrite_derived(
         self, shot_id: int, update: ShotDerivationUpdate, *, profile_version_id: int | None
     ) -> bool:
-        """Replace a shot's phases, diagnostics, score and version, and nothing else.
+        """Replace a shot's phases, diagnostics and version, and nothing else.
 
         One statement, so a crash leaves the shot as it was or as it is meant to
         be. Samples, notes, judgements, Set membership and `updated_at` are not
@@ -672,8 +662,6 @@ class ShotsRepository(Repository):
         cursor = await self.db.execute(
             """
             UPDATE shots SET phases_json = :phases_json, diagnostics_json = :diagnostics_json,
-                             execution_score = :execution_score,
-                             execution_reason = :execution_reason,
                              derivation_version = :derivation_version
             WHERE id = :id AND profile_version_id IS :link
             """,
@@ -979,8 +967,6 @@ class ShotsRepository(Repository):
         quarantined: bool | None = None,
         include_deleted_on_device: bool = True,
         source: str | None = None,
-        min_score: float | None = None,
-        max_score: float | None = None,
         min_rating: int | None = None,
         sort: str = "started_at",
         descending: bool = True,
@@ -993,7 +979,7 @@ class ShotsRepository(Repository):
         the reader, which on this appliance it is doing all the time.
 
         ``cursor`` only works on the default sort: the cursor encodes that key,
-        and a keyset over a nullable score would need a different one. Sorting
+        and a keyset over a nullable column would need a different one. Sorting
         by anything else is an offset page, which is what a "worst shots first"
         view wants anyway.
         """
@@ -1008,12 +994,6 @@ class ShotsRepository(Repository):
         if source is not None:
             where.append("s.source = ?")
             params.append(source)
-        if min_score is not None:
-            where.append("s.execution_score >= ?")
-            params.append(min_score)
-        if max_score is not None:
-            where.append("s.execution_score <= ?")
-            params.append(max_score)
         if min_rating is not None:
             where.append(f"{_RATING_KEY} >= ?")
             params.append(min_rating)
@@ -1068,7 +1048,7 @@ class ShotsRepository(Repository):
         )
         items = self.to_models(ShotListRow, rows)
         # A cursor is only meaningful for the default sort walked forwards:
-        # handing one back to a caller paging by `offset`, or sorting by score,
+        # handing one back to a caller paging by `offset`, or sorting by another key,
         # would let it mix two orderings and skip rows.
         next_cursor = (
             _encode_cursor(items[-1])

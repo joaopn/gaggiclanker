@@ -17,11 +17,13 @@ four terms, all of them stated facts:
     same process            +2
     same origin             +1
     decaf mismatch          -2
-    the version's outcome   +0..4
+    the version's outcome   +0..2
 
-The attribute half therefore reaches 6 and the outcome half 4, and the balance
+The attribute half therefore reaches 6 and the outcome half 2, and the balance
 between those two ceilings *is* the design: a perfect outcome on an unrelated
-bean must not outrank an exact match with a mediocre one.
+bean must not outrank an exact match with a mediocre one. The outcome is the
+person's rating and nothing else: the machine's own numbers say how a shot ran,
+not how the cup was.
 
 **Decaf is a penalty rather than a filter.** Decaf is a different coffee
 hydraulically — it wants a few degrees less and usually grinds differently — so
@@ -55,6 +57,7 @@ from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.version_names import label_sql
+from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.vocab import ROAST_LEVELS
 
 __all__ = [
@@ -89,7 +92,6 @@ class SimilarOutcome(BaseModel):
 
     shots: int = 0
     mean_rating: float | None = None
-    mean_execution_score: float | None = None
     mean_ratio: float | None = None
     mean_duration_s: float | None = None
 
@@ -176,15 +178,11 @@ WITH outcomes AS (
     SELECT sh.set_version_id                       AS version_id,
            COUNT(*)                                AS shots,
            AVG(j.rating)                           AS mean_rating,
-           AVG(sh.execution_score)                 AS mean_execution_score,
-           AVG(CASE WHEN j.dose_in_g > 0
-                    THEN COALESCE(j.dose_out_g, sh.final_weight_g, sh.index_volume_g)
-                         / j.dose_in_g END)        AS mean_ratio,
            AVG(sh.duration_ms / 1000.0)            AS mean_duration_s
       FROM shots sh
       LEFT JOIN shot_judgements j ON j.shot_id = sh.id
      WHERE sh.set_version_id IS NOT NULL
-       -- A quarantined shot never parsed, so it has no duration, no score and
+       -- A quarantined shot never parsed, so it has no duration and
        -- nothing to say about whether the recipe worked.
        AND sh.quarantined = 0
      GROUP BY sh.set_version_id
@@ -215,8 +213,6 @@ SELECT v.id                                         AS set_version_id,
        b.decaf,
        o.shots,
        o.mean_rating,
-       o.mean_execution_score,
-       o.mean_ratio,
        o.mean_duration_s,
        CASE WHEN :roast_level IS NULL OR b.roast_level IS NULL THEN 'unknown'
             WHEN b.roast_level = :roast_level THEN 'same'
@@ -241,7 +237,7 @@ SELECT v.id                                         AS set_version_id,
        3)                                           AS attribute_score,
        ROUND(
            (MIN(o.shots, :confidence_shots) * 1.0 / :confidence_shots)
-         * (0.4 * COALESCE(o.mean_rating, 0.0) + 0.2 * COALESCE(o.mean_execution_score, 0.0)),
+         * (0.4 * COALESCE(o.mean_rating, 0.0)),
        3)                                           AS outcome_score
   FROM set_versions v
   JOIN outcomes o ON o.version_id = v.id
@@ -307,10 +303,46 @@ async def similar_sets(
             "limit": max(1, limit),
         },
     )
-    return [_to_model(dict(row)) for row in rows]
+    ratios = await _mean_ratios(db, [int(row["set_version_id"]) for row in rows])
+    return [_to_model(dict(row), ratios.get(int(row["set_version_id"]))) for row in rows]
 
 
-def _to_model(row: dict[str, Any]) -> SimilarSet:
+async def _mean_ratios(db: Database, version_ids: list[int]) -> dict[int, float]:
+    """Each version's mean brew ratio over its shots, by the one shared rule.
+
+    Worked out here rather than in the query so the dose is the catalogue's:
+    the judgement's when entered and the version's otherwise (see
+    :func:`gaggiclanker.domain.ratio.brew_ratio`). A shot with no ratio is left
+    out of the mean, not counted as zero.
+    """
+    if not version_ids:
+        return {}
+    marks = ",".join("?" for _ in version_ids)
+    rows = await db.fetch_all(
+        f"""
+        SELECT sh.set_version_id, j.dose_in_g, j.dose_out_g, v.dose_g AS version_dose_g,
+               COALESCE(sh.final_weight_g, sh.index_volume_g) AS volume_g
+          FROM shots sh
+          JOIN set_versions v ON v.id = sh.set_version_id
+          LEFT JOIN shot_judgements j ON j.shot_id = sh.id
+         WHERE sh.set_version_id IN ({marks}) AND sh.quarantined = 0
+        """,  # noqa: S608 - the placeholders are question marks, the ids are bound
+        tuple(version_ids),
+    )
+    by_version: dict[int, list[float]] = {}
+    for row in rows:
+        found = brew_ratio(
+            judged_dose_g=row["dose_in_g"],
+            version_dose_g=row["version_dose_g"],
+            judged_yield_g=row["dose_out_g"],
+            scale_yield_g=row["volume_g"],
+        )
+        if found is not None:
+            by_version.setdefault(int(row["set_version_id"]), []).append(found)
+    return {version: sum(values) / len(values) for version, values in by_version.items()}
+
+
+def _to_model(row: dict[str, Any], mean_ratio: float | None) -> SimilarSet:
     attribute = float(row["attribute_score"])
     outcome = float(row["outcome_score"])
     dose = row["dose_g"]
@@ -347,8 +379,7 @@ def _to_model(row: dict[str, Any]) -> SimilarSet:
         outcome=SimilarOutcome(
             shots=int(row["shots"]),
             mean_rating=_round(row["mean_rating"], 2),
-            mean_execution_score=_round(row["mean_execution_score"], 2),
-            mean_ratio=_round(row["mean_ratio"], 2),
+            mean_ratio=_round(mean_ratio, 2),
             mean_duration_s=_round(row["mean_duration_s"], 1),
         ),
     )

@@ -443,8 +443,6 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                     sample_count=112,
                     sample_interval_ms=250,
                     diagnostics_json=_diagnostics(float(score)),
-                    execution_score=float(score),
-                    execution_reason="fixture",
                 )
             )
             await sets.assign_shot(shot_id, version_id)

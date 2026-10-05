@@ -229,6 +229,6 @@ def test_every_sql_copy_of_the_rule_is_the_same_sentence() -> None:
     # Both views in each of the six migrations that define them (0013, 0014,
     # 0016, 0027, which added the version's name, 0029, which re-created the
     # views around the rebuild of `shots`, and 0042, which dropped the ordinal
-    # from them), plus the repository's version select and the similar-Sets
-    # query.
-    assert sum(len(copies) for copies in found.values()) == 14, found
+    # from them), the shots view again in 0045, which dropped the score columns
+    # it named, plus the repository's version select and the similar-Sets query.
+    assert sum(len(copies) for copies in found.values()) == 15, found

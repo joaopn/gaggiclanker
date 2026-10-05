@@ -24,7 +24,7 @@ import type {
  * The shapes the Set and judgement components are handed, built once.
  *
  * Hand-written rather than captured from the server, unlike the shot-129
- * fixture: these rows carry no derived numbers — no diagnostics, no score — so
+ * fixture: these rows carry no derived numbers — no diagnostics — so
  * there is nothing a recording would prove that a literal does not. What
  * matters is that they match the pydantic models field for field, which the
  * generated types enforce at compile time.
@@ -718,7 +718,6 @@ export function trends(overrides: Partial<SetTrends> = {}): SetTrends {
         origin: "manual",
         created_at: "2026-04-02T00:00:00.000Z",
         shots: 2,
-        avg_execution_score: 7,
         avg_duration_s: 27,
         avg_ratio: 2,
         avg_rating: 3,
@@ -730,17 +729,16 @@ export function trends(overrides: Partial<SetTrends> = {}): SetTrends {
         origin: "manual",
         created_at: "2026-04-03T00:00:00.000Z",
         shots: 2,
-        avg_execution_score: 9,
         avg_duration_s: 29,
         avg_ratio: 2,
         avg_rating: 5,
       },
     ],
     shots: [
-      point(1, 21, 1, { execution_score: 6.5, rating: 3 }),
-      point(2, 21, 1, { execution_score: 7.5, rating: null }),
-      point(3, 22, 2, { execution_score: 9, rating: 5 }),
-      point(4, 22, 2, { execution_score: 9, rating: 5 }),
+      point(1, 21, 1, { rating: 3 }),
+      point(2, 21, 1, { rating: null }),
+      point(3, 22, 2, { rating: 5 }),
+      point(4, 22, 2, { rating: 5 }),
     ],
     ...overrides,
   };
@@ -758,7 +756,6 @@ export function point(
     set_version_id: versionId,
     version_label: `v${versionNo}`,
     started_at: "2026-04-03T08:00:00.000Z",
-    execution_score: 8,
     duration_s: 28,
     ratio: 2,
     rating: 4,
@@ -801,7 +798,6 @@ export function similarSet(overrides: Partial<SimilarSet> = {}): SimilarSet {
     outcome: {
       shots: 5,
       mean_rating: 4.4,
-      mean_execution_score: 8.9,
       mean_ratio: 2.5,
       mean_duration_s: 28,
     },

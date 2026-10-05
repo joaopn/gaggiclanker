@@ -10,6 +10,63 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Each phase is measured, the few plain faults are warned about, and the execution score is gone
+
+- **The score and every band label are retired.** A shot that overshot its target before
+  the profile's decline ever ran could still score 10/10: the score only asked whether the
+  machine followed its profile, and its bands were calibrated on other people's shots. Gone: the
+  1-10 score and its sentence (the shots table's Score column, sort and filter, the shot page's
+  score card, the Set trend chart's score series and the version averages, the starting point's
+  "executed n/10"), every band label (the resistance level, the adherence, the temperature
+  stability and their meanings), and the channeling block (the risk, the four indicators, the
+  guidance). A number is a number now, and the shot information says what it measures.
+  **Breaking:** diagnostics are recomputed from the raw logs at the first boot (a shot already in
+  the archive loses nothing, and no database needs wiping); the two score columns are dropped by a
+  migration, which has no down-migration, so take a backup first.
+- **Every phase has its own numbers.** What ended it (the next transition's reason; "Unknown" on a
+  version 5 log, which records none; a log with no phase table has shot-wide numbers only and
+  says so), the cup at its end, what it gained and its share of the target, scale and puck flow,
+  the water the pump counted (read until the counter is reset at the weight stop), pressure and
+  temperature, where the first drip fell, and each phase's resistance (brew phases), adherence, pre-infusion
+  ramp and saturation time and decline taper. The shot
+  says which of its profile's phases never began.
+- **Four amber warnings, worked out when a shot is read:** over target (the final weight above
+  110 % of the filed version's target yield), under target (below 90 %), a phase skipped (the shot
+  stopped on its weight or pumped-water target before it began) and fast flow (the scale flow
+  averaged over a second above 3 g/s while the pressure stayed at 80 % of the peak or more). None
+  is red: without the profile's own statement of intent nothing here can know what is wrong, and
+  a **turbo profile will show fast flow** on every shot until a profile can say it is expected.
+  Refiling a shot into a version with another target changes its warnings and its shares of the
+  target with no re-derivation. The chat reads them first in every shot's base information.
+- **What the agents lose, exactly.** From the base information: the execution score and the
+  channeling risk. From the extended information, which loses 27 items: the score's confidence,
+  reason and penalty components; the channeling block's primary signal, guidance, window
+  confidence, flow jitter, flow versus target, pressure drop rate, late flow acceleration,
+  pressure jitter, flow spread, flow shape and the per-phase channeling line; the largest
+  pressure overshoot and the largest flow overshoot and undershoot; the temperature overshoot, undershoot and stability;
+  the pressure area and slope, the flow slope and the weight-rate variability; the resistance
+  stability and peak, and the saturation (peak timing) with its band. The processing note, which was
+  excluded by default, is gone too. A band that was a base item is now its number, the resistance erosion is the resistance
+  slope, and the pre-infusion ramp, saturation time and decline taper stay per phase as plain
+  numbers. The extended information gains the per-phase numbers, the agent's rules say a warning
+  is a fact to weigh against what the profile is for, and predictions written in old band words
+  are graded on the numbers they name. `list_set_shots` filters on resistance level and the two
+  adherences as ranges where it took bands, and no longer on the score. The ratio takes the
+  version's dose when you typed none.
+- **A field contract.** Each item of shot information answers value, unit, phase, window,
+  method and source beside its sentence, and `GET /api/shots/{id}/fields` serves them in order,
+  grouped by phase, with the warnings.
+- **The starting point ranks on your rating alone.** The outcome term lost its execution score
+  half, so past outcomes weigh only by rating and rankings can change, not only ties (a Set rated
+  4 that scored 5 used to rank below one rated 3.5 that scored 10, and now ranks above it). The
+  outcome weighs at most 2 points of the 8 a Set can score, and a version's mean ratio takes the
+  version's dose when none was typed, as the shot information and the trends do.
+- **The knowledge rules follow.** The 35 seeded rules that explained band labels, and three that
+  described the retired channeling thresholds, are removed (a copy you edited stays); the
+  pre-infusion rule is now selected by a fast-flow warning or a fast first drip; four rules whose
+  signals were bands are reached only by topic through the chat. A tier you chose for the
+  renamed resistance item follows it.
+
 ### The shots table's Curve column can show the curves you choose
 
 - **Choose the curves and their colours.** The Curve column's heading has a button (Choose curves)

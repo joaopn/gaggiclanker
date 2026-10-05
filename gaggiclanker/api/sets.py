@@ -1280,7 +1280,7 @@ async def archive_set(set_id: int, sets: SetsRepoDep) -> JSONResponse:
 @router.get(
     "/{set_id}/trends",
     response_model=ApiResponse[SetTrends],
-    summary="Score, duration, ratio and rating across the Set's versions",
+    summary="Duration, ratio and rating across the Set's versions",
 )
 async def get_trends(set_id: int, sets: SetsRepoDep) -> JSONResponse:
     """The chart's data: one point per shot, one summary per version.

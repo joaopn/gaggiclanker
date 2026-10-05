@@ -3,22 +3,23 @@
 Over the review tests' fixture Set (six shots, summary-level diagnostics, five of
 them judged), whose numbers are written out in `tests/review/conftest.py`:
 
-    shot  duration  weight  score  rating  balance   channeling  started
-    0     21.0 s    38.0 g  7.4    2       sour      MODERATE    03-02
-    1     23.0 s    37.2 g  8.1    3       sour      LOW         03-02
-    2     25.0 s    36.4 g  8.6    3       sour      LOW         03-02
-    3     26.5 s    36.0 g  8.8    4       balanced  LOW         03-03
-    4     24.0 s    36.8 g  8.2    3       sour      LOW         03-03
-    5     24.0 s    37.5 g  8.3    3       sour      LOW         03-03
+    shot  duration  weight  rating  balance   resistance  flow adherence  started
+    0     21.0 s    38.0 g  2       sour      2.4         0.41 ml/s       03-02
+    1     23.0 s    37.2 g  3       sour      2.4         0.41 ml/s       03-02
+    2     25.0 s    36.4 g  3       sour      2.4         0.41 ml/s       03-02
+    3     26.5 s    36.0 g  4       balanced  2.4         0.41 ml/s       03-03
+    4     24.0 s    36.8 g  3       sour      2.4         0.41 ml/s       03-03
+    5     24.0 s    37.5 g  3       sour      2.1         0.44 ml/s       03-03
 
 Every shot's dose in is 18 g and its dose out its weight, so the ratio is the
-weight over 18. First drip is 8.2 s and peak pressure 9.2 bar on all of them;
-average brew flow is on none (it lives in the full diagnostics only).
+weight over 18. First drip is 8.2 s, peak pressure 9.2 bar and pressure
+adherence 0.31 bar on all of them; average brew flow is on none (it lives in the
+full diagnostics only).
 """
 
 from __future__ import annotations
 
-from typing import Any, get_args
+from typing import Any
 
 import pytest
 
@@ -26,7 +27,6 @@ from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrit
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
-from gaggiclanker.domain import diagnostics as engine
 from gaggiclanker.shotinfo.catalogue import ITEMS, default_tiers
 from gaggiclanker.tools import builtin
 from gaggiclanker.tools.registry import ToolContext, registry
@@ -63,7 +63,7 @@ async def test_no_filter_is_the_newest_first_in_base(
     newest = data["shots"][0]["text"]
     assert newest.startswith(f"shot {archive.shots[-1]}\n")
     assert "Rating: 3/5" in newest
-    assert "[Curve]" not in newest and "Score confidence" not in newest
+    assert "[Curve]" not in newest and "Average pressure" not in newest
 
 
 async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_samples(
@@ -105,7 +105,6 @@ async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_sample
         ({"shot_time": {"min": 24}}, (2, 3, 4, 5)),
         ({"shot_time": {"min": 23, "max": 24}}, (1, 4, 5)),
         ({"yield_g": {"max": 36.5}}, (2, 3)),
-        ({"execution_score": {"min": 8.5}}, (2, 3)),
         ({"rating": {"min": 4}}, (3,)),
         ({"rating": {"max": 2}}, (0,)),
         ({"dose_in": {"min": 18, "max": 18}}, (0, 1, 2, 3, 4, 5)),
@@ -118,11 +117,13 @@ async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_sample
         ({"brew_flow": {"min": 0}}, ()),
         ({"balance": "balanced"}, (3,)),
         ({"label": "improve"}, (5,)),
-        ({"channeling_risk": "MODERATE"}, (0,)),
-        ({"resistance_level": "MODERATE"}, (0, 1, 2, 3, 4, 5)),
-        ({"resistance_level": "HIGH"}, ()),
-        ({"pressure_adherence": "EXCELLENT"}, (0, 1, 2, 3, 4, 5)),
-        ({"flow_adherence": "POOR"}, ()),
+        ({"resistance_level": {"min": 2.2}}, (0, 1, 2, 3, 4)),
+        ({"resistance_level": {"max": 2.2}}, (5,)),
+        ({"resistance_level": {"min": 3}}, ()),
+        ({"pressure_adherence": {"max": 0.31}}, (0, 1, 2, 3, 4, 5)),
+        ({"pressure_adherence": {"min": 0.4}}, ()),
+        ({"flow_adherence": {"min": 0.43}}, (5,)),
+        ({"flow_adherence": {"max": 0.42}}, (0, 1, 2, 3, 4)),
         ({"since": "2026-03-03"}, (3, 4, 5)),
         ({"until": "2026-03-02"}, (0, 1, 2)),
         ({"since": "2026-03-02", "until": "2026-03-02"}, (0, 1, 2)),
@@ -293,23 +294,6 @@ async def test_a_general_conversation_is_not_offered_the_search(ctx: ToolContext
     assert outcome.status == "refused"
 
 
-def test_the_band_arguments_are_the_engine_s_labels() -> None:
-    """Typed out for the schema; pinned here to the tables they come from."""
-    assert get_args(builtin.ResistanceLevel) == tuple(
-        label for _, label in engine._RESISTANCE_LEVEL_BANDS
-    )
-    assert get_args(builtin.Adherence) == tuple(
-        label for _, label in engine._PROFILE_ADHERENCE_BANDS
-    )
-    risks = {
-        engine._assess_channeling_risk(jitter, None, drop, 0.0, pressure)
-        for jitter in (0.0, 0.2)
-        for drop in (0.0, -4.0)
-        for pressure in (0.0, 0.3)
-    } | {engine._assess_channeling_risk(0.2, 1.0, -4.0, 0.2, 0.0), "INSUFFICIENT_DATA"}
-    assert set(get_args(builtin.ChannelingRisk)) == risks
-
-
 #: Every search argument that reads an item, with a value that uses it, and the
 #: item it reads. `version` reads the Set version, which is locked to base.
 _FILTERS: tuple[tuple[str, dict[str, Any], str], ...] = (
@@ -319,7 +303,6 @@ _FILTERS: tuple[tuple[str, dict[str, Any], str], ...] = (
     # default sort on the date.
     ("since", {"since": "2026-03-01", "order_by": "shot_time"}, "started_at"),
     ("until", {"until": "2026-03-09", "order_by": "shot_time"}, "started_at"),
-    ("execution_score", {"execution_score": {"min": 1}}, "execution_score"),
     ("rating", {"rating": {"min": 1}}, "rating"),
     ("shot_time", {"shot_time": {"min": 1}}, "shot_time"),
     ("yield_g", {"yield_g": {"min": 1}}, "yield"),
@@ -329,10 +312,9 @@ _FILTERS: tuple[tuple[str, dict[str, Any], str], ...] = (
     ("dose_in", {"dose_in": {"min": 1}}, "dose_in"),
     ("dose_out", {"dose_out": {"min": 1}}, "dose_out"),
     ("ratio", {"ratio": {"min": 1}}, "ratio"),
-    ("channeling_risk", {"channeling_risk": "LOW"}, "channeling_risk"),
-    ("resistance_level", {"resistance_level": "MODERATE"}, "resistance_level"),
-    ("pressure_adherence", {"pressure_adherence": "GOOD"}, "pressure_adherence"),
-    ("flow_adherence", {"flow_adherence": "GOOD"}, "flow_adherence"),
+    ("resistance_level", {"resistance_level": {"min": 1}}, "resistance_level"),
+    ("pressure_adherence", {"pressure_adherence": {"min": 0}}, "pressure_adherence"),
+    ("flow_adherence", {"flow_adherence": {"min": 0}}, "flow_adherence"),
     ("order_by rating", {"order_by": "rating"}, "rating"),
     ("order_by yield_g", {"order_by": "yield_g"}, "yield"),
     ("order_by date", {"order_by": "date"}, "started_at"),

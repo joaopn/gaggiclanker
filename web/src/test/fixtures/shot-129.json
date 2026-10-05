@@ -17,8 +17,6 @@
       "index_avg_temp_c": null,
       "index_max_pressure_bar": null,
       "index_avg_flow_ml_s": null,
-      "execution_score": 7.7,
-      "execution_reason": "Execution capped by flow adherence (1.32 point penalty).",
       "sample_count": 213,
       "scale_connected": true,
       "incomplete": false,
@@ -30,6 +28,7 @@
       "has_notes": true,
       "has_judgement": true,
       "judgement_notes": "",
+      "judgement_decision": null,
       "set_version_id": null,
       "set_badge": null,
       "synced_at": "2026-03-04T09:00:00.000Z",
@@ -53,15 +52,20 @@
           "diagnostics": {
             "phase_type": "preinfusion",
             "avg_flow_ml_s": 0.0,
-            "flow_rmse_ml_s": 3.0,
-            "annotations": {
-              "pressure_adherence": "FAIR",
-              "ramp_rate": "GENTLE"
-            },
-            "avg_pressure_bar": 0.24,
-            "pressure_rmse_bar": 0.86,
-            "ramp_rate_bar_s": 0.01,
-            "saturation_time_s": 4.25
+            "avg_pressure_bar": 0.24
+          },
+          "metrics": {
+            "ended_by": 0,
+            "puck_flow_mean_ml_s": 0.0,
+            "puck_flow_peak_ml_s": 0.0,
+            "temperature_min_c": 85.4,
+            "temperature_target_c": 86.5,
+            "pressure_peak_bar": 0.3,
+            "pressure_end_bar": 0.3,
+            "cup_weight_end_g": 0.0,
+            "cup_weight_gained_g": 0.0,
+            "scale_flow_mean_g_s": -6.53,
+            "scale_flow_peak_g_s": -0.32
           }
         },
         {
@@ -76,15 +80,24 @@
           "diagnostics": {
             "phase_type": "preinfusion",
             "avg_flow_ml_s": 0.7,
-            "flow_rmse_ml_s": 2.4,
-            "annotations": {
-              "pressure_adherence": "EXCELLENT",
-              "ramp_rate": "GENTLE"
-            },
             "avg_pressure_bar": 0.94,
-            "pressure_rmse_bar": 0.25,
-            "ramp_rate_bar_s": 0.06,
-            "saturation_time_s": 3.75
+            "resistance_avg": 47.85,
+            "resistance_slope": 21.62,
+            "resistance_source": "machine"
+          },
+          "metrics": {
+            "ended_by": 0,
+            "puck_flow_mean_ml_s": 0.7,
+            "puck_flow_peak_ml_s": 2.57,
+            "temperature_min_c": 85.3,
+            "temperature_target_c": 86.5,
+            "first_drip_s": 6.8,
+            "pressure_peak_bar": 1.1,
+            "pressure_end_bar": 1.1,
+            "cup_weight_end_g": 0.0,
+            "cup_weight_gained_g": 0.0,
+            "scale_flow_mean_g_s": -0.02,
+            "scale_flow_peak_g_s": 0.1
           }
         },
         {
@@ -99,30 +112,23 @@
           "diagnostics": {
             "phase_type": "brew",
             "avg_flow_ml_s": 0.94,
-            "flow_rmse_ml_s": 2.12,
-            "annotations": {
-              "pressure_adherence": "POOR",
-              "resistance_level": "VERY_HIGH",
-              "resistance_erosion": "STEEP_DECLINE",
-              "channeling": "INSUFFICIENT_DATA",
-              "channeling_flow_jitter": "N/A",
-              "channeling_flow_vs_target": "N/A",
-              "channeling_pressure_drop": "N/A",
-              "channeling_late_flow_trend": "N/A",
-              "channeling_pressure_jitter": "N/A",
-              "channeling_flow_shape": "RAMPING_DOWN",
-              "channeling_window_confidence": "INSUFFICIENT",
-              "channeling_primary_signal": "none",
-              "channeling_guidance": "Steady-state window too short for a reliable channeling assessment \u2014 treat other diagnostics as the primary signal.",
-              "channeling_note": "Only 2 steady-state samples after trim (ramp_excluded=22, zero_flow_lead=0, zero_flow_tail=0); need 5 for assessment."
-            },
             "avg_pressure_bar": 3.09,
-            "pressure_rmse_bar": 2.34,
-            "resistance_avg": 5.7,
-            "resistance_slope": -1.9,
-            "channeling_risk": "INSUFFICIENT_DATA",
-            "flow_jitter_ml_s": 0.0,
-            "pressure_jitter_bar": 0.0
+            "resistance_avg": 6.68,
+            "resistance_slope": -1.75,
+            "resistance_source": "machine"
+          },
+          "metrics": {
+            "ended_by": 0,
+            "puck_flow_mean_ml_s": 0.94,
+            "puck_flow_peak_ml_s": 1.55,
+            "temperature_min_c": 85.3,
+            "temperature_target_c": 86.5,
+            "pressure_peak_bar": 7.9,
+            "pressure_end_bar": 7.9,
+            "cup_weight_end_g": 0.7,
+            "cup_weight_gained_g": 0.7,
+            "scale_flow_mean_g_s": 0.06,
+            "scale_flow_peak_g_s": 0.44
           }
         },
         {
@@ -137,15 +143,23 @@
           "diagnostics": {
             "phase_type": "decline",
             "avg_flow_ml_s": 1.22,
-            "flow_rmse_ml_s": 1.66,
-            "annotations": {
-              "pressure_adherence": "FAIR",
-              "taper_smoothness": "SMOOTH"
-            },
             "avg_pressure_bar": 5.42,
-            "pressure_rmse_bar": 0.88,
-            "taper_rate_bar_s": -0.14,
-            "taper_smoothness": 0.24
+            "resistance_avg": 3.36,
+            "resistance_slope": -0.11,
+            "resistance_source": "machine"
+          },
+          "metrics": {
+            "ended_by": 0,
+            "puck_flow_mean_ml_s": 1.22,
+            "puck_flow_peak_ml_s": 1.48,
+            "temperature_min_c": 85.2,
+            "temperature_target_c": 86.5,
+            "pressure_peak_bar": 8.5,
+            "pressure_end_bar": 3.7,
+            "cup_weight_end_g": 32.1,
+            "cup_weight_gained_g": 31.4,
+            "scale_flow_mean_g_s": 0.94,
+            "scale_flow_peak_g_s": 1.29
           }
         }
       ],
@@ -178,94 +192,115 @@
         "diagnostics": {
           "has_pressure": true,
           "resistance": {
-            "avg": 3.76,
-            "std": 2.26,
-            "slope": -0.12,
-            "peak": 16.27,
-            "peak_timing_pct": 0.0,
-            "annotations": {
-              "level": "HIGH",
-              "stability": "VOLATILE",
-              "erosion": "MODERATE_DECLINE",
-              "saturation": "EARLY"
-            }
-          },
-          "channeling": {
-            "flow_jitter_ml_s": 0.02,
-            "flow_vs_target_residual_ml_s": 0.08,
-            "pressure_max_drop_rate_bar_s": -0.8,
-            "flow_acceleration_late_ml_s2": 0.0,
-            "flow_spread_ml_s": 0.08,
-            "pressure_jitter_bar": 0.07,
-            "channeling_risk": "LOW",
-            "annotations": {
-              "flow_jitter": "VERY_STABLE",
-              "flow_vs_target": "WITHIN_TOLERANCE",
-              "pressure_drop": "NORMAL",
-              "late_flow_trend": "STABLE",
-              "pressure_jitter": "STABLE",
-              "flow_shape": "FLAT",
-              "window_confidence": "HIGH",
-              "primary_signal": "none",
-              "guidance": "Flat flow held steadily \u2014 no channeling signature.",
-              "note": "Trimmed 23 ramp-up, 7 trailing zero-flow samples before assessment."
-            }
-          },
-          "temperature": {
-            "overshoot_c": 0.0,
-            "undershoot_c": 1.3,
-            "stability_std_c": 0.24,
-            "annotations": {
-              "overshoot": "MINIMAL",
-              "undershoot": "MODERATE",
-              "stability": "VERY_STABLE"
-            }
+            "source": "machine",
+            "avg": 3.89,
+            "slope": -0.14
           },
           "extraction": {
-            "pressure_auc_bar_s": 208.92,
-            "pressure_slope_brew_bar_s": -0.04,
-            "flow_slope_brew_ml_s2": 0.0,
-            "flow_avg_brew_ml_s": 1.18,
-            "annotations": {
-              "flow_trend": "STABLE",
-              "pressure_trend": "GRADUAL_DECLINE"
-            }
+            "flow_avg_brew_ml_s": 1.18
           },
           "weight": {
             "rate_avg_g_s": 0.84,
-            "rate_std_g_s": 0.55,
-            "scale_connected": true,
-            "annotations": {
-              "rate_stability": "JITTERY"
-            }
+            "scale_connected": true
           },
-          "profile_compliance": {
-            "pressure_rmse_bar": 1.08,
-            "flow_rmse_ml_s": 2.0,
-            "max_pressure_overshoot_bar": 3.9,
-            "max_pressure_undershoot_bar": 3.9,
-            "max_flow_overshoot_ml_s": 0.0,
-            "max_flow_undershoot_ml_s": 3.0,
-            "annotations": {
-              "pressure_adherence": "FAIR",
-              "pressure_overshoot": "SEVERE_OVERSHOOT",
-              "flow_adherence": "POOR",
-              "flow_overshoot": "WITHIN_TOLERANCE",
-              "flow_undershoot": "SEVERE_DEVIATION"
-            }
-          }
+          "profile_compliance": null
         },
         "detail_level": "per_phase",
         "has_pressure": true,
-        "score": {
-          "score": 7.7,
-          "confidence": "high",
-          "reason": "Execution capped by flow adherence (1.32 point penalty).",
-          "components": {
-            "pressure_adherence": -0.29,
-            "flow_adherence": -1.32,
-            "resistance_erosion": -0.7
-          }
+        "firmware": {
+          "pr": {
+            "start": 0.23,
+            "end": 1.4,
+            "min": 0.22,
+            "max": 30.06,
+            "avg": 1.941
+          },
+          "lr": {
+            "start": 0.103,
+            "end": 2.693,
+            "min": 0.103,
+            "max": 31.527,
+            "avg": 3.674
+          },
+          "phases": [
+            {
+              "phase_number": 0,
+              "pr": {
+                "start": 0.23,
+                "end": 0.23,
+                "min": 0.23,
+                "max": 0.23,
+                "avg": 0.23
+              },
+              "lr": {
+                "start": 0.103,
+                "end": 0.126,
+                "min": 0.103,
+                "max": 0.126,
+                "avg": 0.116
+              }
+            },
+            {
+              "phase_number": 1,
+              "pr": {
+                "start": 0.23,
+                "end": 17.84,
+                "min": 0.22,
+                "max": 30.06,
+                "avg": 2.788
+              },
+              "lr": {
+                "start": 0.126,
+                "end": 18.711,
+                "min": 0.126,
+                "max": 31.527,
+                "avg": 2.883
+              }
+            },
+            {
+              "phase_number": 2,
+              "pr": {
+                "start": 3.51,
+                "end": 2.28,
+                "min": 0.79,
+                "max": 7.47,
+                "avg": 2.114
+              },
+              "lr": {
+                "start": 3.681,
+                "end": 6.408,
+                "min": 1.088,
+                "max": 8.517,
+                "avg": 3.439
+              }
+            },
+            {
+              "phase_number": 3,
+              "pr": {
+                "start": 2.0,
+                "end": 1.4,
+                "min": 1.36,
+                "max": 2.45,
+                "avg": 1.784
+              },
+              "lr": {
+                "start": 5.762,
+                "end": 2.693,
+                "min": 2.693,
+                "max": 6.665,
+                "avg": 4.196
+              }
+            }
+          ],
+          "water_pumped_ml": null,
+          "water_minus_weight_g": null
+        },
+        "metrics": {
+          "per_phase": true,
+          "exit_reasons": false,
+          "profile_phases": null,
+          "phases_not_reached": [],
+          "fast_flow": null
         }
       },
       "raw_bytes": 6050,

@@ -99,13 +99,15 @@ class _Model(BaseModel):
 EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
     (
         "The ten most recent shots in one Set, newest first",
-        "SELECT shot_id, started_at, set_version_label, execution_score, rating, ratio\n"
+        "SELECT shot_id, started_at, set_version_label, volume_g, ratio, rating\n"
         "  FROM v_shots WHERE set_id = 3 ORDER BY started_at DESC LIMIT 10",
     ),
     (
-        "Average score and rating per version of a Set, the version with the earliest shot first",
+        "Average yield, ratio and rating per version of a Set, the version with the earliest shot "
+        "first",
         "SELECT set_version_label, COUNT(*) AS shots,\n"
-        "       ROUND(AVG(execution_score), 1) AS avg_score,\n"
+        "       ROUND(AVG(volume_g), 1) AS avg_yield_g,\n"
+        "       ROUND(AVG(ratio), 2) AS avg_ratio,\n"
         "       ROUND(AVG(rating), 2) AS avg_rating\n"
         "  FROM v_shots WHERE set_id = 3\n"
         " GROUP BY set_version_id, set_version_label ORDER BY MIN(started_at)",
@@ -344,11 +346,12 @@ async def get_shot(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
     "get_shot_extended",
     permission="read",
     description=(
-        "One shot's extended information, without its base lines: the execution score's "
-        "working, temperature, pressure and flow statistics, the channeling indicators, "
-        "profile compliance, one line per phase and the curve as one table (its shape and "
-        "every moment the diagnostics are about, not every sample). Ask for it when the base "
-        "lines raise a question the shape of the shot would answer."
+        "One shot's extended information, without its base lines: temperature, pressure and "
+        "flow statistics, profile compliance, one line per phase (how it ended, the cup at "
+        "its end and its share of the target, the flows, the water, the pressure) and the "
+        "curve as one table (its shape and every moment the diagnostics are about, not every "
+        "sample). Ask for it when the base lines raise a question the shape of the shot "
+        "would answer."
     ),
 )
 async def get_shot_extended(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
@@ -505,17 +508,9 @@ class Range(_Model):
     max: float | None = None
 
 
-#: The labels the three banded base items can carry. Written out because a
-#: tool argument needs a static type; a test pins each one to the vendored
-#: table (or scoring) it comes from.
-ChannelingRisk = Literal["LOW", "MODERATE", "HIGH", "VERY_HIGH", "INSUFFICIENT_DATA"]
-ResistanceLevel = Literal["VERY_LOW", "LOW", "MODERATE", "HIGH", "VERY_HIGH"]
-Adherence = Literal["EXCELLENT", "GOOD", "FAIR", "POOR"]
-
 #: What `order_by` may name, and the catalogue item each one is.
 _ORDER_KEYS: dict[str, str] = {
     "date": "date",
-    "execution_score": "execution_score",
     "rating": "rating",
     "shot_time": "shot_time",
     "yield_g": "yield",
@@ -525,6 +520,9 @@ _ORDER_KEYS: dict[str, str] = {
     "dose_in": "dose_in",
     "dose_out": "dose_out",
     "ratio": "ratio",
+    "resistance_level": "resistance_level",
+    "pressure_adherence": "pressure_adherence",
+    "flow_adherence": "flow_adherence",
 }
 
 
@@ -547,7 +545,6 @@ class SearchShotsInput(_Model):
     balance: Balance | None = Field(default=None, description="Only this taste balance.")
     since: date | None = Field(default=None, description="From this day (UTC), inclusive.")
     until: date | None = Field(default=None, description="Up to this day (UTC), inclusive.")
-    execution_score: Range | None = Field(default=None, description="Out of 10.")
     rating: Range | None = Field(default=None, description="1 to 5 stars.")
     shot_time: Range | None = Field(default=None, description="Seconds.")
     yield_g: Range | None = Field(default=None, description="The scale's final weight, grams.")
@@ -556,14 +553,21 @@ class SearchShotsInput(_Model):
     brew_flow: Range | None = Field(default=None, description="Average brew flow, ml/s.")
     dose_in: Range | None = Field(default=None, description="Grams.")
     dose_out: Range | None = Field(default=None, description="Grams.")
-    ratio: Range | None = Field(default=None, description="Dose out / dose in, e.g. 2.0.")
-    channeling_risk: ChannelingRisk | None = None
-    resistance_level: ResistanceLevel | None = None
-    pressure_adherence: Adherence | None = None
-    flow_adherence: Adherence | None = None
+    ratio: Range | None = Field(
+        default=None,
+        description="Dose out / dose in, e.g. 2.0 (the version's dose when none was typed).",
+    )
+    resistance_level: Range | None = Field(
+        default=None, description="The puck's average resistance, a unitless number."
+    )
+    pressure_adherence: Range | None = Field(
+        default=None, description="RMSE of the pressure against its target, bar."
+    )
+    flow_adherence: Range | None = Field(
+        default=None, description="RMSE of the pump flow against its target, ml/s."
+    )
     order_by: Literal[
         "date",
-        "execution_score",
         "rating",
         "shot_time",
         "yield_g",
@@ -573,6 +577,9 @@ class SearchShotsInput(_Model):
         "dose_in",
         "dose_out",
         "ratio",
+        "resistance_level",
+        "pressure_adherence",
+        "flow_adherence",
     ] = Field(
         default="date",
         description=(
@@ -598,8 +605,8 @@ class SearchShotsOutput(_Model):
     truncated: bool = False
 
 
-#: Which catalogue item each search argument reads, beyond the ranges and bands
-#: whose argument names already are (or map through `_ORDER_KEYS` to) the key.
+#: Which catalogue item each search argument reads, beyond the ranges whose
+#: argument names already are (or map through `_ORDER_KEYS` to) the key.
 _ARGUMENT_ITEMS: dict[str, str] = {
     "version": "set_version",
     "label": "label",
@@ -607,10 +614,6 @@ _ARGUMENT_ITEMS: dict[str, str] = {
     "since": "started_at",
     "until": "started_at",
     **{name: key for name, key in _ORDER_KEYS.items() if name != "date"},
-    "channeling_risk": "channeling_risk",
-    "resistance_level": "resistance_level",
-    "pressure_adherence": "pressure_adherence",
-    "flow_adherence": "flow_adherence",
 }
 
 
@@ -651,14 +654,14 @@ def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier], order: s
     permission="read",
     description=(
         "Search this Set's shots on their base information, and get each match's base "
-        "rendering. Filter by version, label, balance and dates, by a range on shot time, "
-        "yield, first drip, peak pressure, average brew flow, execution score, rating, dose in, "
-        "dose out or ratio, or by the band of channeling risk, resistance level, pressure or "
-        "flow adherence; sort by date or any of those numbers. At most 10 shots come back; "
+        "rendering. Filter by version, label, balance and dates, or by a range on shot time, "
+        "yield, first drip, peak pressure, average brew flow, rating, dose in, dose out, ratio, "
+        "resistance level, pressure adherence or flow adherence; sort by date or any of those "
+        "numbers. At most 10 shots come back; "
         "truncated says more matched. A shot with no value for a filter never matches it. A "
         "shot that is not counted is read, never averaged. The shots in the opening context are "
         "already there in base information: use this for shots outside it (other versions, "
-        "older shots, a band or range)."
+        "older shots, a range)."
     ),
 )
 async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShotsOutput:
@@ -675,7 +678,6 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
     ranges = {
         _ORDER_KEYS[name]: (bounds.min, bounds.max)
         for name in (
-            "execution_score",
             "rating",
             "shot_time",
             "yield_g",
@@ -685,13 +687,11 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
             "dose_in",
             "dose_out",
             "ratio",
+            "resistance_level",
+            "pressure_adherence",
+            "flow_adherence",
         )
         if (bounds := getattr(args, name)) is not None
-    }
-    bands = {
-        name: wanted
-        for name in ("channeling_risk", "resistance_level", "pressure_adherence", "flow_adherence")
-        if (wanted := getattr(args, name)) is not None
     }
     found = await search_shots(
         ctx.db,
@@ -703,7 +703,6 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
             since=args.since.isoformat() if args.since is not None else None,
             until=args.until.isoformat() if args.until is not None else None,
             ranges=ranges,
-            bands=bands,
             order_by=_ORDER_KEYS.get(order, order),
             descending=args.descending,
             limit=args.limit,

@@ -43,7 +43,6 @@ from gaggiclanker.db.repos.knowledge_docs import (
     content_hash,
 )
 from gaggiclanker.db.repos.knowledge_insights import InsightRow, InsightsRepository
-from gaggiclanker.domain.diagnostics import is_healthy_band
 from gaggiclanker.domain.vocab import FLAVOR_LABELS
 from gaggiclanker.knowledge.chunker import chunk_markdown
 
@@ -93,89 +92,19 @@ MAX_EXCERPTS = 6
 #: How many hits each query contributes to the merge.
 _PER_QUERY = 3
 
-#: Band labels that mean "this was fine" for every metric that carries them, and
-#: for the ones no band table names. A query built from one of these retrieves
-#: prose about the normal case, which is the one thing a review does not need
-#: explaining. A label whose meaning depends on the metric (`LOW`, `MINIMAL`,
-#: `VERY_STABLE`) is not here: `domain.diagnostics.BAND_READINGS` classifies
-#: those per metric.
-_UNREMARKABLE_BANDS = frozenset(
-    {
-        "NORMAL",
-        "GOOD",
-        "EXCELLENT",
-        "NONE",
-        "OK",
-        "STABLE",
-        "WITHIN_TOLERANCE",
-        "MINOR_DEVIATION",
-        "UNKNOWN",
-        "NOT_MEASURED",
-    }
-)
-
-#: Signal tokens whose shape is not a diagnostic band and which are handled
-#: elsewhere in :meth:`~KnowledgeService.queries_for`, or not at all.
-_NON_BAND_PREFIXES = ("style", "taste", "balance", "primary", "scale")
-
-
-#: The order a review looks up the diagnostic bands that stand out, by what the
-#: band says about the shot rather than by the alphabet. The merge takes each
-#: query's best hit before any query's second and at most one chunk per
-#: document, and the diagnostics reference is one document, so the first band
-#: query decides which of its sections a review is shown. A review is about the
-#: recipe and the puck, so the puck leads; the machine's tracking of the profile
-#: matters but must not crowd the puck out when the budget buys two excerpts.
-#: Within a group the order is the one written here, so the whole is fixed. A
-#: metric that is in none of the groups sorts after all of them, alphabetically;
-#: a test holds every classified metric to being placed here on purpose.
-BAND_QUERY_ORDER: tuple[tuple[str, ...], ...] = (
-    # The puck.
-    (
-        "resistance_level",
-        "resistance_erosion",
-        "resistance_stability",
-        "resistance_saturation",
-        "channeling_risk",
-    ),
-    # The water temperature.
-    ("temperature_stability", "temperature_undershoot", "temperature_overshoot"),
-    # How the machine tracked the profile.
-    (
-        "pressure_adherence",
-        "flow_adherence",
-        "pressure_overshoot",
-        "flow_overshoot",
-        "flow_undershoot",
-    ),
-    # Trends over the shot.
-    ("pressure_trend", "flow_trend"),
-)
-
-_BAND_QUERY_RANK = {
-    metric: rank for rank, metric in enumerate(m for group in BAND_QUERY_ORDER for m in group)
+#: What a review looks up for each warning a shot carries, in the order written
+#: here: the puck's behaviour first, then what the shot did against its target.
+#: The merge takes each query's best hit before any query's second and at most one
+#: chunk per document, so this order decides which excerpt a review is shown when
+#: the budget buys two. The words are the knowledge base's own, not the fault's.
+FAULT_QUERIES: dict[str, str] = {
+    "fast_flow": "fast flow rate coarse grind low puck resistance",
+    "skipped": "volumetric stop ends the shot before the last phase of the profile",
+    "over_target": "over target yield overshoot weight stop early",
+    "under_target": "under target yield short shot weight stop late",
 }
 
-#: How the knowledge base itself speaks about a metric, where the default
-#: "`metric label`" does not reach it. The diagnostics reference describes the
-#: resistance level under "Resistance (Puck Resistance)", and "resistance level
-#: LOW" matches its "Summary Level Diagnostics" section instead (the words
-#: "level" and "resistance" both occur there), while "low puck resistance" finds
-#: the section. `{label}` is the band's label in lower case, words separated by
-#: spaces. Measured against the shipped corpus: the other resistance metrics
-#: (erosion, stability, saturation) already retrieve that section first with the
-#: default wording, so they are not listed; add a metric here only after
-#: measuring the same mismatch.
-_BAND_QUERY_PHRASING = {
-    "resistance_level": "{label} puck resistance",
-}
-
-
-def _band_query(metric: str, label: str) -> str:
-    phrasing = _BAND_QUERY_PHRASING.get(metric)
-    if phrasing is None:
-        return f"{metric} {label}"
-    return phrasing.format(label=label.lower())
+_FAULT_QUERY_RANK = {name: rank for rank, name in enumerate(FAULT_QUERIES)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -395,9 +324,8 @@ class KnowledgeService:
     def queries_for(self, context: RetrievalContext) -> list[str]:
         """The search queries one retrieval makes, in a fixed order.
 
-        Order is priority: what the person tasted first, then the channeling
-        indicators that actually fired, then the diagnostic bands that were not
-        normal, then the bean and the style. The merge below takes each query's
+        Order is priority: what the person tasted first, then the warnings the
+        shot carries, then the bean and the style. The merge below takes each query's
         best hit before any query's second, so this order is what decides which
         excerpt a review gets when the budget only buys two.
         """
@@ -434,25 +362,17 @@ class KnowledgeService:
             # "other chemical bitter".
             add(f"{FLAVOR_LABELS.get(note, note).lower()} taste cause fix")
 
-        # 2. The channeling indicators that fired, by name.
-        for token in context.signals:
-            if token.startswith("primary:"):
-                add(f"channeling {token.removeprefix('primary:')}")
+        # 2. The warnings the shot carries, the puck's behaviour first (see
+        #    FAULT_QUERIES), in the knowledge base's own words.
+        faults = sorted(
+            token.removeprefix("fault:")
+            for token in context.signals
+            if token.startswith("fault:") and token.removeprefix("fault:") in FAULT_QUERIES
+        )
+        for name in sorted(faults, key=lambda name: _FAULT_QUERY_RANK[name]):
+            add(FAULT_QUERIES[name])
 
-        # 3. The diagnostic bands that were not normal, the puck first (see
-        #    BAND_QUERY_ORDER), in the knowledge base's own words.
-        bands: list[tuple[int, str, str]] = []
-        for token in context.signals:
-            metric, _, label = token.partition(":")
-            if not label or metric in _NON_BAND_PREFIXES or not label.isupper():
-                continue
-            if label in _UNREMARKABLE_BANDS or is_healthy_band(metric, label):
-                continue
-            bands.append((_BAND_QUERY_RANK.get(metric, len(_BAND_QUERY_RANK)), metric, label))
-        for _, metric, label in sorted(bands):
-            add(_band_query(metric, label))
-
-        # 4. The bean and the shot style — always present, always last. They are
+        # 3. The bean and the shot style — always present, always last. They are
         #    background rather than evidence, and they are what a shot with
         #    nothing wrong in it retrieves.
         if context.process:

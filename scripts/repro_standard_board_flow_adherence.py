@@ -18,14 +18,13 @@ only inside `if (active && systemInfo.capabilities.pressure)`
 Standard shot has `cp`, `tp`, `pf`, `tf` and `fl` at zero on every sample.
 
 The summary diagnostics compared that zero flow with that zero target, found
-no deviation, and reported `flow_adherence: EXCELLENT` (and `flow_overshoot`):
-a confident verdict on a measurement that does not exist. Reviews read it as a
-token that selects the "flow adherence is excellent, the grind is right" rule.
+no deviation, and reported a flow adherence of 0.0 (and a flow overshoot): a
+confident reading of a measurement that does not exist.
 
 The check builds a realistic Standard shot out of each real fixture (the
 pressure, flow and resistance columns zeroed, the temperature and the scale
 kept; the pressure gate inferred from the trace, never forced) and requires
-that no diagnostics shape names any flow adherence, overshoot or undershoot.
+that no diagnostics shape carries any flow adherence, overshoot or undershoot.
 """
 
 from __future__ import annotations
@@ -40,7 +39,7 @@ from gaggiclanker.domain.slog import Slog, parse_slog
 
 ROOT = Path(__file__).resolve().parents[1]
 ZEROED = ("cp", "tp", "pf", "tf", "fl", "pr", "wp")
-FLOW_KEYS = ("flow_adherence", "flow_overshoot", "flow_undershoot")
+FLOW_KEYS = ("flow_rmse_ml_s", "max_flow_overshoot_ml_s", "max_flow_undershoot_ml_s")
 
 
 def standard_board(slog: Slog) -> Slog:
@@ -61,12 +60,10 @@ def main() -> int:
             diagnostics = transform_shot(slog, detail)["diagnostics"]
             assert diagnostics is not None
             if detail == "summary":
-                found = {k: v for k, v in diagnostics["annotations"].items() if k in FLOW_KEYS}
+                found = {k: v for k, v in diagnostics.items() if k in FLOW_KEYS and v is not None}
             else:
                 compliance = diagnostics["profile_compliance"] or {}
-                found = {
-                    k: v for k, v in compliance.get("annotations", {}).items() if k in FLOW_KEYS
-                }
+                found = {k: v for k, v in compliance.items() if k in FLOW_KEYS and v is not None}
             print(f"{path.stem} {detail}: {found or 'no flow adherence'}")
             failures += bool(found)
     print("FAIL" if failures else "ok")

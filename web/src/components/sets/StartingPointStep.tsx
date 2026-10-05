@@ -254,10 +254,6 @@ function SimilarSets({
             {item.outcome.mean_rating === null || item.outcome.mean_rating === undefined
               ? ""
               : ` · ${item.outcome.mean_rating}/5`}
-            {item.outcome.mean_execution_score === null ||
-            item.outcome.mean_execution_score === undefined
-              ? ""
-              : ` · executed ${item.outcome.mean_execution_score}/10`}
           </p>
         </div>
       ))}

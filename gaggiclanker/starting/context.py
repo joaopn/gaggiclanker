@@ -359,7 +359,7 @@ def _signal_tokens(style: str) -> list[str]:
 
     A much shorter list than a review's — one token — because the whole of
     that grammar is about a shot or a cup that has not happened: there is no
-    channeling band, no first drip, no taste. Nothing about the coffee itself is
+    fault, no first drip, no taste. Nothing about the coffee itself is
     a signal either; roast level, process and decaf are matched as Set
     attributes. What is left is the planned style, which `select_rules` adds
     itself and which is repeated here so the stored signal list reads as the
@@ -600,7 +600,6 @@ def render_similar(similar: list[SimilarSet]) -> str:
                         "  how it went",
                         f"{outcome.shots} shot{'s' if outcome.shots != 1 else ''}"
                         f", rating {_mean(outcome.mean_rating)}/5"
-                        f", execution {_mean(outcome.mean_execution_score)}/10"
                         f", ratio {_mean(outcome.mean_ratio, prefix='1:')}"
                         f", {_mean(outcome.mean_duration_s)} s",
                     ),

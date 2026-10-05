@@ -25,7 +25,6 @@ from gaggiclanker.shotinfo.catalogue import (
     GROUP_NOTES,
     GROUPS,
     ITEMS,
-    SHARED_BANDS,
     default_tiers,
     effective_tiers,
     keys_in,
@@ -35,16 +34,14 @@ from gaggiclanker.shotinfo.catalogue import (
 EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Warnings", 1),
     ("Identity and status", 7),
-    ("Outcome", 7),
-    ("Execution score detail", 3),
+    ("Outcome", 6),
     ("Timing", 3),
-    ("Temperature", 7),
-    ("Pressure", 6),
-    ("Flow and volume", 6),
-    ("Weight", 3),
-    ("Puck resistance", 7),
-    ("Channeling", 12),
-    ("Profile compliance", 6),
+    ("Temperature", 4),
+    ("Pressure", 4),
+    ("Flow and volume", 5),
+    ("Weight", 2),
+    ("Puck resistance", 4),
+    ("Profile compliance", 3),
     ("Phases", 31),
     ("Curve", 13),
     ("Your judgement", 9),
@@ -70,10 +67,6 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "exit_reason",
     "phases_not_reached",
     "phase_log_note",
-    "execution_score",
-    "score_confidence",
-    "score_reason",
-    "penalty_components",
     "first_drip",
     "preinfusion_time",
     "main_extraction_time",
@@ -81,49 +74,24 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "target_temperature",
     "minimum_temperature",
     "maximum_temperature",
-    "temperature_overshoot",
-    "temperature_undershoot",
-    "temperature_stability",
     "peak_pressure",
     "average_pressure",
     "minimum_pressure",
     "peak_pressure_time",
-    "pressure_auc",
-    "pressure_slope",
     "brew_flow",
     "average_flow",
     "peak_flow",
     "total_volume",
     "water_pumped",
-    "flow_slope",
     "water_minus_weight",
     "weight_rate",
-    "weight_rate_variability",
     "resistance_level",
-    "resistance_stability",
-    "resistance_erosion",
-    "resistance_peak",
-    "saturation",
+    "resistance_slope",
     "machine_puck_resistance",
     "liquid_resistance",
-    "channeling_risk",
-    "primary_signal",
-    "flow_jitter",
-    "flow_vs_target",
-    "pressure_drop_rate",
-    "late_flow_acceleration",
-    "pressure_jitter",
-    "flow_spread",
-    "flow_shape",
-    "window_confidence",
-    "guidance",
-    "processing_note",
     "pressure_adherence",
     "flow_adherence",
-    "pressure_overshoot_max",
     "pressure_undershoot_max",
-    "flow_overshoot_max",
-    "flow_undershoot_max",
     "phase_name",
     "phase_type",
     "phase_start",
@@ -151,9 +119,9 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "phase_saturation",
     "phase_taper",
     "phase_resistance",
+    "phase_resistance_slope",
     "phase_machine_resistance",
     "phase_liquid_resistance",
-    "phase_channeling",
     "phase_samples",
     "curve_pressure",
     "curve_target_pressure",
@@ -211,12 +179,10 @@ EXPECTED_BASE: frozenset[str] = frozenset(
         "shot_time",
         "yield",
         "exit_reason",
-        "execution_score",
         "first_drip",
         "peak_pressure",
         "brew_flow",
         "resistance_level",
-        "channeling_risk",
         "pressure_adherence",
         "flow_adherence",
         "rating",
@@ -234,7 +200,6 @@ EXPECTED_BASE: frozenset[str] = frozenset(
 #: The items no chat sees by default.
 EXPECTED_EXCLUDED: frozenset[str] = frozenset(
     {
-        "processing_note",
         "phase_samples",
         "curve_pump_flow",
         "curve_scale_flow",
@@ -348,13 +313,13 @@ async def test_effective_tiers_are_the_defaults_until_somebody_moves_an_item(
 
 async def test_effective_tiers_lay_the_person_s_choices_over_the_defaults(db: Database) -> None:
     repo = ShotInfoTiersRepository(db)
-    await repo.set_tier(ShotInfoTierWrite(item_key="flow_jitter", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="peak_flow", tier="base"))
     await repo.set_tier(ShotInfoTierWrite(item_key="rating", tier="excluded"))
 
     tiers = await effective_tiers(db)
 
-    assert dict(tiers) == {**default_tiers(), "flow_jitter": "base", "rating": "excluded"}
-    assert "flow_jitter" in keys_in("base", tiers)
+    assert dict(tiers) == {**default_tiers(), "peak_flow": "base", "rating": "excluded"}
+    assert "peak_flow" in keys_in("base", tiers)
     assert "rating" not in keys_in("full", tiers)
 
 
@@ -400,26 +365,59 @@ def test_a_rendering_s_keys_follow_its_tier(tier: str, expected: frozenset[str])
 
 def test_an_item_moved_to_another_tier_moves_with_it() -> None:
     """The tiers are an argument, not a constant: a person's overrides just work."""
-    moved = {**default_tiers(), "flow_jitter": "base", "rating": "excluded"}
+    moved = {**default_tiers(), "peak_flow": "base", "rating": "excluded"}
 
-    assert "flow_jitter" in keys_in("base", moved)
+    assert "peak_flow" in keys_in("base", moved)
     assert "rating" not in keys_in("full", moved)
-
-
-def test_a_table_several_items_read_is_shared_and_named_by_each_of_them() -> None:
-    """Written out once and referred to by name, so no label is more than a step away."""
-    users: dict[int, list[str]] = {}
-    for item in CATALOGUE:
-        for table in item.bands:
-            users.setdefault(id(table), []).append(item.key)
-    shared = {id(table) for table, _ in SHARED_BANDS.values()}
-
-    assert shared == {table for table, keys in users.items() if len(keys) > 1}
-    for name, (table, _) in SHARED_BANDS.items():
-        for key in users[id(table)]:
-            assert f"the {name} bands" in ITEMS[key].meaning, (key, name)
 
 
 def test_every_group_note_belongs_to_a_group() -> None:
     assert set(GROUP_NOTES) <= set(GROUPS)
     assert all(note.strip() for note in GROUP_NOTES.values())
+
+
+#: What origin/dev's catalogue showed a chat without asking: every one of these
+#: is still shown, except the two that were retired outright (the execution score,
+#: which asked only whether the machine followed its profile, and the channeling
+#: risk, which has no number behind it). A band that was one of them is its number.
+ORIGIN_DEV_BASE = frozenset(
+    {
+        "shot_id",
+        "started_at",
+        "set_version",
+        "label",
+        "counted",
+        "profile_as_brewed",
+        "machine_shot_number",
+        "shot_time",
+        "yield",
+        "exit_reason",
+        "execution_score",
+        "first_drip",
+        "peak_pressure",
+        "brew_flow",
+        "resistance_level",
+        "channeling_risk",
+        "pressure_adherence",
+        "flow_adherence",
+        "rating",
+        "balance",
+        "taste_notes",
+        "aroma_notes",
+        "written_notes",
+        "dose_in",
+        "dose_out",
+        "ratio",
+        "grind_as_brewed",
+    }
+)
+RETIRED_FROM_BASE = frozenset({"execution_score", "channeling_risk"})
+
+
+def test_nothing_a_chat_saw_without_asking_is_gone_but_the_score_and_the_channeling_risk() -> None:
+    now = {key for key, tier in default_tiers().items() if tier == "base"}
+
+    assert ORIGIN_DEV_BASE - RETIRED_FROM_BASE <= now
+    assert (ORIGIN_DEV_BASE - now) == RETIRED_FROM_BASE
+    # What base gained is the warnings, and nothing else.
+    assert now - ORIGIN_DEV_BASE == {"warnings"}

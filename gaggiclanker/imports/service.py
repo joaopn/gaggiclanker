@@ -17,8 +17,8 @@ back door the archive is otherwise missing, and the rules follow from that:
   twice reports skips rather than writing the archive twice over.
 * **An imported shot is a shot.** It goes through the same
   :func:`~gaggiclanker.sync.derive.derive_shot` the sync engine uses, so its
-  phases, diagnostics and execution score are computed once, by one code path.
-  Two shots in one archive that were scored by two different code paths are not
+  phases, diagnostics and per-phase numbers are computed once, by one code path.
+  Two shots in one archive that were measured by two different code paths are not
   comparable, which would defeat the point of having them both.
 
 Detection is by **content, not by file name**: an export directory is full of

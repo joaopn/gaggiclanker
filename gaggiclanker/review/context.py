@@ -47,6 +47,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.domain.warnings import fault_token
 from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
@@ -260,63 +261,21 @@ async def build_review_input(
     )
 
 
-#: Annotation keys whose value is a sentence written for a reader (the engine's
-#: "No pressure sensor on this machine" and "Trimmed 26 ramp-up samples"
-#: notes, the channeling guidance), not a band. No rule keys on one, and as a
-#: token each would sit in the stored signal list and the retrieval queries.
-_PROSE_ANNOTATIONS = frozenset({"note", "guidance"})
-
-
 def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
     """The tokens rule selection matches `applies.signal` against, from the telemetry.
 
     The grammar is documented in :mod:`gaggiclanker.knowledge.rules`. Only the
     telemetry shapes come from here: a review reads no taste, so the taste,
     aroma and balance tokens are never produced for one (the chat can still
-    pass them to `get_rules`). Sorted, because the list is stored on the review
-    row and a set's iteration order would make two identical runs produce
-    different snapshots.
+    pass them to `get_rules`). The faults are the shot's own warnings (``fault:
+    fast_flow``, ``fault:skipped``; the two yield ones need the version the shot
+    is filed under, which a review is blind to), and the rest are plain readings
+    of the numbers with no grade in them. Sorted, because the list is stored on
+    the review row and a set's iteration order would make two identical runs
+    produce different snapshots.
     """
     tokens: set[str] = {f"style:{style.style}"}
-    diagnostics = facts.diagnostics
-
-    for metric, label in (diagnostics.get("annotations") or {}).items():
-        if metric not in _PROSE_ANNOTATIONS:
-            tokens.add(f"{metric}:{label}")
-    # The full diagnostics block, which is what ingest stores for every synced
-    # and imported shot, nests its annotations one level deeper, per section,
-    # under short keys (`resistance.annotations.level`). The rules key on the
-    # summary block's section-qualified names (`resistance_level`), and
-    # `stability` alone would be ambiguous between resistance and temperature,
-    # so the sections that use short keys are qualified here. Both shapes are
-    # read because which one a shot carries depends on the detail level it was
-    # derived at.
-    for section in ("resistance", "temperature"):
-        block = diagnostics.get(section)
-        if isinstance(block, dict):
-            for metric, label in (block.get("annotations") or {}).items():
-                if isinstance(label, str) and metric not in _PROSE_ANNOTATIONS:
-                    tokens.add(f"{section}_{metric}:{label}")
-    # Extraction and profile compliance already name their metrics in full
-    # (`pressure_adherence`, `flow_trend`), so those are read as they are.
-    for section in ("extraction", "profile_compliance"):
-        block = diagnostics.get(section)
-        if isinstance(block, dict):
-            for metric, label in (block.get("annotations") or {}).items():
-                if isinstance(label, str) and metric not in _PROSE_ANNOTATIONS:
-                    tokens.add(f"{metric}:{label}")
-    channeling = diagnostics.get("channeling")
-    if isinstance(channeling, dict):
-        # The risk is a field of the block, not an annotation. Its annotations
-        # are read for the indicators that fired only: the per-indicator bands
-        # (`flow_jitter`, `pressure_drop`, …) match no rule, and `guidance` and
-        # `note` are prose, which is not a token.
-        risk = channeling.get("channeling_risk")
-        if isinstance(risk, str):
-            tokens.add(f"channeling_risk:{risk}")
-        primary = (channeling.get("annotations") or {}).get("primary_signal")
-        if isinstance(primary, str) and primary != "none":
-            tokens.update(f"primary:{name}" for name in primary.split(",") if name)
+    tokens.update(f"fault:{fault_token(warning.fault)}" for warning in facts.warnings)
 
     if not facts.shot.scale_connected:
         tokens.add("scale:absent")

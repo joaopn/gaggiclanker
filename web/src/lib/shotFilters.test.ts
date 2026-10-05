@@ -24,9 +24,7 @@ describe("activeFilterCount", () => {
     // The badge answers "why am I seeing so few rows". An order is not a
     // reason, and counting it would send somebody looking for a filter that
     // does not exist.
-    expect(activeFilterCount({ ...DEFAULT_FILTERS, sort: "execution_score", order: "asc" })).toBe(
-      0,
-    );
+    expect(activeFilterCount({ ...DEFAULT_FILTERS, sort: "duration", order: "asc" })).toBe(0);
   });
 });
 
@@ -37,8 +35,6 @@ describe("toParams", () => {
       from: undefined,
       to: undefined,
       profile_version_id: undefined,
-      min_score: undefined,
-      max_score: undefined,
       min_rating: undefined,
       source: undefined,
       quarantined: undefined,
@@ -47,19 +43,9 @@ describe("toParams", () => {
     });
   });
 
-  it("turns a score band into the two bounds the API takes", () => {
-    expect(toParams({ ...DEFAULT_FILTERS, scoreBand: "clean" }, 50)).toMatchObject({
-      min_score: 8,
-      max_score: undefined,
-    });
-    expect(toParams({ ...DEFAULT_FILTERS, scoreBand: "minor" }, 50)).toMatchObject({
-      min_score: 6.5,
-      max_score: 8,
-    });
-    expect(toParams({ ...DEFAULT_FILTERS, scoreBand: "poor" }, 50)).toMatchObject({
-      min_score: undefined,
-      max_score: 5,
-    });
+  it("sends no score bound, which the API no longer has", () => {
+    expect(Object.keys(toParams(DEFAULT_FILTERS, 50))).not.toContain("min_score");
+    expect(Object.keys(toParams(DEFAULT_FILTERS, 50))).not.toContain("max_score");
   });
 
   it("gives `to` the whole of its day", () => {
@@ -98,11 +84,10 @@ describe("the query string", () => {
       profileVersionId: "7",
       set: "3",
       version: "22",
-      scoreBand: "faulted",
       minRating: "3",
       source: "import",
       quarantined: "yes",
-      sort: "execution_score",
+      sort: "duration",
       order: "asc",
     };
 

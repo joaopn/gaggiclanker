@@ -8,8 +8,6 @@ every value the machine did not record is.
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from gaggiclanker.db.repos.shots import ShotsRepository
@@ -23,8 +21,8 @@ from gaggiclanker.sync.derive import derive_shot
 from tests.domain.helpers import constructed_profile
 from tests.shotinfo.conftest import SLOG, Archive
 
-FLOW_KEYS = ("flow_adherence", "flow_overshoot_max", "flow_undershoot_max")
-PRESSURE_KEYS = ("pressure_adherence", "pressure_overshoot_max", "pressure_undershoot_max")
+FLOW_KEYS = ("flow_adherence",)
+PRESSURE_KEYS = ("pressure_adherence", "pressure_undershoot_max")
 TIERS: tuple[ShotTier, ...] = ("base", "extended", "full")
 
 
@@ -70,41 +68,31 @@ async def test_a_shot_with_no_known_profile_shows_no_adherence_at_all(
 
     text = render_shot(facts, tier, default_tiers(), curve_points=CURVE_POINTS)
     assert "adherence" not in text.lower()
-    assert "pressure overshoot" not in text.lower()
-    assert "flow overshoot" not in text.lower()
+    assert "undershoot" not in text.lower()
 
 
 async def test_a_flow_steered_first_phase_shows_its_flow_adherence(archive: Archive) -> None:
     facts = await _facts(archive, "flow-first", "000803")
     lines = {line.key: line.value for line in shot_lines(facts, frozenset(ITEMS)) if not line.phase}
-    assert lines["flow_adherence"].endswith("EXCELLENT")
+    assert lines["flow_adherence"].endswith("ml/s")
+    assert float(lines["flow_adherence"].split()[0]) >= 0
     phase_errors = [
         line for line in shot_lines(facts, frozenset(ITEMS)) if line.key == "phase_flow_error"
     ]
     assert [line.phase for line in phase_errors] == [0]  # the flow phase, and only it
 
 
-async def test_the_search_bands_are_absent_when_the_profile_did_not_ask_for_them(
+async def test_the_search_numbers_are_absent_when_the_profile_did_not_ask_for_them(
     archive: Archive,
 ) -> None:
-    """The search filters on these bands: a shot with no value never matches."""
+    """The search filters on these numbers: a shot with no value never matches."""
     pressure = await _facts(archive, "pressure-first", "000804")
-    assert catalogue.pressure_adherence_band(pressure) == "POOR"
-    assert catalogue.flow_adherence_band(pressure) is None
+    assert catalogue.pressure_adherence(pressure) == 2.04
+    assert catalogue.flow_adherence(pressure) is None
 
     ungraded = await _facts(archive, None, "000805")
-    assert catalogue.pressure_adherence_band(ungraded) is None
-    assert catalogue.flow_adherence_band(ungraded) is None
+    assert catalogue.pressure_adherence(ungraded) is None
+    assert catalogue.flow_adherence(ungraded) is None
 
     flow = await _facts(archive, "flow-first", "000806")
-    assert catalogue.flow_adherence_band(flow) == "EXCELLENT"
-
-
-async def test_the_execution_score_detail_reads_the_new_penalties(archive: Archive) -> None:
-    pressure = await _facts(archive, "pressure-first", "000807")
-    score: Any = pressure.score
-    assert "flow_adherence" not in score["components"]
-    assert score["confidence"] == "high"
-
-    ungraded = await _facts(archive, None, "000808")
-    assert ungraded.score["confidence"] == "medium"
+    assert catalogue.flow_adherence(flow) == 0.03

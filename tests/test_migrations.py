@@ -1248,9 +1248,12 @@ async def test_0029_keeps_every_shot_and_everything_that_hangs_off_it(
             ("shot_reviews", "id"),
             ("sync_events", "id"),
         ):
+            # 0045 drops the two score columns the shots in this archive were given.
+            retired = {"execution_score", "execution_reason"}
             columns = sorted(
                 str(r["name"]) for r in await db.fetch_all(f"PRAGMA table_info({table})")
             )
+            columns = [c for c in columns if c not in retired]
             rows = await db.fetch_all(
                 f"SELECT {', '.join(columns)} FROM {table} ORDER BY {order}"  # noqa: S608
             )

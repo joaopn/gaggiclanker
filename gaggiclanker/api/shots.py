@@ -3,7 +3,7 @@
 Four shapes for four jobs, because one "shot" payload cannot serve all of them:
 
 * the **list** row is small enough to send fifty of, and carries what a table
-  column needs — time, profile, duration, volume, score, the quarantine flag;
+  column needs — time, profile, duration, volume, the quarantine flag;
 * the **detail** row adds the derived phases and diagnostics blobs;
 * **samples** are the curve, optionally thinned for a sparkline;
 * **raw** is the `.slog` bytes themselves, which is the only endpoint here that
@@ -50,12 +50,12 @@ __all__ = ["router"]
 router = APIRouter(prefix="/shots", tags=["shots"])
 
 #: A page bigger than this is somebody scraping rather than browsing, and each
-#: row carries a diagnostics-derived score the list query has to read.
+#: row joins the Set, the notes and the judgement.
 MAX_LIMIT = 500
 
 #: The sorts the list accepts, spelled once and shared with the repository so
 #: the OpenAPI enum and the SQL cannot drift apart.
-type SortKey = Literal["started_at", "execution_score", "duration", "rating"]
+type SortKey = Literal["started_at", "duration", "rating"]
 
 
 class ShotListData(BaseModel):
@@ -133,8 +133,6 @@ async def list_shots(
     quarantined: Annotated[bool | None, Query()] = None,
     include_deleted: Annotated[bool, Query()] = True,
     source: Annotated[Literal["device", "import"] | None, Query()] = None,
-    min_score: Annotated[float | None, Query(ge=0, le=10)] = None,
-    max_score: Annotated[float | None, Query(ge=0, le=10)] = None,
     min_rating: Annotated[int | None, Query(ge=0, le=5)] = None,
     sort: Annotated[SortKey, Query()] = "started_at",
     order: Annotated[Literal["asc", "desc"], Query()] = "desc",
@@ -182,8 +180,6 @@ async def list_shots(
             quarantined=quarantined,
             include_deleted_on_device=include_deleted,
             source=source,
-            min_score=min_score,
-            max_score=max_score,
             min_rating=min_rating,
             sort=sort,
             descending=order == "desc",

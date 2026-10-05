@@ -266,8 +266,6 @@ describe("VersionTimeline", () => {
         index_avg_temp_c: null,
         index_max_pressure_bar: null,
         index_avg_flow_ml_s: null,
-        execution_score: 8.4,
-        execution_reason: "",
         sample_count: 118,
         scale_connected: true,
         incomplete: false,

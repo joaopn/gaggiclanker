@@ -26,18 +26,16 @@ async def _three_versions_and_ten_shots(wired: Fixtures) -> int:
             )
         )
 
-    # Ten shots: four on v1, three on v2, three on v3. Scores climb, which is
-    # what a dial-in that worked looks like.
-    plan = [(0, 4, 6.0), (1, 3, 7.5), (2, 3, 9.0)]
+    # Ten shots: four on v1, three on v2, three on v3.
+    plan = [(0, 4), (1, 3), (2, 3)]
     shot_number = 0
-    for index, count, score in plan:
+    for index, count in plan:
         version = versions[index]
         assert version is not None
         for _ in range(count):
             shot_id = await make_shot(
                 wired.db,
                 f"0006{shot_number:02d}",
-                execution_score=score,
                 duration_ms=26_000 + shot_number * 500,
                 started_at=f"2026-04-01T0{shot_number % 9}:00:00.000Z",
             )
@@ -63,7 +61,6 @@ class TestTrends:
         # Oldest version first: a trend reads left to right.
         assert [version.version_label for version in trends.versions] == ["v1", "v1.1", "v1.2"]
         assert [version.shots for version in trends.versions] == [4, 3, 3]
-        assert [version.avg_execution_score for version in trends.versions] == [6.0, 7.5, 9.0]
         assert [version.intent for version in trends.versions] == ["", "finer", "finer still"]
 
         first = trends.shots[0]
@@ -72,16 +69,26 @@ class TestTrends:
         assert first.ratio == 2.0
         assert first.rating == 3
 
-    async def test_a_shot_with_no_judgement_has_no_ratio_and_no_rating(
+    async def test_a_shot_with_no_judgement_takes_the_versions_dose_for_its_ratio(
         self, wired: Fixtures
     ) -> None:
         set_id = await _three_versions_and_ten_shots(wired)
         trends = await wired.sets.trends(set_id)
         unjudged = [point for point in trends.shots if point.rating is None]
         assert unjudged, "the fixture is supposed to leave some shots unjudged"
-        # The dose only ever exists because a person typed it, so no judgement
-        # means no ratio — not a ratio invented from the nominal basket.
-        assert all(point.ratio is None for point in unjudged)
+        # No dose typed: the version's 18 g and the scale's 36 g.
+        assert all(point.ratio == 2.0 for point in unjudged)
+
+    async def test_a_shot_with_no_dose_anywhere_has_no_ratio(self, wired: Fixtures) -> None:
+        row = await wired.sets.create(
+            SetWrite(name="No dose", bean_id=wired.bean_id), SetVersionWrite()
+        )
+        assert row.current_version_id is not None
+        shot_id = await make_shot(wired.db, "000777")
+        await wired.sets.assign_shot(shot_id, row.current_version_id)
+        # Not a ratio invented from the nominal basket: nobody said what went in.
+        (point,) = (await wired.sets.trends(row.id)).shots
+        assert point.ratio is None
 
     async def test_a_version_with_no_shots_averages_to_nothing_rather_than_zero(
         self, wired: Fixtures
@@ -96,7 +103,6 @@ class TestTrends:
         assert len(trends.versions) == 1
         summary = trends.versions[0]
         assert summary.shots == 0
-        assert summary.avg_execution_score is None
         assert summary.avg_rating is None
         assert summary.avg_ratio is None
 
@@ -115,7 +121,6 @@ class TestTrends:
             "set_version_id",
             "version_label",
             "started_at",
-            "execution_score",
             "duration_s",
             "ratio",
             "rating",

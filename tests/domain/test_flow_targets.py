@@ -24,7 +24,6 @@ from gaggiclanker.domain.diagnostics import (
     transform_shot,
 )
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
-from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import Slog, parse_slog
 from tests.domain.helpers import (
     SLOG_FIXTURES,
@@ -107,21 +106,18 @@ def test_a_real_shot_is_graded_on_what_its_phases_steered_by(shot: str, variant:
     assert compliance["flow_rmse_ml_s"] == flow
     if flow is None:
         assert compliance["flow_grading"] == "not_applicable"
-        assert not {"flow_adherence", "flow_overshoot", "flow_undershoot"} & set(
-            compliance["annotations"]
-        )
     else:
         assert compliance["flow_grading"] == "graded"
-        assert compliance["annotations"]["flow_adherence"] == "EXCELLENT"
 
 
 @pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-def test_a_pressure_profile_no_longer_costs_a_flow_penalty(path: Path) -> None:
+def test_a_pressure_profile_has_no_flow_to_grade(path: Path) -> None:
     slog = parse_slog(path.read_bytes())
     controls = phase_controls(constructed_profile_for(path))
-    score = execution_score(transform_shot(slog, "per_phase", phase_controls=controls))
-    assert "flow_adherence" not in score.components
-    assert score.confidence == "high"
+    compliance = _compliance(slog, controls)
+    assert compliance["flow_rmse_ml_s"] is None
+    assert compliance["flow_grading"] == "not_applicable"
+    assert compliance["pressure_grading"] == "graded"
 
 
 @pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
@@ -148,14 +144,12 @@ def test_no_profile_means_no_adherence_at_any_level(path: Path) -> None:
             assert diagnostics["flow_rmse_ml_s"] is None
             assert diagnostics["pressure_grading"] == "not_graded"
             assert diagnostics["flow_grading"] == "not_graded"
-            assert not [k for k in diagnostics["annotations"] if k.endswith(("adherence", "shoot"))]
         else:
             assert diagnostics["profile_compliance"] is None
             for phase in transformed["phases"]:
                 phase_diag = phase.get("diagnostics", {})
                 assert "pressure_rmse_bar" not in phase_diag
                 assert "flow_rmse_ml_s" not in phase_diag
-                assert "pressure_adherence" not in phase_diag.get("annotations", {})
 
 
 # ── a synthetic shot with one phase of each kind ─────────────────────
@@ -235,7 +229,6 @@ def test_each_quantity_is_graded_over_the_samples_of_its_own_phases() -> None:
     # flow there is 0 against 2, which is the reading the fix removes.
     assert compliance["flow_rmse_ml_s"] == 0.0
     assert compliance["flow_grading"] == "graded"
-    assert compliance["annotations"]["flow_adherence"] == "EXCELLENT"
 
 
 def test_a_flow_target_is_compared_with_the_pump_flow_not_the_puck_flow() -> None:
@@ -312,10 +305,6 @@ def test_a_shot_that_never_recorded_the_pump_flow_cannot_be_graded_on_flow() -> 
     compliance = _compliance(slog, CONTROLS)
     assert compliance["flow_rmse_ml_s"] is None
     assert compliance["flow_grading"] == "not_graded"
-    assert (
-        execution_score(transform_shot(slog, "per_phase", phase_controls=CONTROLS)).confidence
-        == "medium"
-    )
 
 
 def test_too_few_samples_is_not_graded_where_a_target_applies() -> None:
@@ -337,7 +326,6 @@ def test_each_phase_is_graded_only_on_its_own_target() -> None:
 
     assert fill["flow_rmse_ml_s"] == 0.0
     assert "pressure_rmse_bar" not in fill
-    assert "pressure_adherence" not in fill["annotations"]
 
     assert "flow_rmse_ml_s" not in bloom
     assert "pressure_rmse_bar" not in bloom  # a simple phase: nothing to follow
@@ -345,7 +333,6 @@ def test_each_phase_is_graded_only_on_its_own_target() -> None:
     # The pressure phase: 6 graded samples 1 bar under target; the tail is not in it.
     assert extraction["pressure_rmse_bar"] == 1.0
     assert "flow_rmse_ml_s" not in extraction
-    assert extraction["annotations"]["pressure_adherence"] == "FAIR"
 
 
 def test_the_summary_grades_the_brew_window_on_the_same_rule() -> None:

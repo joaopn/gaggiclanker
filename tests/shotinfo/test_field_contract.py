@@ -26,17 +26,20 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
+from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.models import Profile
+from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.shotinfo import (
     CATALOGUE,
     ITEMS,
     default_tiers,
     load_shots,
     render_shot,
+    shot_lines,
 )
 from gaggiclanker.shotinfo.fields import shot_fields_of
 from gaggiclanker.shotinfo.methods import METHODS
@@ -206,6 +209,78 @@ async def test_the_base_rendering_leads_with_the_warnings_in_order(
         "Shot: over target",
     ]
     assert lines[5] == "[Identity and status]"
+
+
+async def test_every_base_item_origin_dev_showed_is_still_rendered(
+    lever: tuple[Database, int, int], archive: Archive
+) -> None:
+    """Warnings are added to base and nothing is taken out but the score and the channeling risk.
+
+    Read on three real shots between them: the judged one (the judgement, the machine's
+    number), the same recording on a flow-steered profile (the flow adherence) and the
+    lever one (the exit reason). Each key `origin/dev`'s base held is a line on at least
+    one of them, in the base rendering, except the two retired outright.
+    """
+    from tests.domain.helpers import constructed_profile
+    from tests.shotinfo.conftest import SLOG
+    from tests.shotinfo.test_catalogue import ORIGIN_DEV_BASE, RETIRED_FROM_BASE
+
+    flow_led = derive_shot(
+        parse_slog(SLOG.read_bytes()),
+        SLOG.read_bytes(),
+        device_id="000811",
+        profile=constructed_profile("shot_204", "flow-first"),
+    )
+    flow_led_id = await ShotsRepository(archive.db).insert(flow_led.shot, flow_led.samples)
+
+    rendered: set[str] = set()
+    lever_db, lever_shot_id, _ = lever
+    for db, shot_id in (
+        (archive.db, archive.shot),
+        (archive.db, flow_led_id),
+        (lever_db, lever_shot_id),
+    ):
+        [facts] = await load_shots(db, [shot_id])
+        keys = {key for key, tier in default_tiers().items() if tier == "base"}
+        rendered |= {line.key for line in shot_lines(facts, frozenset(keys))}
+    rendered.add("shot_id")  # the header line, not a labelled one
+
+    assert ORIGIN_DEV_BASE - RETIRED_FROM_BASE <= rendered, (
+        ORIGIN_DEV_BASE - RETIRED_FROM_BASE - rendered
+    )
+    assert "execution_score" not in rendered
+    assert "warnings" in rendered
+
+
+async def test_the_ratio_takes_the_versions_dose_and_the_scales_yield_when_none_was_typed(
+    lever: tuple[Database, int, int],
+) -> None:
+    db, shot, version_id = lever
+    [facts] = await load_shots(db, [shot])
+    assert facts.judgement is None
+
+    found = ITEMS["ratio"].field(facts)
+
+    assert found is not None
+    assert found.value == pytest.approx(RAMP_END_G / 18.0, abs=0.005)
+    assert found.text == "1:2.34"
+
+    # A person's own doses come first, each on its own.
+    await JudgementsRepository(db).upsert(shot, JudgementWrite(dose_in_g=20.0))
+    [typed_in] = await load_shots(db, [shot])
+    assert ITEMS["ratio"].field(typed_in).text == "1:2.11"  # type: ignore[union-attr]
+    await JudgementsRepository(db).upsert(shot, JudgementWrite(dose_out_g=36.0))
+    [typed_out] = await load_shots(db, [shot])
+    assert ITEMS["ratio"].field(typed_out).text == "1:2.00"  # type: ignore[union-attr]
+
+    # No dose anywhere, no ratio.
+    await SetsRepository(db).assign_shot(shot, None)
+    [unfiled] = await load_shots(db, [shot])
+    await JudgementsRepository(db).delete(shot)
+    [bare] = await load_shots(db, [shot])
+    assert unfiled.version is None
+    assert ITEMS["ratio"].field(bare) is None
+    assert version_id
 
 
 async def test_each_phases_cup_share_of_the_target_is_the_constructed_one(

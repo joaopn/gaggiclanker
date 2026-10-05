@@ -75,6 +75,7 @@ from gaggiclanker.db.repos.version_names import (
     state_sql,
 )
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.sets import VersionPath, change_is_major, version_label
 from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.domain.vocab import (
@@ -688,11 +689,11 @@ class SetTrendPoint(BaseModel):
     set_version_id: int
     version_label: str
     started_at: str | None = None
-    execution_score: float | None = None
     duration_s: float | None = None
-    #: Yield over dose, from the **judgement's** figures. Not from the device
-    #: index: the index's volume is the scale's, which is only half of a ratio,
-    #: and the dose only ever exists because a person typed it.
+    #: Yield over dose. The dose is the judgement's when the person entered one and
+    #: the filed version's otherwise; the yield is the judgement's when entered
+    #: and the scale's otherwise. No dose anywhere, no ratio: the nominal basket
+    #: size is not a dose.
     ratio: float | None = None
     rating: int | None = None
 
@@ -708,7 +709,6 @@ class SetTrendVersion(BaseModel):
     origin: str = "manual"
     created_at: str
     shots: int = 0
-    avg_execution_score: float | None = None
     avg_duration_s: float | None = None
     avg_ratio: float | None = None
     avg_rating: float | None = None
@@ -942,7 +942,6 @@ _MEASURE_COLUMNS = """
 #: time, the final weight is the scale's — so a shot the SQL keeps is one the
 #: catalogue would show inside the range.
 SEARCH_COLUMNS: dict[str, str] = {
-    "execution_score": "sh.execution_score",
     "rating": "j.rating",
     "shot_time": "CASE WHEN sh.duration_ms > 0 THEN sh.duration_ms / 1000.0 END",
     "yield": "CASE WHEN sh.final_weight_g > 0 THEN sh.final_weight_g END",
@@ -2373,17 +2372,18 @@ class SetsRepository(Repository):
         and computing them twice in SQL would let a rounding difference put a
         bar off its own points.
 
-        The ratio comes from the *judgement's* doses. The index's volume is only
-        half of a ratio — the dose exists nowhere on the machine unless somebody
-        typed it into its notes card — so a shot with no dose has no ratio, and
-        saying so is more useful than inventing one from the nominal basket size.
+        The ratio's dose is the *judgement's* when the person entered one and the
+        version's otherwise: the dose exists nowhere on the machine unless somebody
+        typed it, and the version is where the recipe says it. A shot with no dose
+        anywhere has no ratio, and saying so is more useful than inventing one from
+        the nominal basket size.
         """
         rows = await self.db.fetch_all(
             f"""
             SELECT sh.id AS shot_id, sh.device_id, sh.set_version_id,
                    {label_sql("v")} AS version_label,
-                   sh.started_at, sh.execution_score, sh.duration_ms,
-                   j.dose_in_g, j.dose_out_g, j.rating,
+                   sh.started_at, sh.duration_ms,
+                   j.dose_in_g, j.dose_out_g, j.rating, v.dose_g AS version_dose_g,
                    COALESCE(sh.final_weight_g, sh.index_volume_g) AS volume_g
             FROM shots sh
             JOIN set_versions v ON v.id = sh.set_version_id
@@ -2395,11 +2395,6 @@ class SetsRepository(Repository):
         )
         points: list[SetTrendPoint] = []
         for row in rows:
-            dose_in = row["dose_in_g"]
-            # The judgement's own yield when it has one, the scale's otherwise:
-            # the dose is the half that only a person can supply, and once it is
-            # there the machine's measured yield is the better numerator.
-            dose_out = row["dose_out_g"] or row["volume_g"]
             points.append(
                 SetTrendPoint(
                     shot_id=int(row["shot_id"]),
@@ -2407,10 +2402,12 @@ class SetsRepository(Repository):
                     set_version_id=int(row["set_version_id"]),
                     version_label=str(row["version_label"]),
                     started_at=row["started_at"],
-                    execution_score=row["execution_score"],
                     duration_s=None if row["duration_ms"] is None else row["duration_ms"] / 1000,
-                    ratio=(
-                        round(float(dose_out) / float(dose_in), 2) if dose_in and dose_out else None
+                    ratio=brew_ratio(
+                        judged_dose_g=row["dose_in_g"],
+                        version_dose_g=row["version_dose_g"],
+                        judged_yield_g=row["dose_out_g"],
+                        scale_yield_g=row["volume_g"],
                     ),
                     rating=row["rating"],
                 )
@@ -2429,7 +2426,6 @@ class SetsRepository(Repository):
                 origin=version.origin,
                 created_at=version.created_at,
                 shots=len(by_version[version.id]),
-                avg_execution_score=_mean([p.execution_score for p in by_version[version.id]]),
                 avg_duration_s=_mean([p.duration_s for p in by_version[version.id]]),
                 avg_ratio=_mean([p.ratio for p in by_version[version.id]]),
                 avg_rating=_mean([p.rating for p in by_version[version.id]]),
@@ -2443,9 +2439,9 @@ class SetsRepository(Repository):
 def _mean(values: list[float | None] | list[int | None]) -> float | None:
     """The mean of the values that exist, or ``None`` when none of them do.
 
-    ``None`` rather than 0: a version whose shots all predate the scoring pass
-    has no average score, and a zero would draw a bar at the bottom of the chart
-    saying the recipe was terrible.
+    ``None`` rather than 0: a version whose shots recorded no value has no
+    average, and a zero would draw a bar at the bottom of the chart saying the
+    recipe was terrible.
     """
     present = [float(value) for value in values if value is not None]
     if not present:

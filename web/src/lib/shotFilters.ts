@@ -1,5 +1,4 @@
 import type { ShotListParams, ShotSort } from "@/api/types";
-import { SCORE_BANDS, type ScoreBandValue } from "@/lib/shots";
 
 /**
  * The filter bar's state, and how it becomes a query string.
@@ -35,7 +34,6 @@ export type ShotFilterState = {
    * not a Set id, so nothing downstream has to remember the rule.
    */
   version: string;
-  scoreBand: ScoreBandValue;
   minRating: string;
   source: "" | "device" | "import";
   /** "" any, "yes" only quarantined, "no" only readable. */
@@ -50,7 +48,6 @@ export const DEFAULT_FILTERS: ShotFilterState = {
   profileVersionId: "",
   set: "",
   version: "",
-  scoreBand: "any",
   minRating: "",
   source: "",
   quarantined: "",
@@ -77,7 +74,6 @@ const FILTER_KEYS: Array<keyof ShotFilterState> = [
   // Counted: it narrows the list, and a reader looking at four rows wants the
   // badge to account for every reason there are only four.
   "version",
-  "scoreBand",
   "minRating",
   "source",
   "quarantined",
@@ -120,10 +116,9 @@ function dayEnd(day: string): string | undefined {
  * is user input, and a typed-in `?sort=nonsense` should show the archive, not
  * an error page.
  */
-const SORTS: ShotSort[] = ["started_at", "execution_score", "duration", "rating"];
+const SORTS: ShotSort[] = ["started_at", "duration", "rating"];
 
 export function fromSearchParams(params: URLSearchParams): ShotFilterState {
-  const scoreBand = params.get("score") ?? "";
   const source = params.get("source") ?? "";
   const quarantined = params.get("quarantined") ?? "";
   const sort = params.get("sort") ?? "";
@@ -136,9 +131,6 @@ export function fromSearchParams(params: URLSearchParams): ShotFilterState {
     set,
     // "needs" is the inbox rather than a Set, so it has no versions either.
     version: set && set !== "needs" ? (params.get("version") ?? "") : "",
-    scoreBand: SCORE_BANDS.some((band) => band.value === scoreBand)
-      ? (scoreBand as ScoreBandValue)
-      : "any",
     minRating: /^[1-5]$/.test(params.get("min_rating") ?? "")
       ? (params.get("min_rating") as string)
       : "",
@@ -158,7 +150,6 @@ export function toSearchParams(state: ShotFilterState): URLSearchParams {
   if (state.profileVersionId) params.set("profile_version_id", state.profileVersionId);
   if (state.set) params.set("set", state.set);
   if (state.set && state.set !== "needs" && state.version) params.set("version", state.version);
-  if (state.scoreBand !== "any") params.set("score", state.scoreBand);
   if (state.minRating) params.set("min_rating", state.minRating);
   if (state.source) params.set("source", state.source);
   if (state.quarantined) params.set("quarantined", state.quarantined);
@@ -168,7 +159,6 @@ export function toSearchParams(state: ShotFilterState): URLSearchParams {
 }
 
 export function toParams(state: ShotFilterState, limit: number): ShotListParams {
-  const band = SCORE_BANDS.find((entry) => entry.value === state.scoreBand);
   const rating = Number.parseInt(state.minRating, 10);
   const profileVersionId = Number.parseInt(state.profileVersionId, 10);
   const setId = Number.parseInt(state.set, 10);
@@ -185,8 +175,6 @@ export function toParams(state: ShotFilterState, limit: number): ShotListParams 
     // Never on its own: the same rule `fromSearchParams` applies, repeated here
     // because `toParams` is also called with state built by hand.
     set_version_id: inSet && Number.isFinite(versionId) ? versionId : undefined,
-    min_score: band && "min" in band ? band.min : undefined,
-    max_score: band && "max" in band ? band.max : undefined,
     min_rating: Number.isFinite(rating) ? rating : undefined,
     source: state.source || undefined,
     quarantined: state.quarantined === "" ? undefined : state.quarantined === "yes",

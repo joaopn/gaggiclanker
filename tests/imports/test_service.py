@@ -83,10 +83,9 @@ async def test_the_two_real_exports_land_as_a_shot_and_a_profile(
     assert len(shot.phases) == SHOT_129_PHASES
     assert shot.diagnostics is not None
     # No profile is linked to this shot (the export's profile id and name match
-    # none the archive holds), so its adherence is not graded and costs nothing.
+    # none the archive holds), so its adherence is not graded.
     assert shot.profile_version_id is None
-    assert shot.execution_score == pytest.approx(9.3)
-    assert shot.execution_reason
+    assert shot.diagnostics["diagnostics"]["profile_compliance"] is None
     assert shot.quarantined is False
     assert shot.incomplete is False
     # The bytes are the product: an imported shot carries a real `.slog` too.

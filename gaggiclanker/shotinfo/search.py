@@ -4,7 +4,7 @@ A Set conversation opens with its version's latest shots; everything else it
 finds through here. A filter is either a plain column — version, label,
 balance, day, and the numbers :data:`~gaggiclanker.db.repos.sets.SEARCH_COLUMNS`
 lists — applied in SQL, or a value only the loaded shot knows (a number inside
-the diagnostics, a band, the ratio), applied here over the same catalogue
+the diagnostics, the ratio), applied here over the same catalogue
 accessors the renderer uses. So a shot found by "first drip over 9 s" shows a
 first drip over 9 s, and a shot the machine recorded no first drip for matches
 no range on it: absent is not zero.
@@ -27,7 +27,6 @@ from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import load_shots
 
 __all__ = [
-    "SEARCH_BANDS",
     "SEARCH_LIMIT",
     "SEARCH_NUMBERS",
     "SearchResult",
@@ -41,7 +40,6 @@ SEARCH_LIMIT = 10
 
 #: The numeric base items a search filters and sorts on, by catalogue key.
 SEARCH_NUMBERS: Mapping[str, Callable[[ShotFacts], float | None]] = {
-    "execution_score": catalogue.execution_score,
     "rating": catalogue.rating,
     "shot_time": catalogue.shot_time,
     "yield": catalogue.yield_g,
@@ -51,14 +49,9 @@ SEARCH_NUMBERS: Mapping[str, Callable[[ShotFacts], float | None]] = {
     "dose_in": catalogue.dose_in,
     "dose_out": catalogue.dose_out,
     "ratio": catalogue.ratio,
-}
-
-#: The banded base items a search matches exactly, by catalogue key.
-SEARCH_BANDS: Mapping[str, Callable[[ShotFacts], str | None]] = {
-    "channeling_risk": catalogue.channeling_risk,
-    "resistance_level": catalogue.resistance_band,
-    "pressure_adherence": catalogue.pressure_adherence_band,
-    "flow_adherence": catalogue.flow_adherence_band,
+    "resistance_level": catalogue.resistance_level,
+    "pressure_adherence": catalogue.pressure_adherence,
+    "flow_adherence": catalogue.flow_adherence,
 }
 
 
@@ -76,8 +69,6 @@ class ShotQuery:
     until: str | None = None
     #: ``(min, max)`` per :data:`SEARCH_NUMBERS` key, either end optional.
     ranges: Mapping[str, tuple[float | None, float | None]] = field(default_factory=dict)
-    #: One label per :data:`SEARCH_BANDS` key.
-    bands: Mapping[str, str] = field(default_factory=dict)
     #: A :data:`SEARCH_NUMBERS` key, ``date``, or ``shot_id``.
     order_by: str = "date"
     descending: bool = True
@@ -123,7 +114,7 @@ def _matches(facts: ShotFacts, query: ShotQuery) -> bool:
             return False
         if high is not None and value > high:
             return False
-    return all(SEARCH_BANDS[key](facts) == wanted for key, wanted in query.bands.items())
+    return True
 
 
 def _ordered(shots: list[ShotFacts], order_by: str, *, descending: bool) -> list[ShotFacts]:

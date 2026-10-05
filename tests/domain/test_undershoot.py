@@ -41,19 +41,12 @@ def _diagnostics(deviations: list[float], control: PhaseControl) -> Any:
     return diagnostics
 
 
-def _undershoots(deviations: list[float], control: PhaseControl) -> tuple[float, float, float]:
-    diagnostics = _diagnostics(deviations, control)
-    compliance = diagnostics["profile_compliance"]
-    own = (
-        compliance["max_pressure_undershoot_bar"]
-        if control == "pressure"
-        else compliance["max_flow_undershoot_ml_s"]
-    )
-    return (
-        own,
-        diagnostics["temperature"]["undershoot_c"],
-        diagnostics["temperature"]["overshoot_c"],
-    )
+def _undershoots(deviations: list[float], control: PhaseControl) -> tuple[float, float]:
+    """The shot's own largest undershoot and overshoot, for the target it steers by."""
+    compliance = _diagnostics(deviations, control)["profile_compliance"]
+    if control == "pressure":
+        return compliance["max_pressure_undershoot_bar"], compliance["max_pressure_overshoot_bar"]
+    return compliance["max_flow_undershoot_ml_s"], compliance["max_flow_overshoot_ml_s"]
 
 
 ALL_ABOVE = [0.1, 0.3, 0.5, 0.8, 0.6, 0.4, 0.2, 0.7]
@@ -62,20 +55,18 @@ MIXED = [0.5, -0.3, 0.2, -0.7, 0.1, -0.2, 0.4, 0.3]
 
 @pytest.mark.parametrize("control", ["pressure", "flow"])
 def test_a_shot_wholly_above_target_has_no_undershoot(control: PhaseControl) -> None:
-    own, temperature, overshoot = _undershoots(ALL_ABOVE, control)
-    assert own == 0.0
-    assert temperature == 0.0
+    undershoot, overshoot = _undershoots(ALL_ABOVE, control)
+    assert undershoot == 0.0
     assert overshoot == 0.8
 
 
 @pytest.mark.parametrize("control", ["pressure", "flow"])
 def test_the_undershoot_of_a_mixed_shot_is_its_deepest_dip(control: PhaseControl) -> None:
-    own, temperature, overshoot = _undershoots(MIXED, control)
-    assert own == 0.7
-    assert temperature == 0.7
+    undershoot, overshoot = _undershoots(MIXED, control)
+    assert undershoot == 0.7
     assert overshoot == 0.5
 
 
 def test_a_shot_wholly_below_target_has_no_overshoot_and_its_deepest_dip() -> None:
-    own, temperature, overshoot = _undershoots([-0.1, -0.4, -0.9, -0.5, -0.2, -0.3], "pressure")
-    assert (own, temperature, overshoot) == (0.9, 0.9, 0.0)
+    undershoot, overshoot = _undershoots([-0.1, -0.4, -0.9, -0.5, -0.2, -0.3], "pressure")
+    assert (undershoot, overshoot) == (0.9, 0.0)

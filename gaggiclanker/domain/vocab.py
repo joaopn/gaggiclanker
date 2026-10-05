@@ -205,7 +205,6 @@ type RuleCategory = Literal[
     "pressure_matrix",
     "ratio_by_style",
     "time_by_style",
-    "band_meanings",
     "taste_to_suspect",
     "telemetry_to_cause",
     "profile_design_defaults",

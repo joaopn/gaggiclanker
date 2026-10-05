@@ -4,13 +4,13 @@
 `web/src/test/fixtures/shot-129.json` is what the front-end tests assert
 against: a shot detail row and its samples, in exactly the shape
 `GET /api/shots/{id}` and `/samples` answer. It is generated rather than
-hand-written on purpose — the phases, the diagnostics, every band label and the
-execution score in it come out of `gaggiclanker/domain/diagnostics.py`, so a
+hand-written on purpose — the phases, the diagnostics and the per-phase metrics in
+it come out of `gaggiclanker/domain/diagnostics.py`, so a
 component test that renders it is testing the component against the real
 pipeline. A hand-written blob would only prove that the test author and the
 component agree with each other.
 
-Re-run it whenever the diagnostics, the scoring or the row models change; the
+Re-run it whenever the diagnostics, the metrics or the row models change; the
 diff in the fixture is the signal that the front end has something new to show.
 
     uv run python scripts/build_web_shot_fixture.py

@@ -3,11 +3,6 @@ Base is what get_shot returns and what a Set conversation's opening context and 
 A line that is missing means the machine did not record that value (no scale, no pressure sensor, too few samples to judge) — never that it was zero.
 Below are the base fields. The meanings of the extended fields are not in this prompt: they come once in the conversation, at the head of the newest get_shot_extended, get_shot_full or compare_shots result, or at the head of this answer's first such read when the conversation has none yet, before the shot lines. They apply to every extended line in the conversation.
 
-[Shared bands]
-The band tables several fields are read against, named in their entries; each entry gives the unit.
-- resistance level bands: VERY_LOW under 0.5; LOW 0.5 to 1.5; MODERATE 1.5 to 3; HIGH 3 to 5; VERY_HIGH from 5 up
-- adherence bands: EXCELLENT under 0.3; GOOD 0.3 to 0.8; FAIR 0.8 to 1.5; POOR from 1.5 up
-
 [Warnings]
 What is plainly wrong with the shot without knowing what its profile is for, most severe first, then in the order of the shot, one per line: `phase: fault (severity): detail`, with `Shot` for a fault of the whole shot. A shot with no line has none of these (or could not be checked: see each fault). All are amber: a profile's own intent can excuse one.
 - Warnings [base]: The faults that need no knowledge of the profile. over target: the final weight is above 110 % of the target yield of the version the shot is filed under; under target: below 90 %; both need a scale and a version with a target yield. skipped: the shot stopped on its weight or pumped-water target before a phase of its profile began; the line names the first such phase and lists them all, and needs the shot's profile. fast flow: the scale flow averaged over 1.0 s was above 3.0 g/s while the pressure stayed at 80 % of the shot's peak or more, in the phase holding the first such window; it needs a scale and a pressure sensor, and a turbo profile does it on purpose. Each is a fact to weigh, not a verdict.
@@ -25,7 +20,6 @@ What is plainly wrong with the shot without knowing what its profile is for, mos
 - Shot time [base]: How long the shot ran, in seconds, from the start of the brew to the moment the machine stopped recording it. The Set page's shot time, and one of the measures a prediction is graded on.
 - Yield [base]: The weight in the cup when the shot ended, in grams, as the connected scale read it. Only a machine with a scale records it; the dose out the person typed is a separate line of their judgement.
 - Exit reason [base]: Why the machine ended the shot's last phase: a volumetric (weight) target, a pressure, flow or pumped-water target, the phase's duration, a safety timeout, the person stopping it (Aborted), or a released hold.
-- Execution score [base]: How cleanly the machine executed the shot, out of 10: 10 less a capped penalty for each fault the telemetry shows (channeling, temperature instability, pressure and flow adherence, puck erosion), never below 1. Higher is cleaner. It says nothing about taste, and it is computed, not judged: explain it, never restate or contradict it.
 
 [Timing]
 - First drip [base]: Seconds from the start of the shot to the first sample with any puck flow: when coffee started to reach the cup. Later usually means a finer grind or a longer pre-infusion. The Set page's time to first drip.
@@ -38,17 +32,13 @@ Measured by the pressure sensor: none of these exists on a machine without one.
 - Average brew flow [base]: The mean puck flow over the brew phases, in ml/s. Faster usually means a coarser grind or a lighter puck. The Set page's average brew flow.
 
 [Puck resistance]
-Resistance R is the machine's own puck resistance squared (the firmware's pr² = pressure / puck flow², on the scale of the bands) when the shot recorded it, and pressure / flow² from the logged pressure and flow otherwise; the level says which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a unitless number. When the source is the machine, peak and its timing follow its estimate, ramp spikes included. None of it exists without a pressure sensor. The machine puck resistance and liquid resistance are the firmware analyzer's, in its units and unbanded: not comparable with R.
-- Resistance level [base]: The puck's average resistance, with where it came from: the machine's own measurement, or computed from pressure and flow when the shot has none. It folds grind, dose and puck prep into one reading: higher is a finer grind or a tighter puck. Bands: the resistance level bands.
-
-[Channeling]
-The indicators are measured over the steady-state window: the brew phases from where pressure first reaches 90% of its peak, less leading and trailing samples under 0.1 ml/s of flow. None of it exists without a pressure sensor.
-- Channeling risk [base]: The risk that water found a channel through the puck, scored 0 to 8 from four indicators (flow jitter; flow against target, or pressure jitter when no flow-steered sample is left; the largest pressure drop; late flow acceleration), each adding 1 at its lower threshold and 2 at its upper: LOW 0-1, MODERATE 2-3, HIGH 4-5, VERY_HIGH 6-8. INSUFFICIENT_DATA: fewer than 5 samples in the window, too short to judge, which is not a fault.
+Resistance R is the machine's own puck resistance squared (the firmware's pr² = pressure / puck flow²) when the shot recorded it, and pressure / flow² from the logged pressure and flow otherwise; the level says which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a unitless number. None of it exists without a pressure sensor. The machine puck resistance and liquid resistance are the firmware analyzer's, in its own units: not comparable with R.
+- Resistance level [base]: The puck's average resistance, with where it came from: the machine's own measurement, or computed from pressure and flow when the shot has none. It folds grind, dose and puck prep into one reading: higher is a finer grind or a tighter puck. A number, not a grade: what is high or low depends on the profile and the basket.
 
 [Profile compliance]
 How closely the machine followed the target each phase steered by, read from the shot's profile. The pressure lines need a pressure sensor and cover the pressure-steered phases; the flow lines (pump flow against the flow target) exist only where the profile has a flow-steered phase. All are absent when the shot has no known profile.
-- Pressure adherence [base]: The root-mean-square difference between measured and target pressure over the samples of pressure-steered phases, in bar; lower is closer to the profile. The machine's controller drives the pump to hold pressure, so this says how well it did, not what the puck did. Bands: the adherence bands, in bar.
-- Flow adherence [base]: The root-mean-square difference between pump flow and target flow over the samples of flow-steered phases, in ml/s; lower is closer. The pump flow is the machine's own estimate, not a measurement: it leaves the target only when the pump runs out of power or a pressure limit takes over, so it is not a grind signal. Bands: the adherence bands, in ml/s.
+- Pressure adherence [base]: The root-mean-square difference between measured and target pressure over the samples of pressure-steered phases, in bar; lower is closer to the profile. The machine's controller drives the pump to hold pressure, so this says how well it did, not what the puck did.
+- Flow adherence [base]: The root-mean-square difference between pump flow and target flow over the samples of flow-steered phases, in ml/s; lower is closer. The pump flow is the machine's own estimate, not a measurement: it leaves the target only when the pump runs out of power or a pressure limit takes over, so it is not a grind signal.
 
 [Your judgement]
 - Rating [base]: The person's rating of the cup, 1 to 5 stars. Higher is better.
@@ -58,5 +48,5 @@ How closely the machine followed the target each phase steered by, read from the
 - Notes [base]: What the person wrote about the shot, in their own words.
 - Dose in [base]: The ground coffee the person put in the basket, in grams.
 - Dose out [base]: The beverage weight the person recorded, in grams. Where it differs from the scale's yield, it is the person correcting the scale.
-- Ratio [base]: Dose out divided by dose in, written 1:2.00. Longer ratios extract more.
+- Ratio [base]: Dose out divided by dose in, written 1:2.00. Longer ratios extract more. The dose in is the person's when entered, else the version's; the dose out is the person's when entered, else the scale's yield. Absent without both.
 - Grind as brewed [base]: The grind setting the person says this shot was actually ground at, in the grinder's own units. It can differ from the recipe's.

@@ -6,7 +6,7 @@ Four jobs, one lock:
   status state frame's capability flags and `GET /api/settings` into one
   `machines` row.
 * **shots** — diff `index.bin` against what we hold, fetch what is missing,
-  parse it, derive diagnostics and a score, store the lot in one transaction;
+  parse it, derive diagnostics, store the lot in one transaction;
   reconcile the entries whose rating, volume or deleted flag changed.
 * **profiles** — mirror `/p/` as content-hashed versions plus a device-id map; then,
   with the writes switch on, the profile board's write phase (see `drafts/board.py`).
@@ -853,7 +853,6 @@ class SyncEngine:
             message=f"{len(samples)} samples",
             data={
                 "samples": len(samples),
-                "score": shot.execution_score,
                 "set_version_id": set_version_id,
             },
         )

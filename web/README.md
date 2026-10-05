@@ -92,7 +92,7 @@ The shot pages add a layer of their own:
 ```
 src/
   lib/
-    shots.ts          formatting, score bands, exit reasons, band-label meanings
+    shots.ts          formatting, exit reasons
     shotChart.ts      samples -> series and phase bands; the sparkline path
     shotFilters.ts    the filter panel's state, and how it becomes a query string
     shotColumns.ts    the columns, their tracks and widths, the stored choice and widths
@@ -139,7 +139,7 @@ as wide as its rows, and the page wraps it in `mx-auto w-fit max-w-full`, so
 the box is centred, ends where the last column does and a row wider than the page scrolls
 sideways. An open row's panel is `w-0 min-w-full` so its text
 cannot widen the table. The default row is Set, Time, Profile,
-Duration, Yield, Score, Rating, Decision; Curve, Notes and Flags wait to be
+Duration, Yield, Rating, Decision; Curve, Notes and Flags wait to be
 asked for. A stored column choice that is exactly one of the previous defaults
 (`PREVIOUS_DEFAULT_SHOT_COLUMNS`, one entry per generation, newest first) reads
 as the current default, a stored Analyse column (from before the per-shot
@@ -209,7 +209,7 @@ src/
     useSets.ts        Sets, versions, trends, the verdict and the assignment
   components/
     charts/
-      SetTrendChart.tsx   score, rating, duration and ratio across a Set's versions
+      SetTrendChart.tsx   rating, duration and ratio across a Set's versions
     sets/             SetBadge, VersionTimeline, NewSetDialog, Designing (the badge, Continue designing)
     shots/            JudgementForm (the shot page and the open row), JudgementControls,
                       AssignToSet, NeedsSetMenu
@@ -467,7 +467,7 @@ render-budget test in `ShotDetailPage.test.tsx` mean something.
 
 `src/test/fixtures/shot-129.json` is the maintainer's own exported shot, run
 through the real importer and dumped in the shape `/api/shots/{id}` and
-`/samples` answer — so its phases, diagnostics, band labels and execution score
+`/samples` answer — so its phases, diagnostics and per-phase metrics
 were computed by `gaggiclanker/domain/diagnostics.py` rather than written by
 hand. Regenerate it after a diagnostics change:
 

@@ -100,7 +100,6 @@ async def make_shot(
     *,
     profile_version_id: int | None = None,
     profile_id_on_device: str = "",
-    execution_score: float | None = 8.0,
     duration_ms: int = 28_000,
     started_at: str = "2026-04-01T08:00:00.000Z",
     final_weight_g: float | None = 36.0,
@@ -119,7 +118,6 @@ async def make_shot(
             duration_ms=duration_ms,
             profile_version_id=profile_version_id,
             profile_id_on_device=profile_id_on_device,
-            execution_score=execution_score,
             final_weight_g=final_weight_g,
         )
     )

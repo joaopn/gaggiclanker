@@ -305,7 +305,7 @@ async def test_reset_puts_every_item_back_and_answers_the_document(
     client: httpx.AsyncClient,
 ) -> None:
     await client.put("/api/shot-information/rating", json={"tier": "excluded"})
-    await client.put("/api/shot-information/flow_jitter", json={"tier": "base"})
+    await client.put("/api/shot-information/peak_flow", json={"tier": "base"})
 
     reset = data(await client.post("/api/shot-information/reset"))
 

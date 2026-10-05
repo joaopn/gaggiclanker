@@ -93,8 +93,6 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     index_avg_temp_c: 93.1,
     index_max_pressure_bar: 9.2,
     index_avg_flow_ml_s: 1.9,
-    execution_score: 8.3,
-    execution_reason: "Clean extraction.",
     sample_count: 118,
     scale_connected: true,
     incomplete: false,
@@ -262,7 +260,7 @@ describe("ShotsPage", () => {
     await listed();
     expect(screen.getByText("28.4 s")).toBeInTheDocument();
     expect(screen.getByText("36.4 g")).toBeInTheDocument();
-    expect(screen.getByTestId("score-badge")).toHaveTextContent("8.3");
+    expect(screen.queryByTestId("score-badge")).not.toBeInTheDocument();
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "4");
     // The row opens in place rather than navigating: one stretched button
     // across the row rather than a button wrapped around the cells, because
@@ -310,8 +308,8 @@ describe("ShotsPage", () => {
     }
     // The sort buttons centre their label and arrow as one group; nothing is
     // pushed to the right for being a number any more.
-    expect(screen.getByTestId("sort-score")).toHaveClass("justify-center");
-    expect(screen.getByTestId("sort-score")).not.toHaveClass("flex-row-reverse");
+    expect(screen.getByTestId("sort-rating")).toHaveClass("justify-center");
+    expect(screen.getByTestId("sort-rating")).not.toHaveClass("flex-row-reverse");
 
     const row = screen.getByTestId("shot-row");
     const cells = row.querySelectorAll("[data-column]");
@@ -355,28 +353,12 @@ describe("ShotsPage", () => {
     expect(screen.getByTestId("notes-cell")).toBeInTheDocument();
   });
 
-  it("colours the score by band rather than linearly", async () => {
-    // The score is ten minus penalties, so the interesting ground is the top
-    // half; a linear ramp would paint every shot green.
-    getShots.mockResolvedValue(
-      listData([shot({ id: 1, execution_score: 9.1 }), shot({ id: 2, execution_score: 3.2 })]),
-    );
-
-    renderWithQueryClient(<ShotsPage />);
-
-    const badges = await screen.findAllByTestId("score-badge");
-    expect(badges[0]).toHaveAttribute("data-tone", "good");
-    expect(badges[1]).toHaveAttribute("data-tone", "bad");
-  });
-
   it("flags a quarantined shot rather than hiding it", async () => {
     // The archive keeps bytes it cannot parse, so the list has to say so:
     // a shot that silently vanished would look like a shot that was never
     // pulled, which is the one thing this project must never do.
     const user = setupUser();
-    getShots.mockResolvedValue(
-      listData([shot({ id: 2, quarantined: true, execution_score: null, volume_g: null })]),
-    );
+    getShots.mockResolvedValue(listData([shot({ id: 2, quarantined: true, volume_g: null })]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
@@ -972,7 +954,7 @@ describe("ShotsPage column widths", () => {
 
   it("puts every width back from the column chooser", async () => {
     const user = setupUser();
-    window.localStorage.setItem("shots.widths.v1", JSON.stringify({ time: 12, score: 5 }));
+    window.localStorage.setItem("shots.widths.v1", JSON.stringify({ time: 12, rating: 7 }));
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
@@ -1022,7 +1004,6 @@ describe("ShotsPage column widths", () => {
       "9rem",
       "5.25rem",
       "3rem",
-      "4rem",
       "5.5rem",
       "9.75rem",
     ]);
@@ -1658,16 +1639,10 @@ describe("ShotsPage filters", () => {
     await listed();
     await openFilters(user);
 
-    await user.selectOptions(screen.getByLabelText("Score"), "clean");
-    await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ min_score: 8 })),
-    );
-
+    expect(screen.queryByLabelText("Score")).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Rating"), "4");
     await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ min_score: 8, min_rating: 4 }),
-      ),
+      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ min_rating: 4 })),
     );
 
     await user.selectOptions(screen.getByLabelText("Source"), "import");
@@ -1677,7 +1652,7 @@ describe("ShotsPage filters", () => {
 
     // …and the button says how many are on, which is the whole point of
     // hiding them: the page can be scanned for "why am I seeing so few rows".
-    expect(screen.getByTestId("filters-count")).toHaveTextContent("3");
+    expect(screen.getByTestId("filters-count")).toHaveTextContent("2");
   });
 
   it("narrows to one Set version from the log's link, and says which", async () => {
@@ -1735,15 +1710,15 @@ describe("ShotsPage filters", () => {
   });
 
   it("clears the filters without clearing the sort", async () => {
-    // "Clear all" is about which shots are listed. Somebody who chose "worst
-    // executed first" and then cleared their filters did not ask to be put
-    // back at newest-first.
+    // "Clear all" is about which shots are listed. Somebody who chose "longest
+    // first" and then cleared their filters did not ask to be put back at
+    // newest-first.
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
-    await user.click(screen.getByTestId("sort-score"));
+    await user.click(screen.getByTestId("sort-duration"));
     await openFilters(user);
     await user.selectOptions(screen.getByLabelText("Rating"), "4");
 
@@ -1751,7 +1726,7 @@ describe("ShotsPage filters", () => {
 
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "execution_score", min_rating: undefined }),
+        expect.objectContaining({ sort: "duration", min_rating: undefined }),
       ),
     );
     expect(screen.queryByTestId("filters-count")).not.toBeInTheDocument();
@@ -1782,21 +1757,21 @@ describe("ShotsPage filters", () => {
 
     // A column that is not the active one takes over descending; clicking the
     // active one reverses it.
-    await user.click(screen.getByTestId("sort-score"));
+    await user.click(screen.getByTestId("sort-duration"));
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "execution_score", order: "desc" }),
+        expect.objectContaining({ sort: "duration", order: "desc" }),
       ),
     );
-    expect(screen.getByTestId("header-score")).toHaveAttribute("aria-sort", "descending");
+    expect(screen.getByTestId("header-duration")).toHaveAttribute("aria-sort", "descending");
 
-    await user.click(screen.getByTestId("sort-score"));
+    await user.click(screen.getByTestId("sort-duration"));
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "execution_score", order: "asc" }),
+        expect.objectContaining({ sort: "duration", order: "asc" }),
       ),
     );
-    expect(screen.getByTestId("header-score")).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getByTestId("header-duration")).toHaveAttribute("aria-sort", "ascending");
     expect(screen.getByTestId("header-time")).toHaveAttribute("aria-sort", "none");
 
     await user.click(await screen.findByRole("button", { name: "Load more" }));
@@ -1843,7 +1818,7 @@ describe("ShotsPage filters", () => {
     await screen.findByText("No shots archived yet");
 
     await openFilters(user);
-    await user.selectOptions(screen.getByLabelText("Score"), "poor");
+    await user.selectOptions(screen.getByLabelText("Rating"), "5");
 
     expect(await screen.findByText("No shots match")).toBeInTheDocument();
   });

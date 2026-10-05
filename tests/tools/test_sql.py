@@ -74,10 +74,10 @@ def test_an_empty_query_is_refused() -> None:
 async def test_a_real_query_over_the_views_works(archive: Fixture) -> None:
     result = await run_query(
         archive.db.path,
-        "SELECT shot_id, execution_score FROM v_shots ORDER BY shot_id",
+        "SELECT shot_id, volume_g FROM v_shots ORDER BY shot_id",
     )
 
-    assert result.columns == ["shot_id", "execution_score"]
+    assert result.columns == ["shot_id", "volume_g"]
     assert [row[0] for row in result.rows] == archive.shots
 
 

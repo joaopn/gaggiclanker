@@ -18,7 +18,6 @@ from gaggiclanker.domain.diagnostics import (
     _round1,
     _round2,
     as_sample_dicts,
-    compute_shot_diagnostics,
     first_drip_index,
     largest_pressure_drop,
     peak_pressure_index,
@@ -90,23 +89,33 @@ def test_first_drip_and_peak_are_the_first_samples_of_their_rule(name: str) -> N
     assert _round1(samples[drip]["t"] / 1000) == drip_time
 
 
+#: The two samples the largest pressure drop runs between, and the rate between them
+#: in bar/s, on every fixture shot, as the engine reported them when the drop was
+#: also a channeling indicator (`pressure_max_drop_rate_bar_s`). Literals, so the
+#: curve's landmarks have a guard that does not go through the function under test.
+VENDORED_DROPS: dict[str, tuple[tuple[int, int], float]] = {
+    "shot-129.json": ((83, 84), -0.8),
+    "shot-v7-synthetic.json": ((12, 13), 0.0),
+    "shot_196_baseline_high.slog": ((74, 75), -0.4),
+    "shot_204_ramping_flow.slog": ((113, 114), -0.4),
+    "shot_222_hold_false_positive.slog": ((106, 107), -0.4),
+}
+
+
 @pytest.mark.parametrize("name", list(SHOTS))
-def test_the_drop_runs_between_the_samples_the_indicator_was_computed_on(name: str) -> None:
+def test_the_drop_runs_between_the_samples_the_engine_always_read_it_on(name: str) -> None:
     slog = SHOTS[name]
     samples = as_sample_dicts(slog)
     dt = slog.sample_interval / 1000
-    diagnostics = compute_shot_diagnostics(slog)
-    assert diagnostics is not None
-    channeling = diagnostics["channeling"]
-    assert channeling is not None
 
     window = largest_pressure_drop(samples, slog.transitions, dt)
 
     assert window is not None
     start, end = window
     assert start < end
+    assert window == VENDORED_DROPS[name][0]
     rate = (samples[end]["cp"] - samples[start]["cp"]) / dt
-    assert _round2(rate) == channeling["pressure_max_drop_rate_bar_s"]
+    assert _round2(rate) == VENDORED_DROPS[name][1]
 
 
 def _flat(count: int, **values: float) -> list[SampleDict]:

@@ -100,13 +100,10 @@ describe("loadShotColumns", () => {
   });
 
   it.each([
-    ["one column fewer", ["time", "duration", "score", "rating", "set", "flags"]],
-    ["one column more", ["time", "duration", "yield", "score", "rating", "set", "notes", "flags"]],
-    ["Flags without the Set", ["time", "duration", "yield", "score", "rating", "flags"]],
-    [
-      "the default with a duplicate",
-      ["time", "duration", "yield", "score", "rating", "set", "set"],
-    ],
+    ["one column fewer", ["time", "duration", "rating", "set", "flags"]],
+    ["one column more", ["time", "duration", "yield", "rating", "set", "notes", "flags"]],
+    ["Flags without the Set", ["time", "duration", "yield", "rating", "flags"]],
+    ["the default with a duplicate", ["time", "duration", "yield", "rating", "set", "set"]],
   ])("keeps any other stored choice as it was made: %s", (_why, stored) => {
     window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(stored));
     expect(loadShotColumns()).toEqual(stored);
@@ -152,8 +149,8 @@ describe("visibleColumns", () => {
   it("keeps the canonical order whatever order the ids arrive in", () => {
     // The order carries meaning — when, what, how it went, what you thought —
     // so a column turned off and on again comes back where it was.
-    const ids: ShotColumnId[] = ["flags", "time", "score"];
-    expect(visibleColumns(ids).map((column) => column.id)).toEqual(["time", "score", "flags"]);
+    const ids: ShotColumnId[] = ["flags", "time", "rating"];
+    expect(visibleColumns(ids).map((column) => column.id)).toEqual(["time", "rating", "flags"]);
   });
 
   it("never returns an empty table", () => {
@@ -163,13 +160,13 @@ describe("visibleColumns", () => {
 
 describe("gridTemplates", () => {
   it("gives the narrow breakpoint one track per column that survives it", () => {
-    const columns = visibleColumns(["time", "curve", "score"]);
+    const columns = visibleColumns(["time", "curve", "rating"]);
     const { narrow, wide } = gridTemplates(columns);
     // Three tracks and nothing after them: the table is as wide as its columns.
-    expect(wide.split(" ")).toEqual(["7.5rem", "6rem", "4rem"]);
+    expect(wide.split(" ")).toEqual(["7.5rem", "6rem", "5.5rem"]);
     // Curve is hidden on a phone, and a hidden grid item still takes its track:
     // the narrow template has to be short, not the cells hidden.
-    expect(narrow.split(" ")).toEqual(["7.5rem", "4rem"]);
+    expect(narrow.split(" ")).toEqual(["7.5rem", "5.5rem"]);
   });
 
   it("sizes the text columns too, and leaves no spare track after the last one", () => {
@@ -199,10 +196,10 @@ describe("gridTemplates", () => {
   });
 
   it("draws a column at the reader's width, clamped to its bounds", () => {
-    const columns = visibleColumns(["profile", "time", "score"]);
-    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("9.25rem 9rem 4rem");
+    const columns = visibleColumns(["profile", "time", "rating"]);
+    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("9.25rem 9rem 5.5rem");
     // A stored width from a looser release is still drawn inside today's bounds.
-    expect(gridTemplates(columns, { time: 1, score: 99 }).wide).toBe("4.5rem 9rem 6rem");
+    expect(gridTemplates(columns, { time: 1, rating: 99 }).wide).toBe("4.5rem 9rem 9rem");
   });
 
   it("sizes Time for the compact format, not the long one it used to show", () => {
@@ -236,7 +233,6 @@ describe("column sizes", () => {
       curve: 6,
       duration: 5.25,
       yield: 3,
-      score: 4,
       rating: 5.5,
       notes: 14,
       decision: 9.75,
@@ -264,7 +260,7 @@ describe("column widths", () => {
         // Not a column any more.
         vibes: 5,
         // Not a number.
-        score: "wide",
+        decision: "wide",
         // Outside the bounds: clamped, not discarded.
         flags: 400,
       }),

@@ -106,7 +106,6 @@ async def test_the_shot_list_is_newest_first_with_what_a_table_needs(
         "duration_ms",
         "profile_name_on_device",
         "volume_g",
-        "execution_score",
         "quarantined",
     ):
         assert key in first, key
@@ -197,19 +196,17 @@ async def test_the_profile_filter(
     assert body["total"] >= 0
 
 
-async def test_sorting_and_the_score_and_rating_filters(
+async def test_sorting_and_the_rating_filter(
     served: tuple[FakeDevice, FastAPI, httpx.AsyncClient],
 ) -> None:
-    """The list controls: worst-first, best-first, and "only the good ones"."""
+    """The list controls: longest-first and "only the well rated"."""
     _device, _app, client = served
 
-    worst = (
-        await client.get(
-            "/api/shots", params={"sort": "execution_score", "order": "asc", "limit": 50}
-        )
-    ).json()["data"]["items"]
-    scored = [row["execution_score"] for row in worst if row["execution_score"] is not None]
-    assert scored == sorted(scored)
+    # The execution score is gone: neither a sort nor a filter, nor a field of a row.
+    gone = await client.get("/api/shots", params={"sort": "execution_score"})
+    assert gone.status_code == 400
+    row = (await client.get("/api/shots", params={"limit": 1})).json()["data"]["items"][0]
+    assert "execution_score" not in row
 
     longest = (
         await client.get("/api/shots", params={"sort": "duration", "order": "desc", "limit": 50})
@@ -217,11 +214,6 @@ async def test_sorting_and_the_score_and_rating_filters(
     assert [row["duration_ms"] for row in longest] == sorted(
         (row["duration_ms"] for row in longest), reverse=True
     )
-
-    threshold = max(scored) - 0.01
-    good = (await client.get("/api/shots", params={"min_score": threshold})).json()["data"]
-    assert good["total"] >= 1
-    assert all(row["execution_score"] >= threshold for row in good["items"])
 
     rated = (await client.get("/api/shots", params={"min_rating": 4})).json()["data"]
     assert rated["total"] == 1, "only the fixture shot carries device notes"
@@ -281,7 +273,7 @@ async def test_shot_detail_carries_phases_diagnostics_and_notes(
 
     assert body["shot"]["phases"], "per-phase statistics are derived at ingest"
     assert body["shot"]["diagnostics"]["summary"]
-    assert body["shot"]["execution_score"] is not None
+    assert "execution_score" not in body["shot"]
     assert body["notes"]["rating"] == 4
     assert body["notes"]["document"]["doseIn"] == "18"
 

@@ -49,7 +49,7 @@ function documentWith(
       key: "phase_ramp",
       name: "Phase ramp rate",
       default_tier: "extended",
-      example: "phase 1 · fill: ramp 0.01 bar/s GENTLE\nphase 2 · soak: ramp 0.00 bar/s",
+      example: "phase 1 · fill: ramp 0.01 bar/s\nphase 2 · soak: ramp 0.00 bar/s",
     }),
     item({ key: "processing_note", name: "Processing note", default_tier: "excluded" }),
   ].map((entry) => ({ ...entry, tier: tiers[entry.key] ?? entry.default_tier }));
@@ -119,9 +119,7 @@ describe("ShotInformationPage", () => {
     }
     expect(screen.getByText("54.6 s")).toBeInTheDocument();
     // A phase item is a line per phase, kept as lines.
-    expect(screen.getByText(/phase 1 · fill: ramp 0.01 bar\/s GENTLE/)).toHaveClass(
-      "whitespace-pre-line",
-    );
+    expect(screen.getByText(/phase 1 · fill: ramp 0.01 bar\/s/)).toHaveClass("whitespace-pre-line");
     expect(
       within(screen.getByTestId("item-processing_note")).getByText("not on this shot"),
     ).toBeInTheDocument();

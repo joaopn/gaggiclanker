@@ -16,7 +16,7 @@ async def test_the_knowledge_rules_are_seeded_and_listed(
     assert response.status_code == 200
     body = response.json()["data"]
 
-    assert len(body["items"]) > 100
+    assert len(body["items"]) > 70
     assert body["categories"][0] == "dial_in_order", "the order the prompt lists them in"
     first = body["items"][0]
     assert first["category"] == "dial_in_order"

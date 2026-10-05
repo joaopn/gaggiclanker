@@ -60,7 +60,7 @@ GOOD_REVIEW: dict[str, Any] = {
     "taste_prediction": {"balance": "sour", "body": "thin", "confidence": "medium"},
     "description": (
         "The shot ran 24.0 s for a bloom profile and the puck never loaded: flow ran "
-        "0.41 ml/s off its target and the execution score lost 0.07 to it."
+        "0.41 ml/s off its target."
     ),
     "summary": "Fast for a bloom; likely sour and thin.",
     "rules_used": ["hierarchy", "grind"],
@@ -110,14 +110,7 @@ class Fixture:
     shots: list[int]
 
 
-def _diagnostics(
-    *,
-    channeling: str,
-    resistance: float,
-    flow_rmse: float,
-    score: float,
-    reason: str,
-) -> str:
+def _diagnostics(*, resistance: float, flow_rmse: float) -> str:
     """A summary-level diagnostics blob in the shape the shots UI stores.
 
     Hand-written rather than derived: these numbers appear verbatim in the
@@ -146,31 +139,20 @@ def _diagnostics(
                 "has_pressure": True,
                 "resistance_avg": resistance,
                 "resistance_slope": -0.04,
-                "channeling_risk": channeling,
-                "temperature_stability_c": 0.42,
                 "pressure_rmse_bar": 0.31,
                 "max_overshoot_bar": 0.22,
                 "flow_rmse_ml_s": flow_rmse,
                 "max_flow_overshoot_ml_s": 0.55,
                 "scale_connected": True,
-                "annotations": {
-                    "resistance_level": "MODERATE",
-                    "resistance_erosion": "GRADUAL_DECLINE",
-                    "channeling_risk": channeling,
-                    "pressure_adherence": "EXCELLENT",
-                    "pressure_overshoot": "WITHIN_TOLERANCE",
-                    "temperature_stability": "STABLE",
-                    "flow_adherence": "GOOD",
-                    "flow_overshoot": "MINOR_DEVIATION",
-                },
             },
             "detail_level": "per_phase",
             "has_pressure": True,
-            "score": {
-                "score": score,
-                "confidence": "high",
-                "reason": reason,
-                "components": {"flow_adherence": -0.05},
+            "metrics": {
+                "per_phase": True,
+                "exit_reasons": True,
+                "profile_phases": ["Pre-infusion", "Bloom", "Pressurise"],
+                "phases_not_reached": [],
+                "fast_flow": None,
             },
         },
         separators=(",", ":"),
@@ -188,7 +170,8 @@ _PHASES = json.dumps(
             "avg_temperature_c": 92.8,
             "avg_pressure_bar": 3.9,
             "total_flow_ml": 4.2,
-            "diagnostics": {"phase_type": "preinfusion", "ramp_rate_bar_s": 1.3},
+            "diagnostics": {"phase_type": "preinfusion"},
+            "metrics": {"ended_by": 5, "cup_weight_end_g": 0.0, "cup_weight_gained_g": 0.0},
         },
         {
             "name": "Bloom",
@@ -199,7 +182,8 @@ _PHASES = json.dumps(
             "avg_temperature_c": 93.1,
             "avg_pressure_bar": 0.6,
             "total_flow_ml": 0.4,
-            "diagnostics": {"phase_type": "preinfusion", "ramp_rate_bar_s": 0.0},
+            "diagnostics": {"phase_type": "preinfusion"},
+            "metrics": {"ended_by": 5, "cup_weight_end_g": 0.4, "cup_weight_gained_g": 0.4},
         },
         {
             "name": "Pressurise",
@@ -210,11 +194,8 @@ _PHASES = json.dumps(
             "avg_temperature_c": 93.4,
             "avg_pressure_bar": 8.8,
             "total_flow_ml": 31.8,
-            "diagnostics": {
-                "phase_type": "brew",
-                "channeling_risk": "LOW",
-                "resistance_avg": 2.4,
-            },
+            "diagnostics": {"phase_type": "brew", "resistance_avg": 2.4},
+            "metrics": {"ended_by": 1, "cup_weight_end_g": 36.4, "cup_weight_gained_g": 36.0},
         },
     ],
     separators=(",", ":"),
@@ -259,8 +240,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "started_at": "2026-03-02T08:10:00.000Z",
         "duration_ms": 21_000,
         "final_weight_g": 38.0,
-        "score": 7.4,
-        "channeling": "MODERATE",
         "rating": 2,
         "balance": "sour",
         "taste": ["sour_fermented.sour"],
@@ -271,8 +250,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "started_at": "2026-03-02T08:20:00.000Z",
         "duration_ms": 23_000,
         "final_weight_g": 37.2,
-        "score": 8.1,
-        "channeling": "LOW",
         "rating": 3,
         "balance": "sour",
         "taste": ["sour_fermented.sour.citric_acid"],
@@ -283,8 +260,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "started_at": "2026-03-02T08:30:00.000Z",
         "duration_ms": 25_000,
         "final_weight_g": 36.4,
-        "score": 8.6,
-        "channeling": "LOW",
         "rating": 3,
         "balance": "sour",
         "taste": ["sour_fermented.sour", "fruity.citrus_fruit"],
@@ -295,8 +270,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "started_at": "2026-03-03T08:05:00.000Z",
         "duration_ms": 26_500,
         "final_weight_g": 36.0,
-        "score": 8.8,
-        "channeling": "LOW",
         "rating": 4,
         "balance": "balanced",
         "taste": ["sweet.brown_sugar.caramelized", "nutty_cocoa.cocoa"],
@@ -307,8 +280,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "started_at": "2026-03-03T08:15:00.000Z",
         "duration_ms": 24_000,
         "final_weight_g": 36.8,
-        "score": 8.2,
-        "channeling": "LOW",
         "rating": 3,
         "balance": "sour",
         "taste": ["sour_fermented.sour"],
@@ -394,15 +365,7 @@ async def build_fixture(db: Database) -> Fixture:
                 sample_count=112,
                 sample_interval_ms=250,
                 phases_json=_PHASES,
-                diagnostics_json=_diagnostics(
-                    channeling=str(entry["channeling"]),
-                    resistance=2.4,
-                    flow_rmse=0.41,
-                    score=float(entry["score"]),
-                    reason="Execution capped by flow adherence (0.05 point penalty).",
-                ),
-                execution_score=float(entry["score"]),
-                execution_reason="Execution capped by flow adherence (0.05 point penalty).",
+                diagnostics_json=_diagnostics(resistance=2.4, flow_rmse=0.41),
             )
         )
         await SetsRepository(db).assign_shot(shot_id, version_id)
@@ -435,15 +398,7 @@ async def build_fixture(db: Database) -> Fixture:
             sample_count=112,
             sample_interval_ms=250,
             phases_json=_PHASES,
-            diagnostics_json=_diagnostics(
-                channeling="LOW",
-                resistance=2.1,
-                flow_rmse=0.44,
-                score=8.3,
-                reason="Execution capped by flow adherence (0.07 point penalty).",
-            ),
-            execution_score=8.3,
-            execution_reason="Execution capped by flow adherence (0.07 point penalty).",
+            diagnostics_json=_diagnostics(resistance=2.1, flow_rmse=0.44),
         ),
         _samples(),
     )

@@ -154,9 +154,7 @@ async def test_derived_columns_are_filled_in(archive: Archive) -> None:
     assert shot is not None
     assert shot.phases, "per-phase statistics are derived at ingest"
     assert shot.diagnostics is not None
-    assert shot.execution_score is not None
-    assert 1.0 <= shot.execution_score <= 10.0
-    assert shot.execution_reason
+    assert shot.diagnostics["metrics"]["per_phase"] is True
     assert shot.started_at is not None
     assert shot.duration_ms > 0
     assert shot.slog_version == 5

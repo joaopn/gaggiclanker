@@ -15,15 +15,15 @@ precisely so that a rule that misleads can be found and turned off.
 **The signal grammar.** `applies.signal` is a list of tokens, and a rule matches
 if *any* of them is present. The tokens are built by
 :func:`gaggiclanker.review.context.signal_tokens` from a shot's telemetry, or
-passed by the chat's `get_rules`, and there are eight shapes (a review reads
+passed by the chat's `get_rules`, and there are seven shapes (a review reads
 no judgement, so the taste, aroma and balance shapes only ever come from the
 chat):
 
-    ``<metric>:<LABEL>``   a diagnostics band, e.g. ``channeling_risk:HIGH``
-                           named as the summary diagnostics name it, by section:
-                           ``resistance_level``, ``resistance_erosion``,
-                           ``temperature_stability``, ``pressure_adherence``, …
-    ``primary:<name>``     a channeling indicator that fired, e.g. ``primary:pressure_cliff``
+    ``fault:<name>``       a warning the shot carries, whatever its profile:
+                           ``fault:over_target``, ``fault:under_target``,
+                           ``fault:skipped``, ``fault:fast_flow``. The yield
+                           ones need the version the shot is filed under, so a
+                           review (which is given none) never produces them
     ``taste:<slug>``       a flavour-wheel taste note the user recorded, and every
                            node inside it (``taste:other.chemical.bitter`` and
                            ``taste:other.chemical``, ``taste:other``); plus
@@ -222,7 +222,11 @@ async def seed_rules(repo: RulesRepository, path: Path | None = None) -> int:
         if existing.edited:
             await repo.refresh_default(rule)
             continue
-        if existing.value == rule.value and existing.unit == rule.unit:
+        if (
+            existing.value == rule.value
+            and existing.unit == rule.unit
+            and (existing.applies or {}) == rule.applies
+        ):
             continue
         await repo.refresh_both(rule)
         changed += 1

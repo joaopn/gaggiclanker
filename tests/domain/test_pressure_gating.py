@@ -2,8 +2,8 @@
 
 This is the one behavioural change made to the vendored engine. Upstream had
 no notion of a machine without a pressure sensor, so on a Standard board's hard
-zeros it would report resistance VERY_LOW, channeling LOW and pressure
-adherence EXCELLENT: three confident readings of a sensor that does not exist.
+zeros it would report a resistance and a perfect adherence: confident readings of
+a sensor that does not exist.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from gaggiclanker.domain.diagnostics import (
     compute_summary_diagnostics,
     transform_shot,
 )
-from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import parse_slog
 from tests.domain.helpers import make_slog, standard_board
 
@@ -54,7 +53,6 @@ def test_pro_board_gets_the_full_pressure_diagnostics() -> None:
     assert diagnostics is not None
     assert diagnostics["has_pressure"] is True
     assert diagnostics["resistance"] is not None
-    assert diagnostics["channeling"] is not None
     assert diagnostics["profile_compliance"] is not None
 
 
@@ -63,12 +61,10 @@ def test_standard_board_omits_pressure_derived_blocks() -> None:
     assert diagnostics is not None
     assert diagnostics["has_pressure"] is False
     assert diagnostics["resistance"] is None
-    assert diagnostics["channeling"] is None
     assert diagnostics["profile_compliance"] is None
     # What the machine *can* measure is still reported in full.
-    assert diagnostics["temperature"]["stability_std_c"] >= 0
     assert diagnostics["weight"]["scale_connected"] is True
-    assert "note" in diagnostics["extraction"]["annotations"]
+    assert diagnostics["extraction"]["flow_avg_brew_ml_s"] >= 0
 
 
 def test_standard_board_summary_omits_the_same_things() -> None:
@@ -76,9 +72,8 @@ def test_standard_board_summary_omits_the_same_things() -> None:
     assert summary is not None
     assert summary["has_pressure"] is False
     assert summary["resistance_avg"] is None
-    assert summary["channeling_risk"] is None
+    assert summary["resistance_source"] is None
     assert summary["pressure_rmse_bar"] is None
-    assert "resistance_level" not in summary["annotations"]
     # This synthetic board records a target flow and a pump flow (which no real
     # Standard board does, see below), so there is a flow to grade.
     assert summary["flow_rmse_ml_s"] is not None
@@ -88,7 +83,6 @@ def test_standard_board_phase_diagnostics_drop_pressure_metrics() -> None:
     transformed = transform_shot(_standard(), "per_phase")
     brew = transformed["phases"][1]["diagnostics"]
     assert "resistance_avg" not in brew
-    assert "channeling_risk" not in brew
     assert "pressure_rmse_bar" not in brew
     assert brew["avg_flow_ml_s"] > 0
 
@@ -106,14 +100,7 @@ def test_explicit_has_pressure_overrides_the_inference() -> None:
     """
     diagnostics = compute_shot_diagnostics(_pro(), has_pressure=False)
     assert diagnostics is not None
-    assert diagnostics["channeling"] is None
-
-
-def test_score_on_a_standard_board_is_low_confidence() -> None:
-    """Scoring a machine we cannot measure must not read as a clean pass."""
-    score = execution_score(transform_shot(_standard(), "per_phase"))
-    assert score.confidence == "low"
-    assert "pressure sensor" in score.reason
+    assert diagnostics["resistance"] is None
 
 
 def _every_phase(slog: Any, control: Any) -> Any:
@@ -122,7 +109,6 @@ def _every_phase(slog: Any, control: Any) -> Any:
 
 
 SLOGS = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))
-FLOW = ("flow_adherence", "flow_overshoot", "flow_undershoot")
 
 
 @pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
@@ -133,7 +119,6 @@ def test_a_real_standard_board_shot_has_no_flow_adherence_in_either_shape(path: 
 
     summary: Any = transform_shot(slog, "summary")["diagnostics"]
     assert summary["has_pressure"] is False
-    assert not [k for k in summary["annotations"] if k in FLOW]
     assert summary["flow_rmse_ml_s"] is None
     assert summary["max_flow_overshoot_ml_s"] is None
 
@@ -157,7 +142,6 @@ def test_the_predicate_lets_the_summary_grade_a_no_pressure_shot_that_has_flow(
         slog, "summary", has_pressure=False, phase_controls=_every_phase(slog, "flow")
     )["diagnostics"]
     assert summary["has_pressure"] is False
-    assert {"flow_adherence", "flow_overshoot"} <= set(summary["annotations"])
     assert summary["flow_rmse_ml_s"] is not None
 
 

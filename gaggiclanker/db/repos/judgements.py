@@ -1,10 +1,9 @@
 """`shot_judgements` — what the person thought of the cup.
 
-The other half of every shot. `execution_score` says how cleanly the machine
-executed the profile; this says whether the coffee was any good, and the two are
-kept apart deliberately: a flawless extraction of stale
-beans scores well and tastes of cardboard, and an archive that averaged them
-could not tell you so.
+The other half of every shot. The machine's numbers say how the shot ran; this
+says whether the coffee was any good, and the two are kept apart deliberately: a
+flawless extraction of stale beans runs to its profile and tastes of cardboard,
+and an archive that blended them could not tell you so.
 
 One row per shot, keyed on the shot id. The machine's own notes card holds the
 same five fields, so a shot that arrives with notes and no judgement is seeded

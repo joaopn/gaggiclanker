@@ -214,7 +214,7 @@ export function SetDetailPage() {
 
       <SectionCard
         title="How it has gone"
-        description="One point per shot, oldest first, with a dashed line wherever the version changed. The execution score and your rating share the left axis on purpose: a clean shot you did not like is the interesting case."
+        description="One point per shot, oldest first, with a dashed line wherever the version changed: your rating on the left, the shot time and the ratio beside it."
       >
         {trends.isPending ? (
           <Skeleton className="h-56 w-full" />

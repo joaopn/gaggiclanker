@@ -1,6 +1,6 @@
 """Shots derived by an older version are re-derived once at boot, from their bytes.
 
-A shot's phases, diagnostics and execution score are computed once at ingest, so
+A shot's phases and diagnostics are computed once at ingest, so
 a better diagnostic reaches only the shots synced after it. The derivation
 version says which definition wrote a shot's columns; the boot step brings the
 older ones along. What is pinned here: the four derived columns and the version
@@ -35,8 +35,7 @@ from tests.conftest import running_app
 from tests.domain.helpers import SLOG_FIXTURES, load_export
 from tests.sets.conftest import make_profile_version
 
-DERIVED = ("phases_json", "diagnostics_json", "execution_score", "execution_reason")
-STALE_REASON = "derived by an older version"
+DERIVED = ("phases_json", "diagnostics_json")
 
 
 @pytest.fixture
@@ -75,8 +74,6 @@ async def _store_stale(
     shot = derived.shot
     shot.derivation_version = 0
     shot.phases_json = "[]"
-    shot.execution_score = 1.0
-    shot.execution_reason = STALE_REASON
     return await ShotsRepository(db).insert(shot, derived.samples)
 
 
@@ -176,7 +173,6 @@ async def test_only_the_derived_columns_and_the_version_change(db: Database) -> 
     for device_id, shot_id in ids.items():
         stored = await _row(db, shot_id)
         assert stored["derivation_version"] == DERIVATION_VERSION, device_id
-        assert stored["execution_reason"] != STALE_REASON
         assert stored["phases_json"] != "[]"
 
 
@@ -232,8 +228,6 @@ async def test_a_shot_whose_bytes_do_not_parse_is_left_logged_and_not_retried(
             raw_slog=b"not a slog",
             phases_json="[]",
             diagnostics_json=json.dumps({"has_pressure": True}),
-            execution_score=2.0,
-            execution_reason=STALE_REASON,
         )
     )
     before = await _row(db, bad)
@@ -348,7 +342,7 @@ async def test_the_boot_step_brings_the_archive_along(env: EnvSettings) -> None:
         for shot_id in ids:
             stored = await _row(app.state.db, shot_id)
             assert stored["derivation_version"] == DERIVATION_VERSION
-            assert stored["execution_reason"] != STALE_REASON
+            assert stored["phases_json"] != "[]"
 
 
 async def test_a_shot_derived_at_version_one_gets_the_firmware_block(db: Database) -> None:

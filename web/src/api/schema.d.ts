@@ -1937,7 +1937,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Score, duration, ratio and rating across the Set's versions
+         * Duration, ratio and rating across the Set's versions
          * @description The chart's data: one point per shot, one summary per version.
          *
          *     Both from one pass over the Set's shots, so a bar can never sit off its own
@@ -6594,8 +6594,6 @@ export interface components {
             device_id: string;
             /** Duration S */
             duration_s?: number | null;
-            /** Execution Score */
-            execution_score?: number | null;
             /** Rating */
             rating?: number | null;
             /** Ratio */
@@ -6628,8 +6626,6 @@ export interface components {
         SetTrendVersion: {
             /** Avg Duration S */
             avg_duration_s?: number | null;
-            /** Avg Execution Score */
-            avg_execution_score?: number | null;
             /** Avg Rating */
             avg_rating?: number | null;
             /** Avg Ratio */
@@ -6950,10 +6946,6 @@ export interface components {
              * @default 0
              */
             duration_ms: number;
-            /** Execution Reason */
-            execution_reason?: string | null;
-            /** Execution Score */
-            execution_score?: number | null;
             /** Fields Mask */
             fields_mask?: number | null;
             /** Final Exit Reason */
@@ -7197,10 +7189,6 @@ export interface components {
              * @default 0
              */
             duration_ms: number;
-            /** Execution Reason */
-            execution_reason?: string | null;
-            /** Execution Score */
-            execution_score?: number | null;
             /** Final Weight G */
             final_weight_g?: number | null;
             /**
@@ -7477,8 +7465,6 @@ export interface components {
         SimilarOutcome: {
             /** Mean Duration S */
             mean_duration_s?: number | null;
-            /** Mean Execution Score */
-            mean_execution_score?: number | null;
             /** Mean Rating */
             mean_rating?: number | null;
             /** Mean Ratio */
@@ -7587,7 +7573,7 @@ export interface components {
         /** @enum {string} */
         SkipReason: "gone" | "not_confirmed" | "scope_changed" | "replaced_gone";
         /** @enum {string} */
-        SortKey: "started_at" | "execution_score" | "duration" | "rating";
+        SortKey: "started_at" | "duration" | "rating";
         /** @enum {string} */
         SpreadMeasure: "shot_time_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "brew_flow_ml_s" | "rating";
         /** StarredBody */
@@ -11805,9 +11791,7 @@ export interface operations {
                 from?: string | null;
                 include_deleted?: boolean;
                 limit?: number;
-                max_score?: number | null;
                 min_rating?: number | null;
-                min_score?: number | null;
                 needs_set?: boolean | null;
                 offset?: number | null;
                 order?: "asc" | "desc";

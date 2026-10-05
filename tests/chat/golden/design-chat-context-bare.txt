@@ -30,7 +30,7 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   ratio: 1:2.50
   profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
-  how it went: 5 shots, rating 4.4/5, execution 8.92/10, ratio 1:2.5, 28 s
+  how it went: 5 shots, rating 4.4/5, ratio 1:2.5, 28 s
 
 [set_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji
   why it is similar: same roast level, different process, different origin
@@ -41,7 +41,7 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   ratio: 1:2.22
   profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
-  how it went: 3 shots, rating 3/5, execution 8/10, ratio 1:2.22, 28 s
+  how it went: 3 shots, rating 3/5, ratio 1:2.22, 28 s
 
 [set_version 3] Brazil Cerrado on the niche v1 — Brazil Cerrado
   why it is similar: different roast level, same process, different origin
@@ -52,7 +52,7 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   ratio: 1:1.78
   profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
-  how it went: 2 shots, rating 4/5, execution 8.5/10, ratio 1:1.78, 28 s
+  how it went: 2 shots, rating 4/5, ratio 1:1.78, 28 s
 
 THE RULES THAT MATCH (planned style: bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medium 18g 1:2))
 dial_in_order:
@@ -74,7 +74,7 @@ temperature_by_roast:
 
 pressure_matrix:
   [compression_floor] A puck compresses at about 4 bar, so pre-infusion belongs below that: pressure applied before the bed has set is what opens a channel.
-  [decline_compensates_erosion] A declining pressure phase compensates for the puck eroding: as resistance falls, dropping the setpoint keeps flow where it was instead of letting the shot run away at the end.
+  [decline_holds_flow] A declining pressure phase compensates for the puck wearing down: as resistance falls, dropping the setpoint keeps flow where it was instead of letting the shot run away at the end.
   [flow_peak] Flow through an espresso puck peaks around 9 bar. Above about 10 the extra pressure goes into deforming the bed rather than through it.
   [washed.light] Washed light: 8-9 bar. A clean, dense bean takes full pressure.
 

@@ -10,25 +10,16 @@
 # the originals are the ~21 000 words under `external/gaggimate-mcp/knowledge/`.
 # Individual rules cite further sources in `source` / `source_ref`: Lance
 # Hedrick for the tasting method, Scott Rao for the sour-and-bitter channeling
-# rule, INEI for the traditional espresso standard, and crema for the
-# diagnostic bands. The taste signals are notes on the SCA/WCR Coffee Taster's
+# rule, INEI for the traditional espresso standard, and crema for the review
+# prompt's discipline. The taste signals are notes on the SCA/WCR Coffee Taster's
 # Flavor Wheel plus the GaggiMate's own sour/balanced/bitter balance.
 #
-# The diagnostic band meanings are **ours**. They describe the thresholds in
-# `gaggiclanker/domain/diagnostics.py`, which are upstream's calibration
-# measured against real shots.
-#
-# They are deliberately *not* word-for-word with
-# `web/src/lib/shots.ts::BAND_MEANINGS`. That table explains one label to a
-# reader looking at a card and is shared across metrics — "GOOD" means the same
-# sentence under pressure adherence and under flow adherence. These rules are
-# per metric and carry the interpretation a model needs, which is the part
-# worth having: flow_adherence says what the pump flow is (an estimate) and so
-# what a deviation means, and the card has no room for that. What IS pinned, by
-# `tests/review/test_band_parity.py`, is coverage — every band label the
-# diagnostics engine can emit has a rule here and a line there, so adding a band
-# to `diagnostics.py` and forgetting one of the two is a failing test rather
-# than a silent gap.
+# The shot's own signals are few and carry no grade: the faults a shot shows
+# whatever its profile is (`fault:over_target`, `fault:under_target`,
+# `fault:skipped`, `fault:fast_flow`) and a handful of plain readings
+# (`first_drip:fast`, `avg_flow:high`, `temp:cold`, `scale:absent`, `yield:tiny`).
+# A rule with `signal: []` has no signal of its own: nothing selects it, and it is
+# reached by topic only, through the chat's `get_rules`.
 # ─────────────────────────────────────────────────────────────────────
 #
 # SHAPE. Each rule carries:
@@ -471,11 +462,11 @@ rules:
     source_ref: "gaggimate-mcp.md §7 — Pressure"
 
   - category: pressure_matrix
-    key: decline_compensates_erosion
+    key: decline_holds_flow
     applies: {}
     value:
       text: >-
-        A declining pressure phase compensates for the puck eroding: as
+        A declining pressure phase compensates for the puck wearing down: as
         resistance falls, dropping the setpoint keeps flow where it was instead
         of letting the shot run away at the end.
     unit: bar
@@ -661,355 +652,6 @@ rules:
     source: gaggimate-barista
     source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
 
-  # ── diagnostic band meanings ───────────────────────────────────────
-  # One per band label the summary diagnostics can carry. Keys are
-  # `<metric>:<LABEL>` and the wording is kept in step with
-  # web/src/lib/shots.ts::BAND_MEANINGS so a review and the shot page agree.
-
-  - category: band_meanings
-    key: "channeling_risk:LOW"
-    applies: { signal: ["channeling_risk:LOW"] }
-    value: { text: "channeling_risk LOW — no indicator crossed its threshold; the puck held." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — channeling"
-
-  - category: band_meanings
-    key: "channeling_risk:MODERATE"
-    applies: { signal: ["channeling_risk:MODERATE"] }
-    value:
-      text: >-
-        channeling_risk MODERATE — two or three indicators fired; read them with
-        the flow shape before acting.
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — channeling"
-
-  - category: band_meanings
-    key: "channeling_risk:HIGH"
-    applies: { signal: ["channeling_risk:HIGH"] }
-    value:
-      text: >-
-        channeling_risk HIGH — four or five aligned indicators; a channel almost
-        certainly opened. Fix distribution before grind.
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — channeling"
-
-  - category: band_meanings
-    key: "channeling_risk:VERY_HIGH"
-    applies: { signal: ["channeling_risk:VERY_HIGH"] }
-    value:
-      text: >-
-        channeling_risk VERY_HIGH — six or more indicators: the water found a
-        path around the bed. Nothing else in the shot can be read past this.
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — channeling"
-
-  - category: band_meanings
-    key: "channeling_risk:INSUFFICIENT_DATA"
-    applies: { signal: ["channeling_risk:INSUFFICIENT_DATA"] }
-    value:
-      text: >-
-        channeling_risk INSUFFICIENT_DATA — fewer than five steady-state
-        samples, so nothing was assessed. Treat the other diagnostics as primary.
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — channeling"
-
-  - category: band_meanings
-    key: "resistance_level:VERY_LOW"
-    applies: { signal: ["resistance_level:VERY_LOW"] }
-    value: { text: "resistance_level VERY_LOW — under 0.5; water is passing almost unimpeded." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_level:LOW"
-    applies: { signal: ["resistance_level:LOW"] }
-    value: { text: "resistance_level LOW — 0.5-1.5; a loose bed for espresso." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_level:MODERATE"
-    applies: { signal: ["resistance_level:MODERATE"] }
-    value: { text: "resistance_level MODERATE — 1.5-3.0, the usual range for a well-packed basket." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_level:HIGH"
-    applies: { signal: ["resistance_level:HIGH"] }
-    value: { text: "resistance_level HIGH — 3.0-5.0; a tight bed, and the pump is working against it." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_level:VERY_HIGH"
-    applies: { signal: ["resistance_level:VERY_HIGH"] }
-    value: { text: "resistance_level VERY_HIGH — over 5.0; very tight, and flow will be hard to hold." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_erosion:INCREASING"
-    applies: { signal: ["resistance_erosion:INCREASING"] }
-    value:
-      text: >-
-        resistance_erosion INCREASING — resistance rose through the shot: the
-        bed compacted rather than eroded, which usually means fines migration.
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_erosion:FLAT"
-    applies: { signal: ["resistance_erosion:FLAT"] }
-    value: { text: "resistance_erosion FLAT — resistance held steady: the puck kept its shape." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_erosion:GRADUAL_DECLINE"
-    applies: { signal: ["resistance_erosion:GRADUAL_DECLINE"] }
-    value: { text: "resistance_erosion GRADUAL_DECLINE — a slow fall, normal as the bed saturates." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_erosion:MODERATE_DECLINE"
-    applies: { signal: ["resistance_erosion:MODERATE_DECLINE"] }
-    value: { text: "resistance_erosion MODERATE_DECLINE — resistance fell noticeably; part of the bed gave way." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "resistance_erosion:STEEP_DECLINE"
-    applies: { signal: ["resistance_erosion:STEEP_DECLINE"] }
-    value: { text: "resistance_erosion STEEP_DECLINE — resistance collapsed: the puck lost structure under pressure." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — puck resistance"
-
-  - category: band_meanings
-    key: "temperature_stability:VERY_STABLE"
-    applies: { signal: ["temperature_stability:VERY_STABLE"] }
-    value: { text: "temperature_stability VERY_STABLE — std under 0.3 °C; as steady as the boiler gets." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — temperature"
-
-  - category: band_meanings
-    key: "temperature_stability:STABLE"
-    applies: { signal: ["temperature_stability:STABLE"] }
-    value: { text: "temperature_stability STABLE — std 0.3-0.8 °C, within normal variation." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — temperature"
-
-  - category: band_meanings
-    key: "temperature_stability:MODERATE"
-    applies: { signal: ["temperature_stability:MODERATE"] }
-    value: { text: "temperature_stability MODERATE — std 0.8-1.5 °C; neither clean nor a fault." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — temperature"
-
-  - category: band_meanings
-    key: "temperature_stability:UNSTABLE"
-    applies: { signal: ["temperature_stability:UNSTABLE"] }
-    value: { text: "temperature_stability UNSTABLE — std over 1.5 °C: the boiler never settled." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — temperature"
-
-  - category: band_meanings
-    key: "pressure_adherence:EXCELLENT"
-    applies: { signal: ["pressure_adherence:EXCELLENT"] }
-    value: { text: "pressure_adherence EXCELLENT — RMSE under 0.3 bar; the machine tracked the profile closely." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "pressure_adherence:GOOD"
-    applies: { signal: ["pressure_adherence:GOOD"] }
-    value: { text: "pressure_adherence GOOD — RMSE 0.3-0.8 bar; small, steady deviation from what was commanded." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "pressure_adherence:FAIR"
-    applies: { signal: ["pressure_adherence:FAIR"] }
-    value: { text: "pressure_adherence FAIR — RMSE 0.8-1.5 bar; visibly off the commanded curve." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "pressure_adherence:POOR"
-    applies: { signal: ["pressure_adherence:POOR"] }
-    value: { text: "pressure_adherence POOR — RMSE over 1.5 bar: the shot did not follow the profile." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "flow_adherence:EXCELLENT"
-    applies: { signal: ["flow_adherence:EXCELLENT"] }
-    value:
-      text: >-
-        flow_adherence EXCELLENT — RMSE under 0.3 ml/s: the pump delivered the
-        commanded flow. The pump flow is the machine's own estimate for the
-        power it chose, not a measurement, so this says the machine could hold
-        its flow target; it says nothing about the puck.
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "flow_adherence:GOOD"
-    applies: { signal: ["flow_adherence:GOOD"] }
-    value: { text: "flow_adherence GOOD — RMSE 0.3-0.8 ml/s against the commanded flow." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "flow_adherence:FAIR"
-    applies: { signal: ["flow_adherence:FAIR"] }
-    value: { text: "flow_adherence FAIR — RMSE 0.8-1.5 ml/s; the pump could not always deliver the commanded flow (out of power, or a pressure limit took over)." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "flow_adherence:POOR"
-    applies: { signal: ["flow_adherence:POOR"] }
-    value: { text: "flow_adherence POOR — RMSE over 1.5 ml/s: the pump was well away from the commanded flow (out of power, or a pressure limit took over). Read the puck's resistance and flow for what the puck did." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "pressure_overshoot:WITHIN_TOLERANCE"
-    applies: { signal: ["pressure_overshoot:WITHIN_TOLERANCE"] }
-    value: { text: "pressure_overshoot WITHIN_TOLERANCE — under 0.25 bar over target; deviation means nothing here." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "pressure_overshoot:MINOR_OVERSHOOT"
-    applies: { signal: ["pressure_overshoot:MINOR_OVERSHOOT"] }
-    value: { text: "pressure_overshoot MINOR_OVERSHOOT — 0.25-0.5 bar over target." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "pressure_overshoot:NOTABLE_OVERSHOOT"
-    applies: { signal: ["pressure_overshoot:NOTABLE_OVERSHOOT"] }
-    value: { text: "pressure_overshoot NOTABLE_OVERSHOOT — 0.5-1.0 bar over target." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "pressure_overshoot:SEVERE_OVERSHOOT"
-    applies: { signal: ["pressure_overshoot:SEVERE_OVERSHOOT"] }
-    value:
-      text: >-
-        pressure_overshoot SEVERE_OVERSHOOT — over a bar above target. The
-        controller ran out of room, which almost always means the grind is too
-        fine, the dose too large, or the puck badly prepared.
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "flow_overshoot:WITHIN_TOLERANCE"
-    applies: { signal: ["flow_overshoot:WITHIN_TOLERANCE"] }
-    value: { text: "flow_overshoot WITHIN_TOLERANCE — inside the band where flow deviation means nothing." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "flow_overshoot:MINOR_DEVIATION"
-    applies: { signal: ["flow_overshoot:MINOR_DEVIATION"] }
-    value: { text: "flow_overshoot MINOR_DEVIATION — a small, measurable departure above target flow." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "flow_overshoot:NOTABLE_DEVIATION"
-    applies: { signal: ["flow_overshoot:NOTABLE_DEVIATION"] }
-    value:
-      text: >-
-        flow_overshoot NOTABLE_DEVIATION — the pump flow ran above its target by
-        more than 0.7 ml/s: the pump was not holding the flow it was asked for.
-        The pump flow is an estimate, so this says nothing about the grind by
-        itself; read the puck's resistance and flow.
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
-  - category: band_meanings
-    key: "flow_overshoot:SEVERE_DEVIATION"
-    applies: { signal: ["flow_overshoot:SEVERE_DEVIATION"] }
-    value: { text: "flow_overshoot SEVERE_DEVIATION — the actual flow and the target parted company." }
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
-
   # ── taste → suspect ────────────────────────────────────────────────
 
   - category: taste_to_suspect
@@ -1175,7 +817,7 @@ rules:
 
   - category: telemetry_to_cause
     key: late_flow_runaway
-    applies: { signal: ["primary:late_flow_runaway"] }
+    applies: { signal: [] }
     value:
       text: >-
         Flow accelerating late — say 1.5 climbing to 4 ml/s — is a channel
@@ -1187,7 +829,7 @@ rules:
 
   - category: telemetry_to_cause
     key: pressure_cliff
-    applies: { signal: ["primary:pressure_cliff"] }
+    applies: { signal: [] }
     value:
       text: >-
         A pressure drop of 1.5 bar/s or worse is the shape a channel opening
@@ -1197,56 +839,12 @@ rules:
     source: crema
     source_ref: "crema.md §4 — channeling indicators"
 
-  - category: telemetry_to_cause
-    key: flow_jitter
-    applies: { signal: ["primary:flow_jitter"] }
-    value:
-      text: >-
-        Sample-to-sample flow jitter above 0.05 ml/s is puck instability with
-        the designed trajectory removed — calibrated against 26 real shots that
-        all measured 0.013-0.020.
-    unit: ml_s
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — channeling indicators"
 
-  - category: telemetry_to_cause
-    key: flow_vs_target
-    applies: { signal: ["primary:flow_vs_target"] }
-    value:
-      text: >-
-        The puck's flow parting from the flow target by more than 0.7 ml/s is
-        worth a look. It is read only over the samples of phases that steer by
-        flow (in a pressure phase the logged flow is a limit, and a gap to it
-        says nothing about the grind), so it is absent for a pressure profile.
-        Weigh the gap with the puck's resistance, not as a grind direction on
-        its own.
-      threshold_ml_s: 0.7
-    unit: ml_s
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — compliance"
 
-  - category: telemetry_to_cause
-    key: two_indicators_rule
-    applies: { signal: ["primary:flow_jitter", "primary:flow_vs_target",
-                    "primary:pressure_cliff", "primary:late_flow_runaway",
-                    "primary:pressure_jitter_fallback",
-                    "channeling_risk:MODERATE", "channeling_risk:HIGH",
-                    "channeling_risk:VERY_HIGH"] }
-    value:
-      text: >-
-        Two aligned channeling indicators mean a real channel; one on its own is
-        usually noise. Say which ones fired rather than asserting channeling.
-      min_indicators: 2
-    unit: none
-    confidence: calibrated
-    source: crema
-    source_ref: "crema.md §4 — channeling"
 
   - category: telemetry_to_cause
     key: resistance_high_and_falling
-    applies: { signal: ["resistance_level:HIGH", "resistance_level:VERY_HIGH"] }
+    applies: { signal: [] }
     value:
       text: >-
         High puck resistance with a steep decline is too fine plus channeling:
@@ -1314,11 +912,7 @@ rules:
 
   - category: profile_design_defaults
     key: preinfusion
-    applies: { signal: ["primary:flow_jitter", "primary:flow_vs_target",
-                    "primary:pressure_cliff", "primary:late_flow_runaway",
-                    "primary:pressure_jitter_fallback", "first_drip:fast",
-                    "channeling_risk:MODERATE", "channeling_risk:HIGH",
-                    "channeling_risk:VERY_HIGH"] }
+    applies: { signal: ["first_drip:fast", "fault:fast_flow"] }
     value:
       text: >-
         Pre-infusion: 2-3 ml/s for 3-10 s, held under 4 bar so the bed sets
@@ -1347,8 +941,7 @@ rules:
 
   - category: profile_design_defaults
     key: ramp
-    applies: { signal: ["pressure_overshoot:NOTABLE_OVERSHOOT",
-                    "pressure_overshoot:SEVERE_OVERSHOOT"] }
+    applies: { signal: [] }
     value:
       text: "Ramp to pressure over 3-5 s with a `pressure gte 8.5` exit condition, then hold."
       seconds_min: 3

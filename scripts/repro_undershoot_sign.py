@@ -8,16 +8,16 @@ Exits non-zero while the bug exists, zero when it is fixed.
 The bug
 -------
 
-The diagnostics report the largest undershoot (pressure, flow and temperature)
+The diagnostics report the largest undershoot (pressure and flow; temperature too,
+before its block went)
 as `abs(min(deviation))`. When every graded sample sits above its target,
 `min(deviation)` is the *smallest overshoot*, a positive number, so the shot
 shows an undershoot that never happened (an overshoot of 0.8 with an
 "undershoot" of 0.1). The overshoot side already clamps with `max(0, max(d))`;
 the undershoot must be `max(0, -min(d))`.
 
-Three constructed shots, each with every sample above its target by 0.1 to 0.8,
-one steered by pressure, one by flow, and a temperature that stays above its
-own target, must all report an undershoot of exactly 0.
+Two constructed shots, each with every sample above its target by 0.1 to 0.8,
+one steered by pressure and one by flow, must report an undershoot of exactly 0.
 """
 
 from __future__ import annotations
@@ -58,10 +58,7 @@ def shot(control: str) -> dict[str, Any]:
     slog = make_slog(samples, [(0, 0, "Brew")])
     diagnostics = compute_shot_diagnostics(slog, phase_controls=(control,))  # type: ignore[arg-type]
     assert diagnostics is not None
-    return {
-        "temperature": diagnostics["temperature"]["undershoot_c"],
-        "compliance": diagnostics["profile_compliance"],
-    }
+    return {"compliance": diagnostics["profile_compliance"]}
 
 
 def main() -> int:
@@ -72,7 +69,6 @@ def main() -> int:
     found = {
         "pressure undershoot (bar)": pressure["compliance"]["max_pressure_undershoot_bar"],
         "flow undershoot (ml/s)": flow["compliance"]["max_flow_undershoot_ml_s"],
-        "temperature undershoot (C)": pressure["temperature"],
     }
     for name, value in found.items():
         bad = value != 0.0

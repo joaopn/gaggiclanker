@@ -1,10 +1,16 @@
-"""Deterministic shot diagnostics.
+"""Deterministic shot diagnostics: the numbers, and no verdicts on them.
 
 Vendored from gaggimate-mcp (`transformers/shot.py`, MIT, commit 0af88ad) and
 adapted to this project's `.slog` model — see `gaggiclanker/domain/VENDORED.md`
-for the licence and the list of changes. **Every band threshold and label is
-upstream's**, deliberately: they were calibrated against real shots, and the
-project's own tests pin them so a "tidy-up" cannot quietly move a boundary.
+for the licence and the list of changes. What was kept of upstream is the
+arithmetic: puck resistance, the adherence of the measured pressure and flow to
+the profile, and the shot's summary statistics. What was dropped is everything
+that judged those numbers: the threshold bands and their labels (calibrated on
+other people's shots), the channeling risk, the execution score. A number is
+reported as a number; what it means for a given profile is for the reader, and
+for a profile's own signature to say. What is plainly wrong with a shot
+whatever its profile is is :mod:`gaggiclanker.domain.warnings`; what each phase
+did is :mod:`gaggiclanker.domain.phase_metrics`.
 
 What changed here, and why:
 
@@ -13,13 +19,11 @@ What changed here, and why:
   the per-sample phase comes from the header's transition table.
 * Everything pressure-derived is gated on ``has_pressure``. GaggiMate Standard
   boards have no pressure sensor and record a hard zero, which would otherwise
-  produce a confident VERY_LOW resistance reading and a LOW channeling risk out
-  of nothing at all. A missing sensor must read as *absent*, not as *good*.
+  produce a confident resistance of nothing at all. A missing sensor must read
+  as *absent*, not as *good*.
 * Puck resistance is the machine's own ``pr²`` when the shot recorded a valid
   ``pr`` (see :func:`_build_resistance`), and upstream's ``P / F²`` otherwise.
-  The band tables did not move: ``pr²`` is the same quadratic model on the same
-  scale. Peak and peak timing follow the machine's estimate, ramp spikes
-  included.
+  ``pr²`` is the same quadratic model on the same scale.
 * Profile compliance is graded over the samples of the phases that steer by each
   target, read from the shot's profile (`phase_controls`), and flow is compared
   with the pump flow; see :func:`_steering` and `VENDORED.md` item 8.
@@ -100,27 +104,23 @@ class TransformedSample(TypedDict):
 
 
 class PhaseDiagnostics(TypedDict, total=False):
-    """Per-phase metrics. Which keys appear depends on `phase_type`."""
+    """What a phase's samples say about the profile and the puck. A key is absent when the
+    shot cannot have the value (no pressure sensor, no target to follow, too few samples)."""
 
     phase_type: str
     avg_pressure_bar: float
     avg_flow_ml_s: float
     pressure_rmse_bar: float
     flow_rmse_ml_s: float
-    # preinfusion
-    ramp_rate_bar_s: float
-    saturation_time_s: float
-    # brew
     resistance_avg: float
     resistance_slope: float
     resistance_source: ResistanceSource
-    channeling_risk: str
-    flow_jitter_ml_s: float
-    pressure_jitter_bar: float
+    # preinfusion
+    ramp_rate_bar_s: float
+    saturation_time_s: float
     # decline
     taper_rate_bar_s: float
     taper_smoothness: float
-    annotations: dict[str, str]
 
 
 class PhaseData(TypedDict):
@@ -141,87 +141,32 @@ class PhaseData(TypedDict):
 
 
 #: Where a shot's resistance samples came from: the machine's own per-sample
-#: ``pr`` (squared, so it sits on the scale of the bands), or our ``P / F²``.
+#: ``pr`` (squared, so it is the quadratic model's quantity), or our ``P / F²``.
 ResistanceSource = Literal["machine", "computed"]
 
 
 class ResistanceDiagnostics(TypedDict):
     """Puck resistance ``R`` (quadratic Darcy model, ``R = P / F²``).
 
-    The master diagnostic: it folds grind fineness, dose, puck prep and
-    channeling into one number whose *shape over time* is the interesting part.
-    ``R`` is the machine's own ``pr²`` when the shot carries it and ``P / F²``
-    from the logged pressure and flow otherwise; ``source`` says which.
+    It folds grind fineness, dose and puck prep into one number whose *shape over
+    time* is the interesting part. ``R`` is the machine's own ``pr²`` when the
+    shot carries it and ``P / F²`` from the logged pressure and flow otherwise;
+    ``source`` says which. Its mean and its slope over the window, and nothing
+    that grades either.
     """
 
     source: ResistanceSource
     avg: float
-    std: float
     slope: float
-    peak: float
-    peak_timing_pct: float
-    annotations: dict[str, str]
-
-
-class ChannelingIndicators(TypedDict):
-    """Four independent puck-stability signals, scored together.
-
-    One flag is usually noise; two or more aligned flags are a real signal,
-    which is why `annotations.primary_signal` names which ones fired. The
-    `*_spread` and shape entries are descriptors for interpreting the
-    indicators — they are not scored.
-    """
-
-    flow_jitter_ml_s: float
-    """Std of first differences of puck flow: instability after removing
-    whatever trajectory the profile intended. Blind to designed ramps."""
-
-    flow_vs_target_residual_ml_s: float | None
-    """Std of (actual - target) flow over the flow-steered samples; None when
-    none is left (a pressure profile, an unknown profile, or the limit held)."""
-
-    pressure_max_drop_rate_bar_s: float
-    """Worst single-sample dP/dt — an abrupt channel opening, which jitter can
-    miss because it is one sample wide."""
-
-    flow_acceleration_late_ml_s2: float
-    """Late-window flow slope minus the overall slope. Detrended on purpose: a
-    designed flow ramp would otherwise score as runaway every time."""
-
-    flow_spread_ml_s: float
-    """Population std of raw flow. A descriptor, not a stability metric — it
-    includes intended ramps. Read it with `annotations.flow_shape`."""
-
-    pressure_jitter_bar: float
-    """Sample-to-sample pressure instability; the fallback indicator when no
-    target flow is commanded."""
-
-    channeling_risk: str
-    """LOW | MODERATE | HIGH | VERY_HIGH | INSUFFICIENT_DATA."""
-
-    annotations: dict[str, str]
-
-
-class TemperatureDiagnostics(TypedDict):
-    overshoot_c: float
-    undershoot_c: float
-    stability_std_c: float
-    annotations: dict[str, str]
 
 
 class ExtractionMetrics(TypedDict):
-    pressure_auc_bar_s: float
-    pressure_slope_brew_bar_s: float
-    flow_slope_brew_ml_s2: float
     flow_avg_brew_ml_s: float
-    annotations: dict[str, str]
 
 
 class WeightDiagnostics(TypedDict):
     rate_avg_g_s: float | None
-    rate_std_g_s: float | None
     scale_connected: bool
-    annotations: dict[str, str]
 
 
 #: Whether one of the two adherences was worked out, and if not, why.
@@ -234,7 +179,7 @@ class WeightDiagnostics(TypedDict):
 #:   all, because the limit held nearly every one, or the shot did not record the
 #:   measurement).
 #:
-#: The score reads the difference: only ``not_graded`` lowers its confidence.
+#: A reader tells the two apart: ``not_applicable`` is not a gap, ``not_graded`` is.
 Grading = Literal["graded", "not_applicable", "not_graded"]
 
 
@@ -244,8 +189,8 @@ class ProfileComplianceMetrics(TypedDict):
     Each is graded only over the samples of the phases that steer by it, read
     from the profile the shot was brewed with (see :class:`_Steering`): the
     firmware logs both targets on every advanced phase, but one of them is a
-    limit, and grading a pressure shot's flow against its flow limit produced a
-    POOR verdict on every pressure profile.
+    limit, and grading a pressure shot's flow against its flow limit made every
+    pressure profile look like it had missed its flow.
 
     Flow is compared with the *pump* flow (`fl`), because that is what the
     firmware's flow mode controls: it converts the target to a pump duty cycle
@@ -268,7 +213,6 @@ class ProfileComplianceMetrics(TypedDict):
     max_flow_undershoot_ml_s: float | None
     pressure_grading: Grading
     flow_grading: Grading
-    annotations: dict[str, str]
 
 
 class ShotDiagnostics(TypedDict):
@@ -277,22 +221,18 @@ class ShotDiagnostics(TypedDict):
 
     has_pressure: bool
     resistance: ResistanceDiagnostics | None
-    channeling: ChannelingIndicators | None
-    temperature: TemperatureDiagnostics
     extraction: ExtractionMetrics
     weight: WeightDiagnostics
     profile_compliance: ProfileComplianceMetrics | None
 
 
 class SummaryDiagnostics(TypedDict):
-    """The small set of indicators that carries most of the signal."""
+    """The small set of numbers that carries most of the signal."""
 
     has_pressure: bool
     resistance_avg: float | None
     resistance_slope: float | None
     resistance_source: ResistanceSource | None
-    channeling_risk: str | None
-    temperature_stability_c: float
     pressure_rmse_bar: float | None
     max_overshoot_bar: float | None
     flow_rmse_ml_s: float | None
@@ -300,7 +240,6 @@ class SummaryDiagnostics(TypedDict):
     pressure_grading: Grading
     flow_grading: Grading
     scale_connected: bool
-    annotations: dict[str, str]
 
 
 class TransformedShot(TypedDict):
@@ -318,257 +257,12 @@ class TransformedShot(TypedDict):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# ANNOTATION THRESHOLD BANDS
-# Upstream's calibration. Do not adjust without a fixture that shows why.
+# CONSTANTS
 # ═══════════════════════════════════════════════════════════════════
 
-# Pressure volatility uses the coefficient of variation (std/mean) once mean
-# pressure clears this floor, so a 0.3 bar swing at 2 bar and a 1.35 bar swing
-# at 9 bar both read as ~15 % relative instability. Below it, CV is noise.
-_CV_MIN_PRESSURE_BAR: float = 1.0
 
-_PRESSURE_CV_BANDS: list[tuple[float, str]] = [
-    (0.02, "VERY_STABLE"),
-    (0.05, "STABLE"),
-    (0.10, "MODERATE_JITTER"),
-    (0.18, "JITTERY"),
-    (float("inf"), "VOLATILE"),
-]
-
-# Absolute fallback — only when mean pressure < _CV_MIN_PRESSURE_BAR.
-_PRESSURE_VOLATILITY_BANDS: list[tuple[float, str]] = [
-    (0.15, "VERY_STABLE"),
-    (0.35, "STABLE"),
-    (0.6, "MODERATE_JITTER"),
-    (1.0, "JITTERY"),
-    (float("inf"), "VOLATILE"),
-]
-
-_FLOW_VOLATILITY_BANDS: list[tuple[float, str]] = [
-    (0.10, "VERY_STABLE"),
-    (0.25, "STABLE"),
-    (0.50, "MODERATE_JITTER"),
-    (0.80, "JITTERY"),
-    (float("inf"), "VOLATILE"),
-]
-
-# Applied to first-difference std, so tighter than raw-std bands: jitter
-# isolates sample-to-sample noise and discards the designed trend. Calibrated
-# against 26 real shots that measured 0.013-0.020 ml/s across the board.
-# JITTERY is where genuine channeling should register.
-_FLOW_JITTER_BANDS: list[tuple[float, str]] = [
-    (0.025, "VERY_STABLE"),
-    (0.050, "STABLE"),
-    (0.100, "MODERATE_JITTER"),
-    (0.200, "JITTERY"),
-    (float("inf"), "VOLATILE"),
-]
-
-_PRESSURE_JITTER_BANDS: list[tuple[float, str]] = [
-    (0.05, "VERY_STABLE"),
-    (0.10, "STABLE"),
-    (0.20, "MODERATE_JITTER"),
-    (0.40, "JITTERY"),
-    (float("inf"), "VOLATILE"),
-]
-
-_FLOW_VS_TARGET_BANDS: list[tuple[float, str]] = [
-    (0.15, "WITHIN_TOLERANCE"),
-    (0.35, "MINOR_DEVIATION"),
-    (0.70, "NOTABLE_DEVIATION"),
-    (float("inf"), "SEVERE_DEVIATION"),
-]
-
-_RESISTANCE_LEVEL_BANDS: list[tuple[float, str]] = [
-    (0.5, "VERY_LOW"),
-    (1.5, "LOW"),
-    (3.0, "MODERATE"),
-    (5.0, "HIGH"),
-    (float("inf"), "VERY_HIGH"),
-]
-
-_RESISTANCE_STABILITY_BANDS: list[tuple[float, str]] = [
-    (0.2, "VERY_STABLE"),
-    (0.5, "STABLE"),
-    (1.0, "MODERATE"),
-    (float("inf"), "VOLATILE"),
-]
-
-_RESISTANCE_PEAK_TIMING_BANDS: list[tuple[float, str]] = [
-    (0.15, "EARLY"),
-    (0.35, "GOOD_TIMING"),
-    (0.60, "MID_SHOT"),
-    (float("inf"), "LATE"),
-]
-
-_FLOW_ACCELERATION_BANDS: list[tuple[float, str]] = [
-    (0.02, "STABLE"),
-    (0.05, "SLIGHT_ACCELERATION"),
-    (0.10, "MODERATE_ACCELERATION"),
-    (float("inf"), "RAPID_ACCELERATION"),
-]
-
-_TEMP_OVERSHOOT_BANDS: list[tuple[float, str]] = [
-    (0.5, "MINIMAL"),
-    (1.0, "SLIGHT"),
-    (2.0, "MODERATE"),
-    (float("inf"), "SIGNIFICANT"),
-]
-
-_TEMP_STABILITY_BANDS: list[tuple[float, str]] = [
-    (0.3, "VERY_STABLE"),
-    (0.8, "STABLE"),
-    (1.5, "MODERATE"),
-    (float("inf"), "UNSTABLE"),
-]
-
-# Descending: value >= lower_bound -> label
-_RESISTANCE_SLOPE_BANDS: list[tuple[float, str]] = [
-    (0.05, "INCREASING"),
-    (-0.02, "FLAT"),
-    (-0.08, "GRADUAL_DECLINE"),
-    (-0.15, "MODERATE_DECLINE"),
-    (float("-inf"), "STEEP_DECLINE"),
-]
-
-_PRESSURE_DROP_RATE_BANDS: list[tuple[float, str]] = [
-    (-1.0, "NORMAL"),
-    (-2.5, "MODERATE_DROP"),
-    (-5.0, "STEEP_DROP"),
-    (float("-inf"), "CLIFF"),
-]
-
-_PROFILE_ADHERENCE_BANDS: list[tuple[float, str]] = [
-    (0.3, "EXCELLENT"),
-    (0.8, "GOOD"),
-    (1.5, "FAIR"),
-    (float("inf"), "POOR"),
-]
-
-_PRESSURE_OVERSHOOT_BANDS: list[tuple[float, str]] = [
-    (0.25, "WITHIN_TOLERANCE"),
-    (0.5, "MINOR_OVERSHOOT"),
-    (1.0, "NOTABLE_OVERSHOOT"),
-    (float("inf"), "SEVERE_OVERSHOOT"),
-]
-
-_FLOW_DEVIATION_BANDS: list[tuple[float, str]] = [
-    (0.3, "WITHIN_TOLERANCE"),
-    (0.7, "MINOR_DEVIATION"),
-    (1.5, "NOTABLE_DEVIATION"),
-    (float("inf"), "SEVERE_DEVIATION"),
-]
-
-_TAPER_SMOOTHNESS_BANDS: list[tuple[float, str]] = [
-    (0.2, "VERY_SMOOTH"),
-    (0.5, "SMOOTH"),
-    (1.0, "MODERATE"),
-    (float("inf"), "ROUGH"),
-]
-
-_RAMP_RATE_BANDS: list[tuple[float, str]] = [
-    (0.5, "GENTLE"),
-    (1.5, "MODERATE"),
-    (3.0, "BRISK"),
-    (5.0, "AGGRESSIVE"),
-    (float("inf"), "VERY_AGGRESSIVE"),
-]
-
-# ── What a reading means, per metric ─────────────────────────────────
-#
-# A band label cannot say on its own whether it is worth writing about: `LOW` is
-# the healthy value of `channeling_risk` and the notable one of
-# `resistance_level`. The review builds its retrieval queries from the band
-# tokens it emits, and a query built from a healthy reading fetches prose about
-# the normal case and takes an excerpt slot from the section that explains what
-# does stand out. So the split lives here, beside the tables it classifies, where
-# whoever adds or renames a label in one of them sees it; a test walks the
-# tables and refuses a label that is in neither column.
-#
-# Keyed by the review's token metric (`review.context.signal_tokens`): the value
-# is (healthy, notable). "Healthy" means the reading says nothing is wrong or
-# out of the ordinary. Anything that says something about the puck or the
-# recipe stays notable, including a resistance that rises or falls moderately
-# or steeply, and any channeling risk above low. A "minor" band is healthy only
-# where the table's own vocabulary makes it so: flow deviation's `MINOR_DEVIATION`
-# is (the label was already on the retrieval's list of fine words, and a flow
-# within a few tenths of a millilitre of target is inside the machine's own
-# noise), while pressure's `MINOR_OVERSHOOT` stays notable, since an overshoot
-# is the pump exceeding a commanded pressure and the reading is worth asking
-# about. Not decided by symmetry: each label is classified on its own.
-#
-# `channeling_risk:INSUFFICIENT_DATA` is healthy for retrieval: it says the
-# steady-state window was too short to judge, which the rules and the reference
-# call "not a problem", and a query for it fetches the same field table a
-# channeling risk of LOW did.
-_BandReading = tuple[frozenset[str], frozenset[str]]
-
-
-def _reading(healthy: str, notable: str) -> _BandReading:
-    return frozenset(healthy.split()), frozenset(notable.split())
-
-
-_ADHERENCE = _reading("EXCELLENT GOOD", "FAIR POOR")
-_DEVIATION = _reading("WITHIN_TOLERANCE MINOR_DEVIATION", "NOTABLE_DEVIATION SEVERE_DEVIATION")
-# One table, two metrics, two readings. A gradual decline of puck resistance is
-# how a bed saturates and settles, which the project's rules and the reference
-# both call normal; the same slope of the pressure is the profile doing
-# something (or the pump failing to hold it), so it stays worth a query.
-_EROSION = _reading("FLAT GRADUAL_DECLINE", "INCREASING MODERATE_DECLINE STEEP_DECLINE")
-_PRESSURE_TREND = _reading("FLAT", "INCREASING GRADUAL_DECLINE MODERATE_DECLINE STEEP_DECLINE")
-_TEMP_DEVIATION = _reading("MINIMAL", "SLIGHT MODERATE SIGNIFICANT")
-
-BAND_READINGS: dict[str, _BandReading] = {
-    "resistance_level": _reading("MODERATE", "VERY_LOW LOW HIGH VERY_HIGH"),
-    "resistance_stability": _reading("VERY_STABLE STABLE", "MODERATE VOLATILE"),
-    "resistance_saturation": _reading("GOOD_TIMING", "EARLY MID_SHOT LATE"),
-    "resistance_erosion": _EROSION,
-    "pressure_trend": _PRESSURE_TREND,
-    "flow_trend": _reading("STABLE", "DECLINING INCREASING"),
-    "channeling_risk": _reading("LOW INSUFFICIENT_DATA", "MODERATE HIGH VERY_HIGH"),
-    "temperature_overshoot": _TEMP_DEVIATION,
-    "temperature_undershoot": _TEMP_DEVIATION,
-    "temperature_stability": _reading("VERY_STABLE STABLE", "MODERATE UNSTABLE"),
-    "pressure_adherence": _ADHERENCE,
-    "flow_adherence": _ADHERENCE,
-    "pressure_overshoot": _reading(
-        "WITHIN_TOLERANCE", "MINOR_OVERSHOOT NOTABLE_OVERSHOOT SEVERE_OVERSHOOT"
-    ),
-    "flow_overshoot": _DEVIATION,
-    "flow_undershoot": _DEVIATION,
-}
-
-#: The band table each table-backed metric in :data:`BAND_READINGS` is read
-#: from, so the test can hold the two to the same labels. `channeling_risk` and
-#: `flow_trend` are not tables (a scored total and a slope threshold).
-BAND_READING_TABLES: dict[str, list[tuple[float, str]]] = {
-    "resistance_level": _RESISTANCE_LEVEL_BANDS,
-    "resistance_stability": _RESISTANCE_STABILITY_BANDS,
-    "resistance_saturation": _RESISTANCE_PEAK_TIMING_BANDS,
-    "resistance_erosion": _RESISTANCE_SLOPE_BANDS,
-    "pressure_trend": _RESISTANCE_SLOPE_BANDS,
-    "temperature_overshoot": _TEMP_OVERSHOOT_BANDS,
-    "temperature_undershoot": _TEMP_OVERSHOOT_BANDS,
-    "temperature_stability": _TEMP_STABILITY_BANDS,
-    "pressure_adherence": _PROFILE_ADHERENCE_BANDS,
-    "flow_adherence": _PROFILE_ADHERENCE_BANDS,
-    "pressure_overshoot": _PRESSURE_OVERSHOOT_BANDS,
-    "flow_overshoot": _FLOW_DEVIATION_BANDS,
-    "flow_undershoot": _FLOW_DEVIATION_BANDS,
-}
-
-
-def is_healthy_band(metric: str, label: str) -> bool:
-    """Whether `label` is the unremarkable reading of `metric`.
-
-    False for a metric that is not classified, so a new one is treated as
-    worth a query until someone decides otherwise.
-    """
-    reading = BAND_READINGS.get(metric)
-    return reading is not None and label in reading[0]
-
-
-#: Fewer steady-state samples than this and channeling is not assessed at all.
+#: Fewer samples than this in the window the largest pressure drop is read over
+#: (see :func:`_steady_state`) and none is reported.
 _MIN_STEADY_STATE_SAMPLES: int = 5
 
 #: Fewer samples than this, or fewer brew-phase samples than the second, and
@@ -611,22 +305,6 @@ def as_sample_dicts(slog: Slog) -> list[SampleDict]:
     return out
 
 
-def _annotate_ascending(value: float, bands: list[tuple[float, str]]) -> str:
-    """Classify with ascending (upper_bound, label) bands."""
-    for upper, label in bands:
-        if value < upper:
-            return label
-    return bands[-1][1]
-
-
-def _annotate_descending(value: float, bands: list[tuple[float, str]]) -> str:
-    """Classify with descending (lower_bound, label) bands."""
-    for lower, label in bands:
-        if value >= lower:
-            return label
-    return bands[-1][1]
-
-
 def _safe_mean(values: list[float]) -> float:
     if not values:
         return 0.0
@@ -642,19 +320,6 @@ def _safe_std(values: list[float]) -> float:
     return math.sqrt(variance)
 
 
-def _jitter_std(values: list[float]) -> float:
-    """Population std of first differences — noise around whatever trend exists.
-
-    A flat signal scores zero; so does a smooth linear ramp, because every
-    difference is equal. Only oscillation and spikes register, which is what
-    makes this insensitive to intentional profile trajectories.
-    """
-    if len(values) < 3:
-        return 0.0
-    diffs = [values[i] - values[i - 1] for i in range(1, len(values))]
-    return _safe_std(diffs)
-
-
 def _linear_slope(values: list[float], dt: float) -> float:
     """Least-squares slope in units per second; 0.0 if there is nothing to fit."""
     n = len(values)
@@ -668,69 +333,6 @@ def _linear_slope(values: list[float], dt: float) -> float:
     if denominator == 0:
         return 0.0
     return numerator / denominator
-
-
-def _late_flow_runaway(flows: list[float], dt: float) -> float:
-    """Excess flow acceleration in the last 40 % of the window (ml/s²).
-
-    `late_slope - overall_slope`, so a clean linear ramp — which is a profile
-    doing exactly what it was told — scores 0, and only a late *departure* from
-    the designed trajectory scores positive.
-    """
-    n = len(flows)
-    if n < 6:
-        return 0.0
-    late_start = int(n * 0.6)
-    return _linear_slope(flows[late_start:], dt) - _linear_slope(flows, dt)
-
-
-def _flow_shape_label(flows: list[float], dt: float) -> str:
-    """FLAT / RAMPING_UP / RAMPING_DOWN for a flow window.
-
-    Context for reading `flow_spread_ml_s`: high spread on a ramping profile is
-    the profile working, not the puck failing.
-    """
-    if len(flows) < 2:
-        return "FLAT"
-    slope = _linear_slope(flows, dt)
-    if slope > 0.03:
-        return "RAMPING_UP"
-    if slope < -0.03:
-        return "RAMPING_DOWN"
-    return "FLAT"
-
-
-def _residual_std_vs_target(
-    samples: Sequence[SampleDict], steering: Sequence[PhaseControl | None] | None
-) -> float | None:
-    """Population std of (actual flow - commanded flow), over flow-steered samples.
-
-    The logged flow target `tf` is a target only in a phase that steers by flow;
-    in a pressure phase it is a limit (or 0), and a gap to it says nothing about
-    the puck. ``steering`` is the profile's reading of each sample (see
-    :func:`_steering`: it already leaves out power phases, the tail and samples
-    the phase's limit held, by :func:`limit_holds`); only ``"flow"`` samples
-    count. None when there is no steering (no profile) or too few flow-steered
-    samples, so "tracked target badly" stays distinguishable from "no target was
-    steering".
-    """
-    if steering is None:
-        return None
-    pairs = [
-        (s.get("pf", 0.0), s["tf"])
-        for s, control in zip(samples, steering, strict=True)
-        if control == "flow" and s.get("tf", 0.0) > 0
-    ]
-    if len(pairs) < 3:
-        return None
-    return _safe_std([actual - target for actual, target in pairs])
-
-
-def _pressure_volatility_label(std: float, mean: float) -> str:
-    """Volatility by coefficient of variation, absolute bands at low pressure."""
-    if mean >= _CV_MIN_PRESSURE_BAR and mean > 0:
-        return _annotate_ascending(std / mean, _PRESSURE_CV_BANDS)
-    return _annotate_ascending(std, _PRESSURE_VOLATILITY_BANDS)
 
 
 def _trim_ramp_up[T](
@@ -770,8 +372,8 @@ def _strip_flow_edges[T](
     """Drop leading and trailing samples with flow below `thr` ml/s.
 
     Leading: pressure ramped but the valve has not opened. Trailing: the
-    volumetric cutoff fired and pressure is trapped in the puck — that tail is
-    what produced the original false-positive channeling readings.
+    volumetric cutoff fired and pressure is trapped in the puck, which falls
+    away on its own and is not a drop worth keeping the curve's shape for.
 
     Returns the trimmed lists plus how many samples came off each end.
     """
@@ -924,132 +526,19 @@ def _get_brew_phase_samples(
 
 
 # ═══════════════════════════════════════════════════════════════════
-# CHANNELING
+# THE WINDOW THE LARGEST PRESSURE DROP IS READ OVER
 # ═══════════════════════════════════════════════════════════════════
-
-
-def _assess_channeling_risk(
-    flow_jitter: float,
-    flow_vs_tgt: float | None,
-    pressure_max_drop_rate: float,
-    flow_acceleration_late: float,
-    pressure_jitter: float,
-) -> str:
-    """Score four indicators 0-2 each and band the total.
-
-    1. flow jitter — the primary fingerprint, blind to designed ramps.
-    2. flow-vs-target, or pressure jitter on pressure-led profiles. The two
-       share one scoring slot so the 0-8 range means the same thing whatever
-       variable the profile commands.
-    3. steepest pressure collapse — a cliff one sample wide that jitter misses.
-    4. late flow runaway — channeling that develops at the end.
-
-    0-1 LOW, 2-3 MODERATE, 4-5 HIGH, 6-8 VERY_HIGH.
-    """
-    score = 0
-
-    if flow_jitter >= 0.05:
-        score += 1
-    if flow_jitter >= 0.10:
-        score += 1
-
-    if flow_vs_tgt is not None:
-        if flow_vs_tgt >= 0.35:
-            score += 1
-        if flow_vs_tgt >= 0.70:
-            score += 1
-    else:
-        if pressure_jitter >= 0.10:
-            score += 1
-        if pressure_jitter >= 0.20:
-            score += 1
-
-    if pressure_max_drop_rate <= -1.5:
-        score += 1
-    if pressure_max_drop_rate <= -3.0:
-        score += 1
-
-    if flow_acceleration_late >= 0.05:
-        score += 1
-    if flow_acceleration_late >= 0.10:
-        score += 1
-
-    if score <= 1:
-        return "LOW"
-    if score <= 3:
-        return "MODERATE"
-    if score <= 5:
-        return "HIGH"
-    return "VERY_HIGH"
-
-
-def _window_confidence(n: int) -> str:
-    """How much a channeling verdict from `n` steady-state samples is worth."""
-    if n < _MIN_STEADY_STATE_SAMPLES:
-        return "INSUFFICIENT"
-    if n < 8:
-        return "LOW"
-    if n < 15:
-        return "MEDIUM"
-    return "HIGH"
-
-
-def _channeling_primary_signal(
-    flow_jitter: float,
-    flow_vs_tgt: float | None,
-    pressure_max_drop_rate: float,
-    flow_acceleration_late: float,
-    pressure_jitter: float,
-) -> str:
-    """Comma-separated names of the indicators that fired, or "none"."""
-    signals: list[str] = []
-    if flow_jitter >= 0.05:
-        signals.append("flow_jitter")
-    if flow_vs_tgt is not None and flow_vs_tgt >= 0.35:
-        signals.append("flow_vs_target")
-    elif flow_vs_tgt is None and pressure_jitter >= 0.10:
-        signals.append("pressure_jitter_fallback")
-    if pressure_max_drop_rate <= -1.5:
-        signals.append("pressure_cliff")
-    if flow_acceleration_late >= 0.05:
-        signals.append("late_flow_runaway")
-    return ",".join(signals) if signals else "none"
-
-
-def _channeling_guidance(risk: str, primary: str, confidence: str, flow_shape: str) -> str:
-    """One sentence framing the numbers, so a reader knows what to expect."""
-    if risk == "INSUFFICIENT_DATA":
-        return (
-            "Steady-state window too short for a reliable channeling "
-            "assessment — treat other diagnostics as the primary signal."
-        )
-    if risk == "LOW":
-        if primary != "none":
-            return (
-                f"LOW overall; sub-threshold signals noted ({primary}) "
-                "but did not aggregate into concern."
-            )
-        if flow_shape == "FLAT":
-            return "Flat flow held steadily — no channeling signature."
-        return (
-            f"Flow traces a {flow_shape.lower().replace('_', ' ')} "
-            "trajectory cleanly — no channeling signature."
-        )
-    if confidence in ("LOW", "MEDIUM") and risk in ("HIGH", "VERY_HIGH"):
-        return (
-            f"{risk} rating from a small steady-state window "
-            f"(confidence={confidence}); verify against flow_shape and primary_signal."
-        )
-    signal_count = 0 if primary == "none" else primary.count(",") + 1
-    if signal_count >= 2:
-        return f"{signal_count} independent indicators align ({primary}) — channeling likely real."
-    return f"Single-indicator flag ({primary}); verify against other diagnostics."
 
 
 def _steady_state[T](
     brew_pressures: list[float], brew_flows: list[float], brew_samples: list[T]
 ) -> tuple[list[float], list[float], list[T], int, tuple[int, int]]:
-    """The window channeling is assessed on: the brew less its ramp-up and its dry edges.
+    """The window the largest pressure drop is read over: the brew less ramp-up and dry edges.
+
+    Everything before pressure first reaches 90 % of its peak is a ramp, and the
+    zero-flow samples at either end are a valve not yet open or pressure trapped
+    in the puck after a weight stop. Used only to find the moment the curve keeps
+    (:func:`largest_pressure_drop`); no number about the shot is read from it.
 
     Returns the trimmed lists, how many ramp-up samples came off, and how many
     zero-flow samples came off each end.
@@ -1065,136 +554,6 @@ def _steady_state[T](
 def _pressure_rates(pressures: list[float], dt: float) -> list[float]:
     """Sample-to-sample pressure change in bar/s: entry ``i`` is samples ``i`` to ``i + 1``."""
     return [(pressures[i] - pressures[i - 1]) / dt for i in range(1, len(pressures))]
-
-
-def _build_channeling(
-    brew_pressures: list[float],
-    brew_flows: list[float],
-    brew_samples: list[SampleDict],
-    dt: float,
-    steering: Sequence[PhaseControl | None] | None = None,
-) -> ChannelingIndicators:
-    """The whole channeling block, from a brew window.
-
-    Shared by the full-shot, summary and per-phase paths so all three trim the
-    window the same way and cannot disagree about the same shot.
-
-    ``steering`` is what the profile steered each brew sample by, aligned with
-    ``brew_samples``; the flow-versus-target residual is read only over the
-    flow-steered ones and is absent without it (see
-    :func:`_residual_std_vs_target`). When it is absent the risk falls back to
-    the pressure jitter, as it always has for a window with no flow target.
-    """
-    controls = steering if steering is not None else [None] * len(brew_samples)
-    # The steering rides along through the trim as part of each sample.
-    ss_pressures, ss_flows, ss_paired, ramp_excluded, (zf_lead, zf_tail) = _steady_state(
-        brew_pressures,
-        brew_flows,
-        list(zip(brew_samples, controls, strict=True)),
-    )
-    ss_samples = [sample for sample, _ in ss_paired]
-    ss_steering = [control for _, control in ss_paired] if steering is not None else None
-
-    n = len(ss_pressures)
-    confidence = _window_confidence(n)
-
-    if n < _MIN_STEADY_STATE_SAMPLES:
-        shape = _flow_shape_label(ss_flows, dt)
-        return ChannelingIndicators(
-            flow_jitter_ml_s=0.0,
-            flow_vs_target_residual_ml_s=None,
-            pressure_max_drop_rate_bar_s=0.0,
-            flow_acceleration_late_ml_s2=0.0,
-            flow_spread_ml_s=_round2(_safe_std(ss_flows)) if ss_flows else 0.0,
-            pressure_jitter_bar=0.0,
-            channeling_risk="INSUFFICIENT_DATA",
-            annotations={
-                "flow_jitter": "N/A",
-                "flow_vs_target": "N/A",
-                "pressure_drop": "N/A",
-                "late_flow_trend": "N/A",
-                "pressure_jitter": "N/A",
-                "flow_shape": shape,
-                "window_confidence": confidence,
-                "primary_signal": "none",
-                "guidance": _channeling_guidance("INSUFFICIENT_DATA", "none", confidence, shape),
-                "note": (
-                    f"Only {n} steady-state samples after trim "
-                    f"(ramp_excluded={ramp_excluded}, "
-                    f"zero_flow_lead={zf_lead}, zero_flow_tail={zf_tail}); "
-                    f"need {_MIN_STEADY_STATE_SAMPLES} for assessment."
-                ),
-            },
-        )
-
-    # Score on the raw values and round only for output: rounding first would
-    # move a value across a band boundary.
-    flow_jitter_raw = _jitter_std(ss_flows)
-    pressure_jitter_raw = _jitter_std(ss_pressures)
-    flow_vs_tgt_raw = _residual_std_vs_target(ss_samples, ss_steering)
-    p_derivatives = _pressure_rates(ss_pressures, dt)
-    p_max_drop_raw = min(p_derivatives) if p_derivatives else 0.0
-    f_accel_late_raw = _late_flow_runaway(ss_flows, dt)
-
-    flow_jitter = _round2(flow_jitter_raw)
-    pressure_jitter = _round2(pressure_jitter_raw)
-    flow_vs_tgt = _round2(flow_vs_tgt_raw) if flow_vs_tgt_raw is not None else None
-    p_max_drop = _round2(p_max_drop_raw)
-    f_accel_late = _round2(f_accel_late_raw)
-
-    flow_spread = _round2(_safe_std(ss_flows))
-    flow_shape = _flow_shape_label(ss_flows, dt)
-
-    risk = _assess_channeling_risk(
-        flow_jitter=flow_jitter_raw,
-        flow_vs_tgt=flow_vs_tgt_raw,
-        pressure_max_drop_rate=p_max_drop_raw,
-        flow_acceleration_late=f_accel_late_raw,
-        pressure_jitter=pressure_jitter_raw,
-    )
-    primary = _channeling_primary_signal(
-        flow_jitter_raw,
-        flow_vs_tgt_raw,
-        p_max_drop_raw,
-        f_accel_late_raw,
-        pressure_jitter_raw,
-    )
-
-    annotations: dict[str, str] = {
-        "flow_jitter": _annotate_ascending(flow_jitter, _FLOW_JITTER_BANDS),
-        "flow_vs_target": (
-            _annotate_ascending(flow_vs_tgt, _FLOW_VS_TARGET_BANDS)
-            if flow_vs_tgt is not None
-            else "N/A"
-        ),
-        "pressure_drop": _annotate_descending(p_max_drop, _PRESSURE_DROP_RATE_BANDS),
-        "late_flow_trend": _annotate_ascending(f_accel_late, _FLOW_ACCELERATION_BANDS),
-        "pressure_jitter": _annotate_ascending(pressure_jitter, _PRESSURE_JITTER_BANDS),
-        "flow_shape": flow_shape,
-        "window_confidence": confidence,
-        "primary_signal": primary,
-        "guidance": _channeling_guidance(risk, primary, confidence, flow_shape),
-    }
-    if ramp_excluded or zf_lead or zf_tail:
-        parts = []
-        if ramp_excluded:
-            parts.append(f"{ramp_excluded} ramp-up")
-        if zf_lead:
-            parts.append(f"{zf_lead} leading zero-flow")
-        if zf_tail:
-            parts.append(f"{zf_tail} trailing zero-flow")
-        annotations["note"] = f"Trimmed {', '.join(parts)} samples before assessment."
-
-    return ChannelingIndicators(
-        flow_jitter_ml_s=flow_jitter,
-        flow_vs_target_residual_ml_s=flow_vs_tgt,
-        pressure_max_drop_rate_bar_s=p_max_drop,
-        flow_acceleration_late_ml_s2=f_accel_late,
-        flow_spread_ml_s=flow_spread,
-        pressure_jitter_bar=pressure_jitter,
-        channeling_risk=risk,
-        annotations=annotations,
-    )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1239,14 +598,13 @@ def peak_pressure_index(samples: list[SampleDict]) -> int | None:
 def largest_pressure_drop(
     samples: list[SampleDict], transitions: list[PhaseTransition], dt: float
 ) -> tuple[int, int] | None:
-    """The two samples the channeling indicator's largest pressure drop runs between.
+    """The two samples the steepest single-sample fall in pressure runs between.
 
-    ``pressure_max_drop_rate_bar_s`` is the pressure change between them over
-    ``dt``: the same brew window, the same steady-state trims and the same
-    first-of-equals minimum as :func:`_build_channeling`. ``None`` wherever
-    the whole-shot diagnostics would assess no drop — too few samples, too few
-    brew or steady-state samples. The caller decides whether the shot had a
-    pressure sensor at all, as the engine's own callers do.
+    Read over the brew window with its ramp-up and dry edges trimmed (see
+    :func:`_steady_state`), the first of equal steps winning. ``None`` wherever
+    there is nothing to say: too few samples, too few brew or window samples. The
+    caller decides whether the shot had a pressure sensor at all. A landmark the
+    curve keeps its shape around; no number about the shot is read from it.
     """
     if len(samples) < _MIN_SHOT_SAMPLES or dt <= 0:
         return None
@@ -1364,70 +722,20 @@ def compute_shot_diagnostics(
         return None
 
     steering = _steering(samples, phase_controls)
-    brew_steering = [steering.per_sample[i] for i in brew_positions] if steering else None
-    brew_pressures = [s.get("cp", 0.0) for s in brew_samples]
     brew_flows = [s.get("pf", 0.0) for s in brew_samples]
-    brew_temps = [s.get("ct", 0.0) for s in brew_samples]
-    brew_target_temps = [s.get("tt", 0.0) for s in brew_samples]
-    all_pressures = [s.get("cp", 0.0) for s in samples]
     brew_weights = [s.get("v", 0.0) for s in brew_samples]
     has_scale = any(w > 0 for w in brew_weights)
 
     resistance: ResistanceDiagnostics | None = None
-    channeling: ChannelingIndicators | None = None
     profile_compliance: ProfileComplianceMetrics | None = None
 
     if pressure_ok:
         resistance = _build_resistance(brew_samples, dt)
-        channeling = _build_channeling(brew_pressures, brew_flows, brew_samples, dt, brew_steering)
         profile_compliance = _compute_profile_compliance(samples, steering)
 
-    temp_deviations = [
-        ct - tt for ct, tt in zip(brew_temps, brew_target_temps, strict=True) if tt > 0
-    ]
-    t_overshoot = max(temp_deviations) if temp_deviations else 0.0
-    t_undershoot = -min(temp_deviations) if temp_deviations else 0.0
-    t_std = _round2(_safe_std(brew_temps))
-
-    temperature = TemperatureDiagnostics(
-        overshoot_c=_round2(max(0.0, t_overshoot)),
-        undershoot_c=_round2(max(0.0, t_undershoot)),
-        stability_std_c=t_std,
-        annotations={
-            "overshoot": _annotate_ascending(max(0.0, t_overshoot), _TEMP_OVERSHOOT_BANDS),
-            "undershoot": _annotate_ascending(max(0.0, t_undershoot), _TEMP_OVERSHOOT_BANDS),
-            "stability": _annotate_ascending(t_std, _TEMP_STABILITY_BANDS),
-        },
-    )
-
-    p_auc = _round2(sum(p * dt for p in all_pressures))
-    p_slope = _round2(_linear_slope(brew_pressures, dt))
-    f_slope = _round2(_linear_slope(brew_flows, dt))
-    f_avg = _round2(_safe_mean(brew_flows))
-
-    extraction_annotations: dict[str, str] = {
-        "flow_trend": (
-            "DECLINING" if f_slope < -0.02 else "STABLE" if f_slope < 0.02 else "INCREASING"
-        ),
-    }
-    if pressure_ok:
-        extraction_annotations["pressure_trend"] = _annotate_descending(
-            p_slope, _RESISTANCE_SLOPE_BANDS
-        )
-    else:
-        extraction_annotations["note"] = _NO_PRESSURE_NOTE
-
-    extraction = ExtractionMetrics(
-        pressure_auc_bar_s=p_auc if pressure_ok else 0.0,
-        pressure_slope_brew_bar_s=p_slope if pressure_ok else 0.0,
-        flow_slope_brew_ml_s2=f_slope,
-        flow_avg_brew_ml_s=f_avg,
-        annotations=extraction_annotations,
-    )
+    extraction = ExtractionMetrics(flow_avg_brew_ml_s=_round2(_safe_mean(brew_flows)))
 
     w_rate_avg: float | None = None
-    w_rate_std: float | None = None
-    weight_annotations: dict[str, str] = {}
     if has_scale:
         weight_rates = [
             rate
@@ -1438,50 +746,28 @@ def compute_shot_diagnostics(
         ]
         if weight_rates:
             w_rate_avg = _round2(_safe_mean(weight_rates))
-            w_rate_std = _round2(_safe_std(weight_rates))
-            weight_annotations["rate_stability"] = _annotate_ascending(
-                w_rate_std, _FLOW_VOLATILITY_BANDS
-            )
-    else:
-        weight_annotations["note"] = "No scale data available"
-
-    weight = WeightDiagnostics(
-        rate_avg_g_s=w_rate_avg,
-        rate_std_g_s=w_rate_std,
-        scale_connected=has_scale,
-        annotations=weight_annotations,
-    )
 
     return ShotDiagnostics(
         has_pressure=pressure_ok,
         resistance=resistance,
-        channeling=channeling,
-        temperature=temperature,
         extraction=extraction,
-        weight=weight,
+        weight=WeightDiagnostics(rate_avg_g_s=w_rate_avg, scale_connected=has_scale),
         profile_compliance=profile_compliance,
     )
 
 
-#: Said once, in the one place a reader will look for it.
-_NO_PRESSURE_NOTE = (
-    "No pressure sensor on this machine (GaggiMate Standard board): "
-    "pressure-derived diagnostics are omitted rather than reported as zero."
-)
-
-
 def _build_resistance(window: list[SampleDict], dt: float) -> ResistanceDiagnostics:
-    """Puck resistance ``R`` and its shape over a window of samples.
+    """Puck resistance ``R``, its mean and its slope, over a window of samples.
 
     The one place the quantity is computed: the full block, the summary and each
-    brew phase all call it, so they cannot drift apart.
+    phase all call it, so they cannot drift apart.
 
     The window is the samples with a flow above 0.1 ml/s: dividing by a
     near-zero flow produces an arbitrarily large number that says nothing about
     the puck. Over that window the machine's own value is preferred. The
     firmware computes ``pr = sqrt(P) / Q_puck`` from its compensated puck-flow
     estimate, so ``pr²`` is the same quadratic model as ``P / F²`` on the same
-    scale, and every band below keeps its number. A window with fewer than
+    scale. A window with fewer than
     :data:`_MIN_MACHINE_RESISTANCE_SAMPLES` valid ``pr`` samples (no such field,
     a board without the estimator, zeros, the clamp) falls back to ``P / F²``.
     """
@@ -1497,31 +783,10 @@ def _build_resistance(window: list[SampleDict], dt: float) -> ResistanceDiagnost
         source = "computed"
         resistance_values = [s.get("cp", 0.0) / (s["pf"] * s["pf"]) for s in flowing]
 
-    r_avg = _round2(_safe_mean(resistance_values))
-    r_std = _round2(_safe_std(resistance_values))
-    r_slope = _round2(_linear_slope(resistance_values, dt))
-    if resistance_values:
-        r_peak_val = max(resistance_values)
-        r_peak = _round2(r_peak_val)
-        r_peak_idx = resistance_values.index(r_peak_val)
-        r_peak_timing = _round2(r_peak_idx / len(resistance_values))
-    else:
-        r_peak = 0.0
-        r_peak_timing = 0.0
-
     return ResistanceDiagnostics(
         source=source,
-        avg=r_avg,
-        std=r_std,
-        slope=r_slope,
-        peak=r_peak,
-        peak_timing_pct=r_peak_timing,
-        annotations={
-            "level": _annotate_ascending(r_avg, _RESISTANCE_LEVEL_BANDS),
-            "stability": _annotate_ascending(r_std, _RESISTANCE_STABILITY_BANDS),
-            "erosion": _annotate_descending(r_slope, _RESISTANCE_SLOPE_BANDS),
-            "saturation": _annotate_ascending(r_peak_timing, _RESISTANCE_PEAK_TIMING_BANDS),
-        },
+        avg=_round2(_safe_mean(resistance_values)),
+        slope=_round2(_linear_slope(resistance_values, dt)),
     )
 
 
@@ -1617,7 +882,7 @@ def _steering(
 _PUMP_FLOW_FILTER_TAU_S = 1.0 / (2.0 * math.pi * 0.5)
 
 #: How far a measurement may sit short of a limit and still be the limit's.
-#: Flow: 0.15 ml/s, the top of the ``WITHIN_TOLERANCE`` flow band. Pressure: the
+#: Flow: 0.15 ml/s. Pressure: the
 #: larger of 0.2 bar and 10 % of the limit: the controller's own dead band is
 #: ``_deadbandCoefficient`` = 0.1 times the setpoint (``PressureController.h``,
 #: used at ``.cpp`` line 271), and its integral is reset whenever the flow ask
@@ -1760,24 +1025,12 @@ def _compute_profile_compliance(
     pressure = _adherence_of(_pressure_pairs(samples, steering.per_sample))
     flow = _adherence_of(_flow_pairs(samples, steering.per_sample))
 
-    annotations: dict[str, str] = {}
     p_rmse = max_overshoot = max_undershoot = None
     if pressure is not None:
         p_rmse, max_overshoot, max_undershoot = pressure
-        annotations["pressure_adherence"] = _annotate_ascending(p_rmse, _PROFILE_ADHERENCE_BANDS)
-        annotations["pressure_overshoot"] = _annotate_ascending(
-            max_overshoot, _PRESSURE_OVERSHOOT_BANDS
-        )
     f_rmse = max_flow_overshoot = max_flow_undershoot = None
     if flow is not None:
         f_rmse, max_flow_overshoot, max_flow_undershoot = flow
-        annotations["flow_adherence"] = _annotate_ascending(f_rmse, _PROFILE_ADHERENCE_BANDS)
-        annotations["flow_overshoot"] = _annotate_ascending(
-            max_flow_overshoot, _FLOW_DEVIATION_BANDS
-        )
-        annotations["flow_undershoot"] = _annotate_ascending(
-            max_flow_undershoot, _FLOW_DEVIATION_BANDS
-        )
 
     return ProfileComplianceMetrics(
         pressure_rmse_bar=p_rmse,
@@ -1788,7 +1041,6 @@ def _compute_profile_compliance(
         max_flow_undershoot_ml_s=max_flow_undershoot,
         pressure_grading=_grading(steering.pressure_applicable, pressure is not None),
         flow_grading=_grading(steering.flow_applicable, flow is not None),
-        annotations=annotations,
     )
 
 
@@ -1798,7 +1050,7 @@ def compute_summary_diagnostics(
     has_pressure: bool | None = None,
     phase_controls: Sequence[PhaseControl] | None = None,
 ) -> SummaryDiagnostics | None:
-    """The cheap detail level: key indicators only, same trims and bands.
+    """The cheap detail level: key numbers only, over the same brew window.
 
     Adherence is read over the brew window, in the samples of the phases that
     steer by it (see :func:`_steering`); without `phase_controls` it is not
@@ -1815,9 +1067,6 @@ def compute_summary_diagnostics(
     if len(brew_samples) < _MIN_BREW_SAMPLES:
         return None
 
-    brew_pressures = [s.get("cp", 0.0) for s in brew_samples]
-    brew_flows = [s.get("pf", 0.0) for s in brew_samples]
-    brew_temps = [s.get("ct", 0.0) for s in brew_samples]
     brew_weights = [s.get("v", 0.0) for s in brew_samples]
     steering = _steering(samples, phase_controls)
     brew_steering: list[PhaseControl | None] = (
@@ -1829,43 +1078,18 @@ def compute_summary_diagnostics(
     r_avg: float | None = None
     r_slope: float | None = None
     r_source: ResistanceSource | None = None
-    risk: str | None = None
     p_rmse: float | None = None
     max_overshoot: float | None = None
-
-    annotations: dict[str, str] = {}
 
     if pressure_ok:
         resistance = _build_resistance(brew_samples, dt)
         r_avg = resistance["avg"]
         r_slope = resistance["slope"]
         r_source = resistance["source"]
-        risk = _build_channeling(
-            brew_pressures,
-            brew_flows,
-            brew_samples,
-            dt,
-            brew_steering if steering is not None else None,
-        )["channeling_risk"]
 
         pressure = _adherence_of(_pressure_pairs(brew_samples, brew_steering))
         if pressure is not None:
             p_rmse, max_overshoot = pressure[0], pressure[1]
-            annotations["pressure_adherence"] = _annotate_ascending(
-                p_rmse, _PROFILE_ADHERENCE_BANDS
-            )
-            annotations["pressure_overshoot"] = _annotate_ascending(
-                max_overshoot, _PRESSURE_OVERSHOOT_BANDS
-            )
-
-        annotations["resistance_level"] = _annotate_ascending(r_avg, _RESISTANCE_LEVEL_BANDS)
-        annotations["resistance_erosion"] = _annotate_descending(r_slope, _RESISTANCE_SLOPE_BANDS)
-        annotations["channeling_risk"] = risk
-    else:
-        annotations["note"] = _NO_PRESSURE_NOTE
-
-    t_std = _round2(_safe_std(brew_temps))
-    annotations["temperature_stability"] = _annotate_ascending(t_std, _TEMP_STABILITY_BANDS)
 
     f_rmse: float | None = None
     max_flow_overshoot: float | None = None
@@ -1875,10 +1099,6 @@ def compute_summary_diagnostics(
     flow = _adherence_of(_flow_pairs(brew_samples, brew_steering)) if flow_gradable else None
     if flow is not None:
         f_rmse, max_flow_overshoot = flow[0], flow[1]
-        annotations["flow_adherence"] = _annotate_ascending(f_rmse, _PROFILE_ADHERENCE_BANDS)
-        annotations["flow_overshoot"] = _annotate_ascending(
-            max_flow_overshoot, _FLOW_DEVIATION_BANDS
-        )
 
     pressure_grading: Grading = "not_graded"
     flow_grading: Grading = "not_graded"
@@ -1893,8 +1113,6 @@ def compute_summary_diagnostics(
         resistance_avg=r_avg,
         resistance_slope=r_slope,
         resistance_source=r_source,
-        channeling_risk=risk,
-        temperature_stability_c=t_std,
         pressure_rmse_bar=p_rmse,
         max_overshoot_bar=max_overshoot,
         flow_rmse_ml_s=f_rmse,
@@ -1902,7 +1120,6 @@ def compute_summary_diagnostics(
         pressure_grading=pressure_grading,
         flow_grading=flow_grading,
         scale_connected=any(w > 0 for w in brew_weights),
-        annotations=annotations,
     )
 
 
@@ -1919,28 +1136,26 @@ def _compute_phase_diagnostics(
     has_pressure: bool = True,
     steering: Sequence[PhaseControl | None] | None = None,
 ) -> PhaseDiagnostics:
-    """Metrics for one phase, chosen by what that kind of phase is for.
+    """What one phase's samples say about the profile and the puck.
 
     ``steering`` says, for each of the phase's samples, what the profile steered
     it by (a slice of :attr:`_Steering.per_sample`). A phase is graded only on
     its own target: a pressure phase has a pressure adherence and no flow one,
     and a flow phase the reverse. A phase with nothing to grade (a power phase,
-    the post-brew tail, no profile) carries neither.
+    the post-brew tail, no profile) carries neither. A brew phase carries the
+    shot's own resistance (:func:`_build_resistance`) over its samples, a
+    preinfusion phase its pressure ramp and when its flow settled, and a decline
+    phase how fast and how smoothly the pressure fell: numbers, never bands.
     """
     pressures = [s.get("cp", 0.0) for s in phase_samples]
     flows = [s.get("pf", 0.0) for s in phase_samples]
 
-    avg_p = _round2(_safe_mean(pressures))
-    avg_f = _round2(_safe_mean(flows))
-
     p_pairs = _pressure_pairs(phase_samples, steering) if steering is not None else []
     f_pairs = _flow_pairs(phase_samples, steering) if steering is not None else []
 
-    annotations: dict[str, str] = {}
     result: PhaseDiagnostics = {
         "phase_type": phase_type,
-        "avg_flow_ml_s": avg_f,
-        "annotations": annotations,
+        "avg_flow_ml_s": _round2(_safe_mean(flows)),
     }
     # As for the whole shot (`_adherence_of`): fewer samples than this is not a verdict.
     if len(f_pairs) >= _MIN_ADHERENCE_SAMPLES:
@@ -1949,72 +1164,35 @@ def _compute_phase_diagnostics(
         )
 
     if not has_pressure:
-        annotations["note"] = _NO_PRESSURE_NOTE
         return result
 
-    result["avg_pressure_bar"] = avg_p
+    result["avg_pressure_bar"] = _round2(_safe_mean(pressures))
     if len(p_pairs) >= _MIN_ADHERENCE_SAMPLES:
-        p_rmse = _round2(_compute_rmse([a for a, _ in p_pairs], [t for _, t in p_pairs]))
-        result["pressure_rmse_bar"] = p_rmse
-        annotations["pressure_adherence"] = _annotate_ascending(p_rmse, _PROFILE_ADHERENCE_BANDS)
+        result["pressure_rmse_bar"] = _round2(
+            _compute_rmse([a for a, _ in p_pairs], [t for _, t in p_pairs])
+        )
 
-    if phase_type == "preinfusion":
-        ramp_rate = _round2(_linear_slope(pressures, dt))
-        # Saturation: the first point where flow has settled — a three-sample
-        # window that is both steady and actually flowing. Default to the whole
-        # phase, meaning it never settled.
+    if phase_type == "brew":
+        resistance = _build_resistance(phase_samples, dt)
+        result["resistance_avg"] = resistance["avg"]
+        result["resistance_slope"] = resistance["slope"]
+        result["resistance_source"] = resistance["source"]
+    elif phase_type == "preinfusion":
+        result["ramp_rate_bar_s"] = _round2(_linear_slope(pressures, dt))
+        # Saturation: the first point where flow has settled, a three-sample
+        # window that is both steady and actually flowing. The whole phase when
+        # it never settled.
         sat_time = _round2(len(phase_samples) * dt)
         for i in range(2, len(flows)):
             window = flows[max(0, i - 2) : i + 1]
             if len(window) >= 2 and _safe_std(window) < 0.15 and _safe_mean(window) > 0.1:
                 sat_time = _round2(i * dt)
                 break
-        result["ramp_rate_bar_s"] = ramp_rate
         result["saturation_time_s"] = sat_time
-        annotations["ramp_rate"] = _annotate_ascending(abs(ramp_rate), _RAMP_RATE_BANDS)
-
-    elif phase_type == "brew":
-        resistance = _build_resistance(phase_samples, dt)
-        r_avg = resistance["avg"]
-        r_slope = resistance["slope"]
-
-        ch = _build_channeling(pressures, flows, phase_samples, dt, steering)
-
-        result["resistance_avg"] = r_avg
-        result["resistance_slope"] = r_slope
-        result["resistance_source"] = resistance["source"]
-        result["channeling_risk"] = ch["channeling_risk"]
-        result["flow_jitter_ml_s"] = ch["flow_jitter_ml_s"]
-        result["pressure_jitter_bar"] = ch["pressure_jitter_bar"]
-
-        annotations["resistance_level"] = _annotate_ascending(r_avg, _RESISTANCE_LEVEL_BANDS)
-        annotations["resistance_erosion"] = _annotate_descending(r_slope, _RESISTANCE_SLOPE_BANDS)
-        annotations["channeling"] = ch["channeling_risk"]
-        # Namespaced so the rich channeling annotations cannot collide with the
-        # phase's own keys.
-        for key in (
-            "flow_jitter",
-            "flow_vs_target",
-            "pressure_drop",
-            "late_flow_trend",
-            "pressure_jitter",
-            "flow_shape",
-            "window_confidence",
-            "primary_signal",
-            "guidance",
-        ):
-            annotations[f"channeling_{key}"] = ch["annotations"][key]
-        if "note" in ch["annotations"]:
-            annotations["channeling_note"] = ch["annotations"]["note"]
-
     elif phase_type == "decline":
-        taper_rate = _round2(_linear_slope(pressures, dt))
+        result["taper_rate_bar_s"] = _round2(_linear_slope(pressures, dt))
         p_derivs = [(pressures[i] - pressures[i - 1]) / dt for i in range(1, len(pressures))]
-        taper_smooth = _round2(_safe_std(p_derivs)) if p_derivs else 0.0
-        result["taper_rate_bar_s"] = taper_rate
-        result["taper_smoothness"] = taper_smooth
-        annotations["taper_smoothness"] = _annotate_ascending(taper_smooth, _TAPER_SMOOTHNESS_BANDS)
-
+        result["taper_smoothness"] = _round2(_safe_std(p_derivs)) if p_derivs else 0.0
     return result
 
 

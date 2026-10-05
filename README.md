@@ -100,7 +100,7 @@ pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The sync button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The sync button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
 | **Chat** | `g c` | The tool-using conversation, with a badge per Set above it. A badge lists that Set's conversations; New there starts one already pointed at that Set. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
@@ -697,7 +697,7 @@ and your judgement, never on its own a reason to change a Set.
 
 The knowledge rules are on the **Knowledge** page: a small tier of dial-in
 heuristics — temperature by roast, the pressure matrix by roast and process,
-ratio and time by style, what each diagnostic band means,
+ratio and time by style,
 taste → suspect, telemetry → cause — each with its source and confidence, each
 editable, each with a switch. They are adapted from
 [gaggimate-barista](https://github.com/chall-tech/gaggimate-barista) (Charlie
@@ -904,9 +904,18 @@ Set 3 is. Beside the composer, the page lists exactly what the agent can do in
 *base* information of a shot — what it is and where it is filed, its outcome,
 the headline diagnostics and your judgement — is what the agent sees for every
 shot in the opening context and in its search; the *extended* information — the
-execution score's working, the temperature, pressure and flow statistics, every
-channeling indicator, profile compliance, one line per phase and the curve —
-is what it asks for, one shot at a time. The curve comes as about sixty rows
+temperature, pressure and flow statistics, profile compliance, one line per phase
+(how it ended, the cup at its end and its share of the target, the flows, the
+water, the pressure) and the curve — is what it asks for, one shot at a time.
+The base information starts with the shot's **warnings**, the few things that
+are plainly wrong with a shot without knowing what its profile is for: over
+target (the final weight above 110 % of the target yield of the version it is
+filed under), under target (below 90 %), a phase of its profile skipped because
+the shot stopped on weight, and fast flow (the scale flow over 3 g/s for a
+second at 80 % of the peak pressure; a turbo profile does it on purpose). They
+are worked out when a shot is read, so refiling a shot changes them, and each is
+a fact to weigh against what the profile is for, never a verdict. There is no
+score and no grade on any number. The curve comes as about sixty rows
 (`chatCurvePoints`) chosen to keep its shape, and it always keeps the moments
 the diagnostics are about: each phase's start and end, peak pressure, first
 drip and the largest pressure drop. A value the machine did not
@@ -916,8 +925,7 @@ extended fields arrive with a shot read in detail (`get_shot_extended`,
 `get_shot_full` or `compare_shots`), once in what the model is sent: on the newest
 such result of the conversation, or on the answer's first when it has none yet. They
 say what each measures, its
-unit, which way is better, and every band label with the threshold behind it, read
-from the diagnostics engine itself.
+unit and which way is better; none carries a grade.
 
 **Which item sits in which tier is yours to choose**, under **Settings → Shot
 information**: one table per group, each item with what it means, a base |
@@ -946,7 +954,7 @@ as one typed by hand. One of the reads is `get_profile`, a profile version's
 whole document, so the agent reads the profile it is about to change, and three
 read one shot: `get_shot` its base information, `get_shot_extended` the rest and
 `get_shot_full` both, beside `list_set_shots`, which searches the Set's shots on
-their base information (filters, ranges, bands, a sort, at most ten back).
+their base information (filters, ranges, a sort, at most ten back).
 **Seventeen in General** — sixteen reads and one proposal, the profile draft. A
 new bag is not worked out there: the General chat sends you to New Set →
 **Design it with the agent**, whose conversation ends in a first recipe you
@@ -995,7 +1003,7 @@ Open a coffee nobody has brewed and **Suggest a starting point instead**, folded
 under that form, answers the question you actually have. It reads the bean and
 grinder already picked and shows what this archive has already brewed on
 *this grinder* that resembles it — same roast level, same process, same
-origin — with how each one went: shots, mean rating, mean execution score, ratio
+origin — with how each one went: shots, mean rating, ratio
 and time. That half is one SQL query, costs nothing, and is worth reading on its
 own. A recipe with no shots behind it is never offered: it records an intention,
 not a result.

@@ -1,15 +1,18 @@
 # Vendored code in `gaggiclanker/domain/`
 
-Two modules here started as someone else's work. Both are MIT licensed and both
-licence texts are reproduced in full at the bottom of this file.
+One module here started as someone else's work, and a second did until it was
+retired (item 11 below). Both are MIT licensed and both licence texts are
+reproduced in full at the bottom of this file.
 
-The thresholds and band labels in a diagnostics engine are not style — they are
-calibration, arrived at by looking at real shots. Vendoring them keeps that
-calibration; rewriting them would have thrown it away and replaced it with
-guesses that look tidier. So the rule for these files is: **change the plumbing,
-never the numbers.** The tests that came with them are ported alongside
-(`tests/domain/test_diagnostics.py`) precisely so a later refactor cannot move a
-boundary without saying so out loud.
+What was kept of the diagnostics engine is its arithmetic: puck resistance, the
+adherence of the measured pressure and flow to the profile, and the shot's summary
+statistics. The rule for those is: **change the plumbing, never the numbers.** The
+tests that came with them are ported alongside (`tests/domain/test_diagnostics.py`)
+and a golden generated before the retirement pins every kept number
+(`tests/fixtures/kept_numbers/`), so a later refactor cannot move one without
+saying so out loud. What was dropped is everything that judged those numbers (item
+11): the threshold bands and their labels, the channeling block, and the
+execution score.
 
 ---
 
@@ -26,14 +29,14 @@ boundary without saying so out loud.
 
 ### What changed
 
-**Unchanged:** every threshold band, every label string, every formula, and the
-wording of every annotation and guidance sentence. Verified numerically — on all
-three upstream `.slog` fixtures, `compute_shot_diagnostics` and
-`compute_summary_diagnostics` produce output identical to upstream's, key for key
-and value for value, as do all three detail levels of the shot transform. That
-was true when it was written and stopped being true at item 8: which samples the
-adherence numbers are read from changed (the formulas and bands did not), so the
-adherence fields no longer equal upstream's on those fixtures.
+**Unchanged:** every formula that is still here. Verified numerically when it was
+written — on all three upstream `.slog` fixtures, `compute_shot_diagnostics` and
+`compute_summary_diagnostics` produced output identical to upstream's, key for key
+and value for value. That stopped being true at item 8 (which samples the
+adherence numbers are read from changed) and again at item 11 (the bands, the
+channeling block and the score are gone, so the output has fewer keys). Items 1
+to 10 are the departures made while the bands and the score existed, and mention
+them; item 11 retired them.
 
 1. **Input model.** Upstream took its own `ShotData` dataclass with `samples` as
    a list of plain dicts. We take a `Slog` (`gaggiclanker/domain/slog.py`), which
@@ -145,9 +148,31 @@ adherence fields no longer equal upstream's on those fixtures.
     same holds in the summary and in each brew phase. The band edges and the
     score are untouched. `DERIVATION_VERSION` 6 brings stored shots along.
 
+11. **The bands, the channeling block and the execution score are gone.** What a
+    number means depends on what the profile is for, and the thresholds were
+    calibrated on other people's shots: a shot whose cup passed its target before
+    the profile's last phase began scored a clean 10, because the score only asked
+    whether the machine followed the profile. Removed: every `_*_BANDS` table and
+    `_annotate_*`, `BAND_READINGS` and `is_healthy_band`, the `annotations` of every
+    block, the channeling block (the risk, the four indicators, the primary signal,
+    the guidance, the window confidence), the temperature block, the pressure area
+    and the brew trends, the resistance's standard deviation, peak and peak timing,
+    the weight rate's variability, and each phase's channeling and the bands on its
+    ramp rate, taper smoothness and resistance. Kept, with the numbers exactly as
+    before: the resistance level and its slope (`_build_resistance`, the brew
+    phases' only, as before), each phase's ramp rate and saturation time
+    (pre-infusion) and taper rate and smoothness (decline) as plain numbers, the
+    adherence and its overshoot and undershoot, the brew flow and the weight rate, the summary
+    statistics. `largest_pressure_drop` (the curve's landmark for the steepest
+    single-sample fall) and the window it is read over (`_steady_state`) stay,
+    because the curve keeps its shape around that moment; no number about the shot
+    is read from them. What replaced the judgement: facts per phase
+    (`phase_metrics.py`) and four warnings that need no knowledge of the profile
+    (`warnings.py`). `DERIVATION_VERSION` 8 brings stored shots along.
+
 ---
 
-## `scoring.py` — from crema
+## `scoring.py` — from crema (retired)
 
 | | |
 |---|---|
@@ -155,9 +180,12 @@ adherence fields no longer equal upstream's on those fixtures.
 | Source file | `src/crema/scoring.py` |
 | Licence | MIT, © 2026 waevans10 |
 
-crema itself vendors gaggimate-mcp's diagnostics, so the two share ancestry.
+crema itself vendors gaggimate-mcp's diagnostics, so the two share ancestry. The
+module and its tests were deleted with the execution score (item 11 above); the
+departures it carried are kept here as the record. crema is still cited by name in
+the knowledge rules it contributed (the review prompt's discipline).
 
-### What changed
+### What it changed
 
 1. **The erosion penalty was fixed.** Upstream checked
    `if erosion in {"HIGH", "VERY_HIGH"}`. Those are *level* labels. The erosion

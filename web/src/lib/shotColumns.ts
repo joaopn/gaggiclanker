@@ -19,7 +19,6 @@ export type ShotColumnId =
   | "curve"
   | "duration"
   | "yield"
-  | "score"
   | "rating"
   | "set"
   | "notes"
@@ -97,8 +96,6 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // "36.0 g" is 2.5rem, the heading 2.3rem — and Yield does not sort, so no
   // arrow ever appears beside it.
   { id: "yield", label: "Yield", size: { rem: 3, min: 2.75, max: 8 }, narrowHidden: true },
-  // The badge is two characters wide; the sorted heading is 3.8rem.
-  { id: "score", label: "Score", size: { rem: 4, min: 2.75, max: 6 } },
   // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit,
   // and wider than the sorted heading.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },
@@ -122,8 +119,8 @@ export const SHOT_COLUMNS: ShotColumn[] = [
 /**
  * What a first visit shows.
  *
- * Set, Time and Profile say what was brewed and when; Duration, Yield and
- * Score say what the machine did; Rating and Decision say what you made of it.
+ * Set, Time and Profile say what was brewed and when; Duration and Yield say
+ * what the machine did; Rating and Decision say what you made of it.
  * That is the row a reader scans, and it is the row they get without touching
  * the chooser.
  *
@@ -142,7 +139,6 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "profile",
   "duration",
   "yield",
-  "score",
   "rating",
   "decision",
 ];
@@ -165,9 +161,9 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
  */
 export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly ShotColumnId[])[] = [
   // Before Profile joined the default row.
-  ["set", "time", "duration", "yield", "score", "rating", "decision"],
+  ["set", "time", "duration", "yield", "rating", "decision"],
   // Before the column after Rating (Decision) replaced Flags.
-  ["time", "duration", "yield", "score", "rating", "set", "flags"],
+  ["time", "duration", "yield", "rating", "set", "flags"],
 ];
 
 /**

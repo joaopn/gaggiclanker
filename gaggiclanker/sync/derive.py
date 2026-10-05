@@ -4,7 +4,7 @@ A free function rather than a method, because two callers need exactly this and
 neither should own it: the sync engine, reading a machine, and the JSON importer,
 reading a JSON export of a shot the machine has already deleted. If the
 derivation lived on the engine, the importer would either reach into it or grow
-a second copy — and a second copy of "what the score of a shot is" is how two
+a second copy — and a second copy of "what a shot's numbers are" is how two
 shots in one archive stop being comparable.
 
 Everything here is derived from ``raw`` and is rebuildable from it. That is the
@@ -35,7 +35,6 @@ from gaggiclanker.domain.firmware_values import compute_firmware_values
 from gaggiclanker.domain.models import IndexEntry
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
 from gaggiclanker.domain.phase_metrics import compute_phase_metrics
-from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import Slog, SlogError, parse_slog
 
 __all__ = [
@@ -53,9 +52,9 @@ __all__ = [
 
 log = structlog.get_logger(__name__)
 
-#: The version of what :func:`derive_shot` produces: a shot's phases, diagnostics
-#: and execution score. Written on every new derive, and the boot step
-#: (:func:`rederive_shots`) re-derives every stored shot below it from its bytes.
+#: The version of what :func:`derive_shot` produces: a shot's phases and diagnostics.
+#: Written on every new derive, and the boot step (:func:`rederive_shots`)
+#: re-derives every stored shot below it from its bytes.
 #: **A change to what derive produces bumps this**, and the next start brings the
 #: archive along, so a search, a sort or a Set never compares two definitions.
 #: 1: puck resistance from the machine's own measurement when the shot has it.
@@ -78,7 +77,13 @@ log = structlog.get_logger(__name__)
 #: shot carries the facts about itself (the profile's phases it never began, the
 #: first window of fast scale flow at high pressure): ``phases_json[i]["metrics"]``
 #: and ``diagnostics_json["metrics"]``.
-DERIVATION_VERSION = 7
+#: 8: the execution score, the threshold bands and the channeling block are gone
+#: from what is stored (and from the shot row): a diagnostics blob holds numbers
+#: and no verdicts. Resistance (its mean and slope), adherence and the firmware's
+#: values are the numbers they were, and each phase keeps its ramp, saturation
+#: and taper as numbers. A version of its own, so a database that booted at 7 is
+#: derived again for this change too.
+DERIVATION_VERSION = 8
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these
@@ -193,11 +198,11 @@ def _attach_diagnostics(
     controls: tuple[PhaseControl, ...] | None,
     profile: Mapping[str, Any] | None = None,
 ) -> str | None:
-    """Phases, diagnostics and the execution score — best effort, and on purpose.
+    """Phases, diagnostics and per-phase metrics — best effort, and on purpose.
 
     This is the one failure in the ingest path that does **not** quarantine. The
-    bytes parsed, the samples are real and the curve will draw; a bug in a
-    channeling heuristic must not hide a perfectly good shot from the archive.
+    bytes parsed, the samples are real and the curve will draw; a bug in the
+    diagnostics must not hide a perfectly good shot from the archive.
     The caller counts the failure, and re-deriving is a pass over `raw_slog`
     away.
     """
@@ -205,7 +210,6 @@ def _attach_diagnostics(
         transformed = transform_shot(
             slog, "per_phase", has_pressure=has_pressure, phase_controls=controls
         )
-        score = execution_score(transformed)
         shot_metrics, phase_metrics = compute_phase_metrics(
             as_sample_dicts(slog),
             slog.transitions,
@@ -232,23 +236,15 @@ def _attach_diagnostics(
             "detail_level": transformed["detail_level"],
             "has_pressure": transformed["has_pressure"],
             # What the machine's own shot analyzer shows, in its units and taken
-            # its way: informational, kept apart from the banded diagnostics.
+            # its way: kept apart from the engine's own numbers.
             "firmware": compute_firmware_values(
                 as_sample_dicts(slog), slog.volume_g, has_pressure=transformed["has_pressure"]
             ),
             # What each phase did, as plain numbers, and the facts about the
             # shot as a whole. The per-phase half is on the phases themselves.
             "metrics": shot_metrics,
-            # The score's own working, not just its result. `shots.execution_score`
-            # and `execution_reason` are columns because the list sorts and filters
-            # on them; the per-component penalties belong with the diagnostics they
-            # were computed from, so the shot page can say *which* fault cost what
-            # without re-deriving the score in the browser.
-            "score": score.as_dict(),
         }
     )
-    shot.execution_score = score.score
-    shot.execution_reason = score.reason
     shot.derivation_version = DERIVATION_VERSION
     return None
 
@@ -280,8 +276,8 @@ async def refill_final_weights(shots: ShotsRepository) -> int:
 async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:
     """Bring every shot derived by an older version up to :data:`DERIVATION_VERSION`.
 
-    Returns ``(rederived, failed)``. Run at boot, before any request: the four
-    derived columns are rewritten from ``raw_slog`` with the same code a new shot
+    Returns ``(rederived, failed)``. Run at boot, before any request: the derived
+    columns are rewritten from ``raw_slog`` with the same code a new shot
     goes through, and nothing else of the shot is touched (notes, judgements,
     Set membership, samples and the device's own index fields are not derived).
 
@@ -330,8 +326,6 @@ async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:
             ShotDerivationUpdate(
                 phases_json=shot.phases_json,
                 diagnostics_json=shot.diagnostics_json,
-                execution_score=shot.execution_score,
-                execution_reason=shot.execution_reason,
                 derivation_version=DERIVATION_VERSION,
             ),
             profile_version_id=source.profile_version_id,

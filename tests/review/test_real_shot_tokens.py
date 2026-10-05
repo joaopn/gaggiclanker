@@ -1,42 +1,62 @@
-"""A review of a synced or imported shot selects the band rules.
+"""A review of a synced or imported shot selects its rules by the shot's own warnings and readings.
 
-`tests/review/conftest.py` hand-builds the *summary* diagnostics shape, which
-already names its annotations by section (`resistance_level`). Ingest stores
-the *full* shape instead, where they are nested per section under short keys,
-and the tokens used to come out as `level:LOW` and an ambiguous `stability:`.
-Nothing matched them, so the resistance, temperature-stability and channeling
-band rules were never selected for a real shot. These tests derive real
-fixture recordings the way ingest does and read the review's input for them.
+A shot is read for what is plainly wrong with it whatever its profile is for: the
+warnings (over target, under target, skipped, fast flow), written as ``fault:``
+tokens, and a handful of plain readings of its numbers (``first_drip:fast``,
+``avg_flow:high``, ``temp:cold``, ``scale:absent``, ``yield:tiny``). There is no
+band in any of them. These tests derive real fixture recordings, and the
+constructed lever shot, the way ingest does and read the review's input.
+
+A review is blind to the Set, so the two yield warnings (which need the target of
+the version a shot is filed under) are never among a review's tokens; a caller that
+does hold the version gets them from the same function.
 """
 
 from __future__ import annotations
 
-import json
+import dataclasses
 from pathlib import Path
 
 import pytest
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
-from gaggiclanker.domain.diagnostics import transform_shot
-from gaggiclanker.domain.phase_control import phase_controls
+from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.slog import parse_slog
+from gaggiclanker.domain.warnings import FAULTS, fault_token
 from gaggiclanker.knowledge.rules import load_seed_rules
 from gaggiclanker.review.context import build_review_input, signal_tokens
 from gaggiclanker.review.style import StyleVerdict
 from gaggiclanker.shotinfo import load_shots
 from gaggiclanker.sync.derive import derive_shot
 from tests.domain.helpers import constructed_profile_for, standard_board
+from tests.lever_shot import LEVER_PROFILE, lever_shot, without_scale
 
 SLOGS = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))
+UNKNOWN = StyleVerdict(style="unknown", tier="none", evidence=[])
 
-#: The metrics whose rules key on the summary shape's section-qualified names.
-BAND_METRICS = (
-    "resistance_level",
-    "resistance_erosion",
-    "temperature_stability",
-    "channeling_risk",
+#: Every shape of token a seed rule may key on, and what each one can be.
+FAULT_TOKENS = {f"fault:{fault_token(fault)}" for fault in FAULTS}
+KNOWN_PREFIXES = (
+    "style:",
+    "taste:",
+    "aroma:",
+    "balance:",
+    "fault:",
+    "first_drip:",
+    "avg_flow:",
+    "temp:",
+    "scale:",
+    "yield:",
 )
+KNOWN_TOKENS = {
+    "temp:cold",
+    "temp:hot",
+    "scale:absent",
+    "yield:tiny",
+    "taste:sour_and_bitter",
+}
 
 
 def _rule_tokens() -> set[str]:
@@ -45,201 +65,140 @@ def _rule_tokens() -> set[str]:
 
 
 async def _ingest(
-    db: Database,
-    path: Path,
-    *,
-    has_pressure: bool | None = None,
-    variant: str | None = "pressure-first",
+    db: Database, path: Path, *, variant: str | None = "pressure-first", **kwargs: object
 ) -> int:
-    """A real shot, derived with its constructed profile (`None`: with no profile)."""
     raw = path.read_bytes()
     derived = derive_shot(
         parse_slog(raw),
         raw,
         device_id=path.stem,
-        has_pressure=has_pressure,
         profile=None if variant is None else constructed_profile_for(path, variant),
+        **kwargs,  # type: ignore[arg-type]
     )
     assert derived.diagnostics_error is None
     return await ShotsRepository(db).insert(derived.shot, derived.samples)
 
 
-def _summary_tokens(path: Path) -> set[str]:
-    """What the summary shape of the same recording names, straight from the engine."""
-    controls = phase_controls(constructed_profile_for(path))
-    diagnostics = transform_shot(parse_slog(path.read_bytes()), "summary", phase_controls=controls)[
-        "diagnostics"
-    ]
-    return {
-        f"{metric}:{label}"
-        for metric, label in json.loads(json.dumps(diagnostics))["annotations"].items()
-    }
+async def _ingest_lever(db: Database, slog: object = None) -> int:
+    shot = slog if slog is not None else lever_shot()
+    derived = derive_shot(
+        shot,  # type: ignore[arg-type]
+        slog_to_raw(shot),  # type: ignore[arg-type]
+        device_id="000900",
+        source="import",
+        profile=LEVER_PROFILE,
+    )
+    return await ShotsRepository(db).insert(derived.shot, derived.samples)
 
 
-@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-async def test_a_derived_shot_produces_the_summary_shape_s_band_tokens(
-    seeded: Database, path: Path
-) -> None:
-    shot_id = await _ingest(seeded, path)
-    (facts,) = await load_shots(seeded, [shot_id])
-    assert facts.full, "ingest stores the full diagnostics; this test must not read the flat shape"
-
-    listed = signal_tokens(facts, StyleVerdict(style="unknown", tier="none", evidence=[]))
-    tokens = set(listed)
-    # Every token the summary shape produces that any rule matches, not only
-    # the four band metrics: a section prefix wrongly put on the profile
-    # compliance keys would lose `pressure_adherence:` and `flow_adherence:`.
-    expected = _summary_tokens(path) & _rule_tokens()
-    assert {t.split(":")[0] for t in expected} >= set(BAND_METRICS)
-    assert expected <= tokens
-    # Nothing is left under a short, ambiguous key or as prose.
-    assert not [
-        t for t in tokens if t.startswith(("level:", "erosion:", "stability:", "guidance:"))
-    ]
-    assert listed == sorted(tokens)
+def test_every_token_a_seed_rule_keys_on_is_one_a_shot_can_produce() -> None:
+    """No rule is left keyed on a token nothing makes (a band, an indicator)."""
+    for token in sorted(_rule_tokens()):
+        assert token.startswith(KNOWN_PREFIXES), token
+        if token.startswith("fault:"):
+            assert token in FAULT_TOKENS, token
+        if token.startswith(("temp:", "scale:", "yield:")):
+            assert token in KNOWN_TOKENS, token
 
 
-ADHERENCE = ("pressure_adherence:", "pressure_overshoot:", "flow_adherence:", "flow_overshoot:")
-
-
-def _adherence_rules(prefixes: tuple[str, ...]) -> set[str]:
-    return {
-        rule.key
+def test_the_rules_keyed_on_a_fault_are_the_ones_listed() -> None:
+    keyed = {
+        (rule.category, rule.key): sorted(
+            t for t in rule.applies.get("signal") or [] if t.startswith("fault:")
+        )
         for rule in load_seed_rules()
-        if any(t.startswith(prefixes) for t in rule.applies.get("signal") or [])
+    }
+    assert {key: tokens for key, tokens in keyed.items() if tokens} == {
+        ("profile_design_defaults", "preinfusion"): ["fault:fast_flow"],
     }
 
 
 @pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-async def test_a_pressure_profile_s_review_reads_no_flow_adherence(
+async def test_a_derived_real_shot_produces_readings_and_no_band(
     seeded: Database, path: Path
 ) -> None:
-    """Its flow was never a target: no token, and so no rule about the grind by flow."""
     shot_id = await _ingest(seeded, path)
-    review = await build_review_input(seeded, shot_id)
-
-    assert any(t.startswith("pressure_adherence:") for t in review.signals)
-    assert not [t for t in review.signals if t.startswith(("flow_adherence:", "flow_overshoot:"))]
-    assert not [t for t in review.signals if t.startswith("flow_undershoot:")]
-    flow_rules = _adherence_rules(("flow_adherence:", "flow_overshoot:", "flow_undershoot:"))
-    assert flow_rules, "some seed rule keys on flow adherence"
-    assert not flow_rules & set(review.rule_keys)
-
-
-@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-async def test_a_flow_steered_phase_gives_the_review_its_flow_adherence(
-    seeded: Database, path: Path
-) -> None:
-    shot_id = await _ingest(seeded, path, variant="flow-first")
-    review = await build_review_input(seeded, shot_id)
-
-    assert "flow_adherence:EXCELLENT" in review.signals
-
-
-@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-async def test_a_shot_with_no_known_profile_s_review_reads_no_adherence_at_all(
-    seeded: Database, path: Path
-) -> None:
-    shot_id = await _ingest(seeded, path, variant=None)
-    review = await build_review_input(seeded, shot_id)
-
-    assert not [t for t in review.signals if t.startswith(ADHERENCE)]
-    assert not [t for t in review.signals if t.startswith("flow_undershoot:")]
-    assert not _adherence_rules(ADHERENCE) & set(review.rule_keys)
-    # The rest of the diagnostics are still read.
-    assert any(t.startswith("resistance_level:") for t in review.signals)
-
-
-@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-async def test_the_band_rules_are_selected_for_a_derived_shot(seeded: Database, path: Path) -> None:
-    shot_id = await _ingest(seeded, path)
-    review = await build_review_input(seeded, shot_id)
-
-    by_key = {rule.key: rule for rule in load_seed_rules()}
-    band_keys = {
-        key
-        for key, rule in by_key.items()
-        if any(token.startswith(BAND_METRICS) for token in rule.applies.get("signal") or [])
-    }
-    selected = set(review.rule_keys)
-    tokens = set(review.signals)
-    wanted = {key for key in band_keys if set(by_key[key].applies.get("signal") or []) & tokens}
-    assert wanted, "the shot's tokens must match at least one band rule"
-    assert wanted <= selected
-    for metric in ("resistance_level", "resistance_erosion", "temperature_stability"):
-        assert any(t.startswith(metric + ":") for t in tokens)
-        assert any(
-            t.startswith(metric + ":")
-            for key in selected & band_keys
-            for t in by_key[key].applies.get("signal") or []
-        ), metric
-
-
-@pytest.mark.parametrize("path", SLOGS[:1], ids=lambda p: p.stem)
-async def test_a_shot_without_a_pressure_sensor_gets_no_prose_token(
-    seeded: Database, path: Path
-) -> None:
-    """The engine's "No pressure sensor" sentence is an annotation, not a band."""
-    shot_id = await _ingest(seeded, path, has_pressure=False)
     (facts,) = await load_shots(seeded, [shot_id])
-    diagnostics = facts.diagnostics
-    assert "note" in diagnostics["extraction"]["annotations"], "the fixture must carry the note"
+    assert facts.full, "ingest stores the full diagnostics"
 
-    tokens = signal_tokens(facts, StyleVerdict(style="unknown", tier="none", evidence=[]))
-    assert not [t for t in tokens if t.startswith(("note:", "guidance:"))]
-    assert all(len(t) < 60 for t in tokens)
+    listed = signal_tokens(facts, UNKNOWN)
+
+    assert listed == sorted(set(listed))
+    assert "style:unknown" in listed
+    assert all(t.startswith(KNOWN_PREFIXES) for t in listed), listed
+    assert not [t for t in listed if t.split(":")[0].isupper() or t.split(":")[1].isupper()]
 
 
 @pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-async def test_a_standard_board_shot_gets_no_flow_adherence_token(
+async def test_a_real_shot_with_no_scale_flow_over_three_has_no_fault(
     seeded: Database, path: Path
 ) -> None:
-    """Its flow is not measured, so no rule that grades the grind by flow applies."""
+    """These fixtures' scale flow never passes 3 g/s, and a review is given no version."""
+    shot_id = await _ingest(seeded, path)
+    review = await build_review_input(seeded, shot_id)
+    assert not [t for t in review.signals if t.startswith("fault:")]
+
+
+async def test_the_lever_shot_s_review_reads_its_fast_flow_and_its_skipped_phase(
+    seeded: Database,
+) -> None:
+    shot_id = await _ingest_lever(seeded)
+    review = await build_review_input(seeded, shot_id)
+
+    faults = [t for t in review.signals if t.startswith("fault:")]
+    assert faults == ["fault:fast_flow", "fault:skipped"]
+    assert review.signals == sorted(review.signals)
+
+
+async def test_the_yield_faults_need_the_version_a_review_is_blind_to(seeded: Database) -> None:
+    shot_id = await _ingest_lever(seeded)
+    (facts,) = await load_shots(seeded, [shot_id])
+    assert "fault:over_target" not in signal_tokens(facts, UNKNOWN)
+
+    # A caller that holds the version (a Set's 36 g target) gets it, from the same function.
+    version = SetVersionRow.model_construct(target_yield_g=36.0)
+    filed = dataclasses.replace(facts, version=version)
+    assert "fault:over_target" in signal_tokens(filed, UNKNOWN)
+    assert "fault:under_target" not in signal_tokens(filed, UNKNOWN)
+
+
+async def test_the_re_keyed_pre_infusion_rule_is_selected_by_fast_flow(seeded: Database) -> None:
+    shot_id = await _ingest_lever(seeded)
+    review = await build_review_input(seeded, shot_id)
+
+    assert "preinfusion" in review.rule_keys
+    rule = next(r for r in review.rules if r["key"] == "preinfusion")
+    assert rule["category"] == "profile_design_defaults"
+
+
+async def test_a_shot_that_never_goes_fast_does_not_select_it_by_fault(seeded: Database) -> None:
+    shot_id = await _ingest(seeded, SLOGS[0])
+    review = await build_review_input(seeded, shot_id)
+    selecting = set(review.signals) & {"fault:fast_flow", "first_drip:fast"}
+    assert ("preinfusion" in review.rule_keys) == bool(selecting)
+
+
+async def test_a_shot_with_no_scale_reads_no_yield_or_fast_flow_and_says_so(
+    seeded: Database,
+) -> None:
+    shot_id = await _ingest_lever(seeded, without_scale(lever_shot()))
+    review = await build_review_input(seeded, shot_id)
+
+    assert "scale:absent" in review.signals
+    assert "fault:fast_flow" not in review.signals
+    assert "fault:skipped" in review.signals
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+async def test_a_standard_board_shot_has_no_fault_and_no_pressure_reading(
+    seeded: Database, path: Path
+) -> None:
     slog = standard_board(parse_slog(path.read_bytes()))
     derived = derive_shot(slog, path.read_bytes(), device_id=path.stem)
     shot_id = await ShotsRepository(seeded).insert(derived.shot, derived.samples)
     (facts,) = await load_shots(seeded, [shot_id])
-    tokens = signal_tokens(facts, StyleVerdict(style="unknown", tier="none", evidence=[]))
-    assert not [t for t in tokens if t.startswith(("flow_adherence:", "flow_overshoot:"))]
-    assert not [t for t in tokens if t.startswith("pressure_adherence:")]
-    review = await build_review_input(seeded, shot_id)
-    graded = {
-        rule.key
-        for rule in load_seed_rules()
-        if any(t.startswith("flow_adherence:") for t in rule.applies.get("signal") or [])
-    }
-    assert graded, "some seed rule keys on flow adherence"
-    assert not graded & set(review.rule_keys)
 
+    tokens = signal_tokens(facts, UNKNOWN)
 
-class _Shot:
-    scale_connected = True
-    volume_g = 36.0
-
-
-class _Facts:
-    """The four things `signal_tokens` reads, with a hand-built full-shape block."""
-
-    def __init__(self, channeling: dict[str, object]) -> None:
-        self.shot = _Shot()
-        self.summary: dict[str, object] = {}
-        self.diagnostics = {"channeling": channeling}
-
-
-def _tokens_for(primary: str) -> list[str]:
-    facts = _Facts(
-        {"channeling_risk": "HIGH", "annotations": {"primary_signal": primary, "guidance": "x"}}
-    )
-    return signal_tokens(facts, StyleVerdict(style="unknown", tier="none", evidence=[]))  # type: ignore[arg-type]
-
-
-def test_the_channeling_indicators_that_fired_become_primary_tokens() -> None:
-    tokens = _tokens_for("flow_jitter,pressure_cliff")
-    assert {"primary:flow_jitter", "primary:pressure_cliff", "channeling_risk:HIGH"} <= set(tokens)
-    assert not [t for t in tokens if t.startswith("guidance:")]
-
-
-def test_no_indicator_fired_means_no_primary_token() -> None:
-    tokens = _tokens_for("none")
-    assert not [t for t in tokens if t.startswith("primary:")]
-    assert "channeling_risk:HIGH" in tokens
+    assert not [t for t in tokens if t.startswith("fault:")]
+    assert all(t.startswith(KNOWN_PREFIXES) for t in tokens)

@@ -278,7 +278,7 @@ increments:
 
 pressure_matrix:
   [compression_floor] A puck compresses at about 4 bar, so pre-infusion belongs below that: pressure applied before the bed has set is what opens a channel.
-  [decline_compensates_erosion] A declining pressure phase compensates for the puck eroding: as resistance falls, dropping the setpoint keeps flow where it was instead of letting the shot run away at the end.
+  [decline_holds_flow] A declining pressure phase compensates for the puck wearing down: as resistance falls, dropping the setpoint keeps flow where it was instead of letting the shot run away at the end.
   [flow_peak] Flow through an espresso puck peaks around 9 bar. Above about 10 the extra pressure goes into deforming the bed rather than through it.
 
 ratio_by_style:
@@ -287,16 +287,6 @@ ratio_by_style:
 
 time_by_style:
   [bloom] A bloom profile totals 30-45 s, with first drip between 15 and 25 s.
-
-band_meanings:
-  [channeling_risk:LOW] channeling_risk LOW — no indicator crossed its threshold; the puck held.
-  [flow_adherence:GOOD] flow_adherence GOOD — RMSE 0.3-0.8 ml/s against the commanded flow.
-  [flow_overshoot:MINOR_DEVIATION] flow_overshoot MINOR_DEVIATION — a small, measurable departure above target flow.
-  [pressure_adherence:EXCELLENT] pressure_adherence EXCELLENT — RMSE under 0.3 bar; the machine tracked the profile closely.
-  [pressure_overshoot:WITHIN_TOLERANCE] pressure_overshoot WITHIN_TOLERANCE — under 0.25 bar over target; deviation means nothing here.
-  [resistance_erosion:GRADUAL_DECLINE] resistance_erosion GRADUAL_DECLINE — a slow fall, normal as the bed saturates.
-  [resistance_level:MODERATE] resistance_level MODERATE — 1.5-3.0, the usual range for a well-packed basket.
-  [temperature_stability:STABLE] temperature_stability STABLE — std 0.3-0.8 °C, within normal variation.
 
 profile_design_defaults:
   [bloom] A bloom is the pump OFF for 5-15 s — not the valve closed. The valve stays at 1.
@@ -319,9 +309,9 @@ Medium 18g 1:2
 === shot_information ===
 shot 6
 [Phases]
-phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; pressure 3.9 bar; temperature 92.8 °C; volume 4.2 ml; ramp 1.30 bar/s; samples 12
-phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; pressure 0.6 bar; temperature 93.1 °C; volume 0.4 ml; ramp 0.00 bar/s; samples 28
-phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; pressure 8.8 bar; temperature 93.4 °C; volume 31.8 ml; resistance 2.40; channeling LOW; samples 72
+phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; ended by Duration; pressure 3.9 bar; temperature 92.8 °C; volume 4.2 ml; cup at end 0.0 g; cup gained 0.0 g; samples 12
+phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; ended by Duration; pressure 0.6 bar; temperature 93.1 °C; volume 0.4 ml; cup at end 0.4 g; cup gained 0.4 g; samples 28
+phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; ended by Volumetric target; pressure 8.8 bar; temperature 93.4 °C; volume 31.8 ml; cup at end 36.4 g; cup gained 36.0 g; resistance 2.40; samples 72
 [Identity and status]
 Date and time: 2026-03-03 08:25
 Profile as brewed: Medium 18g 1:2
@@ -330,11 +320,6 @@ Machine's shot number: 000106
 Shot time: 24.0 s
 Yield: 37.5 g
 Exit reason: Volumetric target
-Execution score: 8.3 / 10
-[Execution score detail]
-Score confidence: high
-Score reason: Execution capped by flow adherence (0.07 point penalty).
-Penalty components: flow adherence -0.05
 [Timing]
 First drip: 8.2 s
 Pre-infusion time: 10.0 s
@@ -344,7 +329,6 @@ Average temperature: 93.2 °C
 Target temperature: 93.0 °C
 Minimum temperature: 92.1 °C
 Maximum temperature: 94.4 °C
-Temperature stability: 0.42 °C STABLE
 [Pressure]
 Peak pressure: 9.20 bar
 Average pressure: 7.8 bar
@@ -355,15 +339,11 @@ Average flow: 1.9 ml/s
 Peak flow: 3.1 ml/s
 Total volume: 36.4 ml
 [Puck resistance]
-Resistance level: 2.10 MODERATE
-Resistance erosion: -0.04 /s GRADUAL_DECLINE
-[Channeling]
-Channeling risk: LOW
+Resistance level: 2.10
+Resistance slope: -0.04 /s
 [Profile compliance]
-Pressure adherence: 0.31 bar EXCELLENT
-Flow adherence: 0.44 ml/s GOOD
-Largest pressure overshoot: 0.22 bar WITHIN_TOLERANCE
-Largest flow overshoot: 0.55 ml/s MINOR_DEVIATION
+Pressure adherence: 0.31 bar
+Flow adherence: 0.44 ml/s
 [Curve]
 44 of 112 samples, shape-preserving; always kept: the first and last, each phase's first and last, peak pressure, first drip, both ends of the largest pressure drop
 t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),weight (g),temperature (°C),phase marker,target temperature (°C)

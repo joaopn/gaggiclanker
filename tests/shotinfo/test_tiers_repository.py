@@ -32,22 +32,22 @@ async def test_a_fresh_archive_has_no_overrides(db: Database) -> None:
 
 async def test_moving_an_item_stores_it_and_moving_it_again_replaces_it(db: Database) -> None:
     repo = ShotInfoTiersRepository(db)
-    assert ITEMS["flow_jitter"].default_tier == "extended"
+    assert ITEMS["peak_flow"].default_tier == "extended"
 
-    await repo.set_tier(ShotInfoTierWrite(item_key="flow_jitter", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="peak_flow", tier="base"))
     await repo.set_tier(ShotInfoTierWrite(item_key="rating", tier="excluded"))
-    assert await repo.overrides() == {"flow_jitter": "base", "rating": "excluded"}
+    assert await repo.overrides() == {"peak_flow": "base", "rating": "excluded"}
 
-    await repo.set_tier(ShotInfoTierWrite(item_key="flow_jitter", tier="excluded"))
-    assert await repo.overrides() == {"flow_jitter": "excluded", "rating": "excluded"}
-    assert [row.item_key for row in await repo.rows()] == ["flow_jitter", "rating"]
+    await repo.set_tier(ShotInfoTierWrite(item_key="peak_flow", tier="excluded"))
+    assert await repo.overrides() == {"peak_flow": "excluded", "rating": "excluded"}
+    assert [row.item_key for row in await repo.rows()] == ["peak_flow", "rating"]
 
 
 async def test_moving_an_item_back_to_its_default_deletes_its_row(db: Database) -> None:
     repo = ShotInfoTiersRepository(db)
-    await repo.set_tier(ShotInfoTierWrite(item_key="flow_jitter", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="peak_flow", tier="base"))
 
-    await repo.set_tier(ShotInfoTierWrite(item_key="flow_jitter", tier="extended"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="peak_flow", tier="extended"))
 
     assert await db.fetch_value("SELECT COUNT(*) FROM shot_info_tiers") == 0
     # And setting an untouched item to its default stores nothing either.
@@ -57,8 +57,8 @@ async def test_moving_an_item_back_to_its_default_deletes_its_row(db: Database) 
 
 async def test_reset_deletes_every_override(db: Database) -> None:
     repo = ShotInfoTiersRepository(db)
-    await repo.set_tier(ShotInfoTierWrite(item_key="flow_jitter", tier="base"))
-    await repo.set_tier(ShotInfoTierWrite(item_key="processing_note", tier="extended"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="peak_flow", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="phase_samples", tier="extended"))
 
     assert await repo.reset() == 2
     assert await repo.overrides() == {}

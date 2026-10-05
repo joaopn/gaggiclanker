@@ -163,16 +163,19 @@ async def test_the_outcome_term_rewards_shots_and_ratings(fixture: Fixture) -> N
     assert kenya.score == round(kenya.attribute_score + kenya.outcome_score, 3)
 
 
-async def test_a_version_with_no_judgements_still_scores_on_execution(
+async def test_a_version_with_no_judgements_has_no_outcome_term(
     fixture: Fixture,
 ) -> None:
-    """A rating nobody gave is ``None``, not a zero somebody would average."""
+    """A rating nobody gave is ``None``, not a zero somebody would average.
+
+    The outcome is the person's rating and nothing else: the machine's own numbers
+    say how a shot ran, not how the cup was, so with no verdict there is no outcome.
+    """
     await fixture.db.execute("DELETE FROM shot_judgements")
     rows = await _for_the_new_bag(fixture)
     kenya = {row.set_version_id: row for row in rows}[fixture.versions["kenya"]]
     assert kenya.outcome.mean_rating is None
-    assert kenya.outcome.mean_execution_score is not None
-    assert kenya.outcome_score > 0
+    assert kenya.outcome_score == 0
 
 
 async def test_the_ordering_is_stable_across_repeated_calls(fixture: Fixture) -> None:
@@ -227,11 +230,11 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
         cursor = await fixture.db.execute(
             """
             INSERT INTO shots (device_id, raw_slog, started_at, duration_ms,
-                               execution_score, set_version_id, synced_at, updated_at)
-            VALUES (?, x'00', '2026-02-20T08:00:00.000Z', 28000, ?, ?,
+                               set_version_id, synced_at, updated_at)
+            VALUES (?, x'00', '2026-02-20T08:00:00.000Z', 28000, ?,
                     '2026-02-20T08:00:00.000Z', '2026-02-20T08:00:00.000Z')
             """,
-            (f"9000{index:02d}", 8.8 + index * 0.1, copy_version),
+            (f"9000{index:02d}", copy_version),
         )
         await fixture.db.execute(
             "INSERT INTO shot_judgements (shot_id, rating, dose_in_g, dose_out_g, updated_at) "
@@ -369,3 +372,20 @@ async def test_a_decaf_mismatch_is_spelled_out_in_the_prompt(fixture: Fixture) -
         as_of=AS_OF,
     )
     assert "DECAF MISMATCH" in context.render()["similar_sets"]
+
+
+async def test_the_mean_ratio_uses_the_version_s_dose_when_no_dose_was_typed(
+    fixture: Fixture,
+) -> None:
+    """The one shared rule: the typed dose, else the filed version's, over the scale's yield."""
+    await fixture.db.execute("DELETE FROM shot_judgements")
+    version = fixture.versions["kenya"]
+    await fixture.db.execute(
+        "UPDATE shots SET final_weight_g = 36.0, quarantined = 0 WHERE set_version_id = ?",
+        (version,),
+    )
+    found = await fixture.db.fetch_one("SELECT dose_g FROM set_versions WHERE id = ?", (version,))
+    assert found is not None
+    dose = found["dose_g"]
+    kenya = {row.set_version_id: row for row in await _for_the_new_bag(fixture)}[version]
+    assert kenya.outcome.mean_ratio == round(36.0 / dose, 2)

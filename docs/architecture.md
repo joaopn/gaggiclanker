@@ -79,7 +79,7 @@ the archive tells them apart by the profile a shot was brewed with.
 | `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, the version's newest shots — or, while the Set is being designed, the design brief and its evidence (`design_context.py`), and the streamed, resumable run. |
 | `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary, generated from the catalogue in two halves: the base half in the chat prompts, the extended half in front of a shot read in detail, once in what the model is sent. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
-| `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
+| `domain/` | The `.slog` and index parsers, the diagnostics (numbers only: resistance, adherence, the summary statistics), the per-phase metrics and the shot's facts (`phase_metrics.py`: what ended each phase, the cup at its end, the flows, the water, the profile's phases never begun, the first fast-flow window) and the warnings (`warnings.py`: one pure function from a shot's stored numbers, its filed version's target yield and its profile's phase names). Pure functions over bytes and numbers. There is no score and no band anywhere: a number carries no grade. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and five gated write methods, all of them profile operations — nothing else. Only profiles are ever written to the machine. `save_profile`, `delete_profile`, `select_profile`, `favorite_profile` and `unfavorite_profile` are reached only by the board's write phase, inside a sync (switch on): the save of a profile version the machine does not hold, the removal of a superseded profile or one that is switched off (guarded by a fresh load), the select and favourite that move the star and the selection to the profile that replaces another, and the favourite flag that matches a profile's home-screen setting; a standalone select has no route (only `scripts/profile_gate.py` selects). `drafts/machine.py` holds the re-read, the no-duplicate save and the guarded removal. Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
 | `db/` | Repositories — the only code that writes SQL — plus migrations and backups. |
 | `infra/` | Request ids, the error envelope, the SSE bus, the task registry, the auth guard's neighbours. |
@@ -449,11 +449,16 @@ anywhere, the web included: the page shows what the server says the
 conversation has.
 
 **A shot reaches a model in two tiers, from one catalogue.** Every item a shot
-carries — the execution score, each diagnostic with its band, each phase's
-metrics, each curve channel, the person's judgement, the shot's newest
+carries — the warnings, each diagnostic as a number (no band, no score), each
+phase's metrics, each curve channel, the person's judgement, the shot's newest
 finished review — is one entry in
-`shotinfo/catalogue.py` with a stable key, what it means, a default tier and the
-function that renders it. **Base** is what the model sees without asking: every
+`shotinfo/catalogue.py` with a stable key, what it means, a default tier, the
+function that renders it, a structured accessor (`{value, unit, phase, window,
+method, source}`) and a method id (`shotinfo/methods.py`) that names the
+computation, so a changed computation is never compared with the old one as the
+same field. `GET /api/shots/{id}/fields` serves a shot's fields in catalogue
+order, grouped by phase, with the warnings and what depends on where the shot is
+filed (`shotinfo/fields.py`). **Base** is what the model sees without asking: every
 shot in a Set conversation's opening context (the version's newest
 `chatRecentShots`), every result of the shot search (`list_set_shots`), and
 `get_shot`. **Extended** is what it asks for (`get_shot_extended`;
@@ -469,8 +474,7 @@ over them (`shot_info_tiers` holds only the items moved, from Settings → Shot
 information), read once per turn through `effective_tiers`, by the runner and
 the stdio server alike, so a change applies from the next turn. The glossary
 is generated from the same entries — every item that is not excluded, with its tier
-and its meaning, the band thresholds read from the vendored tables — so an item and
-its explanation cannot drift apart. It is rendered in two halves: the base half is
+and its meaning — so an item and its explanation cannot drift apart. It is rendered in two halves: the base half is
 in the Set and General prompts, and the extended half is attached ahead of a shot
 read in detail (a `field_meanings` field before the shot text of a
 `get_shot_extended`, `get_shot_full` or `compare_shots` result). The rule: the extended meanings are in what the model is sent exactly once whenever an extended result is: on the newest one replayed in the history, or on this answer's first extended read when the history has none. On

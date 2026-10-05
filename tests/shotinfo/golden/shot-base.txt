@@ -11,7 +11,6 @@ Machine's shot number: 000204
 [Outcome]
 Shot time: 47.8 s
 Yield: 31.6 g
-Execution score: 8.2 / 10
 [Timing]
 First drip: 28.0 s
 [Pressure]
@@ -19,11 +18,9 @@ Peak pressure: 8.20 bar
 [Flow and volume]
 Average brew flow: 1.42 ml/s
 [Puck resistance]
-Resistance level: 1.36 LOW, from the machine
-[Channeling]
-Channeling risk: LOW
+Resistance level: 1.36, from the machine
 [Profile compliance]
-Pressure adherence: 2.04 bar POOR
+Pressure adherence: 2.04 bar
 [Your judgement]
 Rating: 4/5
 Balance: Balanced

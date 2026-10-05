@@ -72,6 +72,7 @@ Peak pressure: 9.00 bar
 Average brew flow: 2.40 ml/s
 [Your judgement]
 Notes: "Knocked the cup."
+Ratio: 1:0.50
 
 shot 8
 [Identity and status]
@@ -94,6 +95,7 @@ Rating: 3/5
 Balance: Balanced
 Taste notes: Sweet › Brown sugar
 Notes: "Sweeter, but the finish is drying."
+Ratio: 1:2.02
 
 THE GOLD STANDARD
 5 Keep shots on the line being brewed, on v1, v2.1. Their averages: shot time 33.5 s, time to first drip 7.2 s, yield 36.1 g, peak pressure 9.15 bar, average brew flow 1.88 ml/s, rating 4.2.

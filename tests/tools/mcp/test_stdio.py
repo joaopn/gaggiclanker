@@ -161,7 +161,7 @@ async def test_the_child_reads_the_tiers_per_call_so_a_change_needs_no_restart(
         await db.connect()
         try:
             await ShotInfoTiersRepository(db).set_tier(
-                ShotInfoTierWrite(item_key="score_confidence", tier="base")
+                ShotInfoTierWrite(item_key="average_pressure", tier="base")
             )
         finally:
             await db.close()
@@ -170,8 +170,8 @@ async def test_the_child_reads_the_tiers_per_call_so_a_change_needs_no_restart(
 
     assert before.structured_content is not None
     assert after.structured_content is not None
-    assert "Score confidence: high" not in before.structured_content["text"]
-    assert "Score confidence: high" in after.structured_content["text"]
+    assert "Average pressure: 7.8 bar" not in before.structured_content["text"]
+    assert "Average pressure: 7.8 bar" in after.structured_content["text"]
 
 
 async def test_the_extended_glossary_rides_with_the_first_extended_read_of_each_process(

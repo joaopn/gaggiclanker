@@ -2,8 +2,8 @@
 
 The firmware logs ``pr = sqrt(P) / Q_puck`` per sample, so ``pr²`` is the same
 quadratic model as our ``P / F²`` on the same scale. The four real shots below
-pin that claim: every band the rules and the score read is the same both ways,
-and the one band that is not is pinned as the exception it is.
+pin that claim: the level and the slope are the same to within a few percent both
+ways.
 """
 
 from __future__ import annotations
@@ -48,30 +48,16 @@ def _both_ways(slog: Slog) -> tuple[diag.ResistanceDiagnostics, diag.ResistanceD
 
 
 @pytest.mark.parametrize("name", sorted(REAL_SHOTS))
-def test_real_shots_take_the_machines_value_and_keep_their_bands(name: str) -> None:
+def test_real_shots_take_the_machines_value_and_it_is_on_the_scale_of_ours(name: str) -> None:
     machine, computed = _both_ways(REAL_SHOTS[name])
 
     assert machine["source"] == "machine"
     assert computed["source"] == "computed"
-    for band in ("level", "stability", "erosion"):
-        assert machine["annotations"][band] == computed["annotations"][band], band
-    # Nothing reads the saturation band for a rule or the score. On the flat
-    # hold of shot 222 it differs, and only there: see the next test.
-    if name != "shot_222_hold_false_positive":
-        assert machine["annotations"]["saturation"] == computed["annotations"]["saturation"]
-
-
-def test_a_flat_holds_peak_timing_is_quantisation_noise() -> None:
-    # Shot 222 holds 9 bar at about 0.55 the whole way, so its "peak" is which
-    # sample rounds highest. `pr` has 0.01 resolution: its first maximum of
-    # pr² is at index 2 of 25 (0.08), ours at index 4 (0.16), either side of the
-    # 0.15 edge. Accepted as is, rather than filtering peaks.
-    machine, computed = _both_ways(REAL_SHOTS["shot_222_hold_false_positive"])
-
-    assert machine["peak_timing_pct"] == 0.08
-    assert computed["peak_timing_pct"] == 0.16
-    assert machine["annotations"]["saturation"] == "EARLY"
-    assert computed["annotations"]["saturation"] == "GOOD_TIMING"
+    # The same quadratic model on the same scale: the two readings of one puck
+    # agree to within a tenth of the level, and a few hundredths of the slope.
+    assert machine["avg"] == pytest.approx(computed["avg"], rel=0.1)
+    assert machine["slope"] == pytest.approx(computed["slope"], abs=0.03)
+    assert set(machine) == {"source", "avg", "slope"}
 
 
 def test_all_three_shapes_say_the_source_on_a_real_shot() -> None:
@@ -121,7 +107,6 @@ def test_valid_machine_samples_are_squared() -> None:
 
     assert resistance["source"] == "machine"
     assert resistance["avg"] == 2.25
-    assert resistance["std"] == 0.0
 
 
 @pytest.mark.parametrize(

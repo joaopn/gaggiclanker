@@ -190,14 +190,14 @@ async def test_the_person_s_tiers_do_not_narrow_what_a_review_reads(fixture: Fix
     """Tiers govern the chat's loaded context, never a review's input."""
     before = await build_review_input(fixture.db, fixture.shots[-1])
     tiers = ShotInfoTiersRepository(fixture.db)
-    for key in ("shot_time", "execution_score", "curve_pressure", "phase_name"):
+    for key in ("shot_time", "yield", "curve_pressure", "phase_name"):
         await tiers.set_tier(ShotInfoTierWrite(item_key=key, tier="excluded"))
 
     after = await build_review_input(fixture.db, fixture.shots[-1])
 
     assert after.shot == before.shot
     assert "Shot time: 24.0 s" in after.shot
-    assert "Execution score: 8.3" in after.shot
+    assert "Yield: 37.5 g" in after.shot
 
 
 def test_a_review_reads_every_item_but_the_judgement_the_note_the_recipe_the_set_and_itself() -> (
@@ -269,7 +269,7 @@ async def test_a_shot_with_no_profile_and_no_set_still_builds(fixture: Fixture) 
 async def test_the_signals_come_from_the_telemetry_only(fixture: Fixture) -> None:
     """No taste, balance or aroma token: a review has no judgement to make one from."""
     review = await build_review_input(fixture.db, fixture.shots[-1])
-    assert "channeling_risk:LOW" in review.signals
+    assert not [token for token in review.signals if token.split(":")[1].isupper()], "no band"
     assert "style:" + review.style in review.signals
     assert not [
         token for token in review.signals if token.startswith(("taste:", "aroma:", "balance:"))

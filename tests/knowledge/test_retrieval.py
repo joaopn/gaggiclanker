@@ -14,14 +14,19 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from gaggiclanker.knowledge.service import MAX_EXCERPTS, KnowledgeService, RetrievalContext
+from gaggiclanker.knowledge.service import (
+    FAULT_QUERIES,
+    MAX_EXCERPTS,
+    KnowledgeService,
+    RetrievalContext,
+)
 
 CHANNELED = RetrievalContext(
     style="bloom",
     signals=(
-        "channeling_risk:HIGH",
-        "flow_adherence:GOOD",
-        "primary:pressure_cliff",
+        "fault:fast_flow",
+        "fault:skipped",
+        "first_drip:fast",
         "taste:sour_fermented",
         "taste:sour_fermented.sour",
         "taste:other",
@@ -43,21 +48,35 @@ async def test_queries_are_built_in_a_fixed_priority_order(
     queries = seeded_docs.queries_for(CHANNELED)
     assert queries[0].startswith("channeling sour and bitter")
     assert "sour taste cause extraction adjustment" in queries
-    assert "channeling pressure cliff" in queries
-    assert "channeling risk HIGH" in queries
+    # The faults, the puck's behaviour first (see FAULT_QUERIES), in the knowledge base's words.
+    assert FAULT_QUERIES["fast_flow"] in queries
+    assert FAULT_QUERIES["skipped"] in queries
+    assert queries.index(FAULT_QUERIES["fast_flow"]) < queries.index(FAULT_QUERIES["skipped"])
     # The bean and the style are background, and come last.
     assert queries.index("natural processing extraction pressure temperature") > queries.index(
-        "channeling pressure cliff"
+        FAULT_QUERIES["skipped"]
     )
     assert queries[-1] == "bloom shot profile"
 
 
-async def test_a_normal_band_produces_no_query(seeded_docs: KnowledgeService) -> None:
-    """Prose about the case where nothing went wrong is the one thing not needed."""
+async def test_a_reading_that_is_not_a_fault_produces_no_query(
+    seeded_docs: KnowledgeService,
+) -> None:
+    """Only a fault says something stood out; a plain reading fetches no prose."""
     queries = seeded_docs.queries_for(
-        RetrievalContext(signals=("flow_adherence:GOOD", "temperature_stability:STABLE"))
+        RetrievalContext(signals=("first_drip:fast", "avg_flow:high", "scale:absent"))
     )
     assert queries == []
+
+
+async def test_every_fault_has_a_query_and_the_over_and_under_target_ones_follow(
+    seeded_docs: KnowledgeService,
+) -> None:
+    signals = tuple(
+        f"fault:{name}" for name in ("under_target", "over_target", "skipped", "fast_flow")
+    )
+    queries = seeded_docs.queries_for(RetrievalContext(signals=signals))
+    assert queries == list(FAULT_QUERIES.values())
 
 
 async def test_queries_are_deduplicated(seeded_docs: KnowledgeService) -> None:

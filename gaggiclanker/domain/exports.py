@@ -19,8 +19,8 @@ Two rules shape the module:
    to two decimals. :func:`shot_export_to_slog` re-quantises every value through
    the encoder's own arithmetic (`domain/slog.quantise_sample_value`), so the
    in-memory structure equals what :func:`~gaggiclanker.domain.slog.parse_slog`
-   would have produced — and therefore so do the phases, the diagnostics and the
-   execution score. :func:`slog_to_raw` then re-encodes it, so an imported shot
+   would have produced — and therefore so do the phases and the diagnostics.
+   :func:`slog_to_raw` then re-encodes it, so an imported shot
    has `raw_slog` bytes like every other shot and stays re-derivable.
 
 The profile export is the firmware profile document with `id`, `selected` and

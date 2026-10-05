@@ -281,7 +281,6 @@ async def test_a_shot_can_be_derived_and_stored_without_a_live_device(
     stored = await ShotsRepository(db).get(shot_id)
     assert stored is not None
     assert stored.source == "import"
-    assert stored.execution_score is not None
     assert stored.diagnostics is not None
     assert derived.diagnostics_error is None
     assert len(await ShotsRepository(db).samples(shot_id)) == stored.sample_count > 100

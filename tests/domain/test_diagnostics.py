@@ -1,30 +1,21 @@
 """Diagnostics engine tests.
 
 Ported from gaggimate-mcp `tests/test_transformers_shot.py` (MIT, commit
-0af88ad) — see `gaggiclanker/domain/VENDORED.md`. Kept deliberately close to
-upstream: these are what pin every band threshold in place, and a rewrite would
-quietly lose the calibration they encode. The mechanical changes are the ones
-listed in VENDORED.md — a `Slog` in place of upstream's `ShotData`, and the
-renamed entry points.
+0af88ad) — see `gaggiclanker/domain/VENDORED.md`. Kept close to upstream for what
+was kept of it: the arithmetic (resistance, adherence, the summary statistics, the
+phase table). The tests of what was dropped (the threshold bands, the channeling
+risk and its indicators) went with it. The mechanical changes are the ones listed
+in VENDORED.md — a `Slog` in place of upstream's `ShotData`, and the renamed
+entry points.
 """
 
-from pathlib import Path
-from typing import Any
-
 from gaggiclanker.domain.diagnostics import (
-    _PRESSURE_DROP_RATE_BANDS,
-    _PRESSURE_VOLATILITY_BANDS,
-    _RESISTANCE_SLOPE_BANDS,
     VALID_DETAIL_LEVELS,
-    _annotate_ascending,
-    _annotate_descending,
-    _assess_channeling_risk,
     _classify_phase,
     _compute_phase_diagnostics,
     _compute_rmse,
     _get_brew_phase_samples,
     _linear_slope,
-    _pressure_volatility_label,
     _safe_mean,
     _safe_std,
     _trim_ramp_up,
@@ -36,8 +27,7 @@ from gaggiclanker.domain.diagnostics import (
     transform_shot,
 )
 from gaggiclanker.domain.models import PhaseTransition
-from gaggiclanker.domain.slog import parse_slog
-from tests.domain.helpers import SLOG_FIXTURES, upstream_shot
+from tests.domain.helpers import upstream_shot
 
 
 class TestShotTransformer:
@@ -329,78 +319,6 @@ class TestHelperFunctions:
         assert _linear_slope([], 1.0) == 0.0
         assert _linear_slope([5.0], 1.0) == 0.0
 
-    def test_annotate_ascending(self):
-        assert _annotate_ascending(0.1, _PRESSURE_VOLATILITY_BANDS) == "VERY_STABLE"
-        assert _annotate_ascending(0.2, _PRESSURE_VOLATILITY_BANDS) == "STABLE"
-        assert _annotate_ascending(0.5, _PRESSURE_VOLATILITY_BANDS) == "MODERATE_JITTER"
-        assert _annotate_ascending(0.8, _PRESSURE_VOLATILITY_BANDS) == "JITTERY"
-        assert _annotate_ascending(1.5, _PRESSURE_VOLATILITY_BANDS) == "VOLATILE"
-
-    def test_annotate_descending(self):
-        assert _annotate_descending(0.1, _RESISTANCE_SLOPE_BANDS) == "INCREASING"
-        assert _annotate_descending(0.0, _RESISTANCE_SLOPE_BANDS) == "FLAT"
-        assert _annotate_descending(-0.05, _RESISTANCE_SLOPE_BANDS) == "GRADUAL_DECLINE"
-        assert _annotate_descending(-0.1, _RESISTANCE_SLOPE_BANDS) == "MODERATE_DECLINE"
-        assert _annotate_descending(-0.2, _RESISTANCE_SLOPE_BANDS) == "STEEP_DECLINE"
-
-    def test_annotate_descending_pressure_drop(self):
-        assert _annotate_descending(-0.3, _PRESSURE_DROP_RATE_BANDS) == "NORMAL"
-        assert _annotate_descending(-1.5, _PRESSURE_DROP_RATE_BANDS) == "MODERATE_DROP"
-        assert _annotate_descending(-3.0, _PRESSURE_DROP_RATE_BANDS) == "STEEP_DROP"
-        assert _annotate_descending(-6.0, _PRESSURE_DROP_RATE_BANDS) == "CLIFF"
-
-    def test_assess_channeling_risk_low(self):
-        # All indicators below primary thresholds → LOW
-        assert (
-            _assess_channeling_risk(
-                flow_jitter=0.02,
-                flow_vs_tgt=0.1,
-                pressure_max_drop_rate=-0.3,
-                flow_acceleration_late=0.01,
-                pressure_jitter=0.03,
-            )
-            == "LOW"
-        )
-
-    def test_assess_channeling_risk_moderate(self):
-        # flow_jitter 0.15 → +2 = MODERATE
-        assert (
-            _assess_channeling_risk(
-                flow_jitter=0.15,
-                flow_vs_tgt=0.1,
-                pressure_max_drop_rate=-0.3,
-                flow_acceleration_late=0.01,
-                pressure_jitter=0.03,
-            )
-            == "MODERATE"
-        )
-
-    def test_assess_channeling_risk_high(self):
-        # jitter 0.15 (+2) + vs_tgt 0.4 (+1) + drop -2.0 (+1) = 4 → HIGH
-        assert (
-            _assess_channeling_risk(
-                flow_jitter=0.15,
-                flow_vs_tgt=0.4,
-                pressure_max_drop_rate=-2.0,
-                flow_acceleration_late=0.01,
-                pressure_jitter=0.03,
-            )
-            == "HIGH"
-        )
-
-    def test_assess_channeling_risk_very_high(self):
-        # All indicators past second threshold → 8 → VERY_HIGH
-        assert (
-            _assess_channeling_risk(
-                flow_jitter=0.25,
-                flow_vs_tgt=0.9,
-                pressure_max_drop_rate=-4.0,
-                flow_acceleration_late=0.15,
-                pressure_jitter=0.5,
-            )
-            == "VERY_HIGH"
-        )
-
 
 class TestBrewPhaseExtraction:
     """Tests for brew phase sample extraction."""
@@ -540,57 +458,20 @@ class TestShotDiagnostics:
 
         assert diag is not None
 
-        # Resistance should be computed
+        # Resistance should be computed: its mean and its slope, and where it came from
         assert diag["resistance"]["avg"] > 0
-        assert diag["resistance"]["peak"] > 0
-        assert 0.0 <= diag["resistance"]["peak_timing_pct"] <= 1.0
+        assert set(diag["resistance"]) == {"source", "avg", "slope"}
 
-        # Annotations should be present
-        assert "level" in diag["resistance"]["annotations"]
-        assert "stability" in diag["resistance"]["annotations"]
-        assert "erosion" in diag["resistance"]["annotations"]
-
-        # Channeling should be LOW for this stable shot
-        assert diag["channeling"]["channeling_risk"] == "LOW"
-        assert "flow_jitter" in diag["channeling"]["annotations"]
-        assert "pressure_jitter" in diag["channeling"]["annotations"]
-        assert "guidance" in diag["channeling"]["annotations"]
-
-        # Temperature should be stable
-        assert diag["temperature"]["stability_std_c"] < 1.0
-        assert "stability" in diag["temperature"]["annotations"]
+        # No verdict anywhere: numbers only
+        assert "channeling" not in diag
+        assert "temperature" not in diag
 
         # Extraction metrics should be present
-        assert diag["extraction"]["pressure_auc_bar_s"] > 0
-        assert "pressure_trend" in diag["extraction"]["annotations"]
-        assert "flow_trend" in diag["extraction"]["annotations"]
+        assert diag["extraction"] == {"flow_avg_brew_ml_s": 2.0}
 
         # Weight should detect scale
         assert diag["weight"]["scale_connected"] is True
         assert diag["weight"]["rate_avg_g_s"] is not None
-
-    def test_channeling_shot_diagnostics(self):
-        """Test diagnostics detect volatile pressure/flow (channeling)."""
-        # Create a shot with jittery pressure and flow
-        samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 3.0, "pf": 0.5},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 5.0, "pf": 1.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 9.0, "pf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 6.0, "pf": 3.5},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 9.5, "pf": 1.5},
-            {"t": 500, "ct": 93.0, "tt": 93.0, "cp": 5.0, "pf": 4.0},
-            {"t": 600, "ct": 93.0, "tt": 93.0, "cp": 8.0, "pf": 2.0},
-            {"t": 700, "ct": 93.0, "tt": 93.0, "cp": 4.0, "pf": 5.0},
-        ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
-
-        assert diag is not None
-        # Alternating flow and pressure produces high jitter on both variables
-        assert diag["channeling"]["flow_jitter_ml_s"] > 0.20
-        assert diag["channeling"]["pressure_jitter_bar"] > 0.20
-        # Channeling risk should be elevated
-        assert diag["channeling"]["channeling_risk"] in ("MODERATE", "HIGH", "VERY_HIGH")
 
     def test_no_scale_data(self):
         """Test diagnostics when scale data is absent."""
@@ -607,8 +488,7 @@ class TestShotDiagnostics:
         assert diag is not None
         assert diag["weight"]["scale_connected"] is False
         assert diag["weight"]["rate_avg_g_s"] is None
-        assert diag["weight"]["rate_std_g_s"] is None
-        assert diag["weight"]["annotations"].get("note") == "No scale data available"
+        assert set(diag["weight"]) == {"rate_avg_g_s", "scale_connected"}
 
     def test_diagnostics_with_phases(self):
         """Test that diagnostics use brew phase when phases are defined."""
@@ -636,9 +516,8 @@ class TestShotDiagnostics:
         # Resistance should be computed from brew-phase only
         # At brew phase: flow is around 2.0-2.1, so resistance should be calculable
         assert diag["resistance"]["avg"] > 0
-        # Only 4 brew samples — fewer than the 5-sample minimum for steady-state
-        # channeling assessment, so we expect INSUFFICIENT_DATA
-        assert diag["channeling"]["channeling_risk"] == "INSUFFICIENT_DATA"
+        # And not from the pre-infusion: the window starts at the extraction
+        assert diag["extraction"]["flow_avg_brew_ml_s"] == 2.05
 
     def test_transform_includes_diagnostics(self):
         """Test that transform_shot_for_ai includes full diagnostics at per_phase level."""
@@ -656,8 +535,8 @@ class TestShotDiagnostics:
         assert "diagnostics" in transformed
         assert transformed["diagnostics"] is not None
         assert "resistance" in transformed["diagnostics"]
-        assert "channeling" in transformed["diagnostics"]
-        assert "temperature" in transformed["diagnostics"]
+        assert "channeling" not in transformed["diagnostics"]
+        assert "temperature" not in transformed["diagnostics"]
         assert "extraction" in transformed["diagnostics"]
         assert "weight" in transformed["diagnostics"]
         assert "profile_compliance" in transformed["diagnostics"]
@@ -679,9 +558,8 @@ class TestShotDiagnostics:
         diag = transformed["diagnostics"]
         assert diag is not None
         assert "resistance_avg" in diag
-        assert "channeling_risk" in diag
-        assert "temperature_stability_c" in diag
-        assert "annotations" in diag
+        assert "channeling_risk" not in diag
+        assert "annotations" not in diag
         # Summary should NOT have full sub-dicts
         assert "resistance" not in diag
 
@@ -711,24 +589,6 @@ class TestShotDiagnostics:
         assert diag is not None
         # Zero/near-zero flow samples should be excluded from resistance calc
         assert diag["resistance"]["avg"] > 0
-
-    def test_temperature_overshoot_and_undershoot(self):
-        """Test temperature deviation detection."""
-        samples = [
-            {"t": 0, "ct": 91.0, "tt": 93.0, "cp": 9.0, "pf": 2.0},  # -2°C under
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 8.5, "pf": 2.0},  # on target
-            {"t": 200, "ct": 95.0, "tt": 93.0, "cp": 8.0, "pf": 2.1},  # +2°C over
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 7.5, "pf": 2.1},  # on target
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.0, "pf": 2.2},  # on target
-        ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
-
-        assert diag is not None
-        assert diag["temperature"]["overshoot_c"] == 2.0
-        assert diag["temperature"]["undershoot_c"] == 2.0
-        assert diag["temperature"]["annotations"]["overshoot"] == "SIGNIFICANT"
-        assert diag["temperature"]["annotations"]["undershoot"] == "SIGNIFICANT"
 
 
 class TestDetailLevels:
@@ -900,7 +760,7 @@ class TestDetailLevels:
         t = transform_shot(shot, detail="per_phase_detailed")
         diag = t["diagnostics"]
         assert "resistance" in diag
-        assert "channeling" in diag
+        assert "channeling" not in diag
         assert "profile_compliance" in diag
 
     def test_summary_diagnostics_keys(self):
@@ -908,8 +768,8 @@ class TestDetailLevels:
         t = transform_shot(shot, detail="summary")
         diag = t["diagnostics"]
         assert "resistance_avg" in diag
-        assert "channeling_risk" in diag
-        assert "temperature_stability_c" in diag
+        assert "channeling_risk" not in diag
+        assert "temperature_stability_c" not in diag
         assert "pressure_rmse_bar" in diag
         assert "max_overshoot_bar" in diag
         assert "flow_rmse_ml_s" in diag
@@ -1067,8 +927,8 @@ class TestProfileCompliance:
         pc = diag["profile_compliance"]
         assert pc is not None
         assert pc["pressure_rmse_bar"] >= 0
-        assert "pressure_adherence" in pc["annotations"]
-        assert "pressure_overshoot" in pc["annotations"]
+        assert pc["pressure_grading"] == "graded"
+        assert "annotations" not in pc
 
     def test_pressure_adherence_is_not_graded_without_tp(self):
         """No `tp` recorded: the pressure adherence is missing, not zero."""
@@ -1085,7 +945,6 @@ class TestProfileCompliance:
         assert pc is not None
         assert pc["pressure_rmse_bar"] is None
         assert pc["pressure_grading"] == "not_graded"
-        assert "pressure_adherence" not in pc["annotations"]
 
     def test_overshoot_detected(self):
         """Overshoot correctly detected when actual exceeds target."""
@@ -1100,7 +959,6 @@ class TestProfileCompliance:
         diag = self._diagnostics(samples, ("pressure",))
         pc = diag["profile_compliance"]
         assert pc["max_pressure_overshoot_bar"] == 2.0
-        assert pc["annotations"]["pressure_overshoot"] == "SEVERE_OVERSHOOT"
 
     def test_flow_rmse_when_tf_available(self):
         """Flow RMSE computed when tf data available."""
@@ -1115,7 +973,7 @@ class TestProfileCompliance:
         pc = diag["profile_compliance"]
         assert pc["flow_rmse_ml_s"] is not None
         assert pc["flow_rmse_ml_s"] >= 0
-        assert "flow_adherence" in pc["annotations"]
+        assert pc["flow_grading"] == "graded"
 
     def test_flow_overshoot_detected(self):
         """Flow overshoot correctly detected when actual exceeds target."""
@@ -1145,7 +1003,6 @@ class TestProfileCompliance:
         diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
         assert pc["max_flow_overshoot_ml_s"] == 2.0
-        assert pc["annotations"]["flow_overshoot"] == "SEVERE_DEVIATION"
 
     def test_flow_undershoot_detected(self):
         """Flow undershoot correctly detected when actual is below target."""
@@ -1175,7 +1032,6 @@ class TestProfileCompliance:
         diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
         assert pc["max_flow_undershoot_ml_s"] == 1.0
-        assert pc["annotations"]["flow_undershoot"] == "NOTABLE_DEVIATION"
 
     def test_flow_deviation_none_without_tf(self):
         """Flow overshoot/undershoot are None when no tf data."""
@@ -1190,11 +1046,10 @@ class TestProfileCompliance:
         pc = diag["profile_compliance"]
         assert pc["max_flow_overshoot_ml_s"] is None
         assert pc["max_flow_undershoot_ml_s"] is None
-        assert "flow_overshoot" not in pc["annotations"]
-        assert "flow_undershoot" not in pc["annotations"]
+        assert pc["flow_grading"] == "not_applicable"
 
-    def test_flow_within_tolerance(self):
-        """Small flow deviations annotated as WITHIN_TOLERANCE."""
+    def test_a_small_flow_deviation_is_a_small_number(self):
+        """Small flow deviations are small numbers, with no label on them."""
         samples = [
             {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.1, "tf": 2.0},
             {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.2, "tf": 2.0},
@@ -1205,7 +1060,6 @@ class TestProfileCompliance:
         diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
         assert pc["max_flow_overshoot_ml_s"] <= 0.3
-        assert pc["annotations"]["flow_overshoot"] == "WITHIN_TOLERANCE"
 
 
 class TestPerPhaseDiagnostics:
@@ -1220,10 +1074,16 @@ class TestPerPhaseDiagnostics:
         ]
         diag = _compute_phase_diagnostics(samples, "preinfusion", 0.1)
         assert diag["phase_type"] == "preinfusion"
-        assert "ramp_rate_bar_s" in diag
-        assert "saturation_time_s" in diag
+        assert set(diag) == {
+            "phase_type",
+            "avg_flow_ml_s",
+            "avg_pressure_bar",
+            "ramp_rate_bar_s",
+            "saturation_time_s",
+        }
+        assert diag["avg_pressure_bar"] == 1.88
         assert diag["ramp_rate_bar_s"] > 0
-        assert "ramp_rate" in diag["annotations"]
+        # Resistance is a brew phase's number: another phase has none, as it never did
 
     def test_brew_diagnostics(self):
         samples = [
@@ -1237,14 +1097,10 @@ class TestPerPhaseDiagnostics:
         assert diag["phase_type"] == "brew"
         assert "resistance_avg" in diag
         assert "resistance_slope" in diag
-        assert "channeling_risk" in diag
-        assert "flow_jitter_ml_s" in diag
-        assert "pressure_jitter_bar" in diag
-        assert "resistance_level" in diag["annotations"]
-        assert "channeling" in diag["annotations"]
-        # Namespaced channeling annotations from the shared builder
-        assert "channeling_flow_jitter" in diag["annotations"]
-        assert "channeling_guidance" in diag["annotations"]
+        assert diag["resistance_source"] in ("machine", "computed")
+        # No verdict on the phase: numbers only
+        assert "annotations" not in diag
+        assert "channeling_risk" not in diag
 
     def test_decline_diagnostics(self):
         samples = [
@@ -1255,10 +1111,11 @@ class TestPerPhaseDiagnostics:
         ]
         diag = _compute_phase_diagnostics(samples, "decline", 0.1)
         assert diag["phase_type"] == "decline"
-        assert "taper_rate_bar_s" in diag
+        assert diag["taper_rate_bar_s"] < 0  # pressure falling
         assert "taper_smoothness" in diag
-        assert diag["taper_rate_bar_s"] < 0  # Declining pressure
-        assert "taper_smoothness" in diag["annotations"]
+        assert diag["avg_pressure_bar"] == 6.5
+        assert "resistance_avg" not in diag
+        assert "annotations" not in diag
 
     def test_per_phase_rmse(self):
         """All phase types get an RMSE vs the target they steer by, and only that one."""
@@ -1276,7 +1133,6 @@ class TestPerPhaseDiagnostics:
             by_flow = _compute_phase_diagnostics(samples, phase_type, 0.1, steering=["flow"] * 3)
             assert by_flow["flow_rmse_ml_s"] >= 0
             assert "pressure_rmse_bar" not in by_flow
-            assert "pressure_adherence" not in by_flow["annotations"]
             # No profile behind the phase: neither.
             ungraded = _compute_phase_diagnostics(samples, phase_type, 0.1)
             assert "pressure_rmse_bar" not in ungraded
@@ -1284,7 +1140,7 @@ class TestPerPhaseDiagnostics:
 
 
 class TestRampExclusion:
-    """Tests for ramp-up trimming and steady-state channeling assessment."""
+    """Tests for ramp-up trimming, the window the largest pressure drop is read over."""
 
     def test_trim_ramp_up_basic(self):
         """Ramp portion excluded when pressure climbs to target."""
@@ -1308,53 +1164,6 @@ class TestRampExclusion:
         """Empty lists returned unchanged."""
         ss_p, ss_f, ss_s = _trim_ramp_up([], [], [])
         assert ss_p == []
-
-    def test_insufficient_data_for_short_brew(self):
-        """Short brew phase → INSUFFICIENT_DATA channeling risk."""
-        # Only 3 brew samples at 9 bar — fewer than _MIN_STEADY_STATE_SAMPLES
-        samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "pf": 2.0, "tp": 9.0},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "pf": 2.0, "tp": 9.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.8, "pf": 2.1, "tp": 9.0},
-        ]
-        diag = _compute_phase_diagnostics(samples, "brew", 0.1)
-        assert diag["channeling_risk"] == "INSUFFICIENT_DATA"
-        assert "channeling_note" in diag["annotations"]
-
-    def test_sufficient_data_gives_risk_label(self):
-        """Brew phase with enough steady-state samples gets a real risk."""
-        # 8 stable samples at ~9 bar
-        samples = [{"t": i * 100, "cp": 9.0 - i * 0.05, "pf": 2.0, "tp": 9.0} for i in range(8)]
-        diag = _compute_phase_diagnostics(samples, "brew", 0.1)
-        assert diag["channeling_risk"] in ("LOW", "MODERATE", "HIGH", "VERY_HIGH")
-
-
-class TestCVNormalization:
-    """Tests for coefficient-of-variation pressure volatility labelling."""
-
-    def test_cv_used_at_high_pressure(self):
-        """CV bands used when mean pressure >= 1.0 bar."""
-        # std 0.1 at mean 9.0 → CV = 0.011 → VERY_STABLE
-        assert _pressure_volatility_label(0.1, 9.0) == "VERY_STABLE"
-        # std 0.5 at mean 9.0 → CV = 0.056 → MODERATE_JITTER
-        assert _pressure_volatility_label(0.5, 9.0) == "MODERATE_JITTER"
-        # std 2.0 at mean 9.0 → CV = 0.222 → VOLATILE
-        assert _pressure_volatility_label(2.0, 9.0) == "VOLATILE"
-
-    def test_absolute_fallback_at_low_pressure(self):
-        """Absolute bands used when mean pressure < 1.0 bar."""
-        # std 0.1 at mean 0.5 → absolute band → VERY_STABLE
-        assert _pressure_volatility_label(0.1, 0.5) == "VERY_STABLE"
-        # std 0.5 at mean 0.5 → absolute band → MODERATE_JITTER
-        assert _pressure_volatility_label(0.5, 0.5) == "MODERATE_JITTER"
-
-    def test_low_pressure_not_free_pass(self):
-        """Low-pressure profiles don't automatically get VERY_STABLE."""
-        # std 0.15 at mean 2.0 → CV = 0.075 → MODERATE_JITTER (not VERY_STABLE
-        # as it would be under absolute bands where 0.15 < 0.35 → STABLE)
-        assert _pressure_volatility_label(0.15, 2.0) == "MODERATE_JITTER"
-        # std 0.4 at mean 2.0 → CV = 0.2 → VOLATILE
-        assert _pressure_volatility_label(0.4, 2.0) == "VOLATILE"
 
 
 class TestSampledDataPoints:
@@ -1416,97 +1225,6 @@ class TestSampledDataPoints:
 # ═══════════════════════════════════════════════════════════════════════
 # Channeling indicators v2 — V4 (edge trim) + V5 (jitter) + V6 (residual)
 # ═══════════════════════════════════════════════════════════════════════
-
-
-class TestJitterStd:
-    """_jitter_std measures first-difference std — noise around trend."""
-
-    def test_flat_signal_has_zero_jitter(self):
-        from gaggiclanker.domain.diagnostics import _jitter_std
-
-        assert _jitter_std([4.0, 4.0, 4.0, 4.0, 4.0]) == 0.0
-
-    def test_smooth_ramp_has_near_zero_jitter(self):
-        """A linear ramp has identical first differences → std(diffs) ≈ 0."""
-        from gaggiclanker.domain.diagnostics import _jitter_std
-
-        ramp = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
-        assert _jitter_std(ramp) < 0.001
-
-    def test_jittery_signal_has_high_jitter(self):
-        """Alternating values produce large first differences."""
-        from gaggiclanker.domain.diagnostics import _jitter_std
-
-        jittery = [2.0, 4.0, 2.0, 4.0, 2.0, 4.0]
-        assert _jitter_std(jittery) > 1.5
-
-    def test_too_few_values_returns_zero(self):
-        from gaggiclanker.domain.diagnostics import _jitter_std
-
-        assert _jitter_std([]) == 0.0
-        assert _jitter_std([1.0]) == 0.0
-        assert _jitter_std([1.0, 2.0]) == 0.0
-
-
-class TestResidualStdVsTarget:
-    """_residual_std_vs_target measures how far actual flow strayed from target.
-
-    These cases are all flow-steered samples; which samples count is in
-    `test_channeling_residual.py`.
-    """
-
-    def test_perfect_tracking_returns_zero(self):
-        from gaggiclanker.domain.diagnostics import _residual_std_vs_target
-
-        samples = [{"pf": 2.0, "tf": 2.0}] * 5
-        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) == 0.0
-
-    def test_systematic_constant_offset_returns_zero(self):
-        """Systematic offset has zero std (no variation in residual)."""
-        from gaggiclanker.domain.diagnostics import _residual_std_vs_target
-
-        samples = [{"pf": 2.5, "tf": 2.0}] * 5
-        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) == 0.0
-
-    def test_jitter_around_target_elevates_residual(self):
-        from gaggiclanker.domain.diagnostics import _residual_std_vs_target
-
-        samples = [
-            {"pf": 1.5, "tf": 2.0},
-            {"pf": 2.5, "tf": 2.0},
-            {"pf": 1.5, "tf": 2.0},
-            {"pf": 2.5, "tf": 2.0},
-            {"pf": 1.5, "tf": 2.0},
-            {"pf": 2.5, "tf": 2.0},
-        ]
-        # Residuals alternate ±0.5 → population std = 0.5
-        assert abs(_residual_std_vs_target(samples, ["flow"] * len(samples)) - 0.5) < 0.01
-
-    def test_no_target_flow_returns_none(self):
-        """Pure pressure-led profile — no tf field → not applicable."""
-        from gaggiclanker.domain.diagnostics import _residual_std_vs_target
-
-        samples = [{"pf": 2.0}] * 5
-        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) is None
-
-    def test_zero_target_samples_ignored(self):
-        """Samples with tf=0 are not part of the commanded trajectory."""
-        from gaggiclanker.domain.diagnostics import _residual_std_vs_target
-
-        samples = [
-            {"pf": 0.0, "tf": 0.0},  # ignored
-            {"pf": 2.0, "tf": 2.0},
-            {"pf": 2.0, "tf": 2.0},
-            {"pf": 2.0, "tf": 2.0},
-        ]
-        # Only 3 valid pairs, all perfect → 0.0
-        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) == 0.0
-
-    def test_too_few_valid_pairs_returns_none(self):
-        from gaggiclanker.domain.diagnostics import _residual_std_vs_target
-
-        samples = [{"pf": 2.0, "tf": 2.0}, {"pf": 2.0, "tf": 0.0}]
-        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) is None
 
 
 class TestStripFlowEdges:
@@ -1583,198 +1301,3 @@ class TestStripFlowEdges:
         _, rf, _, t = _strip_flow_edges(p, f, s, thr=0.5)
         assert rf == [2.0, 2.0]
         assert t == (1, 1)
-
-
-class TestFlowShapeLabel:
-    """_flow_shape_label classifies the trajectory of flow over a window."""
-
-    def test_flat_flow(self):
-        from gaggiclanker.domain.diagnostics import _flow_shape_label
-
-        assert _flow_shape_label([3.0, 3.0, 3.0, 3.0, 3.0], dt=0.25) == "FLAT"
-
-    def test_ramping_up(self):
-        from gaggiclanker.domain.diagnostics import _flow_shape_label
-
-        flows = [1.0, 1.5, 2.0, 2.5, 3.0]  # +2 ml/s over 1s → 2 ml/s²
-        assert _flow_shape_label(flows, dt=0.25) == "RAMPING_UP"
-
-    def test_ramping_down(self):
-        from gaggiclanker.domain.diagnostics import _flow_shape_label
-
-        flows = [3.0, 2.5, 2.0, 1.5, 1.0]
-        assert _flow_shape_label(flows, dt=0.25) == "RAMPING_DOWN"
-
-    def test_insufficient_samples_returns_flat(self):
-        from gaggiclanker.domain.diagnostics import _flow_shape_label
-
-        assert _flow_shape_label([2.0], dt=0.25) == "FLAT"
-        assert _flow_shape_label([], dt=0.25) == "FLAT"
-
-
-class TestAssessChannelingRiskV2:
-    """4-indicator scoring with flow_vs_target primary / pressure_jitter fallback."""
-
-    def _risk(self, **kw):
-        from gaggiclanker.domain.diagnostics import _assess_channeling_risk
-
-        return _assess_channeling_risk(
-            flow_jitter=kw.get("flow_jitter", 0.0),
-            flow_vs_tgt=kw.get("flow_vs_tgt", 0.0),
-            pressure_max_drop_rate=kw.get("pressure_max_drop_rate", 0.0),
-            flow_acceleration_late=kw.get("flow_acceleration_late", 0.0),
-            pressure_jitter=kw.get("pressure_jitter", 0.0),
-        )
-
-    # --- basic bands ---
-
-    def test_all_zeros_is_low(self):
-        assert self._risk() == "LOW"
-
-    def test_flow_jitter_alone_moderate(self):
-        """flow_jitter >= 0.10 adds 2 points → MODERATE."""
-        assert self._risk(flow_jitter=0.15) == "MODERATE"
-
-    def test_two_aligned_indicators_is_high(self):
-        """flow_jitter (2) + pressure_cliff (2) = 4 → HIGH."""
-        assert self._risk(flow_jitter=0.15, pressure_max_drop_rate=-3.5) == "HIGH"
-
-    def test_all_indicators_blown_is_very_high(self):
-        assert (
-            self._risk(
-                flow_jitter=0.30,
-                flow_vs_tgt=1.0,
-                pressure_max_drop_rate=-4.0,
-                flow_acceleration_late=0.15,
-            )
-            == "VERY_HIGH"
-        )
-
-    # --- fallback behavior ---
-
-    def test_vs_target_none_falls_back_to_pressure_jitter(self):
-        """When no target_flow commanded, pressure_jitter fills the indicator slot."""
-        # flow_jitter 0.15 → +2, pressure_jitter 0.25 (>=0.20) → +2 = 4 → HIGH
-        assert (
-            self._risk(
-                flow_vs_tgt=None,
-                flow_jitter=0.15,
-                pressure_jitter=0.25,
-            )
-            == "HIGH"
-        )
-
-    def test_vs_target_present_ignores_pressure_jitter(self):
-        """Flow-led profile: residual signal is used, not pressure_jitter."""
-        # pressure_jitter irrelevant; flow_vs_tgt 0.0 + flow_jitter 0.15 → 2 → MODERATE
-        assert (
-            self._risk(
-                flow_vs_tgt=0.0,
-                flow_jitter=0.15,
-                pressure_jitter=0.5,  # would be alarming, but ignored
-            )
-            == "MODERATE"
-        )
-
-    # --- threshold boundaries ---
-
-    def test_flow_jitter_boundary_stable(self):
-        """Just below STABLE threshold → no contribution."""
-        assert self._risk(flow_jitter=0.049) == "LOW"
-
-    def test_flow_jitter_boundary_moderate_jitter(self):
-        """At MODERATE_JITTER threshold → +1 point → still LOW (score=1)."""
-        assert self._risk(flow_jitter=0.05) == "LOW"
-
-    def test_flow_jitter_boundary_jittery(self):
-        """At JITTERY threshold → +2 points → MODERATE."""
-        assert self._risk(flow_jitter=0.10) == "MODERATE"
-
-
-class TestLateFlowRunawayDetrended:
-    """_late_flow_runaway must compare late slope against overall slope.
-
-    Raw f_accel_late fires on any ramping-flow profile because the
-    late-window slope equals the overall ramp.  The indicator should
-    measure *excess* acceleration over what the profile designed for.
-    """
-
-    def test_flat_flow_no_runaway(self):
-        from gaggiclanker.domain.diagnostics import _late_flow_runaway
-
-        flows = [2.0] * 20
-        assert abs(_late_flow_runaway(flows, dt=0.25)) < 0.005
-
-    def test_linear_ramp_no_runaway(self):
-        """A clean linear ramp has late_slope == overall_slope → 0 runaway."""
-        from gaggiclanker.domain.diagnostics import _late_flow_runaway
-
-        flows = [1.0 + 0.1 * i for i in range(20)]  # steady 0.1 per step
-        assert abs(_late_flow_runaway(flows, dt=0.25)) < 0.01
-
-    def test_late_acceleration_on_flat_profile(self):
-        """Flat early, then kicks up → positive runaway."""
-        from gaggiclanker.domain.diagnostics import _late_flow_runaway
-
-        flows = [2.0] * 12 + [2.0, 2.3, 2.7, 3.2, 3.8, 4.5, 5.3, 6.2]
-        result = _late_flow_runaway(flows, dt=0.25)
-        assert result > 0.5
-
-    def test_late_acceleration_exceeds_existing_ramp(self):
-        """A ramping profile with an extra kick at the end registers runaway."""
-        from gaggiclanker.domain.diagnostics import _late_flow_runaway
-
-        # Overall slope ~0.1 per step; late window jumps to +0.5 per step
-        flows = [1.0 + 0.1 * i for i in range(12)]
-        flows += [flows[-1] + 0.5 * (i + 1) for i in range(8)]
-        result = _late_flow_runaway(flows, dt=0.25)
-        assert result > 0.5
-
-    def test_too_few_samples_returns_zero(self):
-        from gaggiclanker.domain.diagnostics import _late_flow_runaway
-
-        assert _late_flow_runaway([1.0, 2.0, 3.0], dt=0.25) == 0.0
-
-
-class TestChannelingRegressionFixtures:
-    """Regression tests against real shot data.
-
-    Shot 222 reproduced the 'Extraction Hold tail' false-positive that
-    motivated this refactor.  204 and 196 caught secondary false-positives
-    from flow-ramp profiles tripping late_flow_runaway.
-    """
-
-    def _run(self, name: str) -> Any:
-        path = Path(SLOG_FIXTURES) / name
-        raw = path.read_bytes()
-        shot_id = path.stem.split("_")[1]
-        return compute_shot_diagnostics(parse_slog(raw, f"000{shot_id}"))
-
-    def test_shot_222_extraction_hold_tail_not_flagged(self):
-        """Old pipeline: HIGH (f_vol=2.0 from trapped-pressure tail).
-        New pipeline: LOW with stable flow jitter."""
-        d = self._run("shot_222_hold_false_positive.slog")
-        c = d["channeling"]
-        assert c["channeling_risk"] == "LOW"
-        assert c["flow_jitter_ml_s"] < 0.025  # VERY_STABLE
-        assert c["annotations"]["flow_shape"] == "FLAT"
-        # V4 trim must have stripped the problematic tail
-        assert "trailing zero-flow" in c["annotations"]["note"]
-
-    def test_shot_204_ramping_profile_not_flagged(self):
-        """Flow ramping 1.6→3.3 on designed profile should not trip
-        late_flow_runaway (V5b fix: detrended vs overall slope)."""
-        d = self._run("shot_204_ramping_flow.slog")
-        c = d["channeling"]
-        assert c["channeling_risk"] == "LOW"
-        assert c["annotations"]["flow_shape"] == "RAMPING_UP"
-        # flow_spread will be elevated (it's raw std) but jitter stays low
-        assert c["flow_jitter_ml_s"] < 0.05
-        assert c["flow_spread_ml_s"] > 0.3  # intended ramp — descriptor only
-
-    def test_shot_196_baseline_high_cleared(self):
-        """Previously HIGH under baseline algorithm due to tail artifact."""
-        d = self._run("shot_196_baseline_high.slog")
-        c = d["channeling"]
-        assert c["channeling_risk"] == "LOW"
-        assert c["flow_jitter_ml_s"] < 0.025

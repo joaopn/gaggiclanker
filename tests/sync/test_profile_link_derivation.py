@@ -121,7 +121,6 @@ async def test_a_shot_pulled_before_its_profile_is_derived_again_when_the_mirror
             block = json.loads(second["diagnostics_json"])["diagnostics"]["profile_compliance"]
             assert block["pressure_grading"] == "graded"
             assert block["flow_grading"] == "not_applicable"
-            assert second["execution_score"] != first["execution_score"]
     finally:
         await device.stop()
 
@@ -180,10 +179,6 @@ async def test_an_imported_shot_linked_to_a_profile_by_label_is_derived_again(
     assert block is not None
     assert block["flow_grading"] == "not_applicable"
     assert await derivation_version(db, shot_item.shot_id) == DERIVATION_VERSION
-    score = await db.fetch_value(
-        "SELECT execution_score FROM shots WHERE id = ?", (shot_item.shot_id,)
-    )
-    assert score == pytest.approx(9.3)
 
 
 async def test_an_imported_shot_whose_profile_is_already_stored_is_derived_with_it(

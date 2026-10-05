@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { activeFilterCount, DEFAULT_FILTERS, type ShotFilterState } from "@/lib/shotFilters";
-import { SCORE_BANDS, type ScoreBandValue } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
 /**
@@ -60,7 +59,6 @@ export function ShotFilters({
     to: useId(),
     profile: useId(),
     set: useId(),
-    score: useId(),
     rating: useId(),
     source: useId(),
     quarantined: useId(),
@@ -166,20 +164,6 @@ export function ShotFilters({
           ) : null}
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field id={ids.score} label="Score">
-            <select
-              id={ids.score}
-              className={FIELD}
-              value={value.scoreBand}
-              onChange={(event) => set("scoreBand", event.target.value as ScoreBandValue)}
-            >
-              {SCORE_BANDS.map((band) => (
-                <option key={band.value} value={band.value}>
-                  {band.label}
-                </option>
-              ))}
-            </select>
-          </Field>
           <Field id={ids.rating} label="Rating">
             <select
               id={ids.rating}

@@ -15,11 +15,7 @@ function blob(source: ResistanceSource | undefined): ShotDiagnosticsBlob {
       resistance: {
         source,
         avg: 2.1,
-        std: 0.3,
         slope: -0.03,
-        peak: 2.9,
-        peak_timing_pct: 0.1,
-        annotations: { level: "MODERATE" },
       },
     },
   };
@@ -30,7 +26,7 @@ describe("ResistanceCard source", () => {
     render(<ResistanceCard diagnostics={blob("machine")} />);
 
     expect(screen.getByTestId("resistance-source")).toHaveTextContent("from the machine");
-    expect(screen.getByTestId("band-level")).toHaveTextContent("2.1");
+    expect(screen.getByTestId("metric-level")).toHaveTextContent("2.1");
   });
 
   it("says ours was computed when the shot has no machine value", () => {
@@ -45,7 +41,7 @@ describe("ResistanceCard source", () => {
     render(<ResistanceCard diagnostics={blob(undefined)} />);
 
     expect(screen.queryByTestId("resistance-source")).toBeNull();
-    expect(screen.getByTestId("band-level")).toBeInTheDocument();
+    expect(screen.getByTestId("metric-level")).toBeInTheDocument();
   });
 });
 
@@ -63,7 +59,7 @@ function withFirmware(firmware: FirmwareValues | undefined): ShotDiagnosticsBlob
     ...base,
     diagnostics: {
       ...base.diagnostics,
-      weight: { rate_avg_g_s: 1, rate_std_g_s: 0.1, scale_connected: true, annotations: {} },
+      weight: { rate_avg_g_s: 1, scale_connected: true },
     },
     firmware,
   };
@@ -92,7 +88,7 @@ const PHASES: ShotPhase[] = [0, 1].map((n) => ({
 }));
 
 describe("the firmware analyzer's values on the shot page", () => {
-  it("shows the machine's puck resistance and the liquid resistance under the level, unbanded", () => {
+  it("shows the machine's puck resistance and the liquid resistance under the level", () => {
     render(<ResistanceCard diagnostics={withFirmware(FIRMWARE)} />);
 
     const pr = screen.getByTestId("firmware-pr");
@@ -101,9 +97,9 @@ describe("the firmware analyzer's values on the shot page", () => {
     expect(pr).toHaveTextContent("start 0.94 · end 2.94 · min 0.44 · max 3.94");
     expect(screen.getByTestId("firmware-lr")).toHaveTextContent("3.67 bar·s/mL");
     expect(screen.getByTestId("firmware-resistance")).toHaveTextContent("Firmware analyzer");
-    expect(screen.getByTestId("firmware-resistance")).toHaveTextContent("Not banded");
-    // The banded level is still the level.
-    expect(screen.getByTestId("band-level")).toHaveTextContent("2.1");
+    expect(screen.getByTestId("firmware-resistance")).toHaveTextContent("Not the level above");
+    // The level is still the level.
+    expect(screen.getByTestId("metric-level")).toHaveTextContent("2.1");
   });
 
   it("shows the water pumped and its difference to the beverage weight", () => {
@@ -137,7 +133,7 @@ describe("the firmware analyzer's values on the shot page", () => {
     render(<WeightCard diagnostics={withFirmware(v5)} />);
 
     expect(screen.queryByTestId("firmware-water")).toBeNull();
-    expect(screen.getByTestId("band-rate_stability")).toBeInTheDocument();
+    expect(screen.getByTestId("metric-weight_rate")).toBeInTheDocument();
   });
 
   it("shows no water for a machine whose pump does not count it, though it shows resistance", () => {
@@ -198,20 +194,18 @@ const pressureProfile: Compliance = {
   max_flow_undershoot_ml_s: null,
   pressure_grading: "graded",
   flow_grading: "not_applicable",
-  annotations: { pressure_adherence: "POOR", pressure_overshoot: "WITHIN_TOLERANCE" },
 };
 
 describe("ComplianceCard", () => {
   it("says a pressure profile has no flow to grade, and shows no flow number", () => {
     render(<ComplianceCard diagnostics={complianceBlob(pressureProfile)} />);
 
-    expect(screen.getByTestId("band-pressure_adherence")).toHaveTextContent("2.25 bar");
-    expect(screen.getByTestId("band-flow_adherence")).toHaveTextContent("not applicable");
-    expect(screen.getByTestId("band-flow_adherence")).not.toHaveTextContent("ml/s");
-    expect(screen.getByTestId("band-flow_adherence")).not.toHaveTextContent(/poor/i);
+    expect(screen.getByTestId("metric-pressure_adherence")).toHaveTextContent("2.25 bar");
+    expect(screen.getByTestId("metric-flow_adherence")).toHaveTextContent("not applicable");
+    expect(screen.getByTestId("metric-flow_adherence")).not.toHaveTextContent("ml/s");
     // The flow deviation row has nothing to say either.
-    expect(screen.queryByTestId("band-flow_undershoot")).toBeNull();
-    expect(screen.getByTestId("band-pressure_overshoot")).toHaveTextContent("0.20 bar");
+    expect(screen.queryByTestId("metric-flow_undershoot")).toBeNull();
+    expect(screen.getByTestId("metric-pressure_overshoot")).toHaveTextContent("0.20 bar");
   });
 
   it("says a pressure that could not be worked out is not graded, never 0.00", () => {
@@ -223,17 +217,16 @@ describe("ComplianceCard", () => {
           max_pressure_overshoot_bar: null,
           max_pressure_undershoot_bar: null,
           pressure_grading: "not_graded",
-          annotations: {},
         })}
       />,
     );
 
-    expect(screen.getByTestId("band-pressure_adherence")).toHaveTextContent("not graded");
-    expect(screen.queryByTestId("band-pressure_overshoot")).toBeNull();
+    expect(screen.getByTestId("metric-pressure_adherence")).toHaveTextContent("not graded");
+    expect(screen.queryByTestId("metric-pressure_overshoot")).toBeNull();
     expect(screen.queryByText(/0\.00/)).toBeNull();
   });
 
-  it("shows a flow-steered profile's flow adherence with its band", () => {
+  it("shows a flow-steered profile's flow adherence as a number", () => {
     render(
       <ComplianceCard
         diagnostics={complianceBlob({
@@ -241,14 +234,13 @@ describe("ComplianceCard", () => {
           flow_rmse_ml_s: 0.08,
           max_flow_undershoot_ml_s: 0.32,
           flow_grading: "graded",
-          annotations: { ...pressureProfile.annotations, flow_adherence: "EXCELLENT" },
         })}
       />,
     );
 
-    expect(screen.getByTestId("band-flow_adherence")).toHaveTextContent("0.08 ml/s");
-    expect(screen.getByTestId("band-flow_adherence")).toHaveTextContent(/excellent/);
-    expect(screen.getByTestId("band-flow_undershoot")).toHaveTextContent("0.32 ml/s");
+    expect(screen.getByTestId("metric-flow_adherence")).toHaveTextContent("0.08 ml/s");
+    expect(screen.getByTestId("metric-flow_adherence")).not.toHaveTextContent(/excellent|poor/i);
+    expect(screen.getByTestId("metric-flow_undershoot")).toHaveTextContent("0.32 ml/s");
   });
 
   it("keeps a dash for a block stored before the grading was recorded", () => {
@@ -262,7 +254,7 @@ describe("ComplianceCard", () => {
       />,
     );
 
-    expect(screen.getByTestId("band-flow_adherence")).toHaveTextContent("—");
+    expect(screen.getByTestId("metric-flow_adherence")).toHaveTextContent("—");
   });
 
   it("draws nothing for a shot with no profile to grade against", () => {

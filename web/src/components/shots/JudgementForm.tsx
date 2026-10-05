@@ -18,10 +18,9 @@ import { cn } from "@/lib/utils";
 /**
  * What you thought of the cup.
  *
- * Deliberately next to the execution score and deliberately not part of it: the
- * score says how cleanly the machine executed the profile, this says whether
- * the coffee was good, and a flawless extraction of stale beans is a high score
- * and a bad cup.
+ * Deliberately kept apart from the machine's own numbers: they say how the shot
+ * ran, this says whether the coffee was good, and a flawless extraction of stale
+ * beans is a bad cup.
  *
  * Every closed vocabulary on this form — balance, the flavour wheel, the
  * decisions — comes from `GET /api/vocab` rather than from a list typed here.
@@ -139,7 +138,7 @@ export function JudgementForm({
   return (
     <SectionCard
       title="Your judgement"
-      description="How the coffee tasted. Kept apart from the execution score on purpose: a perfectly executed shot of stale beans scores well and tastes of cardboard."
+      description="How the coffee tasted. Kept apart from the machine's own numbers on purpose: a perfectly executed shot of stale beans runs to its profile and tastes of cardboard."
       actions={
         judgement?.seeded_from_device_note ? (
           <span

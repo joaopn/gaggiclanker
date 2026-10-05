@@ -142,8 +142,8 @@ def percent_of_target(weight_g: float | None, target_g: float | None) -> float |
 
 
 def _share_above(weight_g: float, target_g: float, share: float) -> bool:
-    # Compared as 100 x weight against 100 x share x target, rounded: 35.2 g is
-    # exactly 110 % of 32 g, and a float product must not decide it.
+    # Compared as 100 x weight against 100 x share x target, rounded: 44.0 g is
+    # exactly 110 % of 40 g, and a float product must not decide it.
     return round(weight_g * 100, 6) > round(target_g * share * 100, 6)
 
 

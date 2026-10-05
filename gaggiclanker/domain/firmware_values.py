@@ -8,9 +8,9 @@ way the firmware computes them so that the numbers in gaggiclanker match the
 ones a person sees on the machine's own page: validity bound, time weighting,
 which samples each stat is taken over.
 
-These are **not** the banded resistance level of :mod:`gaggiclanker.domain.diagnostics`
-(``pr²`` over the flowing brew samples, with band edges). They are informational:
-nothing scores, bands, searches or filters on them.
+These are **not** the resistance level of :mod:`gaggiclanker.domain.diagnostics`
+(``pr²`` over the flowing brew samples). They are informational: nothing grades,
+searches or filters on them.
 
 The reference is the analyzer's ``puckResistance.js`` and ``waterIntegration.js``
 at firmware v1.9.0; ``tests/fixtures/firmware_values/`` pins numbers produced by
@@ -184,7 +184,7 @@ def compute_firmware_values(
     the pump stopped included; a phase is every sample stamped with its number
     (a phase number that appears twice is one group, as the analyzer groups).
     ``final_weight_g`` is the beverage weight the archive stores for the shot.
-    ``has_pressure`` is the same gate the banded diagnostics use: on a board with
+    ``has_pressure`` is the same gate the engine's own diagnostics use: on a board with
     no pressure sensor ``pr`` and ``cp`` are not measurements, so no resistance is
     reported. The water count is judged by its own samples instead: the controller
     sends a real count only from a board with a pressure sensor and a dimmed pump,

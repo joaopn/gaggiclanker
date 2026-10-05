@@ -533,7 +533,7 @@ async def test_the_placed_copy_follows_the_tiers_as_they_are_now(
     ]
     await send(runner, tasks, thread)
     await ShotInfoTiersRepository(archive.db).set_tier(
-        ShotInfoTierWrite(item_key="score_confidence", tier="base")
+        ShotInfoTierWrite(item_key="average_pressure", tier="base")
     )
     await send(runner, tasks, thread, "and now?")
 
@@ -977,20 +977,20 @@ async def test_a_tier_moved_between_turns_reaches_the_next_turn_s_context_and_gl
     chat_provider.chat_script = [ChatTurn(text="ok")]
     await send(runner, tasks, thread)
     repo = ShotInfoTiersRepository(archive.db)
-    await repo.set_tier(ShotInfoTierWrite(item_key="score_confidence", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="average_pressure", tier="base"))
     await repo.set_tier(ShotInfoTierWrite(item_key="rating", tier="excluded"))
     await send(runner, tasks, thread, "and now?")
 
     first, second = (call.system for call in chat_provider.chat_calls)
     # The opening context's shots, rendered in base.
-    assert "\nScore confidence: high" not in first
-    assert "\nScore confidence: high" in second
+    assert "\nAverage pressure: 7.8 bar" not in first
+    assert "\nAverage pressure: 7.8 bar" in second
     assert re.search(r"\nRating: \d/5", first)
     assert not re.search(r"\nRating: \d/5", second)
     # And the glossary follows: the moved item under its new tier, the
     # excluded one no longer explained.
-    assert "- Score confidence [" not in first, "extended entries are not in the prompt"
-    assert "- Score confidence [base]: " in second
+    assert "- Average pressure [" not in first, "extended entries are not in the prompt"
+    assert "- Average pressure [base]: " in second
     assert "- Rating [base]: " in first
     assert "- Rating [" not in second
 

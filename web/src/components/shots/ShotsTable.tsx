@@ -14,7 +14,6 @@ import { CurveChooser } from "@/components/shots/CurveChooser";
 import { DecisionCell } from "@/components/shots/DecisionCell";
 import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
 import { RatingStars } from "@/components/shots/RatingStars";
-import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { ShotRowEditor } from "@/components/shots/ShotRowEditor";
 import { ShotRowPanel } from "@/components/shots/ShotRowPanel";
 import { ShotSparkline } from "@/components/shots/ShotSparkline";
@@ -64,7 +63,6 @@ export const ROW_HEIGHT = 52;
 const SORTABLE: Partial<Record<ShotColumnId, ShotSort>> = {
   time: "started_at",
   duration: "duration",
-  score: "execution_score",
   rating: "rating",
 };
 
@@ -669,8 +667,6 @@ function Cell({ shot, id, curves }: { shot: ShotListRow; id: ShotColumnId; curve
       return <span className="text-sm tabular-nums">{formatSeconds(shot.duration_ms)}</span>;
     case "yield":
       return <span className="text-sm tabular-nums">{formatGrams(shot.volume_g)}</span>;
-    case "score":
-      return <ScoreBadge score={shot.execution_score ?? null} />;
     case "rating":
       return <RatingCell shot={shot} />;
     case "set":

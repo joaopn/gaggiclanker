@@ -11,18 +11,15 @@ import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import { AssignToSet } from "@/components/shots/AssignToSet";
 import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
 import {
-  ChannelingCard,
   ComplianceCard,
   PhaseTable,
   ResistanceCard,
-  TemperatureCard,
   WeightCard,
 } from "@/components/shots/DiagnosticsCards";
 import { JudgementForm } from "@/components/shots/JudgementForm";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ReviewCard } from "@/components/shots/ReviewCard";
-import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,7 +32,6 @@ import {
   formatRatio,
   formatSeconds,
   formatTime,
-  humanizeKey,
   profileName,
   REVIEW_ANCHOR,
 } from "@/lib/shots";
@@ -44,8 +40,7 @@ import {
  * One shot, in full.
  *
  * Composed top to bottom in the order somebody works through a shot: what it
- * was, what you thought of it, what the curves did, how cleanly it was
- * executed, which Set it belongs to and what a model's review read in it, what each
+ * was, what you thought of it, what the curves did, which Set it belongs to and what a model's review read in it, what each
  * diagnostic says, which phase it happened in, what the machine's own notes
  * recorded, and finally the raw header for anybody checking the archive
  * against the device.
@@ -123,7 +118,6 @@ export function ShotDetailPage() {
         subtitle={`${formatTime(row.started_at)} · shot ${row.device_id}`}
         actions={
           <div className="flex items-center gap-2">
-            <ScoreBadge score={row.execution_score ?? null} className="text-sm" />
             <RatingStars
               rating={shot.data.judgement?.rating ?? row.rating ?? row.index_rating ?? null}
             />
@@ -159,7 +153,7 @@ export function ShotDetailPage() {
 
       {/* What you thought comes first, straight under the facts: recording it
           is what a shot page is opened for, and it should not wait below a
-          chart. The Set and the review come after the curves and the score,
+          chart. The Set and the review come after the curves,
           and the review last: it is a model's reading of the numbers above,
           made without your judgement. */}
       {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and
@@ -186,7 +180,6 @@ export function ShotDetailPage() {
         />
       ) : null}
 
-      <ExecutionScoreCard row={row} diagnostics={diagnostics} />
       <section id={ASSIGN_ANCHOR} className="scroll-mt-20">
         <AssignToSet
           shotId={row.id}
@@ -207,8 +200,6 @@ export function ShotDetailPage() {
       {!row.quarantined ? (
         <div className="grid gap-4 md:grid-cols-2">
           <ResistanceCard diagnostics={diagnostics} />
-          <ChannelingCard diagnostics={diagnostics} />
-          <TemperatureCard diagnostics={diagnostics} />
           <ComplianceCard diagnostics={diagnostics} />
           <WeightCard diagnostics={diagnostics} />
         </div>
@@ -275,50 +266,6 @@ function QuarantineNotice({ reason, id }: { reason?: string | null; id: number }
       <p className="font-mono text-sm" data-testid="quarantine-reason">
         {reason ?? "No reason was recorded."}
       </p>
-    </SectionCard>
-  );
-}
-
-/**
- * The score, and what it cost.
- *
- * The components come from the diagnostics blob (the shots UI stores them); a shot
- * derived before that has only the number and its one-line reason, which is
- * what the fallback shows.
- */
-function ExecutionScoreCard({
-  row,
-  diagnostics,
-}: {
-  row: { execution_score?: number | null; execution_reason?: string | null };
-  diagnostics: ShotDiagnosticsBlob;
-}) {
-  const score = diagnostics.score;
-  const components = Object.entries(score?.components ?? {});
-  return (
-    <SectionCard
-      title="Execution score"
-      description="How cleanly the machine executed this shot. It says nothing about whether the coffee tasted good — that is the cup rating, and conflating the two would let a well-pulled shot of stale beans drag down the diagnostic signal."
-      actions={<ScoreBadge score={row.execution_score ?? null} className="text-sm" />}
-    >
-      <p className="text-sm">{score?.reason ?? row.execution_reason ?? "No score was computed."}</p>
-      {score ? (
-        <p className="mt-1 text-muted-foreground text-xs">Confidence: {score.confidence}</p>
-      ) : null}
-      {components.length > 0 ? (
-        <ul className="mt-3 space-y-1" data-testid="score-components">
-          {components.map(([key, penalty]) => (
-            <li key={key} className="flex items-baseline justify-between gap-3 text-sm">
-              <span>{humanizeKey(key)}</span>
-              <span className="text-status-bad-text tabular-nums">{penalty.toFixed(2)}</span>
-            </li>
-          ))}
-        </ul>
-      ) : score ? (
-        <p className="mt-2 text-muted-foreground text-sm">
-          No penalties: nothing in the telemetry counted against this shot.
-        </p>
-      ) : null}
     </SectionCard>
   );
 }

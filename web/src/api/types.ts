@@ -268,7 +268,7 @@ export function isSecretSetting(setting: ResolvedSetting): setting is SecretSett
  * The filters `GET /api/shots` accepts. `cursor` and `offset` are alternatives
  * and the server answers 400 if both are sent, so a caller picks one.
  */
-export type ShotSort = "started_at" | "execution_score" | "duration" | "rating";
+export type ShotSort = "started_at" | "duration" | "rating";
 
 export type ShotListParams = {
   limit?: number;
@@ -284,8 +284,6 @@ export type ShotListParams = {
   /** The inbox: shots the archive could not attach to a Set on its own. */
   needs_set?: boolean;
   source?: "device" | "import";
-  min_score?: number;
-  max_score?: number;
   min_rating?: number;
   sort?: ShotSort;
   order?: "asc" | "desc";
@@ -311,8 +309,6 @@ export type ResistanceSource = "machine" | "computed";
  * optional because a shot stored before a diagnostics fix — or one whose
  * diagnostics pass failed, which does not quarantine it — has none of it.
  */
-export type BandAnnotations = Record<string, string>;
-
 export type ShotPhase = {
   name: string;
   phase_number: number;
@@ -329,17 +325,28 @@ export type ShotPhase = {
     /** Only in a phase that steers by pressure (or flow) and has samples to grade. */
     pressure_rmse_bar?: number;
     flow_rmse_ml_s?: number;
-    ramp_rate_bar_s?: number;
-    saturation_time_s?: number;
     resistance_avg?: number;
     resistance_slope?: number;
     resistance_source?: ResistanceSource;
-    channeling_risk?: string;
-    flow_jitter_ml_s?: number;
-    pressure_jitter_bar?: number;
-    taper_rate_bar_s?: number;
-    taper_smoothness?: number;
-    annotations?: BandAnnotations;
+  };
+  /** What the phase did, in plain numbers (`domain/phase_metrics.py`); absent on a shot derived
+      before they existed, and on a log with no phase table. A key is absent when the shot
+      cannot have the value (no scale, no pressure sensor). */
+  metrics?: {
+    /** The firmware's exit-reason code; 0 is "Unknown". */
+    ended_by?: number;
+    cup_weight_end_g?: number;
+    cup_weight_gained_g?: number;
+    scale_flow_mean_g_s?: number;
+    scale_flow_peak_g_s?: number;
+    puck_flow_mean_ml_s?: number;
+    puck_flow_peak_ml_s?: number;
+    water_pumped_ml?: number;
+    pressure_peak_bar?: number;
+    pressure_end_bar?: number;
+    temperature_min_c?: number;
+    temperature_target_c?: number;
+    first_drip_s?: number;
   };
 };
 
@@ -349,7 +356,7 @@ export type FirmwareStats = { start: number; end: number; min: number; max: numb
 /**
  * What the firmware's own shot analyzer shows (`domain/firmware_values.py`): the machine's
  * puck resistance `pr` (s·√bar/mL), liquid resistance `lr` (bar·s/mL), and water pumped.
- * Not banded. The whole block is absent on a shot derived before it existed; each
+ * No grade on any of it. The whole block is absent on a shot derived before it existed; each
  * stream is null when the shot has no valid reading, and the water fields unless it
  * recorded the pump's count (format v7).
  */
@@ -390,40 +397,14 @@ export type ShotDiagnosticsBlob = {
       /** Where R came from; absent on a shot stored before the source was recorded. */
       source?: ResistanceSource;
       avg: number;
-      std: number;
       slope: number;
-      peak: number;
-      peak_timing_pct: number;
-      annotations: BandAnnotations;
     } | null;
-    channeling?: {
-      flow_jitter_ml_s: number;
-      flow_vs_target_residual_ml_s: number | null;
-      pressure_max_drop_rate_bar_s: number;
-      flow_acceleration_late_ml_s2: number;
-      flow_spread_ml_s: number;
-      pressure_jitter_bar: number;
-      channeling_risk: string;
-      annotations: BandAnnotations;
-    } | null;
-    temperature?: {
-      overshoot_c: number;
-      undershoot_c: number;
-      stability_std_c: number;
-      annotations: BandAnnotations;
-    };
     extraction?: {
-      pressure_auc_bar_s: number;
-      pressure_slope_brew_bar_s: number;
-      flow_slope_brew_ml_s2: number;
       flow_avg_brew_ml_s: number;
-      annotations: BandAnnotations;
     };
     weight?: {
       rate_avg_g_s: number | null;
-      rate_std_g_s: number | null;
       scale_connected: boolean;
-      annotations: BandAnnotations;
     };
     /** Absent when the shot has no known profile to grade against. Each adherence is graded
         only over the phases that steer by it: "not_applicable" when the profile has none,
@@ -438,18 +419,25 @@ export type ShotDiagnosticsBlob = {
       /** Absent on a block stored before the grading was recorded. */
       pressure_grading?: "graded" | "not_applicable" | "not_graded";
       flow_grading?: "graded" | "not_applicable" | "not_graded";
-      annotations: BandAnnotations;
     } | null;
   } | null;
   detail_level?: string;
   has_pressure?: boolean;
-  /** Added with the shots UI. Absent on shots derived before it; the columns still carry
-      the score and its one-line reason. */
-  score?: {
-    score: number;
-    confidence: string;
-    reason: string;
-    components: Record<string, number>;
+  /** The shot's own facts (`domain/phase_metrics.py`): whether the log has a phase table and
+      why each phase ended, the profile's phases it never began, the first fast-flow window. */
+  metrics?: {
+    per_phase: boolean;
+    exit_reasons: boolean;
+    profile_phases: string[] | null;
+    phases_not_reached: Array<{ phase_number: number; name: string }>;
+    fast_flow: {
+      phase_number: number | null;
+      start_s: number;
+      end_s: number;
+      mean_g_s: number;
+      pressure_min_bar: number;
+      peak_pressure_bar: number;
+    } | null;
   };
 };
 
