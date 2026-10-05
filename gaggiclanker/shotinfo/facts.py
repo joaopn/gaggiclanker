@@ -28,6 +28,7 @@ from gaggiclanker.db.repos.reviews import ShotReviewRow
 from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotSampleRow
 from gaggiclanker.domain.slog import FIELD_DEFS
+from gaggiclanker.domain.warnings import ShotWarning, percent_of_target, shot_warnings
 
 __all__ = ["ShotFacts", "number"]
 
@@ -133,6 +134,42 @@ class ShotFacts:
         """
         value = self.blob.get("firmware")
         return value if isinstance(value, dict) else {}
+
+    @property
+    def metrics(self) -> Mapping[str, Any]:
+        """The shot-wide facts derived with it: the profile's phases it never began, fast flow.
+
+        Empty for a shot derived before they existed; the boot re-derive fills it in.
+        """
+        value = self.blob.get("metrics")
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def target_yield_g(self) -> float | None:
+        """The target yield of the version the shot is filed under, when it has one.
+
+        Read when the shot is read, never stored with it: filing, moving or
+        discarding a shot changes it, and must not need a re-derivation.
+        """
+        target = self.version.target_yield_g if self.version is not None else None
+        return target if target is not None and target > 0 else None
+
+    @property
+    def warnings(self) -> list[ShotWarning]:
+        """What is plainly wrong with the shot, from its stored numbers and where it is filed."""
+        return shot_warnings(
+            final_weight_g=self.shot.final_weight_g,
+            scale_connected=self.shot.scale_connected,
+            final_exit_reason=self.shot.final_exit_reason or 0,
+            duration_s=self.shot.duration_ms / 1000,
+            target_yield_g=self.target_yield_g,
+            phases=self.phases,
+            metrics=self.metrics,
+        )
+
+    def share_of_target(self, weight_g: float | None) -> float | None:
+        """A weight as a percentage of the filed version's target yield, to a tenth."""
+        return percent_of_target(weight_g, self.target_yield_g)
 
     @property
     def full(self) -> bool:
