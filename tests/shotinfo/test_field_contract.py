@@ -13,6 +13,7 @@ at the top of the pressure.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -31,6 +32,7 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
+from gaggiclanker.domain.metric_language import CHANNELS, OPS, per_phase_method
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.shotinfo import (
@@ -103,7 +105,20 @@ def test_every_item_has_a_method_and_no_two_share_one() -> None:
     ids = [item.method for item in CATALOGUE]
     assert ids == [METHODS[item.key] for item in CATALOGUE]
     assert len(set(ids)) == len(ids)
-    assert all(re.fullmatch(r"[a-z0-9_]+(\.[a-z0-9_]+)+@[1-9]\d*", method) for method in ids)
+    # A hand-named id, or (for a window statistic) the canonical form of its expression read
+    # over each phase: parsed, with a channel and an op the language has.
+    expressions = 0
+    for method in ids:
+        if method.startswith("{"):
+            parsed = json.loads(method)
+            assert set(parsed) == {"channel", "op", "window"}, method
+            assert parsed["channel"] in CHANNELS and parsed["op"] in OPS, method
+            assert parsed["window"] == "each_phase", method
+            assert method == per_phase_method(parsed["channel"], parsed["op"]), method
+            expressions += 1
+        else:
+            assert re.fullmatch(r"[a-z0-9_]+(\.[a-z0-9_]+)+@[1-9]\d*", method), method
+    assert expressions == 10
 
 
 def test_every_item_is_computed_for_now() -> None:

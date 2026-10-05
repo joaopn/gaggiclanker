@@ -1,0 +1,3274 @@
+{
+ "shot_196_baseline_high|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.3,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.05
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 3.1,
+     "pressure_end_bar": 3.1,
+     "cup_weight_end_g": 0.2,
+     "cup_weight_gained_g": 0.2,
+     "scale_flow_mean_g_s": 0.02,
+     "scale_flow_peak_g_s": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 2.04,
+     "puck_flow_peak_ml_s": 3.86,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 16.2,
+     "pressure_peak_bar": 9.1,
+     "pressure_end_bar": 7.1,
+     "cup_weight_end_g": 31.5,
+     "cup_weight_gained_g": 31.3,
+     "scale_flow_mean_g_s": 1.76,
+     "scale_flow_peak_g_s": 2.35
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.05
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.2,
+     "cup_weight_gained_g": 0.2,
+     "scale_flow_mean_g_s": 0.02,
+     "scale_flow_peak_g_s": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 2.04,
+     "puck_flow_peak_ml_s": 3.86,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 16.2,
+     "cup_weight_end_g": 31.5,
+     "cup_weight_gained_g": 31.3,
+     "scale_flow_mean_g_s": 1.76,
+     "scale_flow_peak_g_s": 2.35
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high|pressure-first|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.3,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.05
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 3.1,
+     "pressure_end_bar": 3.1,
+     "cup_weight_end_g": 0.2,
+     "cup_weight_gained_g": 0.2,
+     "scale_flow_mean_g_s": 0.02,
+     "scale_flow_peak_g_s": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 2.04,
+     "puck_flow_peak_ml_s": 3.86,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 16.2,
+     "pressure_peak_bar": 9.1,
+     "pressure_end_bar": 7.1,
+     "cup_weight_end_g": 31.5,
+     "cup_weight_gained_g": 31.3,
+     "scale_flow_mean_g_s": 1.76,
+     "scale_flow_peak_g_s": 2.35
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Pre-infusion",
+    "Ramp",
+    "Extraction"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high|pressure-first|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.05
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.2,
+     "cup_weight_gained_g": 0.2,
+     "scale_flow_mean_g_s": 0.02,
+     "scale_flow_peak_g_s": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 2.04,
+     "puck_flow_peak_ml_s": 3.86,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 16.2,
+     "cup_weight_end_g": 31.5,
+     "cup_weight_gained_g": 31.3,
+     "scale_flow_mean_g_s": 1.76,
+     "scale_flow_peak_g_s": 2.35
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Pre-infusion",
+    "Ramp",
+    "Extraction"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high|flow-first|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.3,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.05
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 3.1,
+     "pressure_end_bar": 3.1,
+     "cup_weight_end_g": 0.2,
+     "cup_weight_gained_g": 0.2,
+     "scale_flow_mean_g_s": 0.02,
+     "scale_flow_peak_g_s": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 2.04,
+     "puck_flow_peak_ml_s": 3.86,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 16.2,
+     "pressure_peak_bar": 9.1,
+     "pressure_end_bar": 7.1,
+     "cup_weight_end_g": 31.5,
+     "cup_weight_gained_g": 31.3,
+     "scale_flow_mean_g_s": 1.76,
+     "scale_flow_peak_g_s": 2.35
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Pre-infusion",
+    "Ramp",
+    "Extraction"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high|flow-first|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.05
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.2,
+     "cup_weight_gained_g": 0.2,
+     "scale_flow_mean_g_s": 0.02,
+     "scale_flow_peak_g_s": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 2.04,
+     "puck_flow_peak_ml_s": 3.86,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 16.2,
+     "cup_weight_end_g": 31.5,
+     "cup_weight_gained_g": 31.3,
+     "scale_flow_mean_g_s": 1.76,
+     "scale_flow_peak_g_s": 2.35
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Pre-infusion",
+    "Ramp",
+    "Extraction"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high-noscale|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.3,
+     "pressure_end_bar": 0.3
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 3.1,
+     "pressure_end_bar": 3.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 2.04,
+     "puck_flow_peak_ml_s": 3.86,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 16.2,
+     "pressure_peak_bar": 9.1,
+     "pressure_end_bar": 7.1
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high-noscale|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 2.04,
+     "puck_flow_peak_ml_s": 3.86,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 16.2
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high-nopressure|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.05
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.2,
+     "cup_weight_gained_g": 0.2,
+     "scale_flow_mean_g_s": 0.02,
+     "scale_flow_peak_g_s": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 31.5,
+     "cup_weight_gained_g": 31.3,
+     "scale_flow_mean_g_s": 1.76,
+     "scale_flow_peak_g_s": 2.35
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_196_baseline_high-nopressure|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.05
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.2,
+     "cup_weight_gained_g": 0.2,
+     "scale_flow_mean_g_s": 0.02,
+     "scale_flow_peak_g_s": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 89.5,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 31.5,
+     "cup_weight_gained_g": 31.3,
+     "scale_flow_mean_g_s": 1.76,
+     "scale_flow_peak_g_s": 2.35
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_peak_g_s": 0.04
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 2.1,
+     "pressure_end_bar": 2.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.71,
+     "puck_flow_peak_ml_s": 3.3,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 28.0,
+     "pressure_peak_bar": 8.2,
+     "pressure_end_bar": 7.0,
+     "cup_weight_end_g": 31.6,
+     "cup_weight_gained_g": 31.6,
+     "scale_flow_mean_g_s": 1.27,
+     "scale_flow_peak_g_s": 1.96
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_peak_g_s": 0.04
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.71,
+     "puck_flow_peak_ml_s": 3.3,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 28.0,
+     "cup_weight_end_g": 31.6,
+     "cup_weight_gained_g": 31.6,
+     "scale_flow_mean_g_s": 1.27,
+     "scale_flow_peak_g_s": 1.96
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow|pressure-first|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_peak_g_s": 0.04
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 2.1,
+     "pressure_end_bar": 2.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.71,
+     "puck_flow_peak_ml_s": 3.3,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 28.0,
+     "pressure_peak_bar": 8.2,
+     "pressure_end_bar": 7.0,
+     "cup_weight_end_g": 31.6,
+     "cup_weight_gained_g": 31.6,
+     "scale_flow_mean_g_s": 1.27,
+     "scale_flow_peak_g_s": 1.96
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Pre-infusion",
+    "Bloom",
+    "Ramp",
+    "Extraction"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow|pressure-first|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_peak_g_s": 0.04
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.71,
+     "puck_flow_peak_ml_s": 3.3,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 28.0,
+     "cup_weight_end_g": 31.6,
+     "cup_weight_gained_g": 31.6,
+     "scale_flow_mean_g_s": 1.27,
+     "scale_flow_peak_g_s": 1.96
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Pre-infusion",
+    "Bloom",
+    "Ramp",
+    "Extraction"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow|flow-first|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_peak_g_s": 0.04
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 2.1,
+     "pressure_end_bar": 2.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.71,
+     "puck_flow_peak_ml_s": 3.3,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 28.0,
+     "pressure_peak_bar": 8.2,
+     "pressure_end_bar": 7.0,
+     "cup_weight_end_g": 31.6,
+     "cup_weight_gained_g": 31.6,
+     "scale_flow_mean_g_s": 1.27,
+     "scale_flow_peak_g_s": 1.96
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Pre-infusion",
+    "Bloom",
+    "Ramp",
+    "Extraction"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow|flow-first|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_peak_g_s": 0.04
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.71,
+     "puck_flow_peak_ml_s": 3.3,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 28.0,
+     "cup_weight_end_g": 31.6,
+     "cup_weight_gained_g": 31.6,
+     "scale_flow_mean_g_s": 1.27,
+     "scale_flow_peak_g_s": 1.96
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Pre-infusion",
+    "Bloom",
+    "Ramp",
+    "Extraction"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow-noscale|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.1
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 2.1,
+     "pressure_end_bar": 2.1
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.71,
+     "puck_flow_peak_ml_s": 3.3,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 28.0,
+     "pressure_peak_bar": 8.2,
+     "pressure_end_bar": 7.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow-noscale|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.71,
+     "puck_flow_peak_ml_s": 3.3,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 28.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow-nopressure|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_peak_g_s": 0.04
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 31.6,
+     "cup_weight_gained_g": 31.6,
+     "scale_flow_mean_g_s": 1.27,
+     "scale_flow_peak_g_s": 1.96
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_204_ramping_flow-nopressure|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_peak_g_s": 0.04
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 90.5,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 31.6,
+     "cup_weight_gained_g": 31.6,
+     "scale_flow_mean_g_s": 1.27,
+     "scale_flow_peak_g_s": 1.96
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.4,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.3,
+     "pressure_end_bar": 0.2,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.7,
+     "pressure_end_bar": 1.7,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.61,
+     "puck_flow_peak_ml_s": 4.17,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.2,
+     "pressure_peak_bar": 9.0,
+     "pressure_end_bar": 7.2,
+     "cup_weight_end_g": 31.8,
+     "cup_weight_gained_g": 31.8,
+     "scale_flow_mean_g_s": 2.0,
+     "scale_flow_peak_g_s": 3.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.61,
+     "puck_flow_peak_ml_s": 4.17,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.2,
+     "cup_weight_end_g": 31.8,
+     "cup_weight_gained_g": 31.8,
+     "scale_flow_mean_g_s": 2.0,
+     "scale_flow_peak_g_s": 3.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive|pressure-first|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.4,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.3,
+     "pressure_end_bar": 0.2,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.7,
+     "pressure_end_bar": 1.7,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.61,
+     "puck_flow_peak_ml_s": 4.17,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.2,
+     "pressure_peak_bar": 9.0,
+     "pressure_end_bar": 7.2,
+     "cup_weight_end_g": 31.8,
+     "cup_weight_gained_g": 31.8,
+     "scale_flow_mean_g_s": 2.0,
+     "scale_flow_peak_g_s": 3.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Fill",
+    "Bloom",
+    "Ramp",
+    "Extraction Hold"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive|pressure-first|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.61,
+     "puck_flow_peak_ml_s": 4.17,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.2,
+     "cup_weight_end_g": 31.8,
+     "cup_weight_gained_g": 31.8,
+     "scale_flow_mean_g_s": 2.0,
+     "scale_flow_peak_g_s": 3.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Fill",
+    "Bloom",
+    "Ramp",
+    "Extraction Hold"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive|flow-first|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.4,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.3,
+     "pressure_end_bar": 0.2,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.7,
+     "pressure_end_bar": 1.7,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.61,
+     "puck_flow_peak_ml_s": 4.17,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.2,
+     "pressure_peak_bar": 9.0,
+     "pressure_end_bar": 7.2,
+     "cup_weight_end_g": 31.8,
+     "cup_weight_gained_g": 31.8,
+     "scale_flow_mean_g_s": 2.0,
+     "scale_flow_peak_g_s": 3.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Fill",
+    "Bloom",
+    "Ramp",
+    "Extraction Hold"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive|flow-first|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.61,
+     "puck_flow_peak_ml_s": 4.17,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.2,
+     "cup_weight_end_g": 31.8,
+     "cup_weight_gained_g": 31.8,
+     "scale_flow_mean_g_s": 2.0,
+     "scale_flow_peak_g_s": 3.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "Fill",
+    "Bloom",
+    "Ramp",
+    "Extraction Hold"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive-noscale|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.4,
+     "pressure_end_bar": 0.3
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.3,
+     "pressure_end_bar": 0.2
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 1.7,
+     "pressure_end_bar": 1.7
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.61,
+     "puck_flow_peak_ml_s": 4.17,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.2,
+     "pressure_peak_bar": 9.0,
+     "pressure_end_bar": 7.2
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive-noscale|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.61,
+     "puck_flow_peak_ml_s": 4.17,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.2
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive-nopressure|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 31.8,
+     "cup_weight_gained_g": 31.8,
+     "scale_flow_mean_g_s": 2.0,
+     "scale_flow_peak_g_s": 3.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot_222_hold_false_positive-nopressure|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 92.9,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 89.4,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 31.8,
+     "cup_weight_gained_g": 31.8,
+     "scale_flow_mean_g_s": 2.0,
+     "scale_flow_peak_g_s": 3.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot-129|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 85.4,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 0.3,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -6.53,
+     "scale_flow_peak_g_s": -0.32
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.7,
+     "puck_flow_peak_ml_s": 2.57,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "first_drip_s": 6.8,
+     "pressure_peak_bar": 1.1,
+     "pressure_end_bar": 1.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_peak_g_s": 0.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.94,
+     "puck_flow_peak_ml_s": 1.55,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 7.9,
+     "pressure_end_bar": 7.9,
+     "cup_weight_end_g": 0.7,
+     "cup_weight_gained_g": 0.7,
+     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_peak_g_s": 0.44
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.22,
+     "puck_flow_peak_ml_s": 1.48,
+     "temperature_min_c": 85.2,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 8.5,
+     "pressure_end_bar": 3.7,
+     "cup_weight_end_g": 32.1,
+     "cup_weight_gained_g": 31.4,
+     "scale_flow_mean_g_s": 0.94,
+     "scale_flow_peak_g_s": 1.29
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot-129|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 85.4,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -6.53,
+     "scale_flow_peak_g_s": -0.32
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.7,
+     "puck_flow_peak_ml_s": 2.57,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "first_drip_s": 6.8,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_peak_g_s": 0.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.94,
+     "puck_flow_peak_ml_s": 1.55,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 0.7,
+     "cup_weight_gained_g": 0.7,
+     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_peak_g_s": 0.44
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.22,
+     "puck_flow_peak_ml_s": 1.48,
+     "temperature_min_c": 85.2,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 32.1,
+     "cup_weight_gained_g": 31.4,
+     "scale_flow_mean_g_s": 0.94,
+     "scale_flow_peak_g_s": 1.29
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot-129|pressure-first|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 85.4,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 0.3,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -6.53,
+     "scale_flow_peak_g_s": -0.32
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.7,
+     "puck_flow_peak_ml_s": 2.57,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "first_drip_s": 6.8,
+     "pressure_peak_bar": 1.1,
+     "pressure_end_bar": 1.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_peak_g_s": 0.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.94,
+     "puck_flow_peak_ml_s": 1.55,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 7.9,
+     "pressure_end_bar": 7.9,
+     "cup_weight_end_g": 0.7,
+     "cup_weight_gained_g": 0.7,
+     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_peak_g_s": 0.44
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.22,
+     "puck_flow_peak_ml_s": 1.48,
+     "temperature_min_c": 85.2,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 8.5,
+     "pressure_end_bar": 3.7,
+     "cup_weight_end_g": 32.1,
+     "cup_weight_gained_g": 31.4,
+     "scale_flow_mean_g_s": 0.94,
+     "scale_flow_peak_g_s": 1.29
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "fill",
+    "soak",
+    "ramp",
+    "decline 9-4"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot-129|pressure-first|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 85.4,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -6.53,
+     "scale_flow_peak_g_s": -0.32
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.7,
+     "puck_flow_peak_ml_s": 2.57,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "first_drip_s": 6.8,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_peak_g_s": 0.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.94,
+     "puck_flow_peak_ml_s": 1.55,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 0.7,
+     "cup_weight_gained_g": 0.7,
+     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_peak_g_s": 0.44
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.22,
+     "puck_flow_peak_ml_s": 1.48,
+     "temperature_min_c": 85.2,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 32.1,
+     "cup_weight_gained_g": 31.4,
+     "scale_flow_mean_g_s": 0.94,
+     "scale_flow_peak_g_s": 1.29
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "fill",
+    "soak",
+    "ramp",
+    "decline 9-4"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot-129|flow-first|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 85.4,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 0.3,
+     "pressure_end_bar": 0.3,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -6.53,
+     "scale_flow_peak_g_s": -0.32
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.7,
+     "puck_flow_peak_ml_s": 2.57,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "first_drip_s": 6.8,
+     "pressure_peak_bar": 1.1,
+     "pressure_end_bar": 1.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_peak_g_s": 0.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.94,
+     "puck_flow_peak_ml_s": 1.55,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 7.9,
+     "pressure_end_bar": 7.9,
+     "cup_weight_end_g": 0.7,
+     "cup_weight_gained_g": 0.7,
+     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_peak_g_s": 0.44
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.22,
+     "puck_flow_peak_ml_s": 1.48,
+     "temperature_min_c": 85.2,
+     "temperature_target_c": 86.5,
+     "pressure_peak_bar": 8.5,
+     "pressure_end_bar": 3.7,
+     "cup_weight_end_g": 32.1,
+     "cup_weight_gained_g": 31.4,
+     "scale_flow_mean_g_s": 0.94,
+     "scale_flow_peak_g_s": 1.29
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "fill",
+    "soak",
+    "ramp",
+    "decline 9-4"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot-129|flow-first|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 85.4,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -6.53,
+     "scale_flow_peak_g_s": -0.32
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.7,
+     "puck_flow_peak_ml_s": 2.57,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "first_drip_s": 6.8,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_peak_g_s": 0.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 0.94,
+     "puck_flow_peak_ml_s": 1.55,
+     "temperature_min_c": 85.3,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 0.7,
+     "cup_weight_gained_g": 0.7,
+     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_peak_g_s": 0.44
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 0,
+     "puck_flow_mean_ml_s": 1.22,
+     "puck_flow_peak_ml_s": 1.48,
+     "temperature_min_c": 85.2,
+     "temperature_target_c": 86.5,
+     "cup_weight_end_g": 32.1,
+     "cup_weight_gained_g": 31.4,
+     "scale_flow_mean_g_s": 0.94,
+     "scale_flow_peak_g_s": 1.29
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": false,
+   "profile_phases": [
+    "fill",
+    "soak",
+    "ramp",
+    "decline 9-4"
+   ],
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot-v7-synthetic|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 2,
+     "puck_flow_mean_ml_s": 1.98,
+     "puck_flow_peak_ml_s": 2.08,
+     "temperature_min_c": 92.0,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 0.0,
+     "pressure_peak_bar": 3.1,
+     "pressure_end_bar": 3.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 1.73,
+     "scale_flow_peak_g_s": 1.82,
+     "water_pumped_ml": 2.5
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 1.73,
+     "puck_flow_peak_ml_s": 1.82,
+     "temperature_min_c": 92.0,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 5.9,
+     "pressure_end_bar": 5.9,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 1.51,
+     "scale_flow_peak_g_s": 1.6,
+     "water_pumped_ml": 2.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 3,
+     "puck_flow_mean_ml_s": 1.41,
+     "puck_flow_peak_ml_s": 1.57,
+     "temperature_min_c": 92.0,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 9.0,
+     "pressure_end_bar": 9.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 1.23,
+     "scale_flow_peak_g_s": 1.37,
+     "water_pumped_ml": 2.7
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 0.9,
+     "puck_flow_peak_ml_s": 1.18,
+     "temperature_min_c": 92.0,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 9.0,
+     "pressure_end_bar": 9.0,
+     "cup_weight_end_g": 2.1,
+     "cup_weight_gained_g": 2.1,
+     "scale_flow_mean_g_s": 0.78,
+     "scale_flow_peak_g_s": 1.04,
+     "water_pumped_ml": 2.8
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "shot-v7-synthetic|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 2,
+     "puck_flow_mean_ml_s": 1.98,
+     "puck_flow_peak_ml_s": 2.08,
+     "temperature_min_c": 92.0,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 0.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 1.73,
+     "scale_flow_peak_g_s": 1.82,
+     "water_pumped_ml": 2.5
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 1.73,
+     "puck_flow_peak_ml_s": 1.82,
+     "temperature_min_c": 92.0,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 1.51,
+     "scale_flow_peak_g_s": 1.6,
+     "water_pumped_ml": 2.1
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 3,
+     "puck_flow_mean_ml_s": 1.41,
+     "puck_flow_peak_ml_s": 1.57,
+     "temperature_min_c": 92.0,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 1.23,
+     "scale_flow_peak_g_s": 1.37,
+     "water_pumped_ml": 2.7
+    }
+   },
+   {
+    "phase_number": 3,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 0.9,
+     "puck_flow_peak_ml_s": 1.18,
+     "temperature_min_c": 92.0,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 2.1,
+     "cup_weight_gained_g": 2.1,
+     "scale_flow_mean_g_s": 0.78,
+     "scale_flow_peak_g_s": 1.04,
+     "water_pumped_ml": 2.8
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "lever|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0,
+     "water_pumped_ml": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.0,
+     "cup_weight_end_g": 4.0,
+     "cup_weight_gained_g": 4.0,
+     "scale_flow_mean_g_s": 0.4,
+     "scale_flow_peak_g_s": 0.4,
+     "water_pumped_ml": 20.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 1.92,
+     "puck_flow_peak_ml_s": 3.6,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.8,
+     "pressure_peak_bar": 8.2,
+     "pressure_end_bar": 8.0,
+     "cup_weight_end_g": 42.2,
+     "cup_weight_gained_g": 38.2,
+     "scale_flow_mean_g_s": 2.45,
+     "scale_flow_peak_g_s": 4.0,
+     "water_pumped_ml": 29.5
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": {
+    "phase_number": 2,
+    "start_s": 24.75,
+    "end_s": 25.75,
+    "mean_g_s": 4.0,
+    "pressure_min_bar": 7.2,
+    "peak_pressure_bar": 8.2
+   }
+  }
+ },
+ "lever|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0,
+     "water_pumped_ml": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 4.0,
+     "cup_weight_gained_g": 4.0,
+     "scale_flow_mean_g_s": 0.4,
+     "scale_flow_peak_g_s": 0.4,
+     "water_pumped_ml": 20.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 1.92,
+     "puck_flow_peak_ml_s": 3.6,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.8,
+     "cup_weight_end_g": 42.2,
+     "cup_weight_gained_g": 38.2,
+     "scale_flow_mean_g_s": 2.45,
+     "scale_flow_peak_g_s": 4.0,
+     "water_pumped_ml": 29.5
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "lever|lever|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.1,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0,
+     "water_pumped_ml": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.0,
+     "cup_weight_end_g": 4.0,
+     "cup_weight_gained_g": 4.0,
+     "scale_flow_mean_g_s": 0.4,
+     "scale_flow_peak_g_s": 0.4,
+     "water_pumped_ml": 20.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 1.92,
+     "puck_flow_peak_ml_s": 3.6,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.8,
+     "pressure_peak_bar": 8.2,
+     "pressure_end_bar": 8.0,
+     "cup_weight_end_g": 42.2,
+     "cup_weight_gained_g": 38.2,
+     "scale_flow_mean_g_s": 2.45,
+     "scale_flow_peak_g_s": 4.0,
+     "water_pumped_ml": 29.5
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": [
+    "preinfusion",
+    "soak",
+    "ramp",
+    "decline"
+   ],
+   "phases_not_reached": [
+    {
+     "phase_number": 3,
+     "name": "decline"
+    }
+   ],
+   "fast_flow": {
+    "phase_number": 2,
+    "start_s": 24.75,
+    "end_s": 25.75,
+    "mean_g_s": 4.0,
+    "pressure_min_bar": 7.2,
+    "peak_pressure_bar": 8.2
+   }
+  }
+ },
+ "lever|lever|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0,
+     "water_pumped_ml": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 4.0,
+     "cup_weight_gained_g": 4.0,
+     "scale_flow_mean_g_s": 0.4,
+     "scale_flow_peak_g_s": 0.4,
+     "water_pumped_ml": 20.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 1.92,
+     "puck_flow_peak_ml_s": 3.6,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.8,
+     "cup_weight_end_g": 42.2,
+     "cup_weight_gained_g": 38.2,
+     "scale_flow_mean_g_s": 2.45,
+     "scale_flow_peak_g_s": 4.0,
+     "water_pumped_ml": 29.5
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": [
+    "preinfusion",
+    "soak",
+    "ramp",
+    "decline"
+   ],
+   "phases_not_reached": [
+    {
+     "phase_number": 3,
+     "name": "decline"
+    }
+   ],
+   "fast_flow": null
+  }
+ },
+ "lever-noscale|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.1,
+     "water_pumped_ml": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.0,
+     "water_pumped_ml": 20.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 1.92,
+     "puck_flow_peak_ml_s": 3.6,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.8,
+     "pressure_peak_bar": 8.2,
+     "pressure_end_bar": 8.0,
+     "water_pumped_ml": 29.5
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "lever-noscale|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "water_pumped_ml": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "water_pumped_ml": 20.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 1.92,
+     "puck_flow_peak_ml_s": 3.6,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.8,
+     "water_pumped_ml": 29.5
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "lever-noscale|lever|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.1,
+     "water_pumped_ml": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "pressure_peak_bar": 0.1,
+     "pressure_end_bar": 0.0,
+     "water_pumped_ml": 20.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 1.92,
+     "puck_flow_peak_ml_s": 3.6,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.8,
+     "pressure_peak_bar": 8.2,
+     "pressure_end_bar": 8.0,
+     "water_pumped_ml": 29.5
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": [
+    "preinfusion",
+    "soak",
+    "ramp",
+    "decline"
+   ],
+   "phases_not_reached": [
+    {
+     "phase_number": 3,
+     "name": "decline"
+    }
+   ],
+   "fast_flow": null
+  }
+ },
+ "lever-noscale|lever|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "water_pumped_ml": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "water_pumped_ml": 20.0
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 1.92,
+     "puck_flow_peak_ml_s": 3.6,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "first_drip_s": 23.8,
+     "water_pumped_ml": 29.5
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": [
+    "preinfusion",
+    "soak",
+    "ramp",
+    "decline"
+   ],
+   "phases_not_reached": [
+    {
+     "phase_number": 3,
+     "name": "decline"
+    }
+   ],
+   "fast_flow": null
+  }
+ },
+ "lever-nopressure|none|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 4.0,
+     "cup_weight_gained_g": 4.0,
+     "scale_flow_mean_g_s": 0.4,
+     "scale_flow_peak_g_s": 0.4
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 42.2,
+     "cup_weight_gained_g": 38.2,
+     "scale_flow_mean_g_s": 2.45,
+     "scale_flow_peak_g_s": 4.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "lever-nopressure|none|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 4.0,
+     "cup_weight_gained_g": 4.0,
+     "scale_flow_mean_g_s": 0.4,
+     "scale_flow_peak_g_s": 0.4
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 42.2,
+     "cup_weight_gained_g": 38.2,
+     "scale_flow_mean_g_s": 2.45,
+     "scale_flow_peak_g_s": 4.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": null,
+   "phases_not_reached": [],
+   "fast_flow": null
+  }
+ },
+ "lever-nopressure|lever|None": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 4.0,
+     "cup_weight_gained_g": 4.0,
+     "scale_flow_mean_g_s": 0.4,
+     "scale_flow_peak_g_s": 0.4
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 42.2,
+     "cup_weight_gained_g": 38.2,
+     "scale_flow_mean_g_s": 2.45,
+     "scale_flow_peak_g_s": 4.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": [
+    "preinfusion",
+    "soak",
+    "ramp",
+    "decline"
+   ],
+   "phases_not_reached": [
+    {
+     "phase_number": 3,
+     "name": "decline"
+    }
+   ],
+   "fast_flow": null
+  }
+ },
+ "lever-nopressure|lever|False": {
+  "phases": [
+   {
+    "phase_number": 0,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 94.7,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 0.0,
+     "cup_weight_gained_g": 0.0,
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
+    }
+   },
+   {
+    "phase_number": 1,
+    "metrics": {
+     "ended_by": 5,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 93.2,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 4.0,
+     "cup_weight_gained_g": 4.0,
+     "scale_flow_mean_g_s": 0.4,
+     "scale_flow_peak_g_s": 0.4
+    }
+   },
+   {
+    "phase_number": 2,
+    "metrics": {
+     "ended_by": 1,
+     "puck_flow_mean_ml_s": 0.0,
+     "puck_flow_peak_ml_s": 0.0,
+     "temperature_min_c": 91.1,
+     "temperature_target_c": 93.0,
+     "cup_weight_end_g": 42.2,
+     "cup_weight_gained_g": 38.2,
+     "scale_flow_mean_g_s": 2.45,
+     "scale_flow_peak_g_s": 4.0
+    }
+   }
+  ],
+  "shot": {
+   "per_phase": true,
+   "exit_reasons": true,
+   "profile_phases": [
+    "preinfusion",
+    "soak",
+    "ramp",
+    "decline"
+   ],
+   "phases_not_reached": [
+    {
+     "phase_number": 3,
+     "name": "decline"
+    }
+   ],
+   "fast_flow": null
+  }
+ }
+}

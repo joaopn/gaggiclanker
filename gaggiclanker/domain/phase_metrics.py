@@ -28,10 +28,11 @@ catalogue, so filing, moving or discarding a shot never needs a re-derivation.
 
 from __future__ import annotations
 
-import math
+import dataclasses
 from collections.abc import Mapping, Sequence
-from typing import Any, TypedDict
+from typing import Any, NamedTuple, TypedDict
 
+from gaggiclanker.domain.metric_language import Expression, ShotData, evaluate_in_phase
 from gaggiclanker.domain.models import PhaseTransition
 
 __all__ = [
@@ -45,6 +46,7 @@ __all__ = [
     "compute_phase_metrics",
     "find_fast_flow",
     "phases_not_reached",
+    "stored_expressions",
 ]
 
 #: The first log version whose transition table says why each phase ended
@@ -131,12 +133,6 @@ class ShotMetrics(TypedDict):
     fast_flow: FastFlow | None
 
 
-def _number(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
-        return None
-    return float(value)
-
-
 def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values)
 
@@ -219,36 +215,60 @@ def find_fast_flow(
     return None
 
 
-def _water_by_sample(samples: Sequence[Mapping[str, float]]) -> list[float | None]:
-    """The pumped-water counter, with every sample at or after a reset left out.
+def _stored(key: str, channel: str, op: str, *, puck_flow: bool = False) -> _Stored:
+    # The window is a phase, and which one is the position `evaluate_in_phase` is given; the
+    # placeholder only makes the expression one a phase window may be read over.
+    window = {"phase_number": 0}
+    expression = Expression.model_validate({"channel": channel, "op": op, "window": window})
+    return _Stored(key, expression, puck_flow)
 
-    The controller zeroes the counter when it stops the pump on a weight target
-    (tens of millilitres, then next to nothing on the following sample), so
-    the samples that follow a fall are a counter for another thing and are not
-    read. ``None`` marks a sample
-    that is not read: a counter that was not recorded, or one that has been
-    reset. A counter that never rose over the samples before any reset is no
-    measurement (a board that does not fill it sends zeros), so every sample is
-    ``None`` then.
-    """
-    values: list[float | None] = []
-    previous: float | None = None
-    reset = False
-    for sample in samples:
-        value = _number(sample.get("wp"))
-        if value is None or value < 0:
-            values.append(None)
-            continue
-        if reset or (previous is not None and value < previous):
-            reset = True
-            values.append(None)
-            continue
-        previous = value
-        values.append(value)
-    counted = [v for v in values if v is not None]
-    if not counted or max(counted) <= 0:
-        return [None] * len(values)
-    return values
+
+class _Stored(NamedTuple):
+    """A per-phase number the derivation stores, and the expression it is."""
+
+    key: str
+    #: Read over each phase in turn; its window is the phase.
+    expression: Expression
+    #: Read with the puck-flow channel ungated (see :func:`compute_phase_metrics`).
+    puck_flow: bool
+
+
+#: Every per-phase number that is a window statistic, as the expression it is, in the order
+#: they are stored. The shot's first drip is a fact, not a statistic, and sits between the two.
+_STORED_BEFORE_DRIP: tuple[_Stored, ...] = (
+    _stored("puck_flow_mean_ml_s", "puck_flow", "mean", puck_flow=True),
+    _stored("puck_flow_peak_ml_s", "puck_flow", "max", puck_flow=True),
+    _stored("temperature_min_c", "temperature", "min"),
+    _stored("temperature_target_c", "target_temperature", "mean"),
+)
+_STORED_AFTER_DRIP: tuple[_Stored, ...] = (
+    _stored("pressure_peak_bar", "pressure", "max"),
+    _stored("pressure_end_bar", "pressure", "at_end"),
+    _stored("cup_weight_end_g", "cup_weight", "at_end"),
+    _stored("cup_weight_gained_g", "cup_weight", "gained"),
+    _stored("scale_flow_mean_g_s", "scale_flow", "mean"),
+    _stored("scale_flow_peak_g_s", "scale_flow", "max"),
+    _stored("water_pumped_ml", "water_pumped", "gained"),
+)
+
+
+def stored_expressions() -> dict[str, Expression]:
+    """Each stored per-phase number's key, with the expression the derivation reads it by."""
+    return {stored.key: stored.expression for stored in (*_STORED_BEFORE_DRIP, *_STORED_AFTER_DRIP)}
+
+
+def _store(
+    entry: PhaseMetrics,
+    group: Sequence[_Stored],
+    data: ShotData,
+    flow_data: ShotData,
+    position: int,
+) -> None:
+    for stored in group:
+        source = flow_data if stored.puck_flow else data
+        value = evaluate_in_phase(stored.expression, source, position).value
+        if value is not None:
+            entry[stored.key] = value  # type: ignore[literal-required]
 
 
 def _ended_by(transitions: Sequence[PhaseTransition], index: int, final_exit_reason: int) -> int:
@@ -293,71 +313,33 @@ def compute_phase_metrics(
     if not transitions:
         return shot, {}
 
-    water = _water_by_sample(samples)
+    data = ShotData.build(
+        samples,
+        transitions,
+        profile_phases=names,
+        has_pressure=has_pressure,
+        scale_connected=scale_connected,
+        final_weight_g=final_weight_g,
+    )
+    # A puck-flow number has been stored on every shot, a Standard board's (all zeros)
+    # included, and is gated by the catalogue on the firmware's field mask rather than on
+    # the pressure gate. The stored numbers do not move: the language's own puck-flow
+    # channel says "not recorded" without a pressure sensor, and this reads it as it always was.
+    flow_data = dataclasses.replace(data, has_pressure=True)
     drip = next((i for i, s in enumerate(samples) if s.get("pf", 0.0) > 0.0), None)
-    count = len(samples)
     metrics: dict[int, PhaseMetrics] = {}
-    # What the previous phase left behind, for "gained" and the water's rise.
-    previous_weight = 0.0
-    previous_water = 0.0
     for index, transition in enumerate(transitions):
-        start = min(transition.sample_index, count)
-        end = (
-            min(transitions[index + 1].sample_index, count)
-            if index + 1 < len(transitions)
-            else count
-        )
-        span = range(start, end)
-        if not span:
+        span = data.phases[index]
+        if span.start >= span.end:
             continue
-        rows = [samples[i] for i in span]
         entry = PhaseMetrics()
         recorded_reason = shot["exit_reasons"]
         entry["ended_by"] = (
             _ended_by(transitions, index, final_exit_reason) if recorded_reason else 0
         )
-
-        flows = [s["pf"] for s in rows if "pf" in s]
-        if flows:
-            entry["puck_flow_mean_ml_s"] = round(_mean(flows), 2)
-            entry["puck_flow_peak_ml_s"] = round(max(flows), 2)
-        temperatures = [s["ct"] for s in rows if "ct" in s]
-        if temperatures:
-            entry["temperature_min_c"] = round(min(temperatures), 1)
-        targets = [s["tt"] for s in rows if s.get("tt", 0.0) > 0]
-        if targets:
-            entry["temperature_target_c"] = round(_mean(targets), 1)
-        if drip is not None and span.start <= drip < span.stop and "t" in samples[drip]:
+        _store(entry, _STORED_BEFORE_DRIP, data, flow_data, index)
+        if drip is not None and span.start <= drip < span.end and "t" in samples[drip]:
             entry["first_drip_s"] = round(samples[drip]["t"] / 1000.0, 1)
-
-        if has_pressure:
-            pressures = [s["cp"] for s in rows if "cp" in s]
-            if pressures:
-                entry["pressure_peak_bar"] = round(max(pressures), 1)
-                entry["pressure_end_bar"] = round(pressures[-1], 1)
-
-        if scale_connected:
-            weights = [s["v"] for s in rows if "v" in s]
-            if weights:
-                end_weight = weights[-1]
-                # The scale reads 0 once the cup is lifted or it resets, so a shot can
-                # end in zeros: the last phase then ends at the weight the Yield is
-                # (see `Slog.volume_g`), not at a cup that vanished at the last sample.
-                if end >= count and end_weight <= 0 and (final_weight_g or 0.0) > 0:
-                    end_weight = final_weight_g or 0.0
-                entry["cup_weight_end_g"] = round(end_weight, 1)
-                entry["cup_weight_gained_g"] = round(end_weight - previous_weight, 1)
-                previous_weight = end_weight
-            scale_flows = [s["vf"] for s in rows if "vf" in s]
-            if scale_flows:
-                entry["scale_flow_mean_g_s"] = round(_mean(scale_flows), 2)
-                entry["scale_flow_peak_g_s"] = round(max(scale_flows), 2)
-
-        counted = [w for i in span if (w := water[i]) is not None]
-        if counted:
-            last = counted[-1]
-            entry["water_pumped_ml"] = round(last - previous_water, 1)
-            previous_water = last
-
+        _store(entry, _STORED_AFTER_DRIP, data, flow_data, index)
         metrics[transition.phase_number] = entry
     return shot, metrics

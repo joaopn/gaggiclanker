@@ -11,12 +11,20 @@ old id is never compared with one read under the new as if they were one field.
 The shape is ``<where the number comes from>.<what is computed>@<definition>``.
 ``tests/shotinfo/test_field_contract.py`` requires every item of the catalogue
 to have an id and no two to share one.
+
+A number that is a window statistic of the samples (the cup at the end of a phase,
+the peak pressure in it) has no hand-written id: its id **is** the canonical form of the
+expression in the metric language that computes it, read over each phase in turn
+(:func:`~gaggiclanker.domain.metric_language.per_phase_method`). The derivation computes the
+stored number through the very same expression, so the id and the number cannot drift apart.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from types import MappingProxyType
+
+from gaggiclanker.domain.metric_language import per_phase_method
 
 __all__ = ["METHODS"]
 
@@ -72,20 +80,20 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "phase_duration": "phase.duration@1",
         "phase_ended_by": "phase.ended_by_next_transition_reason@1",
         "phase_pressure": "phase.pressure_mean@1",
-        "phase_pressure_peak": "phase.pressure_max@1",
-        "phase_pressure_end": "phase.pressure_last@1",
+        "phase_pressure_peak": per_phase_method("pressure", "max"),
+        "phase_pressure_end": per_phase_method("pressure", "at_end"),
         "phase_temperature": "phase.temperature_mean@1",
-        "phase_temperature_min": "phase.temperature_min@1",
-        "phase_temperature_target": "phase.target_temperature_mean@1",
+        "phase_temperature_min": per_phase_method("temperature", "min"),
+        "phase_temperature_target": per_phase_method("target_temperature", "mean"),
         "phase_volume": "phase.puck_flow_integral@1",
         "phase_flow": "phase.puck_flow_mean@1",
-        "phase_flow_peak": "phase.puck_flow_max@1",
-        "phase_scale_flow": "phase.scale_flow_mean@1",
-        "phase_scale_flow_peak": "phase.scale_flow_max@1",
-        "phase_cup_end": "phase.cup_weight_last@1",
-        "phase_cup_gained": "phase.cup_weight_gained@1",
+        "phase_flow_peak": per_phase_method("puck_flow", "max"),
+        "phase_scale_flow": per_phase_method("scale_flow", "mean"),
+        "phase_scale_flow_peak": per_phase_method("scale_flow", "max"),
+        "phase_cup_end": per_phase_method("cup_weight", "at_end"),
+        "phase_cup_gained": per_phase_method("cup_weight", "gained"),
         "phase_cup_share": "readtime.cup_share_of_target@1",
-        "phase_water": "phase.water_pumped_rise_before_reset@1",
+        "phase_water": per_phase_method("water_pumped", "gained"),
         "phase_first_drip": "phase.first_puck_flow@1",
         "phase_pressure_adherence": "compliance.phase_pressure_rmse@1",
         "phase_flow_error": "compliance.phase_flow_rmse@1",

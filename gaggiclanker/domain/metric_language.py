@@ -785,7 +785,7 @@ def _seconds(milliseconds: float) -> float:
 
 
 def _round(value: float, decimals: int) -> float:
-    return round(value, decimals) + 0.0
+    return round(value, decimals)
 
 
 def _unit(expr: Expression) -> str:
@@ -838,7 +838,9 @@ def _compute(expr: Expression, data: ShotData, resolved: _Resolved) -> float:
         end_value = float(data.final_weight_g or 0.0)
 
     if op == "mean":
-        result = math.fsum(values) / len(values)
+        # The plain sum, not an exact one: the per-phase numbers stored since before the
+        # language were summed this way, and a mean must not move in its last digit.
+        result = sum(values) / len(values)
     elif op == "min":
         result = min(values)
     elif op == "max":
