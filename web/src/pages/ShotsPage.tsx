@@ -26,6 +26,7 @@ import {
   saveShotWidths,
   visibleColumns,
 } from "@/lib/shotColumns";
+import { type CurveChoice, loadShotCurves, saveShotCurves } from "@/lib/shotCurves";
 import {
   fromSearchParams,
   isDefaultFilters,
@@ -73,6 +74,14 @@ export function ShotsPage() {
   // The widths the reader dragged, read the same way and stored under a key of
   // their own.
   const [widths, setWidths] = useState<ShotWidths>(() => loadShotWidths());
+
+  // Which curves the Curve column draws, read and stored the same way.
+  const [curves, setCurves] = useState<CurveChoice>(() => loadShotCurves());
+
+  function chooseCurves(next: CurveChoice) {
+    setCurves(next);
+    saveShotCurves(next);
+  }
 
   function chooseColumns(next: ShotColumnId[]) {
     setColumnIds(next);
@@ -254,6 +263,8 @@ export function ShotsPage() {
               onSort={sortBy}
               widths={widths}
               onResize={resizeColumn}
+              curves={curves}
+              onCurves={chooseCurves}
             />
           </div>
           <div className="flex items-center justify-between gap-3">

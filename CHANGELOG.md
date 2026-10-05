@@ -10,6 +10,19 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The shots table's Curve column can show the curves you choose
+
+- **Choose the curves and their colours.** The Curve column's heading has a button (Choose curves)
+  that lists the nine series the shot page draws, each with a checkbox and a colour swatch. The
+  swatch picks from the theme's chart colours and the two text colours, so a choice follows the
+  light and dark themes. The last shown curve cannot be hidden, and Reset to default puts back
+  pressure in chart-1 and puck flow in chart-2, which is what the column always drew. The choice
+  is remembered per browser, like the column choice and widths, and a curve keeps its colour while
+  it is hidden.
+- **Series that share a unit share a scale.** An actual drawn with its target (dashed) can now be
+  compared by eye; temperature is drawn from its lowest value rather than from zero. Pressure
+  and puck flow, the default pair, are different units and look as before.
+
 ### Making a draft active no longer asks for a stop-condition confirmation
 
 - **Make active is one click for every proposal.** A proposal that moves a stop condition used to

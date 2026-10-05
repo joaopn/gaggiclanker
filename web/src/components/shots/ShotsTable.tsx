@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { ShotListRow, ShotSort } from "@/api/types";
 import { SetBadge } from "@/components/sets/SetBadge";
+import { CurveChooser } from "@/components/shots/CurveChooser";
 import { DecisionCell } from "@/components/shots/DecisionCell";
 import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
 import { RatingStars } from "@/components/shots/RatingStars";
@@ -30,6 +31,7 @@ import {
   type ShotColumnId,
   type ShotWidths,
 } from "@/lib/shotColumns";
+import type { CurveChoice } from "@/lib/shotCurves";
 import { formatGrams, formatListTime, formatSeconds, formatTime, profileName } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +80,8 @@ export function ShotsTable({
   onSort,
   widths,
   onResize,
+  curves,
+  onCurves,
 }: {
   shots: ShotListRow[];
   columns: ShotColumn[];
@@ -85,6 +89,9 @@ export function ShotsTable({
   widths: ShotWidths;
   /** A new width for one column, or `null` to put it back to its default. */
   onResize: (id: ShotColumnId, rem: number | null) => void;
+  /** The curves the Curve column draws, by series key, with their colour tokens. */
+  curves: CurveChoice;
+  onCurves: (next: CurveChoice) => void;
   selected: number[];
   onToggleSelected: (id: number) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -200,6 +207,8 @@ export function ShotsTable({
               onSort={onSort}
               width={widths[column.id]}
               onResize={onResize}
+              curves={curves}
+              onCurves={onCurves}
             />
           ))}
         </div>
@@ -215,6 +224,7 @@ export function ShotsTable({
             key={shot.id}
             shot={shot}
             columns={columns}
+            curves={curves}
             selected={selected.includes(shot.id)}
             onToggleSelected={onToggleSelected}
             selectionFull={selected.length >= maxCompare}
@@ -242,6 +252,8 @@ function HeaderCell({
   onSort,
   width,
   onResize,
+  curves,
+  onCurves,
 }: {
   column: ShotColumn;
   sort: ShotSort;
@@ -249,6 +261,8 @@ function HeaderCell({
   onSort: (key: ShotSort) => void;
   width: number | undefined;
   onResize: (id: ShotColumnId, rem: number | null) => void;
+  curves: CurveChoice;
+  onCurves: (next: CurveChoice) => void;
 }) {
   const key = SORTABLE[column.id];
   const active = key !== undefined && key === sort;
@@ -268,6 +282,22 @@ function HeaderCell({
       onResize={onResize}
     />
   );
+
+  if (column.id === "curve") {
+    // A `div`, not a `span`: the chooser's popover wraps its panel in a block,
+    // which is not valid inside phrasing content. Curve does not sort, so the
+    // button is the only control in the heading besides the resize handle,
+    // which is a sibling and never sees this click.
+    return (
+      <div className={className} data-testid={`header-${column.id}`}>
+        <div className="inline-flex max-w-full items-center justify-center gap-1">
+          <span className="truncate">{column.label}</span>
+          <CurveChooser choice={curves} onChange={onCurves} />
+        </div>
+        {handle}
+      </div>
+    );
+  }
 
   if (key === undefined) {
     return (
@@ -496,6 +526,7 @@ const OWNS_ESCAPE = '[role="dialog"], [aria-haspopup][aria-expanded="true"]';
 function ShotRow({
   shot,
   columns,
+  curves,
   selected,
   onToggleSelected,
   selectionFull,
@@ -507,6 +538,7 @@ function ShotRow({
 }: {
   shot: ShotListRow;
   columns: ShotColumn[];
+  curves: CurveChoice;
   selected: boolean;
   onToggleSelected: (id: number) => void;
   selectionFull: boolean;
@@ -596,7 +628,7 @@ function ShotRow({
                 column.narrowHidden && "hidden md:block",
               )}
             >
-              <Cell shot={shot} id={column.id} />
+              <Cell shot={shot} id={column.id} curves={curves} />
             </div>
           ))}
         </div>
@@ -616,7 +648,7 @@ function ShotRow({
  */
 const INTERACTIVE = "relative z-[1]";
 
-function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
+function Cell({ shot, id, curves }: { shot: ShotListRow; id: ShotColumnId; curves: CurveChoice }) {
   switch (id) {
     case "time":
       return (
@@ -632,7 +664,7 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
     case "profile":
       return <span className="block truncate text-sm">{profileName(shot)}</span>;
     case "curve":
-      return shot.quarantined ? null : <ShotSparkline shotId={shot.id} />;
+      return shot.quarantined ? null : <ShotSparkline shotId={shot.id} curves={curves} />;
     case "duration":
       return <span className="text-sm tabular-nums">{formatSeconds(shot.duration_ms)}</span>;
     case "yield":

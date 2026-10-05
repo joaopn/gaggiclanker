@@ -14,11 +14,12 @@ import { PullButton } from "@/components/shots/PullButton";
 import { setChatQuestion } from "@/components/shots/SetChatBar";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
+import { SHOT_SERIES } from "@/lib/shotChart";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
 import { flavorPicks, judgement, setDetail, setRow, vocabulary } from "@/test/setsFixtures";
-import { shot129, syntheticSamples } from "@/test/shotFixture";
+import { shot129, shot129Samples, syntheticSamples } from "@/test/shotFixture";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -450,6 +451,438 @@ describe("ShotsPage", () => {
 
     await waitFor(() => expect(getShotSamples).toHaveBeenCalledWith(1, 40));
     expect(await screen.findByTestId("shot-sparkline")).toBeInTheDocument();
+  });
+});
+
+describe("ShotsPage curve chooser", () => {
+  /** A pointer event built by hand: jsdom has no `PointerEvent`. */
+  function pointer(target: Element, type: string, clientX: number): void {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, button: 0 });
+    Object.defineProperty(event, "pointerId", { value: 1 });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+  }
+
+  /** The series drawn in every sparkline, one list per row. */
+  async function drawn(): Promise<string[][]> {
+    const rows = await screen.findAllByTestId("shot-sparkline");
+    await waitFor(() => {
+      for (const row of rows) expect(row.querySelector("path")).not.toBeNull();
+    });
+    return rows.map((row) =>
+      Array.from(row.querySelectorAll("path")).map(
+        (path) => path.getAttribute("data-series") ?? "",
+      ),
+    );
+  }
+
+  async function openMenu(user: ReturnType<typeof setupUser>): Promise<HTMLElement> {
+    await user.click(screen.getByRole("button", { name: "Choose curves" }));
+    return screen.findByTestId("curves-menu");
+  }
+
+  async function setup() {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot(), shot({ id: 2, device_id: "000102" })], { total: 2 }),
+    );
+    const view = renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await showColumn(user, "Curve");
+    return { user, view };
+  }
+
+  it("draws pressure and puck flow in chart-1 and chart-2 until told otherwise", async () => {
+    await setup();
+
+    expect(await drawn()).toEqual([
+      ["pressure", "puckFlow"],
+      ["pressure", "puckFlow"],
+    ]);
+    for (const row of screen.getAllByTestId("shot-sparkline")) {
+      expect(row.querySelector('path[data-series="pressure"]')).toHaveAttribute(
+        "stroke",
+        "var(--chart-1)",
+      );
+      expect(row.querySelector('path[data-series="puckFlow"]')).toHaveAttribute(
+        "stroke",
+        "var(--chart-2)",
+      );
+    }
+  });
+
+  it("lists the nine series, the puck flow one by its label", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+
+    expect(within(menu).getAllByRole("checkbox")).toHaveLength(9);
+    expect(within(menu).getByRole("checkbox", { name: "Puck flow" })).toBeChecked();
+    expect(within(menu).getByRole("checkbox", { name: "Weight" })).not.toBeChecked();
+  });
+
+  it("adds and removes a series in every row, a target dashed, with no new request", async () => {
+    const { user } = await setup();
+    await drawn();
+    const requests = getShotSamples.mock.calls.length;
+    const menu = await openMenu(user);
+
+    await user.click(within(menu).getByRole("checkbox", { name: "Target pressure" }));
+    expect(await drawn()).toEqual([
+      ["pressure", "targetPressure", "puckFlow"],
+      ["pressure", "targetPressure", "puckFlow"],
+    ]);
+    for (const row of screen.getAllByTestId("shot-sparkline")) {
+      expect(row.querySelector('path[data-series="targetPressure"]')).toHaveAttribute(
+        "stroke-dasharray",
+      );
+      expect(row.querySelector('path[data-series="pressure"]')).not.toHaveAttribute(
+        "stroke-dasharray",
+      );
+    }
+
+    await user.click(within(menu).getByRole("checkbox", { name: "Puck flow" }));
+    expect(await drawn()).toEqual([
+      ["pressure", "targetPressure"],
+      ["pressure", "targetPressure"],
+    ]);
+    expect(getShotSamples.mock.calls.length).toBe(requests);
+  });
+
+  it("names the drawn curves on the svg", async () => {
+    await setup();
+    await drawn();
+
+    const svg = screen.getAllByTestId("shot-sparkline")[0].querySelector("svg");
+    expect(svg).toHaveAttribute("aria-label", "Pressure, Puck flow");
+    expect(svg?.querySelector("title")?.textContent).toBe("Pressure, Puck flow");
+  });
+
+  it("recolours a series from the theme tokens and keeps the choice across a remount", async () => {
+    const { user, view } = await setup();
+    await drawn();
+    const menu = await openMenu(user);
+
+    await user.click(within(menu).getByRole("button", { name: "Colour of Pressure" }));
+    await user.click(within(menu).getByRole("button", { name: "Foreground for Pressure" }));
+
+    for (const row of screen.getAllByTestId("shot-sparkline")) {
+      expect(row.querySelector('path[data-series="pressure"]')).toHaveAttribute(
+        "stroke",
+        "var(--foreground)",
+      );
+      expect(row.querySelector('path[data-series="puckFlow"]')).toHaveAttribute(
+        "stroke",
+        "var(--chart-2)",
+      );
+    }
+    // Only tokens, never a free colour.
+    expect(within(menu).queryByLabelText(/hex|#/i)).toBeNull();
+
+    view.unmount();
+    cleanup();
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await drawn();
+    expect(
+      screen.getAllByTestId("shot-sparkline")[0].querySelector('path[data-series="pressure"]'),
+    ).toHaveAttribute("stroke", "var(--foreground)");
+  });
+
+  it("keeps a colour through hide and show, also after a remount", async () => {
+    const { user, view } = await setup();
+    await drawn();
+    let menu = await openMenu(user);
+
+    await user.click(within(menu).getByRole("button", { name: "Colour of Pressure" }));
+    await user.click(within(menu).getByRole("button", { name: "Chart 5 for Pressure" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Pressure" }));
+    expect(await drawn()).toEqual([["puckFlow"], ["puckFlow"]]);
+    // A hidden curve's colour can be set before it is shown.
+    const swatch = within(menu).getByRole("button", { name: "Colour of Weight" });
+    expect(swatch).toBeEnabled();
+    await user.click(swatch);
+    await user.click(within(menu).getByRole("button", { name: "Muted for Weight" }));
+
+    await user.click(within(menu).getByRole("checkbox", { name: "Pressure" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Weight" }));
+    const stroke = (series: string) =>
+      screen
+        .getAllByTestId("shot-sparkline")[0]
+        .querySelector(`path[data-series="${series}"]`)
+        ?.getAttribute("stroke");
+    await drawn();
+    expect(stroke("pressure")).toBe("var(--chart-5)");
+    expect(stroke("weight")).toBe("var(--muted-foreground)");
+
+    view.unmount();
+    cleanup();
+    const user2 = setupUser();
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await drawn();
+    expect(stroke("pressure")).toBe("var(--chart-5)");
+    // Hide it again after the remount: the colour is still the one chosen.
+    menu = await openMenu(user2);
+    await user2.click(within(menu).getByRole("checkbox", { name: "Pressure" }));
+    await user2.click(within(menu).getByRole("checkbox", { name: "Pressure" }));
+    await drawn();
+    expect(stroke("pressure")).toBe("var(--chart-5)");
+  });
+
+  it("will not hide the last shown curve, and Reset puts the default back", async () => {
+    const { user } = await setup();
+    await drawn();
+    const menu = await openMenu(user);
+    const reset = within(menu).getByTestId("reset-curves");
+    expect(reset).toBeDisabled();
+
+    await user.click(within(menu).getByRole("button", { name: "Colour of Pressure" }));
+    await user.click(within(menu).getByRole("button", { name: "Chart 4 for Pressure" }));
+    expect(reset).toBeEnabled();
+
+    await user.click(within(menu).getByRole("checkbox", { name: "Weight" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Pressure" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Puck flow" }));
+    // Weight alone is left, and its box is the one that cannot be unticked.
+    expect(within(menu).getByRole("checkbox", { name: "Weight" })).toBeDisabled();
+    expect(await drawn()).toEqual([["weight"], ["weight"]]);
+
+    expect(reset).toBeEnabled();
+    await user.click(reset);
+    expect(await drawn()).toEqual([
+      ["pressure", "puckFlow"],
+      ["pressure", "puckFlow"],
+    ]);
+    expect(within(menu).getByRole("checkbox", { name: "Weight" })).not.toBeDisabled();
+    // The recolour went too: back to the series' own colour.
+    expect(
+      screen.getAllByTestId("shot-sparkline")[0].querySelector('path[data-series="pressure"]'),
+    ).toHaveAttribute("stroke", "var(--chart-1)");
+    expect(reset).toBeDisabled();
+  });
+
+  it("treats a colour picked and equal to the default as the default", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+
+    await user.click(within(menu).getByRole("button", { name: "Colour of Pressure" }));
+    await user.click(within(menu).getByRole("button", { name: "Chart 1 for Pressure" }));
+    expect(within(menu).getByTestId("reset-curves")).toBeDisabled();
+  });
+
+  it("lists the series in the shot page's order, whatever was ticked first", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByRole("checkbox", { name: "Temperature" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Flow" }));
+
+    const labels = within(menu)
+      .getAllByRole("checkbox")
+      .map((box) => (box as HTMLInputElement).labels?.[0]?.textContent);
+    expect(labels).toEqual(SHOT_SERIES.map((spec) => spec.label));
+  });
+
+  it("opens a series' palette from its swatch, which names it with aria-controls", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+    const swatch = within(menu).getByRole("button", { name: "Colour of Weight" });
+    const palette = menu.querySelector(
+      `#${CSS.escape(swatch.getAttribute("aria-controls") ?? "")}`,
+    );
+
+    expect(palette).not.toBeNull();
+    expect(palette).toHaveAttribute("hidden");
+    expect(swatch).toHaveAttribute("aria-expanded", "false");
+    await user.click(swatch);
+    expect(palette).not.toHaveAttribute("hidden");
+    expect(swatch).toHaveAttribute("aria-expanded", "true");
+    expect(within(menu).getAllByRole("button", { name: /for Weight$/ })).toHaveLength(7);
+  });
+
+  it("closes the palette on a pick and puts focus back on the row's swatch, by keyboard", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+    const swatch = within(menu).getByRole("button", { name: "Colour of Pressure" });
+    const palette = menu.querySelector(
+      `#${CSS.escape(swatch.getAttribute("aria-controls") ?? "")}`,
+    );
+
+    swatch.focus();
+    await user.keyboard("{Enter}");
+    expect(palette).not.toHaveAttribute("hidden");
+    await user.tab();
+    expect(palette?.contains(document.activeElement)).toBe(true);
+    await user.keyboard("{Enter}");
+
+    expect(palette).toHaveAttribute("hidden");
+    expect(document.activeElement).toBe(swatch);
+    expect(menu.contains(document.activeElement)).toBe(true);
+  });
+
+  it("keeps focus in the menu after a keyboard Reset, on its first checkbox", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByRole("checkbox", { name: "Weight" }));
+    const reset = within(menu).getByTestId("reset-curves");
+
+    reset.focus();
+    await user.keyboard("{Enter}");
+
+    expect(reset).toBeDisabled();
+    expect(document.activeElement).toBe(within(menu).getAllByRole("checkbox")[0]);
+  });
+
+  it("closes only the palette on Escape inside it, then the menu on the next Escape", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+    const swatch = within(menu).getByRole("button", { name: "Colour of Weight" });
+    await user.click(swatch);
+    const option = within(menu).getByRole("button", { name: "Chart 2 for Weight" });
+    option.focus();
+
+    await user.keyboard("{Escape}");
+    expect(screen.getByTestId("curves-menu")).toBeInTheDocument();
+    expect(swatch).toHaveAttribute("aria-expanded", "false");
+    expect(document.activeElement).toBe(swatch);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("curves-menu")).toBeNull();
+  });
+
+  it("closes an open palette on a press elsewhere in the panel, but not on its own swatch", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+    const swatch = within(menu).getByRole("button", { name: "Colour of Weight" });
+    await user.click(swatch);
+    expect(swatch).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(within(menu).getByRole("checkbox", { name: "Temperature" }));
+    expect(swatch).toHaveAttribute("aria-expanded", "false");
+
+    // A pick closes it too, and the swatch itself still toggles it.
+    await user.click(swatch);
+    await user.click(within(menu).getByRole("button", { name: "Chart 2 for Weight" }));
+    expect(swatch).toHaveAttribute("aria-expanded", "false");
+    await user.click(swatch);
+    expect(swatch).toHaveAttribute("aria-expanded", "true");
+    await user.click(swatch);
+    expect(swatch).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps the palette open for a press on one of its own colours, so the click can land", async () => {
+    const { user } = await setup();
+    const menu = await openMenu(user);
+    const swatch = within(menu).getByRole("button", { name: "Colour of Weight" });
+    await user.click(swatch);
+    const palette = menu.querySelector(
+      `#${CSS.escape(swatch.getAttribute("aria-controls") ?? "")}`,
+    );
+
+    // A mousedown that closed the palette would hide the button before the
+    // click arrived, and a mouse pick would never apply. user-event's click
+    // runs both events back to back and cannot show that.
+    fireEvent.mouseDown(within(menu).getByRole("button", { name: "Chart 3 for Weight" }));
+    expect(palette).not.toHaveAttribute("hidden");
+  });
+
+  it("draws Flow and Target flow in chart-5, not the colour puck flow has", async () => {
+    const { user } = await setup();
+    await drawn();
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByRole("checkbox", { name: "Flow" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Target flow" }));
+    await drawn();
+
+    const row = screen.getAllByTestId("shot-sparkline")[0];
+    expect(row.querySelector('path[data-series="flow"]')).toHaveAttribute(
+      "stroke",
+      "var(--chart-5)",
+    );
+    expect(row.querySelector('path[data-series="targetFlow"]')).toHaveAttribute(
+      "stroke",
+      "var(--chart-5)",
+    );
+    expect(row.querySelector('path[data-series="puckFlow"]')).toHaveAttribute(
+      "stroke",
+      "var(--chart-2)",
+    );
+  });
+
+  describe("on a board that logged zeros", () => {
+    // The real shot, with the scale's column zeroed the way a board with no
+    // scale logs it.
+    const noScale = {
+      ...samplesData,
+      samples: shot129Samples.samples.map((row) => ({ ...row, v: 0 })),
+    };
+
+    async function renderChosen(shown: string[]) {
+      window.localStorage.setItem("shots.curves.v1", JSON.stringify({ shown, colors: {} }));
+      getShotSamples.mockResolvedValue(noScale);
+      getShots.mockResolvedValue(listData([shot()]));
+      renderWithQueryClient(<ShotsPage />);
+      await listed();
+      await showColumn(setupUser(), "Curve");
+      await waitFor(() => expect(getShotSamples).toHaveBeenCalled());
+      // Let the result land, so an absent drawing is an answer and not a wait.
+      await act(async () => {});
+      return screen.getByTestId("shot-sparkline");
+    }
+
+    it("shows no placeholder while one chosen series can be drawn and another cannot", async () => {
+      const row = await renderChosen(["weight", "pressure"]);
+
+      await waitFor(() => expect(row.querySelector("svg")).not.toBeNull());
+      expect(row.querySelector('path[data-series="pressure"]')).not.toBeNull();
+      expect(row.querySelector('path[data-series="weight"]')).toBeNull();
+      expect(screen.queryByTestId("sparkline-placeholder")).toBeNull();
+    });
+
+    it("shows the placeholder when no chosen series can be drawn", async () => {
+      const row = await renderChosen(["weight"]);
+
+      expect(row.querySelector("svg")).toBeNull();
+      expect(screen.getByTestId("sparkline-placeholder")).toBeInTheDocument();
+    });
+  });
+
+  it("opens from the heading's button without starting a resize, and Escape closes it", async () => {
+    const { user } = await setup();
+    const handle = screen.getByRole("separator", { name: "Resize the Curve column" });
+    const width = handle.getAttribute("aria-valuenow");
+
+    const trigger = screen.getByRole("button", { name: "Choose curves" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await user.click(trigger);
+
+    expect(await screen.findByTestId("curves-menu")).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    // Press, drag and release on the button itself: a resize would show in
+    // the handle's width and in the stored widths.
+    pointer(trigger, "pointerdown", 100);
+    pointer(trigger, "pointermove", 180);
+    pointer(trigger, "pointerup", 180);
+    expect(screen.getByTestId("curves-menu")).toBeInTheDocument();
+    expect(handle).toHaveAttribute("aria-valuenow", width);
+    expect(window.localStorage.getItem("shots.widths.v1")).toBeNull();
+    // The header is not a sort control for this column either.
+    expect(screen.queryByTestId("sort-curve")).toBeNull();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("curves-menu")).toBeNull();
+  });
+
+  it("has no trigger while the Curve column is hidden", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(screen.queryByRole("button", { name: "Choose curves" })).toBeNull();
+
+    await showColumn(user, "Curve");
+    expect(screen.getByRole("button", { name: "Choose curves" })).toBeInTheDocument();
   });
 });
 
