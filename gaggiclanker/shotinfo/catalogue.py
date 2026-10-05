@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from gaggiclanker.db.connection import Database
 
 __all__ = [
+    "ALSO_SERVED",
     "CATALOGUE",
     "GROUPS",
     "GROUP_NOTES",
@@ -607,6 +608,22 @@ def _phases_not_reached(f: ShotFacts) -> str | None:
     return ", ".join(names) if names else None
 
 
+def _phases_not_reached_value(f: ShotFacts) -> list[Any] | None:
+    """The same phases as a list, in the profile's order, so a name with a comma stays one name."""
+    left = f.metrics.get("phases_not_reached")
+    if not isinstance(left, list):
+        return None
+    found = [
+        {
+            "phase_number": item.get("phase_number"),
+            "name": str(item.get("name") or "").strip() or f"phase {item.get('phase_number')}",
+        }
+        for item in left
+        if isinstance(item, dict)
+    ]
+    return found or None
+
+
 def _phase_log_note(f: ShotFacts) -> str | None:
     """Said once, in the one place a reader will look: what this log cannot tell."""
     version = f.shot.slog_version
@@ -702,6 +719,12 @@ WARNINGS_GROUP = "Warnings"
 #: The groups of measured numbers: what a shot page lists beside its curve. Left
 #: out are the shot's identity, the person's judgement, the recipe, the machine's
 #: own note, the review (each has a place of its own) and the curve (a table).
+#: Items served with the measured ones though their group is not: the ratio is the
+#: judgement's dose in against the yield, and a shot page repeats it beside the
+#: yield, so it comes from here (the person's dose, else the version's) rather
+#: than being worked out again in a browser.
+ALSO_SERVED: frozenset[str] = frozenset({"ratio"})
+
 MEASURED_GROUPS: frozenset[str] = frozenset(
     {
         "Outcome",
@@ -2177,6 +2200,7 @@ _SHOT_VALUES: Mapping[str, ShotValue] = MappingProxyType(
         "water_minus_weight": lambda f: number(f.firmware.get("water_minus_weight_g")),
         "weight_rate": lambda f: f.section_value("weight", "rate_avg_g_s"),
         "shot_id": lambda f: f.shot_id,
+        "phases_not_reached": _phases_not_reached_value,
         "resistance_level": _resistance_avg,
         "resistance_slope": _resistance_slope,
         "machine_puck_resistance": lambda f: _firmware_stats_value(f.firmware.get("pr")),

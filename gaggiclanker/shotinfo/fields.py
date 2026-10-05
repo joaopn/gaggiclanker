@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.domain.warnings import badge_text
-from gaggiclanker.shotinfo.catalogue import CATALOGUE, MEASURED_GROUPS, FieldValue
+from gaggiclanker.shotinfo.catalogue import ALSO_SERVED, CATALOGUE, MEASURED_GROUPS, FieldValue
 from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import load_shots
 
@@ -127,7 +127,7 @@ def shot_fields_of(facts: ShotFacts) -> ShotFields:
     """The document for a loaded shot."""
     shot_wide: list[FieldOut] = []
     for item in CATALOGUE:
-        if item.group not in MEASURED_GROUPS or item.shot is None:
+        if item.shot is None or (item.group not in MEASURED_GROUPS and item.key not in ALSO_SERVED):
             continue
         found = item.field(facts)
         if found is not None:

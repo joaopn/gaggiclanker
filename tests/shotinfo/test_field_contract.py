@@ -322,6 +322,11 @@ async def test_the_fields_are_in_catalogue_order_and_group_the_phases_apart(
     assert keys == sorted(keys, key=order.__getitem__)
     assert "yield_share" in keys
     assert "phases_not_reached" in keys
+    left = next(f for f in document.shot if f.key == "phases_not_reached")
+    # The text says "decline"; the value is the same phases as a list in the
+    # profile's order, which the shot page draws a row for each of.
+    assert left.text == "decline"
+    assert left.value == [{"phase_number": 3, "name": "decline"}]
     assert not any(ITEMS[key].kind == "phase" for key in keys)
     for phase in document.phases:
         phase_keys = [f.key for f in phase.fields]
@@ -395,3 +400,58 @@ async def test_a_shot_with_nothing_derived_has_no_phases_and_no_warnings(
     assert document["warnings"] == []
     assert document["badge"] is None
     assert document["target_yield_g"] is None
+
+
+async def test_the_ratio_is_served_with_the_shot_wide_fields_and_says_what_the_chat_is_told(
+    lever: tuple[Database, int, int],
+) -> None:
+    # The shot is filed under a version with an 18 g dose and nobody typed a
+    # dose: the ratio is the version's dose against the scale's yield, 1:2.34.
+    # A page reads it here and never works it out from the row, which has no dose.
+    db, shot, _ = lever
+    [facts] = await load_shots(db, [shot])
+    document = shot_fields_of(facts)
+
+    served = next(f for f in document.shot if f.key == "ratio")
+    assert served.value == pytest.approx(RAMP_END_G / 18.0, abs=0.005)
+    assert served.text == "1:2.34"
+    base = {line.key: line.value for line in shot_lines(facts, frozenset({"ratio"}))}
+    assert served.text == base["ratio"]
+    # And in catalogue order with the rest.
+    order = {item.key: i for i, item in enumerate(CATALOGUE)}
+    keys = [f.key for f in document.shot]
+    assert keys == sorted(keys, key=order.__getitem__)
+
+
+async def test_the_phases_not_reached_are_served_in_the_profiles_order(tmp_path: Path) -> None:
+    # A profile with three phases the shot never began, so a reversed or
+    # reordered list cannot pass for the right one.
+    profile = {
+        **LEVER_PROFILE,
+        "phases": [
+            *LEVER_PROFILE["phases"],
+            {**LEVER_PROFILE["phases"][3], "name": "tail one", "targets": []},
+            {**LEVER_PROFILE["phases"][3], "name": "tail two", "targets": []},
+        ],
+    }
+    db = Database(tmp_path / "unreached.db")
+    await db.connect()
+    try:
+        await run_migrations(db)
+        slog = lever_shot()
+        derived = derive_shot(
+            slog, slog_to_raw(slog), device_id="000900", source="import", profile=profile
+        )
+        shot = await ShotsRepository(db).insert(derived.shot, derived.samples)
+        [facts] = await load_shots(db, [shot])
+        document = shot_fields_of(facts)
+    finally:
+        await db.close()
+
+    left = next(f for f in document.shot if f.key == "phases_not_reached")
+    assert left.value == [
+        {"phase_number": 3, "name": "decline"},
+        {"phase_number": 4, "name": "tail one"},
+        {"phase_number": 5, "name": "tail two"},
+    ]
+    assert left.text == "decline, tail one, tail two"
