@@ -47,13 +47,18 @@ from gaggiclanker.db.repos.sets import (
     RollbackWrite,
     SetsRepository,
     SetVersionPatch,
+    SetVersionRow,
     SetVersionWrite,
     SetWrite,
     VersionOutcomeWrite,
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.spread import CountedShot
+from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings import SETTINGS_REGISTRY
+from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
 from tests.sets.conftest import make_profile_version
 
@@ -1159,3 +1164,260 @@ async def test_the_context_reads_the_counted_shots_once(
     await opening_context(experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5))
 
     assert calls == 1
+
+
+# ── the profile ──────────────────────────────────────────────────────
+
+PROFILE_HEADING = "THE PROFILE v2.2 BREWS"
+
+
+def _document_line(rendered: str, after: str) -> str:
+    """The line of compact JSON that follows the `as stored` line under a heading."""
+    lines = rendered.splitlines()
+    start = lines.index(after)
+    marker = next(i for i in range(start, len(lines)) if "as stored (compact JSON" in lines[i])
+    return lines[marker + 1]
+
+
+async def _own_profile_version(experiment: Experiment) -> int:
+    version = await SetsRepository(experiment.db).get_version(experiment.v5)
+    assert version is not None and version.profile_version_id is not None
+    return version.profile_version_id
+
+
+async def test_the_profile_the_version_brews_is_in_the_context_as_stored(
+    experiment: Experiment,
+) -> None:
+    """Byte-equal to the profile version's `json` column, and to what `get_profile` serves."""
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+    profile_id = await _own_profile_version(experiment)
+    column = await experiment.db.fetch_value(
+        "SELECT json FROM profile_versions WHERE id = ?", (profile_id,)
+    )
+    ctx = ToolContext(
+        db=experiment.db,
+        settings=SettingsService(SettingsRepository(experiment.db)),
+        knowledge=KnowledgeService(experiment.db),
+        scope=ToolScope.for_thread(experiment.set_id, experiment.v5),
+        caller="test",
+        permissions=CHAT_PERMISSIONS,
+    )
+    served = await registry.dispatch(ctx, "get_profile", {"profile_version_id": profile_id})
+
+    assert served.ok, served.data
+    line = _document_line(rendered, PROFILE_HEADING)
+    assert line == column
+    assert json.loads(line) == served.data["document"]
+    assert json.dumps(served.data["document"], separators=(",", ":"), ensure_ascii=False) == column
+    assert f"Profile version {profile_id}, Classic 9 bar, as stored" in rendered
+
+
+async def test_the_machine_s_own_fields_and_defaults_are_not_in_the_profile(
+    experiment: Experiment,
+) -> None:
+    """Nothing invented: no favorite, no selected, no phase temperature the author never wrote."""
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+    line = _document_line(rendered, PROFILE_HEADING)
+
+    for invented in ('"selected"', '"favorite"', '"id"', '"temperature":0.0', '"temperature":0,'):
+        assert invented not in line, invented
+    assert '"duration":3,' in line, "an integral number is written as it is stored, not 3.0"
+
+
+def _first_difference(before: str, after: str) -> int:
+    """The index of the first byte at which two renderings differ."""
+    for index, (left, right) in enumerate(zip(before, after, strict=False)):
+        if left != right:
+            return index
+    return min(len(before), len(after))
+
+
+async def test_nothing_that_changes_between_turns_comes_before_the_profile(
+    experiment: Experiment,
+) -> None:
+    """The cache prefix: a shot, a grade, a new version, a proposal and a revert all land after it.
+
+    On a version whose compared version brews another profile, so both blocks are in play.
+    """
+    db = experiment.db
+    sets = SetsRepository(db)
+    version = await _other_profile_version(experiment)
+    scope = ToolScope.for_thread(experiment.set_id, version.id)
+
+    async def render() -> str:
+        return await opening_context(db, scope)
+
+    first = await render()
+    block_end = first.index("THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET")
+    assert first.startswith(f"THE PROFILE {version.version_label} BREWS")
+    assert first.count("as stored (compact JSON") == 2, "both profiles are in the protected block"
+
+    states = []
+    shot = await _shot(
+        db,
+        "000700",
+        started_at="2026-04-08T08:00:00.000Z",
+        duration_ms=31_000,
+        weight_g=36.0,
+        first_drip_s=7.0,
+        max_bar=9.0,
+        brew_flow=1.9,
+    )
+    assert await sets.assign_shot(shot, version.id)
+    await JudgementsRepository(db).upsert(shot, JudgementWrite(rating=3, decision="improve"))
+    states.append(("a shot", await render()))
+    graded = await sets.set_outcome(
+        experiment.set_id,
+        version.id,
+        VersionOutcomeWrite(outcome="partly_held", note="Slower, but the finish is drying."),
+    )
+    assert graded.version is not None, graded
+    states.append(("a grade", await render()))
+    newer = await sets.add_version(experiment.set_id, SetVersionPatch(intent="One finer."))
+    assert newer is not None
+    states.append(("a new version", await render()))
+    await sets.set_outcome(
+        experiment.set_id,
+        newer.id,
+        VersionOutcomeWrite(outcome="held", note="Straight where it should be."),
+    )
+    result = await SetProposalsRepository(db).create(
+        experiment.set_id,
+        ProposalWrite(
+            patch=SetVersionPatch(dose_g=18.5),
+            reason="Half a gram more, to carry the finish.",
+            prediction="Compared to v3.1: a touch more body and no slower.",
+        ),
+    )
+    assert result.proposal is not None, result.refused
+    states.append(("a proposal", await render()))
+    await sets.rollback(
+        experiment.set_id, RollbackWrite(to_version_id=version.id, note="One finer was no better")
+    )
+    states.append(("a revert", await render()))
+
+    previous = first
+    for name, rendered in states:
+        assert rendered != previous, name
+        assert _first_difference(previous, rendered) > block_end, name
+        assert rendered[:block_end] == first[:block_end], name
+        previous = rendered
+
+
+async def test_a_version_with_no_profile_says_so(experiment: Experiment) -> None:
+    sets = SetsRepository(experiment.db)
+    bare = await sets.add_version(
+        experiment.set_id,
+        SetVersionPatch(profile_version_id=None, intent="Any profile will do for this one."),
+    )
+    assert bare is not None and bare.profile_version_id is None
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, bare.id)
+    )
+
+    assert f"THE PROFILE {bare.version_label} BREWS" in rendered
+    assert "This version names no profile" in rendered
+    assert "as stored (compact JSON" not in rendered
+
+
+async def _other_profile_version(experiment: Experiment) -> SetVersionRow:
+    other = await make_profile_version(experiment.db, "Lever ramp", temperature=92.0)
+    version = await SetsRepository(experiment.db).add_version(
+        experiment.set_id,
+        SetVersionPatch(
+            profile_version_id=other,
+            intent="Try the other profile.",
+            prediction="Shot time up by 3 s against v2.1.",
+            compares_to_version_id=experiment.v4,
+        ),
+        major=True,
+    )
+    assert version is not None
+    return version
+
+
+async def test_a_compared_version_on_another_profile_adds_that_profile_once(
+    experiment: Experiment,
+) -> None:
+    version = await _other_profile_version(experiment)
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
+    )
+
+    assert rendered.count('"label":"Lever ramp"') == 1
+    assert rendered.count('"label":"Classic 9 bar"') == 1
+    assert rendered.count("as stored (compact JSON") == 2
+    assert f"THE PROFILE {version.version_label} BREWS\n" in rendered
+    assert (
+        "THE PROFILE v2.1 BREWS (v3 is compared against it; a different profile version)"
+        in rendered
+    )
+    # Its own profile first, the compared one after it.
+    assert rendered.index('"label":"Lever ramp"') < rendered.index('"label":"Classic 9 bar"')
+
+
+async def test_a_compared_version_on_the_same_profile_adds_nothing(experiment: Experiment) -> None:
+    """v2.2 is compared against v2.1: the same profile version, so one document."""
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+
+    assert rendered.count("THE PROFILE ") == 1
+    assert rendered.count('"label":"Classic 9 bar"') == 1
+
+
+async def test_a_version_with_no_profile_still_gets_the_compared_versions_profile(
+    experiment: Experiment,
+) -> None:
+    bare = await SetsRepository(experiment.db).add_version(
+        experiment.set_id,
+        SetVersionPatch(
+            profile_version_id=None,
+            intent="Any profile.",
+            prediction="Faster than v2.1.",
+            compares_to_version_id=experiment.v4,
+        ),
+    )
+    assert bare is not None
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, bare.id)
+    )
+
+    assert "This version names no profile" in rendered
+    assert rendered.count('"label":"Classic 9 bar"') == 1
+
+
+async def test_a_version_with_a_profile_compared_against_one_that_names_none_adds_nothing(
+    experiment: Experiment,
+) -> None:
+    sets = SetsRepository(experiment.db)
+    bare = await sets.add_version(
+        experiment.set_id,
+        SetVersionPatch(profile_version_id=None, intent="Any profile."),
+    )
+    assert bare is not None and bare.profile_version_id is None
+    profiled = await sets.add_version(
+        experiment.set_id,
+        SetVersionPatch(
+            profile_version_id=await _own_profile_version(experiment),
+            intent="Back on the Classic profile.",
+            prediction="Faster than the version with no profile.",
+            compares_to_version_id=bare.id,
+        ),
+    )
+    assert profiled is not None
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, profiled.id)
+    )
+
+    assert rendered.count("THE PROFILE ") == 1
+    assert rendered.count("as stored (compact JSON") == 1
+    assert "This version names no profile" not in rendered

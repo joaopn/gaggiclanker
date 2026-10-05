@@ -235,6 +235,7 @@ async def test_once_the_recipe_is_written_the_design_block_is_gone(kitchen: Fixt
 
     rendered = await opening_context(kitchen.db, await ToolScope.resolve(kitchen.db, designed.id))
 
-    assert rendered.startswith("THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET")
+    assert rendered.startswith("THE PROFILE v")
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in rendered
     assert "THIS BEAN'S OTHER SETS" not in rendered
     assert "Kenya AA on the Mazzer" not in rendered

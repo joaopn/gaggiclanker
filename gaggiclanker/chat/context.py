@@ -43,6 +43,7 @@ from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document_json
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetRow,
@@ -199,6 +200,9 @@ async def opening_context(
         for item in (await sets.trends(scope.set_id, counted=counted)).versions
     }
     lines: list[str] = []
+    # First, and nothing that moves between turns before it: see `_profile_block`.
+    lines += await _profile_block(db, version, compared)
+    lines += [""]
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
     lines += await _reverts_block(sets, version)
     lines += ["", *await _proposal_block(db, scope.set_id, profile_labels, current)]
@@ -323,6 +327,67 @@ async def _reverts_block(sets: SetsRepository, version: SetVersionRow) -> list[s
         "version; the versions it went back past are dead ends now."
     )
     return lines
+
+
+async def _profile_block(
+    db: Database, version: SetVersionRow, compared: SetVersionRow | None
+) -> list[str]:
+    """The profile this version brews, in full, and the compared version's when it differs.
+
+    The stored canonical document, compact JSON with no renderer: what a phase
+    commands (its pump target, the transition, the duration, the stop conditions)
+    is what the shot's per-phase lines are read against, and a summary of it would
+    be one more thing to disagree with the machine. It is the document `get_profile`
+    serves, so that tool is for the *other* profiles.
+
+    It is the **very first thing** in the context, because the front of the prompt
+    is what the provider's cache can reuse and everything after the first changed
+    byte is paid for again. For one conversation's version this block never
+    changes: the version's own profile and the version it is compared against are
+    fixed when the version is made, and the label in the heading is its name. Every
+    other part moves, the Set's shot count and version count, the outcome, a waiting
+    proposal or grade, a revert, the ledger's means, the shots, so none of them may
+    come before it.
+
+    The compared version's profile follows only when it is a different profile
+    version: on the same one the first block already is its document, and a second
+    copy would be the same bytes twice. A version that names no profile says so
+    instead of leaving the heading out.
+    """
+    own = await _profile_text(db, version.profile_version_id, version.profile_label)
+    lines = [f"THE PROFILE {version.version_label} BREWS", *own]
+    if (
+        compared is not None
+        and compared.profile_version_id is not None
+        and compared.profile_version_id != version.profile_version_id
+    ):
+        lines += [
+            "",
+            f"THE PROFILE {compared.version_label} BREWS "
+            f"({version.version_label} is compared against it; a different profile version)",
+            *await _profile_text(db, compared.profile_version_id, compared.profile_label),
+        ]
+    return lines
+
+
+async def _profile_text(
+    db: Database, profile_version_id: int | None, label: str | None
+) -> list[str]:
+    if profile_version_id is None:
+        return [
+            "This version names no profile, so no shot is filed under it automatically: "
+            "only a person files one here, whatever profile it was pulled on."
+        ]
+    stored = await ProfilesRepository(db).get_version(profile_version_id)
+    if stored is None or not stored.profile:
+        return [
+            f"Profile version {profile_version_id} ({label or 'unlabelled'}) has no stored "
+            "document in the archive."
+        ]
+    return [
+        f"Profile version {stored.id}, {stored.label}, as stored (compact JSON, every field):",
+        stored_document_json(stored),
+    ]
 
 
 def _profile_labels(versions: Sequence[SetVersionRow]) -> dict[int, str]:

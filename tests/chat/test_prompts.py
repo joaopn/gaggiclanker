@@ -346,3 +346,26 @@ async def test_the_set_prompt_sends_the_agent_to_the_extended_call_for_shots_it_
     assert "`get_shot` and `list_set_shots` only repeat what is in front of you" in flat
     assert "`get_shot_full` repeats it along with the extended lines" in flat
     assert "so `get_shot_extended` is the call that adds something" in flat
+
+
+async def test_the_set_prompt_says_the_conversation_s_profile_is_already_given(
+    prompts: PromptService,
+) -> None:
+    rendered = (
+        await prompts.load(SET_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER})
+    ).system
+    flat = " ".join(rendered.split())
+    assert "the one this version brews is in it whole, as stored" in flat
+    assert "and so is the compared version's when that is a different profile version" in flat
+    assert "`get_profile` is for other profiles and versions" in flat
+
+
+async def test_the_design_prompt_is_not_told_a_profile_is_already_given(
+    prompts: PromptService,
+) -> None:
+    """A design conversation works from a fork source and reads profiles with the tool."""
+    flat = " ".join(
+        (await prompts.load(DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER})).system.split()
+    )
+    assert "already in" not in flat.split("get_profile")[0][-200:]
+    assert "`get_profile` reads a profile's whole document" in flat

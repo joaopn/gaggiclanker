@@ -21,7 +21,8 @@ variables:
       The opening context: the Set and this version, the prediction ledger with
       its outcomes, the spread, the evidence table, this version's newest shots
       in their base information, the Keep shots and the confirmed insights that
-      apply, plus what this conversation proposed (a grade, insights, insight
+      apply, the profile this version brews in full (and the compared version's
+      when it differs), plus what this conversation proposed (a grade, insights, insight
       deletions) and what the person did with each.
   - name: shot_fields
     description: >
@@ -233,7 +234,11 @@ system: |
   HOW TO LOOK
 
   The record at the end is already here; do not spend a tool call re-reading
-  it. The shots in it are this version's newest, each already in its base
+  it. That includes the profile: the one this version brews is in it whole, as
+  stored (every phase, target, transition and stop condition), and so is the
+  compared version's when that is a different profile version. `get_profile` is
+  for other profiles and versions. The ledger's averages are the means `get_set`
+  serves. The shots in it are this version's newest, each already in its base
   information, and the "Shots written out below:" line names their ids. For one
   of those shots `get_shot` and `list_set_shots` only repeat what is in front
   of you, and `get_shot_full` repeats it along with the extended lines, so

@@ -213,6 +213,50 @@ async def test_the_trajectory_serves_the_averages_the_chat_ledger_is_written_fro
             assert served[key] == version.model_dump(mode="json")[key], key
 
 
+def test_get_profile_says_an_opening_context_that_shows_a_profile_already_has_it() -> None:
+    """The tool is for other profiles and versions: the description pins that sentence.
+
+    Worded to hold in every scope: a design conversation has no version profile in its
+    context, and the sentence is conditional on the context showing one.
+    """
+    spec = next(item for item in registry.specs() if item.name == "get_profile")
+    flat = " ".join(spec.description.split())
+    assert (
+        "When the opening context shows the profile a version brews (a Set conversation's does, "
+        "for its own version and the one it is compared against), it is already there, whole: "
+        "this is for other profiles and versions."
+    ) in flat
+
+
+async def test_a_document_read_from_get_profile_is_a_document_draft_profile_accepts(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """Copy what was read, change one thing, send it back whole: the draft starts from it."""
+    served = await call(ctx, "get_profile", profile_version_id=archive.profile_version_id)
+    document = served["document"]
+    assert "selected" not in document and "favorite" not in document
+    document["phases"][0]["duration"] = document["phases"][0]["duration"] + 1
+    document["temperature"] = 91
+
+    made = await call(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch=document,
+        reason="A second longer pre-infusion and a cooler brew.",
+    )
+
+    stored = await ProfileDraftsRepository(archive.db).get(made["draft_id"])
+    assert stored is not None and stored.draft_version_id is not None
+    version = await ProfilesRepository(archive.db).get_version(stored.draft_version_id)
+    assert version is not None
+    draft = version.profile
+    assert draft is not None
+    assert draft["temperature"] == 91
+    assert draft["phases"][0]["duration"] == document["phases"][0]["duration"]
+    assert "selected" not in draft and "favorite" not in draft
+
+
 async def test_get_set_falls_back_to_the_conversation_scope(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:

@@ -11,6 +11,7 @@ profile appear to change the moment somebody starred it.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,6 +31,8 @@ __all__ = [
     "ProfileVersionSummary",
     "ProfilesRepository",
     "not_synthetic_sql",
+    "stored_document",
+    "stored_document_json",
 ]
 
 
@@ -51,6 +54,23 @@ def not_synthetic_sql(alias: str) -> str:
         f"NOT ({alias}.label = '{SYNTHETIC_BASE_LABEL}' "
         f"AND json_extract({alias}.json, '$.description') = '{SYNTHETIC_BASE_DESCRIPTION}')"
     )
+
+
+def stored_document(version: ProfileVersionRow) -> dict[str, Any]:
+    """The version's stored canonical document: the `json` column, decoded, nothing added.
+
+    What the chat is shown and what `draft_profile` merges its patch into, so a
+    document the agent copies from what it read is the document a draft starts from.
+    It is the canonical form (keys sorted, device-owned fields and firmware defaults
+    absent), not a re-rendering in the machine's shape: no `favorite`, no `selected`,
+    no `temperature: 0` the author never wrote.
+    """
+    return dict(version.profile or {})
+
+
+def stored_document_json(version: ProfileVersionRow) -> str:
+    """:func:`stored_document` as compact JSON, byte for byte the `json` column's text."""
+    return json.dumps(stored_document(version), separators=(",", ":"), ensure_ascii=False)
 
 
 class ProfileVersionRow(BaseModel):

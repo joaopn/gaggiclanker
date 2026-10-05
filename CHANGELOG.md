@@ -10,6 +10,38 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The Set chat starts with its profile in full and each version's averages
+
+- **The profile is the first thing in the opening context.** A Set conversation is now handed
+  the profile its version brews, as stored (the profile version's own document as compact JSON:
+  each phase's pump target, transition, duration and stop conditions, with nothing the machine
+  adds), under a heading that names the version, before everything else. Nothing that changes
+  between turns (the shot and version counts, a grade, a waiting proposal, a revert, the ledger,
+  the shots) comes before it, so the start of the prompt stays the same for the provider's cache.
+  When the version it is compared against brews a different profile version, that profile
+  follows under its own heading; on the same profile version it is written once. A version that
+  names no profile says so. It costs about 300 to 550 tokens once per request, more with a
+  compared profile.
+- **`get_profile` serves the stored document too.** It used to hand back the document re-rendered
+  in the machine's shape (with `favorite` and `selected`, a `temperature: 0` on every phase,
+  `3.0` for `3`); it now returns exactly what the archive stores for that version, which is also
+  what `draft_profile` merges its patch into. Its description says the opening context already
+  shows the profile a version brews, so the tool is for other profiles and versions. The design
+  chat is otherwise unchanged. A prompt you edited keeps your text on boot and so keeps the old
+  wording: reset it on the Prompts page (Settings → Prompts, `chat-set`) to have the Set chat
+  told that its profile is already given, or add the sentence yourself ("`get_profile` is for
+  other profiles and versions"). The profile reaches an edited prompt either way, since it
+  travels in the opening context.
+- **Each ledger line carries the version's averages.** Mean shot time, yield, ratio, rating and
+  first drip over the version's counted shots (not quarantined, not incomplete, not a Discard),
+  from the one function `get_set`'s trajectory reads, which now also serves the mean yield and
+  first drip. A version with shots but none that count says "no counted shots", and a mean over
+  fewer shots than the version has says how many it is over. These per-version averages used to
+  cover every shot; they now cover counted shots only, so a discarded or incomplete shot no
+  longer pulls `get_set`'s trajectory, and the design chat's mean rating for a Set's versions
+  (which reads the same numbers) now averages counted shots only too. The Set page's chart
+  draws per-shot points and is unchanged.
+
 ### Any number about a shot can be asked for in one fixed language, and the chat opens with a line per phase
 
 - **A metric language.** A number about a shot (the cup at the end of the ramp as a share of the

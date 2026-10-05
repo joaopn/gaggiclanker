@@ -49,7 +49,7 @@ from gaggiclanker.db.repos.outcome_proposals import (
     OutcomeProposalWrite,
 )
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
 from gaggiclanker.db.repos.set_proposals import (
     ProposalWrite,
     ProposalWriteResult,
@@ -58,7 +58,6 @@ from gaggiclanker.db.repos.set_proposals import (
 )
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, version_changes
 from gaggiclanker.db.repos.version_names import named_dump, next_names
-from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.sets import grind_value, parse_version_label
 from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance
@@ -870,7 +869,7 @@ class GetProfileOutput(_Model):
     #: `device`, `import` or `draft`: where this version came from.
     source: str = ""
     created_at: str
-    #: The whole document, in the shape the machine stores it.
+    #: The version's stored canonical document, whole.
     document: dict[str, Any]
     recipe: ProfileRecipeFacts
     #: How many of the archive's shots were pulled with it. Only in a general
@@ -884,7 +883,10 @@ class GetProfileOutput(_Model):
     description=(
         "One profile version in full: its label, type and whole document — every phase, pump "
         "target and stop condition — plus the temperature and yield the document states. Read "
-        "the profile you are about to change or fork before you change it."
+        "the profile you are about to change or fork before you change it. When the opening "
+        "context shows the profile a version brews (a Set conversation's does, for its own "
+        "version and the one it is compared against), it is already there, whole: this is for "
+        "other profiles and versions."
     ),
 )
 async def get_profile(ctx: ToolContext, args: GetProfileInput) -> GetProfileOutput:
@@ -902,7 +904,7 @@ async def get_profile(ctx: ToolContext, args: GetProfileInput) -> GetProfileOutp
             f"No profile version {args.profile_version_id}. list_profiles lists the ones "
             "this archive has."
         )
-    document = Profile.model_validate(version.profile).to_device()
+    document = stored_document(version)
     facts = profile_recipe(document)
     shot_count: int | None = None
     if ctx.scope.kind != "set":
