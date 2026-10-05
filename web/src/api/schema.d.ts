@@ -2201,6 +2201,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shots/{shot_id}/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shot's fields: structured, in catalogue order, with its warnings
+         * @description What is known about the shot, as ``{value, unit, phase, window, method, source}``.
+         *
+         *     The shot-wide fields apart from each phase's, both in the catalogue's order,
+         *     with the warnings and the target yield of the version the shot is filed
+         *     under. All of it is read from the stored derivation and the filing at the
+         *     moment of the request: a shot refiled under another version answers with
+         *     another share of the target and other warnings.
+         */
+        get: operations["get_shot_fields_api_shots__shot_id__fields_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shots/{shot_id}/judgement": {
         parameters: {
             query?: never;
@@ -3200,6 +3226,14 @@ export interface components {
         /** ApiResponse[ShotDetailRow] */
         ApiResponse_ShotDetailRow_: {
             data?: components["schemas"]["ShotDetailRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ShotFields] */
+        ApiResponse_ShotFields_: {
+            data?: components["schemas"]["ShotFields"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4469,6 +4503,31 @@ export interface components {
             label: string;
         };
         /**
+         * FieldOut
+         * @description One item's value on the shot (or on one of its phases).
+         */
+        FieldOut: {
+            /** Group */
+            group: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Method */
+            method: string;
+            /** Name */
+            name: string;
+            phase: components["schemas"]["PhaseRef"] | null;
+            /** Source */
+            source: string;
+            /** Text */
+            text: string;
+            /** Unit */
+            unit: string;
+            value: components["schemas"]["JsonValue"];
+            window: components["schemas"]["WindowOut"] | null;
+        };
+        /**
          * FlavorNode
          * @description One segment of the flavour wheel: its stored slug, its label, what sits outside it.
          */
@@ -4847,6 +4906,7 @@ export interface components {
             [key: string]: unknown;
         } | null;
         JsonText: string;
+        JsonValue: unknown;
         /**
          * JudgementWrite
          * @description A verdict as the API accepts it. Every field optional; all of them mean something.
@@ -5469,6 +5529,26 @@ export interface components {
             set_name: string;
             /** Text */
             text: string;
+        };
+        /** PhaseFields */
+        PhaseFields: {
+            /** Duration S */
+            duration_s: number | null;
+            /** Fields */
+            fields: components["schemas"]["FieldOut"][];
+            /** Name */
+            name: string;
+            /** Number */
+            number: number | null;
+            /** Start S */
+            start_s: number | null;
+        };
+        /** PhaseRef */
+        PhaseRef: {
+            /** Name */
+            name: string;
+            /** Number */
+            number: number | null;
         };
         /**
          * PolicyChange
@@ -6979,6 +7059,26 @@ export interface components {
             /** Volume G */
             volume_g?: number | null;
         };
+        /**
+         * ShotFields
+         * @description `GET /api/shots/{id}/fields`.
+         */
+        ShotFields: {
+            /** Badge */
+            badge: string | null;
+            /** Phases */
+            phases: components["schemas"]["PhaseFields"][];
+            /** Shot */
+            shot: components["schemas"]["FieldOut"][];
+            /** Shot Id */
+            shot_id: number;
+            /** Target Yield G */
+            target_yield_g: number | null;
+            /** Warnings */
+            warnings: components["schemas"]["WarningOut"][];
+            /** Yield Share Pct */
+            yield_share_pct: number | null;
+        };
         /** ShotInfoGroup */
         ShotInfoGroup: {
             /** Items */
@@ -8045,6 +8145,28 @@ export interface components {
             step_units: components["schemas"]["Term"][];
             /** Version Outcomes */
             version_outcomes: components["schemas"]["Term"][];
+        };
+        /** WarningOut */
+        WarningOut: {
+            /** At S */
+            at_s: number;
+            /** Detail */
+            detail: string;
+            /** Fault */
+            fault: string;
+            /** Phase */
+            phase: string;
+            /** Phase Number */
+            phase_number: number | null;
+            /** Severity */
+            severity: string;
+        };
+        /** WindowOut */
+        WindowOut: {
+            /** From S */
+            from_s: number;
+            /** To S */
+            to_s: number;
         };
     };
     responses: never;
@@ -11741,6 +11863,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ShotDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shot_fields_api_shots__shot_id__fields_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotFields_"];
                 };
             };
             /** @description Validation Error */

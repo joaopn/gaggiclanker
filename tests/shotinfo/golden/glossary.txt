@@ -8,6 +8,10 @@ The band tables several fields are read against, named in their entries; each en
 - resistance level bands: VERY_LOW under 0.5; LOW 0.5 to 1.5; MODERATE 1.5 to 3; HIGH 3 to 5; VERY_HIGH from 5 up
 - adherence bands: EXCELLENT under 0.3; GOOD 0.3 to 0.8; FAIR 0.8 to 1.5; POOR from 1.5 up
 
+[Warnings]
+What is plainly wrong with the shot without knowing what its profile is for, most severe first, then in the order of the shot, one per line: `phase: fault (severity): detail`, with `Shot` for a fault of the whole shot. A shot with no line has none of these (or could not be checked: see each fault). All are amber: a profile's own intent can excuse one.
+- Warnings [base]: The faults that need no knowledge of the profile. over target: the final weight is above 110 % of the target yield of the version the shot is filed under; under target: below 90 %; both need a scale and a version with a target yield. skipped: the shot stopped on its weight or pumped-water target before a phase of its profile began; the line names the first such phase and lists them all, and needs the shot's profile. fast flow: the scale flow averaged over 1.0 s was above 3.0 g/s while the pressure stayed at 80 % of the shot's peak or more, in the phase holding the first such window; it needs a scale and a pressure sensor, and a turbo profile does it on purpose. Each is a fact to weigh, not a verdict.
+
 [Identity and status]
 - Shot id [base]: This archive's id for the shot, written as the heading of every rendered shot (`shot 129`). Cite a shot by it and pass it to the shot tools.
 - Date and time [base]: When the shot started, in UTC, to the minute.

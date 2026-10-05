@@ -44,6 +44,41 @@ async def _one(db: Database, shot_id: int, *, samples: bool = True) -> ShotFacts
     return facts
 
 
+def _headings(text: str) -> list[str]:
+    return [line[1:-1] for line in text.split("\n") if line.startswith("[") and line.endswith("]")]
+
+
+@pytest.mark.parametrize("tier", ["base", "extended", "full"])
+async def test_warnings_come_first_then_phases_then_the_rest_and_the_curve_last(
+    archive: Archive, tier: str
+) -> None:
+    facts = await _one(archive.db, archive.shot)
+    # Warnings and the phase lines belong to different default tiers, so put
+    # every item the tier would carry in this one to see all the groups at once.
+    tiers = dict.fromkeys(default_tiers(), "extended" if tier == "full" else tier)
+    found = _headings(render_shot(facts, tier, tiers, curve_points=CURVE_POINTS))  # type: ignore[arg-type]
+    assert found[0] == "Warnings"
+    assert found[1] == "Phases" or tier == "base"
+    if tier != "base":
+        assert found[:2] == ["Warnings", "Phases"]
+        assert found[-1] == "Curve"
+    rest = [g for g in found if g not in ("Warnings", "Phases", "Curve")]
+    catalogued = [g for g in catalogue.GROUPS if g in rest]
+    assert rest == catalogued
+
+
+async def test_phases_follow_warnings_directly_even_when_the_tier_has_no_other_group_first(
+    archive: Archive,
+) -> None:
+    facts = await _one(archive.db, archive.shot)
+    tiers = dict.fromkeys(default_tiers(), "excluded")
+    for key, item in ITEMS.items():
+        if item.group in ("Warnings", "Phases", "Outcome") and not item.locked:
+            tiers[key] = "extended"
+    found = _headings(render_shot(facts, "extended", tiers, curve_points=CURVE_POINTS))  # type: ignore[arg-type]
+    assert found[:2] == ["Warnings", "Phases"]
+
+
 @pytest.mark.parametrize("tier", ["base", "extended", "full"])
 async def test_a_shot_renders_as_its_golden_file(
     archive: Archive, update_golden: bool, tier: str

@@ -35,6 +35,7 @@ from gaggiclanker.shotinfo.catalogue import (
     CATALOGUE,
     GROUPS,
     ITEMS,
+    WARNINGS_GROUP,
     Channel,
     Item,
     ShotTier,
@@ -158,12 +159,27 @@ def render_shot(
     keys = keys_in(tier, tiers)
     lines = shot_lines(facts, keys)
     out = [f"shot {facts.shot_id}"]
-    for group in GROUPS:
+    for group in _render_order():
         body = _group_body(facts, group, keys, lines, curve_points)
         if body:
             out.append(f"[{group}]")
             out.extend(body)
     return "\n".join(out)
+
+
+def _render_order() -> list[str]:
+    """Warnings first, then the phases, every other group as catalogued, the curve last.
+
+    What the agent should not miss comes before what it reads for detail, and
+    the long table comes last so nothing sits below it. Warnings and the curve
+    are named by the catalogue; the phase group is the one whose items are
+    per-phase.
+    """
+    phases = [g for g in GROUPS if any(i.kind == "phase" for i in CATALOGUE if i.group == g)]
+    curve = [g for g in GROUPS if any(i.kind == "curve" for i in CATALOGUE if i.group == g)]
+    first = [WARNINGS_GROUP, *phases]
+    rest = [g for g in GROUPS if g not in first and g not in curve]
+    return [*first, *rest, *curve]
 
 
 def item_example(facts: ShotFacts, key: str, *, curve_points: int) -> str | None:
@@ -205,6 +221,9 @@ def _group_body(
     facts: ShotFacts, group: str, keys: frozenset[str], lines: list[Line], curve_points: int
 ) -> list[str]:
     members = [item for item in CATALOGUE if item.group == group]
+    if group == WARNINGS_GROUP:
+        # One line per warning, under the heading and without a label of its own.
+        return [part for line in lines if line.key == "warnings" for part in line.value.split("\n")]
     if any(item.kind == "curve" for item in members):
         return _curve_table(facts, [item for item in members if item.key in keys], curve_points)
     if any(item.kind == "phase" for item in members):

@@ -318,6 +318,10 @@ Medium 18g 1:2
 
 === shot_information ===
 shot 6
+[Phases]
+phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; pressure 3.9 bar; temperature 92.8 °C; volume 4.2 ml; ramp 1.30 bar/s; samples 12
+phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; pressure 0.6 bar; temperature 93.1 °C; volume 0.4 ml; ramp 0.00 bar/s; samples 28
+phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; pressure 8.8 bar; temperature 93.4 °C; volume 31.8 ml; resistance 2.40; channeling LOW; samples 72
 [Identity and status]
 Date and time: 2026-03-03 08:25
 Profile as brewed: Medium 18g 1:2
@@ -360,10 +364,6 @@ Pressure adherence: 0.31 bar EXCELLENT
 Flow adherence: 0.44 ml/s GOOD
 Largest pressure overshoot: 0.22 bar WITHIN_TOLERANCE
 Largest flow overshoot: 0.55 ml/s MINOR_DEVIATION
-[Phases]
-phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; pressure 3.9 bar; temperature 92.8 °C; volume 4.2 ml; ramp 1.30 bar/s; samples 12
-phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; pressure 0.6 bar; temperature 93.1 °C; volume 0.4 ml; ramp 0.00 bar/s; samples 28
-phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; pressure 8.8 bar; temperature 93.4 °C; volume 31.8 ml; resistance 2.40; channeling LOW; samples 72
 [Curve]
 44 of 112 samples, shape-preserving; always kept: the first and last, each phase's first and last, peak pressure, first drip, both ends of the largest pressure drop
 t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),weight (g),temperature (°C),phase marker,target temperature (°C)

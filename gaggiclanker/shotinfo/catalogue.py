@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -50,6 +50,11 @@ import structlog
 
 from gaggiclanker.domain import diagnostics as engine
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
+from gaggiclanker.domain.phase_metrics import (
+    FAST_FLOW_PRESSURE_SHARE,
+    FAST_FLOW_SCALE_FLOW_G_S,
+    FAST_FLOW_WINDOW_MS,
+)
 from gaggiclanker.domain.slog import (
     FLOW_SCALE,
     PRESSURE_SCALE,
@@ -63,7 +68,12 @@ from gaggiclanker.domain.vocab import (
     flavor_path,
     vocabulary,
 )
+from gaggiclanker.domain.warnings import (
+    OVER_TARGET_SHARE,
+    UNDER_TARGET_SHARE,
+)
 from gaggiclanker.shotinfo.facts import ShotFacts, number
+from gaggiclanker.shotinfo.methods import METHODS
 
 if TYPE_CHECKING:
     from gaggiclanker.db.connection import Database
@@ -73,11 +83,14 @@ __all__ = [
     "GROUPS",
     "GROUP_NOTES",
     "ITEMS",
+    "MEASURED_GROUPS",
     "REVIEW_GROUP",
     "SHARED_BANDS",
     "TIERS",
+    "WARNINGS_GROUP",
     "BandTable",
     "Channel",
+    "FieldValue",
     "Item",
     "ShotTier",
     "Tier",
@@ -102,6 +115,16 @@ type BandTable = list[tuple[float, str]]
 
 type ShotRender = Callable[[ShotFacts], str | None]
 type PhaseRender = Callable[[ShotFacts, Mapping[str, Any]], str | None]
+
+#: What a field's value is: a number, a word, a flag, or a small structure (the
+#: warnings, the firmware's five numbers).
+type Value = float | int | str | bool | list[Any] | dict[str, Any]
+type ShotValue = Callable[[ShotFacts], Value | None]
+type PhaseValue = Callable[[ShotFacts, Mapping[str, Any]], Value | None]
+
+#: Where a field's value came from: computed from the shot's bytes, or (later)
+#: written by an agent.
+type Source = Literal["computed", "agent"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,12 +162,104 @@ class Item:
     channel: Channel | None = None
     #: The vendored threshold tables this item's band label comes from.
     bands: tuple[BandTable, ...] = ()
+    #: The id of the computation behind the value (see :mod:`~gaggiclanker.shotinfo.methods`).
+    #: A change to the computation changes the id, so a value read under one id
+    #: is never compared with a value read under another as if they were one field.
+    method: str = ""
+    #: The unit of the value, as the structured accessor reports it.
+    unit: str = ""
+    source: Source = "computed"
+    #: The structured accessor beside the text renderer: the value itself, not
+    #: its sentence. Left out where the value is the sentence (a word, a date).
+    shot_value: ShotValue | None = None
+    phase_value: PhaseValue | None = None
 
     @property
     def kind(self) -> Literal["shot", "phase", "curve"]:
         if self.channel is not None:
             return "curve"
         return "phase" if self.phase is not None else "shot"
+
+    def field(self, facts: ShotFacts, phase: Mapping[str, Any] | None = None) -> FieldValue | None:
+        """The item on one shot (or one of its phases) as a structured field, or ``None``.
+
+        ``None`` exactly when the text renderer has nothing to say: a value the
+        machine did not record is absent here, never zero. ``text`` is what a
+        chat reads; ``value`` is the number (or word, or structure) behind it.
+        """
+        if phase is None:
+            text = self.shot(facts) if self.shot is not None else None
+            value = self.shot_value(facts) if self.shot_value is not None else None
+        else:
+            text = self.phase(facts, phase) if self.phase is not None else None
+            value = self.phase_value(facts, phase) if self.phase_value is not None else None
+        if not text:
+            return None
+        return FieldValue(
+            key=self.key,
+            value=value if value is not None else text,
+            unit=self.unit,
+            phase=_phase_label(phase),
+            window=_phase_window(phase),
+            method=self.method,
+            source=self.source,
+            text=text,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FieldValue:
+    """One item's value on one shot: the field contract.
+
+    ``phase`` and ``window`` say what the value is about (a phase of the shot,
+    the span of seconds it covers), ``method`` which computation made it and
+    ``source`` who. Two values with the same ``key`` and ``method`` are the same
+    field and may be compared.
+    """
+
+    key: str
+    value: Value
+    unit: str
+    #: The phase's number and name, or ``None`` for a shot-wide value.
+    phase: dict[str, Any] | None
+    #: ``{from_s, to_s}`` of the phase, or ``None`` for a shot-wide value.
+    window: dict[str, float] | None
+    method: str
+    source: Source
+    #: The sentence a chat is given.
+    text: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "key": self.key,
+            "value": self.value,
+            "unit": self.unit,
+            "phase": self.phase,
+            "window": self.window,
+            "method": self.method,
+            "source": self.source,
+            "text": self.text,
+        }
+
+
+def _phase_label(phase: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if phase is None:
+        return None
+    index = phase.get("phase_number")
+    return {
+        "number": index if isinstance(index, int) and not isinstance(index, bool) else None,
+        "name": str(phase.get("name") or "").strip(),
+    }
+
+
+def _phase_window(phase: Mapping[str, Any] | None) -> dict[str, float] | None:
+    if phase is None:
+        return None
+    start = number(phase.get("start_time_seconds"))
+    length = number(phase.get("duration_seconds"))
+    if start is None or length is None:
+        return None
+    return {"from_s": start, "to_s": round(start + length, 1)}
 
 
 # ── formatting ───────────────────────────────────────────────────────
@@ -605,6 +720,126 @@ def _decimals(scale: float) -> int:
     return round(math.log10(scale))
 
 
+# ── the warnings and the per-phase numbers ───────────────────────────
+
+
+def _warnings_text(f: ShotFacts) -> str | None:
+    """One line per warning, most severe first: ``ramp: fast flow (amber): the detail``."""
+    lines = [f"{w.badge} ({w.severity}): {w.detail}" for w in f.warnings]
+    return "\n".join(lines) if lines else None
+
+
+def _warnings_value(f: ShotFacts) -> list[Any] | None:
+    found = [w.as_dict() for w in f.warnings]
+    return found or None
+
+
+def _yield_share(f: ShotFacts) -> float | None:
+    return f.share_of_target(yield_g(f)) if f.shot.scale_connected else None
+
+
+def _yield_share_text(f: ShotFacts) -> str | None:
+    share = _yield_share(f)
+    target = f.target_yield_g
+    if share is None or target is None:
+        return None
+    return f"{_fixed(share, 1)} % of the {target:g} g target yield"
+
+
+def _phases_not_reached(f: ShotFacts) -> str | None:
+    """The profile's phases the shot never began, by name; absent when it began them all."""
+    left = f.metrics.get("phases_not_reached")
+    if not isinstance(left, list):
+        return None
+    names = [
+        str(item.get("name") or "").strip() or f"phase {item.get('phase_number')}"
+        for item in left
+        if isinstance(item, dict)
+    ]
+    return ", ".join(names) if names else None
+
+
+def _phase_log_note(f: ShotFacts) -> str | None:
+    """Said once, in the one place a reader will look: what this log cannot tell."""
+    version = f.shot.slog_version
+    if f.metrics.get("per_phase") is False:
+        return (
+            f"no phase table: this log (firmware log version {version}) records none, so "
+            "there are no per-phase numbers, only shot-wide ones"
+        )
+    if f.metrics.get("exit_reasons") is False:
+        return (
+            f"firmware log version {version} does not record why a phase ended: every phase "
+            "reads Unknown"
+        )
+    return None
+
+
+def _phase_metric(phase: Mapping[str, Any], key: str) -> float | None:
+    block = phase.get("metrics")
+    return number(block.get(key)) if isinstance(block, dict) else None
+
+
+def _phase_ended_by(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
+    code = _phase_metric(phase, "ended_by")
+    return None if code is None else PHASE_EXIT_REASONS.get(int(code), "Unknown")
+
+
+def _phase_ended_by_value(_: ShotFacts, phase: Mapping[str, Any]) -> int | None:
+    code = _phase_metric(phase, "ended_by")
+    return None if code is None else int(code)
+
+
+def _phase_qty(key: str, decimals: int, unit: str, *, needs: str | None = None) -> PhaseRender:
+    """A per-phase metric as ``value unit``, gated on the sensor it needs.
+
+    ``scale`` reads the shot's own flag and ``pressure`` its pressure gate, never
+    the value: a machine without either records the column as zeros.
+    """
+
+    def render(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
+        if needs == "scale" and not f.shot.scale_connected:
+            return None
+        if needs == "pressure" and not f.has_pressure:
+            return None
+        if needs == "puck_flow" and not f.puck_flow_recorded:
+            return None
+        return _qty(_phase_metric(phase, key), decimals, unit)
+
+    return render
+
+
+def _phase_number_of(key: str, *, needs: str | None = None) -> PhaseValue:
+    def value(f: ShotFacts, phase: Mapping[str, Any]) -> float | None:
+        if needs == "scale" and not f.shot.scale_connected:
+            return None
+        if needs == "pressure" and not f.has_pressure:
+            return None
+        if needs == "puck_flow" and not f.puck_flow_recorded:
+            return None
+        return _phase_metric(phase, key)
+
+    return value
+
+
+def _phase_cup_share(f: ShotFacts, phase: Mapping[str, Any]) -> float | None:
+    if not f.shot.scale_connected:
+        return None
+    return f.share_of_target(_phase_metric(phase, "cup_weight_end_g"))
+
+
+def _phase_cup_share_text(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
+    share = _phase_cup_share(f, phase)
+    return None if share is None else f"{_fixed(share, 1)} %"
+
+
+def _firmware_stats_value(block: object) -> dict[str, Any] | None:
+    if not isinstance(block, dict):
+        return None
+    values = {key: number(block.get(key)) for key in ("avg", "start", "end", "min", "max")}
+    return None if any(v is None for v in values.values()) else dict(values)
+
+
 # ── the meanings' shared sentences ───────────────────────────────────
 
 #: "The brew phases" are every phase but pre-infusion: said once, in the
@@ -637,6 +872,26 @@ def _shared(name: str, unit: str = "") -> str:
     return f"the {name} bands, in {unit}" if unit else f"the {name} bands"
 
 
+#: The group the warnings are rendered under, first in every rendering that has any.
+WARNINGS_GROUP = "Warnings"
+
+#: The groups of measured numbers: what a shot page lists beside its curve. Left
+#: out are the shot's identity, the person's judgement, the recipe, the machine's
+#: own note, the review (each has a place of its own) and the curve (a table).
+MEASURED_GROUPS: frozenset[str] = frozenset(
+    {
+        "Outcome",
+        "Timing",
+        "Temperature",
+        "Pressure",
+        "Flow and volume",
+        "Weight",
+        "Puck resistance",
+        "Profile compliance",
+        "Phases",
+    }
+)
+
 #: The group a shot's review is rendered under. Named once because Review's own
 #: input leaves it out: a review is never shown an earlier review.
 REVIEW_GROUP = "Review"
@@ -646,6 +901,13 @@ REVIEW_GROUP = "Review"
 #: meaning as a reader meets it (the glossary writes it under the heading).
 GROUP_NOTES: Mapping[str, str] = MappingProxyType(
     {
+        WARNINGS_GROUP: (
+            "What is plainly wrong with the shot without knowing what its profile is for, most "
+            "severe first, then in the order of the shot, one per line: `phase: fault "
+            "(severity): detail`, with `Shot` for a fault of the whole shot. A shot with no "
+            "line has none of these (or could not be checked: see each fault). All are amber: "
+            "a profile's own intent can excuse one."
+        ),
         "Pressure": (
             "Measured by the pressure sensor: none of these exists on a machine without one."
         ),
@@ -724,8 +986,32 @@ def _items() -> tuple[Item, ...]:
     recipe = "The version's recipe"
     note = "The note typed on the machine"
     review = REVIEW_GROUP
+    warnings = WARNINGS_GROUP
 
     return (
+        # ── warnings ─────────────────────────────────────────────────
+        Item(
+            key="warnings",
+            group=warnings,
+            name="Warnings",
+            label="Warnings",
+            meaning=(
+                "The faults that need no knowledge of the profile. over target: the final weight "
+                f"is above {OVER_TARGET_SHARE * 100:.0f} % of the target yield of the version "
+                f"the shot is filed under; under target: below {UNDER_TARGET_SHARE * 100:.0f} %; "
+                "both need a scale and a version with a target yield. skipped: the shot stopped "
+                "on its weight or pumped-water target before a phase of its profile began; the "
+                "line names the first such phase and lists them all, and needs the shot's "
+                f"profile. fast flow: the scale flow averaged over {FAST_FLOW_WINDOW_MS / 1000:.1f}"
+                f" s was above {FAST_FLOW_SCALE_FLOW_G_S:.1f} g/s while the pressure stayed at "
+                f"{FAST_FLOW_PRESSURE_SHARE * 100:.0f} % of the shot's peak or more, in the phase "
+                "holding the first such window; it needs a scale and a pressure sensor, and a "
+                "turbo profile does it on purpose. Each is a fact to weigh, not a verdict."
+            ),
+            default_tier="base",
+            shot=_warnings_text,
+            shot_value=_warnings_value,
+        ),
         # ── identity and status ──────────────────────────────────────
         Item(
             key="shot_id",
@@ -851,6 +1137,20 @@ def _items() -> tuple[Item, ...]:
             shot=lambda f: _measure("yield_g", yield_g(f)),
         ),
         Item(
+            key="yield_share",
+            group=outcome,
+            name="Yield against the target",
+            label="Yield against target",
+            meaning=(
+                "The yield as a share of the target yield of the version the shot is filed "
+                "under, in %. Worked out when the shot is read: refile the shot and it moves. "
+                "Needs a scale and a version with a target."
+            ),
+            default_tier="extended",
+            shot=_yield_share_text,
+            shot_value=_yield_share,
+        ),
+        Item(
             key="exit_reason",
             group=outcome,
             name="Exit reason",
@@ -862,6 +1162,31 @@ def _items() -> tuple[Item, ...]:
             ),
             default_tier="base",
             shot=_exit_reason,
+        ),
+        Item(
+            key="phases_not_reached",
+            group=outcome,
+            name="Profile phases not reached",
+            label="Phases not reached",
+            meaning=(
+                "The phases of the shot's profile that never began, by name: the shot ended "
+                "before them. Absent when every phase began, or when the shot has no profile."
+            ),
+            default_tier="extended",
+            shot=_phases_not_reached,
+        ),
+        Item(
+            key="phase_log_note",
+            group=outcome,
+            name="What the shot's log cannot say about its phases",
+            label="Phase log",
+            meaning=(
+                "Said once when the log cannot tell how the phases went: a log from before "
+                "firmware log version 5 has no phase table, so there are no per-phase numbers; "
+                "version 5 has one but not why each phase ended."
+            ),
+            default_tier="extended",
+            shot=_phase_log_note,
         ),
         Item(
             key="execution_score",
@@ -1706,6 +2031,21 @@ def _items() -> tuple[Item, ...]:
             phase=lambda _, p: _qty(_phase_number(p, "duration_seconds"), 1, "s"),
         ),
         Item(
+            key="phase_ended_by",
+            group=phases,
+            name="How the phase ended",
+            label="ended by",
+            meaning=(
+                "Why the phase ended: its duration, a pressure, flow, volumetric (weight) or "
+                "pumped-water target, a safety timeout, or the person stopping the shot (Aborted). "
+                "The next phase's transition reason, or the shot's final exit reason for the last "
+                "phase. Unknown on a log that records none (firmware log version 5)."
+            ),
+            default_tier="extended",
+            phase=_phase_ended_by,
+            phase_value=_phase_ended_by_value,
+        ),
+        Item(
             key="phase_pressure",
             group=phases,
             name="Phase average pressure",
@@ -1715,6 +2055,24 @@ def _items() -> tuple[Item, ...]:
             phase=_phase_pressure,
         ),
         Item(
+            key="phase_pressure_peak",
+            group=phases,
+            name="Phase peak pressure",
+            label="peak pressure",
+            meaning="The highest pressure during the phase, in bar.",
+            default_tier="extended",
+            phase=_phase_qty("pressure_peak_bar", 1, "bar", needs="pressure"),
+        ),
+        Item(
+            key="phase_pressure_end",
+            group=phases,
+            name="Phase pressure at its end",
+            label="pressure at end",
+            meaning="The pressure at the phase's last sample, in bar.",
+            default_tier="extended",
+            phase=_phase_qty("pressure_end_bar", 1, "bar", needs="pressure"),
+        ),
+        Item(
             key="phase_temperature",
             group=phases,
             name="Phase average temperature",
@@ -1722,6 +2080,24 @@ def _items() -> tuple[Item, ...]:
             meaning="The mean measured temperature during the phase, in °C.",
             default_tier="extended",
             phase=lambda _, p: _qty(_positive(_phase_number(p, "avg_temperature_c")), 1, "°C"),
+        ),
+        Item(
+            key="phase_temperature_min",
+            group=phases,
+            name="Phase lowest temperature",
+            label="lowest temperature",
+            meaning="The lowest measured temperature during the phase, in °C.",
+            default_tier="extended",
+            phase=lambda _, p: _qty(_positive(_phase_metric(p, "temperature_min_c")), 1, "°C"),
+        ),
+        Item(
+            key="phase_temperature_target",
+            group=phases,
+            name="Phase target temperature",
+            label="target temperature",
+            meaning="The mean temperature the profile asked for during the phase, in °C.",
+            default_tier="extended",
+            phase=lambda _, p: _qty(_phase_metric(p, "temperature_target_c"), 1, "°C"),
         ),
         Item(
             key="phase_volume",
@@ -1746,6 +2122,98 @@ def _items() -> tuple[Item, ...]:
                 if f.puck_flow_recorded
                 else None
             ),
+        ),
+        Item(
+            key="phase_flow_peak",
+            group=phases,
+            name="Phase peak puck flow",
+            label="peak flow",
+            meaning="The highest puck flow during the phase, in ml/s.",
+            default_tier="extended",
+            phase=_phase_qty("puck_flow_peak_ml_s", 2, "ml/s", needs="puck_flow"),
+        ),
+        Item(
+            key="phase_scale_flow",
+            group=phases,
+            name="Phase average scale flow",
+            label="scale flow",
+            meaning=(
+                "The mean of the scale's flow readings during the phase, in g/s: how fast the "
+                "cup filled. Needs a scale."
+            ),
+            default_tier="extended",
+            phase=_phase_qty("scale_flow_mean_g_s", 2, "g/s", needs="scale"),
+        ),
+        Item(
+            key="phase_scale_flow_peak",
+            group=phases,
+            name="Phase peak scale flow",
+            label="peak scale flow",
+            meaning="The highest scale flow reading during the phase, in g/s. Needs a scale.",
+            default_tier="extended",
+            phase=_phase_qty("scale_flow_peak_g_s", 2, "g/s", needs="scale"),
+        ),
+        Item(
+            key="phase_cup_end",
+            group=phases,
+            name="Cup weight at the phase's end",
+            label="cup at end",
+            meaning=("The weight in the cup at the phase's last sample, in g. Needs a scale."),
+            default_tier="extended",
+            phase=_phase_qty("cup_weight_end_g", 1, "g", needs="scale"),
+        ),
+        Item(
+            key="phase_cup_gained",
+            group=phases,
+            name="Cup weight gained in the phase",
+            label="cup gained",
+            meaning=(
+                "How much the cup gained during the phase, in g: its weight at the phase's end "
+                "less its weight at the previous phase's end (0 g before the first). Needs a "
+                "scale."
+            ),
+            default_tier="extended",
+            phase=_phase_qty("cup_weight_gained_g", 1, "g", needs="scale"),
+        ),
+        Item(
+            key="phase_cup_share",
+            group=phases,
+            name="Cup weight at the phase's end, as a share of the target yield",
+            label="cup share of target",
+            meaning=(
+                "The cup's weight at the phase's end as a share of the target yield of the "
+                "version the shot is filed under, in %. Worked out when the shot is read. Over "
+                "100 % before the last phase means the cup was full before the profile was done. "
+                "Needs a scale and a version with a target."
+            ),
+            default_tier="extended",
+            phase=_phase_cup_share_text,
+            phase_value=_phase_cup_share,
+        ),
+        Item(
+            key="phase_water",
+            group=phases,
+            name="Water pumped in the phase",
+            label="water pumped",
+            meaning=(
+                "How much the pump's own water counter rose during the phase, in ml. Samples "
+                "after the counter is reset (it is zeroed when a weight stop ends the shot) "
+                "are not read. Absent where the counter was not recorded."
+            ),
+            default_tier="extended",
+            phase=_phase_qty("water_pumped_ml", 1, "ml"),
+        ),
+        Item(
+            key="phase_first_drip",
+            group=phases,
+            name="First drip, in the phase that holds it",
+            label="first drip",
+            meaning=(
+                "Seconds into the shot of the first sample with any puck flow, on the phase it "
+                "fell in."
+            ),
+            default_tier="extended",
+            phase=lambda _, p: _qty(_phase_metric(p, "first_drip_s"), 1, "s"),
         ),
         Item(
             key="phase_pressure_adherence",
@@ -2298,7 +2766,184 @@ def _channels(group: str) -> tuple[Item, ...]:
 
 #: The catalogue. A tuple, iterated in order: the groups and their rows are
 #: the order a rendering and the glossary are written in.
-CATALOGUE: tuple[Item, ...] = _items()
+#: The unit of each item's value, where it has one.
+_UNITS: Mapping[str, str] = MappingProxyType(
+    {
+        "shot_time": "s",
+        "yield": "g",
+        "yield_share": "%",
+        "first_drip": "s",
+        "preinfusion_time": "s",
+        "main_extraction_time": "s",
+        "average_temperature": "°C",
+        "target_temperature": "°C",
+        "minimum_temperature": "°C",
+        "maximum_temperature": "°C",
+        "peak_pressure": "bar",
+        "average_pressure": "bar",
+        "minimum_pressure": "bar",
+        "peak_pressure_time": "s",
+        "brew_flow": "ml/s",
+        "average_flow": "ml/s",
+        "peak_flow": "ml/s",
+        "total_volume": "ml",
+        "water_pumped": "ml",
+        "water_minus_weight": "g",
+        "weight_rate": "g/s",
+        "machine_puck_resistance": "s·√bar/mL",
+        "liquid_resistance": "bar·s/mL",
+        "resistance_erosion": "1/s",
+        "pressure_adherence": "bar",
+        "flow_adherence": "ml/s",
+        "pressure_undershoot_max": "bar",
+        "rating": "stars",
+        "dose_in": "g",
+        "dose_out": "g",
+        "phase_start": "s",
+        "phase_duration": "s",
+        "phase_pressure": "bar",
+        "phase_pressure_peak": "bar",
+        "phase_pressure_end": "bar",
+        "phase_temperature": "°C",
+        "phase_temperature_min": "°C",
+        "phase_temperature_target": "°C",
+        "phase_volume": "ml",
+        "phase_flow": "ml/s",
+        "phase_flow_peak": "ml/s",
+        "phase_scale_flow": "g/s",
+        "phase_scale_flow_peak": "g/s",
+        "phase_cup_end": "g",
+        "phase_cup_gained": "g",
+        "phase_cup_share": "%",
+        "phase_water": "ml",
+        "phase_first_drip": "s",
+        "phase_pressure_adherence": "bar",
+        "phase_flow_error": "ml/s",
+        "phase_machine_resistance": "s·√bar/mL",
+        "phase_liquid_resistance": "bar·s/mL",
+    }
+)
+
+#: The structured accessor of each shot item that has a number (or a structure)
+#: behind its sentence. Every one is the very function the sentence is made from,
+#: and ``tests/shotinfo/test_field_contract.py`` holds the two to each other.
+_SHOT_VALUES: Mapping[str, ShotValue] = MappingProxyType(
+    {
+        "shot_time": shot_time,
+        "yield": yield_g,
+        "first_drip": first_drip,
+        "preinfusion_time": lambda f: (
+            f.summary_value("extraction", "preinfusion_time_s") if f.has_pressure else None
+        ),
+        "main_extraction_time": lambda f: (
+            f.summary_value("extraction", "main_extraction_time_s") if f.has_pressure else None
+        ),
+        "average_temperature": lambda f: _temperature(f, "avg_c"),
+        "target_temperature": lambda f: _temperature(f, "target_avg_c"),
+        "minimum_temperature": lambda f: _temperature(f, "min_c"),
+        "maximum_temperature": lambda f: _temperature(f, "max_c"),
+        "peak_pressure": peak_pressure,
+        "average_pressure": lambda f: _pressure_summary(f, "avg_bar"),
+        "minimum_pressure": lambda f: _pressure_summary(f, "min_bar"),
+        "peak_pressure_time": lambda f: _pressure_summary(f, "peak_time_s"),
+        "brew_flow": brew_flow,
+        "average_flow": lambda f: _flow_summary(f, "avg_flow_ml_s"),
+        "peak_flow": lambda f: _flow_summary(f, "peak_flow_ml_s"),
+        "total_volume": lambda f: _flow_summary(f, "total_volume_ml"),
+        "water_pumped": lambda f: number(f.firmware.get("water_pumped_ml")),
+        "water_minus_weight": lambda f: number(f.firmware.get("water_minus_weight_g")),
+        "weight_rate": lambda f: f.section_value("weight", "rate_avg_g_s"),
+        "shot_id": lambda f: f.shot_id,
+        "resistance_peak": lambda f: _resistance(f, "peak"),
+        "resistance_level": _resistance_avg,
+        "resistance_erosion": _resistance_slope,
+        "machine_puck_resistance": lambda f: _firmware_stats_value(f.firmware.get("pr")),
+        "liquid_resistance": lambda f: _firmware_stats_value(f.firmware.get("lr")),
+        "pressure_adherence": _pressure_rmse,
+        "flow_adherence": _flow_rmse,
+        "pressure_undershoot_max": lambda f: _compliance(f, "max_pressure_undershoot_bar", None),
+        "rating": rating,
+        "dose_in": dose_in,
+        "dose_out": dose_out,
+        "ratio": ratio,
+    }
+)
+
+#: The same for the per-phase items.
+_PHASE_VALUES: Mapping[str, PhaseValue] = MappingProxyType(
+    {
+        "phase_start": lambda _, p: _phase_number(p, "start_time_seconds"),
+        "phase_duration": lambda _, p: _phase_number(p, "duration_seconds"),
+        "phase_pressure": lambda f, p: (
+            _phase_number(p, "avg_pressure_bar") if f.has_pressure else None
+        ),
+        "phase_pressure_peak": _phase_number_of("pressure_peak_bar", needs="pressure"),
+        "phase_pressure_end": _phase_number_of("pressure_end_bar", needs="pressure"),
+        "phase_temperature": lambda _, p: _positive(_phase_number(p, "avg_temperature_c")),
+        "phase_temperature_min": lambda _, p: _positive(_phase_metric(p, "temperature_min_c")),
+        "phase_temperature_target": lambda _, p: _phase_metric(p, "temperature_target_c"),
+        "phase_volume": lambda f, p: (
+            _phase_number(p, "total_flow_ml") if f.puck_flow_recorded else None
+        ),
+        "phase_flow": lambda f, p: (
+            _phase_diag_number(p, "avg_flow_ml_s") if f.puck_flow_recorded else None
+        ),
+        "phase_flow_peak": _phase_number_of("puck_flow_peak_ml_s", needs="puck_flow"),
+        "phase_scale_flow": _phase_number_of("scale_flow_mean_g_s", needs="scale"),
+        "phase_scale_flow_peak": _phase_number_of("scale_flow_peak_g_s", needs="scale"),
+        "phase_cup_end": _phase_number_of("cup_weight_end_g", needs="scale"),
+        "phase_cup_gained": _phase_number_of("cup_weight_gained_g", needs="scale"),
+        "phase_cup_share": _phase_cup_share,
+        "phase_water": _phase_number_of("water_pumped_ml"),
+        "phase_samples": lambda _, p: (
+            int(count) if (count := _phase_number(p, "sample_count")) is not None else None
+        ),
+        "phase_first_drip": lambda _, p: _phase_metric(p, "first_drip_s"),
+        "phase_pressure_adherence": lambda _, p: _phase_diag_number(p, "pressure_rmse_bar"),
+        "phase_flow_error": lambda _, p: _phase_diag_number(p, "flow_rmse_ml_s"),
+        "phase_machine_resistance": lambda f, p: _firmware_phase_value(f, p, "pr"),
+        "phase_liquid_resistance": lambda f, p: _firmware_phase_value(f, p, "lr"),
+    }
+)
+
+
+def _firmware_phase_value(
+    f: ShotFacts, phase: Mapping[str, Any], stream: str
+) -> dict[str, Any] | None:
+    index = number(phase.get("phase_number"))
+    for entry in f.firmware.get("phases") or []:
+        if isinstance(entry, dict) and number(entry.get("phase_number")) == index:
+            return _firmware_stats_value(entry.get(stream))
+    return None
+
+
+def _finish(items: tuple[Item, ...]) -> tuple[Item, ...]:
+    """Each item with its method id, its unit and its structured accessor.
+
+    Kept in tables of their own, next to the ids in :mod:`~gaggiclanker.shotinfo.methods`,
+    so a computation and its identity are read in one place.
+    """
+    return tuple(
+        replace(
+            item,
+            method=METHODS[item.key],
+            unit=_UNITS.get(item.key) or _channel_unit(item),
+            shot_value=_SHOT_VALUES.get(item.key, item.shot_value),
+            phase_value=_PHASE_VALUES.get(item.key, item.phase_value),
+        )
+        for item in items
+    )
+
+
+def _channel_unit(item: Item) -> str:
+    """The unit in a curve column's header, ``pressure (bar)``."""
+    if item.channel is None:
+        return ""
+    _, _, rest = item.channel.header.partition(" (")
+    return rest.removesuffix(")") if rest else ""
+
+
+CATALOGUE: tuple[Item, ...] = _finish(_items())
 
 #: The same items by key.
 ITEMS: Mapping[str, Item] = MappingProxyType({item.key: item for item in CATALOGUE})

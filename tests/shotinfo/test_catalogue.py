@@ -33,8 +33,9 @@ from gaggiclanker.shotinfo.catalogue import (
 
 #: Rows per group, in the order the groups are rendered.
 EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
+    ("Warnings", 1),
     ("Identity and status", 7),
-    ("Outcome", 4),
+    ("Outcome", 7),
     ("Execution score detail", 3),
     ("Timing", 3),
     ("Temperature", 7),
@@ -44,7 +45,7 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Puck resistance", 7),
     ("Channeling", 12),
     ("Profile compliance", 6),
-    ("Phases", 18),
+    ("Phases", 31),
     ("Curve", 13),
     ("Your judgement", 9),
     ("The version's recipe", 5),
@@ -55,6 +56,7 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
 #: Every key, in catalogue order. A key is what a person's choice is stored
 #: against, so it never changes once shipped.
 EXPECTED_KEYS: tuple[str, ...] = (
+    "warnings",
     "shot_id",
     "started_at",
     "set_version",
@@ -64,7 +66,10 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "machine_shot_number",
     "shot_time",
     "yield",
+    "yield_share",
     "exit_reason",
+    "phases_not_reached",
+    "phase_log_note",
     "execution_score",
     "score_confidence",
     "score_reason",
@@ -123,10 +128,23 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "phase_type",
     "phase_start",
     "phase_duration",
+    "phase_ended_by",
     "phase_pressure",
+    "phase_pressure_peak",
+    "phase_pressure_end",
     "phase_temperature",
+    "phase_temperature_min",
+    "phase_temperature_target",
     "phase_volume",
     "phase_flow",
+    "phase_flow_peak",
+    "phase_scale_flow",
+    "phase_scale_flow_peak",
+    "phase_cup_end",
+    "phase_cup_gained",
+    "phase_cup_share",
+    "phase_water",
+    "phase_first_drip",
     "phase_pressure_adherence",
     "phase_flow_error",
     "phase_ramp",
@@ -182,6 +200,7 @@ EXPECTED_KEYS: tuple[str, ...] = (
 #: The items a chat sees without asking.
 EXPECTED_BASE: frozenset[str] = frozenset(
     {
+        "warnings",
         "shot_id",
         "started_at",
         "set_version",

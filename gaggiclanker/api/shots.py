@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.api.deps import (
+    DatabaseDep,
     JudgementsRepoDep,
     NotesRepoDep,
     ReviewServiceDep,
@@ -41,6 +42,7 @@ from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, rate_limit
 from gaggiclanker.infra.request_context import get_request_id
 from gaggiclanker.review.service import review_task_name
+from gaggiclanker.shotinfo.fields import ShotFields, shot_fields
 from gaggiclanker.sync.engine import downsample
 
 __all__ = ["router"]
@@ -227,6 +229,26 @@ async def get_shot(
             reviews=await reviews.for_shot(shot_id),
         ).model_dump(mode="json")
     )
+
+
+@router.get(
+    "/{shot_id}/fields",
+    response_model=ApiResponse[ShotFields],
+    summary="The shot's fields: structured, in catalogue order, with its warnings",
+)
+async def get_shot_fields(shot_id: int, db: DatabaseDep) -> JSONResponse:
+    """What is known about the shot, as ``{value, unit, phase, window, method, source}``.
+
+    The shot-wide fields apart from each phase's, both in the catalogue's order,
+    with the warnings and the target yield of the version the shot is filed
+    under. All of it is read from the stored derivation and the filing at the
+    moment of the request: a shot refiled under another version answers with
+    another share of the target and other warnings.
+    """
+    found = await shot_fields(db, shot_id)
+    if found is None:
+        raise NotFound(f"No shot {shot_id}")
+    return envelope_response(found.model_dump(mode="json"))
 
 
 @router.get(

@@ -1,4 +1,11 @@
 shot 1
+[Warnings]
+Shot: under target (amber): The final weight, 31.6 g, is 87.8 % of the 36 g target yield (under 90 % is under target).
+[Phases]
+phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 7.2 s; ended by Unknown; pressure 0.1 bar; peak pressure 0.1 bar; pressure at end 0.1 bar; temperature 94.9 °C; lowest temperature 94.7 °C; target temperature 93.0 °C; volume 0.0 ml; flow 0.00 ml/s; peak flow 0.00 ml/s; scale flow -3.84 g/s; peak scale flow 0.04 g/s; cup at end 0.0 g; cup gained 0.0 g; cup share of target 0.0 %; ramp 0.02 bar/s GENTLE; saturation 7.25 s
+phase 1 · Bloom: type preinfusion; start 7.2 s; duration 10.0 s; ended by Unknown; pressure 0.1 bar; peak pressure 0.1 bar; pressure at end 0.0 bar; temperature 93.9 °C; lowest temperature 93.2 °C; target temperature 93.0 °C; volume 0.0 ml; flow 0.00 ml/s; peak flow 0.00 ml/s; scale flow 0.00 g/s; peak scale flow 0.00 g/s; cup at end 0.0 g; cup gained 0.0 g; cup share of target 0.0 %; ramp -0.01 bar/s GENTLE; saturation 10.00 s
+phase 2 · Ramp: type brew; start 17.2 s; duration 5.0 s; ended by Unknown; pressure 0.8 bar; peak pressure 2.1 bar; pressure at end 2.1 bar; temperature 93.1 °C; lowest temperature 93.1 °C; target temperature 93.0 °C; volume 0.0 ml; flow 0.00 ml/s; peak flow 0.00 ml/s; scale flow 0.00 g/s; peak scale flow 0.00 g/s; cup at end 0.0 g; cup gained 0.0 g; cup share of target 0.0 %; pressure adherence 3.61 bar POOR; machine puck resistance (s·√bar/mL) avg 0.20 (start 0.39, end 0.18, min 0.16, max 0.39); liquid resistance (bar·s/mL) avg 0.24 (start 0.30, end 0.26, min 0.21, max 0.30); channeling INSUFFICIENT_DATA, signals none, flow shape FLAT
+phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; ended by Unknown; pressure 7.5 bar; peak pressure 8.2 bar; pressure at end 7.0 bar; temperature 91.8 °C; lowest temperature 90.5 °C; target temperature 93.0 °C; volume 42.2 ml; flow 1.71 ml/s; peak flow 3.30 ml/s; scale flow 1.27 g/s; peak scale flow 1.96 g/s; cup at end 31.6 g; cup gained 31.6 g; cup share of target 87.8 %; first drip 28.0 s; pressure adherence 1.45 bar FAIR; resistance 1.36 LOW, -0.12 /s MODERATE_DECLINE, from the machine; machine puck resistance (s·√bar/mL) avg 1.07 (start 0.19, end 0.88, min 0.19, max 1.84); liquid resistance (bar·s/mL) avg 2.99 (start 0.29, end 2.33, min 0.29, max 5.20); channeling LOW, signals none, flow shape RAMPING_UP
 [Identity and status]
 Date and time: 2026-04-03 12:06
 Set version: v1 of Set 1
@@ -9,6 +16,8 @@ Machine's shot number: 000204
 [Outcome]
 Shot time: 47.8 s
 Yield: 31.6 g
+Yield against target: 87.8 % of the 36 g target yield
+Phase log: firmware log version 5 does not record why a phase ended: every phase reads Unknown
 Execution score: 8.2 / 10
 [Execution score detail]
 Score confidence: high
@@ -65,11 +74,16 @@ Guidance: "Flow traces a ramping up trajectory cleanly — no channeling signatu
 Pressure adherence: 2.04 bar POOR
 Largest pressure overshoot: 0.20 bar WITHIN_TOLERANCE
 Largest pressure undershoot: 6.30 bar
-[Phases]
-phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 7.2 s; pressure 0.1 bar; temperature 94.9 °C; volume 0.0 ml; flow 0.00 ml/s; ramp 0.02 bar/s GENTLE; saturation 7.25 s
-phase 1 · Bloom: type preinfusion; start 7.2 s; duration 10.0 s; pressure 0.1 bar; temperature 93.9 °C; volume 0.0 ml; flow 0.00 ml/s; ramp -0.01 bar/s GENTLE; saturation 10.00 s
-phase 2 · Ramp: type brew; start 17.2 s; duration 5.0 s; pressure 0.8 bar; temperature 93.1 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 3.61 bar POOR; machine puck resistance (s·√bar/mL) avg 0.20 (start 0.39, end 0.18, min 0.16, max 0.39); liquid resistance (bar·s/mL) avg 0.24 (start 0.30, end 0.26, min 0.21, max 0.30); channeling INSUFFICIENT_DATA, signals none, flow shape FLAT
-phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; pressure 7.5 bar; temperature 91.8 °C; volume 42.2 ml; flow 1.71 ml/s; pressure adherence 1.45 bar FAIR; resistance 1.36 LOW, -0.12 /s MODERATE_DECLINE, from the machine; machine puck resistance (s·√bar/mL) avg 1.07 (start 0.19, end 0.88, min 0.19, max 1.84); liquid resistance (bar·s/mL) avg 2.99 (start 0.29, end 2.33, min 0.29, max 5.20); channeling LOW, signals none, flow shape RAMPING_UP
+[Your judgement]
+Rating: 4/5
+Balance: Balanced
+Taste notes: Sweet › Brown sugar › Caramelized; Fruity › Citrus fruit › Lemon
+Aroma notes: Floral › Floral › Jasmine
+Notes: "Sweet, a little thin at the end."
+Dose in: 18.0 g
+Dose out: 36.5 g
+Ratio: 1:2.03
+Grind as brewed: 14
 [Curve]
 47 of 188 samples, shape-preserving; always kept: the first and last, each phase's first and last, peak pressure, first drip, both ends of the largest pressure drop
 t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),weight (g),temperature (°C),phase marker
@@ -120,13 +134,3 @@ t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),w
 44.75,7.8,0.0,0.00,0.00,31.0,91.6,3
 45.25,7.3,0.0,0.00,0.00,31.4,91.7,3
 46.75,7.0,0.0,0.00,0.00,31.6,91.9,3
-[Your judgement]
-Rating: 4/5
-Balance: Balanced
-Taste notes: Sweet › Brown sugar › Caramelized; Fruity › Citrus fruit › Lemon
-Aroma notes: Floral › Floral › Jasmine
-Notes: "Sweet, a little thin at the end."
-Dose in: 18.0 g
-Dose out: 36.5 g
-Ratio: 1:2.03
-Grind as brewed: 14
