@@ -43,7 +43,7 @@ RAMP_CUP_SHARE = {
 
 
 async def file_lever(
-    app: FastAPI, *, device_id: str = "000900", scale: bool = True
+    app: FastAPI, *, device_id: str = "000900", scale: bool = True, has_pressure: bool | None = None
 ) -> tuple[int, int, int]:
     """The lever shot filed under a version: (shot id, set id, version id)."""
     db: Database = app.state.db
@@ -61,7 +61,12 @@ async def file_lever(
     )
     slog = lever_shot() if scale else without_scale(lever_shot())
     derived = derive_shot(
-        slog, slog_to_raw(slog), device_id=device_id, source="import", profile=LEVER_PROFILE
+        slog,
+        slog_to_raw(slog),
+        device_id=device_id,
+        source="import",
+        profile=LEVER_PROFILE,
+        has_pressure=has_pressure,
     )
     derived.shot.profile_version_id = profile.id
     shot = await ShotsRepository(db).insert(derived.shot, derived.samples)

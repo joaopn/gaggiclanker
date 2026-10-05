@@ -83,7 +83,11 @@ log = structlog.get_logger(__name__)
 #: values are the numbers they were, and each phase keeps its ramp, saturation
 #: and taper as numbers. A version of its own, so a database that booted at 7 is
 #: derived again for this change too.
-DERIVATION_VERSION = 8
+#: 9: a machine with no pressure sensor (a Standard board) has no puck flow: its log
+#: carries the field as zeros, and the per-phase puck-flow numbers were stored as 0.00
+#: there. They are absent now, as every number built on a sensor the shot lacks is,
+#: so a shot derived at 8 is derived again to lose them.
+DERIVATION_VERSION = 9
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these

@@ -125,13 +125,6 @@ def test_each_stored_number_is_the_evaluators_value_for_its_expression(
                 }
             )
             got = evaluate(asked, data).value
-            if key.startswith("puck_flow") and not data.has_pressure:
-                # The one place the stored number and the language differ: a board with no
-                # pressure sensor has always been stored with a puck flow of zero, and the
-                # language says it was not recorded.
-                assert evaluate(asked, data).absent == "not_recorded"
-                assert numbers[key] == 0.0
-                continue
             assert numbers.get(key) == got, (name, transition.phase_number, key)
             checked += 1
     assert checked

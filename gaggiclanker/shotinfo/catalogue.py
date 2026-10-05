@@ -322,8 +322,11 @@ def yield_g(f: ShotFacts) -> float | None:
 
 
 def first_drip(f: ShotFacts) -> float | None:
-    """Already nullable in the engine, so a ``0.0`` here is a real reading."""
-    return f.summary_value("flow", "time_to_first_drip_s")
+    """Already nullable in the engine, so a ``0.0`` here is a real reading.
+
+    Needs a puck flow to see it in: a board with no pressure sensor has none.
+    """
+    return f.summary_value("flow", "time_to_first_drip_s") if f.puck_flow_recorded else None
 
 
 def peak_pressure(f: ShotFacts) -> float | None:
@@ -1590,7 +1593,9 @@ def _items() -> tuple[Item, ...]:
                 "fell in."
             ),
             default_tier="extended",
-            phase=lambda _, p: _qty(_phase_metric(p, "first_drip_s"), 1, "s"),
+            phase=lambda f, p: (
+                _qty(_phase_metric(p, "first_drip_s"), 1, "s") if f.puck_flow_recorded else None
+            ),
         ),
         Item(
             key="phase_pressure_adherence",
@@ -2047,14 +2052,14 @@ def _channels(group: str) -> tuple[Item, ...]:
         (
             "curve_puck_flow",
             "Puck flow",
-            Channel("pf", "puck flow (ml/s)", flow),
+            Channel("pf", "puck flow (ml/s)", flow, "pressure"),
             "extended",
             "The machine's estimate of water flowing through the puck, in ml/s.",
         ),
         (
             "curve_target_flow",
             "Target flow",
-            Channel("tf", "target flow (ml/s)", flow),
+            Channel("tf", "target flow (ml/s)", flow, "pressure"),
             "extended",
             "The flow the profile commanded (or its limit, on a pressure-led phase), in ml/s.",
         ),
@@ -2082,7 +2087,7 @@ def _channels(group: str) -> tuple[Item, ...]:
         (
             "curve_pump_flow",
             "Pump flow",
-            Channel("fl", "pump flow (ml/s)", flow),
+            Channel("fl", "pump flow (ml/s)", flow, "pressure"),
             "excluded",
             "Water the pump delivered, in ml/s, before any is held back by the puck.",
         ),
@@ -2117,7 +2122,7 @@ def _channels(group: str) -> tuple[Item, ...]:
         (
             "curve_water_pumped",
             "Water pumped (firmware v7 and later)",
-            Channel("wp", "water pumped (ml)", grams),
+            Channel("wp", "water pumped (ml)", grams, "pressure"),
             "excluded",
             "Water pumped since the start of the shot, in ml; recorded from firmware log v7.",
         ),

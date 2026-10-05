@@ -36,6 +36,12 @@ first (`POST /api/backup`), because there is no down-migration.
   too big. The share is no longer an item of its own in any chat tier (the shot page still has
   it). It costs about 30 tokens per phase per shot, and the base meanings about 250 tokens once
   per request.
+- **No puck flow without a pressure sensor.** On a machine with no pressure sensor (a GaggiMate
+  Standard board) the puck flow, and the numbers built on it, are no longer shown as zero: the
+  average, peak and brew flow, the total volume, each phase's flow and volume, and the curve's
+  puck-flow, pump-flow, target-flow and water-pumped columns are left out, as every number a
+  shot's sensors cannot measure is. The first drip, which is the first puck flow, goes with it. The
+  next boot derives every shot again (no data is lost); only shots with no pressure sensor change.
 
 ### Each phase is measured, the few plain faults are warned about, and the execution score is gone
 

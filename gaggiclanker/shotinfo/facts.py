@@ -84,7 +84,11 @@ class ShotFacts:
 
     @property
     def puck_flow_recorded(self) -> bool:
-        """Whether the firmware recorded puck flow for this shot.
+        """Whether the firmware recorded puck flow for this shot, on a machine that can.
+
+        A board with no pressure sensor writes the field, as zeros, on every sample: the
+        mask says the column exists, not that anything was measured, so such a shot has no
+        puck flow (nor any number built on it) however the mask reads.
 
         Read from the header's field mask, the one record of which channels
         a file carries. Without it the engine's flow averages are ``0.0`` over
@@ -93,7 +97,7 @@ class ShotFacts:
         at its word.
         """
         mask = self.shot.fields_mask
-        return mask is None or bool(mask & (1 << _PUCK_FLOW_BIT))
+        return self.has_pressure and (mask is None or bool(mask & (1 << _PUCK_FLOW_BIT)))
 
     @property
     def blob(self) -> Mapping[str, Any]:

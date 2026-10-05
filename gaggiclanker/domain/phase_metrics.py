@@ -28,7 +28,6 @@ catalogue, so filing, moving or discarding a shot never needs a re-derivation.
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple, TypedDict
 
@@ -215,12 +214,12 @@ def find_fast_flow(
     return None
 
 
-def _stored(key: str, channel: str, op: str, *, puck_flow: bool = False) -> _Stored:
+def _stored(key: str, channel: str, op: str) -> _Stored:
     # The window is a phase, and which one is the position `evaluate_in_phase` is given; the
     # placeholder only makes the expression one a phase window may be read over.
     window = {"phase_number": 0}
     expression = Expression.model_validate({"channel": channel, "op": op, "window": window})
-    return _Stored(key, expression, puck_flow)
+    return _Stored(key, expression)
 
 
 class _Stored(NamedTuple):
@@ -229,15 +228,13 @@ class _Stored(NamedTuple):
     key: str
     #: Read over each phase in turn; its window is the phase.
     expression: Expression
-    #: Read with the puck-flow channel ungated (see :func:`compute_phase_metrics`).
-    puck_flow: bool
 
 
 #: Every per-phase number that is a window statistic, as the expression it is, in the order
 #: they are stored. The shot's first drip is a fact, not a statistic, and sits between the two.
 _STORED_BEFORE_DRIP: tuple[_Stored, ...] = (
-    _stored("puck_flow_mean_ml_s", "puck_flow", "mean", puck_flow=True),
-    _stored("puck_flow_peak_ml_s", "puck_flow", "max", puck_flow=True),
+    _stored("puck_flow_mean_ml_s", "puck_flow", "mean"),
+    _stored("puck_flow_peak_ml_s", "puck_flow", "max"),
     _stored("temperature_min_c", "temperature", "min"),
     _stored("temperature_target_c", "target_temperature", "mean"),
 )
@@ -261,12 +258,10 @@ def _store(
     entry: PhaseMetrics,
     group: Sequence[_Stored],
     data: ShotData,
-    flow_data: ShotData,
     position: int,
 ) -> None:
     for stored in group:
-        source = flow_data if stored.puck_flow else data
-        value = evaluate_in_phase(stored.expression, source, position).value
+        value = evaluate_in_phase(stored.expression, data, position).value
         if value is not None:
             entry[stored.key] = value  # type: ignore[literal-required]
 
@@ -321,12 +316,8 @@ def compute_phase_metrics(
         scale_connected=scale_connected,
         final_weight_g=final_weight_g,
     )
-    # A puck-flow number has been stored on every shot, a Standard board's (all zeros)
-    # included, and is gated by the catalogue on the firmware's field mask rather than on
-    # the pressure gate. The stored numbers do not move: the language's own puck-flow
-    # channel says "not recorded" without a pressure sensor, and this reads it as it always was.
-    flow_data = dataclasses.replace(data, has_pressure=True)
-    drip = next((i for i, s in enumerate(samples) if s.get("pf", 0.0) > 0.0), None)
+    # No puck flow without a pressure sensor: its zeros are no drip, and no moment of one.
+    drip = next((i for i, s in enumerate(samples) if has_pressure and s.get("pf", 0.0) > 0.0), None)
     metrics: dict[int, PhaseMetrics] = {}
     for index, transition in enumerate(transitions):
         span = data.phases[index]
@@ -337,9 +328,9 @@ def compute_phase_metrics(
         entry["ended_by"] = (
             _ended_by(transitions, index, final_exit_reason) if recorded_reason else 0
         )
-        _store(entry, _STORED_BEFORE_DRIP, data, flow_data, index)
+        _store(entry, _STORED_BEFORE_DRIP, data, index)
         if drip is not None and span.start <= drip < span.end and "t" in samples[drip]:
             entry["first_drip_s"] = round(samples[drip]["t"] / 1000.0, 1)
-        _store(entry, _STORED_AFTER_DRIP, data, flow_data, index)
+        _store(entry, _STORED_AFTER_DRIP, data, index)
         metrics[transition.phase_number] = entry
     return shot, metrics

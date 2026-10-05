@@ -77,6 +77,7 @@ from gaggiclanker.db.repos.version_names import (
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.sets import VersionPath, change_is_major, version_label
+from gaggiclanker.domain.slog import FIELD_DEFS
 from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.domain.vocab import (
     VERSION_OUTCOMES,
@@ -914,11 +915,23 @@ def track_record(versions: Sequence[SetVersionRow]) -> SetTrackRecord:
 #: spread holds a difference against these numbers and a chat reads the same
 #: shots one line each, and two copies of "zero means not recorded" would drift
 #: the day one of them is fixed. `sh` is the shots row and `j` the judgement.
-_MEASURE_COLUMNS = """
+_PUCK_FLOW_BIT = next(field.bit for field in FIELD_DEFS if field.name == "pf")
+
+#: Whether the shot has a puck flow: a pressure sensor (a Standard board writes the field as
+#: zeros, and its stored diagnostics say so) and the field in the log's mask. The same
+#: two-part test as `ShotFacts.puck_flow_recorded`, so a number built on puck flow is absent
+#: here exactly where the catalogue leaves it out.
+_HAS_PUCK_FLOW = (
+    "COALESCE(json_type(sh.diagnostics_json, '$.has_pressure'), 'true') != 'false' "
+    f"AND (sh.fields_mask IS NULL OR sh.fields_mask & {1 << _PUCK_FLOW_BIT} != 0)"
+)
+
+_MEASURE_COLUMNS = f"""
                    CASE WHEN sh.duration_ms > 0 THEN sh.duration_ms / 1000.0 END AS shot_time_s,
                    CASE WHEN json_type(sh.diagnostics_json,
                                        '$.summary.flow.time_to_first_drip_s')
                              IN ('integer', 'real')
+                         AND {_HAS_PUCK_FLOW}
                         THEN json_extract(sh.diagnostics_json,
                                           '$.summary.flow.time_to_first_drip_s')
                         END AS first_drip_s,
@@ -933,6 +946,7 @@ _MEASURE_COLUMNS = """
                              IN ('integer', 'real')
                          AND json_extract(sh.diagnostics_json,
                                           '$.diagnostics.extraction.flow_avg_brew_ml_s') > 0
+                         AND {_HAS_PUCK_FLOW}
                         THEN json_extract(sh.diagnostics_json,
                                           '$.diagnostics.extraction.flow_avg_brew_ml_s')
                         END AS brew_flow_ml_s""".strip()

@@ -214,10 +214,10 @@ async def test_a_machine_without_a_pressure_sensor_keeps_no_pressure_moment(
 
     table = _curve(render_shot(facts, "extended", default_tiers(), curve_points=CURVE_POINTS))
 
-    assert table[0].endswith(
-        "always kept: the first and last, each phase's first and last, first drip"
-    )
+    # No pressure moment, and no first drip either: there is no puck flow to see it in.
+    assert table[0].endswith("always kept: the first and last, each phase's first and last")
     assert "pressure (bar)" not in table[1].split(",")
+    assert "puck flow (ml/s)" not in table[1].split(",")
 
 
 async def test_shot_129_keeps_these_rows(archive: Archive, update_golden: bool) -> None:
@@ -323,11 +323,16 @@ async def test_a_shot_with_no_pressure_sensor_has_no_pressure_derived_values(
         "phase_pressure_end",
         "phase_pressure_adherence",
         "phase_resistance",
+        "brew_flow",
+        "average_flow",
+        "total_volume",
+        "phase_flow",
+        "phase_volume",
     ):
         assert absent not in keys, absent
     assert "pressure (bar)," not in rendered.replace("target pressure (bar),", "")
     # What does not need the sensor stays.
-    assert {"shot_time", "yield", "brew_flow", "average_temperature", "phase_start"} <= keys
+    assert {"shot_time", "yield", "average_temperature", "phase_start"} <= keys
     assert "target pressure (bar)" in rendered
 
 
