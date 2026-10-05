@@ -2487,8 +2487,8 @@ def _trend_version(
 ) -> SetTrendVersion:
     """One version's averages: the only place they are worked out.
 
-    The Set page's bars, `get_set`'s trajectory and the chat's ledger line all
-    read this, so the three cannot disagree. Counted shots only, means only, and
+    `get_set`'s trajectory, the chat's ledger line and the design chat's mean
+    rating all read this, so they cannot disagree. Counted shots only, means only, and
     a mean over nothing is ``None`` rather than a zero.
     """
     columns: dict[str, list[float | None]] = {

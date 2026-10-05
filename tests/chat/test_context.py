@@ -42,6 +42,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightsRepository,
     InsightWrite,
 )
+from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document_json
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     RollbackWrite,
@@ -1421,3 +1422,26 @@ async def test_a_version_with_a_profile_compared_against_one_that_names_none_add
     assert rendered.count("THE PROFILE ") == 1
     assert rendered.count("as stored (compact JSON") == 1
     assert "This version names no profile" not in rendered
+
+
+async def test_a_profile_with_words_beyond_ascii_is_shown_as_stored(tmp_path: Path) -> None:
+    """Accents and other scripts are written as themselves, byte for byte the column.
+
+    `ensure_ascii` would turn them into escapes: equal once parsed, but no longer
+    the stored text, and a label the person reads as "Café" reaches the model as
+    "Caf\\u00e9".
+    """
+    db = Database(tmp_path / "ascii.db")
+    await db.connect()
+    try:
+        await run_migrations(db)
+        version_id = await make_profile_version(db, "Café crème 「試」", temperature=92.5)
+        stored = await ProfilesRepository(db).get_version(version_id)
+        assert stored is not None
+        column = await db.fetch_value(
+            "SELECT json FROM profile_versions WHERE id = ?", (version_id,)
+        )
+        assert stored_document_json(stored) == column
+        assert "Café crème 「試」" in stored_document_json(stored)
+    finally:
+        await db.close()

@@ -950,8 +950,9 @@ future prompt until you add it (naming the shots and versions it rests on, and t
 insight it replaces, if any); the deletion of one added insight, waiting for you to
 delete or keep it; and a
 profile draft that goes through the same schema, safety-policy and clamp checks
-as one typed by hand. One of the reads is `get_profile`, a profile version's
-whole document, so the agent reads the profile it is about to change, and three
+as one typed by hand. A Set conversation starts with the profile its version brews (and the
+compared version's, when it is another), as stored; `get_profile` reads any
+other profile version's whole document, and three
 read one shot: `get_shot` its base information, `get_shot_extended` the rest and
 `get_shot_full` both, beside `list_set_shots`, which searches the Set's shots on
 their base information (filters, ranges, a sort, at most ten back).

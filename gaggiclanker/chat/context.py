@@ -192,7 +192,7 @@ async def opening_context(
     )
 
     profile_labels = _profile_labels(versions)
-    # The page's own bars, from the one function `get_set`'s trajectory is served by.
+    # Each version's averages, from the one function `get_set`'s trajectory is served by.
     # Handed the counted shots read above, so the spread, the evidence and the means are
     # one pass over one list.
     averages = {
@@ -385,7 +385,8 @@ async def _profile_text(
             "document in the archive."
         ]
     return [
-        f"Profile version {stored.id}, {stored.label}, as stored (compact JSON, every field):",
+        f"Profile version {stored.id}, {stored.label}, as stored "
+        "(compact JSON, every field it stores):",
         stored_document_json(stored),
     ]
 

@@ -1,5 +1,5 @@
 THE PROFILE v2.2 BREWS
-Profile version 1, Classic 9 bar, as stored (compact JSON, every field):
+Profile version 1, Classic 9 bar, as stored (compact JSON, every field it stores):
 {"description":"","label":"Classic 9 bar","phases":[{"duration":3,"name":"Pre-infusion","phase":"preinfusion","pump":{"flow":0,"pressure":5,"target":"pressure"},"targets":[],"valve":1},{"duration":7,"name":"Bloom","phase":"preinfusion","pump":0,"targets":[],"valve":1},{"duration":10,"name":"Pressurise","phase":"brew","pump":{"flow":0,"pressure":9,"target":"pressure"},"targets":[{"operator":"gte","type":"volumetric","value":20}],"valve":1},{"duration":8,"name":"Ramp down","phase":"brew","pump":{"flow":0,"pressure":5,"target":"pressure"},"targets":[{"operator":"gte","type":"volumetric","value":36}],"valve":1},{"duration":1,"name":"Hammer","phase":"brew","pump":100,"targets":[],"valve":0}],"temperature":93,"type":"standard","utility":false}
 
 THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET
