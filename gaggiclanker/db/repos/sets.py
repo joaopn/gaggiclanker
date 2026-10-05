@@ -699,8 +699,32 @@ class SetTrendPoint(BaseModel):
     rating: int | None = None
 
 
+class SetTrendCounts(BaseModel):
+    """How many shots each of a version's means is over.
+
+    A mean is over the counted shots that have the value: a shot nobody rated
+    adds nothing to the rating, a machine with no pressure sensor nothing to the
+    first drip. Next to the version's counted total this says which means rest on
+    fewer shots than the version has.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    duration_s: int = 0
+    yield_g: int = 0
+    ratio: int = 0
+    rating: int = 0
+    first_drip_s: int = 0
+
+
 class SetTrendVersion(BaseModel):
-    """One version's averages, for the bars behind the per-shot line."""
+    """One version's averages: what `get_set`'s trajectory and the chat's ledger read.
+
+    The averages are over the version's **counted** shots (the ones the spread
+    and the evidence use: not quarantined, not incomplete, not a Discard), so a
+    knocked-over cup does not pull a bar down. ``shots`` is every shot filed
+    under the version, ``counted_shots`` the ones the means can be over.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -710,9 +734,13 @@ class SetTrendVersion(BaseModel):
     origin: str = "manual"
     created_at: str
     shots: int = 0
+    counted_shots: int = 0
     avg_duration_s: float | None = None
+    avg_yield_g: float | None = None
     avg_ratio: float | None = None
     avg_rating: float | None = None
+    avg_first_drip_s: float | None = None
+    averaged_over: SetTrendCounts = SetTrendCounts()
 
 
 class SetTrends(BaseModel):
@@ -2378,8 +2406,14 @@ class SetsRepository(Repository):
 
     # ── trends ───────────────────────────────────────────────────────
 
-    async def trends(self, set_id: int) -> SetTrends:
+    async def trends(
+        self, set_id: int, *, counted: Sequence[CountedShot] | None = None
+    ) -> SetTrends:
         """Every shot in the Set, in order, plus the per-version averages.
+
+        ``counted`` is the Set's counted shots when the caller already holds them
+        (the chat's opening context reads them once for the spread, the evidence
+        and these averages); left out, they are read here.
 
         One query for the shots and the averages folded in Python: the point
         series is what the chart draws, the bars are the same numbers grouped,
@@ -2428,26 +2462,62 @@ class SetsRepository(Repository):
             )
 
         versions = await self.versions(set_id)
-        by_version = {
-            version.id: [p for p in points if p.set_version_id == version.id]
-            for version in versions
-        }
+        if counted is None:
+            counted = await self.counted_shots(set_id)
+        ratios = {p.shot_id: p.ratio for p in points}
         summaries = [
-            SetTrendVersion(
-                set_version_id=version.id,
-                version_label=version.version_label,
-                intent=version.intent,
-                origin=version.origin,
-                created_at=version.created_at,
-                shots=len(by_version[version.id]),
-                avg_duration_s=_mean([p.duration_s for p in by_version[version.id]]),
-                avg_ratio=_mean([p.ratio for p in by_version[version.id]]),
-                avg_rating=_mean([p.rating for p in by_version[version.id]]),
+            _trend_version(
+                version,
+                shots=sum(1 for p in points if p.set_version_id == version.id),
+                counted=[shot for shot in counted if shot.version_id == version.id],
+                ratios=ratios,
             )
             # Oldest first: a trend reads left to right.
             for version in sorted(versions, key=lambda v: (v.created_at, v.id))
         ]
         return SetTrends(set_id=set_id, versions=summaries, shots=points)
+
+
+def _trend_version(
+    version: SetVersionRow,
+    *,
+    shots: int,
+    counted: Sequence[CountedShot],
+    ratios: Mapping[int, float | None],
+) -> SetTrendVersion:
+    """One version's averages: the only place they are worked out.
+
+    The Set page's bars, `get_set`'s trajectory and the chat's ledger line all
+    read this, so the three cannot disagree. Counted shots only, means only, and
+    a mean over nothing is ``None`` rather than a zero.
+    """
+    columns: dict[str, list[float | None]] = {
+        "duration_s": [shot.shot_time_s for shot in counted],
+        "yield_g": [shot.yield_g for shot in counted],
+        "ratio": [ratios.get(shot.shot_id) for shot in counted],
+        "rating": [shot.rating for shot in counted],
+        "first_drip_s": [shot.first_drip_s for shot in counted],
+    }
+    return SetTrendVersion(
+        set_version_id=version.id,
+        version_label=version.version_label,
+        intent=version.intent,
+        origin=version.origin,
+        created_at=version.created_at,
+        shots=shots,
+        counted_shots=len(counted),
+        avg_duration_s=_mean(columns["duration_s"]),
+        avg_yield_g=_mean(columns["yield_g"]),
+        avg_ratio=_mean(columns["ratio"]),
+        avg_rating=_mean(columns["rating"]),
+        avg_first_drip_s=_mean(columns["first_drip_s"]),
+        averaged_over=SetTrendCounts(
+            **{
+                name: sum(1 for value in values if value is not None)
+                for name, values in columns.items()
+            }
+        ),
+    )
 
 
 def _mean(values: list[float | None] | list[int | None]) -> float | None:

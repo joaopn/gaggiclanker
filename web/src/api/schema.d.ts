@@ -6668,6 +6668,42 @@ export interface components {
             partly_held: number;
         };
         /**
+         * SetTrendCounts
+         * @description How many shots each of a version's means is over.
+         *
+         *     A mean is over the counted shots that have the value: a shot nobody rated
+         *     adds nothing to the rating, a machine with no pressure sensor nothing to the
+         *     first drip. Next to the version's counted total this says which means rest on
+         *     fewer shots than the version has.
+         */
+        SetTrendCounts: {
+            /**
+             * Duration S
+             * @default 0
+             */
+            duration_s: number;
+            /**
+             * First Drip S
+             * @default 0
+             */
+            first_drip_s: number;
+            /**
+             * Rating
+             * @default 0
+             */
+            rating: number;
+            /**
+             * Ratio
+             * @default 0
+             */
+            ratio: number;
+            /**
+             * Yield G
+             * @default 0
+             */
+            yield_g: number;
+        };
+        /**
          * SetTrendPoint
          * @description One shot on the Set's trend chart.
          */
@@ -6703,15 +6739,39 @@ export interface components {
         };
         /**
          * SetTrendVersion
-         * @description One version's averages, for the bars behind the per-shot line.
+         * @description One version's averages: what `get_set`'s trajectory and the chat's ledger read.
+         *
+         *     The averages are over the version's **counted** shots (the ones the spread
+         *     and the evidence use: not quarantined, not incomplete, not a Discard), so a
+         *     knocked-over cup does not pull a bar down. ``shots`` is every shot filed
+         *     under the version, ``counted_shots`` the ones the means can be over.
          */
         SetTrendVersion: {
+            /**
+             * @default {
+             *       "duration_s": 0,
+             *       "yield_g": 0,
+             *       "ratio": 0,
+             *       "rating": 0,
+             *       "first_drip_s": 0
+             *     }
+             */
+            averaged_over: components["schemas"]["SetTrendCounts"];
             /** Avg Duration S */
             avg_duration_s?: number | null;
+            /** Avg First Drip S */
+            avg_first_drip_s?: number | null;
             /** Avg Rating */
             avg_rating?: number | null;
             /** Avg Ratio */
             avg_ratio?: number | null;
+            /** Avg Yield G */
+            avg_yield_g?: number | null;
+            /**
+             * Counted Shots
+             * @default 0
+             */
+            counted_shots: number;
             /** Created At */
             created_at: string;
             /**
