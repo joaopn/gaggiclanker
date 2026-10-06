@@ -89,7 +89,12 @@ export function CompareDrawer({
                 {formatTime(shot.started_at)} · {formatSeconds(shot.duration_ms)} ·{" "}
                 {formatGrams(shot.volume_g)}
               </span>
-              <ReviewBadge badge={shot.badge} warnings={shot.warnings} className="max-w-48" />
+              <ReviewBadge
+                badge={shot.badge}
+                warnings={shot.warnings}
+                reading={shot.reading}
+                className="max-w-48"
+              />
               <button
                 type="button"
                 onClick={() => onRemove(shot.id)}

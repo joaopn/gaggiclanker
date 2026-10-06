@@ -327,7 +327,11 @@ export function VersionTimeline({
                       {profileName(shot)}
                     </span>
                     <span className="tabular-nums">{formatSeconds(shot.duration_ms)}</span>
-                    <ReviewBadge badge={shot.badge} warnings={shot.warnings} />
+                    <ReviewBadge
+                      badge={shot.badge}
+                      warnings={shot.warnings}
+                      reading={shot.reading}
+                    />
                     <RatingStars rating={judgement?.rating ?? shot.rating ?? null} />
                   </Link>
                 </li>
