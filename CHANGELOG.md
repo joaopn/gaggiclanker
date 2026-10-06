@@ -10,6 +10,68 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A shot's reading is claims you confirm one by one, and the chat hears only what you confirmed
+
+- **Breaking: every stored review is deleted, and so is any edit you made to the two review
+  prompts.** Migration 0048 replaces the review with the reading below, and the old reviews hold
+  a blind taste prediction (retired: taste stays yours), a paragraph and a summary, no claims,
+  and nothing a person wrote, so there is nothing to carry. Their ids are never handed out
+  again. **If you edited the `review` or `review-user` prompt on the Prompts page, that edit is
+  deleted** (the output they ask for no longer fits what a reading is checked against) and the
+  shipped prompts are put back at boot; the tiers you chose for the seven retired review items
+  go too. Nothing else is touched and no database needs deleting.
+- **A reading is claims about windows of the shot, with numbers the server worked out.** Started
+  by a click on one shot, it writes a one-sentence summary and 1 to 12 claims, each tied to a
+  phase, a span between two moments or the whole shot (so the curve can highlight it), with a
+  fault word from the fixed list or none, one sentence with no figures in it, and one to three
+  metric-language expressions. The server evaluates every expression on the shot and stores the
+  value, the unit, the kind of channel (measured, estimated, commanded), why it is absent when it
+  is, the limit the way a check words it ("at most 15 % of target", a share always a
+  percentage), and whether the expression's own comparison held: no number beside a claim was
+  typed by the model, and the summary carries none either. A claim whose comparison fails, or
+  whose evidence could not be measured at all, is kept
+  and marked as not borne out by the numbers. It also answers each free-text expectation of the
+  confirmed signature (held or not, where, in a sentence), and, when the Set version was filed
+  with a prediction, says how the shot moved against it (as predicted, partly, against, not
+  shown). It predicts no taste, advises nothing and proposes nothing: the output has no field for
+  any of them. Its input is the shot with its checks first, the Set version's recipe and
+  prediction, the signature's free-text expectations, the profile, the style, and the knowledge
+  rules and excerpts as before, and never your judgement, the machine's note, your label, another
+  shot or an earlier reading. Discarded shots cannot be read (409), nor quarantined ones (422).
+- **You confirm or reject each claim, and only confirmed claims reach the chat.** `PATCH
+  /api/reviews/{id}/claims/{claim_id}` with `{status: "confirmed" | "rejected", reason?}` answers
+  one (an answer can be changed), `POST /api/reviews/{id}/claims/confirm-all` confirms what is
+  still waiting (an optional body `{"except_kinds": ["prediction"]}` leaves claims of those kinds
+  waiting: the page holds a prediction's stance back until the shot has a decision, and an unknown
+  kind is a 422), and each returns the updated review. Only the newest finished reading of a shot
+  can be answered (409 `REVIEW_SUPERSEDED` otherwise). That reading is the one in force, for
+  everyone: reading again changes only the badge's words (`Reading…`, `Failed to run`) and the
+  sort bucket while it runs or if it fails, and sets the old one aside, confirmed claims
+  included, only when the new one finishes. The new event `review.answered` follows an answer in
+  another tab.
+  The chat's shot information has a **Reading** group in place of the Review one (all base):
+  whether the shot was read and how many claims are confirmed, unverified or rejected, the
+  confirmed claims with their numbers, and the confirmed stance on the prediction. The summary,
+  unconfirmed and rejected claims are never served, and a free-text answer enters the chat's
+  Checks only once confirmed. The SQL tool gains `v_review_claims` (confirmed claims of a
+  shot's newest finished reading only) and `v_reviews` loses its taste and summary columns and
+  gains counts. A prompt you edited keeps your text on boot: reset `chat-set`, `chat-general` and
+  `chat-design` on the Prompts page to read the new paragraph on readings.
+- **The badge is the verdict, built by code.** Every shot served in the list, the detail and the
+  fields route carries a `reading` block (`state`, `verdict`, how many claims are `unanswered`, the
+  failure `reason`, the `summary`, and `in_force_id`, the reading claims are answered through: the
+  newest finished one, which `review_id` (the newest attempt) differs from while one runs) and a `badge` that is the failures (`ramp: early yield +1`,
+  a free-text failure counting as a check of its expectation's tier and marked `unverified` until
+  you confirm it), `Review` (not read), `Reading…`, `Failed to run`, `As intended` or `No
+  signature`. Rejecting a failed answer takes it out of the verdict. The shots list sorts by
+  Review with the failures first, then `Failed to run`, `Reading…`, `No signature`, shots not
+  read yet, `As intended`, and last shots nobody can read, newest first within each. A
+  review's one running row per shot is now enforced by the database as well as by the task
+  registry, and the shot page's Review card shows the summary and citations until the claims get
+  their own card.
+- **A fix carried over from the signatures work.** The review's style detection and rule tokens no
+  longer read puck flow or pressure from a shot flagged without a pressure sensor.
+
 ### A profile can say what it is for, and every shot is checked against it
 
 - **A signature per profile version.** What a profile is for is written as expectations, each

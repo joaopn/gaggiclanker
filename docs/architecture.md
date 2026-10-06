@@ -72,7 +72,7 @@ the archive tells them apart by the profile a shot was brewed with.
 | Layer | What it owns |
 |---|---|
 | `api/` | One router per resource. Routes parse input and call services; they never build a response by hand. |
-| `review/`, `llm/`, `knowledge/` | A shot's review: one structured LLM call about one shot, started only by the shot page's button, given the shot's own information (never the judgement, the Set or another shot), the profile it brewed and the rules and passages its telemetry selects, and writing a blind taste prediction, a description and a summary to one `shot_reviews` row and nothing else. The knowledge base's three tiers: the rules, the prose, and the insights you have confirmed. |
+| `review/`, `llm/`, `knowledge/` | A shot's reading: one structured LLM call about one shot, started only by a person's click, given the shot's own information (checks first; never the judgement, the machine's note, the label, another shot or an earlier reading), the Set version's recipe and prediction, the confirmed signature's free-text expectations, the profile it brewed and the rules and passages its telemetry selects. Its output model is built per call (this shot's phase names, this reading's expectation ids, a `prediction` key only when there is one) and writes claims, each tied to a window with metric-language evidence **the server evaluates**; the finished `shot_reviews` row and its `review_claims` are written in one transaction, every claim `proposed` until a person confirms or rejects it. `reading.py` works the verdict, the reading state and the badge out at read time, for the person (everything not rejected, unconfirmed marked) and for the chat (confirmed only). The knowledge base's three tiers: the rules, the prose, and the insights you have confirmed. |
 | `drafts/` | Profile drafts: the write gate, generation from advice, and the four safety layers. Holds the gate every write to a machine passes. `board.py`/`board_plan.py`/`board_versions.py` are the profile list (every profile a person has had, switched on or off the machine, starred or not, with its versions and one active; a person puts a draft on it, which approves it, makes a version active, resolves a conflict) and the write phase of a sync that makes the machine hold exactly the profiles that are on, only with the switch on, built on `machine.py`'s `place` and `remove_profile`; `db/repos/profile_list.py` fills the list once at boot from everything stored; it is the only path from a draft to the machine. Creating a draft lives apart, in `DraftProposals`, which is built from the database and the settings alone; the chat's tools and the starting-point wizard get that, and the route-facing draft service (drafting, refining, discarding, recording a Set version) holds no machine connection either. |
 | `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
 | `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
@@ -451,8 +451,8 @@ conversation has.
 
 **A shot reaches a model in two tiers, from one catalogue.** Every item a shot
 carries — the checks (the signature's state, the warnings), each diagnostic as a number (no band, no score), each
-phase's metrics, each curve channel, the person's judgement, the shot's newest
-finished review — is one entry in
+phase's metrics, each curve channel, the person's judgement, what the person confirmed of the
+shot's newest finished reading — is one entry in
 `shotinfo/catalogue.py` with a stable key, what it means, a default tier, the
 function that renders it, a structured accessor (`{value, unit, phase, window,
 method, source}`) and a method id (`shotinfo/methods.py`) that names the
@@ -490,10 +490,28 @@ budget keeps (recognised by the stored tool name, sized again with the copy in
 place), and when it places one the run attaches none: the runner marks the run's
 `RunNotes` as sent, and `claude_code` is told at spawn through
 `GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT=1`. The stored rows keep what was sent at the time.
-A shot's review reads the same renderer with a fixed layout of its own: every
-item but the judgement, the machine's note, the version's recipe, the shot's
-Set, label and counted state, and earlier reviews, whatever the person's tiers
-say — the tiers govern what a chat is handed, never what a review reads.
+A shot's reading reads the same renderer with a fixed layout of its own: every
+item but the judgement, the machine's note, the label and counted state, and the
+Reading group (an earlier reading), whatever the person's tiers say — the tiers
+govern what a chat is handed, never what a reading reads. The Set version's recipe
+stays in, since the checks measure against it.
+
+**Nothing unconfirmed teaches the chat.** The Reading group (`reading_state`,
+`reading_claims`, `reading_prediction`, all base) serves the newest finished reading's
+*confirmed* claims, one line each (the window with its seconds, the fault word, the sentence,
+then the evidence sentences with their values), the confirmed stance on the Set version's
+prediction, and the counts of the rest. The reading's summary is never served: a person cannot
+confirm a sentence that is not a claim. A free-text expectation's answer enters the chat's
+Checks only once confirmed (`ShotFacts.shot_checks`, merged by
+`review/reading.py::merge_reading`); the person's own view of the same list
+(`review/reading.py::serve_reading`, which the shots list, the detail and the fields route all
+use) also holds the answers nobody has confirmed, marked `unverified`. **The reading in force is
+the shot's newest finished reading, for every viewer**: a newer one that is running, failed or
+interrupted changes only the badge's words and the sort bucket, and replaces nothing until it
+finishes `ok`. The `reading` block says which it is: `in_force_id` is that reading's review id
+(null with none), the id a claim is answered through, while `review_id` is the newest attempt's.
+`v_review_claims` filters to `status = 'confirmed'` of the newest finished reading in the view
+itself, so a query cannot read what was never confirmed.
 
 **A Set being designed is the third surface.** A Set created by the design
 route has a version 1 with no recipe and a `designing` flag, and while the flag
