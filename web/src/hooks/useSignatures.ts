@@ -1,4 +1,5 @@
 import {
+  type QueryClient,
   type UseMutationResult,
   type UseQueryResult,
   useMutation,
@@ -61,34 +62,50 @@ export function useSignatureOverrides(
 
 function answerMutation<Vars, Out>(
   mutationFn: (vars: Vars) => Promise<Out>,
+  /** What the answer already says, put in the cache before the refetch lands. */
+  remember?: (out: Out, queryClient: QueryClient) => void,
 ): () => UseMutationResult<Out, Error, Vars> {
   return function useAnswer() {
     const queryClient = useQueryClient();
     return useMutation({
       mutationFn,
+      onSuccess: (out) => remember?.(out, queryClient),
       onError: (error) => toast.error(error.message),
       onSettled: () => void invalidateSignatureAnswers(queryClient),
     });
   };
 }
 
+/**
+ * The answer carries the signature as it now stands, so the card shows it at once instead of
+ * waiting for the refetch the invalidation starts.
+ */
+function rememberSignature(answer: SignatureAnswer, queryClient: QueryClient): void {
+  queryClient.setQueryData(
+    queryKeys.signatures.version(answer.signature.profile_version_id),
+    answer.signature,
+  );
+}
+
 export const useConfirmExpectation = answerMutation<{ expectationId: number }, SignatureAnswer>(
   ({ expectationId }) => confirmExpectation(expectationId),
+  rememberSignature,
 );
 
 export const useRejectExpectation = answerMutation<
   { expectationId: number; reason: string },
   SignatureAnswer
->(({ expectationId, reason }) => rejectExpectation(expectationId, reason));
+>(({ expectationId, reason }) => rejectExpectation(expectationId, reason), rememberSignature);
 
 export const useSetExpectationTier = answerMutation<
   { expectationId: number; tier: SignatureTier },
   SignatureAnswer
->(({ expectationId, tier }) => setExpectationTier(expectationId, tier));
+>(({ expectationId, tier }) => setExpectationTier(expectationId, tier), rememberSignature);
 
 /** One call for the whole version: not one per expectation, so it is all or nothing. */
 export const useConfirmAllExpectations = answerMutation<{ versionId: number }, SignatureAnswer>(
   ({ versionId }) => confirmAllExpectations(versionId),
+  rememberSignature,
 );
 
 export const useConfirmOverride = answerMutation<

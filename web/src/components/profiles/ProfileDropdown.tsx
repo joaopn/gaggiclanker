@@ -7,6 +7,7 @@ import { ProfileJsonEditor } from "@/components/drafts/ProfileJsonEditor";
 import { ProfileSummary } from "@/components/drafts/ProfileSummary";
 import { ConflictPanel } from "@/components/profiles/ConflictPanel";
 import { ProposalPanel } from "@/components/profiles/ProposalPanel";
+import { SignatureCard } from "@/components/profiles/SignatureCard";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -233,6 +234,8 @@ function VersionItem({
           </div>
         )}
       </div>
+
+      <SignatureCard versionId={version.version_id} versions={view.versions} />
 
       <div className="flex flex-wrap gap-2">
         <Button

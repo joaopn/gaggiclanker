@@ -14,6 +14,7 @@ import {
 } from "@/test/boardFixtures";
 import { draft, draftDetail, draftProfile, yieldChange } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { signatureConfirmed, signatureNone } from "@/test/signatureFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
@@ -35,6 +36,7 @@ const api = vi.hoisted(() => ({
   importFiles: vi.fn(),
   previewProfileDraft: vi.fn(),
   createProfileDraft: vi.fn(),
+  getSignature: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -69,6 +71,7 @@ beforeEach(() => {
     versionsView([listedVersion({ version_id: 7, is_active: true })]),
   );
   api.getBoardConflict.mockResolvedValue(null);
+  api.getSignature.mockResolvedValue(signatureNone);
   api.getProfileDraft.mockResolvedValue(draftDetail());
   for (const name of [
     "setBoardOnMachine",
@@ -1281,6 +1284,29 @@ describe("links into the page", () => {
     const old = await screen.findByText("Old one");
     const li = old.closest("li") as HTMLElement;
     expect(await within(li).findByTestId("profile-dropdown")).toBeInTheDocument();
+  });
+
+  it("#version-N opens that version's Signature card, which a shot read without one links to", async () => {
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([listedVersion({ version_id: 99, is_active: true })]),
+    );
+    api.getSignature.mockResolvedValue({ ...signatureConfirmed, profile_version_id: 99 });
+    renderWithQueryClient(<ProfilesPage />, { initialEntries: ["/profiles#version-99"] });
+
+    const card = await screen.findByTestId("signature-card");
+    expect(api.getSignature).toHaveBeenCalledWith(99);
+    expect(card).toHaveAttribute("data-open", "yes");
+  });
+
+  it("shows each version's Signature card in its dropdown, closed when nothing waits", async () => {
+    const user = setupUser();
+    api.getSignature.mockResolvedValue(signatureConfirmed);
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    const card = await screen.findByTestId("signature-card");
+    expect(card).toHaveAttribute("data-open", "no");
+    expect(within(card).getByTestId("signature-summary")).toHaveTextContent("6 confirmed");
   });
 });
 
