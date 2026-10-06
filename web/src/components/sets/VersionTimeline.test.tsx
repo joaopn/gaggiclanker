@@ -22,14 +22,21 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getVocabulary, setVersionPrediction, setVersionOutcome, clearVersionOutcome, rollbackSet } =
-  vi.hoisted(() => ({
-    getVocabulary: vi.fn(),
-    setVersionPrediction: vi.fn(),
-    setVersionOutcome: vi.fn(),
-    clearVersionOutcome: vi.fn(),
-    rollbackSet: vi.fn(),
-  }));
+const {
+  getVocabulary,
+  setVersionPrediction,
+  setVersionOutcome,
+  clearVersionOutcome,
+  rollbackSet,
+  getSignatureOverrides,
+} = vi.hoisted(() => ({
+  getVocabulary: vi.fn(),
+  setVersionPrediction: vi.fn(),
+  setVersionOutcome: vi.fn(),
+  clearVersionOutcome: vi.fn(),
+  rollbackSet: vi.fn(),
+  getSignatureOverrides: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getVocabulary,
@@ -37,11 +44,13 @@ vi.mock("@/api/client", async (importOriginal) => ({
   setVersionOutcome,
   clearVersionOutcome,
   rollbackSet,
+  getSignatureOverrides,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   getVocabulary.mockResolvedValue(vocabulary);
+  getSignatureOverrides.mockResolvedValue({ items: [] });
   setVersionPrediction.mockResolvedValue(version());
   setVersionOutcome.mockResolvedValue(version());
   clearVersionOutcome.mockResolvedValue(version());

@@ -18,6 +18,12 @@ import {
   trends,
   vocabulary,
 } from "@/test/setsFixtures";
+import {
+  overrideConfirmed,
+  signatureConfirmed,
+  signatureNone,
+  signatureProposed,
+} from "@/test/signatureFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -77,6 +83,8 @@ const {
   putOnBoard,
   acceptSetProposal,
   discardDesign,
+  getSignature,
+  getSignatureOverrides,
 } = vi.hoisted(() => ({
   getSet: vi.fn(),
   getSetTrends: vi.fn(),
@@ -96,6 +104,8 @@ const {
   putOnBoard: vi.fn(),
   acceptSetProposal: vi.fn(),
   discardDesign: vi.fn(),
+  getSignature: vi.fn(),
+  getSignatureOverrides: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -111,6 +121,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   putOnBoard,
   acceptSetProposal,
   discardDesign,
+  getSignature,
+  getSignatureOverrides,
 }));
 
 beforeEach(() => {
@@ -123,6 +135,8 @@ beforeEach(() => {
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   rollbackSet.mockResolvedValue(setDetail().versions[0].version);
+  getSignature.mockResolvedValue(signatureNone);
+  getSignatureOverrides.mockResolvedValue({ items: [] });
   getProfileVersions.mockResolvedValue({
     items: [
       {
@@ -1033,5 +1047,56 @@ describe("SetDetailPage, a Set being designed", () => {
     expect(screen.queryByTestId("design-brief")).not.toBeInTheDocument();
     expect(screen.getByTestId("set-automatch")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Stop filing shots here/ })).toBeInTheDocument();
+  });
+});
+
+describe("SetDetailPage signature", () => {
+  it("says whether the profile the Set brews has a signature, and links to its card", async () => {
+    getSignature.mockResolvedValue(signatureConfirmed);
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByTestId("set-signature-state")).toHaveTextContent(
+      "confirmed, 6 expectations",
+    );
+    // The current version's profile, not another: version 22 is v2 and brews profile version 7.
+    expect(getSignature).toHaveBeenCalledWith(7);
+    expect(screen.getByTestId("set-signature-link")).toHaveAttribute("href", "/profiles#version-7");
+    expect(screen.getByTestId("set-signature-link")).toHaveTextContent("Open it on Profiles");
+  });
+
+  it("says a proposed signature is not confirmed, and none says so", async () => {
+    getSignature.mockResolvedValue(signatureProposed);
+    const first = renderWithQueryClient(<SetDetailPage />);
+    expect(await screen.findByTestId("set-signature-state")).toHaveTextContent(
+      "6 proposed, none confirmed",
+    );
+    expect(screen.getByTestId("set-signature-link")).toHaveTextContent("Answer it on Profiles");
+    first.unmount();
+
+    getSignature.mockResolvedValue(signatureNone);
+    renderWithQueryClient(<SetDetailPage />);
+    expect(await screen.findByTestId("set-signature-state")).toHaveTextContent("none yet");
+    // Nothing waits on the Profiles card, so it is not offered: the Set's chat is.
+    expect(screen.queryByTestId("set-signature-link")).toBeNull();
+    expect(screen.queryByText(/Answer it on Profiles/)).toBeNull();
+    const chat = screen.getByTestId("set-signature-chat").getAttribute("href") ?? "";
+    expect(chat).toContain("set=3");
+    expect(chat).toContain("version=22");
+  });
+
+  it("shows an override on the version it belongs to and on no other", async () => {
+    getSignatureOverrides.mockImplementation(async (_set: number, versionId: number) => ({
+      items: versionId === 22 ? [{ ...overrideConfirmed, set_version_id: 22 }] : [],
+    }));
+    renderWithQueryClient(<SetDetailPage />);
+
+    const entries = await screen.findAllByTestId("version-entry");
+    const v2 = entries.find((e) => e.dataset.version === "v2") as HTMLElement;
+    const v1 = entries.find((e) => e.dataset.version === "v1") as HTMLElement;
+    expect(await within(v2).findByTestId("override-limit")).toHaveTextContent(
+      "at most 20 % of target here (profile: at most 15 % of target)",
+    );
+    await waitFor(() => expect(getSignatureOverrides).toHaveBeenCalledWith(3, 21));
+    expect(within(v1).queryByTestId("version-overrides")).toBeNull();
   });
 });

@@ -41,8 +41,32 @@ first (`POST /api/backup`), because there is no down-migration.
   `POST /api/profile-versions/{id}/signature/confirm-all`, and, for a Set version's override,
   `GET /api/sets/{id}/versions/{id}/signature-overrides` with `POST
   /api/sets/{id}/signature-overrides/{id}/confirm`, `/reject` and `/withdraw` (a person can take
-  back a confirmed override, after which a new one can be proposed). The screens for them come
-  next.
+  back a confirmed override, after which a new one can be proposed). An override's limits are
+  also served as a person reads them (`limit_text`, `profile_limit_text`: "at most 20 % of
+  target").
+- **Confirm a signature on the Profiles page.** Every profile version has a **Signature** card,
+  open when something waits for an answer. It lists the expectations in tier order with their
+  phase, sentence, fault word, kind (computed, phase reached, warning expected, checked by the
+  reading) and status. A proposed one can be **confirmed**, **rejected** (with an optional
+  reason, which the proposing conversation is told) or moved to another tier, and **Confirm all**
+  answers every waiting one with one call. One carried from an earlier version says which, one
+  whose phase the version no longer has says **needs a new phase** and cannot be confirmed, and
+  who proposed one links to the conversation or the draft. A version nobody proposed anything
+  for says so and links to the chats of the Sets that brew it. An expression cannot be edited
+  by hand: ask the agent to propose it again.
+- **The shot page shows Checks, and the Review badge is coloured by them.** The Warnings card is
+  now **Checks**, in the same place above the judgement: red, amber and grey lines as the
+  server orders them, each with its value against its limit ("117.2 % of target, at most 15 % of
+  target"), with the held ones and the ones only a reading can check folded away under their
+  count. A shot read without a confirmed signature says so and links to the version's Signature
+  card. The Review badge has the same text as before and takes its colour from its first entry:
+  red, amber, or grey for a warning the signature expects (a turbo's fast flow). The shots list's
+  open row shows the entries its row carries; the shot page shows them all.
+- **The Set page shows its profile's signature.** The Now brewing card says whether the current
+  version's profile has a signature (confirmed with N expectations, proposed, or none) and links
+  to it. A Set version's overrides show on that version ("ramp: at most 20 % of target here
+  (profile: at most 15 % of target)"), where a proposed one is confirmed or rejected and a
+  confirmed one withdrawn.
 - **The Warnings group is now Checks.** A shot's checks are one ordered list: failed critical
   expectations (red), failed important ones (amber), the universal warnings nothing marks as
   expected (amber), expected warnings (grey), what could not be measured (with its reason:

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { SetRevertRow, SetVersionDetail, ShotJudgement } from "@/api/types";
 import { VersionEvidence } from "@/components/sets/VersionEvidence";
 import { VersionOutcomeControl } from "@/components/sets/VersionOutcomeControl";
+import { VersionOverrides } from "@/components/sets/VersionOverrides";
 import { VersionPredictionEditor } from "@/components/sets/VersionPredictionEditor";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ReviewBadge } from "@/components/shots/ReviewBadge";
@@ -256,6 +257,12 @@ export function VersionTimeline({
             )
           ) : null}
         </div>
+
+        <VersionOverrides
+          setId={setId}
+          versionId={entry.version.id}
+          profileVersionId={entry.version.profile_version_id ?? null}
+        />
 
         {entry.version.restores_version_label ? (
           <p className="text-muted-foreground text-xs" data-testid="version-restores">

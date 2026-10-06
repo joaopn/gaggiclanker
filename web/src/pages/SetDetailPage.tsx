@@ -20,6 +20,7 @@ import {
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import { RollbackButton } from "@/components/sets/RollbackButton";
 import { SetInsights } from "@/components/sets/SetInsights";
+import { SetSignatureLine } from "@/components/sets/SetSignatureLine";
 import { SetSpread } from "@/components/sets/SetSpread";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { Badge } from "@/components/ui/badge";
@@ -209,6 +210,13 @@ export function SetDetailPage() {
             version{row.version_count === 1 ? "" : "s"}. Changing the grind, the dose or the profile
             records a new version, so the archive can tell you what the change did.
           </p>
+        )}
+        {row.designing ? null : (
+          <SetSignatureLine
+            profileVersionId={current?.profile_version_id ?? null}
+            setId={row.id}
+            setVersionId={current?.id ?? null}
+          />
         )}
       </SectionCard>
 
