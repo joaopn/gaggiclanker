@@ -278,3 +278,54 @@ async def test_a_draft_does_not_store_an_expectation_its_version_already_carries
     # "Confirm all" confirms each once.
     confirmed = await SignatureRepository(archive.db).confirm_all(draft.draft_version_id)
     assert len(confirmed) == 2
+
+
+# ── unconfirmed never teaches ────────────────────────────────────────
+
+
+async def _shot_texts(ctx: ToolContext, archive: Fixture) -> dict[str, str]:
+    shot = archive.shots[-1]
+    other = archive.shots[-2]
+    texts: dict[str, str] = {}
+    for name in ("get_shot", "get_shot_extended", "get_shot_full"):
+        texts[name] = str(await call(ctx, name, shot_id=shot))
+    texts["compare_shots"] = str(await call(ctx, "compare_shots", shot_ids=[shot, other]))
+    texts["list_set_shots"] = str(await call(ctx, "list_set_shots"))
+    return texts
+
+
+async def test_no_shot_tool_tells_an_agent_an_expectation_nobody_confirmed(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    waiting = "pressure falls together with flow through the ramp down"
+    service = SignatureService(archive.db)
+    proposed, rejected, confirmed = await service.propose(
+        archive.profile_version_id,
+        [
+            ExpectationInput(tier="context", kind="free_text", text=waiting, fault="unstable"),
+            ExpectationInput(
+                tier="context", kind="free_text", text="the rejected one", fault="unstable"
+            ),
+            ExpectationInput(
+                tier="context", kind="free_text", text="the confirmed one", fault="unstable"
+            ),
+        ],
+        reason="r",
+    )
+    repo = SignatureRepository(archive.db)
+    await repo.answer(rejected.id, confirm=False, reject_reason="no")
+    texts = await _shot_texts(set_ctx, archive)
+
+    assert proposed.status == "proposed"
+    for name, text in texts.items():
+        assert waiting not in text, name
+        assert "the rejected one" not in text, name
+        assert "read without a signature" in text or name == "get_shot_extended", name
+
+    await repo.answer(confirmed.id, confirm=True)
+    after = await _shot_texts(set_ctx, archive)
+    assert "signature: confirmed, 1 expectation" in after["get_shot"]
+    assert "the confirmed one" in after["get_shot_extended"]
+    assert "the confirmed one" not in after["get_shot"], "free text is extended, not base"
+    for text in after.values():
+        assert waiting not in text and "the rejected one" not in text

@@ -57,6 +57,7 @@ from gaggiclanker.domain.models import (
 )
 from gaggiclanker.knowledge.rules import SetContext, render_rules
 from gaggiclanker.review.style import detect_style
+from gaggiclanker.signatures.lines import signature_answers_block, signature_block
 from gaggiclanker.starting.context import (
     planned_style,
     render_similar,
@@ -90,8 +91,12 @@ _GOAL_CHARS = 2000
 _NOTE_CHARS = 300
 
 
-async def design_context(db: Database, set_id: int) -> str:
-    """The design brief and the evidence, as markdown, or "" for a Set that is gone."""
+async def design_context(db: Database, set_id: int, *, thread_id: int | None = None) -> str:
+    """The design brief and the evidence, as markdown, or "" for a Set that is gone.
+
+    ``thread_id`` is the conversation, which is told what **it** proposed as signature
+    expectations and what the person did with each (and nothing any other conversation did).
+    """
     sets = SetsRepository(db)
     row = await sets.get(set_id)
     if row is None:
@@ -135,7 +140,14 @@ async def design_context(db: Database, set_id: int) -> str:
     lines += _heading(row, bean, grinder)
     lines += ["", *_brief(row, grinder)]
     lines += ["", *_fork_block(fork)]
+    if fork is not None and fork.profile:
+        # What the profile to fork is for, as the person confirmed it: the new profile is
+        # derived from it, so its intent is the strongest statement of what to keep.
+        lines += await signature_block(db, fork.id, None, thread_id)
     lines += ["", *await _card_block(db, row)]
+    signed = await signature_answers_block(db, thread_id)
+    if signed:
+        lines += ["", *signed]
     lines += ["", *await _siblings_block(db, row)]
     lines += ["", "SIMILAR SETS ON THIS GRINDER (other beans)", render_similar(similar)]
     lines += [

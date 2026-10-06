@@ -66,6 +66,7 @@ from gaggiclanker.domain.vocab import SPREAD_MEASURES, MeasureTerm, SpreadMeasur
 from gaggiclanker.shotinfo.catalogue import Tier, effective_tiers
 from gaggiclanker.shotinfo.downsample import CURVE_POINTS
 from gaggiclanker.shotinfo.render import load_shots, needs_samples, render_shot
+from gaggiclanker.signatures.lines import signature_answers_block, signature_block
 from gaggiclanker.tools.scope import ToolScope
 
 __all__ = [
@@ -158,7 +159,7 @@ async def opening_context(
         # because that module renders with this one's helpers.
         from gaggiclanker.chat.design_context import design_context
 
-        return await design_context(db, scope.set_id)
+        return await design_context(db, scope.set_id, thread_id=thread_id)
     sets = SetsRepository(db)
     row = await sets.get(scope.set_id)
     if row is None:
@@ -201,7 +202,7 @@ async def opening_context(
     }
     lines: list[str] = []
     # First, and nothing that moves between turns before it: see `_profile_block`.
-    lines += await _profile_block(db, version, compared)
+    lines += await _profile_block(db, version, compared, thread_id)
     lines += [""]
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
     lines += await _reverts_block(sets, version)
@@ -229,6 +230,9 @@ async def opening_context(
     proposed = await _proposed_insights_block(db, thread_id)
     if proposed:
         lines += ["", *proposed]
+    signed = await signature_answers_block(db, thread_id)
+    if signed:
+        lines += ["", *signed]
     deletions = await _proposed_deletions_block(db, thread_id)
     if deletions:
         lines += ["", *deletions]
@@ -330,7 +334,10 @@ async def _reverts_block(sets: SetsRepository, version: SetVersionRow) -> list[s
 
 
 async def _profile_block(
-    db: Database, version: SetVersionRow, compared: SetVersionRow | None
+    db: Database,
+    version: SetVersionRow,
+    compared: SetVersionRow | None,
+    thread_id: int | None = None,
 ) -> list[str]:
     """The profile this version brews, in full, and the compared version's when it differs.
 
@@ -356,6 +363,10 @@ async def _profile_block(
     """
     own = await _profile_text(db, version.profile_version_id, version.profile_label)
     lines = [f"THE PROFILE {version.version_label} BREWS", *own]
+    if version.profile_version_id is not None:
+        # What it is for, right under the document: the confirmed signature, or the sentence
+        # saying there is none. Changes only when a person confirms something.
+        lines += await signature_block(db, version.profile_version_id, version.id, thread_id)
     if (
         compared is not None
         and compared.profile_version_id is not None

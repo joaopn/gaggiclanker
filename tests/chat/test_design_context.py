@@ -239,3 +239,56 @@ async def test_once_the_recipe_is_written_the_design_block_is_gone(kitchen: Fixt
     assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in rendered
     assert "THIS BEAN'S OTHER SETS" not in rendered
     assert "Kenya AA on the Mazzer" not in rendered
+
+
+async def test_the_design_is_told_what_the_forked_profile_is_for_and_what_it_proposed(
+    kitchen: Fixture,
+) -> None:
+    from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
+    from gaggiclanker.db.repos.signatures import SignatureRepository
+    from gaggiclanker.domain.signature import ExpectationInput
+    from gaggiclanker.signatures.service import SignatureService
+
+    designed = await _forked_design(kitchen)
+    created = await ChatRepository(kitchen.db).create_thread(
+        ChatThreadWrite(title="design", set_id=designed.id)
+    )
+    assert created.thread is not None
+    thread = created.thread.id
+    profile_id = kitchen.profile_version_id
+    plain = await design_context(kitchen.db, designed.id, thread_id=thread)
+    assert "This profile version has no confirmed signature" in plain
+    assert f"propose_signature (profile version {profile_id})" in plain
+
+    first, second = await SignatureService(kitchen.db).propose(
+        profile_id,
+        [
+            ExpectationInput(
+                tier="critical", kind="free_text", text="the bloom holds", fault="unstable"
+            ),
+            ExpectationInput(
+                tier="context", kind="free_text", text="the finish tapers", fault="unstable"
+            ),
+        ],
+        reason="what the fork is for",
+        thread_id=thread,
+    )
+    repo = SignatureRepository(kitchen.db)
+    waiting = await design_context(kitchen.db, designed.id, thread_id=thread)
+    # Proposed, not confirmed: told to the proposing conversation only.
+    assert "the bloom holds (proposed, not confirmed" in waiting
+    assert "the bloom holds" not in await design_context(kitchen.db, designed.id)
+    assert "This profile version has no confirmed signature" in waiting
+
+    await repo.answer(first.id, confirm=True)
+    await repo.answer(second.id, confirm=False, reject_reason="not for a fork")
+    answered = await design_context(kitchen.db, designed.id, thread_id=thread)
+    assert f"What profile version {profile_id} is FOR" in answered
+    assert (
+        f"- #{first.id} critical, whole shot, free_text "
+        "(checked by the reading, fails as unstable): the bloom holds" in answered
+    )
+    assert 'the finish tapers (rejected by the person. They said: "not for a fork"' in answered
+    # The confirmed signature is told to every reader of the design, the rejection to nobody else.
+    other = await design_context(kitchen.db, designed.id)
+    assert "the bloom holds" in other and "the finish tapers" not in other

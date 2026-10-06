@@ -54,11 +54,14 @@ from gaggiclanker.db.repos.sets import (
     VersionOutcomeWrite,
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
+from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings import SETTINGS_REGISTRY
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
 from tests.sets.conftest import make_profile_version
@@ -1300,13 +1303,50 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
         experiment.set_id, RollbackWrite(to_version_id=version.id, note="One finer was no better")
     )
     states.append(("a revert", await render()))
-
     previous = first
     for name, rendered in states:
         assert rendered != previous, name
         assert _first_difference(previous, rendered) > block_end, name
         assert rendered[:block_end] == first[:block_end], name
         previous = rendered
+
+    # What the signature *means* may move the block, and nothing else may. A proposal from this
+    # conversation changes one sentence in it (it says they are waiting instead of asking again);
+    # a rejection puts the ask back; a confirmation puts the signature there, under the document
+    # and ahead of everything that moves.
+    thread = await _thread(db, experiment.set_id, version.id)
+
+    async def render_for_thread() -> str:
+        return await opening_context(db, scope, thread_id=thread)
+
+    own = await SignatureService(db).propose(
+        version.profile_version_id or 0,
+        [ExpectationInput(tier="critical", kind="reached", phase="Hammer")],
+        reason="the last phase is the point",
+        thread_id=thread,
+    )
+    waiting = await render_for_thread()
+    assert "You proposed 1 expectation for it: waiting for the person" in waiting[:block_end]
+    assert "propose one with propose_signature" not in waiting
+    assert _first_difference(previous, waiting) < block_end
+
+    await SignatureRepository(db).answer(own[0].id, confirm=False, reject_reason="too obvious")
+    rejected = await render_for_thread()
+    assert "propose one with propose_signature" in rejected[:block_end]
+    assert rejected[:block_end] == previous[:block_end]
+
+    (again,) = await SignatureService(db).propose(
+        version.profile_version_id or 0,
+        [ExpectationInput(tier="critical", kind="reached", phase="Hammer")],
+        reason="r",
+        thread_id=thread,
+    )
+    await SignatureRepository(db).answer(again.id, confirm=True)
+    confirmed = await render_for_thread()
+    assert _first_difference(rejected, confirmed) < block_end
+    assert (
+        "critical, Hammer, reached (fails as skipped): the Hammer begins" in confirmed[:block_end]
+    )
 
 
 async def test_a_version_with_no_profile_says_so(experiment: Experiment) -> None:
@@ -1445,3 +1485,260 @@ async def test_a_profile_with_words_beyond_ascii_is_shown_as_stored(tmp_path: Pa
         assert "Café crème 「試」" in stored_document_json(stored)
     finally:
         await db.close()
+
+
+# ── the signature ────────────────────────────────────────────────────
+
+
+async def _thread(db: Database, set_id: int, version_id: int) -> int:
+    from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
+
+    created = await ChatRepository(db).create_thread(
+        ChatThreadWrite(title="t", set_id=set_id, set_version_id=version_id)
+    )
+    assert created.thread is not None
+    return created.thread.id
+
+
+SIGNATURE_HEADING = "What profile version {id} is FOR (its signature:"
+
+EXPECTATIONS = [
+    ExpectationInput(tier="critical", kind="reached", phase="Hammer"),
+    ExpectationInput(
+        tier="critical",
+        kind="measure",
+        expression={
+            "channel": "cup_weight",
+            "op": "at_end",
+            "window": {"phase": "Ramp down"},
+            "relative_to": "target_yield",
+            "compare": {"op": "<=", "value": 0.8},
+        },
+    ),
+    ExpectationInput(
+        tier="important",
+        kind="measure",
+        expression={
+            "channel": "scale_flow",
+            "op": "max",
+            "window": {"phase": "Pressurise"},
+            "compare": {"op": "<=", "value": 3},
+        },
+    ),
+    ExpectationInput(
+        tier="important", kind="expects_warning", warning="fast flow", phase="Ramp down"
+    ),
+    ExpectationInput(
+        tier="context",
+        kind="measure",
+        expression={
+            "channel": "temperature",
+            "op": "mean",
+            "compare": {"op": "between", "low": 88, "high": 96},
+        },
+    ),
+    ExpectationInput(
+        tier="context",
+        kind="free_text",
+        text="pressure and flow fall together through the ramp down",
+        fault="unstable",
+    ),
+]
+
+
+async def test_a_profile_with_no_confirmed_signature_says_so_and_asks_for_one(
+    experiment: Experiment,
+) -> None:
+    profile_id = await _own_profile_version(experiment)
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+
+    # Pinned as the whole sentence: it is what asks the chat to propose, once, when the
+    # conversation turns to how the shots behave (not at every first message).
+    assert (
+        "This profile version has no confirmed signature, so its shots are read without one. "
+        "When the conversation turns to how its shots behave, propose one with "
+        f"propose_signature (profile version {profile_id}): what the profile is built to do, "
+        "in a few expectations, never what one shot did. Nothing you propose is checked "
+        "against a shot until the person confirms it."
+    ) in rendered
+    assert SIGNATURE_HEADING.format(id=profile_id) not in rendered
+    assert rendered.index("propose_signature") < rendered.index("THIS CONVERSATION IS ABOUT")
+
+
+async def test_only_the_confirmed_signature_is_in_the_block_tier_first(
+    experiment: Experiment,
+) -> None:
+    db = experiment.db
+    profile_id = await _own_profile_version(experiment)
+    rows = await SignatureService(db).propose(profile_id, EXPECTATIONS, reason="what it is for")
+    repo = SignatureRepository(db)
+    # Confirm all but the first (kept proposed) and the free-text one (rejected).
+    await repo.answer(rows[5].id, confirm=False, reject_reason="not this one")
+    for row in rows[1:5]:
+        await repo.answer(row.id, confirm=True)
+
+    rendered = await opening_context(db, ToolScope.for_thread(experiment.set_id, experiment.v5))
+
+    block_end = rendered.index("THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET")
+    block = rendered[:block_end]
+    lines = [line for line in block.splitlines() if line.startswith("- #")]
+    assert [line.removeprefix("- #").split(" ", 1)[1].split(": ")[0] for line in lines] == [
+        "critical, Ramp down, measure (fails as early yield)",
+        "important, Pressurise, measure (fails as fast flow)",
+        "important, Ramp down, expects_warning (fast flow is part of the design)",
+        "context, whole shot, measure (fails as temperature)",
+    ]
+    assert "no confirmed signature" not in rendered
+    # Nothing proposed or rejected is anywhere in the context, not even after the block.
+    assert "the Hammer begins" not in rendered
+    assert "pressure and flow fall together" not in rendered
+
+
+async def test_a_confirmed_override_states_the_versions_own_limit_beside_the_profiles(
+    experiment: Experiment,
+) -> None:
+    from tests.signatures.helpers import make_set_versions  # noqa: F401
+
+    db = experiment.db
+    profile_id = await _own_profile_version(experiment)
+    rows = await SignatureService(db).propose(profile_id, EXPECTATIONS[1:2], reason="r")
+    repo = SignatureRepository(db)
+    await repo.answer(rows[0].id, confirm=True)
+    proposal = await SignatureService(db).propose_override(
+        set_version_id=experiment.v5,
+        profile_version_id=profile_id,
+        expectation_id=rows[0].id,
+        compare={"op": "<=", "value": 1.0},
+        reason="a coarser bean",
+        thread_id=None,
+    )
+    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    waiting = await opening_context(db, scope)
+    assert "this version's limit" not in waiting
+
+    await repo.answer_override(proposal.id, confirm=True)
+    rendered = await opening_context(db, scope)
+    assert (
+        "cup weight at the end of the Ramp down, as a share of the target yield, at most 1 "
+        "(this version's limit; the profile's is at most 0.8)"
+    ) in rendered
+    # Another version of the Set reads the profile's own limit.
+    other = await opening_context(db, ToolScope.for_thread(experiment.set_id, experiment.v4))
+    assert "this version's limit" not in other
+
+
+async def test_the_proposing_conversation_sees_its_proposals_as_proposed_and_is_told_a_reason(
+    experiment: Experiment,
+) -> None:
+    db = experiment.db
+    profile_id = await _own_profile_version(experiment)
+    mine = await _thread(db, experiment.set_id, experiment.v5)
+    other = await _thread(db, experiment.set_id, experiment.v5)
+    service = SignatureService(db)
+    first, second = await service.propose(profile_id, EXPECTATIONS[:2], reason="r", thread_id=mine)
+    await service.propose(profile_id, EXPECTATIONS[2:3], reason="r", thread_id=other)
+    repo = SignatureRepository(db)
+    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+
+    waiting = await opening_context(db, scope, thread_id=mine)
+    assert "SIGNATURE EXPECTATIONS YOU PROPOSED IN THIS CONVERSATION" in waiting
+    assert "the Hammer begins (proposed, not confirmed: the person has not answered" in waiting
+    assert "highest value of scale flow" not in waiting, "another conversation's is not told"
+    # It is not asked to propose one while its own proposals wait: it is told they wait.
+    assert "You proposed 2 expectations for it: waiting for the person" in waiting
+    assert "propose one with propose_signature" not in waiting
+    # Nobody else is told: another thread sees only its own, a context with no thread nothing.
+    elsewhere = await opening_context(db, scope, thread_id=other)
+    assert "the Hammer begins" not in elsewhere
+    assert "highest value of scale flow in the Pressurise" in elsewhere
+    assert "You proposed 1 expectation for it: waiting for the person" in elsewhere
+    assert "YOU PROPOSED IN THIS CONVERSATION" not in await opening_context(db, scope)
+
+    await repo.answer(first.id, confirm=False, reject_reason="  the cup says it already ")
+    await repo.answer(second.id, confirm=True)
+    answered = await opening_context(db, scope, thread_id=mine)
+    assert (
+        'the Hammer begins (rejected by the person. They said: "the cup says it already". '
+        "Do not propose it again as it was.)"
+    ) in answered
+    assert "(confirmed by the person: it is in the signature above.)" in answered
+    # What the person rejected is nowhere else: not in the block, not as a check.
+    assert answered.count("the Hammer begins") == 1
+
+
+async def test_a_signature_of_six_expectations_is_a_few_hundred_tokens(
+    experiment: Experiment,
+) -> None:
+    """A measured figure, not a promise: the block's signature is about this long."""
+    from gaggiclanker.signatures.lines import signature_block
+
+    db = experiment.db
+    profile_id = await _own_profile_version(experiment)
+    rows = await SignatureService(db).propose(profile_id, EXPECTATIONS, reason="r")
+    await SignatureRepository(db).confirm_all(profile_id)
+    assert len(rows) == 6
+    block = "\n".join(await signature_block(db, profile_id, experiment.v5))
+
+    # About four characters to a token for this kind of text: 150 to 300 tokens.
+    assert 600 < len(block) < 1200, len(block)
+
+
+async def test_get_profile_serves_the_confirmed_signature_and_nothing_else(
+    experiment: Experiment,
+) -> None:
+    db = experiment.db
+    profile_id = await _own_profile_version(experiment)
+    rows = await SignatureService(db).propose(profile_id, EXPECTATIONS[:2], reason="r")
+    ctx = ToolContext(
+        db=db,
+        settings=SettingsService(SettingsRepository(db)),
+        knowledge=KnowledgeService(db),
+        scope=ToolScope.for_thread(experiment.set_id, experiment.v5),
+        caller="test",
+        permissions=CHAT_PERMISSIONS,
+    )
+    served = await registry.dispatch(ctx, "get_profile", {"profile_version_id": profile_id})
+    assert served.ok and served.data["signature"] == []
+
+    await SignatureRepository(db).answer(rows[1].id, confirm=True)
+    served = await registry.dispatch(ctx, "get_profile", {"profile_version_id": profile_id})
+    assert served.data["signature"] == [
+        f"#{rows[1].id} critical, Ramp down, measure (fails as early yield): cup weight at the "
+        "end of the Ramp down, as a share of the target yield, at most 0.8"
+    ]
+
+
+async def test_a_withdrawn_override_is_told_as_withdrawn_not_as_waiting(
+    experiment: Experiment,
+) -> None:
+    db = experiment.db
+    profile_id = await _own_profile_version(experiment)
+    thread = await _thread(db, experiment.set_id, experiment.v5)
+    service = SignatureService(db)
+    repo = SignatureRepository(db)
+    (row,) = await service.propose(profile_id, EXPECTATIONS[1:2], reason="r")
+    await repo.answer(row.id, confirm=True)
+    override = await service.propose_override(
+        set_version_id=experiment.v5,
+        profile_version_id=profile_id,
+        expectation_id=row.id,
+        compare={"op": "<=", "value": 1.0},
+        reason="a coarser bean",
+        thread_id=thread,
+    )
+    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    waiting = await opening_context(db, scope, thread_id=thread)
+    assert "a different limit for expectation #" in waiting
+    assert "at most 1 (proposed, not confirmed: the person has not answered)" in waiting
+
+    await repo.answer_override(override.id, confirm=True)
+    await repo.withdraw_override(override.id)
+    withdrawn = await opening_context(db, scope, thread_id=thread)
+    assert (
+        "at most 1 (confirmed, then withdrawn by the person: this version reads the profile's "
+        "limit again, and you may propose another)"
+    ) in withdrawn
+    assert "not answered" not in withdrawn
+    assert "this version's limit" not in withdrawn  # nothing states it as the limit any more

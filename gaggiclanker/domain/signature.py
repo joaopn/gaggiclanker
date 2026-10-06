@@ -76,6 +76,7 @@ __all__ = [
     "SignatureState",
     "ValidExpectation",
     "build_checks",
+    "expectation_line",
     "fault_for_failure",
     "fault_words",
     "phase_key",
@@ -983,3 +984,44 @@ def build_checks(
         checks=tuple(checks),
         state=SignatureState(profile_version_id=profile_version_id, confirmed=len(expectations)),
     )
+
+
+def _fault_phrase(exp: ExpectationLike) -> str:
+    """What a failure of the expectation is called, for a line a model or a person reads."""
+    if exp.kind == "expects_warning":
+        return f"{exp.warning_fault} is part of the design"
+    if exp.kind == "measure":
+        expr = exp.expression
+        if expr is None or expr.compare is None:
+            return "cannot be read"
+        under, over = _failing_directions(expr.compare)
+        words = fault_words(expr)
+        found = [
+            w
+            for w in dict.fromkeys((words.under if under else None, words.over if over else None))
+            if w
+        ]
+        return "fails as " + " or ".join(found)
+    if exp.kind == "free_text":
+        return f"checked by the reading, fails as {exp.fault}"
+    return f"fails as {exp.fault}"
+
+
+def expectation_line(exp: ExpectationLike, override: Compare | None = None) -> str:
+    """One expectation as one line, tier first.
+
+    ``critical, ramp, measure (fails as early yield): the sentence``.
+
+    ``override`` is the filed Set version's confirmed limit, which the line then states with
+    the profile's own beside it.
+    """
+    sentence = exp.sentence
+    note = ""
+    if override is not None and exp.kind == "measure" and exp.expression is not None:
+        if exp.expression.compare is not None:
+            note = (
+                f" (this version's limit; the profile's is {compare_words(exp.expression.compare)})"
+            )
+        sentence = render(exp.expression.model_copy(update={"compare": override}))
+    where = exp.phase if exp.phase else "whole shot"
+    return f"{exp.tier}, {where}, {exp.kind} ({_fault_phrase(exp)}): {sentence}{note}"

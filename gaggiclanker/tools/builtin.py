@@ -70,6 +70,7 @@ from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.glossary import extended_meanings
 from gaggiclanker.shotinfo.render import load_shots, needs_samples, render_shot, with_samples
 from gaggiclanker.shotinfo.search import SEARCH_LIMIT, ShotQuery, search_shots
+from gaggiclanker.signatures.lines import signature_lines
 from gaggiclanker.signatures.service import DraftSignature, SignatureService, validate_all
 from gaggiclanker.tools.registry import ToolContext, tool
 from gaggiclanker.tools.scope import DESIGN_RULE
@@ -349,8 +350,10 @@ async def get_shot(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
     permission="read",
     description=(
         "One shot's extended information, without its base lines: temperature, pressure and "
-        "flow statistics, profile compliance, one line per phase (the pressure, the flows, "
-        "the water, the temperature, the adherence and the resistance; each phase's name, "
+        "flow statistics, profile compliance, the checks that held (and the context and "
+        "free-text expectations) of a confirmed signature, one line per phase (the pressure, "
+        "the flows, the water, the temperature, the adherence and the resistance; each "
+        "phase's name, "
         "duration, how it ended and its cup at the end are in base) and the "
         "curve as one table (its shape and every moment the diagnostics are about, not every "
         "sample). Ask for it when the base lines raise a question the shape of the shot "
@@ -875,6 +878,10 @@ class GetProfileOutput(_Model):
     #: The version's stored canonical document, whole.
     document: dict[str, Any]
     recipe: ProfileRecipeFacts
+    #: What the profile is for: the lines of its **confirmed** signature, tier first, each with
+    #: the expectation's id. Empty when it has none; a proposed or rejected expectation is
+    #: never here.
+    signature: list[str] = Field(default_factory=list)
     #: How many of the archive's shots were pulled with it. Only in a general
     #: conversation: see :func:`list_profiles` for why a Set's does not get it.
     shot_count: int | None = None
@@ -929,6 +936,7 @@ async def get_profile(ctx: ToolContext, args: GetProfileInput) -> GetProfileOutp
         recipe=ProfileRecipeFacts(
             temperature_c=facts.temperature_c, target_yield_g=facts.target_yield_g
         ),
+        signature=await signature_lines(ctx.db, version.id),
         shot_count=shot_count,
     )
 

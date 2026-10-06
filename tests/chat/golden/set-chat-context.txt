@@ -2,6 +2,8 @@ THE PROFILE v2.2 BREWS
 Profile version 1, Classic 9 bar, as stored (compact JSON, every field it stores):
 {"description":"","label":"Classic 9 bar","phases":[{"duration":3,"name":"Pre-infusion","phase":"preinfusion","pump":{"flow":0,"pressure":5,"target":"pressure"},"targets":[],"valve":1},{"duration":7,"name":"Bloom","phase":"preinfusion","pump":0,"targets":[],"valve":1},{"duration":10,"name":"Pressurise","phase":"brew","pump":{"flow":0,"pressure":9,"target":"pressure"},"targets":[{"operator":"gte","type":"volumetric","value":20}],"valve":1},{"duration":8,"name":"Ramp down","phase":"brew","pump":{"flow":0,"pressure":5,"target":"pressure"},"targets":[{"operator":"gte","type":"volumetric","value":36}],"valve":1},{"duration":1,"name":"Hammer","phase":"brew","pump":100,"targets":[],"valve":0}],"temperature":93,"type":"standard","utility":false}
 
+This profile version has no confirmed signature, so its shots are read without one. When the conversation turns to how its shots behave, propose one with propose_signature (profile version 1): what the profile is built to do, in a few expectations, never what one shot did. Nothing you propose is checked against a shot until the person confirms it.
+
 THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET
 
 Set 1: Guji natural on the Niche. Bean: Ethiopia Guji, light roast, natural process; taste acidity 4 (1 low to 5 high). Grinder: Niche Zero, adjusted in numbers.

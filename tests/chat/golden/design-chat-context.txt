@@ -92,6 +92,8 @@ The new profile is derived from this one and gets a name of its own; this one, a
 }
 ```
 
+This profile version has no confirmed signature, so its shots are read without one. When the conversation turns to how its shots behave, propose one with propose_signature (profile version 1): what the profile is built to do, in a few expectations, never what one shot did. Nothing you propose is checked against a shot until the person confirms it.
+
 A RECIPE IS WAITING FOR THE PERSON
 Recipe: grind 20, 18 g in, 40 g out, 94 °C from its profile, profile Kenya AA body [AI] (profile draft #1). Reason: "A longer bloom and a lower peak for body."
 It has created nothing yet. Talk about this one; a newer propose_initial_recipe replaces it.
