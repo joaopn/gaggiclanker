@@ -16,10 +16,11 @@ import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { SHOT_SERIES } from "@/lib/shotChart";
 import { ShotsPage } from "@/pages/ShotsPage";
-import { readingBlock } from "@/test/readingFixtures";
+import { claim, readingBlock } from "@/test/readingFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
 import { flavorPicks, judgement, setDetail, setRow, vocabulary } from "@/test/setsFixtures";
+import { leverSignedFields } from "@/test/shotFieldsFixture";
 import { shot129, shot129Samples, syntheticSamples } from "@/test/shotFixture";
 import { LEVER_BADGE, LEVER_WARNINGS } from "@/test/warningFixtures";
 
@@ -36,6 +37,7 @@ const {
   getSets,
   getSet,
   getShot,
+  getShotFields,
   putJudgement,
   putShotSetVersion,
   getDeviceStatus,
@@ -52,6 +54,7 @@ const {
   getSets: vi.fn(),
   getSet: vi.fn(),
   getShot: vi.fn(),
+  getShotFields: vi.fn(),
   putJudgement: vi.fn(),
   putShotSetVersion: vi.fn(),
   getDeviceStatus: vi.fn(),
@@ -70,6 +73,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSets,
   getSet,
   getShot,
+  getShotFields,
   putJudgement,
   putShotSetVersion,
   getDeviceStatus,
@@ -215,6 +219,7 @@ beforeEach(() => {
   getSets.mockResolvedValue({ items: [setRow()] });
   getSet.mockResolvedValue(setDetail());
   getShot.mockResolvedValue({ ...shot129, judgement: judgement() });
+  getShotFields.mockResolvedValue(leverSignedFields);
   getVocabulary.mockResolvedValue(vocabulary);
   getFlavorPicks.mockResolvedValue(flavorPicks());
   putJudgement.mockImplementation((_id: number, body: unknown) => Promise.resolve(body));
@@ -1235,15 +1240,34 @@ describe("ShotsPage open rows", () => {
       shot({ id: 2, device_id: "000102", started_at: "2026-03-04T09:15:00.000Z" }),
     ]);
 
-  it("shows nothing of a shot's review in the open row", async () => {
-    // A review lives on the shot page only: the row is the judgement and the
-    // curves, whatever the shot's detail carries.
+  it("carries the whole Reading card in the open row, under the curve, with its claims", async () => {
+    // The reading is important information: it is not a link away from the row.
     const user = setupUser();
-    getShots.mockResolvedValue(listData([shot()]));
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          badge: "As intended",
+          reading: readingBlock({ state: "read", verdict: "as_intended", in_force_id: 7 }),
+        }),
+      ]),
+    );
     getShot.mockResolvedValue({
       ...shot129,
       shot: { ...shot129.shot, id: 1 },
-      reviews: [review({ shot_id: 1, summary: "A model's one-line reading." })],
+      reading: readingBlock({
+        state: "read",
+        verdict: "as_intended",
+        in_force_id: 7,
+        unanswered: 1,
+      }),
+      reviews: [
+        review({
+          id: 7,
+          shot_id: 1,
+          summary: "A model's one-line reading.",
+          claims: [claim({ id: 70, review_id: 7, start_s: 4, end_s: 9 })],
+        }),
+      ],
     });
     renderList();
     await listed();
@@ -1251,10 +1275,181 @@ describe("ShotsPage open rows", () => {
     await user.click(toggle());
 
     const panel = await screen.findByTestId("shot-panel");
-    await within(panel).findByTestId("judgement-form");
-    expect(within(panel).queryByTestId("review-card")).toBeNull();
-    expect(within(panel).queryByText("A model's one-line reading.")).toBeNull();
-    expect(within(panel).queryByRole("button", { name: /review/i })).toBeNull();
+    const card = await within(panel).findByTestId("review-card");
+    expect(within(card).getByTestId("review-summary")).toHaveTextContent(
+      "A model's one-line reading.",
+    );
+    expect(within(card).getByTestId("reading-verdict-badge")).toHaveTextContent("As intended");
+    expect(within(card).getByTestId("claim-confirm")).toBeInTheDocument();
+    // No link stands in for it any more.
+    expect(within(panel).queryByRole("link", { name: "Reading" })).toBeNull();
+    // Directly under the row's curve, and not beside the judgement.
+    const curves = await within(panel).findByText("Curves");
+    expect(curves.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      within(panel).getByTestId("judgement-form").compareDocumentPosition(card) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // A claim's span is marked on the row's own chart.
+    await within(panel).findByTestId("chart-series");
+    await user.hover(within(card).getByTestId("claim-span"));
+    expect(await within(panel).findByTestId("chart-span")).toHaveTextContent(
+      "Marked: 4.0s to 9.0s",
+    );
+  });
+
+  it("colours a critical free-text failure red in the open row, with its expectation's sentence", async () => {
+    const user = setupUser();
+    const base = leverSignedFields.checks.find((check) => check.kind === "free_text");
+    if (!base) throw new Error("the fixture has no free-text check");
+    getShotFields.mockResolvedValue({
+      ...leverSignedFields,
+      checks: leverSignedFields.checks.map((check) =>
+        check === base ? { ...check, tier: "critical", status: "failed", color: "red" } : check,
+      ),
+    });
+    getShots.mockResolvedValue(
+      listData([
+        shot({ reading: readingBlock({ state: "read", verdict: "entries", in_force_id: 7 }) }),
+      ]),
+    );
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, id: 1 },
+      reading: readingBlock({ state: "read", verdict: "entries", in_force_id: 7, unanswered: 1 }),
+      reviews: [
+        review({
+          id: 7,
+          shot_id: 1,
+          claims: [
+            claim({
+              id: 71,
+              review_id: 7,
+              kind: "free_text",
+              expectation_id: base.expectation_id,
+              held: false,
+            }),
+          ],
+        }),
+      ],
+    });
+    renderList();
+    await listed();
+
+    await user.click(toggle());
+
+    const item = await within(await screen.findByTestId("shot-panel")).findByTestId("claim");
+    await waitFor(() => expect(item).toHaveClass("border-status-bad/40"));
+    expect(within(item).getByTestId("claim-expectation")).toHaveTextContent(base.sentence);
+    expect(within(item).getByTestId("claim-result")).toHaveTextContent("failed");
+  });
+
+  it("makes the open row's content as wide as the scroll box's visible width, and keeps it in view", async () => {
+    const user = setupUser();
+    const client = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockImplementation(function width(this: HTMLElement) {
+        return this.getAttribute("data-testid") === "shots-scroll" ? 612 : 0;
+      });
+    try {
+      getShots.mockResolvedValue(listData([shot()]));
+      renderList();
+      await listed();
+
+      await user.click(toggle());
+
+      const inner = await within(await screen.findByTestId("shot-panel")).findByTestId(
+        "panel-inner",
+      );
+      // The visible width, not the table's: the panel's own box still runs the row's full width.
+      expect(inner).toHaveStyle({ width: "612px" });
+      expect(inner).toHaveClass("sticky", "left-0");
+      expect(screen.getByTestId("shot-panel")).toHaveClass("w-0", "min-w-full");
+    } finally {
+      client.mockRestore();
+    }
+  });
+
+  it("falls back to the whole row where no layout is known", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    renderList();
+    await listed();
+    await user.click(toggle());
+    const inner = await within(await screen.findByTestId("shot-panel")).findByTestId("panel-inner");
+    expect(inner.getAttribute("style") ?? "").not.toMatch(/width/);
+  });
+
+  it("says in the open row the same verdict as the table's badge", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          badge: "No signature",
+          reading: readingBlock({ state: "read", verdict: "no_signature", in_force_id: 7 }),
+        }),
+      ]),
+    );
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, id: 1 },
+      reading: readingBlock({ state: "read", verdict: "no_signature", in_force_id: 7 }),
+      reviews: [review({ id: 7, shot_id: 1 })],
+    });
+    renderList();
+    await listed();
+    await user.click(toggle());
+    const line = await within(await screen.findByTestId("shot-panel")).findByTestId(
+      "reading-verdict-badge",
+    );
+    expect(line).toHaveTextContent("No signature");
+    expect(
+      within(screen.getByTestId("shot-rows")).getAllByTestId("review-badge")[0],
+    ).toHaveTextContent("No signature");
+  });
+
+  it("shows a discarded shot's last reading in the open row, with no Read button", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ reading: readingBlock({ state: "not_readable" }) })]),
+    );
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, id: 1 },
+      reading: readingBlock({ state: "not_readable", in_force_id: 7 }),
+      reviews: [review({ id: 7, shot_id: 1, summary: "Read before it was discarded." })],
+    });
+    renderList();
+    await listed();
+
+    await user.click(toggle());
+
+    const card = await within(await screen.findByTestId("shot-panel")).findByTestId("review-card");
+    expect(within(card).getByTestId("review-summary")).toHaveTextContent(
+      "Read before it was discarded.",
+    );
+    expect(within(card).queryByTestId("run-review")).toBeNull();
+    expect(within(card).queryByRole("button", { name: /read/i })).toBeNull();
+  });
+
+  it("gives a discarded shot with no reading a line and no button in the open row", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ reading: readingBlock({ state: "not_readable" }) })]),
+    );
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, id: 1 },
+      reading: readingBlock({ state: "not_readable" }),
+      reviews: [],
+    });
+    renderList();
+    await listed();
+    await user.click(toggle());
+    const card = await within(await screen.findByTestId("shot-panel")).findByTestId("review-card");
+    expect(within(card).getByTestId("review-unreadable")).toBeInTheDocument();
+    expect(within(card).queryByTestId("run-review")).toBeNull();
   });
 
   it("leads the open row with the shot's warnings, and has no card for a shot with none", async () => {
@@ -1310,12 +1505,13 @@ describe("ShotsPage open rows", () => {
     expect(getShotSamples).toHaveBeenCalledWith(1, undefined);
     const form = within(panel).getByTestId("judgement-form");
 
-    // Two rows, never side by side: the judgement across the top, the curves
-    // below it, and nothing else — the machine's notes card is the shot page's.
+    // Rows, never side by side: the judgement across the top, the curves below it, and the
+    // reading under the curves — the machine's notes card is the shot page's.
     const stack = within(panel).getByTestId("panel-rows");
     expect(stack).not.toHaveClass("grid");
     const [top, below] = Array.from(stack.children);
-    expect(stack.children).toHaveLength(2);
+    expect(stack.children).toHaveLength(3);
+    expect(stack.children[2]).toBe(within(panel).getByTestId("panel-reading"));
     expect(top).toContainElement(form);
     expect(below).toContainElement(series);
     expect(

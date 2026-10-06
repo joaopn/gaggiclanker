@@ -242,6 +242,7 @@ export function ShotsTable({
             onToggle={toggle}
             onClose={close}
             onMeasure={measure}
+            scrollRef={scrollRef}
           />
         ))}
         <div style={{ height: window.paddingBottom }} aria-hidden="true" />
@@ -544,6 +545,7 @@ function ShotRow({
   onToggle,
   onClose,
   onMeasure,
+  scrollRef,
 }: {
   shot: ShotListRow;
   columns: ShotColumn[];
@@ -556,6 +558,7 @@ function ShotRow({
   onToggle: (id: number) => void;
   onClose: () => void;
   onMeasure: (height: number, ready: boolean) => void;
+  scrollRef: RefObject<HTMLElement | null>;
 }) {
   const toggleRef = useRef<HTMLButtonElement>(null);
 
@@ -643,7 +646,9 @@ function ShotRow({
         </div>
         <ShotRowEditor shot={shot} className={INTERACTIVE} />
       </div>
-      {open ? <ShotRowPanel shot={shot} id={panelId} onMeasure={onMeasure} /> : null}
+      {open ? (
+        <ShotRowPanel shot={shot} id={panelId} onMeasure={onMeasure} scrollRef={scrollRef} />
+      ) : null}
     </div>
   );
 }

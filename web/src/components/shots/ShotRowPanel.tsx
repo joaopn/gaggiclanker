@@ -1,13 +1,15 @@
 import { AlertTriangle, ArrowRight } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
+import { type RefObject, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ShotDiagnosticsBlob, ShotListRow, ShotPhase } from "@/api/types";
 import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import { JudgementForm } from "@/components/shots/JudgementForm";
+import { ReviewCard } from "@/components/shots/ReviewCard";
 import { ShotRowChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useShot, useShotSamples } from "@/hooks/useArchive";
+import { useShot, useShotFields, useShotSamples } from "@/hooks/useArchive";
+import { useClaimSpan } from "@/lib/claimSpan";
 import { formatTime, profileName } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
@@ -37,13 +39,24 @@ export function ShotRowPanel({
   shot,
   id,
   onMeasure,
+  scrollRef,
 }: {
   shot: ShotListRow;
   id: string;
   onMeasure: (height: number, ready: boolean) => void;
+  /** The table's scroll box: the panel's content is as wide as what it shows, and stays in view. */
+  scrollRef?: RefObject<HTMLElement | null>;
 }) {
+  const visibleWidth = useVisibleWidth(scrollRef);
   const ref = useRef<HTMLDivElement>(null);
   const detail = useShot(shot.id);
+  // The same query as the shot page's (one key, so invalidation covers both): the Reading card
+  // takes each free-text expectation's tier and sentence from the checks, not from a guess.
+  const fields = useShotFields(shot.id, { enabled: !shot.quarantined });
+  const chartId = `row-curves-${shot.id}`;
+  // What the reading card marks on this row's own chart, keyed to the row by the panel's own
+  // lifetime: it mounts when the row opens and goes when it closes.
+  const claimSpan = useClaimSpan(detail.data?.reading?.in_force_id, chartId);
   // A quarantined shot has no samples at all; asking would be a 404 per open.
   const samples = useShotSamples(shot.id, { enabled: !shot.quarantined });
   const ready = !detail.isPending && (shot.quarantined || !samples.isPending);
@@ -70,6 +83,7 @@ export function ShotRowPanel({
 
   const shotPage = `/shots/${shot.id}`;
   const row = detail.data?.shot;
+  const reading = detail.data?.reading ?? shot.reading;
   const diagnostics = (row?.diagnostics ?? {}) as ShotDiagnosticsBlob;
 
   return (
@@ -80,85 +94,139 @@ export function ShotRowPanel({
       data-testid="shot-panel"
       data-shot={shot.id}
       // Width 0 stretched to the row: the table is as wide as its columns, and
-      // the panel's text at its widest (a note on one line) must not widen it.
-      className="w-0 min-w-full border-border border-b bg-muted/20 px-3 py-3"
+      // the panel's text at its widest (a note on one line) must not widen it. The content
+      // is a narrower box inside it (below), so the border and the tint still run the row's
+      // full width while the table scrolls sideways under them.
+      className="w-0 min-w-full border-border border-b bg-muted/20"
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="min-w-0 truncate text-muted-foreground text-xs">
-          {profileName(shot)} · {formatTime(shot.started_at)} · shot {shot.device_id}
-        </p>
-        <Link
-          to={shotPage}
-          data-testid="open-shot-page"
-          className={cn(
-            "inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm hover:bg-muted",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          )}
-        >
-          Open shot page
-          <ArrowRight className="size-3.5" aria-hidden="true" />
-        </Link>
-      </div>
-
-      {/* What is plainly wrong comes first here as on the page. The list row
-          carries the warnings, so there is nothing more to fetch. */}
-      <div className="mb-3 empty:hidden">
-        <ShotRowChecksCard warnings={shot.warnings} />
-      </div>
-
-      <div className="space-y-3" data-testid="panel-rows">
-        <div className="min-w-0 space-y-3">
-          {detail.isPending ? (
-            <Skeleton className="h-64 w-full" />
-          ) : detail.isError ? (
-            <p className="text-muted-foreground text-sm" data-testid="panel-error">
-              Could not load this shot: {detail.error.message}
-            </p>
-          ) : (
-            <>
-              <VersionPrediction
-                key={shot.id}
-                shotId={shot.id}
-                version={detail.data.set_version}
-                decision={detail.data.judgement?.decision ?? null}
-              />
-              <JudgementForm shotId={shot.id} judgement={detail.data.judgement} />
-            </>
-          )}
+      {/* As wide as the scroll box's visible width, and `sticky left-0`: the row's columns keep
+          scrolling sideways, but what the panel says (a card, a chart, a form) stays in view and
+          is never wider than the screen it is read on. Until the width is known (no layout yet)
+          it falls back to the whole row. */}
+      <div
+        data-testid="panel-inner"
+        className="sticky left-0 box-border min-w-0 px-3 py-3"
+        style={visibleWidth === null ? undefined : { width: visibleWidth }}
+      >
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-muted-foreground text-xs">
+            {profileName(shot)} · {formatTime(shot.started_at)} · shot {shot.device_id}
+          </p>
+          <Link
+            to={shotPage}
+            data-testid="open-shot-page"
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm hover:bg-muted",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            Open shot page
+            <ArrowRight className="size-3.5" aria-hidden="true" />
+          </Link>
         </div>
 
-        <div className="min-w-0">
-          {shot.quarantined ? (
-            <div
-              className="rounded-md border border-border bg-muted/50 p-3"
-              data-testid="panel-quarantined"
-            >
-              <p className="flex items-center gap-1.5 font-medium text-sm">
-                <AlertTriangle className="size-3.5 text-status-warn-text" aria-hidden="true" />
-                Quarantined: there is no curve to draw
+        {/* What is plainly wrong comes first here as on the page. The list row
+          carries the warnings, so there is nothing more to fetch. */}
+        <div className="mb-3 empty:hidden">
+          <ShotRowChecksCard warnings={shot.warnings} />
+        </div>
+
+        <div className="space-y-3" data-testid="panel-rows">
+          <div className="min-w-0 space-y-3">
+            {detail.isPending ? (
+              <Skeleton className="h-64 w-full" />
+            ) : detail.isError ? (
+              <p className="text-muted-foreground text-sm" data-testid="panel-error">
+                Could not load this shot: {detail.error.message}
               </p>
-              <p className="mt-1 font-mono text-muted-foreground text-xs">
-                {shot.quarantine_reason ?? "No reason was recorded."}
+            ) : (
+              <>
+                <VersionPrediction
+                  key={shot.id}
+                  shotId={shot.id}
+                  version={detail.data.set_version}
+                  decision={detail.data.judgement?.decision ?? null}
+                />
+                <JudgementForm shotId={shot.id} judgement={detail.data.judgement} />
+              </>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            {shot.quarantined ? (
+              <div
+                className="rounded-md border border-border bg-muted/50 p-3"
+                data-testid="panel-quarantined"
+              >
+                <p className="flex items-center gap-1.5 font-medium text-sm">
+                  <AlertTriangle className="size-3.5 text-status-warn-text" aria-hidden="true" />
+                  Quarantined: there is no curve to draw
+                </p>
+                <p className="mt-1 font-mono text-muted-foreground text-xs">
+                  {shot.quarantine_reason ?? "No reason was recorded."}
+                </p>
+              </div>
+            ) : samples.isError ? (
+              <p className="text-muted-foreground text-sm">
+                Could not load the curve: {samples.error.message}
               </p>
+            ) : (
+              <ShotCurvesCard
+                shotId={shot.id}
+                deviceId={shot.device_id}
+                samples={samples.data}
+                pending={samples.isPending || detail.isPending}
+                phases={(row?.phases ?? []) as ShotPhase[]}
+                hasPressure={diagnostics.has_pressure !== false}
+                finalExitReason={row?.final_exit_reason}
+                durationMs={shot.duration_ms}
+                highlight={claimSpan.shown}
+                chartId={chartId}
+              />
+            )}
+          </div>
+
+          {/* The reading itself, the same card as on the shot page and directly under the curve its
+            claims point into: it is the information a shot is judged by, not a link away. A
+            discarded shot shows its last reading and no Read button. No `key` here, on purpose:
+            the table keys each row by its shot and mounts this panel only for the open one, so
+            the panel (and the card's state) is one shot's for its whole life. */}
+          {shot.quarantined || detail.isPending || detail.isError ? null : (
+            <div className="min-w-0" data-testid="panel-reading">
+              <ReviewCard
+                shotId={shot.id}
+                reviews={detail.data.reviews ?? []}
+                reading={reading}
+                checks={fields.data?.checks}
+                span={claimSpan.controls}
+                decision={detail.data.judgement?.decision ?? null}
+                hasPrediction={Boolean(detail.data.set_version?.prediction)}
+                badge={shot.badge}
+                warnings={shot.warnings}
+              />
             </div>
-          ) : samples.isError ? (
-            <p className="text-muted-foreground text-sm">
-              Could not load the curve: {samples.error.message}
-            </p>
-          ) : (
-            <ShotCurvesCard
-              shotId={shot.id}
-              deviceId={shot.device_id}
-              samples={samples.data}
-              pending={samples.isPending || detail.isPending}
-              phases={(row?.phases ?? []) as ShotPhase[]}
-              hasPressure={diagnostics.has_pressure !== false}
-              finalExitReason={row?.final_exit_reason}
-              durationMs={shot.duration_ms}
-            />
           )}
         </div>
       </div>
     </section>
   );
+}
+
+/**
+ * The visible width of the table's scroll box (`clientWidth`, which leaves the scrollbar out),
+ * kept current by a `ResizeObserver`; `null` while it is not known, as in a test with no layout.
+ */
+export function useVisibleWidth(ref: RefObject<HTMLElement | null> | undefined): number | null {
+  const [width, setWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const element = ref?.current;
+    if (!element) return;
+    const read = () => setWidth(element.clientWidth > 0 ? element.clientWidth : null);
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return width;
 }

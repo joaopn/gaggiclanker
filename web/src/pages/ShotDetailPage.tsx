@@ -22,20 +22,25 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotFields, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
+import { useClaimSpan } from "@/lib/claimSpan";
 import { ASSIGN_ANCHOR, formatTime, profileName, REVIEW_ANCHOR } from "@/lib/shots";
 
 /**
  * One shot, in full.
  *
  * Composed top to bottom in the order somebody works through a shot: what it
- * was, what you thought of it, what the curves did, which Set it belongs to and what a model's review read in it, what each
- * diagnostic says, which phase it happened in, what the machine's own notes
- * recorded, and finally the raw header for anybody checking the archive
- * against the device.
+ * was, what you thought of it, what the curves did, what a model's reading of them
+ * claims (right under the curves, because each claim points into them), what each
+ * diagnostic says, which phase it happened in, which Set it belongs to, what the
+ * machine's own notes recorded, and finally the raw header for anybody checking
+ * the archive against the device.
  *
  * Code-split (`App.tsx` lazy-loads it) because this is the only route that
  * needs Chart.js, and a visit that only lists shots should not download it.
  */
+/** The Curves card's element id: a pinned claim scrolls it into view on a narrow screen. */
+const CHART_CARD_ID = "shot-curves";
+
 export function ShotDetailPage() {
   const params = useParams();
   const shotId = Number.parseInt(params.shotId ?? "", 10);
@@ -52,6 +57,9 @@ export function ShotDetailPage() {
   // and a card that arrives late shifts the judgement under it by its own height.
   const fields = useShotFields(Number.isFinite(shotId) ? shotId : undefined);
   const { hash } = useLocation();
+  // What the Reading card marks on the chart: hovering, focusing or pinning a claim. The page
+  // holds it because the two cards are siblings; it is above the early returns because it is a hook.
+  const claimSpan = useClaimSpan(shot.data?.reading?.in_force_id, CHART_CARD_ID, shotId);
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
   // rest here with `#set`, and a link to a shot's review comes here with
@@ -61,7 +69,9 @@ export function ShotDetailPage() {
   const arrived = shot.isSuccess;
   useEffect(() => {
     const anchor = hash.slice(1);
-    if (!arrived || (anchor !== ASSIGN_ANCHOR && anchor !== REVIEW_ANCHOR)) return;
+    // A claim's own anchor (`#claim-12`, from the Checks card) lands on that claim.
+    const claim = /^claim-\d+$/.test(anchor);
+    if (!arrived || (anchor !== ASSIGN_ANCHOR && anchor !== REVIEW_ANCHOR && !claim)) return;
     document.getElementById(anchor)?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [arrived, hash]);
 
@@ -149,9 +159,8 @@ export function ShotDetailPage() {
 
       {/* What you thought comes first, straight under the facts: recording it
           is what a shot page is opened for, and it should not wait below a
-          chart. The Set and the review come after the curves,
-          and the review last: it is a model's reading of the numbers above,
-          made without your judgement. */}
+          chart. The reading comes under the curves it points into, made without
+          your judgement. */}
       {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and
           a revealed prediction must not survive the change of subject. */}
       <VersionPrediction
@@ -173,7 +182,31 @@ export function ShotDetailPage() {
           hasPressure={hasPressure}
           finalExitReason={row.final_exit_reason}
           durationMs={row.duration_ms}
+          highlight={claimSpan.shown}
+          chartId={CHART_CARD_ID}
         />
+      ) : null}
+
+      {/* The reading, straight under the curve its claims point into: hovering a claim marks
+          its span there. */}
+      {!row.quarantined ? (
+        <section id={REVIEW_ANCHOR} className="scroll-mt-20">
+          {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and an open "Read
+              again?" question, a revealed stance or a request in flight must not carry over to
+              the next shot, whose Read again would start a reading nobody asked for. */}
+          <ReviewCard
+            key={row.id}
+            shotId={row.id}
+            badge={fields.data?.badge}
+            warnings={fields.data?.warnings}
+            reviews={shot.data.reviews ?? []}
+            reading={shot.data.reading}
+            checks={fields.data?.checks}
+            span={claimSpan.controls}
+            decision={shot.data.judgement?.decision ?? null}
+            hasPrediction={Boolean(shot.data.set_version?.prediction)}
+          />
+        </section>
       ) : null}
 
       {/* The numbers, straight under the curve they are read against: each
@@ -198,12 +231,6 @@ export function ShotDetailPage() {
           judgement={shot.data.judgement}
         />
       </section>
-      {!row.quarantined ? (
-        <section id={REVIEW_ANCHOR} className="scroll-mt-20">
-          <ReviewCard shotId={row.id} reviews={shot.data.reviews ?? []} />
-        </section>
-      ) : null}
-
       {notes ? <DeviceNotesCard notes={notes} /> : null}
 
       {/* The rest of the shot-wide numbers: context, collapsed, last. */}

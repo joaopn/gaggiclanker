@@ -35,6 +35,7 @@ export function ShotCurvesCard({
   finalExitReason,
   durationMs,
   highlight,
+  chartId,
 }: {
   shotId: number;
   deviceId: string;
@@ -46,6 +47,8 @@ export function ShotCurvesCard({
   durationMs?: number | null;
   /** The span of the reading's claim being looked at, in seconds, drawn behind the curves. */
   highlight?: { start: number; end: number } | null;
+  /** The element id of the card, which a pinned claim scrolls into view on a narrow screen. */
+  chartId?: string;
 }) {
   const [visible, setVisible] = useState<string[]>(DEFAULT_SERIES);
   const rows = samples?.samples ?? [];
@@ -53,6 +56,8 @@ export function ShotCurvesCard({
 
   return (
     <SectionCard
+      id={chartId}
+      className="scroll-mt-20"
       title="Curves"
       description={
         hasPressure
