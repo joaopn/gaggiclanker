@@ -101,8 +101,9 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // is 8.6rem as measured in headless Chromium (badge padding and border
   // included), so 9rem holds it; the sorted heading is 3.1rem. A longer phase
   // name, or a "+12", truncates inside the column and the whole list is on
-  // hover. The minimum lets a width dragged on the old Score column stand.
-  { id: "review", label: "Review", size: { rem: 9, min: 4, max: 24 } },
+  // hover. The minimum is 6rem: narrower than that not even a cut fault word and the
+  // count fit, and a width dragged on the old Score column below it is raised to it.
+  { id: "review", label: "Review", size: { rem: 9, min: 6, max: 24 } },
   // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit,
   // and wider than the sorted heading.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },

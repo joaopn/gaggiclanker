@@ -7,7 +7,7 @@ import { ShotDetailPage } from "@/pages/ShotDetailPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
 import { judgement, version, vocabulary } from "@/test/setsFixtures";
-import { leverFields, realFields } from "@/test/shotFieldsFixture";
+import { leverFields, leverSignedFields, realFields } from "@/test/shotFieldsFixture";
 import {
   SHOT_129_SAMPLE_COUNT,
   shot129,
@@ -299,11 +299,11 @@ describe("ShotDetailPage by phase", () => {
     getShotFields.mockResolvedValue(leverFields);
     renderShot();
 
-    await screen.findByTestId("shot-warnings");
+    await screen.findByTestId("shot-checks");
     // The page's own landmarks, top to bottom, as the DOM has them.
     const landmarks: Array<[string, HTMLElement]> = [
       ["facts", screen.getByTestId("shot-facts")],
-      ["warnings", screen.getByTestId("shot-warnings")],
+      ["warnings", screen.getByTestId("shot-checks")],
       ["judgement", screen.getByTestId("judgement-form")],
       ["curves", screen.getByText("Curves")],
       ["phases", screen.getAllByTestId("phase-row")[0]],
@@ -342,7 +342,7 @@ describe("ShotDetailPage by phase", () => {
     });
     renderShot();
 
-    await screen.findByTestId("shot-warnings");
+    await screen.findByTestId("shot-checks");
     const facts = screen.getByTestId("shot-facts");
     expect(facts).toHaveTextContent("33.2 s");
     expect(facts).not.toHaveTextContent("33.3 s");
@@ -362,8 +362,26 @@ describe("ShotDetailPage by phase", () => {
     await waitFor(() => expect(getShotFields).toHaveBeenCalled());
     expect(screen.queryByTestId("judgement-form")).not.toBeInTheDocument();
     release(leverFields);
-    expect(await screen.findByTestId("shot-warnings")).toBeInTheDocument();
+    expect(await screen.findByTestId("shot-checks")).toBeInTheDocument();
     expect(screen.getByTestId("judgement-form")).toBeInTheDocument();
+  });
+
+  it("shows the Checks of a shot read against a confirmed signature, red first, above the judgement", async () => {
+    getShotFields.mockResolvedValue(leverSignedFields);
+    renderShot();
+
+    const checks = await screen.findByTestId("shot-checks");
+    const lines = within(checks).getAllByTestId("check-line");
+    expect(lines[0]).toHaveAttribute("data-severity", "red");
+    expect(lines[0]).toHaveTextContent("ramp: early yield");
+    expect(within(checks).getByTestId("signature-link")).toHaveAttribute(
+      "href",
+      "/profiles#version-1",
+    );
+    expect(
+      checks.compareDocumentPosition(screen.getByTestId("judgement-form")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("builds the page from the fields route, for this shot", async () => {
@@ -377,8 +395,8 @@ describe("ShotDetailPage by phase", () => {
     renderShot();
 
     await screen.findAllByTestId("phase-row");
-    expect(screen.queryByTestId("shot-warnings")).not.toBeInTheDocument();
-    expect(screen.queryByText("Warnings")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shot-checks")).not.toBeInTheDocument();
+    expect(screen.queryByText("Checks")).not.toBeInTheDocument();
     expect(screen.queryByText(/all clear|no problems/i)).not.toBeInTheDocument();
   });
 

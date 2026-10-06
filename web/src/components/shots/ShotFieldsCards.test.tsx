@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotPhasesCard } from "@/components/shots/ShotPhasesCard";
-import { ShotWarningsCard } from "@/components/shots/ShotWarningsCard";
 import { ShotContextCard, ShotWideCard } from "@/components/shots/ShotWideCards";
+import { renderWithQueryClient } from "@/test/renderWithQueryClient";
 import {
   leverFields,
   leverNoPressureFields,
@@ -18,11 +19,13 @@ import {
  * shot. Their absent fields are absent in the document, never zero.
  */
 
-describe("ShotWarningsCard", () => {
+describe("ShotChecksCard", () => {
   it("says each warning as phase: fault with its sentence, most severe first as served", () => {
-    render(<ShotWarningsCard warnings={leverFields.warnings} />);
+    renderWithQueryClient(
+      <ShotChecksCard checks={leverFields.checks} signature={leverFields.signature} />,
+    );
 
-    const lines = screen.getAllByTestId("warning-line");
+    const lines = screen.getAllByTestId("check-line");
     expect(lines.map((line) => line.querySelector("p")?.textContent)).toEqual([
       "ramp: fast flow",
       "decline: skipped",
@@ -32,10 +35,14 @@ describe("ShotWarningsCard", () => {
     expect(lines[0]).toHaveAttribute("data-severity", "amber");
   });
 
-  it("draws no card, and no all-clear, for a shot with no warnings", () => {
-    const { container } = render(<ShotWarningsCard warnings={realFields.warnings} />);
+  it("draws no card, and no all-clear, for a shot with no checks and no profile", () => {
+    const { container } = renderWithQueryClient(
+      <ShotChecksCard checks={realFields.checks} signature={realFields.signature} />,
+    );
     expect(container).toBeEmptyDOMElement();
-    expect(render(<ShotWarningsCard warnings={undefined} />).container).toBeEmptyDOMElement();
+    expect(
+      renderWithQueryClient(<ShotChecksCard checks={undefined} signature={undefined} />).container,
+    ).toBeEmptyDOMElement();
   });
 });
 

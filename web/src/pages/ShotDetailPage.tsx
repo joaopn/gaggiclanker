@@ -14,9 +14,9 @@ import { JudgementForm } from "@/components/shots/JudgementForm";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ReviewCard } from "@/components/shots/ReviewCard";
+import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { ShotPhasesCard } from "@/components/shots/ShotPhasesCard";
-import { ShotWarningsCard } from "@/components/shots/ShotWarningsCard";
 import { ShotContextCard, ShotWideCard } from "@/components/shots/ShotWideCards";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -145,7 +145,7 @@ export function ShotDetailPage() {
 
       {/* What is plainly wrong comes first, above everything that asks for a
           verdict: no card at all when there is nothing to say. */}
-      <ShotWarningsCard warnings={fields.data?.warnings} />
+      <ShotChecksCard checks={fields.data?.checks} signature={fields.data?.signature} />
 
       {/* What you thought comes first, straight under the facts: recording it
           is what a shot page is opened for, and it should not wait below a

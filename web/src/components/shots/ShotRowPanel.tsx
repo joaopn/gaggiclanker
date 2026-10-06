@@ -4,8 +4,8 @@ import { Link } from "react-router-dom";
 import type { ShotDiagnosticsBlob, ShotListRow, ShotPhase } from "@/api/types";
 import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import { JudgementForm } from "@/components/shots/JudgementForm";
+import { ShotRowChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
-import { ShotWarningsCard } from "@/components/shots/ShotWarningsCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotSamples } from "@/hooks/useArchive";
 import { formatTime, profileName } from "@/lib/shots";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
  * An open row in the shots list: what somebody needs to judge a shot without
  * leaving the list.
  *
- * The shot's warnings first, when it has any, then the shot page's own two boxes, stacked as they are on the page: the
+ * The shot's checks first (the failed ones and the warnings its row carries), when it has any, then the shot page's own two boxes, stacked as they are on the page: the
  * judgement across the full width (its own two columns, the notes on the
  * right), and the curves on a row of their own below it, never beside it. The
  * same components as the page (`JudgementForm`, `ShotCurvesCard`), so a
@@ -103,7 +103,7 @@ export function ShotRowPanel({
       {/* What is plainly wrong comes first here as on the page. The list row
           carries the warnings, so there is nothing more to fetch. */}
       <div className="mb-3 empty:hidden">
-        <ShotWarningsCard warnings={shot.warnings} />
+        <ShotRowChecksCard warnings={shot.warnings} />
       </div>
 
       <div className="space-y-3" data-testid="panel-rows">

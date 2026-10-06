@@ -8,17 +8,19 @@ import { cn } from "@/lib/utils";
  * about a shot, in one place.
  *
  * One component for every state the badge will have, so a state is added here
- * and not beside it. Today it has one: the warnings. Their text is the server's
- * (`badge`, "ramp: fast flow +2", built by code from the structured list) and
- * the tone is the most severe one's, so a reader sees what the chat is told. A
- * shot with no warnings has no badge at all: a missing warning is not a verdict,
- * and a green "all clear" would be one.
+ * and not beside it. Today it has one: the checks' entries (the failed critical
+ * and important expectations of a confirmed signature, then the warnings). Their
+ * text is the server's (`badge`, "ramp: early yield +4", built by code from the
+ * structured list) and the tone is the **first entry's** severity, so a reader
+ * sees what the chat is told. A shot with nothing to show has no badge at all: a
+ * missing warning is not a verdict, and a green "all clear" would be one.
  *
- * Colour is the severity: amber is a warning that needs no knowledge of the
- * profile, red is a critical expectation failed (a signature's, later). The
- * reading's own states (unread, reading, as intended, no signature, failed to
- * run) and outlined-while-unverified versus filled-once-confirmed join as more
- * cases of the same `tone` and `filled` below.
+ * Colour is the first entry's severity: red is a critical expectation failed,
+ * amber is an important one failed or a warning nothing marks as expected, grey
+ * is a warning the signature expects (a turbo's fast flow). The reading's own
+ * states (unread, reading, as intended, no signature, failed to run) and
+ * outlined-while-unverified versus filled-once-confirmed join as more cases of
+ * the same `tone` and `filled` below.
  *
  * The full list is the hover (`title` on the wrapper, which is not the described
  * element) and, for a screen reader, one visually hidden sentence the badge
@@ -37,12 +39,20 @@ import { cn } from "@/lib/utils";
  * cut and the count is not.
  */
 
-type Tone = "warn" | "bad";
+type Tone = "warn" | "bad" | "muted";
 
 const TONE_CLASS: Record<Tone, string> = {
   warn: "border-status-warn/40 bg-status-warn/10 text-status-warn-text",
   bad: "border-status-bad/40 bg-status-bad/10 text-status-bad-text",
+  muted: "border-border bg-muted/50 text-muted-foreground",
 };
+
+/** The badge's colour: the first entry's severity, and amber for one the server did not name. */
+export function toneOf(severity: string | undefined): Tone {
+  if (severity === "red") return "bad";
+  if (severity === "grey") return "muted";
+  return "warn";
+}
 
 /** One warning as a line: "ramp: fast flow — the sentence with the numbers". */
 export function warningLine(warning: ShotWarning): string {
@@ -67,15 +77,20 @@ export function ReviewBadge({
 }) {
   const listId = useId();
   if (!badge || !warnings || warnings.length === 0) return null;
-  const tone: Tone = warnings[0]?.severity === "red" ? "bad" : "warn";
+  const tone = toneOf(warnings[0]?.severity);
   const lines = warnings.map(warningLine);
   // "+N" is the server's own text for the other warnings; it is split off only
   // so that it is not the part that truncates.
   const more = warnings.length > 1 ? ` +${warnings.length - 1}` : "";
   const lead = more && badge.endsWith(more) ? badge.slice(0, -more.length) : badge;
+  // The same split once more: the phase is the only part that may be cut. A long phase name
+  // would otherwise take the fault word with it ("Final push to t… +1"), and the fault is what
+  // the badge is for. The server's text is "<phase>: <fault>", so the prefix is known.
+  const phase = warnings[0]?.phase ?? "";
+  const split = phase !== "" && lead.startsWith(`${phase}: `);
   return (
     <span
-      className={cn("inline-flex min-w-0 max-w-full", className)}
+      className={cn("inline-flex min-w-0 max-w-full overflow-hidden", className)}
       title={lines.join("\n")}
       data-testid="review-badge-wrap"
     >
@@ -84,9 +99,28 @@ export function ReviewBadge({
         data-testid="review-badge"
         data-tone={tone}
         aria-describedby={listId}
-        className={cn("min-w-0 max-w-full gap-0", TONE_CLASS[tone])}
+        className={cn("min-w-0 max-w-full shrink gap-0", TONE_CLASS[tone])}
       >
-        <span className="min-w-0 truncate">{lead}</span>
+        {split ? (
+          // One flexible box holds the phase and the fault, and the count stays outside it.
+          // The phase is the only part that shrinks (`truncate`); the fault keeps its own width
+          // and is clipped by the box only once the phase is gone, with an ellipsis of its own.
+          // Shrink factors are not used: flex shares a shortfall out by factor times width, so
+          // a fault that is meant to stay whole loses a fraction of a pixel while the phase is cut.
+          <span className="flex min-w-0 flex-1 overflow-hidden" data-testid="review-badge-text">
+            <span className="min-w-0 truncate" data-testid="review-badge-phase">
+              {phase}
+            </span>
+            <span
+              className="max-w-full shrink-0 truncate whitespace-pre"
+              data-testid="review-badge-fault"
+            >
+              {lead.slice(phase.length)}
+            </span>
+          </span>
+        ) : (
+          <span className="min-w-0 truncate">{lead}</span>
+        )}
         {more ? <span className="shrink-0 whitespace-pre">{more}</span> : null}
       </Badge>
       <span id={listId} className="sr-only" data-testid="review-badge-list">

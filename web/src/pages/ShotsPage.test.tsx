@@ -1262,13 +1262,13 @@ describe("ShotsPage open rows", () => {
 
     await user.click(screen.getByRole("button", { name: "Shot 000101" }));
     const panel = await screen.findByTestId("shot-panel");
-    const lines = within(panel).getAllByTestId("warning-line");
+    const lines = within(panel).getAllByTestId("check-line");
     expect(lines).toHaveLength(3);
     expect(lines[1]).toHaveTextContent("decline: skipped");
     // Above the judgement, as on the page.
     expect(
       within(panel)
-        .getByTestId("shot-warnings")
+        .getByTestId("shot-checks")
         .compareDocumentPosition(await within(panel).findByTestId("judgement-form")) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -1277,7 +1277,7 @@ describe("ShotsPage open rows", () => {
     await user.click(screen.getByRole("button", { name: "Shot 000102" }));
     const second = await screen.findByTestId("shot-panel");
     await within(second).findByTestId("judgement-form");
-    expect(within(second).queryByTestId("shot-warnings")).not.toBeInTheDocument();
+    expect(within(second).queryByTestId("shot-checks")).not.toBeInTheDocument();
   });
 
   it("opens the shot page's judgement, and the curves on their own row below it", async () => {

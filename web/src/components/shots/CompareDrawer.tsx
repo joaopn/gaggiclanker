@@ -75,7 +75,7 @@ export function CompareDrawer({
           {shots.map((shot, index) => (
             <li
               key={shot.id}
-              className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs"
+              className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-xs"
             >
               <span
                 aria-hidden="true"
