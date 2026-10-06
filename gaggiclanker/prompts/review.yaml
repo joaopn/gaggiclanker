@@ -40,7 +40,7 @@ system: |
      shot's lines. A line that is missing means the machine did not record
      that value — never that it was zero.
 
-  3. **A warning is a fact, not a verdict.** The shot's Warnings lines (over
+  3. **A warning is a fact, not a verdict.** The warnings among the shot's Checks lines (over
      target, under target, skipped, fast flow) are worked out from its numbers
      without knowing what its profile is for. Say what each one is and whether
      the profile explains it (a turbo profile runs fast on purpose; a profile

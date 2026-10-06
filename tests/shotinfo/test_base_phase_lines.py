@@ -45,9 +45,10 @@ async def test_every_phase_has_one_line_in_the_shots_order_with_its_share(
         "phase 2 · ramp: duration 16.2 s; ended by Volumetric target; "
         "cup at end 42.2 g, 117.2 % of target",
     ]
-    # The group sits after the warnings and before everything else.
-    assert lines.index("[Phases]") == lines.index("[Warnings]") + 1 + len(
-        [line for line in lines[lines.index("[Warnings]") + 1 :] if "(amber)" in line]
+    # The group sits after the checks (the signature's state, then each check) and before
+    # everything else.
+    assert lines.index("[Phases]") == lines.index("[Checks]") + 2 + len(
+        [line for line in lines[lines.index("[Checks]") + 1 :] if "(amber" in line]
     )
 
 

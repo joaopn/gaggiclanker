@@ -209,7 +209,7 @@ async def test_a_value_the_machine_did_not_record_is_not_a_field(archive: Archiv
 # ── the lever shot, whole ───────────────────────────────────────────
 
 
-async def test_the_base_rendering_leads_with_the_warnings_in_order(
+async def test_the_base_rendering_leads_with_the_checks_in_order(
     lever: tuple[Database, int, int],
 ) -> None:
     db, shot, _ = lever
@@ -217,27 +217,28 @@ async def test_the_base_rendering_leads_with_the_warnings_in_order(
     lines = render_shot(facts, "base", default_tiers(), curve_points=60).splitlines()
 
     assert lines[0] == f"shot {shot}"
-    assert lines[1] == "[Warnings]"
-    assert [line.split(" (amber)")[0] for line in lines[2:5]] == [
+    assert lines[1] == "[Checks]"
+    assert lines[2] == "signature: read without a signature"
+    assert [line.split(" (amber)")[0] for line in lines[3:6]] == [
         "ramp: fast flow",
         "decline: skipped",
         "Shot: over target",
     ]
-    assert lines[5] == "[Phases]"
-    assert lines[6:9] == [
+    assert lines[6] == "[Phases]"
+    assert lines[7:10] == [
         "phase 0 · preinfusion: duration 7.2 s; ended by Duration; "
         "cup at end 0.0 g, 0.0 % of target",
         "phase 1 · soak: duration 10.0 s; ended by Duration; cup at end 4.0 g, 11.1 % of target",
         "phase 2 · ramp: duration 16.2 s; ended by Volumetric target; "
         "cup at end 42.2 g, 117.2 % of target",
     ]
-    assert lines[9] == "[Identity and status]"
+    assert lines[10] == "[Identity and status]"
 
 
 async def test_every_base_item_origin_dev_showed_is_still_rendered(
     lever: tuple[Database, int, int], archive: Archive
 ) -> None:
-    """Warnings are added to base and nothing is taken out but the score and the channeling risk.
+    """The checks are added to base and nothing is taken out but the score and the channeling risk.
 
     Read on three real shots between them: the judged one (the judgement, the machine's
     number), the same recording on a flow-steered profile (the flow adherence) and the
@@ -272,7 +273,7 @@ async def test_every_base_item_origin_dev_showed_is_still_rendered(
         ORIGIN_DEV_BASE - RETIRED_FROM_BASE - rendered
     )
     assert "execution_score" not in rendered
-    assert "warnings" in rendered
+    assert "checks" in rendered
 
 
 async def test_the_ratio_takes_the_versions_dose_and_the_scales_yield_when_none_was_typed(

@@ -27,8 +27,10 @@ from gaggiclanker.db.repos.notes import DeviceShotNotesRow
 from gaggiclanker.db.repos.reviews import ShotReviewRow
 from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotSampleRow
+from gaggiclanker.domain.signature import ShotChecks
 from gaggiclanker.domain.slog import FIELD_DEFS
 from gaggiclanker.domain.warnings import ShotWarning, percent_of_target, shot_warnings
+from gaggiclanker.signatures.checks import CheckSubject
 
 __all__ = ["ShotFacts", "number"]
 
@@ -66,6 +68,10 @@ class ShotFacts:
     #: Every stored sample in time order, or ``None`` when they were not
     #: loaded — which is a different thing from a shot with no samples (``()``).
     samples: tuple[ShotSampleRow, ...] | None = None
+    #: The shot's ordered checks, worked out with its profile version's **confirmed** signature
+    #: when it was loaded (:func:`gaggiclanker.shotinfo.render.load_shots`). ``None`` for facts
+    #: built by hand, which read as a shot with no signature: its universal warnings, as they are.
+    checks: ShotChecks | None = None
 
     @property
     def shot_id(self) -> int:
@@ -144,6 +150,29 @@ class ShotFacts:
         return value if isinstance(value, dict) else {}
 
     @property
+    def check_subject(self) -> CheckSubject:
+        """What this shot's checks are worked out from, besides its profile's signature."""
+        shot = self.shot
+        version = self.version
+        return CheckSubject(
+            shot_id=shot.id,
+            profile_version_id=shot.profile_version_id,
+            set_version_id=shot.set_version_id,
+            warnings=self.warnings,
+            phases=self.phases,
+            duration_s=shot.duration_ms / 1000,
+            scale_connected=shot.scale_connected,
+            final_weight_g=shot.final_weight_g,
+            target_yield_g=self.target_yield_g,
+            dose_g=version.dose_g if version is not None else None,
+            has_pressure=self.has_pressure,
+            per_phase=self.metrics.get("per_phase") is not False,
+            quarantined=shot.quarantined,
+            metrics=self.metrics,
+            revision=shot.updated_at,
+        )
+
+    @property
     def target_yield_g(self) -> float | None:
         """The target yield of the version the shot is filed under, when it has one.
 
@@ -165,6 +194,11 @@ class ShotFacts:
             phases=self.phases,
             metrics=self.metrics,
         )
+
+    @property
+    def shot_checks(self) -> ShotChecks:
+        """The ordered checks: the confirmed signature's results merged with the warnings."""
+        return self.checks if self.checks is not None else ShotChecks.from_warnings(self.warnings)
 
     def share_of_target(self, weight_g: float | None) -> float | None:
         """A weight as a percentage of the filed version's target yield, to a tenth."""

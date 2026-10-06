@@ -4117,6 +4117,47 @@ export interface components {
             title: string;
         };
         /**
+         * CheckOut
+         * @description One check of the shot's ordered list: a signature result or a universal warning.
+         */
+        CheckOut: {
+            /** Absent */
+            absent: string | null;
+            /** At S */
+            at_s: number;
+            /** Color */
+            color: string | null;
+            compare: components["schemas"]["JsonValue"] | null;
+            /** Detail */
+            detail: string;
+            /** Expectation Id */
+            expectation_id: number | null;
+            /** Fault */
+            fault: string | null;
+            /** Held */
+            held: boolean | null;
+            /** Kind */
+            kind: string;
+            /** Limit Text */
+            limit_text: string;
+            /** Phase */
+            phase: string;
+            /** Phase Number */
+            phase_number: number | null;
+            /** Relative To */
+            relative_to: string | null;
+            /** Sentence */
+            sentence: string;
+            /** Status */
+            status: string;
+            /** Tier */
+            tier: string | null;
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: number | null;
+        };
+        /**
          * ChunkHit
          * @description One search result: the chunk, its BM25 score and a quotable snippet.
          */
@@ -7571,12 +7612,15 @@ export interface components {
         ShotFields: {
             /** Badge */
             badge: string | null;
+            /** Checks */
+            checks: components["schemas"]["CheckOut"][];
             /** Phases */
             phases: components["schemas"]["PhaseFields"][];
             /** Shot */
             shot: components["schemas"]["FieldOut"][];
             /** Shot Id */
             shot_id: number;
+            signature: components["schemas"]["SignatureStateOut"];
             /** Target Yield G */
             target_yield_g: number | null;
             /** Warnings */
@@ -7690,8 +7734,9 @@ export interface components {
          * @description A row of the shots list: the line, and what is plainly wrong with the shot.
          *
          *     The warnings depend on the version the shot is filed under (its target
-         *     yield), so they are worked out when the row is read and never stored: a shot
-         *     refiled or discarded needs no re-derivation. The most severe comes first.
+         *     yield) and on its profile version's **confirmed** signature, so they are worked out
+         *     when the row is read and never stored: a shot refiled or discarded, or a
+         *     signature confirmed, needs no re-derivation. The most severe comes first.
          */
         ShotListItem: {
             /** Badge */
@@ -7975,13 +8020,15 @@ export interface components {
         };
         /**
          * ShotWarningRow
-         * @description One warning on a listed shot, as `domain/warnings.py` words it.
+         * @description One entry of a listed shot's badge: a failed expectation or a warning, red, amber or grey.
          */
         ShotWarningRow: {
             /** At S */
             at_s: number;
             /** Detail */
             detail: string;
+            /** Expectation Id */
+            expectation_id?: number | null;
             /** Fault */
             fault: string;
             /** Phase */
@@ -7990,6 +8037,13 @@ export interface components {
             phase_number: number | null;
             /** Severity */
             severity: string;
+            /**
+             * Status
+             * @default warning
+             */
+            status: string;
+            /** Tier */
+            tier?: string | null;
         };
         /**
          * SignatureAnswer
@@ -8021,6 +8075,18 @@ export interface components {
             rejected: number;
             /** Sets */
             sets: components["schemas"]["SetUsingOut"][];
+        };
+        /**
+         * SignatureStateOut
+         * @description Whether the shot was read against a confirmed signature.
+         */
+        SignatureStateOut: {
+            /** Confirmed */
+            confirmed: number;
+            /** Profile Version Id */
+            profile_version_id: number | null;
+            /** Text */
+            text: string;
         };
         /**
          * SimilarOutcome
@@ -8695,12 +8761,17 @@ export interface components {
             /** Version Outcomes */
             version_outcomes: components["schemas"]["Term"][];
         };
-        /** WarningOut */
+        /**
+         * WarningOut
+         * @description One entry of the badge: a failed critical or important expectation, or a warning.
+         */
         WarningOut: {
             /** At S */
             at_s: number;
             /** Detail */
             detail: string;
+            /** Expectation Id */
+            expectation_id?: number | null;
             /** Fault */
             fault: string;
             /** Phase */
@@ -8709,6 +8780,13 @@ export interface components {
             phase_number: number | null;
             /** Severity */
             severity: string;
+            /**
+             * Status
+             * @default warning
+             */
+            status: string;
+            /** Tier */
+            tier?: string | null;
         };
         /** WindowOut */
         WindowOut: {

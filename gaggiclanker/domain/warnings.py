@@ -4,8 +4,9 @@ A shot is judged against what its profile intends: a turbo profile runs 4-5 g/s
 on purpose, a lever profile's decline is meant to fall. Nothing in a shot's own
 numbers says which. So the warnings here are only the ones that need no such
 knowledge, and all of them are **amber**: a profile's own statement of intent
-(a signature, later) can raise one to red or mark it expected, and until then a
-reader is told the fact and left to weigh it.
+(its confirmed signature, :mod:`gaggiclanker.domain.signature`) can mark one
+expected (grey) or supersede it with a failed expectation of its own, and with
+no signature a reader is told the fact and left to weigh it.
 
 * **over target** — the final weight is above 110 % of the target yield of the
   version the shot is filed under;
@@ -30,7 +31,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
 from gaggiclanker.domain.phase_metrics import (
@@ -50,7 +51,6 @@ __all__ = [
     "badge_text",
     "fault_token",
     "percent_of_target",
-    "review_order",
     "shot_warnings",
     "sort_warnings",
     "warning_order",
@@ -308,24 +308,16 @@ def sort_warnings(warnings: Sequence[ShotWarning]) -> list[ShotWarning]:
     return sorted(warnings, key=warning_order)
 
 
-def review_order(warnings: Sequence[ShotWarning]) -> tuple[int, tuple[int, bool, float, int]]:
-    """What the shots table's Review column sorts by: the order of the badge's own warning.
-
-    A shot with warnings sorts by its first one, the one its badge names: severity,
-    then a phase's warning before a shot-wide one, then the time in the shot. A shot
-    with none sorts after every shot that has one. Smaller is worse. Shots with an
-    equal key are put newest first by the caller (`ShotsRepository`).
-    """
-    if not warnings:
-        return (1, (0, False, 0.0, 0))
-    return (0, warning_order(sort_warnings(warnings)[0]))
+class _HasBadge(Protocol):
+    @property
+    def badge(self) -> str: ...
 
 
-def badge_text(warnings: Sequence[ShotWarning]) -> str | None:
-    """The one-line badge for a list of warnings, built by code and never by a model.
+def badge_text(warnings: Sequence[_HasBadge]) -> str | None:
+    """The one-line badge for a list of warnings or checks, built by code and never by a model.
 
-    The first warning, ``ramp: fast flow``, and ``+N`` for the others; ``None``
-    for a shot with none.
+    The first entry, ``ramp: fast flow``, and ``+N`` for the others; ``None`` for a shot with
+    none.
     """
     if not warnings:
         return None

@@ -79,6 +79,7 @@ __all__ = [
     "fault_for_failure",
     "fault_words",
     "phase_key",
+    "review_key",
     "validate_compare",
     "validate_expectation",
 ]
@@ -618,6 +619,20 @@ class ShotChecks:
     def from_warnings(cls, warnings: Sequence[ShotWarning]) -> ShotChecks:
         """The checks of a shot read without a signature: its universal warnings, as they are."""
         return build_checks(warnings=warnings, expectations=[], override=None, data=None)
+
+
+def review_key(checks: ShotChecks) -> tuple[int, tuple[int, bool, float, int]]:
+    """What the shots table's Review column sorts by: the order of the badge's own entry.
+
+    A shot with a badge sorts by its first entry, the one the badge names: its group (red,
+    amber, an unexpected warning, an expected one), a phase's before a whole-shot one, then
+    the time in the shot. A shot with none sorts after every shot that has one. Smaller is
+    worse. Shots with an equal key are put newest first by the caller (`ShotsRepository`).
+    """
+    entries = checks.badge_entries
+    if not entries:
+        return (1, (0, False, 0.0, 0))
+    return (0, entries[0].order())
 
 
 def _warning_check(warning: ShotWarning, *, expected_by: ExpectationLike | None) -> Check:

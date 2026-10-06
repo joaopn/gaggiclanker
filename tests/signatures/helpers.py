@@ -11,6 +11,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.diagnostics import as_sample_dicts
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.metric_language import ShotData
@@ -177,3 +178,23 @@ def long_name_shot(names_in: tuple[str, ...] = LONG_NAMES) -> Slog:
     ]
     header = slog.header.model_copy(update={"transitions": transitions})
     return dataclasses.replace(slog, header=header, samples=samples)
+
+
+async def add_shot(
+    db: Database,
+    *,
+    set_version_id: int | None,
+    profile_version_id: int,
+    slog: Slog | None = None,
+    profile: dict[str, Any] | None = None,
+    device_id: str = "000900",
+) -> int:
+    """A constructed shot, stored the way ingest stores it, filed and linked to its profile."""
+    derived = derived_lever(slog, device_id=device_id, profile=profile)
+    shot = await ShotsRepository(db).insert(derived.shot, derived.samples)
+    await db.execute(
+        "UPDATE shots SET profile_version_id = ? WHERE id = ?", (profile_version_id, shot)
+    )
+    if set_version_id is not None:
+        assert await SetsRepository(db).assign_shot(shot, set_version_id)
+    return shot

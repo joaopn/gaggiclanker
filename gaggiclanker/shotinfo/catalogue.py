@@ -55,6 +55,7 @@ from gaggiclanker.domain.phase_metrics import (
     FAST_FLOW_WINDOW_MS,
 )
 from gaggiclanker.domain.ratio import brew_ratio
+from gaggiclanker.domain.signature import Check
 from gaggiclanker.domain.slog import (
     FLOW_SCALE,
     PRESSURE_SCALE,
@@ -81,13 +82,13 @@ if TYPE_CHECKING:
 __all__ = [
     "ALSO_SERVED",
     "CATALOGUE",
+    "CHECKS_GROUP",
     "GROUPS",
     "GROUP_NOTES",
     "ITEMS",
     "MEASURED_GROUPS",
     "REVIEW_GROUP",
     "TIERS",
-    "WARNINGS_GROUP",
     "Channel",
     "FieldValue",
     "Item",
@@ -589,14 +590,49 @@ def _decimals(scale: float) -> int:
 # ── the warnings and the per-phase numbers ───────────────────────────
 
 
-def _warnings_text(f: ShotFacts) -> str | None:
-    """One line per warning, most severe first: ``ramp: fast flow (amber): the detail``."""
-    lines = [f"{w.badge} ({w.severity}): {w.detail}" for w in f.warnings]
+def _check_line(check: Check) -> str:
+    """One check as a line: ``ramp: early yield (red, critical): the sentence with the numbers``."""
+    if check.status in ("failed", "warning", "expected") and check.in_badge:
+        tags: list[str] = [check.color or ""]
+        if check.status == "expected":
+            tags.append("expected")
+        elif check.tier is not None:
+            tags.append(check.tier)
+        return f"{check.badge} ({', '.join(tags)}): {check.detail}"
+    if check.status == "unmeasured":
+        return f"{check.phase}: {check.detail}"
+    if check.status == "unchecked":
+        return f"{check.phase}: {check.detail} [{check.tier}]"
+    state = "held" if check.status == "held" else check.status
+    return f"{check.phase}: {state} [{check.tier}]: {check.detail}"
+
+
+def _check_lines(f: ShotFacts, *, base: bool) -> list[Check]:
+    # What the base item carries: failed checks, expected warnings and what could not be
+    # measured. The extended item carries the held ones, the context ones and the free text.
+    return [c for c in f.shot_checks.checks if (c.rank <= 4) == base]
+
+
+def _checks_text(f: ShotFacts) -> str | None:
+    """The signature's state, then every failed or unmeasured check, most severe first."""
+    lines = [f"signature: {f.shot_checks.state.text}"]
+    lines += [_check_line(c) for c in _check_lines(f, base=True)]
+    return "\n".join(lines)
+
+
+def _checks_value(f: ShotFacts) -> list[Any] | None:
+    found = [c.as_dict() for c in _check_lines(f, base=True)]
+    return found or None
+
+
+def _checks_more_text(f: ShotFacts) -> str | None:
+    """What held, the context expectations and the ones only the reading can check."""
+    lines = [_check_line(c) for c in _check_lines(f, base=False)]
     return "\n".join(lines) if lines else None
 
 
-def _warnings_value(f: ShotFacts) -> list[Any] | None:
-    found = [w.as_dict() for w in f.warnings]
+def _checks_more_value(f: ShotFacts) -> list[Any] | None:
+    found = [c.as_dict() for c in _check_lines(f, base=False)]
     return found or None
 
 
@@ -743,8 +779,9 @@ _BREW = "over the brew phases"
 #: For the items outside the groups whose note already says it.
 _NEEDS_PRESSURE = "Needs a pressure sensor."
 
-#: The group the warnings are rendered under, first in every rendering that has any.
-WARNINGS_GROUP = "Warnings"
+#: The group the checks are rendered under, first in every rendering: the signature's state,
+#: what failed, and (extended) what held. It replaced the warnings group in place.
+CHECKS_GROUP = "Checks"
 
 #: The groups of measured numbers: what a shot page lists beside its curve. Left
 #: out are the shot's identity, the person's judgement, the recipe, the machine's
@@ -778,12 +815,15 @@ REVIEW_GROUP = "Review"
 #: meaning as a reader meets it (the glossary writes it under the heading).
 GROUP_NOTES: Mapping[str, str] = MappingProxyType(
     {
-        WARNINGS_GROUP: (
-            "What is plainly wrong with the shot without knowing what its profile is for, most "
-            "severe first, then in the order of the shot, one per line: `phase: fault "
-            "(severity): detail`, with `Shot` for a fault of the whole shot. A shot with no "
-            "line has none of these (or could not be checked: see each fault). All are amber: "
-            "a profile's own intent can excuse one."
+        CHECKS_GROUP: (
+            "The first line says whether the shot was read against a confirmed signature "
+            "(`signature: confirmed, 6 expectations` or `read without a signature`); only "
+            "expectations a person confirmed count. Then one check per line, `phase: fault "
+            "(colour, tier): the sentence with the numbers`, `Shot` for the whole shot, in this "
+            "order: failed critical expectations (red), failed important ones (amber), warnings "
+            "nothing marks as expected (amber), expected warnings (grey), what could not be "
+            "measured (with its reason; neither held nor failed). Extended adds what held, "
+            "context expectations and free text. Earlier in the shot first, the whole shot last."
         ),
         "Pressure": (
             "Measured by the pressure sensor: none of these exists on a machine without one."
@@ -855,31 +895,51 @@ def _items() -> tuple[Item, ...]:
     recipe = "The version's recipe"
     note = "The note typed on the machine"
     review = REVIEW_GROUP
-    warnings = WARNINGS_GROUP
+    checks = CHECKS_GROUP
 
     return (
-        # ── warnings ─────────────────────────────────────────────────
+        # ── checks ───────────────────────────────────────────────────
         Item(
-            key="warnings",
-            group=warnings,
-            name="Warnings",
-            label="Warnings",
+            key="checks",
+            group=checks,
+            name="Checks",
+            label="Checks",
             meaning=(
-                "The faults that need no knowledge of the profile. over target: the final weight "
-                f"is above {OVER_TARGET_SHARE * 100:.0f} % of the target yield of the version "
-                f"the shot is filed under; under target: below {UNDER_TARGET_SHARE * 100:.0f} %; "
-                "both need a scale and a version with a target yield. skipped: the shot stopped "
-                "on its weight or pumped-water target before a phase of its profile began; the "
-                "line names the first such phase and lists them all, and needs the shot's "
-                f"profile. fast flow: the scale flow averaged over {FAST_FLOW_WINDOW_MS / 1000:.1f}"
-                f" s was above {FAST_FLOW_SCALE_FLOW_G_S:.1f} g/s while the pressure stayed at "
-                f"{FAST_FLOW_PRESSURE_SHARE * 100:.0f} % of the shot's peak or more, in the phase "
-                "holding the first such window; it needs a scale and a pressure sensor, and a "
-                "turbo profile does it on purpose. Each is a fact to weigh, not a verdict."
+                "What failed against the signature, the profile's confirmed intent: "
+                "expectations per phase with a tier (critical, important, context) and a kind "
+                "(a measure held against a limit, a phase that must begin, a warning that is "
+                "part of the design, free text only the reading checks). A failure is named "
+                "`phase: fault` from a fixed list (early yield, little yield, fast flow, slow "
+                "flow, skipped, cut short, low pressure, high pressure, unstable, temperature, "
+                "over target, under target). The universal warnings need no signature: over "
+                f"target (the final weight above {OVER_TARGET_SHARE * 100:.0f} % of the "
+                f"filed version's target yield), under target (below "
+                f"{UNDER_TARGET_SHARE * 100:.0f} %), both needing a scale; skipped (the shot "
+                "stopped on its weight or pumped-water target before a phase began); fast flow "
+                f"(scale flow averaged over {FAST_FLOW_WINDOW_MS / 1000:.1f} s above "
+                f"{FAST_FLOW_SCALE_FLOW_G_S:.1f} g/s at {FAST_FLOW_PRESSURE_SHARE * 100:.0f} % "
+                "of peak pressure or more; needs a scale and a pressure sensor). One the "
+                "signature expects is grey; otherwise it is a fact to weigh, not a verdict."
             ),
             default_tier="base",
-            shot=_warnings_text,
-            shot_value=_warnings_value,
+            shot=_checks_text,
+            shot_value=_checks_value,
+        ),
+        Item(
+            key="checks_more",
+            group=checks,
+            name="Checks that held, and the rest",
+            label="Held checks",
+            meaning=(
+                "The expectations of the confirmed signature that held on this shot, the "
+                "context expectations whatever they came to (they inform and never raise "
+                "the badge), and the free-text ones, which only the per-shot reading checks "
+                "and are never decided by a number. Said only when there is something to "
+                "say."
+            ),
+            default_tier="extended",
+            shot=_checks_more_text,
+            shot_value=_checks_more_value,
         ),
         # ── identity and status ──────────────────────────────────────
         Item(

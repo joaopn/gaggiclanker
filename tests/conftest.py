@@ -128,6 +128,14 @@ def data_dir(tmp_path: Path) -> Path:
     return path
 
 
+@pytest.fixture(autouse=True)
+def _forget_remembered_checks() -> None:
+    """A shot's checks are remembered per process; every test starts with none remembered."""
+    from gaggiclanker.signatures.checks import clear_checks_memo
+
+    clear_checks_memo()
+
+
 @pytest.fixture
 def env(data_dir: Path) -> EnvSettings:
     """Bootstrap settings pointed at the temp data directory."""

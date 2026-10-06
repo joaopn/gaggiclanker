@@ -32,7 +32,7 @@ from gaggiclanker.shotinfo.catalogue import (
 
 #: Rows per group, in the order the groups are rendered.
 EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
-    ("Warnings", 1),
+    ("Checks", 2),
     ("Identity and status", 7),
     ("Outcome", 6),
     ("Timing", 3),
@@ -53,7 +53,8 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
 #: Every key, in catalogue order. A key is what a person's choice is stored
 #: against, so it never changes once shipped.
 EXPECTED_KEYS: tuple[str, ...] = (
-    "warnings",
+    "checks",
+    "checks_more",
     "shot_id",
     "started_at",
     "set_version",
@@ -172,7 +173,7 @@ PHASE_LINE_ITEMS = frozenset({"phase_name", "phase_duration", "phase_ended_by", 
 #: The items a chat sees without asking.
 EXPECTED_BASE: frozenset[str] = frozenset(
     {
-        "warnings",
+        "checks",
         *PHASE_LINE_ITEMS,
         "shot_id",
         "started_at",
@@ -426,5 +427,5 @@ def test_nothing_a_chat_saw_without_asking_is_gone_but_the_score_and_the_channel
 
     assert ORIGIN_DEV_BASE - RETIRED_FROM_BASE <= now
     assert (ORIGIN_DEV_BASE - now) == RETIRED_FROM_BASE
-    # What base gained is the warnings and one line per phase, and nothing else.
-    assert now - ORIGIN_DEV_BASE == {"warnings"} | PHASE_LINE_ITEMS
+    # What base gained is the checks and one line per phase, and nothing else.
+    assert now - ORIGIN_DEV_BASE == {"checks"} | PHASE_LINE_ITEMS

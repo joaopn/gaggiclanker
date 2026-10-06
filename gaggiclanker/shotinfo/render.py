@@ -33,9 +33,9 @@ from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotSampleRow, ShotsRepository
 from gaggiclanker.shotinfo.catalogue import (
     CATALOGUE,
+    CHECKS_GROUP,
     GROUPS,
     ITEMS,
-    WARNINGS_GROUP,
     Channel,
     Item,
     ShotTier,
@@ -44,6 +44,7 @@ from gaggiclanker.shotinfo.catalogue import (
 )
 from gaggiclanker.shotinfo.downsample import CurveEvents, find_events, select_rows
 from gaggiclanker.shotinfo.facts import ShotFacts
+from gaggiclanker.signatures.checks import checks_for_shots
 
 __all__ = [
     "Line",
@@ -87,7 +88,7 @@ async def load_shots(
     curves: dict[int, list[ShotSampleRow]] = (
         await ShotsRepository(db).samples_for(ids) if samples else {}
     )
-    return [
+    loaded = [
         ShotFacts(
             shot=row,
             judgement=judgements.get(row.id),
@@ -98,6 +99,10 @@ async def load_shots(
         )
         for row in rows
     ]
+    # Each shot's checks, with the confirmed signature of the profile version it brewed: read
+    # now, never stored, in a fixed number of queries whatever the number of shots.
+    checks = await checks_for_shots(db, [facts.check_subject for facts in loaded])
+    return [dataclasses.replace(facts, checks=checks[facts.shot_id]) for facts in loaded]
 
 
 async def with_samples(db: Database, shots: Sequence[ShotFacts]) -> list[ShotFacts]:
@@ -168,16 +173,16 @@ def render_shot(
 
 
 def _render_order() -> list[str]:
-    """Warnings first, then the phases, every other group as catalogued, the curve last.
+    """The checks first, then the phases, every other group as catalogued, the curve last.
 
     What the agent should not miss comes before what it reads for detail, and
-    the long table comes last so nothing sits below it. Warnings and the curve
+    the long table comes last so nothing sits below it. The checks and the curve
     are named by the catalogue; the phase group is the one whose items are
     per-phase.
     """
     phases = [g for g in GROUPS if any(i.kind == "phase" for i in CATALOGUE if i.group == g)]
     curve = [g for g in GROUPS if any(i.kind == "curve" for i in CATALOGUE if i.group == g)]
-    first = [WARNINGS_GROUP, *phases]
+    first = [CHECKS_GROUP, *phases]
     rest = [g for g in GROUPS if g not in first and g not in curve]
     return [*first, *rest, *curve]
 
@@ -221,9 +226,15 @@ def _group_body(
     facts: ShotFacts, group: str, keys: frozenset[str], lines: list[Line], curve_points: int
 ) -> list[str]:
     members = [item for item in CATALOGUE if item.group == group]
-    if group == WARNINGS_GROUP:
-        # One line per warning, under the heading and without a label of its own.
-        return [part for line in lines if line.key == "warnings" for part in line.value.split("\n")]
+    if group == CHECKS_GROUP:
+        # One line per check, under the heading and without a label of its own: the base item's
+        # first (the signature's state and what failed), then the extended item's.
+        return [
+            part
+            for line in lines
+            if line.key in ("checks", "checks_more")
+            for part in line.value.split("\n")
+        ]
     if any(item.kind == "curve" for item in members):
         return _curve_table(facts, [item for item in members if item.key in keys], curve_points)
     if any(item.kind == "phase" for item in members):

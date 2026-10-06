@@ -31,7 +31,8 @@ __all__ = ["METHODS"]
 METHODS: Mapping[str, str] = MappingProxyType(
     {
         # ── warnings, outcome, identity ──────────────────────────────
-        "warnings": "warnings.universal@1",
+        "checks": "checks.signature@1",
+        "checks_more": "checks.signature_more@1",
         "shot_id": "archive.shot_id@1",
         "started_at": "header.start_epoch@1",
         "set_version": "archive.set_version@1",

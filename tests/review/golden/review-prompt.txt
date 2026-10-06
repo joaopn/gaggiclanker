@@ -308,6 +308,8 @@ Medium 18g 1:2
 
 === shot_information ===
 shot 6
+[Checks]
+signature: read without a signature
 [Phases]
 phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; ended by Duration; pressure 3.9 bar; temperature 92.8 °C; volume 4.2 ml; cup at end 0.0 g; cup gained 0.0 g; samples 12
 phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; ended by Duration; pressure 0.6 bar; temperature 93.1 °C; volume 0.4 ml; cup at end 0.4 g; cup gained 0.4 g; samples 28

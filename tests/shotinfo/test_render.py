@@ -50,34 +50,34 @@ def _headings(text: str) -> list[str]:
 
 
 @pytest.mark.parametrize("tier", ["base", "extended", "full"])
-async def test_warnings_come_first_then_phases_then_the_rest_and_the_curve_last(
+async def test_the_checks_come_first_then_phases_then_the_rest_and_the_curve_last(
     archive: Archive, tier: str
 ) -> None:
     facts = await _one(archive.db, archive.shot)
-    # Warnings and the phase lines belong to different default tiers, so put
+    # The checks and the phase lines belong to different default tiers, so put
     # every item the tier would carry in this one to see all the groups at once.
     tiers = dict.fromkeys(default_tiers(), "extended" if tier == "full" else tier)
     found = _headings(render_shot(facts, tier, tiers, curve_points=CURVE_POINTS))  # type: ignore[arg-type]
-    assert found[0] == "Warnings"
+    assert found[0] == "Checks"
     assert found[1] == "Phases" or tier == "base"
     if tier != "base":
-        assert found[:2] == ["Warnings", "Phases"]
+        assert found[:2] == ["Checks", "Phases"]
         assert found[-1] == "Curve"
-    rest = [g for g in found if g not in ("Warnings", "Phases", "Curve")]
+    rest = [g for g in found if g not in ("Checks", "Phases", "Curve")]
     catalogued = [g for g in catalogue.GROUPS if g in rest]
     assert rest == catalogued
 
 
-async def test_phases_follow_warnings_directly_even_when_the_tier_has_no_other_group_first(
+async def test_phases_follow_the_checks_directly_even_when_the_tier_has_no_other_group_first(
     archive: Archive,
 ) -> None:
     facts = await _one(archive.db, archive.shot)
     tiers = dict.fromkeys(default_tiers(), "excluded")
     for key, item in ITEMS.items():
-        if item.group in ("Warnings", "Phases", "Outcome") and not item.locked:
+        if item.group in ("Checks", "Phases", "Outcome") and not item.locked:
             tiers[key] = "extended"
     found = _headings(render_shot(facts, "extended", tiers, curve_points=CURVE_POINTS))  # type: ignore[arg-type]
-    assert found[:2] == ["Warnings", "Phases"]
+    assert found[:2] == ["Checks", "Phases"]
 
 
 @pytest.mark.parametrize("tier", ["base", "extended", "full"])

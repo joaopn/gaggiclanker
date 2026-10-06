@@ -126,6 +126,9 @@ async def test_every_example_is_what_the_rendering_says(
             continue
         if item.key == "shot_id":
             assert lines[0] == f"shot {example}"
+        elif item.group == "Checks":
+            # The group's lines carry no label of their own: each is one check.
+            assert set(example.splitlines()) <= set(lines), item.key
         elif item.kind == "shot":
             assert f"{item.label}: {example}" in lines, item.key
         elif item.kind == "phase":

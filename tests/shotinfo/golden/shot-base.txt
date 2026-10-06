@@ -1,5 +1,6 @@
 shot 1
-[Warnings]
+[Checks]
+signature: read without a signature
 Shot: under target (amber): The final weight, 31.6 g, is 87.8 % of the 36 g target yield (under 90 % is under target).
 [Phases]
 phase 0 · Pre-infusion: duration 7.2 s; ended by Unknown; cup at end 0.0 g, 0.0 % of target

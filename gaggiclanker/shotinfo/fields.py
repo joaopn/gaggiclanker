@@ -16,15 +16,18 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.domain.signature import Check
 from gaggiclanker.domain.warnings import badge_text
 from gaggiclanker.shotinfo.catalogue import ALSO_SERVED, CATALOGUE, MEASURED_GROUPS, FieldValue
 from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import load_shots
 
 __all__ = [
+    "CheckOut",
     "FieldOut",
     "PhaseFields",
     "ShotFields",
+    "SignatureStateOut",
     "WarningOut",
     "shot_fields",
     "shot_fields_of",
@@ -70,16 +73,84 @@ class FieldOut(BaseModel):
 
 
 class WarningOut(BaseModel):
+    """One entry of the badge: a failed critical or important expectation, or a warning."""
+
     model_config = ConfigDict(extra="forbid")
 
     #: The shot's own phase name, or ``Shot`` for a fault of the whole shot.
     phase: str
     fault: str
-    #: ``red`` or ``amber``.
+    #: ``red`` (a failed critical expectation), ``amber`` (a failed important one, or a universal
+    #: warning nothing marks as expected) or ``grey`` (a warning the signature expects).
     severity: str
     detail: str
     phase_number: int | None
     at_s: float
+    #: The tier of the expectation behind it, ``None`` for a warning nothing marks as expected.
+    tier: str | None = None
+    #: ``failed``, ``warning`` or ``expected``.
+    status: str = "warning"
+    expectation_id: int | None = None
+
+
+class CheckOut(BaseModel):
+    """One check of the shot's ordered list: a signature result or a universal warning."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ``measure``, ``reached``, ``expects_warning``, ``free_text`` or ``warning``.
+    kind: str
+    #: ``failed``, ``held``, ``unmeasured``, ``expected``, ``warning`` or ``unchecked``.
+    status: str
+    #: ``critical``, ``important`` or ``context``; ``None`` for a warning nothing marks as
+    #: expected.
+    tier: str | None
+    #: ``red``, ``amber`` or ``grey`` for what the badge is made of; ``None`` otherwise.
+    color: str | None
+    #: The shot's own phase name, or ``Shot`` for the whole shot.
+    phase: str
+    phase_number: int | None
+    #: The fault word, when the check failed or the warning was raised.
+    fault: str | None
+    #: The expectation's sentence (the language's own for a measure).
+    sentence: str
+    #: The sentence with this shot's number in it.
+    detail: str
+    #: A measure's value on this shot and its unit; a share of the target yield or the dose is
+    #: served as a percentage (``117.2``, unit ``%``, with ``relative_to`` saying of what).
+    #: ``None`` for a check with no number (a phase that must begin) or with the reason in
+    #: ``absent``.
+    value: float | None
+    unit: str
+    #: The limit the value was held against, **after** any Set version's override, as the metric
+    #: language states it (``{"op": "<=", "value": 0.15}``: a share is a fraction here, not a
+    #: percentage); ``None`` for a check with no limit.
+    compare: JsonValue | None
+    #: What a share is a share of: ``target_yield``, ``dose`` or ``final_weight``.
+    relative_to: str | None
+    #: The limit as a person reads it, with this version's override applied: ``at most 15 % of
+    #: target``, ``at most 3 g/s``.
+    limit_text: str
+    #: Whether the comparison held; ``None`` when not measured or not compared.
+    held: bool | None
+    #: Why a value is absent, in words: a check that could not be measured is neither held
+    #: nor failed.
+    absent: str | None
+    at_s: float
+    expectation_id: int | None
+
+
+class SignatureStateOut(BaseModel):
+    """Whether the shot was read against a confirmed signature."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The profile version the shot brewed, whose signature applies (``None``: no profile).
+    profile_version_id: int | None
+    #: How many confirmed expectations that signature has; 0 reads as "without a signature".
+    confirmed: int
+    #: ``confirmed, 6 expectations`` or ``read without a signature``.
+    text: str
 
 
 class PhaseFields(BaseModel):
@@ -98,10 +169,16 @@ class ShotFields(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     shot_id: int
-    #: Most severe first, then in the order of the shot. Worked out when read.
+    #: What the badge is made of, most severe first, then in the order of the shot: failed
+    #: critical expectations, failed important ones, universal warnings, expected warnings.
+    #: Worked out when read.
     warnings: list[WarningOut]
-    #: The badge text, built by code from the warnings: ``ramp: fast flow +1``.
+    #: The badge text, built by code from them: ``ramp: early yield +1``.
     badge: str | None
+    #: Every check in order, the held and the unmeasured and the free-text ones too.
+    checks: list[CheckOut]
+    #: Whether the shot was read against a confirmed signature.
+    signature: SignatureStateOut
     #: The target yield of the version the shot is filed under, when it has one.
     target_yield_g: float | None
     #: The yield as a share of it, in %.
@@ -120,6 +197,36 @@ def _out(item_group: str, item_name: str, item_label: str, value: FieldValue) ->
             "name": item_name,
             "label": item_label,
         }
+    )
+
+
+def _check_out(check: Check) -> CheckOut:
+    value, unit = check.value, check.unit
+    if unit == "share" and value is not None:
+        value, unit = round(value * 100, 1), "%"
+    return CheckOut(
+        kind=check.kind,
+        status=check.status,
+        tier=check.tier,
+        color=check.color,
+        phase=check.phase,
+        phase_number=check.phase_number,
+        fault=check.fault,
+        sentence=check.sentence,
+        detail=check.detail,
+        value=value,
+        unit=unit,
+        compare=(
+            check.compare.model_dump(mode="json", exclude_none=True)
+            if check.compare is not None
+            else None
+        ),
+        relative_to=check.relative_to,
+        limit_text=check.limit_text,
+        held=check.held,
+        absent=check.absent,
+        at_s=check.at_s,
+        expectation_id=check.expectation_id,
     )
 
 
@@ -155,12 +262,18 @@ def shot_fields_of(facts: ShotFacts) -> ShotFields:
             )
         )
 
-    found_warnings = facts.warnings
+    checks = facts.shot_checks
     share = facts.share_of_target(facts.shot.final_weight_g if facts.shot.scale_connected else None)
     return ShotFields(
         shot_id=facts.shot_id,
-        warnings=[WarningOut.model_validate(w.as_dict()) for w in found_warnings],
-        badge=badge_text(found_warnings),
+        warnings=[WarningOut.model_validate(c.as_dict()) for c in checks.badge_entries],
+        badge=badge_text(checks.badge_entries),
+        checks=[_check_out(c) for c in checks.checks],
+        signature=SignatureStateOut(
+            profile_version_id=checks.state.profile_version_id,
+            confirmed=checks.state.confirmed,
+            text=checks.state.text,
+        ),
         target_yield_g=facts.target_yield_g,
         yield_share_pct=share,
         shot=shot_wide,

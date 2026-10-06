@@ -72,6 +72,9 @@ TIERS: tuple[str, ...] = ("critical", "important", "context")
 EXPECTATION_KINDS: tuple[str, ...] = ("measure", "reached", "expects_warning", "free_text")
 EXPECTATION_STATUSES: tuple[str, ...] = ("proposed", "confirmed", "rejected")
 
+#: The `shot_samples` columns the metric language reads beside the time and the phase.
+_SAMPLE_COLUMNS = ("tt", "ct", "tp", "cp", "fl", "tf", "pf", "vf", "v", "ev", "pr", "wp")
+
 #: How many times a write that lost a race on (signature, position) is tried again.
 _POSITION_RETRIES = 4
 
@@ -624,20 +627,51 @@ class SignatureRepository(Repository):
 
     # ── raw material for evaluation ──────────────────────────────────
 
-    async def shot_sources(self, shot_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
-        """The bytes and the profile document of each shot, for a signature check.
+    async def stored_samples(self, shot_ids: Sequence[int]) -> dict[int, list[dict[str, float]]]:
+        """Each shot's stored samples as the dicts the metric language reads, keyed by shot id.
 
-        Only the shots a confirmed signature applies to are asked for, so the cost of reading
-        raw logs is paid by the shots that need them.
+        Read from `shot_samples` (the very numbers the derivation read from the bytes, in real
+        units, with the phase number each sample was recorded in): a field the machine never
+        recorded is left out of the dict, as the language expects, and a shot's log is never
+        parsed on a read. A shot with no samples maps to an empty list.
         """
-        ids = list(shot_ids)
-        if not ids:
+        wanted = sorted({int(i) for i in shot_ids})
+        out: dict[int, list[dict[str, float]]] = {i: [] for i in wanted}
+        if not wanted:
+            return out
+        rows = await self.db.fetch_all(
+            "SELECT shot_id, t_ms, tt, ct, tp, cp, fl, tf, pf, vf, v, ev, pr, wp, phase_number "  # noqa: S608
+            f"FROM shot_samples WHERE shot_id IN ({', '.join('?' * len(wanted))}) "
+            "ORDER BY shot_id, t_ms",
+            wanted,
+        )
+        for row in rows:
+            sample: dict[str, float] = {"t": float(row["t_ms"])}
+            for name in _SAMPLE_COLUMNS:
+                value = row[name]
+                if value is not None:
+                    sample[name] = float(value)
+            if row["phase_number"] is not None:
+                sample["phase"] = float(row["phase_number"])
+            out[int(row["shot_id"])].append(sample)
+        return out
+
+    async def profile_documents(self, version_ids: Iterable[int]) -> dict[int, dict[str, Any]]:
+        """The stored document of each profile version, by id (for the phase names)."""
+        wanted = sorted({int(i) for i in version_ids})
+        if not wanted:
             return {}
         rows = await self.db.fetch_all(
-            "SELECT s.id, s.device_id, s.raw_slog, "  # noqa: S608 - placeholders only
-            "CASE WHEN json_valid(v.json) THEN v.json END AS profile_json "
-            "FROM shots s LEFT JOIN profile_versions v ON v.id = s.profile_version_id "
-            f"WHERE s.id IN ({', '.join('?' * len(ids))})",
-            ids,
+            "SELECT id, CASE WHEN json_valid(json) THEN json END AS document "  # noqa: S608
+            f"FROM profile_versions WHERE id IN ({', '.join('?' * len(wanted))})",
+            wanted,
         )
-        return {int(row["id"]): row_to_dict(row) for row in rows}
+        found: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            try:
+                document = json.loads(row["document"]) if row["document"] else None
+            except ValueError:
+                document = None
+            if isinstance(document, dict):
+                found[int(row["id"])] = document
+        return found

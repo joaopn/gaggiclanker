@@ -54,6 +54,8 @@ Each in its base information. Every other version's shots are a list_set_shots s
 Shots written out below: 9, 8.
 
 shot 9
+[Checks]
+signature: read without a signature
 [Identity and status]
 Date and time: 2026-04-05 08:10
 Set version: v2.2 of Set 1
@@ -74,6 +76,8 @@ Notes: "Knocked the cup."
 Ratio: 1:0.50
 
 shot 8
+[Checks]
+signature: read without a signature
 [Identity and status]
 Date and time: 2026-04-05 08:00
 Set version: v2.2 of Set 1

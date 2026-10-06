@@ -23,13 +23,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from gaggiclanker.db.repos.base import JsonList, JsonObject, JsonText, utc_now
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.signature import ShotChecks, review_key
 from gaggiclanker.domain.vocab import Decision
-from gaggiclanker.domain.warnings import (
-    ShotWarning,
-    badge_text,
-    review_order,
-    shot_warnings,
-)
+from gaggiclanker.domain.warnings import badge_text, shot_warnings
+from gaggiclanker.signatures.checks import CheckSubject, checks_for_shots
 
 __all__ = [
     "REVIEW_SORT",
@@ -277,32 +274,41 @@ class ShotListRow(BaseModel):
 
 
 class ShotWarningRow(BaseModel):
-    """One warning on a listed shot, as `domain/warnings.py` words it."""
+    """One entry of a listed shot's badge: a failed expectation or a warning, red, amber or grey."""
 
     model_config = ConfigDict(extra="forbid")
 
     #: The shot's own phase name, or ``Shot`` for a fault of the whole shot.
     phase: str
     fault: str
-    #: ``red`` or ``amber``.
+    #: ``red`` (a failed critical expectation), ``amber`` (a failed important one, or a universal
+    #: warning nothing marks as expected) or ``grey`` (a warning the signature expects).
     severity: str
     detail: str
     phase_number: int | None
     at_s: float
+    #: The tier of the expectation behind it (``critical``, ``important``, ``context``), or
+    #: ``None`` for a universal warning nothing marks as expected.
+    tier: str | None = None
+    #: ``failed`` (an expectation), ``warning`` (a universal one) or ``expected`` (one the
+    #: signature says is part of the design: grey).
+    status: str = "warning"
+    expectation_id: int | None = None
 
 
 class ShotListItem(ShotListRow):
     """A row of the shots list: the line, and what is plainly wrong with the shot.
 
     The warnings depend on the version the shot is filed under (its target
-    yield), so they are worked out when the row is read and never stored: a shot
-    refiled or discarded needs no re-derivation. The most severe comes first.
+    yield) and on its profile version's **confirmed** signature, so they are worked out
+    when the row is read and never stored: a shot refiled or discarded, or a
+    signature confirmed, needs no re-derivation. The most severe comes first.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     warnings: list[ShotWarningRow] = Field(default_factory=list)
-    #: The Review column's text, built by code from the warnings (``ramp: fast flow +1``);
+    #: The Review column's text, built by code from the warnings (``ramp: early yield +1``);
     #: ``None`` for a shot with none.
     badge: str | None = None
 
@@ -466,15 +472,20 @@ _RATING_KEY = "COALESCE(j.rating, n.rating, s.index_rating)"
 #: list is read (`_review_sorted_ids`), so its entry below names no SQL.
 REVIEW_SORT = "review"
 
-#: What the warnings are worked out from, per shot: the numbers `shot_warnings`
-#: reads, and the target yield of the version the shot is filed under. The
-#: diagnostics blob is large, so only its `metrics` block is pulled out of it.
+#: What a shot's checks are worked out from, per shot: the numbers `shot_warnings` reads, the
+#: target yield and dose of the version the shot is filed under, and which profile version and
+#: Set version decide its signature and its override. The diagnostics blob is large, so only
+#: its `metrics` block and the pressure flag are pulled out of it.
 _REVIEW_COLUMNS = """
     s.id, s.final_weight_g, s.scale_connected, s.final_exit_reason, s.duration_ms,
-    s.phases_json,
+    s.phases_json, s.profile_version_id, s.set_version_id, s.quarantined, s.updated_at,
     CASE WHEN s.diagnostics_json IS NOT NULL AND json_valid(s.diagnostics_json)
          THEN json_extract(s.diagnostics_json, '$.metrics') END AS metrics_json,
-    sv.target_yield_g AS target_yield_g
+    CASE WHEN s.diagnostics_json IS NOT NULL AND json_valid(s.diagnostics_json)
+         THEN CASE json_type(s.diagnostics_json, '$.has_pressure')
+                  WHEN 'false' THEN 0 ELSE 1 END
+         ELSE 1 END AS has_pressure,
+    sv.target_yield_g AS target_yield_g, sv.dose_g AS dose_g
 """
 
 SORT_KEYS: dict[str, str] = {
@@ -1135,43 +1146,72 @@ class ShotsRepository(Repository):
         found = {row.id: row for row in self.to_models(ShotListRow, rows)}
         return [found[shot_id] for shot_id in shot_ids if shot_id in found]
 
-    async def _warnings_for(
-        self, where_sql: str, params: Sequence[Any]
-    ) -> dict[int, list[ShotWarning]]:
-        """The warnings of every shot the condition selects, worked out as of now."""
+    async def _checks_for(self, where_sql: str, params: Sequence[Any]) -> dict[int, ShotChecks]:
+        """The ordered checks of every shot the condition selects, worked out as of now.
+
+        The universal warnings, merged with the results of the **confirmed** signature of the
+        profile version each shot brewed (and its Set version's confirmed override). Nothing
+        proposed or rejected is ever read here.
+        """
         rows = await self.db.fetch_all(
             f"SELECT {_REVIEW_COLUMNS} {_LIST_FROM} WHERE {where_sql}", list(params)
         )
-        found: dict[int, list[ShotWarning]] = {}
+        subjects: list[CheckSubject] = []
         for row in rows:
             target = row["target_yield_g"]
-            found[int(row["id"])] = shot_warnings(
-                final_weight_g=row["final_weight_g"],
-                scale_connected=bool(row["scale_connected"]),
-                final_exit_reason=row["final_exit_reason"] or 0,
-                duration_s=(row["duration_ms"] or 0) / 1000,
-                target_yield_g=target if target is not None and target > 0 else None,
-                phases=_decoded(row["phases_json"], list),
-                metrics=_decoded(row["metrics_json"], dict),
+            target = target if target is not None and target > 0 else None
+            phases = _decoded(row["phases_json"], list)
+            duration_s = (row["duration_ms"] or 0) / 1000
+            scale = bool(row["scale_connected"])
+            metrics = _decoded(row["metrics_json"], dict)
+            subjects.append(
+                CheckSubject(
+                    shot_id=int(row["id"]),
+                    profile_version_id=row["profile_version_id"],
+                    set_version_id=row["set_version_id"],
+                    warnings=shot_warnings(
+                        final_weight_g=row["final_weight_g"],
+                        scale_connected=scale,
+                        final_exit_reason=row["final_exit_reason"] or 0,
+                        duration_s=duration_s,
+                        target_yield_g=target,
+                        phases=phases,
+                        metrics=metrics,
+                    ),
+                    phases=phases,
+                    duration_s=duration_s,
+                    scale_connected=scale,
+                    final_weight_g=row["final_weight_g"],
+                    target_yield_g=target,
+                    dose_g=row["dose_g"],
+                    has_pressure=bool(row["has_pressure"]),
+                    per_phase=metrics.get("per_phase") is not False,
+                    quarantined=bool(row["quarantined"]),
+                    metrics=metrics,
+                    revision=str(row["updated_at"]),
+                )
             )
-        return found
+        return await checks_for_shots(self.db, subjects)
 
     async def _with_warnings(self, rows: Sequence[ShotListRow]) -> list[ShotListItem]:
         """The page's rows with their warnings and badge, which are read, not stored."""
         if not rows:
             return []
         placeholders = ", ".join("?" * len(rows))
-        warnings = await self._warnings_for(f"s.id IN ({placeholders})", [row.id for row in rows])
-        return [
-            ShotListItem.model_validate(
-                {
-                    **row.model_dump(),
-                    "warnings": [w.as_dict() for w in warnings.get(row.id, [])],
-                    "badge": badge_text(warnings.get(row.id, [])),
-                }
+        checks = await self._checks_for(f"s.id IN ({placeholders})", [row.id for row in rows])
+        items: list[ShotListItem] = []
+        for row in rows:
+            entries = checks[row.id].badge_entries if row.id in checks else []
+            items.append(
+                ShotListItem.model_validate(
+                    {
+                        **row.model_dump(),
+                        "warnings": [entry.as_dict() for entry in entries],
+                        "badge": badge_text(entries),
+                    }
+                )
             )
-            for row in rows
-        ]
+        return items
 
     async def _review_sorted_ids(
         self, filters: str, params: Sequence[Any], descending: bool
@@ -1179,13 +1219,14 @@ class ShotsRepository(Repository):
         """Every matching shot's id in the Review column's order.
 
         Descending is the interesting end, as for every other column. The key is
-        the shot's own first warning, the one its badge names, so what the column
-        shows and how it sorts cannot disagree: the most severe first, then a
-        phase's warning before a shot-wide one, then the earlier in the shot, and
-        shots with no warning last. Shots with the same key come newest first (by
+        the shot's own first badge entry, the one its badge names, so what the column
+        shows and how it sorts cannot disagree: a failed critical expectation first,
+        then a failed important one, an unexpected warning, an expected one, then a
+        phase's entry before a whole-shot one and the earlier in the shot, and shots
+        with no entry last. Shots with the same key come newest first (by
         start time, then id). Ascending is the exact reverse of all of it.
         """
-        warnings = await self._warnings_for(filters, params)
+        checks = await self._checks_for(filters, params)
         started = {
             int(row["id"]): str(row["started"])
             for row in await self.db.fetch_all(
@@ -1193,9 +1234,9 @@ class ShotsRepository(Repository):
                 list(params),
             )
         }
-        # Two stable passes: newest first, then by the warning's key.
-        newest_first = sorted(warnings, key=lambda sid: (started.get(sid, ""), sid), reverse=True)
-        ordered = sorted(newest_first, key=lambda sid: review_order(warnings[sid]))
+        # Two stable passes: newest first, then by the first entry's key.
+        newest_first = sorted(checks, key=lambda sid: (started.get(sid, ""), sid), reverse=True)
+        ordered = sorted(newest_first, key=lambda sid: review_key(checks[sid]))
         return ordered if descending else ordered[::-1]
 
 

@@ -1,5 +1,6 @@
 shot 1
-[Warnings]
+[Checks]
+signature: read without a signature
 Shot: under target (amber): The final weight, 31.6 g, is 87.8 % of the 36 g target yield (under 90 % is under target).
 [Phases]
 phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 7.2 s; ended by Unknown; pressure 0.1 bar; peak pressure 0.1 bar; pressure at end 0.1 bar; temperature 94.9 °C; lowest temperature 94.7 °C; target temperature 93.0 °C; volume 0.0 ml; flow 0.00 ml/s; peak flow 0.00 ml/s; scale flow -3.84 g/s; peak scale flow 0.04 g/s; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; ramp 0.02 bar/s; saturation 7.25 s
