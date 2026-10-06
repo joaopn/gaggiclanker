@@ -8,8 +8,8 @@ hand-written diagnostics rather than diagnostics derived from a `.slog`, whose
 numbers would move the day the diagnostics engine is tuned.
 
 The Set is also the shared archive the chat and tool tests read: five earlier
-shots in one Set, each judged, the sixth shot (the one a review reads) judged
-in full, and three insights. Everything a review must never see is here on
+shots in one Set, each judged, the sixth shot (the one a reading reads) judged
+in full, and three insights. Everything a reading must never see is here on
 purpose, so the tests that say it sees none of it have something to find.
 """
 
@@ -21,7 +21,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
+from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
@@ -39,6 +41,7 @@ from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow, ShotsRepository
+from gaggiclanker.db.repos.signatures import ExpectationWrite, SignatureRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.knowledge.rules import seed_rules
@@ -48,21 +51,42 @@ from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.review.service import ReviewService
+from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
+from tests.conftest import running_app
 from tests.llm.conftest import FakeProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
-#: A complete, valid review. The default the fake provider answers with, so a
-#: test that is about the *service* does not have to restate the output
-#: contract; a test that is about the output overrides one field of it.
+#: A complete, valid reading for the fixture's subject shot (no signature, no prediction on its
+#: version). The default the fake provider answers with, so a test that is about the *service*
+#: does not have to restate the output contract; a test that is about the output overrides one
+#: field of it. The first claim's comparison holds on the fixture's curve (the pressurise phase
+#: averages 1.6 ml/s or more of puck flow) and the second has none.
 GOOD_REVIEW: dict[str, Any] = {
-    "taste_prediction": {"balance": "sour", "body": "thin", "confidence": "medium"},
-    "description": (
-        "The shot ran 24.0 s for a bloom profile and the puck never loaded: flow ran "
-        "0.41 ml/s off its target."
-    ),
-    "summary": "Fast for a bloom; likely sour and thin.",
+    "summary": "Fast through the pressurise phase; the cup filled early.",
+    "claims": [
+        {
+            "window": {"phase": "Pressurise"},
+            "fault": "fast flow",
+            "text": "Puck flow ran well above a gentle pace for the whole pressurise phase.",
+            "evidence": [
+                {
+                    "channel": "puck_flow",
+                    "op": "mean",
+                    "window": {"phase": "Pressurise"},
+                    "compare": {"op": ">=", "value": 1.5},
+                }
+            ],
+        },
+        {
+            "window": {},
+            "fault": None,
+            "text": "The cup was most of the way full when the shot ended.",
+            "evidence": [{"channel": "cup_weight", "op": "at_end"}],
+        },
+    ],
+    "free_text_results": [],
     "rules_used": ["hierarchy", "grind"],
     "excerpts_used": [],
 }
@@ -493,3 +517,110 @@ def reviewer(fixture: Fixture, llm: LlmService) -> ReviewService:
     # most of this file's wall clock.
     service.retry_delay_s = 0.0
     return service
+
+
+#: What the fixture's free-text expectation says: distinctive, so a test can find it in a prompt,
+#: a stored claim or a chat's text.
+FREE_TEXT = "Pressure and flow fall together through the pressurise phase"
+PREDICTION = "Expect a faster shot than v1 and a cup that is less sour."
+
+
+async def confirm_free_text(
+    fixture: Fixture,
+    *,
+    tier: str = "critical",
+    phase: str | None = "Pressurise",
+    fault: str = "unstable",
+    text: str = FREE_TEXT,
+) -> int:
+    """Confirm one free-text expectation on the fixture's profile version; returns its id."""
+    repo = SignatureRepository(fixture.db)
+    (row,) = await repo.add(
+        fixture.profile_version_id,
+        [
+            ExpectationWrite(
+                tier=tier,  # type: ignore[arg-type]
+                phase=phase,
+                kind="free_text",
+                text=text,
+                fault=fault,
+                sentence=text,
+            )
+        ],
+    )
+    answered = await repo.answer(row.id, confirm=True)
+    assert answered.row is not None
+    return row.id
+
+
+async def predict(
+    fixture: Fixture, text: str = PREDICTION, *, compares_to: int | None = None
+) -> None:
+    """Give the fixture's Set version a prediction (a version with shots refuses one by route)."""
+    await fixture.db.execute(
+        "UPDATE set_versions SET prediction = ?, compares_to_version_id = ? WHERE id = ?",
+        (text, compares_to, fixture.version_id),
+    )
+
+
+def reading(**overrides: Any) -> dict[str, Any]:
+    """:data:`GOOD_REVIEW` with some keys replaced."""
+    return {**GOOD_REVIEW, **overrides}
+
+
+def free_text_result(
+    expectation_id: int, *, held: bool = False, text: str = "Pressure rose while flow held up."
+) -> dict[str, Any]:
+    """One answer to a free-text expectation, over the pressurise phase."""
+    return {
+        "expectation_id": expectation_id,
+        "held": held,
+        "window": {"phase": "Pressurise"},
+        "text": text,
+        "evidence": [{"channel": "pressure", "op": "slope", "window": {"phase": "Pressurise"}}],
+    }
+
+
+# ── a real app whose LLM service is the scripted fake ───────────────
+
+
+@pytest.fixture
+async def api(
+    env: EnvSettings, provider: FakeProvider
+) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient, FakeProvider]]:
+    """A real app whose LLM service is wired to the scripted fake."""
+    async with running_app(env) as (app, client):
+        rewire(app, provider)
+        yield app, client, provider
+
+
+def rewire(app: FastAPI, provider: FakeProvider) -> None:
+    """Point the app's LLM service — and the review service holding it — at the fake.
+
+    The review service is app-scoped (it owns the "being opened right now" map), so
+    replacing `app.state.llm` alone would leave it talking to the real provider
+    factory. The budget and the mode memory are process-wide singletons by
+    design, and one test scripting a 429 would otherwise latch every test after
+    it in the file, so this app gets its own.
+    """
+    app.state.llm = LlmService(
+        app.state.settings_service,
+        observer=app.state.llm.observer,
+        budget=RateLimitBudget(retries=0),
+        mode_memory=ModeMemory(),
+        provider_factory=lambda _config, _name: provider,
+    )
+    app.state.reviews = ReviewService(
+        app.state.db,
+        app.state.llm,
+        PromptService(PromptsRepository(app.state.db)),
+        bus=app.state.events,
+    )
+    # No real backoff: the failure paths retry, and half a second each is most
+    # of this file's wall clock for nothing.
+    app.state.reviews.retry_delay_s = 0.0
+
+
+async def build_app_fixture(app: FastAPI) -> Fixture:
+    """The conftest Set, built against the app's own handle so the routes see it."""
+    return await build_fixture(app.state.db)

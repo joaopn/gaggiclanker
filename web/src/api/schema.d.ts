@@ -2455,18 +2455,19 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every review of this shot, newest first */
+        /** Every review of this shot, newest first, with its claims */
         get: operations["list_reviews_api_shots__shot_id__reviews_get"];
         put?: never;
         /**
-         * Queue a review of this shot
+         * Queue a reading of this shot
          * @description Queue the work and answer with the `running` row. 202, not 201.
          *
-         *     This is the only way a review starts: a person pressing Review on the shot
-         *     page. The provider call takes tens of seconds and does **not** run inside
-         *     this request; it goes to the app's task registry, the row is the handle,
-         *     and the LLM stream carries `review.started` / `review.finished` for the
-         *     page to follow.
+         *     This is the only way a reading starts: a person pressing a shot's badge in the shots table
+         *     or Read on its page. A shot nobody can read is refused: 422 when its bytes never parsed,
+         *     409 when the person labelled it Discard. The provider call takes tens of seconds and
+         *     does **not** run inside this request; it goes to the app's task registry, the row is the
+         *     handle, and the LLM stream carries `review.started` / `review.finished` for the page to
+         *     follow.
          *
          *     Idempotent per shot while one runs: the registry name `review:<id>` can
          *     only be held once, so a second press gets the running row back.
@@ -4788,6 +4789,29 @@ export interface components {
             /** Version Label */
             version_label: string;
         };
+        /**
+         * EvidenceOut
+         * @description What the page reads of one piece of evidence.
+         */
+        EvidenceOut: {
+            /** Absent */
+            absent: string | null;
+            /** Held */
+            held: boolean | null;
+            /** Kind */
+            kind: string;
+            /**
+             * Limit Text
+             * @default
+             */
+            limit_text: string;
+            /** Sentence */
+            sentence: string;
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: number | null;
+        };
         /** ExampleShot */
         ExampleShot: {
             /** Judged */
@@ -6023,6 +6047,8 @@ export interface components {
             reason: string;
         };
         /** @enum {string} */
+        PredictionStance: "as_predicted" | "partly" | "against" | "not_shown";
+        /** @enum {string} */
         Process: "washed" | "natural" | "honey" | "anaerobic" | "other";
         /**
          * ProfileDetailData
@@ -6513,7 +6539,58 @@ export interface components {
             star: number;
         };
         /** @enum {string} */
-        ReviewConfidence: "low" | "medium" | "high";
+        ReviewClaimKind: "claim" | "free_text" | "prediction";
+        /**
+         * ReviewClaimRow
+         * @description One claim as the page reads it.
+         */
+        ReviewClaimRow: {
+            /** Answered At */
+            answered_at?: string | null;
+            /** End S */
+            end_s?: number | null;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceOut"][];
+            /** Expectation Id */
+            expectation_id?: number | null;
+            /** Fault */
+            fault?: string | null;
+            /** Held */
+            held?: boolean | null;
+            /** Id */
+            id: number;
+            kind: components["schemas"]["ReviewClaimKind"];
+            /** Phase */
+            phase?: string | null;
+            /** Position */
+            position: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Review Id */
+            review_id: number;
+            stance?: components["schemas"]["PredictionStance"] | null;
+            /** Start S */
+            start_s?: number | null;
+            /** @default proposed */
+            status: components["schemas"]["ReviewClaimStatus"];
+            /**
+             * Supported
+             * @default true
+             */
+            supported: boolean;
+            /** Text */
+            text: string;
+            /**
+             * Window Text
+             * @default
+             */
+            window_text: string;
+        };
+        /** @enum {string} */
+        ReviewClaimStatus: "proposed" | "confirmed" | "rejected";
         /** ReviewListData */
         ReviewListData: {
             /** Items */
@@ -6521,11 +6598,12 @@ export interface components {
         };
         /**
          * ReviewRequest
-         * @description `POST /api/shots/{id}/reviews`: run one, optionally on a named model.
+         * @description `POST /api/shots/{id}/reviews`: read the shot, optionally on a named model.
          *
-         *     Every press starts a review: a person pressing Review again wants a fresh
-         *     reading, and the earlier one stays stored. A press while one is running
-         *     gets that running row back.
+         *     Every press starts a reading: a person pressing Read again wants a fresh one,
+         *     and the earlier one stays stored (its claims are set aside: the newest finished
+         *     reading answers for the shot). A press while one is running gets that running
+         *     row back.
          */
         ReviewRequest: {
             /**
@@ -7849,10 +7927,10 @@ export interface components {
          * @description One review with what it was told: the row plus its stored input.
          */
         ShotReviewDetail: {
+            /** Claims */
+            claims?: components["schemas"]["ReviewClaimRow"][];
             /** Created At */
             created_at: string;
-            /** Description */
-            description?: string | null;
             /** Error */
             error?: string | null;
             excerpts_used?: components["schemas"]["JsonList"];
@@ -7869,6 +7947,11 @@ export interface components {
              */
             model: string;
             /**
+             * Prediction Given
+             * @default
+             */
+            prediction_given: string;
+            /**
              * Prompt Name
              * @default
              */
@@ -7890,20 +7973,17 @@ export interface components {
             status: components["schemas"]["ReviewStatus"];
             /** Summary */
             summary?: string | null;
-            taste_balance?: components["schemas"]["Balance"] | null;
-            taste_body?: components["schemas"]["TasteBody"] | null;
-            taste_confidence?: components["schemas"]["ReviewConfidence"] | null;
             usage?: components["schemas"]["JsonObject"];
         };
         /**
          * ShotReviewRow
-         * @description One row of `shot_reviews`, as a page reads it: everything but the input.
+         * @description One review as a page reads it: everything but the input, with its claims.
          */
         ShotReviewRow: {
+            /** Claims */
+            claims?: components["schemas"]["ReviewClaimRow"][];
             /** Created At */
             created_at: string;
-            /** Description */
-            description?: string | null;
             /** Error */
             error?: string | null;
             excerpts_used?: components["schemas"]["JsonList"];
@@ -7919,6 +7999,11 @@ export interface components {
              */
             model: string;
             /**
+             * Prediction Given
+             * @default
+             */
+            prediction_given: string;
+            /**
              * Prompt Name
              * @default
              */
@@ -7940,9 +8025,6 @@ export interface components {
             status: components["schemas"]["ReviewStatus"];
             /** Summary */
             summary?: string | null;
-            taste_balance?: components["schemas"]["Balance"] | null;
-            taste_body?: components["schemas"]["TasteBody"] | null;
-            taste_confidence?: components["schemas"]["ReviewConfidence"] | null;
             usage?: components["schemas"]["JsonObject"];
         };
         /**
@@ -8511,8 +8593,6 @@ export interface components {
             /** Value */
             value: number;
         };
-        /** @enum {string} */
-        TasteBody: "thin" | "medium" | "heavy";
         /**
          * Term
          * @description One member of a simple vocabulary: the stored value and its label.

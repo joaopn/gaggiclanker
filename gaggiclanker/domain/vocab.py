@@ -36,8 +36,10 @@ __all__ = [
     "MEASURE_DECIMALS",
     "MEASURE_DIFFERENCE_DECIMALS",
     "OUTCOME_STATES",
+    "PREDICTION_STANCES",
     "PROCESSES",
-    "REVIEW_CONFIDENCES",
+    "REVIEW_CLAIM_KINDS",
+    "REVIEW_CLAIM_STATUSES",
     "REVIEW_STATUSES",
     "ROAST_LEVELS",
     "RULE_CATEGORIES",
@@ -46,7 +48,6 @@ __all__ = [
     "SHOT_STYLES",
     "SPREAD_MEASURES",
     "STEP_UNITS",
-    "TASTE_BODIES",
     "VERSION_OUTCOMES",
     "Balance",
     "BurrType",
@@ -55,8 +56,10 @@ __all__ = [
     "FlavorPickKind",
     "MeasureTerm",
     "OutcomeState",
+    "PredictionStance",
     "Process",
-    "ReviewConfidence",
+    "ReviewClaimKind",
+    "ReviewClaimStatus",
     "ReviewStatus",
     "RoastLevel",
     "RuleCategory",
@@ -65,7 +68,6 @@ __all__ = [
     "ShotStyle",
     "SpreadMeasure",
     "StepUnit",
-    "TasteBody",
     "VersionOutcome",
     "Vocabulary",
     "flavor_ancestors",
@@ -180,13 +182,18 @@ type ShotStyle = Literal[
 #: because nothing was learned about the provider.
 type ReviewStatus = Literal["running", "ok", "failed", "interrupted"]
 
-#: The body a review predicts the cup has, from the telemetry alone.
-type TasteBody = Literal["thin", "medium", "heavy"]
+#: What one stored statement of a reading is. A `claim` is something the model says about a
+#: window of the shot, a `free_text` one answers one of the confirmed signature's free-text
+#: expectations, and a `prediction` says how the shot moved against the Set version's
+#: prediction. All three are answered the same way, by a person, one at a time.
+type ReviewClaimKind = Literal["claim", "free_text", "prediction"]
 
-#: How sure a review is of its taste prediction. Three words rather than a 0-1
-#: number: a model asked for a probability produces a decimal with two digits
-#: of false precision, and nothing downstream can do arithmetic with it anyway.
-type ReviewConfidence = Literal["low", "medium", "high"]
+#: A claim starts `proposed`; only a person moves it. Nothing proposed or rejected teaches the
+#: chat anything.
+type ReviewClaimStatus = Literal["proposed", "confirmed", "rejected"]
+
+#: How the shot moved against the prediction its Set version was filed with.
+type PredictionStance = Literal["as_predicted", "partly", "against", "not_shown"]
 
 #: How much a knowledge rule is worth. `expert` is a published heuristic,
 #: `calibrated` is a threshold measured against real shots, `anecdotal` is one
@@ -253,8 +260,9 @@ MEASURE_DIFFERENCE_DECIMALS: dict[SpreadMeasure, int] = {
 }
 SHOT_STYLES: tuple[str, ...] = get_args(ShotStyle.__value__)
 REVIEW_STATUSES: tuple[str, ...] = get_args(ReviewStatus.__value__)
-TASTE_BODIES: tuple[str, ...] = get_args(TasteBody.__value__)
-REVIEW_CONFIDENCES: tuple[str, ...] = get_args(ReviewConfidence.__value__)
+REVIEW_CLAIM_KINDS: tuple[str, ...] = get_args(ReviewClaimKind.__value__)
+REVIEW_CLAIM_STATUSES: tuple[str, ...] = get_args(ReviewClaimStatus.__value__)
+PREDICTION_STANCES: tuple[str, ...] = get_args(PredictionStance.__value__)
 RULE_CONFIDENCES: tuple[str, ...] = get_args(RuleConfidence.__value__)
 RULE_CATEGORIES: tuple[str, ...] = get_args(RuleCategory.__value__)
 

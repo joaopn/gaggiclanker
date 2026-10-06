@@ -39,7 +39,7 @@ from gaggiclanker.db.repos.sets import ProfileMatchSummary, SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListItem, ShotSampleRow
 from gaggiclanker.domain.metric_language import Expression, Result
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
-from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
+from gaggiclanker.infra.errors import BadRequest, Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, rate_limit
 from gaggiclanker.infra.request_context import get_request_id
 from gaggiclanker.review.service import review_task_name
@@ -93,10 +93,10 @@ class ShotDetailData(BaseModel):
     judgement: ShotJudgementRow | None = None
     #: The Set version this shot is attached to, resolved. NULL is `needs_set`.
     set_version: SetVersionRow | None = None
-    #: Every review of this shot, newest first. Sent with the shot rather than
-    #: fetched separately because the Review card is on this page and a second
-    #: request for a list that is almost always empty or one row long is a
-    #: round trip for nothing.
+    #: Every review of this shot, newest first, each with its claims. Sent with the shot
+    #: rather than fetched separately because the Reading card is on this page and a second
+    #: request for a list that is almost always empty or one row long is a round trip for
+    #: nothing.
     reviews: list[ShotReviewRow] = Field(default_factory=list)
 
 
@@ -533,11 +533,12 @@ async def post_profile_match(
 
 
 class ReviewRequest(BaseModel):
-    """`POST /api/shots/{id}/reviews`: run one, optionally on a named model.
+    """`POST /api/shots/{id}/reviews`: read the shot, optionally on a named model.
 
-    Every press starts a review: a person pressing Review again wants a fresh
-    reading, and the earlier one stays stored. A press while one is running
-    gets that running row back.
+    Every press starts a reading: a person pressing Read again wants a fresh one,
+    and the earlier one stays stored (its claims are set aside: the newest finished
+    reading answers for the shot). A press while one is running gets that running
+    row back.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -555,7 +556,7 @@ class ReviewListData(BaseModel):
 @router.get(
     "/{shot_id}/reviews",
     response_model=ApiResponse[ReviewListData],
-    summary="Every review of this shot, newest first",
+    summary="Every review of this shot, newest first, with its claims",
 )
 async def list_reviews(shot_id: int, reviews: ReviewsRepoDep) -> JSONResponse:
     return envelope_response(
@@ -567,7 +568,7 @@ async def list_reviews(shot_id: int, reviews: ReviewsRepoDep) -> JSONResponse:
     "/{shot_id}/reviews",
     response_model=ApiResponse[ShotReviewRow],
     status_code=202,
-    summary="Queue a review of this shot",
+    summary="Queue a reading of this shot",
     # One of the routes in this API that spends money. The registry already
     # makes a repeat request for the *same* shot idempotent; this bounds a loop
     # walking different ones. See gaggiclanker/infra/ratelimit.py.
@@ -579,16 +580,18 @@ async def run_review(
     request: Request,
     shots: ShotsRepoDep,
     reviews: ReviewsRepoDep,
+    judgements: JudgementsRepoDep,
     reviewer: ReviewServiceDep,
     wait: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
     """Queue the work and answer with the `running` row. 202, not 201.
 
-    This is the only way a review starts: a person pressing Review on the shot
-    page. The provider call takes tens of seconds and does **not** run inside
-    this request; it goes to the app's task registry, the row is the handle,
-    and the LLM stream carries `review.started` / `review.finished` for the
-    page to follow.
+    This is the only way a reading starts: a person pressing a shot's badge in the shots table
+    or Read on its page. A shot nobody can read is refused: 422 when its bytes never parsed,
+    409 when the person labelled it Discard. The provider call takes tens of seconds and
+    does **not** run inside this request; it goes to the app's task registry, the row is the
+    handle, and the LLM stream carries `review.started` / `review.finished` for the page to
+    follow.
 
     Idempotent per shot while one runs: the registry name `review:<id>` can
     only be held once, so a second press gets the running row back.
@@ -612,6 +615,17 @@ async def run_review(
                     "Its bytes never parsed, so there is nothing to read. "
                     "The raw file is still stored and a parser fix can re-derive it."
                 ),
+            },
+        )
+
+    judgement = await judgements.get(shot_id)
+    if judgement is not None and judgement.decision == "discard":
+        raise Conflict(
+            f"Shot {shot.device_id} was discarded",
+            code="SHOT_DISCARDED",
+            details={
+                "field": "shot_id",
+                "message": "A shot labelled Discard is not evidence, so it is never read.",
             },
         )
 

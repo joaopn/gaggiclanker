@@ -60,6 +60,8 @@ __all__ = [
     "per_phase_method",
     "render",
     "water_by_sample",
+    "window_span",
+    "window_words",
 ]
 
 type ChannelName = Literal[
@@ -961,6 +963,33 @@ def evaluate(expr: Expression, data: ShotData) -> Result:
             gone,
         )
     return _finish(expr, data, resolved)
+
+
+def window_span(data: ShotData, window: Window) -> tuple[float, float] | None:
+    """The seconds of the shot a window covers: its first and last timed sample.
+
+    Resolved by the evaluator's own window code, so a claim's highlighted span and the number
+    computed over it can never be about two different stretches. ``None`` when the window cannot
+    be resolved on this shot (a phase it never reached, no such phase, no phase table) or holds
+    no timed sample.
+    """
+    try:
+        resolved = _resolve(data, window)
+    except _Absent:
+        return None
+    times = [t for i in resolved.indices if (t := _t(data.samples[i])) is not None]
+    if not times:
+        return None
+    return _seconds(times[0]), _seconds(times[-1])
+
+
+def window_words(window: Window, data: ShotData | None = None) -> str:
+    """A window as a person reads it ("the ramp", "the span from … to …", "the whole shot").
+
+    With the shot, a phase that two phases share is read as "the first ramp", the one the
+    language means.
+    """
+    return _window_words(window, _duplicate_names(data))
 
 
 def evaluate_in_phase(expr: Expression, data: ShotData, position: int) -> Result:

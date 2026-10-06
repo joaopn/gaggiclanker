@@ -69,7 +69,7 @@ async def load_shots(
 
     One query per table, whatever the number of shots — the shot rows, their
     judgements, the notes typed on the machine, the versions they are filed
-    under, their newest finished reviews and, only when ``samples`` is asked
+    under, their readings and, only when ``samples`` is asked
     for, every sample of all of them
     — because the opening context renders twenty shots and the search loads a
     whole Set. The result follows the order of ``shot_ids``; an id with no shot
@@ -81,7 +81,7 @@ async def load_shots(
     ids = [row.id for row in rows]
     judgements = await JudgementsRepository(db).for_shots(ids)
     notes = await NotesRepository(db).for_shots(ids)
-    reviews = await ShotReviewsRepository(db).latest_finished_for_shots(ids)
+    readings = await ShotReviewsRepository(db).readings_for_shots(ids)
     versions = await SetsRepository(db).versions_by_id(
         row.set_version_id for row in rows if row.set_version_id is not None
     )
@@ -94,7 +94,7 @@ async def load_shots(
             judgement=judgements.get(row.id),
             version=versions.get(row.set_version_id) if row.set_version_id is not None else None,
             note=notes.get(row.id),
-            review=reviews.get(row.id),
+            reading=readings.get(row.id),
             samples=tuple(curves.get(row.id, ())) if samples else None,
         )
         for row in rows

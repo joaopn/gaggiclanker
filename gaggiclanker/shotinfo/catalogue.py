@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
 
+from gaggiclanker.db.repos.reviews import ReviewClaimRow
 from gaggiclanker.domain import diagnostics as engine
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
 from gaggiclanker.domain.phase_metrics import (
@@ -87,7 +88,7 @@ __all__ = [
     "GROUP_NOTES",
     "ITEMS",
     "MEASURED_GROUPS",
-    "REVIEW_GROUP",
+    "READING_GROUP",
     "TIERS",
     "Channel",
     "FieldValue",
@@ -806,9 +807,9 @@ MEASURED_GROUPS: frozenset[str] = frozenset(
     }
 )
 
-#: The group a shot's review is rendered under. Named once because Review's own
-#: input leaves it out: a review is never shown an earlier review.
-REVIEW_GROUP = "Review"
+#: The group a shot's reading is rendered under. Named once because the reading's own
+#: input leaves it out: a reading is never shown an earlier one.
+READING_GROUP = "Reading"
 
 #: What a group says once for all its rows: a condition every row shares, or
 #: a layout that is not the ordinary ``label: value``. Part of each row's
@@ -850,11 +851,13 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "Duration; …`, with only the values that phase has. The pressure lines need a "
             "pressure sensor; the scale lines (cup, scale flow) need a scale."
         ),
-        REVIEW_GROUP: (
-            "The newest finished review of the shot, or nothing when it was never reviewed. A "
-            "review is a model's reading of this one shot's data, made without the person's "
-            "judgement, the Set or any other shot: weigh it below the measured numbers and "
-            "below the person's judgement."
+        READING_GROUP: (
+            "What the newest finished reading of the shot said, and only what the person "
+            "confirmed. A reading is a model's claims about this one shot, each tied to a "
+            "window of the shot and backed by numbers the server worked out, made without the "
+            "person's judgement: weigh a confirmed claim below the measured numbers and "
+            "below the person's judgement. Claims nobody confirmed are not shown, only counted "
+            "(`unverified`); a claim the numbers do not bear out says so."
         ),
         "Curve": (
             "One table: a line saying how many of the shot's samples it holds, a header naming "
@@ -870,12 +873,15 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
 )
 
 
-#: What every Review item's meaning says, so a model reading the glossary never
+#: What every Reading item's meaning says, so a model reading the glossary never
 #: mistakes one for a measurement or for the person's own view.
 _MODEL_WRITTEN = (
-    "Written by a model from this shot's data, without the person's judgement: a reading, "
-    "not a measurement."
+    "Written by a model from this shot's data, without the person's judgement: a reading, not "
+    "a measurement."
 )
+
+#: What the items that carry a claim add: nothing unconfirmed is ever shown.
+_CONFIRMED_ONLY = " Shown only once the person confirmed it."
 
 
 def _items() -> tuple[Item, ...]:
@@ -894,7 +900,7 @@ def _items() -> tuple[Item, ...]:
     judgement = "Your judgement"
     recipe = "The version's recipe"
     note = "The note typed on the machine"
-    review = REVIEW_GROUP
+    reading = READING_GROUP
     checks = CHECKS_GROUP
 
     return (
@@ -1996,85 +2002,152 @@ def _items() -> tuple[Item, ...]:
             default_tier="excluded",
             shot=lambda f: _quote(f.note.notes) if f.note is not None else None,
         ),
-        # ── the review ───────────────────────────────────────────────
+        # ── the reading ──────────────────────────────────────────────
         Item(
-            key="review_taste_balance",
-            group=review,
-            name="Review's predicted balance",
-            label="Predicted balance",
+            key="reading_state",
+            group=reading,
+            name="Whether the shot was read, and how much of it is confirmed",
+            label="Reading",
             meaning=(
-                "What a review expects the cup's balance to be: Sour, Balanced or Bitter. "
+                "Whether a model read this shot (a click of the person's) and how its claims "
+                "stand: confirmed by the person, still unverified, or rejected. Only confirmed "
+                "claims are shown to you; an unverified one is only counted, and it may be "
+                "wrong. " + _MODEL_WRITTEN
+            ),
+            default_tier="base",
+            shot=_reading_state,
+        ),
+        Item(
+            key="reading_claims",
+            group=reading,
+            name="The confirmed claims of the reading",
+            label="Reading claims",
+            meaning=(
+                "One line per claim the person confirmed: where in the shot (a phase or a span, "
+                "with its seconds), the fault word or `observation`, the sentence, then the "
+                "numbers behind it, each worked out by the server from the shot. A claim the "
+                "numbers do not bear out says so; weigh it accordingly. "
                 + _MODEL_WRITTEN
+                + _CONFIRMED_ONLY
             ),
-            default_tier="extended",
-            shot=lambda f: (
-                _BALANCES.get(f.review.taste_balance)
-                if f.review is not None and f.review.taste_balance
-                else None
+            default_tier="base",
+            shot=_reading_claims,
+            shot_value=_reading_claims_value,
+        ),
+        Item(
+            key="reading_prediction",
+            group=reading,
+            name="How the shot moved against its version's prediction",
+            label="Reading, against the prediction",
+            meaning=(
+                "The confirmed verdict of the reading on the prediction the Set version was "
+                "filed with: as predicted, partly, against, or not shown by this shot, with the "
+                "sentence and numbers behind it. Absent when the version has no prediction or "
+                "the person did not confirm it. One shot grades nothing: the Set's own evidence "
+                "does. " + _MODEL_WRITTEN + _CONFIRMED_ONLY
             ),
-        ),
-        Item(
-            key="review_taste_body",
-            group=review,
-            name="Review's predicted body",
-            label="Predicted body",
-            meaning="What a review expects the cup's body to be: thin, medium or heavy. "
-            + _MODEL_WRITTEN,
-            default_tier="extended",
-            shot=lambda f: f.review.taste_body if f.review is not None else None,
-        ),
-        Item(
-            key="review_taste_confidence",
-            group=review,
-            name="Review's confidence in its prediction",
-            label="Prediction confidence",
-            meaning="How sure the review said it was of its taste prediction: low, medium or "
-            "high. " + _MODEL_WRITTEN,
-            default_tier="extended",
-            shot=lambda f: f.review.taste_confidence if f.review is not None else None,
-        ),
-        Item(
-            key="review_description",
-            group=review,
-            name="Review's description",
-            label="Review description",
-            meaning="A paragraph on what the shot's telemetry shows and why, with its figures. "
-            + _MODEL_WRITTEN,
-            default_tier="extended",
-            shot=lambda f: _quote(f.review.description) if f.review is not None else None,
-        ),
-        Item(
-            key="review_summary",
-            group=review,
-            name="Review's one-line summary",
-            label="Review summary",
-            meaning="The review in one sentence. " + _MODEL_WRITTEN,
-            default_tier="extended",
-            shot=lambda f: _quote(f.review.summary) if f.review is not None else None,
-        ),
-        Item(
-            key="review_written_at",
-            group=review,
-            name="When the review was written",
-            label="Review written",
-            meaning="When the review finished, in UTC, to the minute. " + _MODEL_WRITTEN,
-            default_tier="extended",
-            shot=lambda f: (
-                str(f.review.finished_at or f.review.created_at)[:16].replace("T", " ")
-                if f.review is not None
-                else None
-            ),
-        ),
-        Item(
-            key="review_model",
-            group=review,
-            name="Which model wrote the review",
-            label="Review model",
-            meaning="The model that wrote the review, as the provider named it. " + _MODEL_WRITTEN,
-            default_tier="extended",
-            shot=lambda f: (f.review.model or None) if f.review is not None else None,
+            default_tier="base",
+            shot=_reading_prediction,
         ),
     )
+
+
+# ── the reading ──────────────────────────────────────────────────────
+
+_STANCE_WORDS: Mapping[str, str] = MappingProxyType(
+    {
+        "as_predicted": "as predicted",
+        "partly": "partly as predicted",
+        "against": "against the prediction",
+        "not_shown": "not shown by this shot",
+    }
+)
+
+
+def _evidence_line(evidence: ReviewClaimRow) -> str:
+    """The numbers behind a claim, each as its sentence and what it came to on this shot."""
+    parts: list[str] = []
+    for item in evidence.evidence:
+        if item.value is None:
+            parts.append(f"{item.sentence}: not measured ({item.absent or 'no value'})")
+            continue
+        shown = f"{item.value:g} {item.unit}".rstrip()
+        verdict = "" if item.held is None else (" (held)" if item.held else " (did not hold)")
+        parts.append(f"{item.sentence}: {shown}{verdict}")
+    return "; ".join(parts)
+
+
+def _span(claim: ReviewClaimRow) -> str:
+    where = claim.window_text or "the whole shot"
+    if claim.start_s is None or claim.end_s is None:
+        return where
+    return f"{where} ({claim.start_s:g}-{claim.end_s:g} s)"
+
+
+def _confirmed(f: ShotFacts, kind: str) -> list[ReviewClaimRow]:
+    """The newest finished reading's confirmed claims of one kind: nothing else is ever said."""
+    if f.reading is None or f.reading.finished is None:
+        return []
+    return [c for c in f.reading.claims if c.kind == kind and c.status == "confirmed"]
+
+
+def _reading_state(f: ShotFacts) -> str | None:
+    reading = f.reading
+    if reading is None or reading.finished is None:
+        return "not read"
+    counts = {"confirmed": 0, "proposed": 0, "rejected": 0}
+    for claim in reading.claims:
+        counts[claim.status] += 1
+    finished = reading.finished
+    when = str(finished.finished_at or finished.created_at)[:10]
+    noun = "claim" if counts["confirmed"] == 1 else "claims"
+    return (
+        f"read {when} by {finished.model or 'a model'}: {counts['confirmed']} {noun} confirmed, "
+        f"{counts['proposed']} unverified, {counts['rejected']} rejected"
+    )
+
+
+def _reading_claims(f: ShotFacts) -> str | None:
+    lines: list[str] = []
+    for claim in _confirmed(f, "claim"):
+        line = f"{_span(claim)}: {claim.fault or 'observation'}: {claim.text}"
+        numbers = _evidence_line(claim)
+        if numbers:
+            line += f" [{numbers}]"
+        if not claim.supported:
+            line += " (the numbers do not bear this out)"
+        lines.append(line)
+    return "\n".join(lines) if lines else None
+
+
+def _reading_claims_value(f: ShotFacts) -> list[Any] | None:
+    found = [
+        {
+            "phase": claim.phase,
+            "window": claim.window_text,
+            "start_s": claim.start_s,
+            "end_s": claim.end_s,
+            "fault": claim.fault,
+            "text": claim.text,
+            "supported": claim.supported,
+        }
+        for claim in _confirmed(f, "claim")
+    ]
+    return found or None
+
+
+def _reading_prediction(f: ShotFacts) -> str | None:
+    claims = _confirmed(f, "prediction")
+    if not claims:
+        return None
+    claim = claims[0]
+    line = f"{_STANCE_WORDS.get(claim.stance or '', claim.stance or '')}: {claim.text}"
+    numbers = _evidence_line(claim)
+    if numbers:
+        line += f" [{numbers}]"
+    if not claim.supported:
+        line += " (the numbers do not bear this out)"
+    return line
 
 
 def _note_doses(f: ShotFacts) -> str | None:

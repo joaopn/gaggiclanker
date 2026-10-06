@@ -8,14 +8,25 @@ description: |
   snapshotted onto the review row — so what an old review says it was told is
   exactly what it was told.
 
-  The shot first, because that is the subject; the profile it brewed next,
+  The shot first, because that is the subject, its checks leading; what the
+  signature asks the reading to answer and what the Set version predicted next,
+  because those are the questions; the phases and the language the evidence is
+  written in, because they bound what may be said; the profile it brewed,
   because it says what the machine was commanded to do; the detected style,
   which sets the expectations; the rules after that, because they are reference
   material rather than evidence; and the retrieved prose last of all, because
   it is the least authoritative thing in the prompt.
 variables:
   - name: shot_information
-    description: The shot's own information, every line a review reads, in the shot renderer's layout.
+    description: The shot's own information, every line a review reads, in the shot renderer's layout, checks first.
+  - name: signature
+    description: The free-text expectations of the profile's confirmed signature, each with its id, or why there are none.
+  - name: prediction
+    description: The prediction the Set version was filed with and what it is measured against, or why there is none.
+  - name: phases
+    description: The phase names this shot logged, the only ones a window may name.
+  - name: metric_language
+    description: How an expression of the metric language is written, from the language's own channel and operation lists.
   - name: profile
     description: The profile the shot was brewed with, as its label and compact JSON.
   - name: shot_style
@@ -28,6 +39,22 @@ user: |
   THE SHOT
 
   {{shot_information}}
+
+  FREE-TEXT EXPECTATIONS OF THE PROFILE'S CONFIRMED SIGNATURE — answer each by id in `free_text_results`
+
+  {{signature}}
+
+  THE PREDICTION OF THE SET VERSION THE SHOT IS FILED UNDER
+
+  {{prediction}}
+
+  PHASES THIS SHOT LOGGED — the only names a window or an anchor may use
+
+  {{phases}}
+
+  HOW TO WRITE AN EXPRESSION — the evidence behind a claim
+
+  {{metric_language}}
 
   THE PROFILE IT BREWED
 

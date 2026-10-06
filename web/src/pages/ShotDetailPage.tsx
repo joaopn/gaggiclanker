@@ -200,11 +200,7 @@ export function ShotDetailPage() {
       </section>
       {!row.quarantined ? (
         <section id={REVIEW_ANCHOR} className="scroll-mt-20">
-          <ReviewCard
-            shotId={row.id}
-            reviews={shot.data.reviews ?? []}
-            balance={shot.data.judgement?.balance}
-          />
+          <ReviewCard shotId={row.id} reviews={shot.data.reviews ?? []} />
         </section>
       ) : null}
 

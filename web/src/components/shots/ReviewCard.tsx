@@ -5,7 +5,6 @@ import { Link } from "react-router-dom";
 import type { ShotReview } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
-import { useVocabulary } from "@/hooks/useCatalog";
 import { useRunReview } from "@/hooks/useReview";
 import { invalidateShots } from "@/lib/invalidate";
 import { attempt } from "@/lib/mutations";
@@ -14,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 /** What the button does, said once before anybody presses it. */
 export const REVIEW_EXPLAINED =
-  "A model reads this shot's data, without your judgement, and writes what it expects the cup to taste like, a description and a one-line summary. It changes nothing else.";
+  "A model reads this shot's data, without your judgement, and writes claims about it and a one-line summary. It does not guess how the cup tasted, and it changes nothing else.";
 
 /** How often a card waiting on a running review re-reads the shot. */
 const RUNNING_REFRESH_MS = 5000;
@@ -22,18 +21,16 @@ const RUNNING_REFRESH_MS = 5000;
 /**
  * A model's reading of this shot, and the button that asks for one.
  *
- * A review writes three things about the shot and nothing else: a blind taste
- * prediction, a description and a one-sentence summary. It is shown here and
- * nowhere else in the interface (never in the shots table or on the Set page),
- * and the chat reads it as shot information.
+ * A review writes claims about the shot and a one-sentence summary. This card
+ * shows the summary and the citations (the claims themselves are not drawn here
+ * yet).
  *
  * Four states, all read from the rows rather than from the mutation, so a
  * review started in another tab shows up here too:
  *
  * - none yet: the button and one line saying what it does;
  * - running: the newest row is `running`;
- * - read: the newest finished review — summary first, the taste prediction
- *   beside the person's own balance, the description, the rules and excerpts
+ * - read: the newest finished review — summary first, the rules and excerpts
  *   it cited, the model and the time, and Review again;
  * - failed: the newest row failed or was interrupted — its stored error and
  *   the button, with the last finished reading still below it if there is one.
@@ -41,13 +38,10 @@ const RUNNING_REFRESH_MS = 5000;
 export function ReviewCard({
   shotId,
   reviews,
-  balance,
 }: {
   shotId: number;
   /** Every review of the shot, newest first, as the shot detail carries them. */
   reviews: ShotReview[];
-  /** The person's own balance from their judgement, to set beside the prediction. */
-  balance: string | null | undefined;
 }) {
   const run = useRunReview();
   const queryClient = useQueryClient();
@@ -118,18 +112,13 @@ export function ReviewCard({
 
         {failed ? <FailedReview review={latest} /> : null}
 
-        {reading ? <Reading review={reading} balance={balance} /> : null}
+        {reading ? <Reading review={reading} /> : null}
       </div>
     </SectionCard>
   );
 }
 
-function Reading({ review, balance }: { review: ShotReview; balance: string | null | undefined }) {
-  const vocab = useVocabulary();
-  const balanceLabel = (value: string | null | undefined) =>
-    value ? (vocab.data?.balances.find((term) => term.value === value)?.label ?? value) : null;
-  const predicted = balanceLabel(review.taste_balance);
-  const yours = balanceLabel(balance);
+function Reading({ review }: { review: ShotReview }) {
   const rules = (review.rules_used ?? []) as string[];
   const excerpts = (review.excerpts_used ?? []) as string[];
 
@@ -138,27 +127,6 @@ function Reading({ review, balance }: { review: ShotReview; balance: string | nu
       {review.summary ? (
         <p className="font-medium text-sm" data-testid="review-summary">
           {review.summary}
-        </p>
-      ) : null}
-
-      <dl className="grid gap-2 text-sm sm:grid-cols-2" data-testid="review-taste">
-        <div className="rounded-md border border-border p-2">
-          <dt className="text-muted-foreground text-xs">It predicts, without your judgement</dt>
-          <dd data-testid="review-predicted">
-            {predicted ?? "no balance"}
-            {review.taste_body ? ` · ${review.taste_body} body` : ""}
-            {review.taste_confidence ? ` · ${review.taste_confidence} confidence` : ""}
-          </dd>
-        </div>
-        <div className="rounded-md border border-border p-2">
-          <dt className="text-muted-foreground text-xs">You said</dt>
-          <dd data-testid="review-yours">{yours ?? "no balance recorded yet"}</dd>
-        </div>
-      </dl>
-
-      {review.description ? (
-        <p className="text-sm" data-testid="review-description">
-          {review.description}
         </p>
       ) : null}
 

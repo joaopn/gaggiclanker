@@ -1,4 +1,4 @@
-"""Everything a review is told about one shot, assembled deterministically.
+"""Everything a reading is told about one shot, assembled deterministically.
 
 One function, :func:`build_review_input`, reads the archive and produces a
 document that is both the prompt's variables and the review row's
@@ -13,22 +13,25 @@ What goes in, and nothing else:
    item in it except the ones listed in :data:`REVIEW_EXCLUDED_KEYS` and the
    groups named by :data:`REVIEW_EXCLUDED_GROUP_MEMBERS`: the person's
    judgement, the note typed on the machine (which seeds the judgement), the
-   Set version's recipe, the shot's earlier reviews, and the shot's Set, label
-   and counted state. The tiers
-   a person set on Settings → Shot information govern what a chat is handed,
-   never what a review reads;
-2. **the profile the shot brewed**, the whole document of the profile version
+   shot's earlier readings, and the shot's label and counted state. The checks
+   come first (the renderer's order), the Set version's recipe is in, since the
+   checks' shares of the target need it, and the tiers a person set on Settings
+   → Shot information govern what a chat is handed, never what a reading reads;
+2. **the free-text expectations of the confirmed signature**, each with its id, tier, phase,
+   sentence and fault word: the reading must answer every one;
+3. **the Set version's prediction** and which version it is measured against, or the plain
+   statement that there is none (the shot is not filed, or its version has no prediction);
+4. **the profile the shot brewed**, the whole document of the profile version
    the shot itself links to;
-3. **the detected shot style**, with its evidence;
-4. **the knowledge rules and reference excerpts** the deterministic signal
+5. **the detected shot style**, with its evidence;
+6. **the knowledge rules and reference excerpts** the deterministic signal
    selection picks from the shot's telemetry.
 
-**Blind and independent by construction.** Nothing here reads the judgement,
-the Set, its versions, another shot, an insight or an earlier review: the
-loader's judgement, version, note and review are dropped before rendering,
-rule selection is given no Set attributes, and retrieval no taste. So the
-taste prediction needs no withholding trick, and a review of one shot cannot
-be told what the Set is trying or what another shot did.
+**Independent by construction.** Nothing here reads the person's judgement (rating, balance,
+notes, decision), the note typed on the machine, the label, another shot, an earlier
+reading, an insight or a conversation: the loader's judgement, note and reading are dropped
+before rendering, and rule selection is given no Set attributes. A reading of one shot
+cannot be told what the person thought of it, or what another shot did.
 
 Determinism is the property everything here is arranged around. Nothing reads
 the clock, nothing iterates a set, every list is sorted: two builds of the same
@@ -47,6 +50,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.signatures import SignatureRepository
+from gaggiclanker.domain.metric_language import CHANNELS, OPS
+from gaggiclanker.domain.sets import version_label
 from gaggiclanker.domain.warnings import fault_token
 from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
@@ -80,22 +87,18 @@ REVIEW_CURVE_POINTS = 60
 #: Catalogue groups a review never reads, each named by one of its items so a
 #: renamed group heading cannot quietly let the group back in: the person's
 #: judgement (`rating`), the note typed on the machine (`note_text`: its rating,
-#: balance and notes are the judgement typed somewhere else), the Set version's
-#: recipe (`recipe_grind`) and the shot's own review (`review_summary`: a
-#: review is never shown an earlier one).
+#: balance and notes are the judgement typed somewhere else) and the shot's own
+#: reading (`reading_state`: a reading is never shown an earlier one).
 REVIEW_EXCLUDED_GROUP_MEMBERS: tuple[str, ...] = (
     "rating",
     "note_text",
-    "recipe_grind",
-    "review_summary",
+    "reading_state",
 )
 
 #: Single items a review never reads, from groups it otherwise does: the
-#: person's label (their verdict), whether the shot is counted (which says
-#: "discarded" for a shot they labelled so) and the Set version it is filed
-#: under (the Set is not the review's business, and a blind rendering would
-#: otherwise say "not filed in a Set" about a shot that is).
-REVIEW_EXCLUDED_KEYS: frozenset[str] = frozenset({"label", "counted", "set_version"})
+#: person's label (their verdict) and whether the shot is counted (which says
+#: "discarded" for a shot they labelled so).
+REVIEW_EXCLUDED_KEYS: frozenset[str] = frozenset({"label", "counted"})
 
 
 def review_keys() -> frozenset[str]:
@@ -118,6 +121,20 @@ def review_tiers() -> Mapping[str, Tier]:
     return {item.key: ("base" if item.key in wanted else "excluded") for item in CATALOGUE}
 
 
+class ExpectationAsked(BaseModel):
+    """One free-text expectation of the confirmed signature, as the reading is asked about it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    tier: str
+    #: The phase it is about, or ``None`` for the whole shot.
+    phase: str | None = None
+    #: The fault word it fails with.
+    fault: str
+    sentence: str
+
+
 class ReviewInput(BaseModel):
     """Everything the model is told, as one validated document.
 
@@ -135,6 +152,19 @@ class ReviewInput(BaseModel):
     #: Both empty when the archive holds no copy of what the machine ran.
     profile_label: str = ""
     profile: dict[str, Any] | None = None
+    #: The phases the shot logged, in order: the only names a window may use.
+    phases: list[str] = Field(default_factory=list)
+    #: How many expectations the confirmed signature of the profile version has (0: the shot is
+    #: read without a signature).
+    signature_confirmed: int = 0
+    #: The confirmed signature's free-text expectations, in written order: each one is answered.
+    expectations: list[ExpectationAsked] = Field(default_factory=list)
+    #: The name of the Set version the shot is filed under ("" when it is not filed), the
+    #: prediction that version was filed with (the text the reading is shown, "" for none) and
+    #: the name of the version it is measured against ("" for nothing).
+    version: str = ""
+    prediction: str = ""
+    compares_to: str = ""
     style: str = "unknown"
     style_tier: str = "none"
     style_evidence: list[str] = Field(default_factory=list)
@@ -161,6 +191,10 @@ class ReviewInput(BaseModel):
         """The prompt's variables: one rendered block per section."""
         return {
             "shot_information": self.shot,
+            "signature": _render_expectations(self),
+            "prediction": _render_prediction(self),
+            "phases": _render_phases(self.phases),
+            "metric_language": _render_language(),
             "profile": _render_profile(self.profile_label, self.profile),
             "shot_style": _render_style(self),
             "knowledge_rules": render_rules(self.rules),
@@ -174,7 +208,7 @@ async def build_review_input(
     *,
     chunk_token_budget: int = DEFAULT_CHUNK_TOKEN_BUDGET,
 ) -> ReviewInput:
-    """Assemble everything a review is told about one shot.
+    """Assemble everything a reading is told about one shot.
 
     ``chunk_token_budget`` is how much reference prose may come along, in
     estimated tokens; a parameter rather than a settings read so this stays a
@@ -186,18 +220,18 @@ async def build_review_input(
     loaded = await load_shots(db, [shot_id], samples=True)
     if not loaded:
         raise LookupError(f"no shot {shot_id}")
-    # Blind by construction: whatever the loader read about the person's
-    # verdict, the Set version, the machine's notes card and an earlier review
-    # is dropped here, before anything renders, and the exclusions below keep
-    # the lines that would describe them out as well.
-    # The shot row carries a copy of some of it too (the Set badge, the
+    # Independent by construction: whatever the loader read about the person's
+    # verdict, the machine's notes card and an earlier reading is dropped here,
+    # before anything renders, and the exclusions above keep the lines that
+    # would describe them out as well. The Set version stays: its recipe is what
+    # the checks' shares of the target are measured against, and its prediction
+    # is what the reading is asked to compare the shot with.
+    # The shot row carries a copy of some of the person's verdict too (the
     # judgement's rating, notes and label, the machine's own rating), which no
     # item a review reads renders; cleared all the same, so the rule holds by
     # what is in hand rather than by what happens to be printed.
     shot = loaded[0].shot.model_copy(
         update={
-            "set_version_id": None,
-            "set_badge": None,
             "rating": None,
             "index_rating": None,
             "judgement_rating": None,
@@ -207,9 +241,7 @@ async def build_review_input(
             "has_notes": False,
         }
     )
-    facts = dataclasses.replace(
-        loaded[0], shot=shot, judgement=None, version=None, note=None, review=None
-    )
+    facts = dataclasses.replace(loaded[0], shot=shot, judgement=None, note=None, reading=None)
 
     profile_label = ""
     profile: dict[str, Any] | None = None
@@ -219,11 +251,42 @@ async def build_review_input(
             profile_label = stored.label
             profile = stored.profile
 
+    expectations: list[ExpectationAsked] = []
+    confirmed = 0
+    if facts.shot.profile_version_id is not None:
+        found = await SignatureRepository(db).confirmed_for_versions(
+            [facts.shot.profile_version_id]
+        )
+        rows = found.get(facts.shot.profile_version_id, [])
+        confirmed = len(rows)
+        expectations = [
+            ExpectationAsked(
+                id=row.id,
+                tier=row.tier,
+                phase=row.phase,
+                fault=row.fault or "",
+                sentence=row.sentence,
+            )
+            for row in rows
+            if row.kind == "free_text"
+        ]
+
+    version_name = ""
+    prediction = ""
+    compares_to = ""
+    if facts.version is not None:
+        version_name = version_label(facts.version.version_major, facts.version.version_minor)
+        prediction = facts.version.prediction.strip()
+        if prediction and facts.version.compares_to_version_id is not None:
+            compared = await SetsRepository(db).get_version(facts.version.compares_to_version_id)
+            if compared is not None:
+                compares_to = version_label(compared.version_major, compared.version_minor)
+
     duration = facts.shot.duration_ms / 1000 if facts.shot.duration_ms > 0 else None
     verdict = detect_style(
         profile,
-        # No dose: it lives in the judgement and the Set version, neither of
-        # which a review reads, so the allongé test (a ratio) is skipped.
+        # No dose: it lives in the judgement and the Set version, and the style is the
+        # profile's, so the allongé test (a ratio) is skipped.
         dose_g=None,
         summary=readable_summary(facts),
         duration_s=None if duration is None else round(duration, 2),
@@ -244,6 +307,16 @@ async def build_review_input(
         shot=render_shot(facts, "base", review_tiers(), curve_points=REVIEW_CURVE_POINTS),
         profile_label=profile_label,
         profile=profile,
+        phases=list(
+            dict.fromkeys(
+                name for phase in facts.phases if (name := str(phase.get("name") or "").strip())
+            )
+        ),
+        signature_confirmed=confirmed,
+        expectations=expectations,
+        version=version_name,
+        prediction=prediction,
+        compares_to=compares_to,
         style=verdict.style,
         style_tier=verdict.tier,
         style_evidence=list(verdict.evidence),
@@ -269,11 +342,12 @@ def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
     telemetry shapes come from here: a review reads no taste, so the taste,
     aroma and balance tokens are never produced for one (the chat can still
     pass them to `get_rules`). The faults are the shot's own warnings (``fault:
-    fast_flow``, ``fault:skipped``; the two yield ones need the version the shot
-    is filed under, which a review is blind to), and the rest are plain readings
-    of the numbers with no grade in them. Sorted, because the list is stored on
-    the review row and a set's iteration order would make two identical runs
-    produce different snapshots.
+    fast_flow``, ``fault:skipped``, and the two yield ones when the shot is filed
+    under a Set version with a target, which a reading is given), and the rest
+    are plain readings of the numbers with no grade in them. The puck-flow readings are left
+    out for a shot flagged without a pressure sensor (:func:`readable_summary`). Sorted,
+    because the list is stored on the review row and a set's iteration order would make two
+    identical runs produce different snapshots.
     """
     tokens: set[str] = {f"style:{style.style}"}
     tokens.update(f"fault:{fault_token(warning.fault)}" for warning in facts.warnings)
@@ -343,3 +417,77 @@ def _render_profile(label: str, profile: dict[str, Any] | None) -> str:
 def _render_style(review: ReviewInput) -> str:
     evidence = "; ".join(review.style_evidence) or "no evidence"
     return f"{review.style} (detected from {review.style_tier}: {evidence})"
+
+
+def _render_expectations(review: ReviewInput) -> str:
+    """The free-text expectations to answer, one line each, or why there are none."""
+    if review.signature_confirmed == 0:
+        return (
+            "This shot's profile version has no confirmed signature, so there is nothing to "
+            "answer: `free_text_results` is an empty list."
+        )
+    if not review.expectations:
+        return (
+            f"The confirmed signature has {review.signature_confirmed} expectations and none is "
+            "free text, so there is nothing to answer: `free_text_results` is an empty list."
+        )
+    lines = [
+        f"id {item.id} · {item.tier} · {item.phase or 'whole shot'} · fails as {item.fault}: "
+        f"{item.sentence}"
+        for item in review.expectations
+    ]
+    return "\n".join(lines)
+
+
+def _render_prediction(review: ReviewInput) -> str:
+    if not review.version:
+        return (
+            "The shot is not filed under a Set version, so there is no prediction to compare it "
+            "with: the output has no `prediction` key."
+        )
+    if not review.prediction:
+        return (
+            f"The Set version the shot is filed under ({review.version}) was filed with no "
+            "prediction: the output has no `prediction` key."
+        )
+    against = (
+        f"measured against {review.compares_to}"
+        if review.compares_to
+        else "measured against nothing earlier: on the numbers this version states itself"
+    )
+    return f"Version {review.version} predicted, {against}:\n{review.prediction}"
+
+
+def _render_language() -> str:
+    """How an expression is written, from the language's own lists so the prompt cannot drift."""
+    return "\n".join(
+        [
+            "You attach expressions; the server works out the numbers on this shot. An expression "
+            "is a JSON object with `channel`, `op` and `window`, and optionally `relative_to`, "
+            "`compare`, and for the time operations `threshold` (and `direction` for `time_to`).",
+            f"channels: {', '.join(CHANNELS)}. The cup weight and the scale flow come from the "
+            "scale alone; the puck flow, pump flow, water pumped and resistance are the "
+            "machine's estimates; the target channels are what the profile commanded. A channel "
+            "the shot did not record is reported as not measured, never as zero.",
+            f"operations: {', '.join(OPS)}. `gained` reads the cup weight or the water pumped "
+            "over one phase. `slope` is per second. `time_to`, `time_above` and `time_below` "
+            "need a `threshold`.",
+            'window: `{}` for the whole shot, `{"phase": "<a phase this shot logged>"}`, or a '
+            'span `{"from": <anchor>, "to": <anchor>}`. An anchor is "shot_start", "shot_end", '
+            '"first_drip", "peak_pressure", `{"phase_start": "<phase>"}`, '
+            '`{"phase_end": "<phase>"}` or `{"at_s": <seconds>}`, each optionally with '
+            '"offset_s".',
+            '`relative_to`: "target_yield", "dose" or "final_weight" turns the value into a '
+            "share of it (0.15 is 15 %).",
+            '`compare`: `{"op": "<" | "<=" | ">" | ">=", "value": n}` or `{"op": "between", '
+            '"low": a, "high": b}`: the condition your claim asserts, so that it holds when the '
+            "claim is true (a cup over its limit is `>` the limit). The server says whether it "
+            "held; a claim whose comparison did not hold is marked as not borne out.",
+        ]
+    )
+
+
+def _render_phases(phases: list[str]) -> str:
+    if not phases:
+        return "This shot logged no phase table: a window may be the whole shot or a time span."
+    return "; ".join(phases)

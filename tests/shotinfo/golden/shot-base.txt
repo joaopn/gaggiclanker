@@ -37,3 +37,5 @@ Dose in: 18.0 g
 Dose out: 36.5 g
 Ratio: 1:2.03
 Grind as brewed: 14
+[Reading]
+Reading: not read

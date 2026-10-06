@@ -31,20 +31,22 @@ from gaggiclanker.domain.vocab import (
     MEASURE_DECIMALS,
     MEASURE_DIFFERENCE_DECIMALS,
     OUTCOME_STATES,
+    PREDICTION_STANCES,
     PROCESSES,
-    REVIEW_CONFIDENCES,
+    REVIEW_CLAIM_KINDS,
+    REVIEW_CLAIM_STATUSES,
     REVIEW_STATUSES,
     ROAST_LEVELS,
     SET_VERSION_ORIGINS,
     SPREAD_MEASURES,
     STEP_UNITS,
-    TASTE_BODIES,
     VERSION_OUTCOMES,
     flavor_ancestors,
     flavor_path,
     in_wheel_order,
     vocabulary,
 )
+from gaggiclanker.domain.warnings import FAULTS
 
 #: (table, column, the tuple it must match).
 CHECKED: list[tuple[str, str, tuple[str, ...]]] = [
@@ -58,9 +60,10 @@ CHECKED: list[tuple[str, str, tuple[str, ...]]] = [
     ("shot_judgements", "decision", DECISIONS),
     ("flavor_picks", "kind", FLAVOR_PICK_KINDS),
     ("shot_reviews", "status", REVIEW_STATUSES),
-    ("shot_reviews", "taste_balance", BALANCES),
-    ("shot_reviews", "taste_body", TASTE_BODIES),
-    ("shot_reviews", "taste_confidence", REVIEW_CONFIDENCES),
+    ("review_claims", "kind", REVIEW_CLAIM_KINDS),
+    ("review_claims", "status", REVIEW_CLAIM_STATUSES),
+    ("review_claims", "stance", PREDICTION_STANCES),
+    ("review_claims", "fault", FAULTS),
 ]
 
 

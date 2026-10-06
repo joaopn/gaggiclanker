@@ -1,6 +1,6 @@
-"""Only a person starts a review: the shot page's button, through its one route.
+"""Only a person starts a reading: the badge or the shot page's button, through its one route.
 
-A review spends a provider call and writes to a shot, so the question "who can
+A reading spends a provider call and writes to a shot, so the question "who can
 start one" has exactly one answer. Four checks, each covering a way it could
 stop being true:
 
@@ -60,6 +60,7 @@ ALLOWED = frozenset(
     {
         "gaggiclanker/review/__init__.py",
         "gaggiclanker/review/context.py",
+        "gaggiclanker/review/evidence.py",
         "gaggiclanker/review/models.py",
         "gaggiclanker/review/service.py",
         "gaggiclanker/review/style.py",

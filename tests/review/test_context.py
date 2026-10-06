@@ -1,14 +1,17 @@
-"""What a review is told, and the golden prompt it renders to.
+"""What a reading is told, and the golden prompt it renders to.
 
 The golden file is `golden/review-prompt.txt`: the whole input for the fixture's
-subject shot — its information as the shot renderer writes it, the profile it
-brewed, the style and the selected rules and excerpts — exactly as it came out
-last time. A change to any of it is a diff in review.
+subject shot — its information as the shot renderer writes it, the signature's
+free-text expectations, the prediction, the phases, the profile it brewed, the
+style and the selected rules and excerpts — exactly as it came out last time. A
+change to any of it is a diff in review.
 
-The other tests here pin the rules the golden cannot state: a review is blind
-(no judgement, however it is stored) and independent (no Set, no version, no
-other shot, no insight), it reads every item it is allowed whatever the
-person's tier settings, and two builds are byte-identical.
+The other tests here pin the rules the golden cannot state: a reading never sees
+the person's judgement, the machine's note, the label, another shot or an earlier
+reading (however they are stored), it does see the Set version's recipe and
+prediction and the confirmed signature's free-text expectations, it reads every
+item it is allowed whatever the person's tier settings, and two builds are
+byte-identical.
 
 Regenerate with `uv run pytest tests/review -k golden --update-golden` and read
 the diff before committing it.
@@ -24,10 +27,16 @@ import pytest
 
 import gaggiclanker.review.context as context_module
 from gaggiclanker.db.repos.notes import NotesRepository
-from gaggiclanker.db.repos.reviews import ReviewOutcome, ReviewStart, ShotReviewsRepository
+from gaggiclanker.db.repos.reviews import (
+    ClaimWrite,
+    ReviewOutcome,
+    ReviewStart,
+    ShotReviewsRepository,
+)
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.repos.signatures import ExpectationWrite, SignatureRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.models import ShotNotes
 from gaggiclanker.review.context import (
@@ -37,7 +46,7 @@ from gaggiclanker.review.context import (
 )
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.shotinfo import CATALOGUE, ITEMS, ShotFacts, ShotTier, Tier, render_shot
-from tests.review.conftest import Fixture
+from tests.review.conftest import FREE_TEXT, Fixture, confirm_free_text, predict
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "review-prompt.txt"
 
@@ -73,14 +82,16 @@ async def test_two_builds_are_identical(fixture: Fixture) -> None:
     assert first.render() == second.render()
 
 
-async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture) -> None:
+async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_shots(
+    fixture: Fixture,
+) -> None:
     """The rule the whole feature rests on.
 
     The subject shot carries a full judgement (rating, balance, taste and aroma
-    notes, notes text, a decision), a note typed on the machine, and is filed
-    under a version with a prediction in a named Set that has five other shots
-    and a confirmed insight. None of it may reach the stored input or the
-    rendered prompt.
+    notes, notes text, a decision), a note typed on the machine, an earlier reading and
+    is filed under a version with a prediction in a named Set that has five other shots
+    and a confirmed insight. None of the person's side may reach the stored input or the
+    rendered prompt; the version's recipe and prediction do.
     """
     db = fixture.db
     subject = fixture.shots[-1]
@@ -103,18 +114,18 @@ async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture
             }
         ),
     )
-    # And an earlier review of the same shot: a review is never shown another.
+    # And an earlier reading of the same shot: a reading is never shown another.
     earlier = ShotReviewsRepository(db)
     earlier_id = await earlier.start(ReviewStart(shot_id=subject, model="earlier-model"))
     await earlier.finish(
         earlier_id,
         ReviewOutcome(
             status="ok",
-            taste_balance="bitter",
-            description="An earlier reading of this shot.",
             summary="An earlier one-line reading.",
+            claims=[ClaimWrite(kind="claim", text="An earlier claim about this shot.")],
         ),
     )
+    await earlier.confirm_all(earlier_id)
     # Every row the leak test looks for is really there to leak.
     stored = await db.fetch_one(
         "SELECT rating, balance, notes, decision FROM shot_judgements WHERE shot_id = ?",
@@ -136,12 +147,11 @@ async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture
         "Machine-typed bean name",  # the note typed on the machine
         "Typed at the machine: harsh finish",
         "Guji natural on the Niche",  # the Set
-        PREDICTION,  # the version's prediction
         "Baseline for this bag",  # the first version's intent
         "Naturals on this grinder",  # the confirmed insight
         "drifts coarser as it warms up",  # the other two
         "An unconfirmed proposal",
-        "An earlier reading of this shot.",  # an earlier review of it
+        "An earlier claim about this shot.",  # an earlier reading of it
         "An earlier one-line reading.",
         "earlier-model",
         "peach, jasmine, lemon",  # the Set's bean
@@ -154,8 +164,8 @@ async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture
             assert f"shot {other}" not in text
             assert f'"shot_id":{other},' not in text
 
-    # The lines that would carry the judgement, the Set and the recipe, looked
-    # for in the shot's own information (prose in an excerpt may say "rating").
+    # The lines that would carry the judgement and the label, looked for in the shot's own
+    # information (prose in an excerpt may say "rating").
     lines = [
         "Rating:",
         "Balance:",
@@ -168,11 +178,8 @@ async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture
         "Grind as brewed:",
         "Label:",
         "Counted:",
-        "Set version:",
-        "Recipe ",
         "Machine note",
-        "Predicted balance",
-        "Review summary",
+        "Reading:",
         "Improve",
         "3/5",
         "Citric acid",
@@ -180,10 +187,79 @@ async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture
     leaked = [needle for needle in lines if needle in review.shot]
     assert not leaked, leaked
 
-    # And the shot itself is there.
+    # What it does see: the shot, the version it is filed under with its recipe, the
+    # prediction and what it is measured against.
     assert prompt.startswith("=== knowledge_excerpts ===")
     assert f"shot {subject}" in prompt
     assert "Shot time: 24.0 s" in prompt
+    assert review.version == "v1.1"
+    assert review.prediction == PREDICTION
+    assert review.compares_to == "v1"
+    assert f"v1.1 of Set {fixture.set_id}" in review.shot
+    assert "Recipe " in review.shot or "recipe" in review.shot.lower()
+    rendered = review.render()["prediction"]
+    assert PREDICTION in rendered and "measured against v1" in rendered
+
+
+async def test_with_no_prediction_or_no_set_version_it_says_so(fixture: Fixture) -> None:
+    review = await build_review_input(fixture.db, fixture.shots[-1])
+    assert review.prediction == "" and review.version == "v1"
+    assert "was filed with no prediction" in review.render()["prediction"]
+    assert "`prediction` key" in review.render()["prediction"]
+
+    shot_id = await ShotsRepository(fixture.db).insert(
+        ShotInsert(
+            device_id="000778",
+            raw_slog=b"fixture",
+            started_at="2026-03-04T08:00:00.000Z",
+            duration_ms=31_000,
+        )
+    )
+    unfiled = await build_review_input(fixture.db, shot_id)
+    assert unfiled.version == "" and unfiled.prediction == ""
+    assert "not filed under a Set version" in unfiled.render()["prediction"]
+
+
+async def test_a_prediction_measured_against_nothing_says_so(fixture: Fixture) -> None:
+    await predict(fixture, compares_to=None)
+    review = await build_review_input(fixture.db, fixture.shots[-1])
+    assert review.compares_to == ""
+    assert "measured against nothing earlier" in review.render()["prediction"]
+
+
+async def test_the_confirmed_signatures_free_text_expectations_are_listed_with_their_ids(
+    fixture: Fixture,
+) -> None:
+    review = await build_review_input(fixture.db, fixture.shots[-1])
+    assert review.expectations == [] and review.signature_confirmed == 0
+    assert "no confirmed signature" in review.render()["signature"]
+
+    first = await confirm_free_text(fixture, fault="unstable")
+    second = await confirm_free_text(
+        fixture, tier="important", phase=None, fault="slow flow", text="It took its time"
+    )
+    # A proposed one is not the signature, and neither is a measure.
+    await SignatureRepository(fixture.db).add(
+        fixture.profile_version_id,
+        [
+            ExpectationWrite(
+                tier="context",
+                kind="free_text",
+                text="Not confirmed",
+                fault="unstable",
+                sentence="Not confirmed",
+            )
+        ],
+    )
+
+    review = await build_review_input(fixture.db, fixture.shots[-1])
+
+    assert [e.id for e in review.expectations] == [first, second]
+    assert review.signature_confirmed == 2
+    text = review.render()["signature"]
+    assert f"id {first} · critical · Pressurise · fails as unstable: {FREE_TEXT}" in text
+    assert f"id {second} · important · whole shot · fails as slow flow: It took its time" in text
+    assert "Not confirmed" not in text
 
 
 async def test_the_person_s_tiers_do_not_narrow_what_a_review_reads(fixture: Fixture) -> None:
@@ -200,19 +276,18 @@ async def test_the_person_s_tiers_do_not_narrow_what_a_review_reads(fixture: Fix
     assert "Yield: 37.5 g" in after.shot
 
 
-def test_a_review_reads_every_item_but_the_judgement_the_note_the_recipe_the_set_and_itself() -> (
-    None
-):
+def test_a_review_reads_every_item_but_the_judgement_the_note_the_label_and_itself() -> None:
     keys = review_keys()
-    groups_left_out = {
-        ITEMS[key].group for key in ("rating", "note_text", "recipe_grind", "review_summary")
-    }
+    groups_left_out = {ITEMS[key].group for key in ("rating", "note_text", "reading_state")}
 
-    assert REVIEW_EXCLUDED_KEYS == {"label", "counted", "set_version"}
+    assert REVIEW_EXCLUDED_KEYS == {"label", "counted"}
     for item in CATALOGUE:
         excluded = item.group in groups_left_out or item.key in REVIEW_EXCLUDED_KEYS
         assert (item.key not in keys) == excluded, item.key
-    assert not [key for key in keys if key.startswith("review_")]
+    assert not [key for key in keys if key.startswith("reading_")]
+    # The Set version's recipe and where the shot is filed are read: the checks' shares of the
+    # target need them.
+    assert {"recipe_grind", "recipe_yield", "set_version", "checks"} <= keys
     # Excluded-by-default items are read too: the curve's extra channels.
     assert {"curve_pump_flow", "curve_target_temperature", "machine_shot_number"} <= keys
 
@@ -303,13 +378,12 @@ async def test_the_excerpt_budget_is_a_parameter_and_zero_turns_it_off(fixture: 
 async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
     fixture: Fixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Blind twice over: the judgement, the Set and an earlier review are gone first.
+    """Independent twice over: the judgement, the note and an earlier reading are gone first.
 
-    The exclusion list keeps their lines out; the facts a review renders carry
-    no judgement, note, version or earlier review, and the shot row none of its
-    copies of them, to begin with. With the list widened to every item, nothing
-    of any of them may appear either, and the facts handed to the renderer say
-    why.
+    The exclusion list keeps their lines out; the facts a reading renders carry no judgement,
+    note or earlier reading, and the shot row none of its copies of the person's verdict, to
+    begin with. With the list widened to every item, nothing of them may appear either, and
+    the facts handed to the renderer say why. The Set version stays: the checks need it.
     """
     subject = fixture.shots[-1]
     earlier = ShotReviewsRepository(fixture.db)
@@ -318,11 +392,11 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
         earlier_id,
         ReviewOutcome(
             status="ok",
-            taste_balance="bitter",
-            description="An earlier reading of this shot.",
             summary="An earlier one-line reading.",
+            claims=[ClaimWrite(kind="claim", text="An earlier claim about this shot.")],
         ),
     )
+    await earlier.confirm_all(earlier_id)
     everything = frozenset(item.key for item in CATALOGUE)
     monkeypatch.setattr("gaggiclanker.review.context.review_keys", lambda: everything)
     rendered: list[ShotFacts] = []
@@ -340,19 +414,15 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
     assert "Sharp up front, nothing behind it" not in review.shot
     assert "Rating:" not in review.shot
     assert "Balance:" not in review.shot
-    assert "Guji natural on the Niche" not in review.shot
-    assert f"of Set {fixture.set_id}" not in review.shot
-    assert "An earlier reading of this shot." not in review.shot
+    assert "An earlier claim about this shot." not in review.shot
     assert "An earlier one-line reading." not in review.shot
     assert "earlier-model" not in review.shot
-    assert "Predicted balance" not in review.shot
+    assert "Reading: not read" in review.shot, "the widened list rendered the reading group, empty"
     assert "not labelled" in review.shot, "the widened list really did render the label"
-    assert "not filed in a Set" in review.shot, "and the Set version line"
 
     [facts] = rendered
-    assert (facts.judgement, facts.version, facts.note, facts.review) == (None, None, None, None)
-    assert facts.shot.set_version_id is None
-    assert facts.shot.set_badge is None
+    assert (facts.judgement, facts.note, facts.reading) == (None, None, None)
+    assert facts.version is not None, "the version's recipe is what the checks measure against"
     assert facts.shot.judgement_rating is None
     assert facts.shot.judgement_notes is None
     assert facts.shot.judgement_decision is None

@@ -302,6 +302,20 @@ safety_bounds:
   [pressure] Never suggest a pressure outside 0-12 bar; the firmware itself refuses more.
   [temperature] Never suggest a brew temperature outside 25-100 °C.
 
+=== metric_language ===
+You attach expressions; the server works out the numbers on this shot. An expression is a JSON object with `channel`, `op` and `window`, and optionally `relative_to`, `compare`, and for the time operations `threshold` (and `direction` for `time_to`).
+channels: cup_weight, scale_flow, puck_flow, pump_flow, target_flow, pressure, target_pressure, temperature, target_temperature, water_pumped, resistance. The cup weight and the scale flow come from the scale alone; the puck flow, pump flow, water pumped and resistance are the machine's estimates; the target channels are what the profile commanded. A channel the shot did not record is reported as not measured, never as zero.
+operations: mean, min, max, at_start, at_end, change, gained, slope, integral, jitter, duration, time_to, time_above, time_below. `gained` reads the cup weight or the water pumped over one phase. `slope` is per second. `time_to`, `time_above` and `time_below` need a `threshold`.
+window: `{}` for the whole shot, `{"phase": "<a phase this shot logged>"}`, or a span `{"from": <anchor>, "to": <anchor>}`. An anchor is "shot_start", "shot_end", "first_drip", "peak_pressure", `{"phase_start": "<phase>"}`, `{"phase_end": "<phase>"}` or `{"at_s": <seconds>}`, each optionally with "offset_s".
+`relative_to`: "target_yield", "dose" or "final_weight" turns the value into a share of it (0.15 is 15 %).
+`compare`: `{"op": "<" | "<=" | ">" | ">=", "value": n}` or `{"op": "between", "low": a, "high": b}`: the condition your claim asserts, so that it holds when the claim is true (a cup over its limit is `>` the limit). The server says whether it held; a claim whose comparison did not hold is marked as not borne out.
+
+=== phases ===
+Pre-infusion; Bloom; Pressurise
+
+=== prediction ===
+The Set version the shot is filed under (v1) was filed with no prediction: the output has no `prediction` key.
+
 === profile ===
 Medium 18g 1:2
 {"description":"","label":"Medium 18g 1:2","phases":[{"duration":3,"name":"Pre-infusion","phase":"preinfusion","pump":{"flow":0,"pressure":5,"target":"pressure"},"targets":[],"valve":1},{"duration":7,"name":"Bloom","phase":"preinfusion","pump":0,"targets":[],"valve":1},{"duration":10,"name":"Pressurise","phase":"brew","pump":{"flow":0,"pressure":9,"target":"pressure"},"targets":[{"operator":"gte","type":"volumetric","value":20}],"valve":1},{"duration":8,"name":"Ramp down","phase":"brew","pump":{"flow":0,"pressure":5,"target":"pressure"},"targets":[{"operator":"gte","type":"volumetric","value":36}],"valve":1},{"duration":1,"name":"Hammer","phase":"brew","pump":100,"targets":[],"valve":0}],"temperature":93,"type":"standard","utility":false}
@@ -311,16 +325,18 @@ shot 6
 [Checks]
 signature: read without a signature
 [Phases]
-phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; ended by Duration; pressure 3.9 bar; temperature 92.8 °C; volume 4.2 ml; cup at end 0.0 g; cup gained 0.0 g; samples 12
-phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; ended by Duration; pressure 0.6 bar; temperature 93.1 °C; volume 0.4 ml; cup at end 0.4 g; cup gained 0.4 g; samples 28
-phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; ended by Volumetric target; pressure 8.8 bar; temperature 93.4 °C; volume 31.8 ml; cup at end 36.4 g; cup gained 36.0 g; resistance 2.40; samples 72
+phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; ended by Duration; pressure 3.9 bar; temperature 92.8 °C; volume 4.2 ml; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; cup share of target 0.0 %; samples 12
+phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; ended by Duration; pressure 0.6 bar; temperature 93.1 °C; volume 0.4 ml; cup at end 0.4 g, 1.1 % of target; cup gained 0.4 g; cup share of target 1.1 %; samples 28
+phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; ended by Volumetric target; pressure 8.8 bar; temperature 93.4 °C; volume 31.8 ml; cup at end 36.4 g, 101.1 % of target; cup gained 36.0 g; cup share of target 101.1 %; resistance 2.40; samples 72
 [Identity and status]
 Date and time: 2026-03-03 08:25
+Set version: v1 of Set 1
 Profile as brewed: Medium 18g 1:2
 Machine's shot number: 000106
 [Outcome]
 Shot time: 24.0 s
 Yield: 37.5 g
+Yield against target: 104.2 % of the 36 g target yield
 Exit reason: Volumetric target
 [Timing]
 First drip: 8.2 s
@@ -346,6 +362,12 @@ Resistance slope: -0.04 /s
 [Profile compliance]
 Pressure adherence: 0.31 bar
 Flow adherence: 0.44 ml/s
+[The version's recipe]
+Recipe grind: 22 numbers
+Recipe dose: 18.0 g
+Recipe target yield: 36.0 g
+Recipe profile: Medium 18g 1:2
+Profile temperature: 93.0 °C
 [Curve]
 44 of 112 samples, shape-preserving; always kept: the first and last, each phase's first and last, peak pressure, first drip, both ends of the largest pressure drop
 t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),weight (g),temperature (°C),phase marker,target temperature (°C)
@@ -396,3 +418,6 @@ t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),w
 
 === shot_style ===
 bloom (detected from profile: phase 'Bloom' runs the pump at zero — a bloom, not a closed valve)
+
+=== signature ===
+This shot's profile version has no confirmed signature, so there is nothing to answer: `free_text_results` is an empty list.

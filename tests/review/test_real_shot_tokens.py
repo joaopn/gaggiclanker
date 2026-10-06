@@ -7,9 +7,9 @@ tokens, and a handful of plain readings of its numbers (``first_drip:fast``,
 band in any of them. These tests derive real fixture recordings, and the
 constructed lever shot, the way ingest does and read the review's input.
 
-A review is blind to the Set, so the two yield warnings (which need the target of
-the version a shot is filed under) are never among a review's tokens; a caller that
-does hold the version gets them from the same function.
+The two yield warnings need the target of the version a shot is filed under: a shot that is
+not filed has none of them among its tokens, and one that is filed under a Set version with a
+target gets them, from the same function.
 """
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ async def test_a_derived_real_shot_produces_readings_and_no_band(
 async def test_a_real_shot_with_no_scale_flow_over_three_has_no_fault(
     seeded: Database, path: Path
 ) -> None:
-    """These fixtures' scale flow never passes 3 g/s, and a review is given no version."""
+    """These fixtures' scale flow never passes 3 g/s, and they are filed under no version."""
     shot_id = await _ingest(seeded, path)
     review = await build_review_input(seeded, shot_id)
     assert not [t for t in review.signals if t.startswith("fault:")]
@@ -150,12 +150,16 @@ async def test_the_lever_shot_s_review_reads_its_fast_flow_and_its_skipped_phase
     assert review.signals == sorted(review.signals)
 
 
-async def test_the_yield_faults_need_the_version_a_review_is_blind_to(seeded: Database) -> None:
+async def test_the_yield_faults_need_the_version_the_shot_is_filed_under(
+    seeded: Database,
+) -> None:
     shot_id = await _ingest_lever(seeded)
     (facts,) = await load_shots(seeded, [shot_id])
     assert "fault:over_target" not in signal_tokens(facts, UNKNOWN)
+    unfiled = await build_review_input(seeded, shot_id)
+    assert "fault:over_target" not in unfiled.signals
 
-    # A caller that holds the version (a Set's 36 g target) gets it, from the same function.
+    # A shot filed under a Set version (a 36 g target) gets it, from the same function.
     version = SetVersionRow.model_construct(target_yield_g=36.0)
     filed = dataclasses.replace(facts, version=version)
     assert "fault:over_target" in signal_tokens(filed, UNKNOWN)

@@ -35,12 +35,12 @@ beforeEach(() => {
 describe("ReviewCard", () => {
   it("before any review: the button and one line saying what it does", async () => {
     const user = setupUser();
-    renderWithQueryClient(<ReviewCard shotId={129} reviews={[]} balance="balanced" />);
+    renderWithQueryClient(<ReviewCard shotId={129} reviews={[]} />);
 
     const empty = screen.getByTestId("review-empty");
     expect(empty).toHaveTextContent(REVIEW_EXPLAINED);
     expect(REVIEW_EXPLAINED).toContain("without your judgement");
-    expect(REVIEW_EXPLAINED).toContain("It changes nothing else.");
+    expect(REVIEW_EXPLAINED).toContain("changes nothing else.");
     const button = within(empty).getByRole("button", { name: "Review" });
 
     await user.click(button);
@@ -54,7 +54,6 @@ describe("ReviewCard", () => {
       <ReviewCard
         shotId={129}
         reviews={[review({ id: 2, status: "running", finished_at: null, summary: null })]}
-        balance={null}
       />,
     );
 
@@ -64,23 +63,19 @@ describe("ReviewCard", () => {
     expect(screen.queryByTestId("review-empty")).toBeNull();
   });
 
-  it("after: the summary first, the prediction beside the person's balance, the rest", async () => {
+  it("after: the summary first, then the citations and where it came from", async () => {
     const user = setupUser();
-    renderWithQueryClient(<ReviewCard shotId={129} reviews={[review()]} balance="balanced" />);
+    renderWithQueryClient(<ReviewCard shotId={129} reviews={[review()]} />);
 
     const reading = screen.getByTestId("review-reading");
     // The summary leads.
     expect(reading.firstElementChild).toBe(screen.getByTestId("review-summary"));
     expect(screen.getByTestId("review-summary")).toHaveTextContent(
-      "Slow start, thin middle; likely sour.",
+      "Slow start, thin middle; the cup filled early.",
     );
-    // The blind prediction and the person's own balance, side by side.
-    const taste = screen.getByTestId("review-taste");
-    expect(
-      await within(taste).findByText(/^Sour · thin body · medium confidence$/),
-    ).toBeInTheDocument();
-    expect(within(taste).getByTestId("review-yours")).toHaveTextContent("Balanced");
-    expect(screen.getByTestId("review-description")).toHaveTextContent("puck never loaded");
+    // A reading predicts no taste and describes nothing at length.
+    expect(screen.queryByTestId("review-taste")).toBeNull();
+    expect(screen.queryByTestId("review-description")).toBeNull();
     // The citations link to the Knowledge page, as before.
     expect(
       within(screen.getByTestId("review-rules")).getByRole("link", { name: "hierarchy" }),
@@ -100,11 +95,6 @@ describe("ReviewCard", () => {
     await waitFor(() => expect(runReview).toHaveBeenCalledWith(129, { model: undefined }));
   });
 
-  it("says when the person has not recorded a balance yet", () => {
-    renderWithQueryClient(<ReviewCard shotId={129} reviews={[review()]} balance={null} />);
-    expect(screen.getByTestId("review-yours")).toHaveTextContent("no balance recorded yet");
-  });
-
   it("renders the newest finished review, not an older one", () => {
     renderWithQueryClient(
       <ReviewCard
@@ -113,7 +103,6 @@ describe("ReviewCard", () => {
           review({ id: 3, summary: "The newest reading." }),
           review({ id: 2, summary: "An older reading." }),
         ]}
-        balance={null}
       />,
     );
     expect(screen.getByTestId("review-summary")).toHaveTextContent("The newest reading.");
@@ -130,12 +119,9 @@ describe("ReviewCard", () => {
             status: "failed",
             error: "auth: invalid api key",
             summary: null,
-            description: null,
-            taste_balance: null,
           }),
           review({ id: 3, summary: "The last good reading." }),
         ]}
-        balance={null}
       />,
     );
 
@@ -150,7 +136,6 @@ describe("ReviewCard", () => {
       <ReviewCard
         shotId={129}
         reviews={[review({ status: "interrupted", error: "stopped", summary: null })]}
-        balance={null}
       />,
     );
     expect(screen.getByTestId("review-failed")).toHaveTextContent("Interrupted");
@@ -184,7 +169,6 @@ describe("ReviewCard", () => {
         <ReviewCard
           shotId={129}
           reviews={[review({ status: "running", finished_at: null, summary: null })]}
-          balance={null}
         />,
         { queryClient },
       );
@@ -207,7 +191,7 @@ describe("ReviewCard", () => {
       vi.useFakeTimers();
       const queryClient = createTestQueryClient();
       const spy = vi.spyOn(queryClient, "invalidateQueries");
-      renderWithQueryClient(<ReviewCard shotId={129} reviews={[review()]} balance={null} />, {
+      renderWithQueryClient(<ReviewCard shotId={129} reviews={[review()]} />, {
         queryClient,
       });
 

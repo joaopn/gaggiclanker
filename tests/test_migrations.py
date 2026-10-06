@@ -1028,34 +1028,18 @@ async def test_0026_carries_finished_analyses_into_reviews_and_drops_the_rest(
     async with running_app(env) as (app, client):
         db = app.state.db
 
-        # The finished analysis is a review with the same id; the failed and the
-        # interrupted ones are gone.
-        reviews = await db.fetch_all("SELECT * FROM shot_reviews ORDER BY id")
-        assert len(reviews) == 1
-        review = dict(reviews[0])
-        assert review["id"] == 7
-        assert review["shot_id"] == 1
-        assert review["status"] == "ok"
-        assert (review["taste_balance"], review["taste_body"], review["taste_confidence"]) == (
-            "bitter",
-            "heavy",
-            "high",
+        # 0026 carried the finished analysis into a review with the same id; 0048, which runs
+        # after it, deleted every review (the reading replaced them), so none is left. The id it
+        # held is never handed out again.
+        assert await db.fetch_all("SELECT * FROM shot_reviews ORDER BY id") == []
+        sequence = await db.fetch_value(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'shot_reviews'"
         )
-        assert review["description"] == "Ran long: 38 s against a 28 s target."
-        assert review["summary"] == ""
-        assert json.loads(review["rules_used_json"]) == ["hierarchy"]
-        assert json.loads(review["excerpts_used_json"]) == ["DOC#a"]
-        assert (review["model"], review["provider"], review["llm_call_id"]) == (
-            "careful",
-            "anthropic",
-            "call-7",
-        )
-        assert review["finished_at"] == "2026-09-01T08:01:00.000Z"
+        assert sequence == 7
 
         # Served through the routes, as the shot page reads it.
         served = (await client.get("/api/shots/1")).json()["data"]["reviews"]
-        assert [row["id"] for row in served] == [7]
-        assert served[0]["summary"] == ""
+        assert served == []
 
         # The analysis tables, their views and the prompts are gone.
         names = {
@@ -1103,12 +1087,9 @@ async def test_0026_carries_finished_analyses_into_reviews_and_drops_the_rest(
 
         assert await db.fetch_all("PRAGMA foreign_key_check") == []
 
-    # The SQL tool reads the new view.
-    result = await run_query(
-        env.database_path,
-        "SELECT review_id, shot_id, taste_balance, description FROM v_reviews",
-    )
-    assert result.rows == [[7, 1, "bitter", "Ran long: 38 s against a 28 s target."]]
+    # The SQL tool reads the views, which hold no review now.
+    result = await run_query(env.database_path, "SELECT review_id, shot_id FROM v_reviews")
+    assert result.rows == []
     with pytest.raises(SqlRefused):
         await run_query(env.database_path, "SELECT input_json FROM shot_reviews")
 
@@ -1280,7 +1261,11 @@ async def test_0029_keeps_every_shot_and_everything_that_hangs_off_it(
 
     assert "0029" in await run_migrations(db)
 
-    assert await everything() == before
+    # 0048 later deletes every stored review (the reading replaced them); everything 0029 carried
+    # is otherwise exactly as it was.
+    after = await everything()
+    assert after.pop("shot_reviews") == []
+    assert after == {table: rows for table, rows in before.items() if table != "shot_reviews"}
     # 0035 later narrows v_profiles with a WHERE; everything before that clause is 0029's text.
     views_after = [
         (name, text.split("\n WHERE NOT (")[0]) for name, text in await db.fetch_all(view_sql)

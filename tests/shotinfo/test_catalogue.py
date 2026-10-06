@@ -47,7 +47,7 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Your judgement", 9),
     ("The version's recipe", 5),
     ("The note typed on the machine", 6),
-    ("Review", 7),
+    ("Reading", 3),
 )
 
 #: Every key, in catalogue order. A key is what a person's choice is stored
@@ -157,13 +157,9 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "note_grind",
     "note_bean",
     "note_text",
-    "review_taste_balance",
-    "review_taste_body",
-    "review_taste_confidence",
-    "review_description",
-    "review_summary",
-    "review_written_at",
-    "review_model",
+    "reading_state",
+    "reading_claims",
+    "reading_prediction",
 )
 
 #: The per-phase items a chat sees without asking: each phase's name, duration, how it
@@ -174,6 +170,9 @@ PHASE_LINE_ITEMS = frozenset({"phase_name", "phase_duration", "phase_ended_by", 
 EXPECTED_BASE: frozenset[str] = frozenset(
     {
         "checks",
+        "reading_state",
+        "reading_claims",
+        "reading_prediction",
         *PHASE_LINE_ITEMS,
         "shot_id",
         "started_at",
@@ -427,5 +426,16 @@ def test_nothing_a_chat_saw_without_asking_is_gone_but_the_score_and_the_channel
 
     assert ORIGIN_DEV_BASE - RETIRED_FROM_BASE <= now
     assert (ORIGIN_DEV_BASE - now) == RETIRED_FROM_BASE
-    # What base gained is the checks and one line per phase, and nothing else.
-    assert now - ORIGIN_DEV_BASE == {"checks"} | PHASE_LINE_ITEMS
+    # What base gained is the checks, one line per phase and what a person confirmed of a
+    # reading (it was extended before: the claims are short and are the chat's to weigh), and
+    # nothing else.
+    assert (
+        now - ORIGIN_DEV_BASE
+        == {
+            "checks",
+            "reading_state",
+            "reading_claims",
+            "reading_prediction",
+        }
+        | PHASE_LINE_ITEMS
+    )

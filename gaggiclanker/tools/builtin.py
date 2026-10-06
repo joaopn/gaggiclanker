@@ -97,7 +97,7 @@ class _Model(BaseModel):
 
 #: Shown with the schema. Examples are worth more than column lists to a model
 #: that has to write correlated SQL, and these four are the shapes that actually
-#: come up: one Set's shots, a per-version average, a join to a shot's review,
+#: come up: one Set's shots, a per-version average, a join to a shot's confirmed claims,
 #: and a curve slice.
 EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
     (
@@ -116,10 +116,11 @@ EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
         " GROUP BY set_version_id, set_version_label ORDER BY MIN(started_at)",
     ),
     (
-        "Shots where a review's blind taste prediction disagreed with the person",
-        "SELECT s.shot_id, s.balance, r.taste_balance, r.summary\n"
-        "  FROM v_shots s JOIN v_reviews r ON r.shot_id = s.shot_id AND r.status = 'ok'\n"
-        " WHERE s.balance IS NOT NULL AND r.taste_balance != s.balance\n"
+        "The claims a person confirmed about a Set's shots, with the fault word and the phase "
+        "they are about",
+        "SELECT s.shot_id, c.fault, c.window_text, c.text\n"
+        "  FROM v_shots s JOIN v_review_claims c ON c.shot_id = s.shot_id AND c.kind = 'claim'\n"
+        " WHERE s.set_id = 3 AND c.fault IS NOT NULL\n"
         " ORDER BY s.started_at DESC LIMIT 20",
     ),
     (
@@ -161,7 +162,10 @@ SCHEMA_NOTES = (
     "not a position: v1.2 may have been made after v2, so sort versions by created_at and "
     "never infer order from the name. is_current (v_set_versions) and current_version_label "
     "(v_sets) say which version a Set is on, and parent_version_label which one a version "
-    "was made from."
+    "was made from. v_review_claims holds only the claims a person confirmed in a shot's "
+    "newest finished reading (the fault word, the window it is about, its text and the "
+    "numbers behind it); v_reviews says how many claims a reading has confirmed and how many "
+    "are still unverified."
 )
 
 

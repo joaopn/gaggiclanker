@@ -1,15 +1,19 @@
-"""Running a review: a row, a call, an outcome, and nothing else.
+"""Running a reading: a row, a call, the numbers, an outcome, and nothing else.
 
 The shape of :meth:`ReviewService.run_review` is the contract, and it is short
 on purpose:
 
-    open a `running` row  ->  build the input  ->  call_json  ->  close the row
+    build the input  ->  open a `running` row  ->  call_json  ->  evaluate the evidence
+    ->  close the row with its claims
 
-**A review writes one row about one shot.** It opens that row and closes it,
-and touches no other table: no Set version, no insight, no suggestion, no
-draft, no conversation. What it writes is read back as shot information by
-whoever asks (the shot page, and the chat through the shot tools), and every
-active step that might follow from it belongs to the chat and to a person.
+**A reading writes one review and its claims, about one shot.** It opens the row and closes
+it, and touches no other table: no Set version, no insight, no draft, no conversation, no
+signature. Every claim it writes is `proposed`; what it says reaches the chat only after a
+person confirmed it, one claim at a time (:meth:`ReviewService.answer`).
+
+**The numbers are the server's.** The model attaches metric-language expressions to its claims;
+the evaluator works out every value (:mod:`gaggiclanker.review.evidence`), so no figure a person
+reads on a claim was typed by the model.
 
 **Only a person starts one.** The one caller is the route behind the shot
 page's Review button. No chat tool, MCP tool, batch, timer, sync hook or boot
@@ -24,7 +28,9 @@ exception.
 
 **The row is opened before the call.** A process that dies mid-call therefore
 leaves a `running` row, which the next boot marks `interrupted`
-(:meth:`ShotReviewsRepository.reconcile_running`).
+(:meth:`ShotReviewsRepository.reconcile_running`). A partial unique index allows one
+`running` row per shot, so a second process that opens one at the same moment is refused
+by the database and gets the first one's row back.
 
 **The work does not run inside the HTTP request.** :meth:`ReviewService.start`
 opens the row and hands the call to the app's :class:`TaskRegistry`; the route
@@ -44,6 +50,8 @@ import structlog
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.reviews import (
+    AnswerResult,
+    ReviewAlreadyRunning,
     ReviewOutcome,
     ReviewStart,
     ShotReviewRow,
@@ -55,7 +63,9 @@ from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import LlmMessage, LlmRequest, Ok
 from gaggiclanker.review.context import ReviewInput, build_review_input
-from gaggiclanker.review.models import ReviewResult
+from gaggiclanker.review.evidence import claims_from_answer
+from gaggiclanker.review.models import OutputModel, build_output_model
+from gaggiclanker.shotinfo.evaluation import UnreadableShot, stored_data
 
 __all__ = [
     "REVIEW_EVENTS",
@@ -72,10 +82,11 @@ log = structlog.get_logger(__name__)
 REVIEW_PROMPT = "review"
 REVIEW_USER_PROMPT = "review-user"
 
-#: The SSE events a run publishes, on the LLM bus. The shot page refreshes its
-#: card from them, and the header's activity indicator is already watching
-#: that stream.
-REVIEW_EVENTS = ("review.started", "review.finished", "review.failed")
+#: The SSE events a run publishes, on the LLM bus, each with `shot_id` and `review_id`. The shot
+#: page and the shots table refresh from them, and the header's activity indicator is already
+#: watching that stream. `review.answered` is a person's answer to a claim, so another tab
+#: follows it.
+REVIEW_EVENTS = ("review.started", "review.finished", "review.failed", "review.answered")
 
 #: Linear backoff between this call's own retries. A real wait in production —
 #: a provider that just 429'd wants a moment — so the suite sets it to zero
@@ -89,6 +100,7 @@ class _Prepared:
 
     row: ShotReviewRow
     review: ReviewInput
+    output: OutputModel
     system: str
     user: str
     version: str
@@ -176,6 +188,14 @@ class ReviewService:
         """
         try:
             prepared = await self._prepare(shot_id, model=model)
+        except ReviewAlreadyRunning:
+            # Another process opened one in the instant between our check and our insert: the
+            # unique index refused ours, and the page gets theirs. Nothing is started here.
+            running = await self.reviews.latest_for_shot(shot_id)
+            if running is None:  # pragma: no cover - the index refused because a row exists
+                raise
+            opened.set_result(running)
+            return
         except BaseException as exc:
             if not opened.done():
                 opened.set_exception(exc)
@@ -194,7 +214,7 @@ class ReviewService:
         return await self._complete(await self._prepare(shot_id, model=model))
 
     async def _prepare(self, shot_id: int, *, model: str | None = None) -> _Prepared:
-        """Everything before the provider: the input, the prompts, the row."""
+        """Everything before the provider: the input, the output model, the prompts, the row."""
         config = await self.llm.config()
         resolved = (model or "").strip() or config.resolve_model("review")
 
@@ -203,6 +223,13 @@ class ReviewService:
         # function of the database it was handed.
         budget = int(await self.llm.settings.get("knowledgeChunkTokenBudget"))
         review = await build_review_input(self.db, shot_id, chunk_token_budget=budget)
+        # What this shot's answer may say: its own phases, this reading's expectation ids and
+        # whether there is a prediction to answer.
+        output = build_output_model(
+            phases=review.phases,
+            free_text_ids=[item.id for item in review.expectations],
+            has_prediction=bool(review.prediction),
+        )
         system, user, version = await self._render(review)
 
         review_id = await self.reviews.start(
@@ -212,13 +239,20 @@ class ReviewService:
                 model=resolved,
                 prompt_name=REVIEW_PROMPT,
                 prompt_version=version,
+                prediction_given=review.prediction,
                 input=review.model_dump(mode="json"),
             )
         )
         self._publish("review.started", review_id, shot_id, status="running")
         row = _require(await self.reviews.get(review_id), review_id)
         return _Prepared(
-            row=row, review=review, system=system, user=user, version=version, model=resolved
+            row=row,
+            review=review,
+            output=output,
+            system=system,
+            user=user,
+            version=version,
+            model=resolved,
         )
 
     async def _complete(self, prepared: _Prepared) -> ShotReviewRow:
@@ -238,7 +272,7 @@ class ReviewService:
                         LlmMessage(role="system", content=prepared.system),
                         LlmMessage(role="user", content=prepared.user),
                     ],
-                    output_model=ReviewResult,
+                    output_model=prepared.output,
                     model=prepared.model,
                     purpose="review",
                     label="review shot",
@@ -285,29 +319,88 @@ class ReviewService:
             self._publish("review.failed", review_id, shot_id, status="failed")
             return _require(row, review_id)
 
-        answer = result.data
-        row = await self.reviews.finish(
-            review_id,
-            ReviewOutcome(
-                status="ok",
-                taste_balance=answer.taste_prediction.balance,
-                taste_body=answer.taste_prediction.body,
-                taste_confidence=answer.taste_prediction.confidence,
-                description=answer.description.strip(),
-                summary=answer.summary.strip(),
-                rules_used=_cited(answer.rules_used, prepared.review.rule_keys, shot_id, "rules"),
-                excerpts_used=_cited(
-                    answer.excerpts_used, prepared.review.excerpt_paths, shot_id, "excerpts"
+        answer: Any = result.data
+        try:
+            data = await stored_data(self.db, shot_id)
+        except UnreadableShot as exc:
+            data = None
+            problem = f"the shot cannot be read: {exc}"
+        else:
+            problem = "the shot has gone"
+        if data is None:
+            row = await self.reviews.finish(
+                review_id,
+                ReviewOutcome(
+                    status="failed",
+                    error=f"unknown: {problem}",
+                    provider=result.provider,
+                    model=result.model,
+                    llm_call_id=result.call_id or None,
+                    usage=_usage(result.usage.prompt_tokens, result.usage.completion_tokens),
                 ),
-                usage=_usage(result.usage.prompt_tokens, result.usage.completion_tokens),
-                provider=result.provider,
-                model=result.model,
-                llm_call_id=result.call_id or None,
-            ),
+            )
+            log.warning("review_unreadable_shot", review_id=review_id, shot_id=shot_id)
+            self._publish("review.failed", review_id, shot_id, status="failed")
+            return _require(row, review_id)
+
+        try:
+            claims = claims_from_answer(answer, data, prepared.review.expectations)
+            row = await self.reviews.finish(
+                review_id,
+                ReviewOutcome(
+                    status="ok",
+                    summary=answer.summary.strip(),
+                    claims=claims,
+                    rules_used=_cited(
+                        answer.rules_used, prepared.review.rule_keys, shot_id, "rules"
+                    ),
+                    excerpts_used=_cited(
+                        answer.excerpts_used, prepared.review.excerpt_paths, shot_id, "excerpts"
+                    ),
+                    usage=_usage(result.usage.prompt_tokens, result.usage.completion_tokens),
+                    provider=result.provider,
+                    model=result.model,
+                    llm_call_id=result.call_id or None,
+                ),
+            )
+        except Exception as exc:
+            await self.reviews.finish(
+                review_id,
+                ReviewOutcome(status="failed", error=f"unknown: {type(exc).__name__}: {exc}"),
+            )
+            log.exception("review_crashed", review_id=review_id, shot_id=shot_id)
+            self._publish("review.failed", review_id, shot_id, status="failed")
+            raise
+        log.info(
+            "review_finished",
+            review_id=review_id,
+            shot_id=shot_id,
+            model=result.model,
+            claims=len(claims),
+            unsupported=sum(1 for claim in claims if not claim.supported),
         )
-        log.info("review_finished", review_id=review_id, shot_id=shot_id, model=result.model)
         self._publish("review.finished", review_id, shot_id, status="ok")
         return _require(row, review_id)
+
+    # ── a person's answers ──────────────────────────────────────────
+
+    async def answer(
+        self, review_id: int, claim_id: int, *, confirm: bool, reason: str = ""
+    ) -> AnswerResult:
+        """A person confirms or rejects one claim of the reading that answers for its shot."""
+        result = await self.reviews.answer(review_id, claim_id, confirm=confirm, reason=reason)
+        self._answered(result)
+        return result
+
+    async def confirm_all(self, review_id: int) -> AnswerResult:
+        """A person confirms every claim of the reading still waiting."""
+        result = await self.reviews.confirm_all(review_id)
+        self._answered(result)
+        return result
+
+    def _answered(self, result: AnswerResult) -> None:
+        if result.review is not None:
+            self._publish("review.answered", result.review.id, result.review.shot_id, status="ok")
 
     async def _render(self, review: ReviewInput) -> tuple[str, str, str]:
         """The two prompts, rendered, plus the version string for the ledger.

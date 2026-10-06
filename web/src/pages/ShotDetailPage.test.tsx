@@ -520,10 +520,10 @@ describe("ShotDetailPage Review card", () => {
 
     await waitFor(() => expect(runReview.mock.calls[0]?.[0]).toBe(shot129.shot.id));
     expect(await screen.findByTestId("review-summary")).toHaveTextContent(
-      "Slow start, thin middle; likely sour.",
+      "Slow start, thin middle; the cup filled early.",
     );
-    // The person's own balance, from their judgement, beside the prediction.
-    expect(screen.getByTestId("review-yours")).toHaveTextContent("Balanced");
+    // A reading guesses no taste, so nothing sits beside the person's own balance.
+    expect(screen.queryByTestId("review-yours")).toBeNull();
     // Discuss stays on the page.
     expect(screen.getByTestId("discuss-in-chat")).toBeInTheDocument();
   });

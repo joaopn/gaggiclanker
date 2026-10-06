@@ -1,4 +1,4 @@
-"""The review routes, over the real app.
+"""The reading routes, over the real app.
 
 The app is built the way the rest of the suite builds it — a real file, real
 migrations, `httpx.ASGITransport` in process — with one substitution: the LLM
@@ -9,62 +9,18 @@ no tokens and the thing under test is the route rather than the model.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
 
 import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.llm import PromptsRepository
-from gaggiclanker.llm.budget import RateLimitBudget
-from gaggiclanker.llm.modes import ModeMemory
-from gaggiclanker.llm.prompts import PromptService
-from gaggiclanker.llm.service import LlmService
-from gaggiclanker.review.service import ReviewService, review_task_name
+from gaggiclanker.review.service import review_task_name
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.tools.registry import registry
 from gaggiclanker.tools.scope import ToolScope
 from tests.conftest import running_app
 from tests.llm.conftest import FakeProvider, api_error
-from tests.review.conftest import GOOD_REVIEW, Fixture, build_fixture
-
-
-@pytest.fixture
-async def api(
-    env: EnvSettings, provider: FakeProvider
-) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient, FakeProvider]]:
-    """A real app whose LLM service is wired to the scripted fake."""
-    async with running_app(env) as (app, client):
-        _rewire(app, provider)
-        yield app, client, provider
-
-
-def _rewire(app: FastAPI, provider: FakeProvider) -> None:
-    """Point the app's LLM service — and the review service holding it — at the fake.
-
-    The review service is app-scoped (it owns the "being opened right now" map), so
-    replacing `app.state.llm` alone would leave it talking to the real provider
-    factory. The budget and the mode memory are process-wide singletons by
-    design, and one test scripting a 429 would otherwise latch every test after
-    it in the file, so this app gets its own.
-    """
-    app.state.llm = LlmService(
-        app.state.settings_service,
-        observer=app.state.llm.observer,
-        budget=RateLimitBudget(retries=0),
-        mode_memory=ModeMemory(),
-        provider_factory=lambda _config, _name: provider,
-    )
-    app.state.reviews = ReviewService(
-        app.state.db,
-        app.state.llm,
-        PromptService(PromptsRepository(app.state.db)),
-        bus=app.state.events,
-    )
-    # No real backoff: the failure paths retry, and half a second each is most
-    # of this file's wall clock for nothing.
-    app.state.reviews.retry_delay_s = 0.0
-
+from tests.review.conftest import GOOD_REVIEW, build_app_fixture, rewire
 
 # ── the review routes ────────────────────────────────────────────────
 #
@@ -84,16 +40,11 @@ async def _settle(app: FastAPI, task_name: str) -> None:
         await asyncio.wait_for(asyncio.shield(task), 10)
 
 
-async def _build_fixture(app: FastAPI) -> Fixture:
-    """The conftest Set, built against the app's own handle."""
-    return await build_fixture(app.state.db)
-
-
-async def test_reviewing_a_shot_over_http(
+async def test_reading_a_shot_over_http(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
 ) -> None:
     app, client, _ = api
-    data = await _build_fixture(app)
+    data = await build_app_fixture(app)
     shot_id = data.shots[-1]
 
     response = await client.post(f"/api/shots/{shot_id}/reviews?wait=1", json={})
@@ -101,53 +52,105 @@ async def test_reviewing_a_shot_over_http(
     body = response.json()["data"]
     assert body["status"] == "ok"
     assert body["summary"] == GOOD_REVIEW["summary"]
-    assert body["description"] == GOOD_REVIEW["description"]
-    assert body["taste_balance"] == "sour"
+    assert body["prediction_given"] == ""
+    assert not {"description", "taste_balance", "taste_body", "taste_confidence"} & set(body)
     assert "input" not in body, "a row as a page reads it carries no input"
+    # The claims, each as the page reads it, every one waiting for a person.
+    first = body["claims"][0]
+    assert {
+        "id",
+        "position",
+        "kind",
+        "phase",
+        "window_text",
+        "start_s",
+        "end_s",
+        "fault",
+        "text",
+        "evidence",
+        "supported",
+        "expectation_id",
+        "held",
+        "stance",
+        "status",
+        "reason",
+        "answered_at",
+    } <= set(first)
+    assert (first["kind"], first["status"], first["fault"]) == ("claim", "proposed", "fast flow")
+    assert (first["phase"], first["window_text"]) == ("Pressurise", "the Pressurise")
+    assert (first["start_s"], first["end_s"]) == (10.0, 27.75)
+    assert set(first["evidence"][0]) == {
+        "sentence",
+        "value",
+        "unit",
+        "kind",
+        "absent",
+        "held",
+        "limit_text",
+    }
+    assert first["evidence"][0]["unit"] == "ml/s"
+    assert first["evidence"][0]["held"] is True
 
     listed = await client.get(f"/api/shots/{shot_id}/reviews")
     assert [row["id"] for row in listed.json()["data"]["items"]] == [body["id"]]
+    assert len(listed.json()["data"]["items"][0]["claims"]) == 2
 
     one = (await client.get(f"/api/reviews/{body['id']}")).json()["data"]
     assert one["id"] == body["id"]
     assert one["input"]["shot_id"] == shot_id
     assert one["input"]["shot"].startswith(f"shot {shot_id}")
+    assert len(one["claims"]) == 2
 
     # And the shot detail carries it, so the card needs no second request.
-    detail = await client.get(f"/api/shots/{shot_id}")
-    assert [row["id"] for row in detail.json()["data"]["reviews"]] == [body["id"]]
-    assert "analyses" not in detail.json()["data"]
+    detail = (await client.get(f"/api/shots/{shot_id}")).json()["data"]
+    assert [row["id"] for row in detail["reviews"]] == [body["id"]]
+    assert detail["reviews"][0]["claims"][0]["id"] == first["id"]
+    assert "analyses" not in detail
 
 
-async def test_a_reviewed_shot_is_read_back_by_the_chat_through_get_shot_full(
+async def test_only_what_a_person_confirmed_reaches_the_chat(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
 ) -> None:
-    """End to end: the button's route, a mocked provider, then the chat's shot tool.
+    """End to end: the button's route, a mocked provider, a person's answer, the chat's shot tool.
 
-    The review's three things reach the chat as shot information, through the
-    one renderer, and nothing else about the shot changed on the way.
+    Nothing proposed or rejected teaches the chat, the summary never does, and only the count of
+    what is still unverified is said.
     """
     app, client, _ = api
-    data = await _build_fixture(app)
+    data = await build_app_fixture(app)
     shot_id = data.shots[-1]
     judged = (await client.get(f"/api/shots/{shot_id}")).json()["data"]["judgement"]
+    ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(data.set_id), run_id=None)
+
+    async def read_back() -> str:
+        outcome = await registry.dispatch(ctx, "get_shot_full", {"shot_id": shot_id})
+        assert outcome.ok, outcome.data
+        return str(outcome.data["text"])
 
     reviewed = (await client.post(f"/api/shots/{shot_id}/reviews?wait=1", json={})).json()
     assert reviewed["data"]["status"] == "ok"
+    first, second = reviewed["data"]["claims"]
 
-    ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(data.set_id), run_id=None)
-    outcome = await registry.dispatch(ctx, "get_shot_full", {"shot_id": shot_id})
-    assert outcome.ok, outcome.data
-    text = outcome.data["text"]
-    assert "[Review]" in text
-    assert f'Review summary: "{GOOD_REVIEW["summary"]}"' in text
-    assert f'Review description: "{GOOD_REVIEW["description"]}"' in text
-    assert "Predicted balance: Sour" in text
-    assert "Predicted body: thin" in text
-    assert "Prediction confidence: medium" in text
-    # The person's own judgement is still theirs, untouched by the review.
+    unanswered = await read_back()
+    assert "[Reading]" in unanswered
+    assert "0 claims confirmed, 2 unverified, 0 rejected" in unanswered
+    assert first["text"] not in unanswered and second["text"] not in unanswered
+    assert GOOD_REVIEW["summary"] not in unanswered
+
+    review_id = reviewed["data"]["id"]
+    answered = await app.state.reviews.answer(review_id, first["id"], confirm=True)
+    assert answered.refused is None
+    await app.state.reviews.answer(review_id, second["id"], confirm=False, reason="not what I saw")
+
+    text = await read_back()
+    assert "1 claim confirmed, 0 unverified, 1 rejected" in text
+    assert first["text"] in text
+    assert "fast flow" in text and "the Pressurise (10-27.75 s)" in text
+    assert "mean of the machine's estimate of puck flow over the Pressurise" in text
+    assert second["text"] not in text
+    assert GOOD_REVIEW["summary"] not in text
+    # The person's own judgement is still theirs, untouched by the reading.
     assert (await client.get(f"/api/shots/{shot_id}")).json()["data"]["judgement"] == judged
-    assert "Balance: Sour" in text
 
 
 async def test_a_second_press_after_one_finished_is_a_fresh_review(
@@ -155,7 +158,7 @@ async def test_a_second_press_after_one_finished_is_a_fresh_review(
 ) -> None:
     """Review again means another reading; the earlier one stays stored."""
     app, client, provider = api
-    data = await _build_fixture(app)
+    data = await build_app_fixture(app)
     shot_id = data.shots[-1]
 
     first = (await client.post(f"/api/shots/{shot_id}/reviews?wait=1", json={})).json()["data"]
@@ -174,7 +177,7 @@ async def test_a_provider_failure_is_a_2xx_carrying_the_error(
 ) -> None:
     """A 502 would leave the client with an error and no row to look at."""
     app, client, provider = api
-    data = await _build_fixture(app)
+    data = await build_app_fixture(app)
     provider.script = [api_error(429, "slow down")]
 
     response = await client.post(f"/api/shots/{data.shots[-1]}/reviews?wait=1", json={})
@@ -189,7 +192,7 @@ async def test_a_quarantined_shot_cannot_be_reviewed(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
 ) -> None:
     app, client, _ = api
-    data = await _build_fixture(app)
+    data = await build_app_fixture(app)
     await app.state.db.execute(
         "UPDATE shots SET quarantined = 1 WHERE id = ?",
         (data.shots[-1],),
@@ -213,7 +216,7 @@ async def test_a_queued_review_answers_before_the_provider_does(
 ) -> None:
     """202 with a `running` row, and the work carries on in the registry."""
     app, client, provider = api
-    data = await _build_fixture(app)
+    data = await build_app_fixture(app)
     shot_id = data.shots[-1]
     provider.delay = 0.3
 
@@ -234,7 +237,7 @@ async def test_a_second_press_while_one_runs_gets_the_same_row(
 ) -> None:
     """The registry name is the idempotency rule, and it is claimed synchronously."""
     app, client, provider = api
-    data = await _build_fixture(app)
+    data = await build_app_fixture(app)
     shot_id = data.shots[-1]
     provider.delay = 0.3
 
@@ -265,7 +268,7 @@ async def test_the_analysis_routes_are_gone(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider], method: str, path: str
 ) -> None:
     app, client, provider = api
-    data = await _build_fixture(app)
+    data = await build_app_fixture(app)
 
     response = await client.request(
         method.upper(), path.format(shot=data.shots[-1], set=data.set_id), json={}
@@ -275,20 +278,21 @@ async def test_the_analysis_routes_are_gone(
     assert provider.calls == []
 
 
-async def test_the_shots_list_carries_no_review_state(
+async def test_a_discarded_shot_cannot_be_read(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
 ) -> None:
-    """A review lives on the shot page only, not in the shots table."""
-    app, client, _ = api
-    data = await _build_fixture(app)
-    await client.post(f"/api/shots/{data.shots[-1]}/reviews?wait=1", json={})
-
-    row = next(
-        item
-        for item in (await client.get("/api/shots")).json()["data"]["items"]
-        if item["id"] == data.shots[-1]
+    app, client, provider = api
+    data = await build_app_fixture(app)
+    await app.state.db.execute(
+        "UPDATE shot_judgements SET decision = 'discard' WHERE shot_id = ?", (data.shots[-1],)
     )
-    assert not [key for key in row if "review" in key or "analysis" in key]
+
+    response = await client.post(f"/api/shots/{data.shots[-1]}/reviews", json={})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "SHOT_DISCARDED"
+    assert provider.calls == []
+    assert await app.state.db.fetch_value("SELECT COUNT(*) FROM shot_reviews") == 0
 
 
 async def test_the_vocabulary_serves_no_suggestion_words(
@@ -306,8 +310,8 @@ async def test_shutdown_cancels_a_running_review_and_boot_reconciles_it(
     """A lifespan teardown cancels the registered task; the next boot marks it `interrupted`."""
     provider.delay = 30.0
     async with running_app(env) as (app, client):
-        _rewire(app, provider)
-        data = await _build_fixture(app)
+        rewire(app, provider)
+        data = await build_app_fixture(app)
         response = await client.post(f"/api/shots/{data.shots[-1]}/reviews", json={})
         assert response.json()["data"]["status"] == "running"
     # The lifespan has exited: the task was cancelled mid-call.

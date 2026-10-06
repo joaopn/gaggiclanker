@@ -2,7 +2,7 @@
 
 A :class:`ShotFacts` is the rows a shot is made of — the shot itself, the
 person's judgement, the version it was filed under, the note typed on the
-machine, its newest finished review and, when asked for, its samples — held
+machine, its reading and, when asked for, its samples — held
 side by side and never re-queried. Every catalogue item is a function of one of
 these, so the opening context, the search and the three shot tools can only
 ever render the same shot the same way.
@@ -24,7 +24,7 @@ from typing import Any
 
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
-from gaggiclanker.db.repos.reviews import ShotReviewRow
+from gaggiclanker.db.repos.reviews import ReadingRecord
 from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotSampleRow
 from gaggiclanker.domain.signature import ShotChecks
@@ -62,9 +62,11 @@ class ShotFacts:
     version: SetVersionRow | None = None
     #: What was typed on the machine's own notes card, when it was pulled.
     note: DeviceShotNotesRow | None = None
-    #: The newest finished review of the shot: a model's reading of its data,
-    #: made without the person's judgement. ``None`` for a shot never reviewed.
-    review: ShotReviewRow | None = None
+    #: What the shot's readings are: the newest review of any status, the newest finished one and
+    #: its claims. A model's reading of the shot's data, made without the person's judgement,
+    #: and only ever *served* to a chat as what the person confirmed in it. ``None`` for facts
+    #: built by hand, which read as a shot never read.
+    reading: ReadingRecord | None = None
     #: Every stored sample in time order, or ``None`` when they were not
     #: loaded — which is a different thing from a shot with no samples (``()``).
     samples: tuple[ShotSampleRow, ...] | None = None
