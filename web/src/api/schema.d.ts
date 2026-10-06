@@ -1610,6 +1610,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reviews/{review_id}/claims/{claim_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Confirm or reject one claim of a reading
+         * @description A person's answer, which they may change: the last one wins.
+         *
+         *     Checked and written in one transaction, so a reading a newer one has set aside is refused
+         *     rather than answered, and two answers arriving together leave one consistent state.
+         */
+        patch: operations["answer_claim_api_reviews__review_id__claims__claim_id__patch"];
+        trace?: never;
+    };
+    "/api/reviews/{review_id}/claims/confirm-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm every claim of a reading that is still waiting
+         * @description Every `proposed` claim becomes `confirmed` in one transaction; answered ones stay.
+         *
+         *     ``except_kinds`` leaves the claims of those kinds `proposed`: the page holds a prediction's
+         *     stance back until the shot has a decision, so Confirm all must not confirm what was not shown.
+         *     An unknown kind is a 422 that names the field and never echoes what was sent.
+         */
+        post: operations["confirm_all_claims_api_reviews__review_id__claims_confirm_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets": {
         parameters: {
             query?: never;
@@ -4216,6 +4263,22 @@ export interface components {
              */
             tokens_estimate: number;
         };
+        /**
+         * ClaimAnswer
+         * @description `PATCH /api/reviews/{id}/claims/{claim_id}`: confirm or reject one claim.
+         */
+        ClaimAnswer: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "confirmed" | "rejected";
+        };
         /** ClaudeCliBinary */
         ClaudeCliBinary: {
             /** Path */
@@ -4270,6 +4333,14 @@ export interface components {
             overridden: boolean;
             /** Platform Package */
             platform_package: string | null;
+        };
+        /**
+         * ConfirmAll
+         * @description `POST /api/reviews/{id}/claims/confirm-all`: optionally keep some kinds of claim waiting.
+         */
+        ConfirmAll: {
+            /** Except Kinds */
+            except_kinds?: string[];
         };
         /** ConflictBody */
         ConflictBody: {
@@ -11709,6 +11780,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ShotReviewDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_claim_api_reviews__review_id__claims__claim_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_id: number;
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotReviewRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_all_claims_api_reviews__review_id__claims_confirm_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ConfirmAll"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotReviewRow_"];
                 };
             };
             /** @description Validation Error */

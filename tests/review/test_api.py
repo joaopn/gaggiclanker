@@ -151,10 +151,14 @@ async def test_only_what_a_person_confirmed_reaches_the_chat(
     assert first["text"] not in unanswered and second["text"] not in unanswered
     assert GOOD_REVIEW["summary"] not in unanswered
 
-    review_id = reviewed["data"]["id"]
-    answered = await app.state.reviews.answer(review_id, first["id"], confirm=True)
-    assert answered.refused is None
-    await app.state.reviews.answer(review_id, second["id"], confirm=False, reason="not what I saw")
+    answered = await client.patch(
+        f"/api/reviews/{reviewed['data']['id']}/claims/{first['id']}", json={"status": "confirmed"}
+    )
+    assert answered.status_code == 200
+    await client.patch(
+        f"/api/reviews/{reviewed['data']['id']}/claims/{second['id']}",
+        json={"status": "rejected", "reason": "not what I saw"},
+    )
 
     text = await read_back()
     assert "1 claim confirmed, 0 unverified, 1 rejected" in text

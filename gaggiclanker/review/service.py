@@ -43,6 +43,7 @@ running row back instead of a second call.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -392,9 +393,11 @@ class ReviewService:
         self._answered(result)
         return result
 
-    async def confirm_all(self, review_id: int) -> AnswerResult:
-        """A person confirms every claim of the reading still waiting."""
-        result = await self.reviews.confirm_all(review_id)
+    async def confirm_all(
+        self, review_id: int, *, except_kinds: Sequence[str] = ()
+    ) -> AnswerResult:
+        """A person confirms every claim still waiting, except those of ``except_kinds``."""
+        result = await self.reviews.confirm_all(review_id, except_kinds=except_kinds)
         self._answered(result)
         return result
 

@@ -66,6 +66,7 @@ ALLOWED = frozenset(
         "gaggiclanker/review/service.py",
         "gaggiclanker/review/style.py",
         "gaggiclanker/api/shots.py",
+        "gaggiclanker/api/reviews.py",
         "gaggiclanker/api/deps.py",
         "gaggiclanker/main.py",
     }

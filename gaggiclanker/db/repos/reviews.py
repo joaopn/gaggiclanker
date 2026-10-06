@@ -626,22 +626,34 @@ class ShotReviewsRepository(Repository):
             )
         return AnswerResult(review=await self.get(review_id), changed=1)
 
-    async def confirm_all(self, review_id: int) -> AnswerResult:
+    async def confirm_all(
+        self, review_id: int, *, except_kinds: Sequence[str] = ()
+    ) -> AnswerResult:
         """Confirm every claim of the reading still waiting, in one transaction.
 
-        Claims a person already answered (a rejection included) are left as they are.
+        Claims a person already answered (a rejection included) are left as they are, and so are
+        claims of ``except_kinds``: they stay `proposed`. The page holds the prediction's stance
+        back until the shot has a decision, so a person pressing Confirm all has not seen it and
+        must not be taken to have confirmed it.
         """
+        kinds = sorted(set(except_kinds))
         async with self._transaction():
             refused, _shot = await self._answering(review_id)
             if refused is not None:
                 return AnswerResult(refused=refused)  # type: ignore[arg-type]
             cursor = await self.db.execute(
-                "UPDATE review_claims SET status = 'confirmed', answered_at = ? "
-                "WHERE review_id = ? AND status = 'proposed'",
-                (utc_now(), review_id),
+                "UPDATE review_claims SET status = 'confirmed', answered_at = ? "  # noqa: S608
+                "WHERE review_id = ? AND status = 'proposed' "
+                f"AND kind NOT IN ({', '.join('?' * len(kinds))})",
+                (utc_now(), review_id, *kinds),
             )
             changed = cursor.rowcount
-            log.info("review_claims_confirmed_all", review_id=review_id, changed=changed)
+            log.info(
+                "review_claims_confirmed_all",
+                review_id=review_id,
+                changed=changed,
+                except_kinds=kinds,
+            )
         return AnswerResult(review=await self.get(review_id), changed=changed)
 
     # ── boot ────────────────────────────────────────────────────────
