@@ -1257,6 +1257,39 @@ export async function runReview(
   });
 }
 
+/**
+ * Confirm or reject one claim of a reading, with an optional one-line reason; the last answer
+ * wins. `reviewId` is the reading **in force** (`reading.in_force_id`), never the newest attempt:
+ * a re-read in flight answers 409. Resolves with the updated review.
+ */
+export async function answerReviewClaim(
+  reviewId: number,
+  claimId: number,
+  answer: { status: "confirmed" | "rejected"; reason?: string },
+): Promise<ShotReview> {
+  return fetchApi<ShotReview>(`/reviews/${reviewId}/claims/${claimId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: answer.status, reason: answer.reason ?? "" }),
+  });
+}
+
+/**
+ * Confirm every claim of a reading that is still waiting, in one transaction. `exceptKinds`
+ * leaves the claims of those kinds proposed: the page holds a prediction's stance back until the
+ * shot has a decision, and Confirm all must not confirm what was not shown.
+ */
+export async function confirmAllReviewClaims(
+  reviewId: number,
+  exceptKinds?: string[],
+): Promise<ShotReview> {
+  return fetchApi<ShotReview>(`/reviews/${reviewId}/claims/confirm-all`, {
+    method: "POST",
+    ...(exceptKinds && exceptKinds.length > 0
+      ? { body: JSON.stringify({ except_kinds: exceptKinds }) }
+      : {}),
+  });
+}
+
 /** The newest pattern run, its proposals and how many insights are new since the last one. */
 export async function getPatterns(): Promise<PatternsData> {
   return fetchApi<PatternsData>("/knowledge/patterns");

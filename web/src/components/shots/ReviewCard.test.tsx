@@ -142,10 +142,10 @@ describe("ReviewCard", () => {
     expect(screen.queryByTestId("review-reading")).toBeNull();
   });
 
-  it("is refreshed by the review events, which re-read shot details and never the list", () => {
+  it("is refreshed by the reading events, which re-read the shots and the Sets", () => {
     for (const event of ["review.started", "review.finished", "review.failed"]) {
       const keys = EVENT_INVALIDATIONS[event];
-      expect(keys, event).toEqual([[...queryKeys.shots.all, "detail"]]);
+      expect(keys, event).toEqual([queryKeys.shots.all, queryKeys.sets.all]);
     }
   });
 

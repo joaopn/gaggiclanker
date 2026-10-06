@@ -147,6 +147,19 @@ export async function invalidateSignatureAnswers(queryClient: QueryClient): Prom
   ]);
 }
 
+/**
+ * Everything a reading's start, finish, failure or answer changes: the shots list (the badge, its
+ * state and the Review sort), each shot's detail (its readings and claims) and fields (the checks
+ * the reading's free-text results join), and the Set pages that list the shot with its badge.
+ * Runs on success and on failure alike: a 409 means another tab answered or re-read first.
+ */
+export async function invalidateReadings(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.shots.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.sets.all }),
+  ]);
+}
+
 export function invalidateKnowledge(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.knowledge.all }).then(() => undefined);
 }
@@ -244,12 +257,14 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
     queryKeys.sets.all,
     queryKeys.device.all,
   ],
-  // A shot's review, carried on the LLM stream. Only the shot page shows one
-  // (its detail carries the reviews), so only shot details are re-read: the
-  // shots list carries nothing about a review.
-  "review.started": [[...queryKeys.shots.all, "detail"]],
-  "review.finished": [[...queryKeys.shots.all, "detail"]],
-  "review.failed": [[...queryKeys.shots.all, "detail"]],
+  // A shot's reading, carried on the LLM stream. The badge says its state in the shots list, on
+  // the Set pages and in the compare tray, and the shot's detail and fields carry its claims and
+  // the checks they answer, so all three prefixes are re-read; `answered` is another tab's
+  // Confirm or Reject.
+  "review.started": [queryKeys.shots.all, queryKeys.sets.all],
+  "review.finished": [queryKeys.shots.all, queryKeys.sets.all],
+  "review.failed": [queryKeys.shots.all, queryKeys.sets.all],
+  "review.answered": [queryKeys.shots.all, queryKeys.sets.all],
   // Find patterns across Sets, carried on the same stream: the Knowledge page's section
   // follows the run row and its proposals, and nothing else shows either.
   "patterns.started": [queryKeys.knowledge.patterns()],
