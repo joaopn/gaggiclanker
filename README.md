@@ -907,14 +907,19 @@ shot in the opening context and in its search; the *extended* information — th
 temperature, pressure and flow statistics, profile compliance, one line per phase
 (how it ended, the cup at its end and its share of the target, the flows, the
 water, the pressure) and the curve — is what it asks for, one shot at a time.
-The base information starts with the shot's **warnings**, the few things that
+The base information starts with the shot's **checks**: the **warnings**, the few things that
 are plainly wrong with a shot without knowing what its profile is for: over
 target (the final weight above 110 % of the target yield of the version it is
 filed under), under target (below 90 %), a phase of its profile skipped because
 the shot stopped on weight, and fast flow (the scale flow over 3 g/s for a
 second at 80 % of the peak pressure; a turbo profile does it on purpose). They
 are worked out when a shot is read, so refiling a shot changes them, and each is
-a fact to weigh against what the profile is for, never a verdict. There is no
+a fact to weigh against what the profile is for, never a verdict, unless the
+profile says what it is for: an agent proposes a **signature** for a profile
+version (expectations per phase, critical, important or context), you confirm it
+once, and from then on every shot is checked against it, so the cup being full
+before the decline reads `ramp: early yield` in red and a turbo's fast flow reads
+grey, as expected. Nothing proposed counts until you confirm it. There is no
 score and no grade on any number. The curve comes as about sixty rows
 (`chatCurvePoints`) chosen to keep its shape, and it always keeps the moments
 the diagnostics are about: each phase's start and end, peak pressure, first

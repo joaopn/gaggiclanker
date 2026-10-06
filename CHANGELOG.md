@@ -10,6 +10,75 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A profile can say what it is for, and every shot is checked against it
+
+- **A signature per profile version.** What a profile is for is written as expectations, each
+  with a tier (critical, important or context), a phase the profile names (or none, for the whole
+  shot) and a kind: a **measure** (a number from the metric language held against a limit, such
+  as the cup at the end of the ramp as a share of the target yield, at most 0.15), a **phase
+  that must begin**, a **warning that is part of the design** (fast flow on a turbo's main
+  phase), or **free text** that only the per-shot reading will check. Values are relative to the
+  target yield or the dose where they can be, so one signature carries across beans and doses. A
+  failed expectation is named `phase: fault` with a word from the fixed list, worked out from the
+  measure's channel and the side it failed (the cup over its limit is `early yield`, under it
+  `little yield`; scale or puck flow over is `fast flow`, under `slow flow`; pressure `high
+  pressure` or `low pressure`; `temperature`; `unstable`; `cut short`; a whole-shot yield `over
+  target` or `under target`); a measure whose failing side has no word is refused when proposed.
+- **An agent proposes, a person confirms, once per profile version.** The Set chat and the
+  design chat get `propose_signature`, the Set chat also `propose_signature_override` (a
+  different limit for one confirmed measure on this version, for example "at most 0.20" on a
+  coarser bean), and `draft_profile` can carry expectations with the draft. All of them write
+  **proposed** rows only. Nothing proposed or rejected is ever a check, in a badge, in the shots
+  list's order or in what any agent reads: only a conversation's own proposals are shown to it,
+  marked proposed, not confirmed, and a rejection reaches the conversation that proposed it with
+  the reason the person gave. `propose_signature` refuses an expectation already proposed or
+  confirmed on the profile version, and a profile whose different phase names are the same in
+  their first 24 bytes. A new profile version is proposed the previous version's confirmed
+  expectations (one click to confirm each, or all at once); one whose phase no longer exists is
+  marked as needing a new phase and cannot be confirmed, and nothing is matched by position or
+  by guess. New routes: `GET /api/profile-versions/{id}/signature`, `POST
+  /api/signature-expectations/{id}/confirm`, `/reject` (with an optional reason) and `/tier`,
+  `POST /api/profile-versions/{id}/signature/confirm-all`, and, for a Set version's override,
+  `GET /api/sets/{id}/versions/{id}/signature-overrides` with `POST
+  /api/sets/{id}/signature-overrides/{id}/confirm`, `/reject` and `/withdraw` (a person can take
+  back a confirmed override, after which a new one can be proposed). The screens for them come
+  next.
+- **The Warnings group is now Checks.** A shot's checks are one ordered list: failed critical
+  expectations (red), failed important ones (amber), the universal warnings nothing marks as
+  expected (amber), expected warnings (grey), what could not be measured (with its reason:
+  neither held nor failed), then what held, the context expectations and the free text. A failed
+  expectation supersedes the universal warning that says the same thing about the same phase. The
+  catalogue's base item carries the signature's state (`signature: confirmed, 6 expectations` or
+  `signature: read without a signature`), what failed and what could not be measured; the new
+  extended item carries the rest. `GET /api/shots/{id}/fields` serves the ordered list
+  (`checks`, with each check's tier, phase, fault word, sentence, value and unit, the effective
+  limit after any override as `compare`, `relative_to` and `limit_text` ("at most 15 % of
+  target"), whether it held and why it is absent; a share is served as a percentage, and a phase
+  that must begin has no number) and the signature's state, and its `warnings` and `badge`, like the shots
+  list's, now come from the same list, so the Review column reads `ramp: early yield +3` in red
+  for the constructed lever shot once its signature is confirmed, and as before (amber) without
+  one. A shot's checks are worked out whenever it is read and nothing about them is stored, so
+  confirming an expectation or an override changes every shot at once with no re-derivation. They
+  are worked out from the samples and phases already stored (a log is never parsed on a read) and
+  remembered per process until something they depend on changes, so the shots list sorted by
+  Review stays fast with hundreds of signed shots. A
+  tier you set on the Warnings item follows it to Checks.
+- **The Set chat is told what its profile is for.** The confirmed signature is in the profile block
+  at the very top of the opening context, one line per expectation with the tier first, and the
+  Set version's own confirmed limit beside the profile's; a profile version with none says so and
+  asks the chat to propose one when the conversation turns to how its shots behave. Each shot
+  in the opening context costs about 10 tokens more (the signature's state line), the base
+  glossary about 130 more and the new rules paragraph about 130 more per request, and the extended
+  meanings about 80 more once per answer that reads one; a six-expectation signature is 150 to
+  300 tokens in the profile block. `get_profile` serves the
+  confirmed signature. A prompt you edited keeps your text on boot and so keeps the old wording
+  about warnings: reset `chat-set`, `chat-general`, `chat-design` and `review` on the Prompts page
+  to read "the warnings among the Checks lines" and the new paragraph about checks against a
+  signature, or add them yourself. The signature reaches an edited prompt either way, since it
+  travels in the opening context.
+- **Upgrade.** Migration 0046 adds three tables and 0047 moves a tier you chose for the Warnings item
+  to Checks; nothing is lost and no database needs deleting.
+
 ### The Set chat starts with its profile in full and each version's averages
 
 - **The profile is the first thing in the opening context.** A Set conversation is now handed
