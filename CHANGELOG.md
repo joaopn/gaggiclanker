@@ -67,8 +67,37 @@ first (`POST /api/backup`), because there is no down-migration.
   Review with the failures first, then `Failed to run`, `Reading…`, `No signature`, shots not
   read yet, `As intended`, and last shots nobody can read, newest first within each. A
   review's one running row per shot is now enforced by the database as well as by the task
-  registry, and the shot page's Review card shows the summary and citations until the claims get
-  their own card.
+  registry.
+- **On screen, the badge starts a reading and the shot page shows it.** In the shots table the
+  Review badge is a button: pressing the badge of a shot nobody has read (`Review`), or whose
+  reading failed, asks for one and the table follows it (`Reading…`, then the verdict); pressing a
+  read shot's badge goes to its Reading card, so a stray click never throws a reading away; while
+  one runs the badge is inert, and a press never opens the row. The badge is outlined while
+  claims wait for an answer and filled once none does, green for `As intended`, grey for `No
+  signature` and `Failed to run`, with the reason, the unverified entries and the summary in its
+  tooltip. A discarded or quarantined shot has no button. On the shot page the card is now
+  **Reading**, directly under the Curves card: the summary, the free-text expectations it checked
+  (held or failed, a failure in its tier's colour), the claims each with its numbers, **Confirm**
+  and **Reject** (with a one-line reason you may leave empty) that you can change later,
+  **Confirm all**, and **Read again**, which asks once, in place, how many confirmed claims it
+  would set aside. A claim whose numbers do not bear it out says so. Hovering or focusing a claim
+  marks its span on the curve behind the lines in its own tint, and pressing it pins the mark (a
+  phone has no hover; on a narrow screen pinning also scrolls the chart into view). The card's
+  first line is the verdict, built by code in the badge's own words and colour ("No signature:
+  read without a confirmed signature, so nothing was checked against the profile's intent", "As
+  intended", or the failures listed), and the model's summary comes after it, labelled as the
+  model's words, so the card can never look as if it disagrees with the badge. The Checks card
+  lists the free-text results, marked unverified until you confirm them and linked to their
+  claim. **The open row in the shots list carries the same Reading card**, directly under the
+  row's own curve, with its spans marked on that chart; a discarded shot shows its last reading
+  and no Read button. The open row's content (the card, the chart, the judgement) is as wide as the
+  table's visible box and stays in view while the columns scroll sideways, so nothing in it is cut. The reading's comparison with the Set version's prediction stays hidden,
+  like the prediction, until the shot has a decision or you press Show; until then Confirm all
+  leaves the stance proposed and does not count it. The table follows a reading by itself, and
+  polls every few seconds while any row is `Reading…`, in case an event was lost. The Review
+  column's minimum width is raised so the longest fault word and its count stay whole once the
+  phase is cut (a narrower stored width is raised to it). The Set history and the compare tray
+  show the same badge but never a button, and nothing for a shot nobody has read.
 - **A fix carried over from the signatures work.** The review's style detection and rule tokens no
   longer read puck flow or pressure from a shot flagged without a pressure sensor.
 
