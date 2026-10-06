@@ -42,6 +42,16 @@ first (`POST /api/backup`), because there is no down-migration.
   (which reads the same numbers) now averages counted shots only too. The Set page's chart
   draws per-shot points and is unchanged.
 
+### A phase name longer than 24 bytes is matched in the shot's log
+
+- **Fixed: a long phase name never matched.** The firmware logs the first 24 bytes of each phase's
+  name, the profile holds all of it, and the metric language compared the two as strings, so a
+  window over a phase called "Pre-infusion with a long soak" (or a span anchored on it) read "the
+  profile has this phase, the shot did not reach it" for a phase the shot ran. A logged name now
+  matches a profile phase when it equals that name cut to 24 bytes on a character boundary (case
+  and runs of spaces ignored), in one place (`domain/phase_names.py`). No stored value changes
+  and no shot is derived again.
+
 ### Any number about a shot can be asked for in one fixed language, and the chat opens with a line per phase
 
 - **A metric language.** A number about a shot (the cup at the end of the ramp as a share of the

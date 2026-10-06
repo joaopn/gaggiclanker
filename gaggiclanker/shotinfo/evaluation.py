@@ -16,7 +16,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.diagnostics import as_sample_dicts
 from gaggiclanker.domain.metric_language import Expression, Result, ShotData, evaluate
-from gaggiclanker.domain.phase_metrics import profile_phase_names
+from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.slog import SlogError, parse_slog
 from gaggiclanker.shotinfo.render import load_shots
 
@@ -46,7 +46,7 @@ async def shot_data(db: Database, shot_id: int) -> ShotData | None:
     return ShotData.build(
         as_sample_dicts(slog),
         slog.transitions,
-        profile_phases=profile_phase_names(source.profile),
+        profile_phases=raw_phase_names(source.profile),
         has_pressure=facts.has_pressure,
         scale_connected=facts.shot.scale_connected,
         final_weight_g=final if final is not None and final > 0 else None,

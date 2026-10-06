@@ -40,6 +40,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gaggiclanker.domain.models import PhaseTransition
+from gaggiclanker.domain.phase_names import phase_key, same_phase
 
 __all__ = [
     "ABSENT_REASONS",
@@ -559,13 +560,11 @@ def _find_phase(data: ShotData, name: str | None, number: int | None) -> int:
             )
         raise _Absent("no_such_phase", f"there is no phase {number}")
     assert name is not None
-    wanted = _norm_name(name)
+    # The log holds the first 24 bytes of a phase's name, the profile all of it: one rule.
     for position, span in enumerate(data.phases):
-        if _norm_name(span.name) == wanted:
+        if same_phase(span.name, name):
             return position
-    if data.profile_phases is not None and any(
-        _norm_name(n) == wanted for n in data.profile_phases
-    ):
+    if data.profile_phases is not None and any(same_phase(n, name) for n in data.profile_phases):
         raise _Absent(
             "phase_not_reached", f"the profile has a phase {name!r} the shot did not reach"
         )
@@ -1035,7 +1034,7 @@ def _duplicate_names(data: ShotData | None) -> set[str]:
     seen: set[str] = set()
     duplicated: set[str] = set()
     for span in data.phases:
-        name = _norm_name(span.name)
+        name = phase_key(span.name)
         (duplicated if name in seen else seen).add(name)
     return duplicated
 
@@ -1043,7 +1042,7 @@ def _duplicate_names(data: ShotData | None) -> set[str]:
 def _window_words(window: Window, duplicated: set[str]) -> str:
     if window.phase is not None:
         name = window.phase.strip()
-        return f"the first {name}" if _norm_name(name) in duplicated else f"the {name}"
+        return f"the first {name}" if phase_key(name) in duplicated else f"the {name}"
     if window.phase_number is not None:
         return f"phase {window.phase_number}"
     if window.start is not None and window.end is not None:
