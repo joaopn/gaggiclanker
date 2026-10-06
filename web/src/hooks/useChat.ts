@@ -332,6 +332,8 @@ export function useChatRun(runId: number | null, threadId: number | null): LiveR
           void queryClient.invalidateQueries({ queryKey: queryKeys.sets.all });
           void queryClient.invalidateQueries({ queryKey: queryKeys.knowledge.all });
           void queryClient.invalidateQueries({ queryKey: queryKeys.drafts.all });
+          // ...or proposed a signature, which waits on the Profiles card and the Set line.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.signatures.all });
           break;
       }
     },

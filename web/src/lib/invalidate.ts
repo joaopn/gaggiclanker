@@ -128,6 +128,25 @@ export function invalidateShotDetails(queryClient: QueryClient): Promise<void> {
     .then(() => undefined);
 }
 
+/**
+ * Everything a person's answer about a signature changes.
+ *
+ * A signature is read at read time, so one answer moves what every shot of the profile says:
+ * the shot page's checks (`shots` detail and its fields), every list row's badge and warnings
+ * (`shots` lists), and the Set pages that brew the profile (their versions carry shots with
+ * badges, and the page's own signature state and overrides). The signature itself is the card
+ * that was pressed. Refetching all of it is the point: a stale red badge after a confirm is
+ * the bug this exists to prevent. Runs on success and on failure alike: a 409 means another tab
+ * answered first, and the card must show that answer.
+ */
+export async function invalidateSignatureAnswers(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.signatures.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.shots.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.sets.all }),
+  ]);
+}
+
 export function invalidateKnowledge(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.knowledge.all }).then(() => undefined);
 }

@@ -134,6 +134,18 @@ export const queryKeys = {
     // list is invalidated by a push.
     version: (id: string) => ["profiles", "version", id] as const,
   },
+  /**
+   * What a profile version is for. Its own prefix: a signature answer changes every shot's
+   * checks and every Set that brews the profile, and `invalidateSignatureAnswers` names those.
+   * The overrides sit under `sets`, because they belong to a Set version and the Set page's
+   * own invalidation reaches them.
+   */
+  signatures: {
+    all: ["signatures"] as const,
+    version: (id: number) => ["signatures", "version", id] as const,
+  },
+  setOverrides: (setId: number, versionId: number) =>
+    ["sets", "signature-overrides", setId, versionId] as const,
   /** The wizard's runs. One entry per run id; there is no list the UI renders. */
   startingPoints: {
     all: ["starting-points"] as const,

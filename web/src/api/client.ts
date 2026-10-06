@@ -103,6 +103,11 @@ import type {
   ShotListParams,
   ShotReview,
   ShotSamplesData,
+  SignatureAnswer,
+  SignatureData,
+  SignatureOverrideAnswer,
+  SignatureOverrideList,
+  SignatureTier,
   SimilarSetsData,
   StartingPointAccepted,
   StartingPointRequest,
@@ -614,6 +619,90 @@ export async function setBoardOnMachine(rowId: number, on: boolean): Promise<Boa
     method: "PUT",
     body: JSON.stringify({ on }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Signatures: what a profile version is for. Every call here is a person's press;
+// nothing in this client can propose an expectation.
+// ---------------------------------------------------------------------------
+
+/** Every expectation of a profile version, proposed, confirmed and rejected. */
+export async function getSignature(versionId: number): Promise<SignatureData> {
+  return fetchApi<SignatureData>(`/profile-versions/${versionId}/signature`);
+}
+
+export async function confirmExpectation(expectationId: number): Promise<SignatureAnswer> {
+  return fetchApi<SignatureAnswer>(`/signature-expectations/${expectationId}/confirm`, {
+    method: "POST",
+  });
+}
+
+export async function rejectExpectation(
+  expectationId: number,
+  reason: string,
+): Promise<SignatureAnswer> {
+  return fetchApi<SignatureAnswer>(`/signature-expectations/${expectationId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function setExpectationTier(
+  expectationId: number,
+  tier: SignatureTier,
+): Promise<SignatureAnswer> {
+  return fetchApi<SignatureAnswer>(`/signature-expectations/${expectationId}/tier`, {
+    method: "POST",
+    body: JSON.stringify({ tier }),
+  });
+}
+
+/** Every proposed expectation of a version in one call: all or nothing, one that needs a phase stays. */
+export async function confirmAllExpectations(versionId: number): Promise<SignatureAnswer> {
+  return fetchApi<SignatureAnswer>(`/profile-versions/${versionId}/signature/confirm-all`, {
+    method: "POST",
+  });
+}
+
+/** The overrides proposed, confirmed or answered for one Set version's signature limits. */
+export async function getSignatureOverrides(
+  setId: number,
+  versionId: number,
+): Promise<SignatureOverrideList> {
+  return fetchApi<SignatureOverrideList>(
+    `/sets/${setId}/versions/${versionId}/signature-overrides`,
+  );
+}
+
+export async function confirmSignatureOverride(
+  setId: number,
+  overrideId: number,
+): Promise<SignatureOverrideAnswer> {
+  return fetchApi<SignatureOverrideAnswer>(
+    `/sets/${setId}/signature-overrides/${overrideId}/confirm`,
+    { method: "POST" },
+  );
+}
+
+export async function rejectSignatureOverride(
+  setId: number,
+  overrideId: number,
+  reason: string,
+): Promise<SignatureOverrideAnswer> {
+  return fetchApi<SignatureOverrideAnswer>(
+    `/sets/${setId}/signature-overrides/${overrideId}/reject`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
+export async function withdrawSignatureOverride(
+  setId: number,
+  overrideId: number,
+): Promise<SignatureOverrideAnswer> {
+  return fetchApi<SignatureOverrideAnswer>(
+    `/sets/${setId}/signature-overrides/${overrideId}/withdraw`,
+    { method: "POST" },
+  );
 }
 
 /** Star a profile (the machine's home-screen carousel). Remembered while it is off the machine. */
