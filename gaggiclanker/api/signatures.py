@@ -26,9 +26,9 @@ from gaggiclanker.db.repos.signatures import (
     OverrideRow,
     SignatureRepository,
 )
-from gaggiclanker.domain.metric_language import Compare, compare_words
+from gaggiclanker.domain.metric_language import Compare, compare_words, expression_unit
 from gaggiclanker.domain.phase_metrics import profile_phase_names
-from gaggiclanker.domain.signature import fault_words
+from gaggiclanker.domain.signature import fault_words, limit_text
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import Conflict, NotFound
 
@@ -353,6 +353,11 @@ class OverrideOut(BaseModel):
     #: What it overrides: the profile's limit, and the expectation it is a limit of.
     profile_compare: JsonValue | None
     profile_compare_text: str
+    #: The two limits as a person reads them, with their unit: ``at most 20 % of target``,
+    #: ``at most 4 g/s``. ``compare_text`` is the bare comparison in the language's own numbers
+    #: (a share is a fraction there).
+    limit_text: str
+    profile_limit_text: str
     phase: str | None
     tier: str
     sentence: str
@@ -377,6 +382,8 @@ class OverrideAnswer(BaseModel):
 async def _override_out(row: OverrideRow, signatures: SignatureRepository) -> OverrideOut:
     target = await signatures.get(row.expectation_id)
     base = target.expression.compare if target is not None and target.expression else None
+    expression = target.expression if target is not None else None
+    unit = expression_unit(expression) if expression is not None else ""
     return OverrideOut(
         id=row.id,
         set_version_id=row.set_version_id,
@@ -391,6 +398,12 @@ async def _override_out(row: OverrideRow, signatures: SignatureRepository) -> Ov
         compare_text=compare_words(row.compare) if row.compare is not None else "",
         profile_compare=_compare_json(base),
         profile_compare_text=compare_words(base) if base is not None else "",
+        limit_text=(
+            limit_text(expression.model_copy(update={"compare": row.compare}), unit)
+            if expression is not None and row.compare is not None
+            else ""
+        ),
+        profile_limit_text=limit_text(expression, unit) if expression is not None else "",
         phase=target.phase if target is not None else None,
         tier=target.tier if target is not None else "",
         sentence=target.sentence if target is not None else "",

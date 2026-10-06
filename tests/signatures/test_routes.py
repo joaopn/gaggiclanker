@@ -171,6 +171,11 @@ async def test_an_override_is_answered_by_the_set_it_belongs_to(
     listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
     (item,) = listed["items"]
     assert (item["compare_text"], item["profile_compare_text"]) == ("at most 0.2", "at most 0.15")
+    # The limits as a person reads them: a share is a percentage, of what it is a share of.
+    assert (item["limit_text"], item["profile_limit_text"]) == (
+        "at most 20 % of target",
+        "at most 15 % of target",
+    )
     assert (item["phase"], item["tier"], item["status"]) == ("ramp", "critical", "proposed")
     assert (
         await client.post(f"/api/sets/{set_id + 1}/signature-overrides/{proposed.id}/confirm")
@@ -257,3 +262,36 @@ async def test_a_confirmed_override_can_be_withdrawn_and_a_new_one_proposed(
     assert again.status == "proposed" and again.id != waiting.id
     listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
     assert [i["status"] for i in listed["items"]] == ["proposed", "withdrawn"]
+
+
+async def test_an_override_of_a_limit_in_a_unit_words_both_limits_in_it(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    version = await _version(app.state.db, LEVER_PROFILE)
+    flow = {
+        "channel": "scale_flow",
+        "op": "mean",
+        "window": {"phase": "ramp"},
+        "compare": {"op": "<=", "value": 3.0},
+    }
+    (row,) = await SignatureService(app.state.db).propose(
+        version,
+        [ExpectationInput(tier="important", kind="measure", expression=flow)],
+        reason="a lever's ramp is gentle",
+    )
+    first, _ = await make_set_versions(app.state.db, version)
+    set_id = await SignatureRepository(app.state.db).set_of_version(first)
+    await client.post(f"/api/signature-expectations/{row.id}/confirm")
+    await SignatureService(app.state.db).propose_override(
+        set_version_id=first,
+        profile_version_id=version,
+        expectation_id=row.id,
+        compare={"op": "<=", "value": 4.0},
+        reason="a coarser bean",
+        thread_id=None,
+    )
+
+    listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
+
+    (item,) = listed["items"]
+    assert (item["limit_text"], item["profile_limit_text"]) == ("at most 4 g/s", "at most 3 g/s")

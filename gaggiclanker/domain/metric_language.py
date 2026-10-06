@@ -55,6 +55,7 @@ __all__ = [
     "compare_words",
     "evaluate",
     "evaluate_in_phase",
+    "expression_unit",
     "method_id",
     "per_phase_method",
     "render",
@@ -800,6 +801,15 @@ def _unit(expr: Expression) -> str:
     if op == "integral":
         return f"{channel_unit}·s" if channel_unit else "s"
     return channel_unit
+
+
+def expression_unit(expr: Expression) -> str:
+    """The unit an expression's value is in (``share`` for one relative to something).
+
+    Known from the expression alone, with no shot: a limit is worded in it before any shot has
+    been read (a Set version's override, shown beside the profile's own limit).
+    """
+    return _unit(expr)
 
 
 def _compute(expr: Expression, data: ShotData, resolved: _Resolved) -> float:

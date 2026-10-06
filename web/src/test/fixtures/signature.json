@@ -818,6 +818,8 @@
       "value": 0.15
     },
     "profile_compare_text": "at most 0.15",
+    "limit_text": "at most 20 % of target",
+    "profile_limit_text": "at most 15 % of target",
     "phase": "ramp",
     "tier": "critical",
     "sentence": "cup weight at the end of the ramp, as a share of the target yield, at most 0.15",
@@ -843,6 +845,8 @@
       "value": 0.15
     },
     "profile_compare_text": "at most 0.15",
+    "limit_text": "at most 20 % of target",
+    "profile_limit_text": "at most 15 % of target",
     "phase": "ramp",
     "tier": "critical",
     "sentence": "cup weight at the end of the ramp, as a share of the target yield, at most 0.15",

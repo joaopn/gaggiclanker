@@ -5745,11 +5745,15 @@ export interface components {
             expectation_status: "proposed" | "confirmed" | "rejected";
             /** Id */
             id: number;
+            /** Limit Text */
+            limit_text: string;
             /** Phase */
             phase: string | null;
             profile_compare: components["schemas"]["JsonValue"] | null;
             /** Profile Compare Text */
             profile_compare_text: string;
+            /** Profile Limit Text */
+            profile_limit_text: string;
             /** Proposed At */
             proposed_at: string;
             /** Proposed By Thread Id */
