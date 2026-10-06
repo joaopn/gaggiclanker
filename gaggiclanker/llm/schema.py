@@ -27,10 +27,13 @@ from pydantic import BaseModel
 
 __all__ = ["schema_name", "strict_json_schema"]
 
-#: How deep the inliner will follow ``$ref``. A recursive model would otherwise
-#: expand for ever; ten levels is far past anything this app models and the
-#: failure at the limit is a ``$ref`` left in place, not a hang.
-_MAX_INLINE_DEPTH = 10
+#: How many ``$ref`` hops the inliner will follow down one path before it stops. A recursive model
+#: is caught earlier, by the set of references being expanded (a reference met again inside its
+#: own expansion is left in place, not unrolled); this is the backstop. It counts references, not
+#: nesting: a reading's answer is objects inside lists inside objects five levels down, and
+#: counting every level left a reference near the bottom unresolved ("can't resolve
+#: reference"), which the Claude Code CLI refuses as a whole.
+_MAX_INLINE_DEPTH = 32
 
 
 def schema_name(model: type[BaseModel]) -> str:
@@ -56,40 +59,55 @@ def strict_json_schema(model: type[BaseModel], *, inline_refs: bool = True) -> d
     return walked
 
 
-def _walk(node: Any, defs: dict[str, Any], *, depth: int, inline_refs: bool) -> Any:
+def _walk(
+    node: Any,
+    defs: dict[str, Any],
+    *,
+    depth: int,
+    inline_refs: bool,
+    expanding: frozenset[str] = frozenset(),
+) -> Any:
     if isinstance(node, list):
-        return [_walk(item, defs, depth=depth, inline_refs=inline_refs) for item in node]
+        return [
+            _walk(item, defs, depth=depth, inline_refs=inline_refs, expanding=expanding)
+            for item in node
+        ]
     if not isinstance(node, dict):
         return node
 
     schema: dict[str, Any] = dict(node)
 
     ref = schema.get("$ref")
-    if inline_refs and isinstance(ref, str) and depth < _MAX_INLINE_DEPTH:
+    if inline_refs and isinstance(ref, str) and depth < _MAX_INLINE_DEPTH and ref not in expanding:
         target = _resolve(ref, defs)
         if target is not None:
             # Sibling keys (a description on the property, say) survive the
             # inlining and win over the definition's own.
             merged = {**target, **{k: v for k, v in schema.items() if k != "$ref"}}
-            return _walk(merged, defs, depth=depth + 1, inline_refs=True)
+            return _walk(
+                merged, defs, depth=depth + 1, inline_refs=True, expanding=expanding | {ref}
+            )
 
     for key in ("properties", "$defs", "patternProperties"):
         value = schema.get(key)
         if isinstance(value, dict):
             schema[key] = {
-                name: _walk(child, defs, depth=depth + 1, inline_refs=inline_refs)
+                name: _walk(child, defs, depth=depth, inline_refs=inline_refs, expanding=expanding)
                 for name, child in value.items()
             }
 
     for key in ("items", "additionalItems", "contains", "not"):
         if key in schema:
-            schema[key] = _walk(schema[key], defs, depth=depth + 1, inline_refs=inline_refs)
+            schema[key] = _walk(
+                schema[key], defs, depth=depth, inline_refs=inline_refs, expanding=expanding
+            )
 
     for key in ("anyOf", "oneOf", "allOf", "prefixItems"):
         value = schema.get(key)
         if isinstance(value, list):
             schema[key] = [
-                _walk(child, defs, depth=depth + 1, inline_refs=inline_refs) for child in value
+                _walk(child, defs, depth=depth, inline_refs=inline_refs, expanding=expanding)
+                for child in value
             ]
 
     properties = schema.get("properties")

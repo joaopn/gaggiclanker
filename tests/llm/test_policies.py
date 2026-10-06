@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from typing import Literal
+
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.errors import (
@@ -243,3 +246,45 @@ def test_unreported_usage_stays_unreported() -> None:
     """None is not zero. A local model that says nothing must not look free."""
     assert Usage().total_tokens is None
     assert Usage(prompt_tokens=0, completion_tokens=0).total_tokens == 0
+
+
+class _Leaf(BaseModel):
+    kind: Literal["a", "b"]
+
+
+class _Deep(BaseModel):
+    """Objects in lists in objects, as a reading's answer nests them, ending in a shared type."""
+
+    leaf: _Leaf | None = None
+
+
+def _nest(levels: int) -> type[BaseModel]:
+    model: type[BaseModel] = _Deep
+    for index in range(levels):
+        model = create_model(f"Level{index}", items=(list[model], ...))  # type: ignore[valid-type]
+    return model
+
+
+def test_a_reference_far_down_a_deep_schema_is_still_inlined() -> None:
+    """Nesting is not recursion: only following one reference after another is bounded.
+
+    A claim's evidence expression holds a window that holds an anchor that refers to a shared
+    type six levels under the root; counting every level as a reference hop left that one
+    unresolved and the Claude Code CLI refused the whole schema.
+    """
+    schema = strict_json_schema(_nest(12))
+
+    assert "$ref" not in json.dumps(schema)
+    assert "$defs" not in schema
+
+
+class Tree(BaseModel):
+    children: list[Tree] = Field(default_factory=list)
+
+
+def test_a_recursive_model_is_left_as_a_reference_where_it_recurs() -> None:
+    schema = strict_json_schema(Tree)
+
+    # One level is expanded; where the model contains itself the reference stays, so the
+    # inliner neither hangs nor unrolls it to a depth.
+    assert "$ref" in json.dumps(schema)
