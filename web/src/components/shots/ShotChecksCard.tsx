@@ -1,7 +1,13 @@
 import { AlertTriangle, ChevronRight, CircleDashed, Info } from "lucide-react";
 import { useId, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ShotCheck, ShotSignatureState, ShotWarning } from "@/api/types";
+import type {
+  ReviewClaim,
+  ShotCheck,
+  ShotReview,
+  ShotSignatureState,
+  ShotWarning,
+} from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { signatureHref } from "@/lib/signatures";
 import { cn } from "@/lib/utils";
@@ -25,6 +31,13 @@ import { cn } from "@/lib/utils";
 
 type Color = "red" | "amber" | "grey" | null;
 
+/**
+ * Where a free-text result's claim is. On the shot page it is an anchor (`to`); in the open row an
+ * anchor would navigate (`/shots#claim-23` drops the sort and closes the row), so there it is a
+ * button that scrolls the claim in the row's own card into view and focuses it (`onPress`).
+ */
+type ClaimLink = { label: string; to?: string; onPress?: () => void };
+
 const LINE_CLASS: Record<"red" | "amber" | "grey" | "none", string> = {
   red: "border-status-bad/40 bg-status-bad/10",
   amber: "border-status-warn/40 bg-status-warn/10",
@@ -47,6 +60,8 @@ function CheckLine({
   detail,
   color,
   status,
+  unverified,
+  link,
 }: {
   /** The shot's own phase name, cut inside the line when it is long. */
   phase: string;
@@ -56,6 +71,10 @@ function CheckLine({
   detail?: string;
   color: Color;
   status: string;
+  /** A reading's result nobody has confirmed yet. */
+  unverified?: boolean;
+  /** Where its claim is, for a result the reading made. */
+  link?: ClaimLink;
 }) {
   const tone = color ?? "none";
   const Icon = tone === "grey" ? Info : tone === "none" ? CircleDashed : AlertTriangle;
@@ -73,9 +92,35 @@ function CheckLine({
             {phase}
           </span>
           <span className="min-w-0 break-words">: {label}</span>
+          {unverified ? (
+            <span
+              className="ml-2 shrink-0 self-start rounded-full border border-border px-1.5 text-muted-foreground text-xs"
+              data-testid="check-unverified"
+            >
+              unverified
+            </span>
+          ) : null}
         </p>
         {lead ? <p className="break-words">{lead}</p> : null}
         {detail ? <p className="break-words text-muted-foreground">{detail}</p> : null}
+        {link?.onPress ? (
+          <button
+            type="button"
+            className="text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
+            data-testid="check-claim-link"
+            onClick={link.onPress}
+          >
+            {link.label}
+          </button>
+        ) : link?.to ? (
+          <Link
+            to={link.to}
+            className="text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
+            data-testid="check-claim-link"
+          >
+            {link.label}
+          </Link>
+        ) : null}
       </div>
     </li>
   );
@@ -121,6 +166,10 @@ function lineOf(check: ShotCheck) {
   if (check.status === "held") {
     return { phase, label: "held", detail: check.detail || check.sentence };
   }
+  if (check.kind === "free_text" && check.status === "failed") {
+    // The reading's result: the expectation's own fault word, and what the reading said.
+    return { ...title, detail: check.detail };
+  }
   if (check.kind === "free_text") {
     return { phase, label: check.sentence, detail: undefined };
   }
@@ -165,9 +214,12 @@ function Collapsed({
 export function ShotChecksCard({
   checks,
   signature,
+  claims,
 }: {
   checks: ShotCheck[] | undefined;
   signature: ShotSignatureState | undefined;
+  /** The claims of the reading in force, so a free-text result can link to its claim. */
+  claims?: ReviewClaim[];
 }) {
   const all = checks ?? [];
   const link = signature?.profile_version_id ?? null;
@@ -177,6 +229,19 @@ export function ShotChecksCard({
   const shown = all.filter((c) => c.status !== "held" && c.status !== "unchecked");
   const held = all.filter((c) => c.status === "held");
   const unchecked = all.filter((c) => c.status === "unchecked");
+  // What a reading's free-text result adds to a line: whether it waits for a person, and its claim.
+  const resultOf = (check: ShotCheck) => {
+    if (check.kind !== "free_text" || (check.status !== "held" && check.status !== "failed")) {
+      return {};
+    }
+    const found = claims?.find(
+      (claim) => claim.kind === "free_text" && claim.expectation_id === check.expectation_id,
+    );
+    return {
+      unverified: check.unverified,
+      link: found ? { to: `#claim-${found.id}`, label: "See the claim in the reading" } : undefined,
+    };
+  };
   return (
     <SectionCard
       title="Checks"
@@ -193,6 +258,7 @@ export function ShotChecksCard({
                 color={check.color as Color}
                 status={check.status}
                 {...lineOf(check)}
+                {...resultOf(check)}
               />
             ))}
           </ul>
@@ -206,6 +272,7 @@ export function ShotChecksCard({
                 color={null}
                 status={check.status}
                 {...lineOf(check)}
+                {...resultOf(check)}
               />
             ))}
           </Collapsed>
@@ -248,6 +315,40 @@ function SignatureLine({ signature }: { signature: ShotSignatureState }) {
   );
 }
 
+/** The claims of the reading in force: what a Checks line links to. */
+export function inForceClaims(
+  reviews: ShotReview[] | undefined,
+  inForceId: number | null | undefined,
+): ReviewClaim[] | undefined {
+  const found = (reviews ?? []).find((review) =>
+    inForceId != null ? review.id === inForceId : review.status === "ok",
+  );
+  return found?.claims;
+}
+
+function showClaim(claimId: number): void {
+  const element = document.getElementById(`claim-${claimId}`);
+  if (!element) return;
+  // `nearest`: the least scrolling that shows it, none when it is in view already.
+  element.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  element.focus({ preventScroll: true });
+}
+
+function claimLink(
+  claims: ReviewClaim[] | undefined,
+  expectationId: number | null | undefined,
+): ClaimLink | undefined {
+  const found =
+    expectationId == null
+      ? undefined
+      : claims?.find(
+          (claim) => claim.kind === "free_text" && claim.expectation_id === expectationId,
+        );
+  return found
+    ? { label: "See the claim in the reading", onPress: () => showClaim(found.id) }
+    : undefined;
+}
+
 /**
  * The same lines for a shots-list row, from what the row carries.
  *
@@ -255,7 +356,14 @@ function SignatureLine({ signature }: { signature: ShotSignatureState }) {
  * warnings, most severe first) and neither the held checks nor the signature state, so this
  * is the short list; the shot page has the whole one.
  */
-export function ShotRowChecksCard({ warnings }: { warnings: ShotWarning[] | undefined }) {
+export function ShotRowChecksCard({
+  warnings,
+  claims,
+}: {
+  warnings: ShotWarning[] | undefined;
+  /** The claims of the reading in force, which the open row shows below: a result links to its claim. */
+  claims?: ReviewClaim[];
+}) {
   if (!warnings || warnings.length === 0) return null;
   return (
     <SectionCard
@@ -273,6 +381,8 @@ export function ShotRowChecksCard({ warnings }: { warnings: ShotWarning[] | unde
             detail={warning.detail}
             color={warning.severity as Color}
             status={warning.status}
+            unverified={warning.unverified}
+            link={claimLink(claims, warning.expectation_id)}
           />
         ))}
       </ul>

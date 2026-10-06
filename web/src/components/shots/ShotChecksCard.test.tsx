@@ -1,7 +1,9 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ShotChecksCard, ShotRowChecksCard } from "@/components/shots/ShotChecksCard";
+import { claim } from "@/test/readingFixtures";
 import { renderWithQueryClient } from "@/test/renderWithQueryClient";
 import {
   leverFields,
@@ -21,6 +23,11 @@ function card(fields: typeof leverSignedFields) {
   return renderWithQueryClient(
     <ShotChecksCard checks={fields.checks} signature={fields.signature} />,
   );
+}
+
+function Probe() {
+  const { pathname, search, hash } = useLocation();
+  return <p data-testid="where">{`${pathname}${search}${hash}`}</p>;
 }
 
 const titles = (list: HTMLElement) =>
@@ -204,5 +211,128 @@ describe("ShotChecksCard", () => {
     expect(
       renderWithQueryClient(<ShotRowChecksCard warnings={[]} />).container,
     ).toBeEmptyDOMElement();
+  });
+
+  describe("a free-text expectation the reading has answered", () => {
+    const base = leverSignedFields.checks.find((check) => check.kind === "free_text");
+    if (!base) throw new Error("the fixture has no free-text check");
+    const failed = {
+      ...base,
+      status: "failed",
+      held: false,
+      tier: "important",
+      color: "amber",
+      unverified: true,
+      detail: `${base.sentence}; the reading says it failed: pressure keeps rising while flow falls.`,
+    };
+    const answered = claim({
+      id: 77,
+      kind: "free_text",
+      expectation_id: base.expectation_id,
+      held: false,
+    });
+    const checks = (list: typeof leverSignedFields.checks) => (
+      <ShotChecksCard checks={list} signature={leverSignedFields.signature} claims={[answered]} />
+    );
+
+    it("lists a failed result in its tier colour, with the fault word and what the reading said", () => {
+      renderWithQueryClient(
+        checks([...leverSignedFields.checks.filter((c) => c !== base), failed]),
+      );
+      const lines = within(screen.getByTestId("check-list")).getAllByTestId("check-line");
+      const line = lines.find((el) => el.textContent?.includes("the reading says it failed"));
+      if (!line) throw new Error("no line for the failed result");
+      expect(line).toHaveAttribute("data-severity", "amber");
+      expect(line).toHaveTextContent("Shot: unstable");
+      expect(line).toHaveTextContent("pressure keeps rising while flow falls");
+      // It left the group that only a reading can check.
+      expect(screen.queryByTestId("checks-unchecked")).toBeNull();
+    });
+
+    it("says unverified until it is confirmed, and links to its claim in the reading", () => {
+      const { rerender } = renderWithQueryClient(checks([failed]));
+      const line = screen.getByText(/the reading says it failed/).closest("li");
+      if (!line) throw new Error("no line");
+      expect(within(line).getByTestId("check-unverified")).toHaveTextContent("unverified");
+      expect(within(line).getByTestId("check-claim-link")).toHaveAttribute("href", "/#claim-77");
+
+      rerender(checks([{ ...failed, unverified: false }]));
+      expect(screen.queryByTestId("check-unverified")).toBeNull();
+      expect(screen.getByTestId("check-claim-link")).toBeInTheDocument();
+    });
+
+    it("keeps a held result in the held group, marked and linked all the same", async () => {
+      const user = userEvent.setup({ delay: null });
+      renderWithQueryClient(
+        checks([
+          {
+            ...failed,
+            status: "held",
+            held: true,
+            color: null,
+            detail: `${base.sentence}; the reading says it held: it did.`,
+          },
+        ]),
+      );
+      const group = screen.getByTestId("checks-held");
+      await user.click(screen.getByTestId("checks-held-toggle"));
+      expect(within(group).getByTestId("check-unverified")).toBeInTheDocument();
+      expect(within(group).getByTestId("check-claim-link")).toBeInTheDocument();
+      expect(group).toHaveTextContent("the reading says it held");
+    });
+
+    it("draws no link when the claim is not on the page", () => {
+      renderWithQueryClient(
+        <ShotChecksCard checks={[failed]} signature={leverSignedFields.signature} />,
+      );
+      expect(screen.queryByTestId("check-claim-link")).toBeNull();
+      expect(screen.getByTestId("check-unverified")).toBeInTheDocument();
+    });
+
+    it("in the open row, the link is a button that scrolls the row's own claim into view and focuses it", async () => {
+      const user = userEvent.setup({ delay: null });
+      const [first] = leverSignedFields.warnings;
+      const entry = { ...first, unverified: true, expectation_id: base.expectation_id };
+      renderWithQueryClient(
+        <>
+          <Probe />
+          <ShotRowChecksCard warnings={[entry]} claims={[answered]} />
+          {/* The row's own Reading card, with this claim in it. */}
+          <ul>
+            <li id="claim-77" tabIndex={-1} data-testid="the-claim">
+              the claim
+            </li>
+          </ul>
+        </>,
+        { initialEntries: ["/shots?sort=review&order=desc"] },
+      );
+      expect(screen.getByTestId("check-unverified")).toBeInTheDocument();
+      // Not an anchor: an href would navigate and close the row.
+      const control = screen.getByTestId("check-claim-link");
+      expect(control.tagName).toBe("BUTTON");
+      expect(control).not.toHaveAttribute("href");
+      const claimEl = screen.getByTestId("the-claim");
+      const scrolled = vi.spyOn(claimEl, "scrollIntoView").mockImplementation(() => undefined);
+      const other = vi
+        .spyOn(Element.prototype, "scrollIntoView")
+        .mockImplementation(() => undefined);
+
+      await user.click(control);
+
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      expect(scrolled).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+      expect(other).not.toHaveBeenCalled();
+      expect(claimEl).toHaveFocus();
+      // The URL, and with it the list's sort, is untouched.
+      expect(screen.getByTestId("where")).toHaveTextContent("/shots?sort=review&order=desc");
+      other.mockRestore();
+    });
+
+    it("draws no link in the open row when the claim is not on screen", () => {
+      const [first] = leverSignedFields.warnings;
+      const entry = { ...first, unverified: true, expectation_id: base.expectation_id };
+      renderWithQueryClient(<ShotRowChecksCard warnings={[entry]} />);
+      expect(screen.queryByTestId("check-claim-link")).toBeNull();
+    });
   });
 });

@@ -5,7 +5,7 @@ import type { ShotDiagnosticsBlob, ShotListRow, ShotPhase } from "@/api/types";
 import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import { JudgementForm } from "@/components/shots/JudgementForm";
 import { ReviewCard } from "@/components/shots/ReviewCard";
-import { ShotRowChecksCard } from "@/components/shots/ShotChecksCard";
+import { inForceClaims, ShotRowChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotFields, useShotSamples } from "@/hooks/useArchive";
@@ -83,6 +83,7 @@ export function ShotRowPanel({
 
   const shotPage = `/shots/${shot.id}`;
   const row = detail.data?.shot;
+  const reviews = detail.data?.reviews;
   const reading = detail.data?.reading ?? shot.reading;
   const diagnostics = (row?.diagnostics ?? {}) as ShotDiagnosticsBlob;
 
@@ -128,7 +129,10 @@ export function ShotRowPanel({
         {/* What is plainly wrong comes first here as on the page. The list row
           carries the warnings, so there is nothing more to fetch. */}
         <div className="mb-3 empty:hidden">
-          <ShotRowChecksCard warnings={shot.warnings} />
+          <ShotRowChecksCard
+            warnings={shot.warnings}
+            claims={inForceClaims(reviews, reading?.in_force_id)}
+          />
         </div>
 
         <div className="space-y-3" data-testid="panel-rows">
