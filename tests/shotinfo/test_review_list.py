@@ -55,7 +55,9 @@ async def test_a_listed_shot_carries_its_warnings_and_the_badge_text(archive: Ar
     assert rows[archive.shot].badge == "Shot: under target"
     # No scale: the yield warnings need one, so there is nothing to say.
     assert rows[archive.no_scale].warnings == []
-    assert rows[archive.no_scale].badge is None
+    # Nothing to name and nobody has read it: the badge is the button's own word.
+    assert rows[archive.no_scale].badge == "Review"
+    assert rows[archive.no_scale].reading.state == "unread"
 
 
 async def test_the_review_sort_puts_the_most_severe_first_and_the_clean_shots_last(

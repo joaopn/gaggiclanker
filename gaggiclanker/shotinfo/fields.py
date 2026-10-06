@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.domain.signature import Check
-from gaggiclanker.domain.warnings import badge_text
+from gaggiclanker.review.reading import ReadingBlock, serve_reading
 from gaggiclanker.shotinfo.catalogue import ALSO_SERVED, CATALOGUE, MEASURED_GROUPS, FieldValue
 from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import load_shots
@@ -91,6 +91,8 @@ class WarningOut(BaseModel):
     #: ``failed``, ``warning`` or ``expected``.
     status: str = "warning"
     expectation_id: int | None = None
+    #: A free-text expectation a reading failed that nobody has confirmed yet.
+    unverified: bool = False
 
 
 class CheckOut(BaseModel):
@@ -138,6 +140,8 @@ class CheckOut(BaseModel):
     absent: str | None
     at_s: float
     expectation_id: int | None
+    #: An answer of the reading that nobody has confirmed yet (a free-text check only).
+    unverified: bool = False
 
 
 class SignatureStateOut(BaseModel):
@@ -173,8 +177,11 @@ class ShotFields(BaseModel):
     #: critical expectations, failed important ones, universal warnings, expected warnings.
     #: Worked out when read.
     warnings: list[WarningOut]
-    #: The badge text, built by code from them: ``ramp: early yield +1``.
+    #: The badge text, built by code: ``ramp: early yield +1``, or the state's own words
+    #: (``Review``, ``Reading…``, ``Failed to run``, ``As intended``, ``No signature``).
     badge: str | None
+    #: Whether the shot was read, and how: the same block the shots list serves.
+    reading: ReadingBlock
     #: Every check in order, the held and the unmeasured and the free-text ones too.
     checks: list[CheckOut]
     #: Whether the shot was read against a confirmed signature.
@@ -227,6 +234,7 @@ def _check_out(check: Check) -> CheckOut:
         absent=check.absent,
         at_s=check.at_s,
         expectation_id=check.expectation_id,
+        unverified=check.unverified,
     )
 
 
@@ -262,12 +270,18 @@ def shot_fields_of(facts: ShotFacts) -> ShotFields:
             )
         )
 
-    checks = facts.shot_checks
+    served = serve_reading(
+        facts.signature_checks,
+        facts.reading,
+        readable=not facts.shot.quarantined and facts.shot.judgement_decision != "discard",
+    )
+    checks = served.checks
     share = facts.share_of_target(facts.shot.final_weight_g if facts.shot.scale_connected else None)
     return ShotFields(
         shot_id=facts.shot_id,
         warnings=[WarningOut.model_validate(c.as_dict()) for c in checks.badge_entries],
-        badge=badge_text(checks.badge_entries),
+        badge=served.badge,
+        reading=served.block,
         checks=[_check_out(c) for c in checks.checks],
         signature=SignatureStateOut(
             profile_version_id=checks.state.profile_version_id,

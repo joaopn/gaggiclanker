@@ -290,6 +290,7 @@ describe("VersionTimeline", () => {
         synced_at: "2026-04-03T08:16:00.000Z",
         badge: LEVER_BADGE,
         warnings: LEVER_WARNINGS,
+        reading: { state: "unread", unanswered: 0 },
       },
     ];
     // The judgement's rating wins over the device's: the archive's copy is the

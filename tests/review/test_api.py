@@ -9,18 +9,27 @@ no tokens and the thing under test is the route rather than the model.
 from __future__ import annotations
 
 import asyncio
+import json
 
 import httpx
 import pytest
 from fastapi import FastAPI
 
+from gaggiclanker.db.repos.reviews import ReviewOutcome, ReviewStart, ShotReviewsRepository
 from gaggiclanker.review.service import review_task_name
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.tools.registry import registry
 from gaggiclanker.tools.scope import ToolScope
 from tests.conftest import running_app
 from tests.llm.conftest import FakeProvider, api_error
-from tests.review.conftest import GOOD_REVIEW, build_app_fixture, rewire
+from tests.review.conftest import (
+    GOOD_REVIEW,
+    build_app_fixture,
+    confirm_free_text,
+    free_text_result,
+    reading,
+    rewire,
+)
 
 # ── the review routes ────────────────────────────────────────────────
 #
@@ -101,10 +110,15 @@ async def test_reading_a_shot_over_http(
     assert one["input"]["shot"].startswith(f"shot {shot_id}")
     assert len(one["claims"]) == 2
 
-    # And the shot detail carries it, so the card needs no second request.
+    # And the shot detail carries it, so the card needs no second request, with the reading
+    # block the shots list serves on every row.
     detail = (await client.get(f"/api/shots/{shot_id}")).json()["data"]
     assert [row["id"] for row in detail["reviews"]] == [body["id"]]
     assert detail["reviews"][0]["claims"][0]["id"] == first["id"]
+    assert detail["reading"]["state"] == "read"
+    assert detail["reading"]["review_id"] == body["id"]
+    assert detail["reading"]["unanswered"] == 2
+    assert detail["reading"]["summary"] == GOOD_REVIEW["summary"]
     assert "analyses" not in detail
 
 
@@ -276,6 +290,103 @@ async def test_the_analysis_routes_are_gone(
 
     assert response.status_code == 404
     assert provider.calls == []
+
+
+async def test_the_shots_list_carries_the_reading_block_on_every_row(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    app, client, _ = api
+    data = await build_app_fixture(app)
+    shot_id = data.shots[-1]
+
+    def row_of(listing: httpx.Response) -> dict[str, object]:
+        return next(item for item in listing.json()["data"]["items"] if item["id"] == shot_id)
+
+    before = row_of(await client.get("/api/shots"))
+    assert before["badge"] == "Review"
+    assert before["reading"] == {
+        "state": "unread",
+        "review_id": None,
+        "in_force_id": None,
+        "verdict": None,
+        "unanswered": 0,
+        "reason": None,
+        "summary": None,
+        "finished_at": None,
+    }
+
+    await client.post(f"/api/shots/{shot_id}/reviews?wait=1", json={})
+    after = row_of(await client.get("/api/shots"))
+    assert after["badge"] == "No signature"
+    assert after["reading"]["state"] == "read"  # type: ignore[index]
+    assert after["reading"]["verdict"] == "no_signature"  # type: ignore[index]
+    assert after["reading"]["unanswered"] == 2  # type: ignore[index]
+
+
+@pytest.mark.parametrize("status", ["running", "failed", "interrupted"])
+async def test_a_newer_reading_that_did_not_finish_changes_only_the_badge_words(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider], status: str
+) -> None:
+    """The reading in force is the newest finished one, in the list, the detail and the fields."""
+    app, client, provider = api
+    data = await build_app_fixture(app)
+    shot_id = data.shots[-1]
+    expectation = await confirm_free_text(data)
+    answer = free_text_result(expectation)
+    provider.script = [json.dumps(reading(free_text_results=[answer]))]
+    in_force = (await client.post(f"/api/shots/{shot_id}/reviews?wait=1", json={})).json()["data"]
+    assert in_force["status"] == "ok"
+
+    repo = ShotReviewsRepository(app.state.db)
+    newer = await repo.start(ReviewStart(shot_id=shot_id))
+    if status == "failed":
+        await repo.finish(newer, ReviewOutcome(status="failed", error="auth: bad key"))
+    elif status == "interrupted":
+        assert await repo.reconcile_running() == 1
+    words = {"running": "Reading…", "failed": "Failed to run", "interrupted": "Failed to run"}
+
+    row = next(
+        item
+        for item in (await client.get("/api/shots?sort=review")).json()["data"]["items"]
+        if item["id"] == shot_id
+    )
+    fields = (await client.get(f"/api/shots/{shot_id}/fields")).json()["data"]
+    detail = (await client.get(f"/api/shots/{shot_id}")).json()["data"]
+    for served in (row, fields):
+        assert served["badge"] == words[status]
+        assert served["reading"]["state"] == ("running" if status == "running" else "failed")
+        assert served["reading"]["review_id"] == newer
+        assert served["reading"]["in_force_id"] == in_force["id"]
+        # What the reading in force said is still there, unverified, and still waiting.
+        assert [(w["fault"], w["unverified"]) for w in served["warnings"]] == [("unstable", True)]
+        assert served["reading"]["unanswered"] == 3
+    assert fields["reading"]["summary"] == GOOD_REVIEW["summary"]
+    assert [c["status"] for c in fields["checks"] if c["kind"] == "free_text"] == ["failed"]
+    assert detail["reading"]["unanswered"] == 3
+    assert detail["reading"]["in_force_id"] == in_force["id"]
+    assert detail["reading"]["review_id"] == newer
+    # The in-force reading's claims are the ones the detail lists beside the newer attempt.
+    assert [r["id"] for r in detail["reviews"]] == [newer, in_force["id"]]
+    # Its claims can still be answered; the attempt that has not finished has none to answer.
+    claim = in_force["claims"][0]
+    answered = await app.state.reviews.answer(in_force["id"], claim["id"], confirm=True)
+    assert answered.refused is None
+
+
+async def test_the_fields_of_a_discarded_shot_say_it_is_not_readable(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    app, client, _ = api
+    data = await build_app_fixture(app)
+    shot_id = data.shots[-1]
+    await app.state.db.execute(
+        "UPDATE shot_judgements SET decision = 'discard' WHERE shot_id = ?", (shot_id,)
+    )
+
+    fields = (await client.get(f"/api/shots/{shot_id}/fields")).json()["data"]
+
+    assert fields["reading"]["state"] == "not_readable"
+    assert fields["reading"]["verdict"] is None
 
 
 async def test_a_discarded_shot_cannot_be_read(

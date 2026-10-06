@@ -80,7 +80,6 @@ __all__ = [
     "fault_for_failure",
     "fault_words",
     "phase_key",
-    "review_key",
     "validate_compare",
     "validate_expectation",
 ]
@@ -553,6 +552,9 @@ class Check:
     relative_to: str | None = None
     #: The limit as a person reads it: ``at most 15 % of target``, ``at most 3 g/s``.
     limit_text: str = ""
+    #: A free-text expectation answered by a reading nobody has confirmed yet. Only the person's
+    #: view carries one (the web draws it outlined); a chat is never given one.
+    unverified: bool = False
 
     @property
     def color(self) -> CheckColor | None:
@@ -582,6 +584,7 @@ class Check:
             "tier": self.tier,
             "status": self.status,
             "expectation_id": self.expectation_id,
+            "unverified": self.unverified,
         }
 
 
@@ -620,20 +623,6 @@ class ShotChecks:
     def from_warnings(cls, warnings: Sequence[ShotWarning]) -> ShotChecks:
         """The checks of a shot read without a signature: its universal warnings, as they are."""
         return build_checks(warnings=warnings, expectations=[], override=None, data=None)
-
-
-def review_key(checks: ShotChecks) -> tuple[int, tuple[int, bool, float, int]]:
-    """What the shots table's Review column sorts by: the order of the badge's own entry.
-
-    A shot with a badge sorts by its first entry, the one the badge names: its group (red,
-    amber, an unexpected warning, an expected one), a phase's before a whole-shot one, then
-    the time in the shot. A shot with none sorts after every shot that has one. Smaller is
-    worse. Shots with an equal key are put newest first by the caller (`ShotsRepository`).
-    """
-    entries = checks.badge_entries
-    if not entries:
-        return (1, (0, False, 0.0, 0))
-    return (0, entries[0].order())
 
 
 def _warning_check(warning: ShotWarning, *, expected_by: ExpectationLike | None) -> Check:

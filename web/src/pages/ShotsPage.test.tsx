@@ -107,6 +107,7 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     set_badge: null,
     source: "device",
     synced_at: "2026-03-04T08:15:30.000Z",
+    reading: { state: "unread", unanswered: 0 },
     ...overrides,
   };
 }

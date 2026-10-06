@@ -42,6 +42,7 @@ from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_r
 from gaggiclanker.infra.errors import BadRequest, Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, rate_limit
 from gaggiclanker.infra.request_context import get_request_id
+from gaggiclanker.review.reading import ReadingBlock
 from gaggiclanker.review.service import review_task_name
 from gaggiclanker.shotinfo.evaluation import UnreadableShot, evaluate_for_shot
 from gaggiclanker.shotinfo.fields import ShotFields, shot_fields
@@ -98,6 +99,9 @@ class ShotDetailData(BaseModel):
     #: request for a list that is almost always empty or one row long is a round trip for
     #: nothing.
     reviews: list[ShotReviewRow] = Field(default_factory=list)
+    #: Whether the shot was read and how far the person has confirmed what it said: the same
+    #: block the shots list serves on every row.
+    reading: ReadingBlock
 
 
 class ShotSamplesData(BaseModel):
@@ -218,6 +222,7 @@ async def get_shot(
     if shot is None:
         raise NotFound(f"No shot {shot_id}")
     version = None if shot.set_version_id is None else await sets.get_version(shot.set_version_id)
+    served = (await shots.served([shot_id]))[shot_id]
     return envelope_response(
         ShotDetailData(
             shot=shot,
@@ -225,6 +230,7 @@ async def get_shot(
             judgement=await judgements.get(shot_id),
             set_version=version,
             reviews=await reviews.for_shot(shot_id),
+            reading=served.block,
         ).model_dump(mode="json")
     )
 

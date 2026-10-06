@@ -4155,6 +4155,11 @@ export interface components {
             tier: string | null;
             /** Unit */
             unit: string;
+            /**
+             * Unverified
+             * @default false
+             */
+            unverified: boolean;
             /** Value */
             value: number | null;
         };
@@ -4981,6 +4986,8 @@ export interface components {
              */
             tier: "critical" | "important" | "context";
         };
+        /** @enum {string} */
+        gaggiclanker__domain__spread__Verdict: "beyond" | "inside" | "no_data";
         /** ApiResponse[ReloadData] */
         gaggiclanker__infra__envelope__ApiResponse_ReloadData___1: {
             data?: components["schemas"]["gaggiclanker__api__prompts__ReloadData"] | null;
@@ -4997,6 +5004,8 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** @enum {string} */
+        gaggiclanker__review__reading__Verdict: "entries" | "as_intended" | "no_signature";
         /** GrinderListData */
         GrinderListData: {
             /** Items */
@@ -5556,7 +5565,7 @@ export interface components {
             other?: components["schemas"]["MeasureSide"] | null;
             this: components["schemas"]["MeasureSide"];
             /** @default no_data */
-            verdict: components["schemas"]["Verdict"];
+            verdict: components["schemas"]["gaggiclanker__domain__spread__Verdict"];
             /** Yardstick */
             yardstick?: number | null;
         };
@@ -6452,6 +6461,31 @@ export interface components {
             /** Stopped */
             stopped: boolean;
         };
+        /**
+         * ReadingBlock
+         * @description The ``reading`` block of a shot, as the list, the detail and the fields serve it.
+         */
+        ReadingBlock: {
+            /** Finished At */
+            finished_at?: string | null;
+            /** In Force Id */
+            in_force_id?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /** Review Id */
+            review_id?: number | null;
+            state: components["schemas"]["ReadingState"];
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Unanswered
+             * @default 0
+             */
+            unanswered: number;
+            verdict?: components["schemas"]["gaggiclanker__review__reading__Verdict"] | null;
+        };
+        /** @enum {string} */
+        ReadingState: "not_readable" | "unread" | "running" | "failed" | "read";
         /**
          * RejectBody
          * @description `POST .../reject`: an optional one-line reason, which the proposing conversation is told.
@@ -7552,6 +7586,7 @@ export interface components {
         ShotDetailData: {
             judgement?: components["schemas"]["ShotJudgementRow"] | null;
             notes?: components["schemas"]["DeviceShotNotesRow"] | null;
+            reading: components["schemas"]["ReadingBlock"];
             /** Reviews */
             reviews?: components["schemas"]["ShotReviewRow"][];
             set_version?: components["schemas"]["SetVersionRow"] | null;
@@ -7698,6 +7733,7 @@ export interface components {
             checks: components["schemas"]["CheckOut"][];
             /** Phases */
             phases: components["schemas"]["PhaseFields"][];
+            reading: components["schemas"]["ReadingBlock"];
             /** Shot */
             shot: components["schemas"]["FieldOut"][];
             /** Shot Id */
@@ -7890,6 +7926,7 @@ export interface components {
             quarantined: boolean;
             /** Rating */
             rating?: number | null;
+            reading: components["schemas"]["ReadingBlock"];
             /**
              * Sample Count
              * @default 0
@@ -8130,6 +8167,11 @@ export interface components {
             status: string;
             /** Tier */
             tier?: string | null;
+            /**
+             * Unverified
+             * @default false
+             */
+            unverified: boolean;
         };
         /**
          * SignatureAnswer
@@ -8713,8 +8755,6 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /** @enum {string} */
-        Verdict: "beyond" | "inside" | "no_data";
         /**
          * VersionEvidence
          * @description This version's shots against the compared version's, measure by measure.
@@ -8871,6 +8911,11 @@ export interface components {
             status: string;
             /** Tier */
             tier?: string | null;
+            /**
+             * Unverified
+             * @default false
+             */
+            unverified: boolean;
         };
         /** WindowOut */
         WindowOut: {

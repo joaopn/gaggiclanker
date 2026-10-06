@@ -1,6 +1,6 @@
 """Review: a model's reading of one shot, started by a person and confirmed claim by claim.
 
-Five modules, read in the order the work happens:
+Seven modules, read in the order the work happens:
 
 * :mod:`.style` — what kind of shot this profile brews (classic, turbo, lever…).
 * :mod:`.context` — everything the model is told, assembled deterministically: the shot
@@ -15,6 +15,9 @@ Five modules, read in the order the work happens:
   metric language's own evaluator, and the window of each claim resolved to seconds.
 * :mod:`.service` — the run itself: a row, a call, the evidence, an outcome; and a person's
   answers to the claims.
+* :mod:`.reading` — the verdict, the reading state and the badge, worked out whenever a shot
+  is read: for the person (everything not rejected, unconfirmed marked) and for the chat
+  (confirmed only).
 
 A reading writes one review and its claims and does nothing else. Every claim starts
 `proposed`; what a chat is told is what a person confirmed. It proposes no change and asks

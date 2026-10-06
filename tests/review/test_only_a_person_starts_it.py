@@ -62,6 +62,7 @@ ALLOWED = frozenset(
         "gaggiclanker/review/context.py",
         "gaggiclanker/review/evidence.py",
         "gaggiclanker/review/models.py",
+        "gaggiclanker/review/reading.py",
         "gaggiclanker/review/service.py",
         "gaggiclanker/review/style.py",
         "gaggiclanker/api/shots.py",

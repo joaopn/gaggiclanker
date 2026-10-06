@@ -6,6 +6,7 @@ the base tier. These tests pin the rule the whole feature rests on (nothing unco
 one surface at a time, each as a test that fails when its filter is removed:
 
 * the rendered shot at every tier, and the shot tools that serve it;
+* the Checks lines, where a free-text expectation's answer counts only once confirmed;
 * the Set chat's opening context;
 * the SQL tool's views.
 
@@ -34,7 +35,7 @@ from gaggiclanker.shotinfo import CATALOGUE, default_tiers
 from gaggiclanker.shotinfo.catalogue import READING_GROUP
 from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.registry import ToolContext, registry
-from tests.review.conftest import Fixture
+from tests.review.conftest import Fixture, confirm_free_text
 
 READING_KEYS = [item.key for item in CATALOGUE if item.group == READING_GROUP]
 
@@ -266,6 +267,43 @@ async def test_the_newest_finished_reading_is_the_one_shown(
     )
 
 
+async def test_a_free_text_answer_counts_in_the_chat_s_checks_only_once_confirmed(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    shot = archive.shots[-1]
+    expectation = await confirm_free_text(archive)
+    claims = [
+        ClaimWrite(
+            kind="free_text",
+            expectation_id=expectation,
+            held=False,
+            fault="unstable",
+            text=ANSWER,
+            window_text="the Pressurise",
+            phase="Pressurise",
+            start_s=10.0,
+            end_s=27.75,
+        )
+    ]
+    review_id = await _reading(archive.db, shot, claims=claims)
+
+    unconfirmed = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
+    assert ANSWER not in unconfirmed
+    assert "(checked by the reading, not confirmed)" in unconfirmed
+    assert "Pressurise: unstable (red, critical)" not in unconfirmed
+
+    await _answer(archive.db, review_id, 0, confirm=True)
+    confirmed = (await call(ctx, "get_shot", shot_id=shot))["text"]
+    assert "Pressurise: unstable (red, critical)" in confirmed
+    assert ANSWER in confirmed
+    assert "1 claim confirmed" in confirmed
+
+    # Rejecting it takes it back out of the checks.
+    await _answer(archive.db, review_id, 0, confirm=False)
+    rejected = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
+    assert ANSWER not in rejected and "Pressurise: unstable (red, critical)" not in rejected
+
+
 async def test_the_set_chat_s_opening_context_holds_only_confirmed_claims(
     archive: Fixture,
 ) -> None:
@@ -411,12 +449,22 @@ async def test_a_newer_reading_that_did_not_finish_hides_nothing_of_the_one_in_f
     from gaggiclanker.tools.scope import ToolScope
 
     shot = archive.shots[-1]
+    expectation = await confirm_free_text(archive)
     claims = [
         ClaimWrite(kind="claim", text=CLAIM, fault="early yield", evidence=[_evidence()]),
         ClaimWrite(kind="claim", text=OTHER_CLAIM),
+        ClaimWrite(
+            kind="free_text",
+            expectation_id=expectation,
+            held=False,
+            fault="unstable",
+            text=ANSWER,
+            start_s=12.0,
+        ),
     ]
     in_force = await _reading(archive.db, shot, claims=claims)
     await _answer(archive.db, in_force, 0, confirm=True)
+    await _answer(archive.db, in_force, 2, confirm=True)
     await _newer(archive, shot, status)
 
     for tool_context, tool in (
@@ -424,15 +472,16 @@ async def test_a_newer_reading_that_did_not_finish_hides_nothing_of_the_one_in_f
         (set_ctx, "get_shot_full"),
     ):
         text = (await call(tool_context, tool, shot_id=shot))["text"]
-        assert "1 claim confirmed, 1 unverified, 0 rejected" in text, (status, tool)
-        assert CLAIM in text, (status, tool)
+        assert "2 claims confirmed, 1 unverified, 0 rejected" in text, (status, tool)
+        assert CLAIM in text and ANSWER in text, (status, tool)
+        assert "Pressurise: unstable (red, critical)" in text, (status, tool)
         assert OTHER_CLAIM not in text and SUMMARY not in text, (status, tool)
     context = await opening_context(archive.db, ToolScope.for_thread(archive.set_id))
     assert CLAIM in context and OTHER_CLAIM not in context
 
     # The view serves the same reading's confirmed claims, not nothing and not a newer one's.
     served = await _query(ctx, "SELECT review_id, kind FROM v_review_claims ORDER BY position")
-    assert served["rows"] == [[in_force, "claim"]]
+    assert served["rows"] == [[in_force, "claim"], [in_force, "free_text"]]
     # And a person may still answer what is left on it.
     result = await ShotReviewsRepository(archive.db).confirm_all(in_force)
     assert result.refused is None and result.changed == 1

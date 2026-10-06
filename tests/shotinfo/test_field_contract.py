@@ -422,7 +422,8 @@ async def test_a_shot_with_nothing_derived_has_no_phases_and_no_warnings(
     document: dict[str, Any] = data(await client.get(f"/api/shots/{shot}/fields"))
     assert document["phases"] == []
     assert document["warnings"] == []
-    assert document["badge"] is None
+    assert document["badge"] == "Review"
+    assert document["reading"]["state"] == "unread"
     assert document["target_yield_g"] is None
 
 
