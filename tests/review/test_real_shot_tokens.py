@@ -26,9 +26,9 @@ from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.domain.warnings import FAULTS, fault_token
 from gaggiclanker.knowledge.rules import load_seed_rules
-from gaggiclanker.review.context import build_review_input, signal_tokens
-from gaggiclanker.review.style import StyleVerdict
-from gaggiclanker.shotinfo import load_shots
+from gaggiclanker.review.context import build_review_input, readable_summary, signal_tokens
+from gaggiclanker.review.style import StyleVerdict, detect_style
+from gaggiclanker.shotinfo import ShotFacts, load_shots
 from gaggiclanker.sync.derive import derive_shot
 from tests.domain.helpers import constructed_profile_for, standard_board
 from tests.lever_shot import LEVER_PROFILE, lever_shot, without_scale
@@ -202,3 +202,54 @@ async def test_a_standard_board_shot_has_no_fault_and_no_pressure_reading(
 
     assert not [t for t in tokens if t.startswith("fault:")]
     assert all(t.startswith(KNOWN_PREFIXES) for t in tokens)
+
+
+#: A summary as a shot derived before the pressure gate (or written by hand) holds it: puck
+#: flow and pressure numbers on a board that measured neither.
+_FLOWING_SUMMARY = {
+    "flow": {"avg_flow_ml_s": 4.2, "peak_flow_ml_s": 5.0, "time_to_first_drip_s": 1.2},
+    "pressure": {"max_bar": 9.1, "min_bar": 0.0, "avg_bar": 6.0, "peak_time_s": 9.0},
+    "temperature": {"avg_c": 93.0, "target_avg_c": 93.0},
+}
+
+
+async def _facts_with_summary(
+    seeded: Database, *, has_pressure: bool, shot_id: int | None = None
+) -> ShotFacts:
+    shot_id = shot_id if shot_id is not None else await _ingest_lever(seeded)
+    (facts,) = await load_shots(seeded, [shot_id])
+    blob = {"summary": _FLOWING_SUMMARY, "has_pressure": has_pressure}
+    return dataclasses.replace(
+        facts,
+        shot=facts.shot.model_copy(
+            update={"diagnostics": blob, "profile_name_on_device": "", "phases": []}
+        ),
+    )
+
+
+async def test_rule_tokens_do_not_read_puck_flow_without_a_pressure_sensor(
+    seeded: Database,
+) -> None:
+    """Puck flow is a model of the pump on a board with a sensor and zeros on one without."""
+    shot_id = await _ingest_lever(seeded)
+    sensor = await _facts_with_summary(seeded, has_pressure=True, shot_id=shot_id)
+    assert {"avg_flow:high", "first_drip:fast"} <= set(signal_tokens(sensor, UNKNOWN))
+
+    blind = await _facts_with_summary(seeded, has_pressure=False, shot_id=shot_id)
+    without = signal_tokens(blind, UNKNOWN)
+    assert not [t for t in without if t.startswith(("avg_flow:", "first_drip:"))]
+
+
+async def test_style_detection_does_not_call_a_shot_turbo_from_puck_flow_it_never_had(
+    seeded: Database,
+) -> None:
+    shot_id = await _ingest_lever(seeded)
+    sensor = await _facts_with_summary(seeded, has_pressure=True, shot_id=shot_id)
+    flowing = detect_style(None, summary=readable_summary(sensor), duration_s=16.0)
+    assert flowing.style == "turbo", "the telemetry tier calls a fast shot turbo"
+
+    blind = await _facts_with_summary(seeded, has_pressure=False, shot_id=shot_id)
+    verdict = detect_style(None, summary=readable_summary(blind), duration_s=16.0)
+    assert verdict.style == "unknown"
+    assert "flow" not in readable_summary(blind)
+    assert "pressure" not in readable_summary(blind)

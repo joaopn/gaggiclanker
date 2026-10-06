@@ -64,6 +64,7 @@ __all__ = [
     "REVIEW_EXCLUDED_KEYS",
     "ReviewInput",
     "build_review_input",
+    "readable_summary",
     "review_keys",
     "review_tiers",
     "signal_tokens",
@@ -224,7 +225,7 @@ async def build_review_input(
         # No dose: it lives in the judgement and the Set version, neither of
         # which a review reads, so the allongé test (a ratio) is skipped.
         dose_g=None,
-        summary=dict(facts.summary),
+        summary=readable_summary(facts),
         duration_s=None if duration is None else round(duration, 2),
         profile_name=facts.shot.profile_label or facts.shot.profile_name_on_device,
     )
@@ -280,7 +281,7 @@ def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
     if not facts.shot.scale_connected:
         tokens.add("scale:absent")
 
-    flow = facts.summary.get("flow") or {}
+    flow = readable_summary(facts).get("flow") or {}
     first_drip = flow.get("time_to_first_drip_s")
     if isinstance(first_drip, int | float):
         if first_drip < 3:
@@ -311,6 +312,25 @@ def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
         tokens.add("yield:tiny")
 
     return sorted(tokens)
+
+
+def readable_summary(facts: ShotFacts) -> dict[str, Any]:
+    """The summary block with the readings this shot cannot have taken out of it.
+
+    A board with no pressure sensor writes puck flow and pressure into every sample as zeros,
+    and the mask says the column exists, not that anything was measured. A shot derived before
+    the gate on those (or written by hand) can still carry numbers built on them in its stored
+    summary, and style detection (turbo is a flow) and the rule tokens (a fast first drip, a
+    high average flow) would read them as a puck that behaved so. The same rule the catalogue
+    applies to those items (`ShotFacts.puck_flow_recorded`), applied here where the summary is
+    read directly.
+    """
+    summary = dict(facts.summary)
+    if not facts.puck_flow_recorded:
+        summary.pop("flow", None)
+    if not facts.has_pressure:
+        summary.pop("pressure", None)
+    return summary
 
 
 def _render_profile(label: str, profile: dict[str, Any] | None) -> str:
