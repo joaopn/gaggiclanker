@@ -16,6 +16,7 @@ import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { SHOT_SERIES } from "@/lib/shotChart";
 import { ShotsPage } from "@/pages/ShotsPage";
+import { readingBlock } from "@/test/readingFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
 import { flavorPicks, judgement, setDetail, setRow, vocabulary } from "@/test/setsFixtures";
@@ -42,6 +43,7 @@ const {
   importFiles,
   getVocabulary,
   getFlavorPicks,
+  runReview,
 } = vi.hoisted(() => ({
   getShots: vi.fn(),
   getSyncStatus: vi.fn(),
@@ -57,6 +59,7 @@ const {
   importFiles: vi.fn(),
   getVocabulary: vi.fn(),
   getFlavorPicks: vi.fn(),
+  runReview: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -74,6 +77,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   importFiles,
   getVocabulary,
   getFlavorPicks,
+  runReview,
 }));
 
 /** Shaped exactly like `ShotListRow` in gaggiclanker/db/repos/shots.py. */
@@ -372,9 +376,12 @@ describe("ShotsPage", () => {
   });
 
   it("shows the Set badge on every row, and no review state among the flags", async () => {
-    // A review lives on the shot page only, never in the shots table.
+    // The Review column is the one place a reading shows in the table; the Flags column carries
+    // none of it. A shot nobody can read has nothing in the column either.
     const user = setupUser();
-    getShots.mockResolvedValue(listData([shot()]));
+    getShots.mockResolvedValue(
+      listData([shot({ reading: { state: "not_readable", unanswered: 0 } })]),
+    );
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
@@ -1683,8 +1690,12 @@ describe("ShotsPage Review column", () => {
   });
 
   it("leaves the cell empty for a shot with no warnings", async () => {
+    const unreadable = { state: "not_readable", unanswered: 0 } as const;
     getShots.mockResolvedValue(
-      listData([shot({ id: 1, badge: null, warnings: [] }), shot({ id: 2 })]),
+      listData([
+        shot({ id: 1, badge: null, warnings: [], reading: unreadable }),
+        shot({ id: 2, reading: unreadable }),
+      ]),
     );
 
     renderWithQueryClient(<ShotsPage />);
@@ -3433,5 +3444,150 @@ describe("ShotsPage bar of Set conversations", () => {
       version: "51",
       ask: setChatQuestion("v4"),
     });
+  });
+});
+
+describe("ShotsPage Review badge as a button", () => {
+  function ShotProbe() {
+    const { pathname, hash } = useLocation();
+    return <p data-testid="shot-probe">{`${pathname}${hash}`}</p>;
+  }
+
+  function renderWithShotRoute() {
+    return renderWithQueryClient(
+      <Routes>
+        <Route path="/" element={<ShotsPage />} />
+        <Route path="/shots/:shotId" element={<ShotProbe />} />
+      </Routes>,
+    );
+  }
+
+  beforeEach(() => {
+    runReview.mockResolvedValue(review({ status: "running", finished_at: null }));
+  });
+
+  it("starts one reading from an unread shot's badge, on a double click too, and never opens the row", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ id: 1, device_id: "000101", badge: "Review", reading: readingBlock() })]),
+    );
+    renderWithShotRoute();
+    await listed();
+
+    const button = screen.getByRole("button", { name: "Review" });
+    await user.dblClick(button);
+
+    await waitFor(() => expect(runReview).toHaveBeenCalledTimes(1));
+    expect(runReview).toHaveBeenCalledWith(1, { model: undefined });
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+  });
+
+  it("starts a new reading from a failed one", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          id: 1,
+          badge: "Failed to run",
+          reading: readingBlock({ state: "failed", reason: "timed out" }),
+        }),
+      ]),
+    );
+    renderWithShotRoute();
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Failed to run" }));
+
+    await waitFor(() => expect(runReview).toHaveBeenCalledTimes(1));
+  });
+
+  it("takes a read shot's badge to the Reading card, without a request and without opening the row", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          id: 4,
+          badge: "As intended",
+          reading: readingBlock({ state: "read", verdict: "as_intended", review_id: 9 }),
+        }),
+      ]),
+    );
+    renderWithShotRoute();
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "As intended" }));
+
+    expect(screen.getByTestId("shot-probe")).toHaveTextContent("/shots/4#review");
+    expect(runReview).not.toHaveBeenCalled();
+  });
+
+  it("is inert while a reading runs, and the row stays shut", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ id: 1, badge: "Reading…", reading: readingBlock({ state: "running" }) })]),
+    );
+    renderWithShotRoute();
+    await listed();
+
+    const button = screen.getByRole("button", { name: "Reading…" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    await user.click(button);
+    button.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+
+    expect(runReview).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+  });
+
+  it("gives a discarded or quarantined shot no button", async () => {
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          id: 1,
+          device_id: "000101",
+          badge: LEVER_BADGE,
+          warnings: LEVER_WARNINGS,
+          reading: readingBlock({ state: "not_readable" }),
+        }),
+        shot({ id: 2, device_id: "000102", reading: readingBlock({ state: "not_readable" }) }),
+      ]),
+    );
+    renderWithShotRoute();
+    await listed();
+
+    // The first still shows what is wrong with it; neither can be pressed.
+    expect(screen.getByTestId("review-badge")).toHaveTextContent("ramp: fast flow +2");
+    expect(within(screen.getByTestId("shot-rows")).queryByTestId("review-badge-list")).toHaveClass(
+      "sr-only",
+    );
+    expect(
+      within(screen.getByTestId("shot-rows")).queryAllByRole("button", { name: /fast flow/ }),
+    ).toEqual([]);
+    expect(runReview).not.toHaveBeenCalled();
+  });
+
+  it("draws a read shot's outlined and filled looks from the unanswered count", async () => {
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          id: 1,
+          device_id: "000101",
+          badge: "As intended",
+          reading: readingBlock({ state: "read", verdict: "as_intended", unanswered: 2 }),
+        }),
+        shot({
+          id: 2,
+          device_id: "000102",
+          badge: "As intended",
+          reading: readingBlock({ state: "read", verdict: "as_intended", unanswered: 0 }),
+        }),
+      ]),
+    );
+    renderWithShotRoute();
+    await listed();
+
+    const badges = screen.getAllByTestId("review-badge");
+    expect(badges.map((badge) => badge.getAttribute("data-filled"))).toEqual(["no", "yes"]);
   });
 });

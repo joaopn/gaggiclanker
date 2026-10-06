@@ -288,12 +288,15 @@ describe("column widths", () => {
 
   it("raises a width dragged on the old Score column below Review's minimum to it", () => {
     window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 5.5 }));
-    expect(loadShotWidths()).toEqual({ review: 6 });
+    expect(loadShotWidths()).toEqual({ review: 8.75 });
   });
 
   it("keeps the width dragged on the old Score column for Review", () => {
-    window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 7, time: 8 }));
-    expect(loadShotWidths()).toEqual({ review: 7, time: 8 });
+    window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 11, time: 8 }));
+    expect(loadShotWidths()).toEqual({ review: 11, time: 8 });
+    // A stored Review width under the minimum is raised: the fault word is never cut by a drag.
+    window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ review: 7 }));
+    expect(loadShotWidths()).toEqual({ review: 8.75 });
     // Review's own width wins once it has been dragged.
     window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 5.5, review: 12 }));
     expect(loadShotWidths()).toEqual({ review: 12 });

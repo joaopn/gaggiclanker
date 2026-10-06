@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import type { ShotListRow, ShotSort } from "@/api/types";
 import { SetBadge } from "@/components/sets/SetBadge";
 import { CurveChooser } from "@/components/shots/CurveChooser";
@@ -19,6 +20,7 @@ import { ShotRowEditor } from "@/components/shots/ShotRowEditor";
 import { ShotRowPanel } from "@/components/shots/ShotRowPanel";
 import { ShotSparkline } from "@/components/shots/ShotSparkline";
 import { Badge } from "@/components/ui/badge";
+import { useRunReview } from "@/hooks/useReview";
 import { usePatchJudgement } from "@/hooks/useSets";
 import { useVirtualRows } from "@/hooks/useVirtualRows";
 import { attempt } from "@/lib/mutations";
@@ -32,7 +34,14 @@ import {
   type ShotWidths,
 } from "@/lib/shotColumns";
 import type { CurveChoice } from "@/lib/shotCurves";
-import { formatGrams, formatListTime, formatSeconds, formatTime, profileName } from "@/lib/shots";
+import {
+  formatGrams,
+  formatListTime,
+  formatSeconds,
+  formatTime,
+  profileName,
+  REVIEW_ANCHOR,
+} from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
 /**
@@ -670,9 +679,9 @@ function Cell({ shot, id, curves }: { shot: ShotListRow; id: ShotColumnId; curve
     case "yield":
       return <span className="text-sm tabular-nums">{formatGrams(shot.volume_g)}</span>;
     case "review":
-      // Empty with no warnings. Lifted above the row's stretched toggle like the
-      // stars, so the hover list is reachable and a click is not the row's.
-      return <ReviewBadge badge={shot.badge} warnings={shot.warnings} className={INTERACTIVE} />;
+      // Lifted above the row's stretched toggle like the stars, so the hover list is
+      // reachable and a click is not the row's.
+      return <ReviewCell shot={shot} />;
     case "rating":
       return <RatingCell shot={shot} />;
     case "set":
@@ -733,6 +742,45 @@ function Cell({ shot, id, curves }: { shot: ShotListRow; id: ShotColumnId; curve
  * had an opinion, and ages past the machine's notes card, which would then read
  * as older than a verdict nobody gave.
  */
+/**
+ * The Review column: the badge, as the button that starts a reading.
+ *
+ * A press on a shot nobody has read, or whose reading failed, asks for one; on a read shot it
+ * goes to the shot page's Reading card, where the claims are confirmed and Read again lives,
+ * so a stray click never throws away a reading; while one runs the badge is inert. The ref makes
+ * a double click one request: the second click arrives before the first has re-rendered anything.
+ * The server answers a press while one runs with that row, so a click that slips through is not a
+ * second reading either.
+ */
+function ReviewCell({ shot }: { shot: ShotListRow }) {
+  const run = useRunReview();
+  const navigate = useNavigate();
+  const starting = useRef(false);
+  const state = shot.reading?.state;
+
+  const press = () => {
+    if (state === "read") {
+      navigate(`/shots/${shot.id}#${REVIEW_ANCHOR}`);
+      return;
+    }
+    if (starting.current) return;
+    starting.current = true;
+    void attempt(() => run.mutateAsync({ shotId: shot.id })).finally(() => {
+      starting.current = false;
+    });
+  };
+
+  return (
+    <ReviewBadge
+      badge={shot.badge}
+      warnings={shot.warnings}
+      reading={shot.reading}
+      onPress={press}
+      className={INTERACTIVE}
+    />
+  );
+}
+
 function RatingCell({ shot }: { shot: ShotListRow }) {
   const patch = usePatchJudgement(shot.id);
   const own = shot.judgement_rating ?? null;

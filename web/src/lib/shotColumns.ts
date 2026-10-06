@@ -101,9 +101,11 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // is 8.6rem as measured in headless Chromium (badge padding and border
   // included), so 9rem holds it; the sorted heading is 3.1rem. A longer phase
   // name, or a "+12", truncates inside the column and the whole list is on
-  // hover. The minimum is 6rem: narrower than that not even a cut fault word and the
-  // count fit, and a width dragged on the old Score column below it is raised to it.
-  { id: "review", label: "Review", size: { rem: 9, min: 6, max: 24 } },
+  // hover. The minimum is 8.75rem: with the phase gone, the longest fault word and the
+  // widest count (": high pressure +12", 8.55rem in Chromium with the badge's padding and
+  // border) still fit whole, so a drag can never cut the fault. A stored width below it
+  // (the old Score column's, or a drag from before) is raised to it on load.
+  { id: "review", label: "Review", size: { rem: 9, min: 8.75, max: 24 } },
   // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit,
   // and wider than the sorted heading.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },
@@ -138,8 +140,9 @@ export const SHOT_COLUMNS: ShotColumn[] = [
  * is off because the flags are mostly absences (imported, gone from the
  * machine, incomplete) that matter on a handful of rows — Decision, "keep this
  * recipe, improve on it, or bin the shot", is the question every shot ends on,
- * and a column that answers it with a click is worth more than a badge. A
- * review is started and shown on the shot page only, never in this table.
+ * and a column that answers it with a click is worth more than a badge. Review
+ * is on: its badge is the button that starts a reading, and the open row carries
+ * the reading itself.
  */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "set",

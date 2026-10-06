@@ -279,7 +279,7 @@ export function ReviewBadge({
   return (
     <span
       className={cn("inline-flex min-w-0 max-w-full overflow-hidden", className)}
-      title={described.join("\n") || undefined}
+      title={lines.join("\n") || undefined}
       data-testid="review-badge-wrap"
     >
       {asButton ? (

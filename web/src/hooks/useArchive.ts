@@ -39,8 +39,22 @@ import { queryKeys } from "@/lib/queryKeys";
  * backpressure), so it only ever means "go and re-read".
  */
 
+/**
+ * How often a list with a reading running re-reads itself.
+ *
+ * The event stream says when a reading finishes, but the bus is lossy and the window does not
+ * refetch on focus, so a `Reading…` badge whose event was lost would stay for ever. While any
+ * loaded row is `running` the list polls; `refetchInterval` returning `false` is what stops it.
+ */
+export const READING_POLL_MS = 5000;
+
+function anyReading(rows: ReadonlyArray<{ reading?: { state?: string } }> | undefined): boolean {
+  return (rows ?? []).some((row) => row.reading?.state === "running");
+}
+
 export function useShots(params: ShotListParams = {}): UseQueryResult<ShotListData, Error> {
   return useQuery({
+    refetchInterval: (query) => (anyReading(query.state.data?.items) ? READING_POLL_MS : false),
     // The filters are part of the key: two different filters are two different
     // cache entries, and invalidating `shots.all` still catches both.
     queryKey: queryKeys.shots.list(params as Record<string, unknown>),
@@ -76,6 +90,8 @@ export function useShotsInfinite(
   return useInfiniteQuery({
     queryKey: queryKeys.shots.list(params as Record<string, unknown>),
     queryFn: ({ pageParam }) => getShots({ ...params, ...pageParam }),
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) => anyReading(page.items)) ? READING_POLL_MS : false,
     initialPageParam: {} as ShotPageParam,
     getNextPageParam: (last, pages): ShotPageParam | undefined => {
       if (keyset) return last.next_cursor ? { cursor: last.next_cursor } : undefined;
