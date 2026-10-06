@@ -101,6 +101,10 @@
      line it covers. The foreground at a few percent reads as a faint wash on
      the card, roughly the step from --card to --muted, without erasing it. */
   --chart-band: #33291f14;
+  /* The span of the claim a reader is looking at, over the phase bands: a teal no series uses,
+     at 18 % for the fill and whole for the edge. */
+  --chart-span: #1f8a8a2e;
+  --chart-span-edge: #1f8a8a;
 
   --sidebar: #efe7db;
   --sidebar-foreground: #33291f;
@@ -148,6 +152,8 @@
   --chart-4: #92c081;
   --chart-5: #b7a3dd;
   --chart-band: #ece5db12;
+  --chart-span: #5fd0c92e;
+  --chart-span-edge: #5fd0c9;
 
   --sidebar: #1b1713;
   --sidebar-foreground: #ece5db;

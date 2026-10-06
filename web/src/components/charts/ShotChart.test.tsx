@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShotPhase } from "@/api/types";
 import { ShotChart } from "@/components/charts/ShotChart";
@@ -19,6 +19,9 @@ type Annotation = {
   type: string;
   drawTime?: string;
   backgroundColor?: string;
+  borderColor?: string;
+  xMin?: number;
+  xMax?: number;
   label?: { drawTime?: string; display?: boolean };
 };
 type ChartProps = {
@@ -71,9 +74,10 @@ function alphaOf(colour: string): number {
 
 const phases = (shot129.shot.phases ?? []) as ShotPhase[];
 
-function renderShot129() {
+function renderShot129(highlight?: { start: number; end: number } | null) {
   render(
     <ShotChart
+      highlight={highlight}
       samples={shot129Samples.samples}
       phases={phases}
       visible={DEFAULT_SERIES}
@@ -161,5 +165,94 @@ describe.each([
     }
     const exit = annotations.find((annotation) => annotation.type === "line");
     expect(exit?.drawTime).toBe("afterDatasetsDraw");
+  });
+});
+
+describe.each([
+  { theme: LIGHT_THEME_ID, dark: false, span: "#1f8a8a2e", edge: "#1f8a8a" },
+  { theme: DARK_THEME_ID, dark: true, span: "#5fd0c92e", edge: "#5fd0c9" },
+])("ShotChart claim span in the $theme palette", ({ theme, dark, span, edge }) => {
+  let style: HTMLStyleElement;
+
+  beforeEach(() => {
+    lastChartProps = null;
+    window.localStorage.setItem(THEME_STORAGE_KEY, dark ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.classList.toggle("dark", dark);
+    style = document.createElement("style");
+    style.textContent = PALETTES;
+    document.head.appendChild(style);
+  });
+
+  afterEach(() => {
+    style.remove();
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.classList.remove("dark");
+  });
+
+  function claimBox(highlight?: { start: number; end: number } | null): Annotation | undefined {
+    render(
+      <ShotChart
+        samples={shot129Samples.samples}
+        phases={phases}
+        visible={DEFAULT_SERIES}
+        durationMs={shot129.shot.duration_ms}
+        highlight={highlight}
+      />,
+    );
+    return lastChartProps?.options?.plugins?.annotation?.annotations?.claim;
+  }
+
+  it("draws no span unless one is asked for", () => {
+    expect(claimBox(null)).toBeUndefined();
+    cleanup();
+    expect(claimBox(undefined)).toBeUndefined();
+  });
+
+  it("draws the span between its two seconds as a box behind the curves", () => {
+    const box = claimBox({ start: 12.5, end: 24 });
+    expect(box?.type).toBe("box");
+    expect(box?.xMin).toBe(12.5);
+    expect(box?.xMax).toBe(24);
+    expect(box?.drawTime).toBe("beforeDatasetsDraw");
+  });
+
+  it("orders a reversed span, and says the span in the text summary", () => {
+    const box = claimBox({ start: 24, end: 12.5 });
+    expect([box?.xMin, box?.xMax]).toEqual([12.5, 24]);
+    expect(screen.getByTestId("chart-span")).toHaveTextContent("Marked: 24.0s to 12.5s");
+  });
+
+  it("is a translucent tint of its own token, not the phase bands' and not opaque", () => {
+    const token = getComputedStyle(document.documentElement).getPropertyValue("--chart-span");
+    expect(token.trim()).toBe(span);
+    const box = claimBox({ start: 1, end: 2 });
+    expect(box?.backgroundColor).toBe(span);
+    expect(alphaOf(box?.backgroundColor ?? "")).toBeGreaterThan(0);
+    expect(alphaOf(box?.backgroundColor ?? "")).toBeLessThan(0.5);
+    const bands = Object.values(lastChartProps?.options?.plugins?.annotation?.annotations ?? {})
+      .filter((a) => a.type === "box" && a !== box)
+      .map((a) => a.backgroundColor);
+    expect(bands).not.toContain(span);
+  });
+
+  it("edges the span in its own colour, which no series uses", () => {
+    const token = getComputedStyle(document.documentElement)
+      .getPropertyValue("--chart-span-edge")
+      .trim();
+    expect(token).toBe(edge);
+    const box = claimBox({ start: 1, end: 2 });
+    expect(box?.borderColor).toBe(edge);
+    const series = [1, 2, 3, 4, 5].map((n) =>
+      getComputedStyle(document.documentElement).getPropertyValue(`--chart-${n}`).trim(),
+    );
+    expect(series).toHaveLength(5);
+    expect(series).not.toContain(edge);
+  });
+
+  it("keeps the phase bands when a span is drawn", () => {
+    const boxes = renderShot129({ start: 1, end: 3 }).filter((a) => a.type === "box");
+    expect(boxes).toHaveLength(phases.length + 1);
   });
 });

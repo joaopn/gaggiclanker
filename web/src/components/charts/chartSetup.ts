@@ -56,12 +56,16 @@ const FALLBACK = {
     grid: "#00000014",
     text: "#5c5147",
     band: "#33291f14",
+    span: "#1f8a8a2e",
+    spanEdge: "#1f8a8a",
   },
   dark: {
     series: ["#d59a63", "#8fb4d0", "#e08a7c", "#92c081", "#b7a3dd"],
     grid: "#ffffff1f",
     text: "#a79c91",
     band: "#ece5db12",
+    span: "#5fd0c92e",
+    spanEdge: "#5fd0c9",
   },
 };
 
@@ -76,6 +80,10 @@ export type ChartPalette = {
   grid: string;
   text: string;
   band: string;
+  /** The span of the claim being looked at: a tint the phase bands never use. */
+  span: string;
+  /** The same hue at full strength, for the span's edges: its own token, no series' colour. */
+  spanEdge: string;
 };
 
 export function chartPalette(isDark = false): ChartPalette {
@@ -87,6 +95,11 @@ export function chartPalette(isDark = false): ChartPalette {
     // Its own token rather than --muted: --muted is an opaque surface colour,
     // and the band is painted over the plot area, so it has to be see-through.
     band: cssVar("--chart-band", fallback.band),
+    // The span a reading's claim points at: its own translucent token and its own edge colour,
+    // distinct from the neutral phase bands it sits over and from every series it is drawn
+    // behind (a teal no series uses), so a box edge is never read as a curve.
+    span: cssVar("--chart-span", fallback.span),
+    spanEdge: cssVar("--chart-span-edge", fallback.spanEdge),
   };
 }
 

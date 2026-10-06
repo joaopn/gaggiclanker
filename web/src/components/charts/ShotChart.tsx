@@ -28,6 +28,7 @@ export function ShotChart({
   visible,
   finalExitReason,
   durationMs,
+  highlight,
   height = 340,
 }: {
   samples: ShotSampleRow[];
@@ -35,6 +36,8 @@ export function ShotChart({
   visible: string[];
   finalExitReason?: number | null;
   durationMs?: number;
+  /** A span of the shot to mark, in seconds: the one claim a reader is looking at. */
+  highlight?: { start: number; end: number } | null;
   height?: number;
 }) {
   // The palette lives in CSS custom properties, which a canvas cannot read, so
@@ -43,6 +46,8 @@ export function ShotChart({
   // environment with no stylesheet attached.
   const { isDark } = useTheme();
 
+  const spanStart = highlight?.start ?? null;
+  const spanEnd = highlight?.end ?? null;
   const built = useMemo(() => buildShotSeries(samples, visible), [samples, visible]);
   const bands = useMemo(() => phaseBands(phases), [phases]);
 
@@ -79,6 +84,20 @@ export function ShotChart({
         },
       };
     });
+    if (spanStart !== null && spanEnd !== null && Number.isFinite(spanStart + spanEnd)) {
+      // Behind the curves like the phase bands, and drawn after them so it tints them; its own
+      // colour, since a claim's span and a phase are different things on the same axis.
+      annotations.claim = {
+        type: "box" as const,
+        xMin: Math.min(spanStart, spanEnd),
+        xMax: Math.max(spanStart, spanEnd),
+        drawTime: "beforeDatasetsDraw" as const,
+        backgroundColor: palette.span,
+        borderColor: palette.spanEdge,
+        borderWidth: 1,
+        borderDash: [4, 3],
+      };
+    }
     if (durationMs) {
       annotations.exit = {
         type: "line" as const,
@@ -171,7 +190,7 @@ export function ShotChart({
         },
       } satisfies ChartOptions<"line">,
     };
-  }, [built, bands, durationMs, finalExitReason, isDark]);
+  }, [built, bands, durationMs, finalExitReason, spanStart, spanEnd, isDark]);
 
   return (
     <figure className="m-0">
@@ -179,7 +198,7 @@ export function ShotChart({
         <Line data={data} options={options} plugins={[crosshairPlugin]} aria-label="Shot curves" />
       </div>
       <figcaption className="sr-only">
-        <ChartSummary built={built} bands={bands} />
+        <ChartSummary built={built} bands={bands} highlight={highlight ?? null} />
       </figcaption>
     </figure>
   );
@@ -189,12 +208,17 @@ export function ShotChart({
 function ChartSummary({
   built,
   bands,
+  highlight,
 }: {
   built: BuiltSeries[];
   bands: ReturnType<typeof phaseBands>;
+  highlight: { start: number; end: number } | null;
 }) {
   return (
     <>
+      {highlight ? (
+        <p data-testid="chart-span">{`Marked: ${highlight.start.toFixed(1)}s to ${highlight.end.toFixed(1)}s`}</p>
+      ) : null}
       <ul data-testid="chart-series">
         {built.map((series) => {
           const values = series.points.map((point) => point.y);

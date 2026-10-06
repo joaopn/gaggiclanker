@@ -34,6 +34,7 @@ export function ShotCurvesCard({
   hasPressure,
   finalExitReason,
   durationMs,
+  highlight,
 }: {
   shotId: number;
   deviceId: string;
@@ -43,6 +44,8 @@ export function ShotCurvesCard({
   hasPressure: boolean;
   finalExitReason?: number | null;
   durationMs?: number | null;
+  /** The span of the reading's claim being looked at, in seconds, drawn behind the curves. */
+  highlight?: { start: number; end: number } | null;
 }) {
   const [visible, setVisible] = useState<string[]>(DEFAULT_SERIES);
   const rows = samples?.samples ?? [];
@@ -77,6 +80,7 @@ export function ShotCurvesCard({
               visible={visible}
               finalExitReason={finalExitReason}
               durationMs={durationMs ?? undefined}
+              highlight={highlight}
               height={CHART_HEIGHT}
             />
           </Suspense>
