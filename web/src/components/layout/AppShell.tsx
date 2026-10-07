@@ -3,6 +3,7 @@ import { type ReactElement, useCallback, useEffect, useId, useMemo, useState } f
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DeviceStatusPill } from "@/components/DeviceStatusPill";
 import { DeviceWritesSwitch } from "@/components/DeviceWritesSwitch";
+import { FlushButton } from "@/components/FlushButton";
 import { LlmActivity } from "@/components/LlmActivity";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -401,6 +402,7 @@ export function AppShell() {
           <div className="ml-auto flex items-center gap-2">
             <DeviceStatusPill />
             <DeviceWritesSwitch />
+            <FlushButton />
             <LlmActivity />
             <Button
               variant="ghost"

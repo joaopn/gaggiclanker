@@ -297,6 +297,10 @@ on, **the only thing this box ever writes to the machine is a profile** (see
 below). It never deletes a shot from the machine, never writes a judgement to a
 shot's notes card and never changes a device setting.
 
+While the switch is on, a **Flush** button sits beside it: one click runs the machine's
+own flush for the duration set on the machine, as the Flush button on the machine's web
+UI does. It works in brew mode with nothing running, and is not recorded anywhere.
+
 Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
 nothing. A profile a conversation proposes is a proposed version on the Profiles page, which
@@ -313,7 +317,8 @@ on a sync too, and never written back.
 Nothing runs on its own: a sync is something you ask for, and there is no timer. With
 the Writes switch on, the one thing a sync writes is the profile list's write phase at its
 end (see below); nothing else, and no tool a model calls, starts a write. Every write
-attempt, refused ones included, is listed under **Recent writes** on the Sync page.
+attempt, refused ones included, is listed under **Recent writes** on the Sync page; a
+flush, which stores nothing, is not.
 
 ### The profile list
 

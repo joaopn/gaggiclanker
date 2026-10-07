@@ -270,6 +270,8 @@ class FakeDevice:
     #: on `favorite` is asserting on this, not on what it saved.
     favorite_profile_ids: set[str] = field(default_factory=set)
     selected_profile_id: str | None = None
+    #: How many `req:flush:start` frames arrived.
+    flushes: int = 0
     #: The firmware favourites every new profile. Off, a test can see whether the app
     #: itself moved a favourite star rather than inheriting the firmware's.
     auto_favorite_new: bool = True
@@ -706,6 +708,11 @@ class FakeDevice:
         elif tp == "req:profiles:unfavorite":
             self.favorite_profile_ids.discard(str(message.get("id", "")))
             await self._reply(socket, tp, rid)
+        elif tp == "req:flush:start":
+            # `WebSocketHandler::handleFlushStart`: always `success: true`, even
+            # when `Controller::onFlush` ignored it because a process was running.
+            self.flushes += 1
+            await self._reply(socket, tp, rid, success=True)
         elif tp == "req:history:notes:get":
             wanted = str(message.get("id", ""))
             shot = next((s for s in self.shots.values() if pad6(s.entry.id) == wanted), None)
@@ -1029,7 +1036,9 @@ async def _development_loop(device: FakeDevice) -> None:
             fl=0.0,
             pw=0.0,
             hp=18.0,
-            m=0,
+            # No `m`: the firmware's telemetry frame never carries the mode
+            # (`publishTelemetry`); the state frame sent on connect says brew,
+            # which is what lets the top bar's Flush button work against this.
             # Capabilities, so a UI developed against the fake gates the
             # pressure diagnostics the same way it would against a Pro board.
             cp=True,

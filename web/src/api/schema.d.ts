@@ -436,6 +436,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/device/flush": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the machine's flush once, for the duration set on the machine
+         * @description One click, one flush: the button on the machine's own web UI, from the top bar.
+         *
+         *     Refused (nothing sent) with the Writes switch off, outside brew mode, or while
+         *     a shot or a flush is running; the client says which.
+         */
+        post: operations["start_flush_api_device_flush_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device/status": {
         parameters: {
             query?: never;
@@ -3088,6 +3111,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[FlushData] */
+        ApiResponse_FlushData_: {
+            data?: components["schemas"]["FlushData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[GrinderListData] */
         ApiResponse_GrinderListData_: {
             data?: components["schemas"]["GrinderListData"] | null;
@@ -5083,6 +5114,14 @@ export interface components {
             aroma?: string[];
             /** Taste */
             taste?: string[];
+        };
+        /**
+         * FlushData
+         * @description What `POST /api/device/flush` answers once the machine accepted the flush.
+         */
+        FlushData: {
+            /** Started */
+            started: boolean;
         };
         /**
          * ReloadData
@@ -9800,6 +9839,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_flush_api_device_flush_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_FlushData_"];
                 };
             };
         };

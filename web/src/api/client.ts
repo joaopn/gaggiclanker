@@ -32,6 +32,7 @@ import type {
   DraftCreateBody,
   DraftPreview,
   FlavorPicks,
+  FlushData,
   GrinderRow,
   GrinderWrite,
   HealthData,
@@ -461,6 +462,11 @@ export async function createBackup(): Promise<BackupData> {
 
 export async function getDeviceStatus(): Promise<DeviceStatusData> {
   return fetchApi<DeviceStatusData>("/device/status");
+}
+
+/** Run the machine's flush once, for the duration set on the machine. Needs the Writes switch. */
+export async function startFlush(): Promise<FlushData> {
+  return fetchApi<FlushData>("/device/flush", { method: "POST" });
 }
 
 /**

@@ -10,6 +10,15 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Flush from the top bar
+
+- **A Flush button sits beside the Writes switch while writes are on.** One click runs the
+  machine's own flush for the duration set on the machine, exactly as the Flush button on the
+  machine's web UI does. It is refused, with a toast saying why, outside brew mode or while a
+  shot is running, and is disabled while the machine is not connected. There is no
+  hold-to-flush, and a flush is not recorded (not in Recent writes, not as a shot).
+- `POST /api/device/flush` is the route behind it.
+
 ### Shots page: hide discarded shots
 
 - **Hide discarded**, a tickbox on the Shots page on its own line under the buttons, right-aligned

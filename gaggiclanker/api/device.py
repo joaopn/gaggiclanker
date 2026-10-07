@@ -9,11 +9,14 @@ answers the question it is better placed to answer, which is what the archive
 holds.
 
 The web UI's Device page reads the status; its Sync page reads everything else
-here. The write audit lists every write this box has ever asked the machine to make,
-which is what answers "what has this thing done to my machine". The only thing this
-box ever writes to the machine is a profile, so there is no route here that deletes a
-shot or sends a note: what the audit lists is the profile board's saves, deletes,
-selections and stars, and the older rows of the two history writes that were removed.
+here. The write audit lists every write this box has ever asked the machine to
+make, which is what answers "what has this thing done to my machine". The only
+thing this box ever stores on the machine is a profile, so there is no route here
+that deletes a shot or sends a note: what the audit lists is the profile board's
+saves, deletes, selections and stars, and the older rows of the two history
+writes that were removed. The one other write is `/flush`, the top bar's Flush
+button: it runs the machine's own flush once, with the Writes switch on, stores
+nothing there and leaves no audit row.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from gaggiclanker.api.deps import (
     SettingsServiceDep,
 )
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow
+from gaggiclanker.device.errors import DeviceUnavailable
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 
 __all__ = ["router"]
@@ -107,3 +111,26 @@ async def list_device_writes(
     items = await writes.list_writes(limit=limit)
     enabled = bool(await settings.get("deviceWritesEnabled"))
     return envelope_response(DeviceWritesData(enabled=enabled, items=items).model_dump(mode="json"))
+
+
+class FlushData(BaseModel):
+    """What `POST /api/device/flush` answers once the machine accepted the flush."""
+
+    started: bool
+
+
+@router.post(
+    "/flush",
+    response_model=ApiResponse[FlushData],
+    summary="Run the machine's flush once, for the duration set on the machine",
+)
+async def start_flush(client: DeviceClientDep) -> JSONResponse:
+    """One click, one flush: the button on the machine's own web UI, from the top bar.
+
+    Refused (nothing sent) with the Writes switch off, outside brew mode, or while
+    a shot or a flush is running; the client says which.
+    """
+    if client is None:
+        raise DeviceUnavailable("No machine is configured. Set its address in Settings.")
+    await client.start_flush()
+    return envelope_response(FlushData(started=True).model_dump(mode="json"))

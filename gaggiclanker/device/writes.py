@@ -31,13 +31,15 @@ __all__ = [
     "DenyAllWrites",
     "DeviceWriteGate",
     "DeviceWriteRefused",
+    "GateKind",
     "PendingWrite",
     "WriteKind",
     "payload_hash",
 ]
 
-#: The five things this box may ever ask a machine to change, and no more: all
-#: of them `req:profiles:*` frames. Only profiles are ever written. Shots are
+#: The five things this box may ever ask a machine to change in what it stores,
+#: and no more: all of them `req:profiles:*` frames, and all of them audited.
+#: Only profiles are ever written (the flush, below, stores nothing). Shots are
 #: never deleted from the machine and notes cards are never written to it (the
 #: machine deletes its own oldest shots when storage runs low, and the archive
 #: pulls before it does); both were once on this list and were removed.
@@ -54,6 +56,17 @@ type WriteKind = Literal[
     "profile_favorite",
     "profile_unfavorite",
 ]
+
+#: What the gate is asked about: the five audited kinds, plus the flush.
+#:
+#: The flush (`req:flush:start`) is the one write that is not a profile and not
+#: audited: it runs the machine's own flush, for the duration set on the
+#: machine, exactly as the button on the machine's web UI does, and changes
+#: nothing stored there. It needs the Writes switch like every other write, and
+#: leaves no `device_writes` row (the maintainer's choice), which is why it is
+#: not a :data:`WriteKind`: the audit's kinds stay the five above, held equal to
+#: the repository and the table's CHECK.
+type GateKind = WriteKind | Literal["flush"]
 
 
 class DeviceWriteRefused(DeviceError):
@@ -82,7 +95,7 @@ class PendingWrite:
     compared with "it served this back".
     """
 
-    kind: WriteKind
+    kind: GateKind
     host: str
     device_id: str | None = None
     payload_hash: str = ""

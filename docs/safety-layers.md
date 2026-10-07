@@ -2,11 +2,14 @@
 
 Verified against the GaggiMate firmware source.
 
-**gaggiclanker writes exactly five things to a machine, all of them profile
+**gaggiclanker writes exactly five things to a machine's storage, all of them profile
 operations, and only when a person has switched writes on.** Save, delete,
 select, favourite and unfavourite: each a `req:profiles:*` frame. Only profiles
 are ever written. Not a shot delete, not a notes card, not a setting, not a
-mode change, not an index rebuild. (Earlier versions could delete shots the
+mode change, not an index rebuild. The one other frame is the **flush**
+(`req:flush:start`), which stores nothing: the top bar's Flush button, shown only
+while the switch is on, runs the machine's own flush once for the duration set on
+the machine, as the button on the machine's web UI does. (Earlier versions could delete shots the
 archive already held and write a judgement to a shot's notes card, both from the
 Sync page; both were removed. The firmware deletes its own oldest shots when
 free space runs low and the archive syncs before it does, which is accepted.)
@@ -23,12 +26,19 @@ the diff they are putting there; none of those sends a byte to the machine, and 
 with the switch off. The profile pass of a sync is started only by the Sync button's
 route (a test pins the call sites).
 
+The flush is started by a person's click and nothing else: `POST /api/device/flush`,
+refused before anything is sent unless the switch is on, the machine is in brew mode and
+nothing is running (the firmware itself checks only the last; the machine's web UI offers
+its button only in brew mode). There is no hold-to-flush (`req:flush:stop` stays
+forbidden), and a flush leaves no `device_writes` row: it changes nothing a later sync or
+a person would need to trace.
+
 That is a property of the code, not a convention. `GaggimateClient`'s public
-surface is two closed lists — ten reads in `READ_ONLY_METHODS`, five writes in
-`GATED_WRITE_METHODS` — `_send` is private, no write method can reach it except
+surface is two closed lists — ten reads in `READ_ONLY_METHODS`, six writes in
+`GATED_WRITE_METHODS` (the five profile operations and the flush) — `_send` is private, no write method can reach it except
 through the gate, and `tests/device/test_public_surface.py` fails the build if
-an eleventh read or a sixth write appears, or if a request type outside those
-five shows up anywhere in the module, including in a docstring. `req:history:delete`
+an eleventh read or a seventh write appears, or if a request type outside those
+six shows up anywhere in the module, including in a docstring. `req:history:delete`
 and `req:history:notes:save` are in that test's forbidden list, alongside the
 index rebuild, the profile reorder and everything that moves the hardware.
 Widening the surface means moving a request type from the forbidden list into

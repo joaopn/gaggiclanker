@@ -42,6 +42,8 @@ PROFILE_WRITES = frozenset(
     }
 )
 REMOVED_WRITES = frozenset({"req:history:delete", "req:history:notes:save"})
+#: Sent only by the top bar's Flush button, never by a pull or a save.
+FLUSH = frozenset({"req:flush:start", "req:flush:stop"})
 
 RETIRED_ENV = (
     "GAGGICLANKER_DEVICE_CLEANUP_AUTO",
@@ -83,13 +85,15 @@ async def live(
         yield app, client
 
 
-def test_the_client_writes_five_profile_operations_and_nothing_else() -> None:
+def test_the_client_writes_five_profile_operations_and_the_flush() -> None:
+    """The flush stores nothing on the machine; profiles are still all that is stored."""
     assert GATED_WRITE_METHODS == {
         "save_profile",
         "delete_profile",
         "select_profile",
         "favorite_profile",
         "unfavorite_profile",
+        "start_flush",
     }
 
 
@@ -116,7 +120,7 @@ async def test_a_pull_and_a_judgement_save_change_nothing_on_the_machine(
     assert response.status_code == 200
     await asyncio.sleep(0.05)
 
-    assert not set(fake_device.ws_requests) & (PROFILE_WRITES | REMOVED_WRITES)
+    assert not set(fake_device.ws_requests) & (PROFILE_WRITES | REMOVED_WRITES | FLUSH)
     assert await DeviceWritesRepository(app.state.db).list_writes() == []
     # And the retired keys are not settings any more.
     keys = set((await client.get("/api/settings")).json()["data"])

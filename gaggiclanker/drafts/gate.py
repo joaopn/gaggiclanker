@@ -63,6 +63,10 @@ class SettingsWriteGate:
     async def record(
         self, write: PendingWrite, *, result: Literal["ok", "refused", "failed"], error: str = ""
     ) -> None:
+        if write.kind == "flush":
+            # Never audited (see `GateKind`); the client does not ask, and this
+            # keeps the table's CHECK out of reach if it ever did.
+            return
         await self.writes.record(
             DeviceWriteWrite(
                 kind=write.kind,

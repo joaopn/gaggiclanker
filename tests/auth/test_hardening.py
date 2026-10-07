@@ -338,19 +338,20 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     }
     lifecycle = {"start", "stop", "wait_connected", "subscribe"}
     assert public == set(READ_ONLY_METHODS) | set(GATED_WRITE_METHODS) | lifecycle
-    # Nothing that writes anything but a profile, and nothing named as though
+    # Nothing that stores anything but a profile, and nothing named as though
     # it might: `set_` would catch `set_settings`, which is the endpoint that
     # changes WiFi and PID (and, up to firmware v1.8.x, cleared every boolean
     # key it omits).
     assert all(not name.startswith(("write", "set_")) for name in public - set(GATED_WRITE_METHODS))
-    # And the five are exactly the five, named rather than counted: a count
-    # would survive a swap.
+    # And the six are exactly the six, named rather than counted: a count
+    # would survive a swap. The flush stores nothing on the machine.
     assert set(GATED_WRITE_METHODS) == {
         "save_profile",
         "delete_profile",
         "select_profile",
         "favorite_profile",
         "unfavorite_profile",
+        "start_flush",
     }
 
 

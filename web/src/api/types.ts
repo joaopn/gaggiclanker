@@ -382,6 +382,7 @@ export type StopConditionChange = components["schemas"]["StopConditionChange"];
 export type PolicyViolation = components["schemas"]["Violation"];
 export type DeviceWrite = components["schemas"]["DeviceWriteRow"];
 export type DeviceWritesData = components["schemas"]["DeviceWritesData"];
+export type FlushData = components["schemas"]["FlushData"];
 
 // The profile board: what the app means the machine to hold. The rows and the plan are
 // pydantic models; a run's `summary` is decoded JSON, so its shape is `BoardRunSummary` in

@@ -9,12 +9,12 @@ The two-list rule
 -----------------
 
 The public surface is two closed lists and nothing else: the ten reads in
-:data:`READ_ONLY_METHODS`, and the five writes in
-:data:`GATED_WRITE_METHODS`, every one of them a profile operation. Only
-profiles are ever written to the machine. :meth:`_send`
+:data:`READ_ONLY_METHODS`, and the six writes in
+:data:`GATED_WRITE_METHODS`: five profile operations and the flush. Only
+profiles are ever stored on the machine. :meth:`_send`
 stays private and ``tests/device/test_public_surface.py`` fails the build if an
-eleventh read or a sixth write appears, or if a request type outside those
-five turns up anywhere in this module — including in a docstring.
+eleventh read or a seventh write appears, or if a request type outside those
+six turns up anywhere in this module — including in a docstring.
 
 The lists are separate because the two halves have different rules. A read
 needs a socket. **A write additionally needs a gate** (:mod:`.writes`): it is
@@ -134,10 +134,11 @@ READ_ONLY_METHODS: frozenset[str] = frozenset(
     }
 )
 
-#: The other half: the five writes this client can make, every one of them a
-#: profile operation and every one behind :class:`DeviceWriteGate`. Only profiles
-#: are ever written to the machine. The list is closed and the test pins it; a
-#: sixth entry is a design decision, not a refactor.
+#: The other half: the six writes this client can make, every one behind
+#: :class:`DeviceWriteGate`: five profile operations, and the flush a person
+#: starts from the top bar. Only profiles are ever stored on the machine. The
+#: list is closed and the test pins it; a seventh entry is a design decision,
+#: not a refactor.
 GATED_WRITE_METHODS: frozenset[str] = frozenset(
     {
         "save_profile",
@@ -145,8 +146,13 @@ GATED_WRITE_METHODS: frozenset[str] = frozenset(
         "select_profile",
         "favorite_profile",
         "unfavorite_profile",
+        "start_flush",
     }
 )
+
+#: `evt:status` `m` for brew mode, the only mode the machine's web UI offers its
+#: flush button in (`ActionCard.jsx`).
+MODE_BREW = 1
 
 # Reconnect curve. 1 s is fast enough that a router blip is invisible; 60 s is
 # slow enough that a machine that is off for the night costs a request a minute
@@ -826,6 +832,37 @@ class GaggimateClient:
         )
         await self._write(write, "req:profiles:unfavorite", id=profile_id)
 
+    async def start_flush(self) -> None:
+        """Run the machine's flush once, as the button on its own web UI does.
+
+        The firmware runs it for the flush duration set on the machine; a hold
+        (duration 0) is not offered here, since it would need a release frame
+        relayed through this box. Nothing is stored on the machine and nothing is
+        audited (the maintainer's choice); the Writes switch still has to be on.
+
+        `Controller::onFlush` checks only that no process is running, while the
+        machine's web UI offers the button only in brew mode and idle. So the
+        same conditions are checked here, against the last status frame, before
+        anything is sent: a flush started in standby or steam mode would run the
+        pump with the machine in a state nobody chose for it.
+        """
+        write = PendingWrite(kind="flush", host=self.host)
+
+        def ready() -> None:
+            status = self.last_status
+            if status is None or status.m != MODE_BREW:
+                raise DeviceWriteRefused(
+                    "The machine is not in brew mode, so it was not flushed. "
+                    "Switch it to brew on the display first."
+                )
+            if status.process is not None and status.process.a == 1:
+                raise DeviceWriteRefused(
+                    "The machine is already running a shot or a flush. Nothing was sent."
+                )
+
+        await self._write(write, "req:flush:start", audit=False, check=ready)
+        log.info("device_flush_started", host=self.host)
+
     async def _authorize(self, write: PendingWrite) -> None:
         """Ask the gate, and record the refusal if it says no.
 
@@ -846,6 +883,8 @@ class GaggimateClient:
         *,
         id_from_response: Callable[[dict[str, Any]], str | None] | None = None,
         authorized: bool = False,
+        audit: bool = True,
+        check: Callable[[], None] | None = None,
         **payload: Any,
     ) -> dict[str, Any]:
         """Authorise, send, record. The only path from a write method to `_send`.
@@ -870,9 +909,20 @@ class GaggimateClient:
         A failure inside :meth:`DeviceWriteGate.record` is swallowed: losing the
         audit row for a write that worked is bad, and turning it into an
         exception that makes the caller think the write failed is worse.
+
+        ``audit=False`` is the flush's: the gate is still asked, nothing is
+        recorded whatever happens. ``check`` runs after the gate said yes and
+        before the frame goes, and refuses by raising.
         """
+        if not audit:
+            await self._gate.authorize(write)
+            if check is not None:
+                check()
+            return await self._send(tp, **payload)
         if not authorized:
             await self._authorize(write)
+        if check is not None:
+            check()
         try:
             message = await self._send(tp, **payload)
         except Exception as exc:
