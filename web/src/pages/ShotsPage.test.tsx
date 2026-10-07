@@ -1273,7 +1273,7 @@ describe("ShotsPage open rows", () => {
         review({
           id: 7,
           shot_id: 1,
-          summary: "A model's one-line reading.",
+          summary: "A model's one-line summary.",
           claims: [claim({ id: 70, review_id: 7, start_s: 4, end_s: 9 })],
         }),
       ],
@@ -1286,12 +1286,12 @@ describe("ShotsPage open rows", () => {
     const panel = await screen.findByTestId("shot-panel");
     const card = await within(panel).findByTestId("review-box");
     expect(within(card).getByTestId("review-summary")).toHaveTextContent(
-      "A model's one-line reading.",
+      "A model's one-line summary.",
     );
     expect(within(card).getByTestId("review-verdict-badge")).toHaveTextContent("As intended");
     expect(within(card).getByTestId("claim-reject")).toBeInTheDocument();
     // No link stands in for it any more.
-    expect(within(panel).queryByRole("link", { name: "Reading" })).toBeNull();
+    expect(within(panel).queryByRole("link", { name: "Review" })).toBeNull();
     // Directly under the row's curve, and not beside the judgement.
     const curves = await within(panel).findByText("Curves");
     expect(curves.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -1430,7 +1430,7 @@ describe("ShotsPage open rows", () => {
     ).toHaveTextContent("No faults");
   });
 
-  it("shows a discarded shot's last reading in the open row, with no Read button", async () => {
+  it("shows a discarded shot's last review in the open row, with no Review button", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([shot({ review: reviewBlock({ state: "not_reviewable" }) })]),
@@ -1454,7 +1454,7 @@ describe("ShotsPage open rows", () => {
     expect(within(card).queryByRole("button", { name: /read/i })).toBeNull();
   });
 
-  it("gives a discarded shot with no reading a line and no button in the open row", async () => {
+  it("gives a discarded shot with no review a line and no button in the open row", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([shot({ review: reviewBlock({ state: "not_reviewable" }) })]),

@@ -541,11 +541,11 @@ async def post_profile_match(
 
 
 class ReviewRequest(BaseModel):
-    """`POST /api/shots/{id}/reviews`: read the shot, optionally on a named model.
+    """`POST /api/shots/{id}/reviews`: review the shot, optionally on a named model.
 
-    Every press starts a reading: a person pressing Read again wants a fresh one,
+    Every press starts a review: a person pressing Review again wants a fresh one,
     and the earlier one stays stored (its claims are set aside: the newest finished
-    reading answers for the shot). A press while one is running gets that running
+    review answers for the shot). A press while one is running gets that running
     row back.
     """
 
@@ -576,7 +576,7 @@ async def list_reviews(shot_id: int, reviews: ReviewsRepoDep) -> JSONResponse:
     "/{shot_id}/reviews",
     response_model=ApiResponse[ShotReviewRow],
     status_code=202,
-    summary="Queue a reading of this shot",
+    summary="Queue a review of this shot",
     # One of the routes in this API that spends money. The registry already
     # makes a repeat request for the *same* shot idempotent; this bounds a loop
     # walking different ones. See gaggiclanker/infra/ratelimit.py.
@@ -594,9 +594,9 @@ async def run_review(
 ) -> JSONResponse:
     """Queue the work and answer with the `running` row. 202, not 201.
 
-    This is the only way a reading starts: a person pressing a shot's badge in the shots table
-    or Read on its page. A shot nobody can read is refused: 422 when its bytes never parsed,
-    409 when the person labelled it Discard. The provider call takes tens of seconds and
+    This is the only way a review starts: a person pressing a shot's Review button in the shots
+    table or Review on its page. A shot nobody can review is refused: 422 when its bytes never
+    parsed, 409 when the person labelled it Discard. The provider call takes tens of seconds and
     does **not** run inside this request; it goes to the app's task registry, the row is the
     handle, and the LLM stream carries `review.started` / `review.finished` for the page to
     follow.

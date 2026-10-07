@@ -95,7 +95,7 @@ export function chartPalette(isDark = false): ChartPalette {
     // Its own token rather than --muted: --muted is an opaque surface colour,
     // and the band is painted over the plot area, so it has to be see-through.
     band: cssVar("--chart-band", fallback.band),
-    // The span a reading's claim points at: its own translucent token and its own edge colour,
+    // The span a review's claim points at: its own translucent token and its own edge colour,
     // distinct from the neutral phase bands it sits over and from every series it is drawn
     // behind (a teal no series uses), so a box edge is never read as a curve.
     span: cssVar("--chart-span", fallback.span),

@@ -47,7 +47,7 @@ export function ShotCurvesCard({
   hasPressure: boolean;
   finalExitReason?: number | null;
   durationMs?: number | null;
-  /** The span of the reading's claim being looked at, in seconds, drawn behind the curves. */
+  /** The span of the review's claim being looked at, in seconds, drawn behind the curves. */
   highlight?: { start: number; end: number } | null;
   /** The element id of the card, which a pinned claim scrolls into view on a narrow screen. */
   chartId?: string;

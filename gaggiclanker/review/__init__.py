@@ -6,16 +6,16 @@ Seven modules, read in the order the work happens:
 * :mod:`.context` — everything the model is told, assembled deterministically: the shot
   with its checks first, the Set version's recipe and prediction, the confirmed signature's
   free-text expectations, the profile, the style, the rules and excerpts. Never the person's
-  judgement, the machine's note, the label, another shot or an earlier reading.
+  judgement, the machine's note, the label, another shot or an earlier review.
 * :mod:`.models` — the shape the model must answer in, built per call so that its enums are
-  this shot's phase names and this reading's expectation ids: claims tied to windows, an
+  this shot's phase names and this review's expectation ids: claims tied to windows, an
   answer to each free-text expectation, a stance on the prediction when there is one. No taste,
   no advice, no proposal.
 * :mod:`.evidence` — the numbers behind every claim, worked out by the server with the
   metric language's own evaluator, and the window of each claim resolved to seconds.
 * :mod:`.service` — the run itself: a row, a call, the evidence, an outcome; and a person's
   answers to the claims.
-* :mod:`.reading` — the verdict, the reading state and the badge, worked out whenever a shot
+* :mod:`.reading` — the Curve check and the review blocks, worked out whenever a shot
   is read, the same for the person and for the chat (everything not rejected).
 
 A review writes its claims and does nothing else. Every claim is kept (`confirmed`) until a

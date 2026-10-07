@@ -1,4 +1,4 @@
-"""The shape a reading must answer in, built for the shot it is about.
+"""The shape a review must answer in, built for the shot it is about.
 
 This is the only description of the output contract. Its JSON schema is what
 the provider is sent and its validator is what the reply is checked against
@@ -12,7 +12,7 @@ answer depends on the shot:
 * a window or an anchor may name only the phases *this shot* logged;
 * the free-text results must carry exactly the ids of the confirmed signature's free-text
   expectations, one each, no more and no fewer;
-* ``prediction`` exists exactly when the Set version was filed with one, so a reading that
+* ``prediction`` exists exactly when the Set version was filed with one, so a review that
   invents a stance for a prediction nobody made is refused as an unknown key, and one that
   leaves it out when there is one is refused as a missing key.
 
@@ -21,7 +21,7 @@ answers wrongly the run is stored as `failed` with the error. Fault words are th
 list (:data:`gaggiclanker.domain.warnings.Fault`): a word outside it fails the same way.
 
 Everything is strict. ``extra="forbid"`` means a model that adds a key (a taste prediction,
-advice, a profile patch, a question for the person) fails validation: a reading says what
+advice, a profile patch, a question for the person) fails validation: a review says what
 the shot did, it does not predict the cup, advise or propose, and a field nothing reads must
 not be quietly dropped into a successful row.
 
@@ -63,7 +63,7 @@ SUMMARY_MAX = 200
 #: One claim is one sentence.
 CLAIM_TEXT_MAX = 300
 
-#: A reading makes 1 to 12 claims, and every claim (and every result) cites at most three
+#: A review makes 1 to 12 claims, and every claim (and every result) cites at most three
 #: expressions: enough to show a number and the comparison that makes it matter.
 CLAIMS_MAX = 12
 EVIDENCE_MAX = 3
@@ -128,7 +128,7 @@ def build_output_model(
     free_text_ids: Sequence[int],
     has_prediction: bool,
 ) -> OutputModel:
-    """The output model for one reading: its enums are this shot's, its keys this reading's."""
+    """The output model for one review: its enums are this shot's, its keys this review's."""
     names = _names(phases)
     ids = sorted(set(free_text_ids))
     window, expression = _models(names)

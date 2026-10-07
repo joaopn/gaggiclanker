@@ -479,14 +479,14 @@ describe("ShotDetailPage render budget", () => {
 describe("ShotDetailPage Review box", () => {
   beforeEach(openAllBoxes);
 
-  it("sits right under the Curves card, offers a reading, and renders what comes back", async () => {
+  it("sits right under the Curves card, offers a review, and renders what comes back", async () => {
     const user = setupUser();
     renderShot();
 
     const card = await screen.findByTestId("review-box");
     const curves = screen.getByText("Curves");
     expect(curves.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // Nothing between the Curves card and the Reading card but the Reading card's own section.
+    // Below the Curves box and above the phase numbers.
     const phases = screen.getAllByTestId("phase-row")[0];
     expect(card.compareDocumentPosition(phases) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(card).getByTestId("review-empty")).toHaveTextContent("without your judgement");
@@ -502,7 +502,7 @@ describe("ShotDetailPage Review box", () => {
     expect(await screen.findByTestId("review-summary")).toHaveTextContent(
       "Slow start, thin middle; the cup filled early.",
     );
-    // A reading guesses no taste, so nothing sits beside the person's own balance.
+    // A review guesses no taste, so nothing sits beside the person's own balance.
     expect(screen.queryByTestId("review-yours")).toBeNull();
     // Discuss stays on the page.
     expect(screen.getByTestId("discuss-in-chat")).toBeInTheDocument();
@@ -609,7 +609,7 @@ describe("ShotDetailPage Review box", () => {
     await waitFor(() => expect(screen.getByTestId("review-again-ask")).toHaveAttribute("hidden"));
     expect(screen.queryByText("stance of 129")).not.toBeInTheDocument();
     expect(screen.getByText("stance of 130")).toBeInTheDocument();
-    // Nothing started a reading on the shot nobody asked about.
+    // Nothing started a review on the shot nobody asked about.
     expect(runReview).not.toHaveBeenCalled();
   });
 

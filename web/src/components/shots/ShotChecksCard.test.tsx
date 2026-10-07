@@ -76,7 +76,7 @@ describe("ShotChecksCard", () => {
     expect(lines[0]).toHaveTextContent("0 % of target, at most 5 % of target");
   });
 
-  it("collapses what only the reading can check, and says so", async () => {
+  it("collapses what only the review can check, and says so", async () => {
     const user = userEvent.setup({ delay: null });
     card(leverSignedFields);
 

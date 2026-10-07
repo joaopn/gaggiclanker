@@ -1,4 +1,4 @@
-"""Running a reading: a row, a call, the numbers, an outcome, and nothing else.
+"""Running a review: a row, a call, the numbers, an outcome, and nothing else.
 
 The shape of :meth:`ReviewService.run_review` is the contract, and it is short
 on purpose:
@@ -6,7 +6,7 @@ on purpose:
     build the input  ->  open a `running` row  ->  call_json  ->  evaluate the evidence
     ->  close the row with its claims
 
-**A reading writes one review and its claims, about one shot.** It opens the row and closes
+**A review writes one review and its claims, about one shot.** It opens the row and closes
 it, and touches no other table: no Set version, no insight, no draft, no conversation, no
 signature. Every claim it writes is kept (`confirmed`); what it says reaches the chat unless a
 person rejected the claim (:meth:`ReviewService.answer`, which also restores one).
@@ -223,7 +223,7 @@ class ReviewService:
         # function of the database it was handed.
         budget = int(await self.llm.settings.get("knowledgeChunkTokenBudget"))
         review = await build_review_input(self.db, shot_id, chunk_token_budget=budget)
-        # What this shot's answer may say: its own phases, this reading's expectation ids and
+        # What this shot's answer may say: its own phases, this review's expectation ids and
         # whether there is a prediction to answer.
         output = build_output_model(
             phases=review.phases,

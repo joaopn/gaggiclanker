@@ -1757,7 +1757,7 @@ async def _signature_profile_versions(ctx: ToolContext, set_id: int) -> set[int]
         "Propose what a profile version is FOR, as expectations a person confirms once: each "
         "has a tier (critical, important, context), a phase the profile names and a kind "
         "(measure, reached, expects_warning, free_text). Once confirmed, every shot on that "
-        "profile is checked against them at no cost and the Review column shows 'ramp: early "
+        "profile is checked against them at no cost and the Curve check column shows 'ramp: early "
         "yield' in red when one fails. It writes only PROPOSED rows: nothing is checked, "
         "shown as a result or told to any agent until the person confirms it on the Profiles "
         "page. A measure must parse, carry a compare and name phases the profile has; a "

@@ -1,4 +1,4 @@
-"""What the shipped review prompt says, for the sentences a reading's trust rests on."""
+"""What the shipped review prompt says, for the sentences a review's trust rests on."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def test_the_summary_carries_no_figures_either() -> None:
     assert "`summary`: one sentence of at most 200 characters with no figures in it" in system
 
 
-def test_it_says_exactly_what_the_reading_is_and_is_not_given() -> None:
+def test_it_says_exactly_what_the_review_is_and_is_not_given() -> None:
     system = _system()
     # What it is given, including the prediction and what that does and does not reveal.
     assert "the recipe of the Set version the shot is filed under" in system
@@ -31,6 +31,6 @@ def test_it_says_exactly_what_the_reading_is_and_is_not_given() -> None:
     # What it is not.
     assert (
         "You are not told what the person thought of the cup, their notes or their label, or "
-        "anything about any other shot or any earlier reading"
+        "anything about any other shot or any earlier review"
     ) in system
     assert "what they were trying" not in system

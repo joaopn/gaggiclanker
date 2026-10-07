@@ -1,4 +1,4 @@
-"""Everything a reading is told about one shot, assembled deterministically.
+"""Everything a review is told about one shot, assembled deterministically.
 
 One function, :func:`build_review_input`, reads the archive and produces a
 document that is both the prompt's variables and the review row's
@@ -13,12 +13,12 @@ What goes in, and nothing else:
    item in it except the ones listed in :data:`REVIEW_EXCLUDED_KEYS` and the
    groups named by :data:`REVIEW_EXCLUDED_GROUP_MEMBERS`: the person's
    judgement, the note typed on the machine (which seeds the judgement), the
-   shot's earlier readings, and the shot's label and counted state. The checks
+   shot's earlier reviews, and the shot's label and counted state. The checks
    come first (the renderer's order), the Set version's recipe is in, since the
    checks' shares of the target need it, and the tiers a person set on Settings
-   → Shot information govern what a chat is handed, never what a reading reads;
+   → Shot information govern what a chat is handed, never what a review reads;
 2. **the free-text expectations of the confirmed signature**, each with its id, tier, phase,
-   sentence and fault word: the reading must answer every one;
+   sentence and fault word: the review must answer every one;
 3. **the Set version's prediction** and which version it is measured against, or the plain
    statement that there is none (the shot is not filed, or its version has no prediction);
 4. **the profile the shot brewed**, the whole document of the profile version
@@ -29,8 +29,8 @@ What goes in, and nothing else:
 
 **Independent by construction.** Nothing here reads the person's judgement (rating, balance,
 notes, decision), the note typed on the machine, the label, another shot, an earlier
-reading, an insight or a conversation: the loader's judgement, note and reading are dropped
-before rendering, and rule selection is given no Set attributes. A reading of one shot
+review, an insight or a conversation: the loader's judgement, note and review are dropped
+before rendering, and rule selection is given no Set attributes. A review of one shot
 cannot be told what the person thought of it, or what another shot did.
 
 Determinism is the property everything here is arranged around. Nothing reads
@@ -122,7 +122,7 @@ def review_tiers() -> Mapping[str, Tier]:
 
 
 class ExpectationAsked(BaseModel):
-    """One free-text expectation of the confirmed signature, as the reading is asked about it."""
+    """One free-text expectation of the confirmed signature, as the review is asked about it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -160,7 +160,7 @@ class ReviewInput(BaseModel):
     #: The confirmed signature's free-text expectations, in written order: each one is answered.
     expectations: list[ExpectationAsked] = Field(default_factory=list)
     #: The name of the Set version the shot is filed under ("" when it is not filed), the
-    #: prediction that version was filed with (the text the reading is shown, "" for none) and
+    #: prediction that version was filed with (the text the review is shown, "" for none) and
     #: the name of the version it is measured against ("" for nothing).
     version: str = ""
     prediction: str = ""
@@ -208,7 +208,7 @@ async def build_review_input(
     *,
     chunk_token_budget: int = DEFAULT_CHUNK_TOKEN_BUDGET,
 ) -> ReviewInput:
-    """Assemble everything a reading is told about one shot.
+    """Assemble everything a review is told about one shot.
 
     ``chunk_token_budget`` is how much reference prose may come along, in
     estimated tokens; a parameter rather than a settings read so this stays a
@@ -221,11 +221,11 @@ async def build_review_input(
     if not loaded:
         raise LookupError(f"no shot {shot_id}")
     # Independent by construction: whatever the loader read about the person's
-    # verdict, the machine's notes card and an earlier reading is dropped here,
+    # verdict, the machine's notes card and an earlier review is dropped here,
     # before anything renders, and the exclusions above keep the lines that
     # would describe them out as well. The Set version stays: its recipe is what
     # the checks' shares of the target are measured against, and its prediction
-    # is what the reading is asked to compare the shot with.
+    # is what the review is asked to compare the shot with.
     # The shot row carries a copy of some of the person's verdict too (the
     # judgement's rating, notes and label, the machine's own rating), which no
     # item a review reads renders; cleared all the same, so the rule holds by

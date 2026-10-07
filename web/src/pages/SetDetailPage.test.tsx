@@ -753,7 +753,7 @@ describe("SetDetailPage with a URL that is not a Set", () => {
   });
 });
 
-describe("SetDetailPage has no model-reading surface", () => {
+describe("SetDetailPage has no model-review surface", () => {
   it("offers no suggestions, no batch analysis and no review of the Set", async () => {
     // A model reads a shot only when a person presses Review on that shot's
     // page, and what it writes stays there: nothing on the Set page lists

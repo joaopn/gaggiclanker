@@ -10,17 +10,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
-### A shot's reading is claims you confirm one by one, and the chat hears only what you confirmed
+### A shot's review is claims you can reject, kept apart from the checks the numbers make
 
 - **Breaking: every stored review is deleted, and so is any edit you made to the two review
-  prompts.** Migration 0048 replaces the review with the reading below, and the old reviews hold
-  a blind taste prediction (retired: taste stays yours), a paragraph and a summary, no claims,
-  and nothing a person wrote, so there is nothing to carry. Their ids are never handed out
-  again. **If you edited the `review` or `review-user` prompt on the Prompts page, that edit is
-  deleted** (the output they ask for no longer fits what a reading is checked against) and the
+  prompts.** Migration 0048 replaces the review with the one below, and the old reviews hold a
+  blind taste prediction (retired: taste stays yours), a paragraph and a summary, no claims, and
+  nothing a person wrote, so there is nothing to carry. Their ids are never handed out again.
+  **If you edited the `review` or `review-user` prompt on the Prompts page, that edit is
+  deleted** (the output they ask for no longer fits what a review is checked against) and the
   shipped prompts are put back at boot; the tiers you chose for the seven retired review items
   go too. Nothing else is touched and no database needs deleting.
-- **A reading is claims about windows of the shot, with numbers the server worked out.** Started
+- **A review is claims about windows of the shot, with numbers the server worked out.** Started
   by a click on one shot, it writes a one-sentence summary and 1 to 12 claims, each tied to a
   phase, a span between two moments or the whole shot (so the curve can highlight it), with a
   fault word from the fixed list or none, one sentence with no figures in it, and one to three
@@ -29,75 +29,81 @@ first (`POST /api/backup`), because there is no down-migration.
   is, the limit the way a check words it ("at most 15 % of target", a share always a
   percentage), and whether the expression's own comparison held: no number beside a claim was
   typed by the model, and the summary carries none either. A claim whose comparison fails, or
-  whose evidence could not be measured at all, is kept
-  and marked as not borne out by the numbers. It also answers each free-text expectation of the
-  confirmed signature (held or not, where, in a sentence), and, when the Set version was filed
-  with a prediction, says how the shot moved against it (as predicted, partly, against, not
-  shown). It predicts no taste, advises nothing and proposes nothing: the output has no field for
-  any of them. Its input is the shot with its checks first, the Set version's recipe and
-  prediction, the signature's free-text expectations, the profile, the style, and the knowledge
-  rules and excerpts as before, and never your judgement, the machine's note, your label, another
-  shot or an earlier reading. Discarded shots cannot be read (409), nor quarantined ones (422).
-- **You confirm or reject each claim, and only confirmed claims reach the chat.** `PATCH
-  /api/reviews/{id}/claims/{claim_id}` with `{status: "confirmed" | "rejected", reason?}` answers
-  one (an answer can be changed), `POST /api/reviews/{id}/claims/confirm-all` confirms what is
-  still waiting (an optional body `{"except_kinds": ["prediction"]}` leaves claims of those kinds
-  waiting: the page holds a prediction's stance back until the shot has a decision, and an unknown
-  kind is a 422), and each returns the updated review. Only the newest finished reading of a shot
-  can be answered (409 `REVIEW_SUPERSEDED` otherwise). That reading is the one in force, for
-  everyone: reading again changes only the badge's words (`Reading…`, `Failed to run`) and the
-  sort bucket while it runs or if it fails, and sets the old one aside, confirmed claims
-  included, only when the new one finishes. The new event `review.answered` follows an answer in
-  another tab.
-  The chat's shot information has a **Reading** group in place of the Review one (all base):
-  whether the shot was read and how many claims are confirmed, unverified or rejected, the
-  confirmed claims with their numbers, and the confirmed stance on the prediction. The summary,
-  unconfirmed and rejected claims are never served, and a free-text answer enters the chat's
-  Checks only once confirmed. The SQL tool gains `v_review_claims` (confirmed claims of a
-  shot's newest finished reading only) and `v_reviews` loses its taste and summary columns and
-  gains counts. A prompt you edited keeps your text on boot: reset `chat-set`, `chat-general` and
-  `chat-design` on the Prompts page to read the new paragraph on readings.
-- **The badge is the verdict, built by code.** Every shot served in the list, the detail and the
-  fields route carries a `reading` block (`state`, `verdict`, how many claims are `unanswered`, the
-  failure `reason`, the `summary`, and `in_force_id`, the reading claims are answered through: the
-  newest finished one, which `review_id` (the newest attempt) differs from while one runs) and a `badge` that is the failures (`ramp: early yield +1`,
-  a free-text failure counting as a check of its expectation's tier and marked `unverified` until
-  you confirm it), `Review` (not read), `Reading…`, `Failed to run`, `As intended` or `No
-  signature`. Rejecting a failed answer takes it out of the verdict. The shots list sorts by
-  Review with the failures first, then `Failed to run`, `Reading…`, `No signature`, shots not
-  read yet, `As intended`, and last shots nobody can read, newest first within each. A
-  review's one running row per shot is now enforced by the database as well as by the task
-  registry.
-- **On screen, the badge starts a reading and the shot page shows it.** In the shots table the
-  Review badge is a button: pressing the badge of a shot nobody has read (`Review`), or whose
-  reading failed, asks for one and the table follows it (`Reading…`, then the verdict); pressing a
-  read shot's badge goes to its Reading card, so a stray click never throws a reading away; while
-  one runs the badge is inert, and a press never opens the row. The badge is outlined while
-  claims wait for an answer and filled once none does, green for `As intended`, grey for `No
-  signature` and `Failed to run`, with the reason, the unverified entries and the summary in its
-  tooltip. A discarded or quarantined shot has no button. On the shot page the card is now
-  **Reading**, directly under the Curves card: the summary, the free-text expectations it checked
-  (held or failed, a failure in its tier's colour), the claims each with its numbers, **Confirm**
-  and **Reject** (with a one-line reason you may leave empty) that you can change later,
-  **Confirm all**, and **Read again**, which asks once, in place, how many confirmed claims it
-  would set aside. A claim whose numbers do not bear it out says so. Hovering or focusing a claim
-  marks its span on the curve behind the lines in its own tint, and pressing it pins the mark (a
-  phone has no hover; on a narrow screen pinning also scrolls the chart into view). The card's
-  first line is the verdict, built by code in the badge's own words and colour ("No signature:
-  read without a confirmed signature, so nothing was checked against the profile's intent", "As
-  intended", or the failures listed), and the model's summary comes after it, labelled as the
-  model's words, so the card can never look as if it disagrees with the badge. The Checks card
-  lists the free-text results, marked unverified until you confirm them and linked to their
-  claim. **The open row in the shots list carries the same Reading card**, directly under the
-  row's own curve, with its spans marked on that chart; a discarded shot shows its last reading
-  and no Read button. The open row's content (the card, the chart, the judgement) is as wide as the
-  table's visible box and stays in view while the columns scroll sideways, so nothing in it is cut. The reading's comparison with the Set version's prediction stays hidden,
-  like the prediction, until the shot has a decision or you press Show; until then Confirm all
-  leaves the stance proposed and does not count it. The table follows a reading by itself, and
-  polls every few seconds while any row is `Reading…`, in case an event was lost. The Review
-  column's minimum width is raised so the longest fault word and its count stay whole once the
-  phase is cut (a narrower stored width is raised to it). The Set history and the compare tray
-  show the same badge but never a button, and nothing for a shot nobody has read.
+  whose evidence could not be measured at all, is kept and marked as not borne out by the
+  numbers. It also answers each free-text expectation of the confirmed signature (held or not,
+  where, in a sentence), and, when the Set version was filed with a prediction, says how the shot
+  moved against it (as predicted, partly, against, not shown). It predicts no taste, advises
+  nothing and proposes nothing: the output has no field for any of them. Its input is the shot
+  with its checks first, the Set version's recipe and prediction, the signature's free-text
+  expectations, the profile, the style, and the knowledge rules and excerpts as before, and never
+  your judgement, the machine's note, your label, another shot or an earlier review. Discarded
+  shots cannot be reviewed (409), nor quarantined ones (422). A review's one running row per
+  shot is enforced by the database as well as by the task registry.
+- **Breaking: the one-line reason you could type when rejecting a claim is removed.** Rejecting is
+  one click now, so migration 0049 drops the `reason` column of `review_claims` and the `reason`
+  field of the answer; reasons already typed on claims are deleted with it. Nothing else of an
+  answer is lost.
+- **Every claim is kept unless you reject it, and that is what the chat hears.** A claim is
+  written `confirmed`; `PATCH /api/reviews/{id}/claims/{claim_id}` with `{status: "confirmed" |
+  "rejected"}` rejects one or restores it (an answer can be changed) and returns the updated
+  review. There is no confirm-all and no waiting state, and the prediction stance is shown like
+  any claim. Only the newest finished review of a shot can be answered (409 `REVIEW_SUPERSEDED`
+  otherwise). That review is the one in force, for everyone: reviewing again changes only the
+  badge's words (`Reviewing…`, `Failed to run`) and the sort bucket while it runs or if it fails,
+  and sets the old one aside, rejected claims included, only when the new one finishes. The event
+  `review.answered` follows an answer in another tab. Migration 0049 turns the claims of an
+  earlier build that were still waiting into kept ones, and keeps each answer.
+  The chat's shot information has a **Review** group (all base): whether the shot was reviewed
+  and how many claims were kept or rejected, the kept claims with their numbers (a free-text
+  expectation's answer says which expectation and whether it held), and the stance on the
+  prediction. **The summary and a rejected claim are never served.** The SQL tool gains
+  `v_review_claims` (the claims of a shot's newest finished review that were not rejected) and
+  `v_reviews` counts kept and rejected claims. A prompt you edited keeps your text on boot: reset
+  `chat-set`, `chat-general` and `chat-design` on the Prompts page to read the new paragraph on
+  reviews. The tiers you chose for the three items follow their new names.
+- **The Curve check and the review are two blocks.** Every shot served in the list, the detail
+  and the fields route carries `checks` (`badge`, `entries`) and `review` (`state`, `badge`,
+  `entries`, `verdict`, `summary`, `reason`, `review_id` and `in_force_id`, the id claims are
+  answered through: the newest finished review, which `review_id`, the newest attempt, differs
+  from while one runs). **The Curve check is only the deterministic checks and warnings**
+  (`ramp: early yield +1`): the confirmed signature's failed critical and important expectations
+  and the universal warnings, worked out whenever the shot is read, on every shot and with no
+  click. A review never changes it, and a free-text expectation is not part of it: it reads
+  "checked by the review". **The review is only what the model wrote**: its faults in the same
+  `phase: fault +N` form, built by code from claims you did not reject (a failed free-text
+  expectation, red for critical and amber for important, and a claim that carries a fault word,
+  amber), `As intended` (a confirmed signature and no fault), `No faults`, `Reviewing…` or
+  `Failed to run`. A claim the numbers do not bear out is **not a fault**: it is left out of the
+  badge, its "+N" and the sort, stays in the Review box marked as before, and still reaches the
+  chat unless you reject it. The shots list sorts by either: `?sort=check` (failures by severity and where
+  in the shot, then the rest, newest first) and `?sort=review` (faults first, then `Failed to run`,
+  `Reviewing…`, `No faults`, shots not reviewed yet, `As intended`, and last shots nobody can
+  review), each a total order paged by offset. In the chat the checks are exactly the Curve
+  check's; the model's answer to a free-text expectation is a line of the Review group.
+- **On screen: two columns, and boxes you can fold.** The shots table's old Review column is now
+  **Curve check** (the badge only, on every shot, discarded and quarantined ones included, never a
+  button) and **Review**: a **Review** button for a shot nobody has reviewed, `Reviewing…` while
+  one runs (inert), a grey `Failed to run` with a **Retry** button, or the model's faults; a
+  discarded or quarantined shot has nothing in it. The buttons never open the row, a double click
+  makes one request, and pressing a reviewed badge opens the row with its Review box expanded. The
+  table follows a review by itself and polls every few seconds while any row is `Reviewing…`. Curve
+  check is added in front of Review in a layout you stored that shows Review, once; any other
+  choice is kept. The Set history and the compare tray show the Curve check only. The shot page
+  and the open row draw the **same boxes in the same order**: Your judgement (open), the
+  version's prediction (it does not fold), Curves, Review and Curve check (folded), and each box's
+  state is remembered in your browser. The Curve check box is always there: with nothing to list
+  it says one plain line ("Nothing to check: no confirmed signature and no warnings", or "No
+  check failed" when a confirmed signature held). Folding Curves draws no chart and asks for no curve. The **Review
+  box** opens on the verdict, built by code in the badge's words and colour, then the model's
+  summary, labelled as its words, the free-text expectations it answered, the stance on the
+  prediction, and the claims each with its numbers and **Reject**; "N rejected · show" brings the
+  rejected ones back with **Restore**; **Review again** asks once, in place, that it replaces the
+  current review. A claim whose numbers do not bear it out says so. The Review badge's hover lists its faults and then "The model's summary: …" (under `Failed
+  to run`, "Last review: …", the earlier review still in force). Hovering or focusing a claim
+  marks its span on the curve behind the lines, and pressing it pins the mark and opens Curves
+  if it was folded; a Curve check line for a free-text expectation opens Review at its answer.
+  The open row's boxes are as wide as the table's visible box and stay in view while the columns
+  scroll sideways, so nothing in them is cut.
 - **A fix carried over from the signatures work.** The review's style detection and rule tokens no
   longer read puck flow or pressure from a shot flagged without a pressure sensor.
 
@@ -108,7 +114,7 @@ first (`POST /api/backup`), because there is no down-migration.
   shot) and a kind: a **measure** (a number from the metric language held against a limit, such
   as the cup at the end of the ramp as a share of the target yield, at most 0.15), a **phase
   that must begin**, a **warning that is part of the design** (fast flow on a turbo's main
-  phase), or **free text** that only the per-shot reading will check. Values are relative to the
+  phase), or **free text** that only the per-shot review will check. Values are relative to the
   target yield or the dose where they can be, so one signature carries across beans and doses. A
   failed expectation is named `phase: fault` with a word from the fixed list, worked out from the
   measure's channel and the side it failed (the cup over its limit is `early yield`, under it
@@ -138,7 +144,7 @@ first (`POST /api/backup`), because there is no down-migration.
 - **Confirm a signature on the Profiles page.** Every profile version has a **Signature** card,
   open when something waits for an answer. It lists the expectations in tier order with their
   phase, sentence, fault word, kind (computed, phase reached, warning expected, checked by the
-  reading) and status. A proposed one can be **confirmed**, **rejected** (with an optional
+  review) and status. A proposed one can be **confirmed**, **rejected** (with an optional
   reason, which the proposing conversation is told) or moved to another tier, and **Confirm all**
   answers every waiting one with one call. One carried from an earlier version says which, one
   whose phase the version no longer has says **needs a new phase** and cannot be confirmed, and
@@ -146,13 +152,13 @@ first (`POST /api/backup`), because there is no down-migration.
   for says so and links to the chats of the Sets that brew it. An expression cannot be edited
   by hand: ask the agent to propose it again.
 - **The shot page shows Checks, and the Review badge is coloured by them.** The Warnings card is
-  now **Checks**, in the same place above the judgement: red, amber and grey lines as the
+  now **Curve check**, a box below the review: red, amber and grey lines as the
   server orders them, each with its value against its limit ("117.2 % of target, at most 15 % of
-  target"), with the held ones and the ones only a reading can check folded away under their
+  target"), with the held ones and the ones only a review can check folded away under their
   count. A shot read without a confirmed signature says so and links to the version's Signature
-  card. The Review badge has the same text as before and takes its colour from its first entry:
-  red, amber, or grey for a warning the signature expects (a turbo's fast flow). The shots list's
-  open row shows the entries its row carries; the shot page shows them all.
+  card. The Curve check badge takes its colour from its first entry: red, amber, or grey for a
+  warning the signature expects (a turbo's fast flow). The shot page and the shots list's open
+  row show them all.
 - **The Set page shows its profile's signature.** The Now brewing card says whether the current
   version's profile has a signature (confirmed with N expectations, proposed, or none) and links
   to it. A Set version's overrides show on that version ("ramp: at most 20 % of target here

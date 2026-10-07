@@ -18,7 +18,7 @@ The machine holds a few hundred KB of flash and deletes old shots when it runs
 low. This is the thing that remembers them.
 
 > **Status: 0.1.0, the prototype, plus the profile list.** Everything in this README
-> works: sync, the shots UI, Sets and judgement, the LLM layer, a shot's reading,
+> works: sync, the shots UI, Sets and judgement, the LLM layer, a shot's review,
 > the chat, optional authentication and the container. It can now
 > also hold a list of your profiles and make the machine match it — you switch a profile on or
 > off the machine and make one of its versions active, and the next sync puts the active
@@ -76,7 +76,7 @@ an IP for the machine's host.
 4. **Turn on authentication** if this box is reachable by anything you do not
    trust — see below. Off by default, and that is the right default for a
    machine only your own LAN can reach.
-5. **Set up the model.** A reading and the chat need one provider. The cheapest to get
+5. **Set up the model.** A review and the chat need one provider. The cheapest to get
    working is `claude_code`, which spends a Claude subscription you may already
    have: run `claude setup-token` on any machine with the CLI installed and
    paste the token into **Settings → LLM**.
@@ -630,7 +630,7 @@ one does not sign everybody out.
 
 ### LLM settings
 
-A reading, the chat and the drafts go through one provider, chosen with `GAGGICLANKER_LLM_PROVIDER`:
+A review, the chat and the drafts go through one provider, chosen with `GAGGICLANKER_LLM_PROVIDER`:
 `claude_code` (the default — it runs the Claude Code CLI against a Claude
 subscription, so there is no API key to buy), `anthropic`, `openrouter`,
 `openai`, `ollama`, `lmstudio`, or `openai_compatible` for any other gateway.
@@ -666,18 +666,18 @@ Prompts edits the prompts themselves — they are rows in the database, seeded
 from the YAML files in `gaggiclanker/prompts/`, and an edit takes effect on the
 next call without a restart.
 
-### The reading
+### The review
 
-A **reading** is a model's look at one shot, and it is yours to confirm. It is one structured
-call, started only by a click on one shot (the badge in the shots table, or the shot page): no
-chat tool, batch, timer or sync step starts one, and a shot you labelled Discard or that never
-parsed is never read. The model is handed the shot's own information with its checks first
-(every line the shot tools can show, whatever you set under Settings → Shot information, except
-your judgement, the note typed on the machine and your label), the Set version's recipe and its
-prediction, the free-text expectations of the profile's confirmed signature, the profile the
-shot brewed, the detected shot style, and the knowledge rules and reference excerpts its
-telemetry selects. It is never shown your judgement, another shot, an earlier reading or a
-conversation.
+A **review** is a model's look at one shot, and it is yours to correct. It is one structured
+call, started only by a click on one shot (the **Review** button in the shots table, or the shot
+page): no chat tool, batch, timer or sync step starts one, and a shot you labelled Discard or
+that never parsed is never reviewed. The model is handed the shot's own information with its
+checks first (every line the shot tools can show, whatever you set under Settings → Shot
+information, except your judgement, the note typed on the machine and your label), the Set
+version's recipe and its prediction, the free-text expectations of the profile's confirmed
+signature, the profile the shot brewed, the detected shot style, and the knowledge rules and
+reference excerpts its telemetry selects. It is never shown your judgement, another shot, an
+earlier review or a conversation.
 
 It writes **claims**, and nothing else about the cup: no taste prediction, no advice, no
 proposal. Each claim is tied to a window of the shot (a phase, a span between two moments, or
@@ -687,34 +687,47 @@ are the server's**: it evaluates every expression on the shot and stores the val
 the kind of channel and whether the expression's own comparison held, so a figure beside a claim
 is one the same expression gives on `POST /api/shots/{id}/evaluate`, never one the model typed.
 A claim whose comparison fails, or whose evidence could not be measured at all, is kept and
-marked as not borne out by the numbers. The reading also answers each free-text expectation of
+marked as not borne out by the numbers. The review also answers each free-text expectation of
 the confirmed signature (held or not, and where), and, when the Set version was filed with a
 prediction, says how the shot moved against it (as predicted, partly, against, not shown) plus
 a one-sentence summary for you.
 
-**Each claim starts unconfirmed, and you confirm or reject it one at a time** (or Confirm all,
-which leaves a rejection alone, and can leave a kind of claim out: the page keeps a prediction's
-stance hidden until the shot has a decision, so Confirm all does not confirm it); you can change
-an answer. Only the newest finished reading of a
-shot can be answered (the one in force: a newer reading that is running, failed or was interrupted
-changes only the badge's words, and replaces it only when it finishes), and a reading that
-finishes sets the old one aside, confirmed claims included. The
-verdict is worked out whenever the shot is read: the failed expectations (a free-text answer
-counts once it is not rejected, drawn as unverified until you confirm it) and the warnings give
-the badge its text (`ramp: early yield +1`, `As intended`, `No signature`), its colour is the
-severity, and rejecting a failed answer takes it out of the verdict. In the shots table Review
-sorts failures first, then `Failed to run`, `Reading…`, `No signature`, shots not read yet,
-`As intended`, and last the shots nobody can read.
+**Each claim is kept unless you reject it.** There is nothing to confirm: **Reject** takes a
+claim off the list and out of the chat, **Restore** (behind "N rejected · show") puts it back,
+and the prediction stance is shown like any claim. Only the newest finished review of a shot can
+be answered (the one in force: a newer review that is running, failed or was interrupted changes
+only the badge's words, and replaces it only when it finishes), and a review that finishes sets
+the old one aside, rejected claims included; **Review again** asks once that it replaces the
+current one.
 
-**What the chat is told is only what you confirmed.** The **Reading** group of the catalogue
-(three items, all base) says whether a shot was read and how many claims are confirmed,
-unverified or rejected, lists the confirmed claims with the numbers behind them and says how
-the shot moved against its prediction once you confirmed that. The summary, an unconfirmed claim
-and a rejected one never reach it, and an unconfirmed free-text answer leaves its expectation
-"checked by the reading, not confirmed". The SQL tool's `v_review_claims` holds only confirmed
-claims of a shot's newest finished reading, and `v_reviews` only counts. The glossary and the
-chat's rules both say what a reading is: a model's claims about one shot, weighed below the
-measured numbers and your judgement, never on its own a reason to change a Set.
+**Two columns, two jobs.** The shots table's **Curve check** column is only the deterministic
+checks and warnings (`ramp: early yield +1`), worked out whenever the shot is read from its
+stored numbers, its filing and its profile version's confirmed signature, on every shot and with
+no click; a review never changes it, and a free-text expectation is not part of it ("checked by
+the review"). Its colour is the first entry's severity and it sorts by it. The **Review** column
+is only what the model wrote: a Review button, `Reviewing…`, a grey `Failed to run` with Retry, or
+the model's faults in the same `phase: fault +N` form, built by code from claims you did not
+reject and whose numbers bear them out (a failed free-text expectation, red for critical and amber
+for important, and a claim that carries a fault word, amber; a claim the numbers do not bear out
+stays in the Review box, marked, and in what the chat is told, but not in the badge or its "+N"), or a green `As intended` (a confirmed signature and no fault)
+or a grey `No faults`; nothing for a shot nobody can review. It sorts faults first, then
+`Failed to run`, `Reviewing…`, `No faults`, shots not reviewed yet, `As intended`, and last the
+shots nobody can review. Pressing a reviewed badge opens the row with its Review box expanded.
+
+**The boxes.** The shot page and the open row draw the same boxes in the same order: Your
+judgement (open), the version's prediction (it does not fold), Curves, Review and Curve check
+(folded). The Curve check box is always there; with nothing to list it says one plain line. Each box's
+state is remembered per browser; pinning a claim opens Curves, and a Curve check line for a
+free-text expectation opens Review at its answer.
+
+**What the chat is told is every claim you did not reject.** The **Review** group of the catalogue
+(three items, all base) says whether a shot was reviewed and how many claims were kept or
+rejected, lists the kept claims (free-text answers among them) with the numbers behind them and
+says how the shot moved against its prediction. The summary and a rejected claim never reach
+it. The SQL tool's `v_review_claims` holds the claims of a shot's newest finished review that
+were not rejected, and `v_reviews` only counts. The glossary and the chat's rules both say what a
+review is: a model's claims about one shot, weighed below the measured numbers and your
+judgement, never on its own a reason to change a Set.
 
 The knowledge rules are on the **Knowledge** page: a small tier of dial-in
 heuristics — temperature by roast, the pressure matrix by roast and process,
@@ -727,11 +740,11 @@ Hall, MIT) by way of gaggimate-mcp; the attribution is in the seed file.
 The call runs as a background task rather than inside the request: pressing the
 button answers at once with a `running` row and the page follows the event
 stream (`review.started`, `review.finished`, `review.failed`, and `review.answered` when a
-claim is answered, so another tab follows), so a restart cannot kill a reading with the
-browser still waiting on it. Pressing it twice while one runs gets the same run back rather
-than paying for two, and the database allows only one running reading per shot.
+claim is rejected or restored, so another tab follows), so a restart cannot kill a review with
+the browser still waiting on it. Pressing it twice while one runs gets the same run back rather
+than paying for two, and the database allows only one running review per shot.
 
-A failed reading is a stored row carrying the provider's error code rather than
+A failed review is a stored row carrying the provider's error code rather than
 an exception, and a run cut off by a restart is marked `interrupted` at the next
 boot — neither silently disappears.
 
@@ -989,7 +1002,7 @@ new bag is not worked out there: the General chat sends you to New Set →
 accept. **Eight while a Set is being designed** (below). The registry holds
 twenty-three in total: twelve both kinds have, ten that belong to one kind or the
 other, and `propose_initial_recipe`, which only a design has. None of them
-starts a shot's reading or answers one of its claims: only a person's click does. Nothing in the
+starts a shot's review or answers one of its claims: only a person's click does. Nothing in the
 chat can touch
 the machine — making a profile active stays a button you press.
 
@@ -1166,7 +1179,7 @@ Docker created the bind-mount source as `root:root` and the app runs as uid
 `user:` in compose, either `chown $(id -u):$(id -g) ./data` or set `APP_UID` and
 `APP_GID` to your own.
 
-**A reading spins for ever / says `interrupted`.**
+**A review spins for ever / says `interrupted`.**
 `interrupted` means the process stopped mid-call — a restart, an OOM, a power
 cut — and the next boot said so rather than leaving a spinner. Press the button
 again. If it fails instead, the row carries the provider's error; a rate limit

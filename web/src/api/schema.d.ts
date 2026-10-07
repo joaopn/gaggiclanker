@@ -2482,12 +2482,12 @@ export interface paths {
         get: operations["list_reviews_api_shots__shot_id__reviews_get"];
         put?: never;
         /**
-         * Queue a reading of this shot
+         * Queue a review of this shot
          * @description Queue the work and answer with the `running` row. 202, not 201.
          *
-         *     This is the only way a reading starts: a person pressing a shot's badge in the shots table
-         *     or Read on its page. A shot nobody can read is refused: 422 when its bytes never parsed,
-         *     409 when the person labelled it Discard. The provider call takes tens of seconds and
+         *     This is the only way a review starts: a person pressing a shot's Review button in the shots
+         *     table or Review on its page. A shot nobody can review is refused: 422 when its bytes never
+         *     parsed, 409 when the person labelled it Discard. The provider call takes tens of seconds and
          *     does **not** run inside this request; it goes to the app's task registry, the row is the
          *     handle, and the LLM stream carries `review.started` / `review.finished` for the page to
          *     follow.
@@ -6706,11 +6706,11 @@ export interface components {
         };
         /**
          * ReviewRequest
-         * @description `POST /api/shots/{id}/reviews`: read the shot, optionally on a named model.
+         * @description `POST /api/shots/{id}/reviews`: review the shot, optionally on a named model.
          *
-         *     Every press starts a reading: a person pressing Read again wants a fresh one,
+         *     Every press starts a review: a person pressing Review again wants a fresh one,
          *     and the earlier one stays stored (its claims are set aside: the newest finished
-         *     reading answers for the shot). A press while one is running gets that running
+         *     review answers for the shot). A press while one is running gets that running
          *     row back.
          */
         ReviewRequest: {

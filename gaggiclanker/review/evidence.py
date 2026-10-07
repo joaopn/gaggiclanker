@@ -1,4 +1,4 @@
-"""The numbers behind a reading, worked out by the server and never typed by the model.
+"""The numbers behind a review, worked out by the server and never typed by the model.
 
 A claim cites one to three expressions of the metric language. This module evaluates each
 one on the shot with the language's own evaluator and stores what came back: the sentence
@@ -114,7 +114,7 @@ class _Asked(Protocol):
 def claims_from_answer(
     answer: Any, data: ShotData, expectations: Sequence[_Asked]
 ) -> list[ClaimWrite]:
-    """Every statement of a validated reading as a claim to store, numbers evaluated.
+    """Every statement of a validated review as a claim to store, numbers evaluated.
 
     ``answer`` is an instance of the per-call output model
     (:func:`gaggiclanker.review.models.build_output_model`): claims first, then one result

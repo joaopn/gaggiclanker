@@ -58,7 +58,7 @@ def _answered(result: AnswerResult, review_id: int) -> JSONResponse:
             code="REVIEW_SUPERSEDED",
             details={
                 "field": "review_id",
-                "message": "Only the newest finished reading of a shot can be answered.",
+                "message": "Only the newest finished review of a shot can be answered.",
             },
         )
     if result.refused == "no_claim":
