@@ -127,6 +127,15 @@ function listData(items: ShotListRow[], overrides: Partial<ShotListData> = {}): 
   return { items, total: items.length, limit: 50, offset: null, next_cursor: null, ...overrides };
 }
 
+const EMPTY_COUNTS = {
+  total: 0,
+  quarantined: 0,
+  deleted_on_device: 0,
+  incomplete: 0,
+  samples: 0,
+  needs_set: 0,
+};
+
 function statusData(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
   return {
     configured: true,
@@ -421,7 +430,9 @@ describe("ShotsPage", () => {
 
   it("points an empty archive at the two ways of filling it", async () => {
     getShots.mockResolvedValue(listData([]));
-    getSyncStatus.mockResolvedValue(statusData({ configured: false, connected: false }));
+    getSyncStatus.mockResolvedValue(
+      statusData({ configured: false, connected: false, counts: { ...EMPTY_COUNTS } }),
+    );
 
     renderWithQueryClient(<ShotsPage />);
 
@@ -2244,6 +2255,7 @@ describe("ShotsPage filters", () => {
   it("says nothing matches rather than pretending the archive is empty", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([]));
+    getSyncStatus.mockResolvedValue(statusData({ counts: { ...EMPTY_COUNTS } }));
 
     renderWithQueryClient(<ShotsPage />);
     await screen.findByText("No shots archived yet");
@@ -2252,6 +2264,89 @@ describe("ShotsPage filters", () => {
     await user.selectOptions(screen.getByLabelText("Rating"), "5");
 
     expect(await screen.findByText("No shots match")).toBeInTheDocument();
+  });
+});
+
+describe("ShotsPage hide discarded", () => {
+  it("hides discarded shots by default, ticked, on its own line under the buttons", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />);
+
+    const box = await screen.findByRole("checkbox", { name: "Hide discarded" });
+    expect(box).toBeChecked();
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ include_discarded: false }),
+      ),
+    );
+    // Not in the button row: after it, in the same right-aligned column.
+    const toolbar = screen.getByTestId("shots-toolbar");
+    const line = screen.getByTestId("shots-view-line");
+    expect(toolbar).not.toContainElement(box);
+    expect(line).toContainElement(box);
+    expect(toolbar.nextElementSibling).toBe(line);
+    expect(line.parentElement).toHaveClass("flex-col", "items-end");
+    // Sync sits apart from the list's own buttons.
+    const controls = screen.getByTestId("shots-list-controls");
+    expect(within(controls).queryByTestId("pull-button")).not.toBeInTheDocument();
+    expect(within(controls).getByTestId("filters-button")).toBeInTheDocument();
+    expect(within(toolbar).getByTestId("pull-button")).toBeInTheDocument();
+  });
+
+  it("lists discarded shots once unticked, and hides them again when ticked", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />);
+    const box = await screen.findByRole("checkbox", { name: "Hide discarded" });
+
+    await user.click(box);
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({ include_discarded: false }),
+      ),
+    );
+    expect(box).not.toBeChecked();
+    // Not a filter on the Filters button's count.
+    expect(screen.getByTestId("filters-button")).not.toHaveTextContent(/\d/);
+
+    await user.click(box);
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ include_discarded: false }),
+      ),
+    );
+  });
+
+  it("reads the unticked state from the URL", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?discarded=show"] });
+
+    expect(await screen.findByRole("checkbox", { name: "Hide discarded" })).not.toBeChecked();
+  });
+
+  it("keeps the tickbox as it is when the filters are cleared", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />, {
+      initialEntries: ["/shots?discarded=show&min_rating=4"],
+    });
+    await openFilters(user);
+
+    await user.click(screen.getByRole("button", { name: /Clear all/ }));
+
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(expect.not.objectContaining({ min_rating: 4 })),
+    );
+    expect(screen.getByRole("checkbox", { name: "Hide discarded" })).not.toBeChecked();
+  });
+
+  it("says the shots are hidden, not missing, when every one is discarded", async () => {
+    getShots.mockResolvedValue(listData([]));
+    renderWithQueryClient(<ShotsPage />);
+
+    expect(await screen.findByText("No shots to show")).toBeInTheDocument();
+    expect(screen.getByText(/Untick Hide discarded/)).toBeInTheDocument();
+    expect(screen.queryByText("No shots archived yet")).not.toBeInTheDocument();
   });
 });
 

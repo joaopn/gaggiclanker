@@ -305,6 +305,8 @@ export type ShotListParams = {
   profile_version_id?: number;
   quarantined?: boolean;
   include_deleted?: boolean;
+  /** `false` leaves out shots labelled Discard; the server's default lists them. */
+  include_discarded?: boolean;
   set_id?: number;
   set_version_id?: number;
   /** The inbox: shots the archive could not attach to a Set on its own. */

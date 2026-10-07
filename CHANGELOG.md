@@ -10,6 +10,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Shots page: hide discarded shots
+
+- **Hide discarded**, a tickbox on the Shots page on its own line under the buttons, right-aligned
+  and ticked by default, leaves shots labelled Discard out of the list, its paging and its count.
+  Untick it to see them; the choice is in the address (`?discarded=show`), so a link carries it and
+  Clear all leaves it alone.
+  A shot you label Discard while it is ticked leaves the list at the next refresh. The API's
+  `GET /api/shots` takes `include_discarded=false` for the same thing and still lists every shot by
+  default.
+- Sync with machine stands apart from the list's own controls, with a wider gap before Filters.
+
 ### Beans export and import as JSON
 
 - **Every coffee on the Beans page has an Export JSON icon**, which downloads it as one file

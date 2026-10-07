@@ -28,8 +28,8 @@ import {
 } from "@/lib/shotColumns";
 import { type CurveChoice, loadShotCurves, saveShotCurves } from "@/lib/shotCurves";
 import {
+  activeFilterCount,
   fromSearchParams,
-  isDefaultFilters,
   type ShotFilterState,
   toParams,
   toSearchParams,
@@ -181,6 +181,9 @@ export function ShotsPage() {
   // conversations about what has been tried, so the count is a call to action in the header
   // rather than a number buried in the filter bar.
   const needsSet = counts?.needs_set ?? 0;
+  // An empty unfiltered list over a non-empty archive: everything is hidden
+  // by the tickbox, and "No shots archived yet" would be untrue.
+  const onlyDiscarded = !filters.showDiscarded && (counts?.total ?? 0) > 0;
 
   return (
     <div className="space-y-4">
@@ -188,39 +191,62 @@ export function ShotsPage() {
         title="Shots"
         subtitle={subtitle}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <PullButton />
-            <ShotFilters
-              value={filters}
-              onChange={setFilters}
-              versions={versions.data?.items ?? []}
-              sets={sets.data?.items ?? []}
-              versionLabel={versionLabel}
-            />
-            <ColumnChooser
-              visible={columnIds}
-              onChange={chooseColumns}
-              widthsChanged={Object.keys(widths).length > 0}
-              onResetWidths={resetWidths}
-            />
-            {needsSet > 0 && filters.set !== "needs" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid="needs-set-count"
-                onClick={() => setFilters({ ...filters, set: "needs" })}
-              >
-                <Layers className="size-3.5" aria-hidden="true" />
-                {needsSet} need a Set
-              </Button>
-            ) : null}
-            <ProfileAutomatch />
-            {selected.length > 0 ? (
-              <Button variant="outline" size="sm" onClick={() => setCompareOpen(true)}>
-                <GitCompare className="size-3.5" aria-hidden="true" />
-                Compare {selected.length}
-              </Button>
-            ) : null}
+          // The buttons on one line, and under them, right-aligned, the
+          // tickbox that decides which shots the list holds.
+          <div className="flex flex-col items-end gap-2">
+            {/* Sync talks to the machine; everything after it is about this
+              list. The wider gap says they are different kinds of control. */}
+            <div
+              className="flex flex-wrap items-center gap-x-6 gap-y-2"
+              data-testid="shots-toolbar"
+            >
+              <PullButton />
+              <div className="flex flex-wrap items-center gap-2" data-testid="shots-list-controls">
+                <ShotFilters
+                  value={filters}
+                  onChange={setFilters}
+                  versions={versions.data?.items ?? []}
+                  sets={sets.data?.items ?? []}
+                  versionLabel={versionLabel}
+                />
+                <ColumnChooser
+                  visible={columnIds}
+                  onChange={chooseColumns}
+                  widthsChanged={Object.keys(widths).length > 0}
+                  onResetWidths={resetWidths}
+                />
+                {needsSet > 0 && filters.set !== "needs" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="needs-set-count"
+                    onClick={() => setFilters({ ...filters, set: "needs" })}
+                  >
+                    <Layers className="size-3.5" aria-hidden="true" />
+                    {needsSet} need a Set
+                  </Button>
+                ) : null}
+                <ProfileAutomatch />
+                {selected.length > 0 ? (
+                  <Button variant="outline" size="sm" onClick={() => setCompareOpen(true)}>
+                    <GitCompare className="size-3.5" aria-hidden="true" />
+                    Compare {selected.length}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm" data-testid="shots-view-line">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={!filters.showDiscarded}
+                data-testid="hide-discarded"
+                onChange={(event) =>
+                  setFilters({ ...filters, showDiscarded: !event.target.checked })
+                }
+              />
+              Hide discarded
+            </label>
           </div>
         }
       />
@@ -286,13 +312,21 @@ export function ShotsPage() {
       ) : (
         <EmptyState
           icon={Coffee}
-          title={isDefaultFilters(filters) ? "No shots archived yet" : "No shots match"}
+          title={
+            activeFilterCount(filters) > 0
+              ? "No shots match"
+              : onlyDiscarded
+                ? "No shots to show"
+                : "No shots archived yet"
+          }
           description={
-            !isDefaultFilters(filters)
+            activeFilterCount(filters) > 0
               ? "Nothing in the archive matches these filters. Clear them to see everything."
-              : sync.data?.configured
-                ? "Sync with the machine, or drop exported files here."
-                : "Set the machine's address in Settings, or drop exported files here."
+              : onlyDiscarded
+                ? "Every shot in the archive is labelled Discard. Untick Hide discarded to see them."
+                : sync.data?.configured
+                  ? "Sync with the machine, or drop exported files here."
+                  : "Set the machine's address in Settings, or drop exported files here."
           }
         />
       )}
