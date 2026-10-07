@@ -92,11 +92,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the backups on disk */
-        get: operations["get_backups_api_backup_get"];
+        /** Download everything in the app as one file */
+        get: operations["download_backup_api_backup_get"];
         put?: never;
-        /** Back up the database */
-        post: operations["post_backup_api_backup_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2940,22 +2939,6 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiResponse[BackupData] */
-        ApiResponse_BackupData_: {
-            data?: components["schemas"]["BackupData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[BackupListData] */
-        ApiResponse_BackupListData_: {
-            data?: components["schemas"]["BackupListData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
         /** ApiResponse[BeanImportData] */
         ApiResponse_BeanImportData_: {
             data?: components["schemas"]["BeanImportData"] | null;
@@ -3723,33 +3706,6 @@ export interface components {
         AutomatchWrite: {
             /** Automatch */
             automatch: boolean;
-        };
-        /**
-         * BackupData
-         * @description Where the backup was written.
-         */
-        BackupData: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Filename */
-            filename: string;
-            /** Path */
-            path: string;
-            /** Size Bytes */
-            size_bytes: number;
-        };
-        /**
-         * BackupListData
-         * @description The backups on disk, newest first, and where they live.
-         */
-        BackupListData: {
-            /** Directory */
-            directory: string;
-            /** Items */
-            items: components["schemas"]["BackupData"][];
         };
         /** @enum {string} */
         Balance: "sour" | "balanced" | "bitter";
@@ -9123,9 +9079,12 @@ export interface operations {
             };
         };
     };
-    get_backups_api_backup_get: {
+    download_backup_api_backup_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Put the API keys and tokens in the file, in plain text. The sign-in user and password hash are always in it. */
+                include_keys?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9138,27 +9097,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_BackupListData_"];
+                    "application/octet-stream": unknown;
                 };
             };
-        };
-    };
-    post_backup_api_backup_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_BackupData_"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

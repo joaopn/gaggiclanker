@@ -20,7 +20,7 @@ const {
   getSettings,
   patchSettings,
   getHealth,
-  createBackup,
+  downloadBackup,
   getLlmStatus,
   getPrompts,
   getShotInformation,
@@ -28,7 +28,7 @@ const {
   getSettings: vi.fn(),
   patchSettings: vi.fn(),
   getHealth: vi.fn(),
-  createBackup: vi.fn(),
+  downloadBackup: vi.fn(),
   getLlmStatus: vi.fn(),
   getPrompts: vi.fn(),
   getShotInformation: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSettings,
   patchSettings,
   getHealth,
-  createBackup,
+  downloadBackup,
   getLlmStatus,
   getPrompts,
   getShotInformation,
@@ -380,27 +380,29 @@ describe("SettingsPage", () => {
     expect(await screen.findByText("Could not load settings")).toBeInTheDocument();
   });
 
-  it("renders /health and backs the database up on demand", async () => {
+  it("renders /health and downloads a backup, with keys only when ticked", async () => {
     const user = setupUser();
-    createBackup.mockResolvedValue({
-      filename: "gaggiclanker-20260101.db",
-      path: "/app/data/backups/gaggiclanker-20260101.db",
-      size_bytes: 4096,
-      created_at: "2026-01-01T00:00:00Z",
-    });
+    downloadBackup.mockResolvedValue("gaggiclanker-20260101T000000Z.db");
     renderAt("/settings/system");
 
     await user.click(screen.getByRole("button", { name: "Status" }));
     await waitFor(() => expect(screen.getByTestId("health-version")).toHaveTextContent("0.1.0"));
-    expect(screen.getByTestId("health-database")).toBeVisible();
     expect(screen.getByTestId("health-database")).toHaveTextContent("ok");
 
-    await user.click(screen.getByRole("button", { name: "Backup" }));
-    await user.click(screen.getByRole("button", { name: "Back up database" }));
-    await waitFor(() => expect(createBackup).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("button", { name: "Backup & restore" }));
+    expect(screen.queryByText(/in plain text/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Download backup" }));
+    await waitFor(() => expect(downloadBackup).toHaveBeenLastCalledWith(false));
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("Backup written: gaggiclanker-20260101.db"),
+      expect(toastSuccess).toHaveBeenCalledWith(
+        "Backup downloaded: gaggiclanker-20260101T000000Z.db",
+      ),
     );
+
+    await user.click(screen.getByLabelText("Include API keys and tokens"));
+    expect(screen.getByText(/in plain text/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Download backup" }));
+    await waitFor(() => expect(downloadBackup).toHaveBeenLastCalledWith(true));
   });
 
   it("gives shot information a page of its own, not a registry form", async () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Reproduce: `POST /api/backup` fails while the sync engine is writing.
+"""Reproduce: `GET /api/backup` fails while the sync engine is writing.
 
     uv run python scripts/repro_backup_during_sync.py
 
@@ -35,7 +35,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from gaggiclanker.db.backup import create_backup
+from gaggiclanker.db.backup import create_export
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 
@@ -51,9 +51,9 @@ async def main() -> int:
         result = None
         # Exactly what ShotsRepository.insert() is doing when a shot lands.
         async with db.transaction():
-            await db.execute("INSERT INTO machines (host) VALUES (?)", ("repro.local",))
+            await db.execute("INSERT INTO beans (name) VALUES (?)", ("Repro bean",))
             try:
-                result = await create_backup(db, root / "backups")
+                result = await create_export(db, root, include_keys=False)
             except Exception as exc:
                 failure = exc
         await db.close()
@@ -68,8 +68,9 @@ async def main() -> int:
         if not (result.path.is_file() and result.size_bytes > 0):
             print("FAIL: the backup call returned but wrote no file")
             return 1
+        result.discard()
         print(
-            f"PASS: backed up to {result.filename} ({result.size_bytes} bytes) "
+            f"PASS: exported {result.filename} ({result.size_bytes} bytes) "
             "with a write transaction open"
         )
         return 0

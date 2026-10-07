@@ -6,8 +6,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { createBackup, getSettings, patchSettings } from "@/api/client";
-import type { BackupData, SettingsMap, SettingsPatch } from "@/api/types";
+import { getSettings, patchSettings } from "@/api/client";
+import type { SettingsMap, SettingsPatch } from "@/api/types";
 import { invalidateDeviceConnection, invalidateSettings } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -80,18 +80,6 @@ export function useUpdateSettings(): UseMutationResult<
         void invalidateDeviceConnection(queryClient);
         setTimeout(() => void invalidateDeviceConnection(queryClient), RECONNECT_RECHECK_MS);
       }
-    },
-  });
-}
-
-export function useCreateBackup(): UseMutationResult<BackupData, Error, void> {
-  return useMutation({
-    mutationFn: () => createBackup(),
-    onSuccess: (data) => {
-      toast.success(`Backup written: ${data.filename}`);
-    },
-    onError: (error) => {
-      toast.error(`Backup failed: ${error.message}`);
     },
   });
 }

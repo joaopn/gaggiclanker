@@ -11,13 +11,15 @@ pins the shape and greps the routers to keep it that way.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -31,6 +33,7 @@ __all__ = [
     "binary_response",
     "envelope_response",
     "error_payload",
+    "file_download",
     "register_exception_handlers",
     "success_payload",
 ]
@@ -117,6 +120,51 @@ def binary_response(
     if request_id:
         headers["x-request-id"] = request_id
     return Response(content=body, media_type=media_type, headers=headers)
+
+
+class _TempFileResponse(FileResponse):
+    """A file response that always cleans up, after the last byte and when the client leaves.
+
+    Starlette's ``background`` hook is skipped when the send fails, which is
+    exactly how a download that the browser abandoned would leave its temp file
+    behind.
+    """
+
+    def __init__(self, *args: Any, cleanup: Callable[[], None], **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._cleanup = cleanup
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._cleanup()
+
+
+def file_download(
+    path: Path,
+    *,
+    filename: str,
+    cleanup: Callable[[], None],
+    request_id: str | None = None,
+) -> Response:
+    """Stream a file from disk as a download, then call ``cleanup`` whatever happens.
+
+    The counterpart of :func:`binary_response` for files too big to hold in
+    memory (a backup is the whole archive), and for the same reason it is not an
+    envelope and lives here rather than in a router.
+    """
+    headers = {"X-Content-Type-Options": "nosniff"}
+    if request_id:
+        headers["x-request-id"] = request_id
+    return _TempFileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=filename,
+        content_disposition_type="attachment",
+        headers=headers,
+        cleanup=cleanup,
+    )
 
 
 def _fail(error: AppError) -> JSONResponse:

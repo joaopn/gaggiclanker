@@ -1,15 +1,17 @@
+import { useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
+import { useDownloadBackup } from "@/hooks/useBackup";
 import { useHealth } from "@/hooks/useHealth";
-import { useCreateBackup } from "@/hooks/useSettings";
 import type { SettingsPageInfo } from "@/lib/settingsPages";
 import { useOpenGroups } from "@/pages/settings/useOpenGroups";
 
-/** What the backend reports about itself, and a copy of the database on demand. */
+/** What the backend reports about itself, and the whole app as one downloadable file. */
 export function SystemPage({ page }: { page: SettingsPageInfo }) {
   const health = useHealth();
-  const backup = useCreateBackup();
+  const backup = useDownloadBackup();
+  const [includeKeys, setIncludeKeys] = useState(false);
   const { isOpen, setGroupOpen } = useOpenGroups();
 
   return (
@@ -47,22 +49,36 @@ export function SystemPage({ page }: { page: SettingsPageInfo }) {
         collapsible
         open={isOpen("backup")}
         onOpenChange={(open) => setGroupOpen("backup", open)}
-        title="Backup"
-        description="A copy of the database, written next to it under the data directory."
+        title="Backup & restore"
+        description="The whole app in one file, and putting one back."
       >
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="space-y-2">
+          <h3 className="font-medium text-sm">Back up</h3>
+          <p className="text-muted-foreground text-sm">
+            Everything in the app in one file: shots, Sets, beans, profiles, chats, knowledge and
+            settings.
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={includeKeys}
+              onChange={(event) => setIncludeKeys(event.target.checked)}
+            />
+            Include API keys and tokens
+          </label>
+          {includeKeys && (
+            <p className="text-muted-foreground text-xs">
+              The file will hold your API keys and tokens in plain text. Keep it somewhere safe.
+            </p>
+          )}
           <Button
             variant="outline"
-            onClick={() => backup.mutate()}
+            onClick={() => backup.mutate(includeKeys)}
             disabled={backup.isPending}
             type="button"
           >
-            {backup.isPending ? "Backing up..." : "Back up database"}
+            {backup.isPending ? "Preparing..." : "Download backup"}
           </Button>
-          <p className="text-muted-foreground text-xs">
-            Written with <code>VACUUM INTO</code> under the data directory, so it lands on the host
-            bind mount immediately.
-          </p>
         </div>
       </SectionCard>
     </div>

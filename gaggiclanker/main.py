@@ -26,6 +26,7 @@ from gaggiclanker.api import api_router, health_router
 from gaggiclanker.auth.guard import AuthGuardMiddleware
 from gaggiclanker.auth.service import AuthService
 from gaggiclanker.chat.runner import ChatRunner
+from gaggiclanker.db.backup import clean_stale_exports
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.chat import ChatRepository
@@ -268,6 +269,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # not a matter of taste.
     check_configuration(env)
     ensure_data_dir(env.data_dir)
+    # A download cut off by a stop leaves a full copy of the database in a temp directory.
+    clean_stale_exports(env.data_dir)
 
     db = Database(env.database_path)
     await db.connect()

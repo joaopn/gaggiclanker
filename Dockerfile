@@ -148,7 +148,7 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 # (Docker copies the image's ownership onto an empty volume). A *bind mount*
 # gets none of that — the host directory shadows this one — which is what the
 # entrypoint is for.
-RUN mkdir -p /app/data/backups /home/app \
+RUN mkdir -p /app/data /home/app \
     && chown -R app:app /app/data /home/app
 
 COPY --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

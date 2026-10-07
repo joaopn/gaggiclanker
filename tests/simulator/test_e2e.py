@@ -350,10 +350,9 @@ async def test_the_whole_prototype_against_the_simulator(
     assert new_version["origin"] == "manual"
 
     # 10. Back up — DoD item 8. The file is what a restore copies.
-    backup = data(await client.post("/api/backup"))
-    assert backup["size_bytes"] > 0
-    listed_backups = data(await client.get("/api/backup"))["items"]
-    assert any(entry["filename"] == backup["filename"] for entry in listed_backups)
+    backup = await client.get("/api/backup")
+    assert backup.status_code == 200
+    assert backup.content[:16] == b"SQLite format 3\x00"
 
     # And the database the app is still using is untouched by the copy.
     assert data(await client.get(f"/api/shots/{shot_id}"))["shot"]["id"] == shot_id

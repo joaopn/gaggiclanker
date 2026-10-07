@@ -13,7 +13,6 @@
 
 import type {
   AuthStatusData,
-  BackupData,
   BeanImportData,
   BeanRow,
   BeanWrite,
@@ -456,8 +455,9 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsMap> 
   });
 }
 
-export async function createBackup(): Promise<BackupData> {
-  return fetchApi<BackupData>("/backup", { method: "POST" });
+/** Download everything in the app as one file; the keys are in it only when asked for. */
+export async function downloadBackup(includeKeys: boolean): Promise<string> {
+  return downloadFile(`${API_BASE}/backup?include_keys=${includeKeys}`, "gaggiclanker-backup.db");
 }
 
 export async function getDeviceStatus(): Promise<DeviceStatusData> {

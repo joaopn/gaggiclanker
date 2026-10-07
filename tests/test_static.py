@@ -115,7 +115,7 @@ async def test_wrong_method_on_a_real_route_is_405_not_404(
         for method, path in (
             ("post", "/health"),
             ("delete", "/api/settings"),
-            # /api/backup answers GET and POST; PUT never.
+            # /api/backup answers GET; PUT never.
             ("put", "/api/backup"),
         ):
             response = await getattr(client, method)(path)

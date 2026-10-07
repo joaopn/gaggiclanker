@@ -1,74 +1,46 @@
-"""``/api/backup`` — write a consistent copy of the database, and list the copies.
+"""``/api/backup`` — download the whole app as one file.
 
-Under the bind mount, so the file is on the host the moment the call returns
-and a container recreate cannot take it away.
-
-Restore stays a file copy rather than an endpoint: a running server cannot swap
-the database out from under its own open connection. `GET` exists so an operator
-can see what there is to copy without a shell in the container.
+The file is a complete gaggiclanker database with a small manifest table inside;
+restoring one is :mod:`gaggiclanker.api.restore`. There is no copy kept on the
+server: the file goes to the person, and a restore takes only an uploaded file.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
-
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
 from gaggiclanker.api.deps import DatabaseDep, EnvSettingsDep
-from gaggiclanker.db.backup import create_backup, list_backups
-from gaggiclanker.infra.envelope import ApiResponse, envelope_response
+from gaggiclanker.db.backup import create_export
+from gaggiclanker.infra.envelope import file_download
+from gaggiclanker.infra.request_context import get_request_id
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/backup", tags=["backup"])
 
 
-class BackupData(BaseModel):
-    """Where the backup was written."""
-
-    filename: str
-    path: str
-    size_bytes: int
-    created_at: datetime
-
-
-class BackupListData(BaseModel):
-    """The backups on disk, newest first, and where they live."""
-
-    directory: str
-    items: list[BackupData]
-
-
-@router.get("", response_model=ApiResponse[BackupListData], summary="List the backups on disk")
-async def get_backups(env: EnvSettingsDep) -> JSONResponse:
-    results = await list_backups(env.backups_dir)
-    return envelope_response(
-        BackupListData(
-            directory=str(env.backups_dir),
-            items=[
-                BackupData(
-                    filename=result.filename,
-                    path=str(result.path),
-                    size_bytes=result.size_bytes,
-                    created_at=result.created_at,
-                )
-                for result in results
-            ],
-        ).model_dump(mode="json")
-    )
-
-
-@router.post("", response_model=ApiResponse[BackupData], summary="Back up the database")
-async def post_backup(db: DatabaseDep, env: EnvSettingsDep) -> JSONResponse:
-    result = await create_backup(db, env.backups_dir)
-    return envelope_response(
-        BackupData(
-            filename=result.filename,
-            path=str(result.path),
-            size_bytes=result.size_bytes,
-            created_at=result.created_at,
-        ).model_dump(mode="json"),
-        status_code=201,
+@router.get(
+    "",
+    summary="Download everything in the app as one file",
+    response_class=Response,
+    responses={200: {"content": {"application/octet-stream": {}}}},
+)
+async def download_backup(
+    db: DatabaseDep,
+    env: EnvSettingsDep,
+    include_keys: bool = Query(
+        False,
+        description=(
+            "Put the API keys and tokens in the file, in plain text. The sign-in user and "
+            "password hash are always in it."
+        ),
+    ),
+) -> Response:
+    export = await create_export(db, env.data_dir, include_keys=include_keys)
+    return file_download(
+        export.path,
+        filename=export.filename,
+        cleanup=export.discard,
+        request_id=get_request_id(),
     )

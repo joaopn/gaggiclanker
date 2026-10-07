@@ -463,16 +463,3 @@ async def test_the_machine_route_reports_the_identity_and_the_counts(
     assert machine["hardware_string"] == device.identity["hardware"]
     assert machine["has_pressure"] is True
     assert body["counts"]["total"] == STORED
-
-
-async def test_backup_can_be_listed(
-    served: tuple[FakeDevice, FastAPI, httpx.AsyncClient],
-) -> None:
-    _device, _app, client = served
-    assert (await client.get("/api/backup")).json()["data"]["items"] == []
-
-    created = (await client.post("/api/backup")).json()["data"]
-
-    listed = (await client.get("/api/backup")).json()["data"]
-    assert [item["filename"] for item in listed["items"]] == [created["filename"]]
-    assert listed["directory"].endswith("backups")

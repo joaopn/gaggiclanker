@@ -91,7 +91,7 @@ export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
     id: "system",
     label: "System",
     icon: Server,
-    description: "What the backend reports about itself, and a copy of the database on demand.",
+    description: "The backend's health, and backup and restore of the whole app.",
   },
   {
     id: "import",

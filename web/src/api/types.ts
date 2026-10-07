@@ -14,7 +14,6 @@ export type HealthData = components["schemas"]["HealthData"];
 export type AuthStatusData = components["schemas"]["AuthStatusData"];
 export type LoginData = components["schemas"]["LoginData"];
 export type PasswordData = components["schemas"]["PasswordData"];
-export type BackupData = components["schemas"]["BackupData"];
 export type DeviceStatusData = components["schemas"]["DeviceStatusData"];
 export type ShotListData = components["schemas"]["ShotListData"];
 export type ShotListRow = components["schemas"]["ShotListItem"];

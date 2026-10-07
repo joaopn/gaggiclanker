@@ -16,7 +16,6 @@ fetch, `/health` still answers in well under 200 ms.
 from __future__ import annotations
 
 import asyncio
-import shutil
 import time
 from pathlib import Path
 
@@ -87,7 +86,7 @@ async def test_a_backup_restores_into_a_fresh_data_dir(tmp_path: Path) -> None:
             await _pull(client)
             await _wait_for(client, STORED)
             before = (await client.get("/api/sync/status")).json()["data"]["counts"]
-            backup = (await client.post("/api/backup")).json()["data"]
+            backup = (await client.get("/api/backup")).content
     finally:
         await device.stop()
 
@@ -95,7 +94,7 @@ async def test_a_backup_restores_into_a_fresh_data_dir(tmp_path: Path) -> None:
     # start it again. No machine configured this time, because an archive
     # browser has to work with the machine unplugged — and because a sync
     # against a device would muddy the comparison.
-    shutil.copyfile(backup["path"], restored / "gaggiclanker.db")
+    (restored / "gaggiclanker.db").write_bytes(backup)
 
     async with running_app(_env(restored)) as (_app, client):
         after = (await client.get("/api/sync/status")).json()["data"]["counts"]

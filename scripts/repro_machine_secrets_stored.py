@@ -82,9 +82,9 @@ async def main() -> int:
                 async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
                     machine_body = (await client.get("/api/machine")).text
                     status_body = (await client.get("/api/device/status")).text
-                    backup = (await client.post("/api/backup")).json()["data"]
-                backup_path = Path(env.data_dir) / "backups" / backup["filename"]
-                backup_bytes = backup_path.read_bytes()
+                    backup_bytes = (
+                        await client.get("/api/backup", params={"include_keys": "true"})
+                    ).content
 
             row = (
                 sqlite3.connect(env.database_path)

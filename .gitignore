@@ -221,7 +221,7 @@ __marimo__/
 /external/
 
 # --- gaggiclanker ---
-# The bind-mounted data directory: the SQLite file, its WAL sidecars and backups.
+# The bind-mounted data directory: the SQLite file and its WAL sidecars.
 /data/
 # Front-end build output. The generic `dist/` rule above already covers it;
 # named here so it is obvious where the served bundle comes from.

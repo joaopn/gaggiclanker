@@ -3,7 +3,6 @@ import {
   __resetApiClientAuthForTests,
   ApiClientError,
   chatTranscriptUrl,
-  createBackup,
   downloadFile,
   fetchApi,
   getBoardConflict,
@@ -275,7 +274,7 @@ describe("fetchApi", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       jsonResponse(503, failure("SERVICE_UNAVAILABLE", "Database is unavailable")),
     );
-    await expect(createBackup()).rejects.toThrow(/Database is unavailable/);
+    await expect(getSettings()).rejects.toThrow(/Database is unavailable/);
     expect(redirectToSignIn).not.toHaveBeenCalled();
   });
 });

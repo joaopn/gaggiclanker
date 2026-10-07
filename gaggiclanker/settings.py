@@ -128,7 +128,7 @@ class EnvSettings(BaseSettings):
     data_dir: Path = Field(
         default=Path("data"),
         validation_alias=AliasChoices("DATA_DIR", "GAGGICLANKER_DATA_DIR"),
-        description="Directory holding the SQLite file and the backups/ subdirectory.",
+        description="Directory holding the SQLite file.",
     )
     log_level: str = Field(
         default="info",
@@ -171,10 +171,6 @@ class EnvSettings(BaseSettings):
     @property
     def database_path(self) -> Path:
         return self.data_dir / "gaggiclanker.db"
-
-    @property
-    def backups_dir(self) -> Path:
-        return self.data_dir / "backups"
 
     @property
     def cors_origin_list(self) -> list[str]:

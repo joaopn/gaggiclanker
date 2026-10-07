@@ -128,9 +128,11 @@ async def test_the_api_serves_the_machine_and_its_status_without_secrets(
 async def test_a_backup_carries_no_secret(
     served: tuple[FakeDevice, FastAPI, httpx.AsyncClient],
 ) -> None:
-    _device, app, client = served
-    created = (await client.post("/api/backup")).json()["data"]
+    _device, _app, client = served
+    # With the keys: the strongest form of the file, so a secret in it would show.
+    response = await client.get("/api/backup", params={"include_keys": "true"})
+    assert response.status_code == 200
 
-    raw = (app.state.env.backups_dir / created["filename"]).read_bytes()
+    raw = response.content
 
     assert not [s for s in ALL_SECRETS if s.encode() in raw]
