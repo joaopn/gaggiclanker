@@ -116,7 +116,7 @@ EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
         " GROUP BY set_version_id, set_version_label ORDER BY MIN(started_at)",
     ),
     (
-        "The claims a person confirmed about a Set's shots, with the fault word and the phase "
+        "The claims of a Set's shots that nobody rejected, with the fault word and the phase "
         "they are about",
         "SELECT s.shot_id, c.fault, c.window_text, c.text\n"
         "  FROM v_shots s JOIN v_review_claims c ON c.shot_id = s.shot_id AND c.kind = 'claim'\n"
@@ -162,10 +162,10 @@ SCHEMA_NOTES = (
     "not a position: v1.2 may have been made after v2, so sort versions by created_at and "
     "never infer order from the name. is_current (v_set_versions) and current_version_label "
     "(v_sets) say which version a Set is on, and parent_version_label which one a version "
-    "was made from. v_review_claims holds only the claims a person confirmed in a shot's "
-    "newest finished reading (the fault word, the window it is about, its text and the "
-    "numbers behind it); v_reviews says how many claims a reading has confirmed and how many "
-    "are still unverified."
+    "was made from. v_review_claims holds every claim of a shot's newest finished review "
+    "that a person did not reject (the fault word, the window it is about, its text and the "
+    "numbers behind it); v_reviews says how many claims a review kept and how many a person "
+    "rejected."
 )
 
 

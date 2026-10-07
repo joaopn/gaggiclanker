@@ -91,8 +91,6 @@ class WarningOut(BaseModel):
     #: ``failed``, ``warning`` or ``expected``.
     status: str = "warning"
     expectation_id: int | None = None
-    #: A free-text expectation a reading failed that nobody has confirmed yet.
-    unverified: bool = False
 
 
 class CheckOut(BaseModel):
@@ -140,8 +138,6 @@ class CheckOut(BaseModel):
     absent: str | None
     at_s: float
     expectation_id: int | None
-    #: An answer of the reading that nobody has confirmed yet (a free-text check only).
-    unverified: bool = False
 
 
 class SignatureStateOut(BaseModel):
@@ -234,7 +230,6 @@ def _check_out(check: Check) -> CheckOut:
         absent=check.absent,
         at_s=check.at_s,
         expectation_id=check.expectation_id,
-        unverified=check.unverified,
     )
 
 

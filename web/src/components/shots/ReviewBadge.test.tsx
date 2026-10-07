@@ -219,35 +219,12 @@ describe("ReviewBadge reading states", () => {
     );
   });
 
-  it("is outlined while claims are unanswered and filled once none is", () => {
+  it("is filled whenever a review has something to say, and keeps the tone of its verdict", () => {
     const { rerender } = render(
-      <ReviewBadge
-        {...entries}
-        reading={readingBlock({ state: "read", verdict: "entries", unanswered: 2 })}
-      />,
-    );
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-filled", "no");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "bad");
-    rerender(
-      <ReviewBadge
-        {...entries}
-        reading={readingBlock({ state: "read", verdict: "entries", unanswered: 0 })}
-      />,
+      <ReviewBadge {...entries} reading={readingBlock({ state: "read", verdict: "entries" })} />,
     );
     expect(screen.getByTestId("review-badge")).toHaveAttribute("data-filled", "yes");
-  });
-
-  it("says As intended in green and No signature in grey, each outlined until answered", () => {
-    const { rerender } = render(
-      <ReviewBadge
-        badge="As intended"
-        warnings={[]}
-        reading={readingBlock({ state: "read", verdict: "as_intended", unanswered: 1 })}
-      />,
-    );
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("As intended");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "good");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-filled", "no");
+    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "bad");
     rerender(
       <ReviewBadge
         badge="As intended"
@@ -255,6 +232,8 @@ describe("ReviewBadge reading states", () => {
         reading={readingBlock({ state: "read", verdict: "as_intended" })}
       />,
     );
+    expect(screen.getByTestId("review-badge")).toHaveTextContent("As intended");
+    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "good");
     expect(screen.getByTestId("review-badge")).toHaveAttribute("data-filled", "yes");
     rerender(
       <ReviewBadge
@@ -267,25 +246,20 @@ describe("ReviewBadge reading states", () => {
     expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "muted");
   });
 
-  it("marks an unverified entry in the tooltip, and ends it with the summary", () => {
+  it("lists the entries in the tooltip and ends it with the summary", () => {
     render(
       <ReviewBadge
         badge="decline: unstable"
-        warnings={[{ ...LEVER_WARNINGS[1], phase: "decline", fault: "unstable", unverified: true }]}
+        warnings={[{ ...LEVER_WARNINGS[1], phase: "decline", fault: "unstable" }]}
         reading={readingBlock({
           state: "read",
           verdict: "entries",
-          unanswered: 1,
           summary: "A fast ramp and a wandering decline.",
         })}
       />,
     );
     const lines = (screen.getByTestId("review-badge-wrap").getAttribute("title") ?? "").split("\n");
-    expect(lines[0]).toMatch(/^decline: unstable — .*\(unverified\)$/);
-    expect(lines[0]).not.toMatch(/\.\s*\(unverified\)/);
-    // The screen-reader sentence puts the stop after the mark, not before it.
-    expect(screen.getByTestId("review-badge-list").textContent).toMatch(/\(unverified\)\./);
-    expect(screen.getByTestId("review-badge-list").textContent).not.toMatch(/\.\s*\(unverified\)/);
+    expect(lines[0]).toMatch(/^decline: unstable — /);
     expect(lines[lines.length - 1]).toBe("A fast ramp and a wandering decline.");
   });
 
@@ -412,7 +386,7 @@ describe("ReviewBadge as a button", () => {
 
 describe("ReviewBadge without the served text", () => {
   it("never says No signature unless the verdict is that", () => {
-    const entries = readingBlock({ state: "read", verdict: "entries", unanswered: 2 });
+    const entries = readingBlock({ state: "read", verdict: "entries" });
     const { rerender } = render(<ReviewBadge badge={null} warnings={[]} reading={entries} />);
     expect(screen.getByTestId("review-badge")).not.toHaveTextContent("No signature");
     expect(screen.getByTestId("review-badge")).toHaveTextContent("Failures loading…");

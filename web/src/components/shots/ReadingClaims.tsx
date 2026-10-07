@@ -1,39 +1,25 @@
-import { Check, Crosshair, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
-import type { ClaimEvidence, ReviewClaim, ReviewClaimStatus } from "@/api/types";
-import { ReasonForm } from "@/components/signatures/ReasonForm";
+import { Crosshair, RotateCcw, X } from "lucide-react";
+import { useId, useRef } from "react";
+import type { ClaimEvidence, ReviewClaim } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ClaimSpanControls } from "@/lib/claimSpan";
 import { cn } from "@/lib/utils";
 
 /**
- * One statement of a reading, with the numbers the server worked out for it and the person's
- * answer to it.
+ * One statement of a review, with the numbers the server worked out for it.
  *
- * The same row serves the three kinds a reading makes: an observation (a phase or a span, a
+ * The same row serves the three kinds a review makes: an observation (a phase or a span, a
  * fault word and a sentence), a free-text expectation's result (held or failed, in the colour of
- * its tier) and the prediction's stance. A claim is **proposed** until a person confirms or
- * rejects it; the answer can be changed, and only a confirmed claim reaches the chat. A claim
- * whose numbers do not bear it out is kept and says so.
+ * its tier) and the prediction's stance. A claim is **kept** until a person rejects it, and the
+ * chat is told every claim that is not rejected; **Reject** removes it from the list and from
+ * the chat, **Restore** brings it back. A claim whose numbers do not bear it out is kept and
+ * says so.
  *
  * Hovering or focusing the span button draws its span on the chart, and pressing it pins the
  * span (a phone has no hover). The row is `tabIndex={-1}` and takes focus before an answer goes
- * out, so Confirm going away leaves a keyboard user on the claim and not on the page.
+ * out, so the button going away leaves a keyboard user on the claim and not on the page.
  */
-
-export const STATUS_LABEL: Record<ReviewClaimStatus, string> = {
-  proposed: "unverified",
-  confirmed: "confirmed",
-  rejected: "rejected",
-};
-
-function statusClass(status: ReviewClaimStatus): string {
-  if (status === "confirmed")
-    return "border-status-good/40 bg-status-good/10 text-status-good-text";
-  if (status === "rejected") return "border-border text-muted-foreground line-through";
-  return "border-status-warn/40 bg-status-warn/10 text-status-warn-text";
-}
 
 /** A measured value as a person reads it: "6.1 bar", "117.2 %". */
 function measured(item: ClaimEvidence): string | null {
@@ -101,7 +87,7 @@ export function ClaimItem({
   busy,
   tier,
   expectation,
-  onConfirm,
+  onRestore,
   onReject,
 }: {
   claim: ReviewClaim;
@@ -113,10 +99,9 @@ export function ClaimItem({
   tier?: TierLook;
   /** The expectation's own sentence, for a free-text result. */
   expectation?: string;
-  onConfirm: (claim: ReviewClaim) => void;
-  onReject: (claim: ReviewClaim, reason: string) => void;
+  onRestore: (claim: ReviewClaim) => void;
+  onReject: (claim: ReviewClaim) => void;
 }) {
-  const [rejecting, setRejecting] = useState(false);
   const itemRef = useRef<HTMLLIElement>(null);
   const keepFocus = () => itemRef.current?.focus();
   const noteId = useId();
@@ -146,6 +131,7 @@ export function ClaimItem({
       tabIndex={-1}
       className={cn(
         "min-w-0 scroll-mt-24 space-y-1.5 rounded-md border bg-background px-2.5 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        claim.status === "rejected" && "opacity-70",
         failedLook === "red" && "border-status-bad/40",
         failedLook === "amber" && "border-status-warn/40",
         failedLook === "grey" && "border-border",
@@ -219,9 +205,15 @@ export function ClaimItem({
             {STANCE_LABEL[claim.stance]}
           </Badge>
         ) : null}
-        <Badge variant="outline" className={statusClass(claim.status)} data-testid="claim-status">
-          {STATUS_LABEL[claim.status]}
-        </Badge>
+        {claim.status === "rejected" ? (
+          <Badge
+            variant="outline"
+            className="border-border text-muted-foreground"
+            data-testid="claim-status"
+          >
+            rejected
+          </Badge>
+        ) : null}
         {claim.supported ? null : (
           <Badge
             variant="outline"
@@ -252,69 +244,46 @@ export function ClaimItem({
           ))}
         </ul>
       ) : null}
-      {claim.status === "rejected" && claim.reason ? (
-        <p className="break-words text-muted-foreground text-xs" data-testid="claim-reason">
-          Rejected: {claim.reason}
-        </p>
-      ) : null}
-
-      {rejecting ? (
-        <ReasonForm
-          testId="claim-reject-form"
-          label={`Why reject the claim about ${label}`}
-          busy={busy}
-          onCancel={() => {
-            keepFocus();
-            setRejecting(false);
-          }}
-          onSubmit={(reason) => {
-            keepFocus();
-            onReject(claim, reason);
-            setRejecting(false);
-          }}
-        />
-      ) : (
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {claim.status !== "confirmed" ? (
-            <Button
-              type="button"
-              size="sm"
-              variant={claim.status === "proposed" ? "default" : "outline"}
-              // Not `disabled`: see the Signature card, a second press must not drop focus.
-              aria-disabled={busy}
-              className="aria-disabled:opacity-50"
-              data-testid="claim-confirm"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                if (busy) return;
-                keepFocus();
-                onConfirm(claim);
-              }}
-            >
-              <Check className="size-3.5" aria-hidden="true" />
-              {claim.status === "rejected" ? "Change to confirm" : "Confirm"}
-            </Button>
-          ) : null}
-          {claim.status !== "rejected" ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              aria-disabled={busy}
-              className="aria-disabled:opacity-50"
-              data-testid="claim-reject"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                if (busy) return;
-                setRejecting(true);
-              }}
-            >
-              <X className="size-3.5" aria-hidden="true" />
-              {claim.status === "confirmed" ? "Change to reject" : "Reject"}
-            </Button>
-          ) : null}
-        </div>
-      )}
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {claim.status === "rejected" ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            // Not `disabled`: a second press must not drop focus to the page.
+            aria-disabled={busy}
+            className="aria-disabled:opacity-50"
+            data-testid="claim-restore"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (busy) return;
+              keepFocus();
+              onRestore(claim);
+            }}
+          >
+            <RotateCcw className="size-3.5" aria-hidden="true" />
+            Restore
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-disabled={busy}
+            className="aria-disabled:opacity-50"
+            data-testid="claim-reject"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (busy) return;
+              keepFocus();
+              onReject(claim);
+            }}
+          >
+            <X className="size-3.5" aria-hidden="true" />
+            Reject
+          </Button>
+        )}
+      </div>
     </li>
   );
 }

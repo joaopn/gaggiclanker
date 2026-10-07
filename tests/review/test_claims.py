@@ -1,10 +1,10 @@
-"""Answering a reading's claims: one at a time, or all at once, by a person.
+"""Rejecting and restoring a review's claims, by a person.
 
-The rules under test: a claim starts `proposed` and only a person moves it; an answer can be
-changed; "confirm all" leaves what was already answered alone; only the newest finished reading
-of a shot can be answered (409 for any other); the check and the write share one transaction, so
-two answers racing leave one consistent state and each is logged; and a reading and its claims
-are written together or not at all.
+The rules under test: a claim is kept (`confirmed`) from the moment it is written and only a
+person rejects it; they may restore it; there is no confirm-all and no waiting state; only the
+newest finished review of a shot can be answered (409 for any other); the check and the write
+share one transaction, so two answers racing leave one consistent state and each is logged; and a
+review and its claims are written together or not at all.
 """
 
 from __future__ import annotations
@@ -42,64 +42,47 @@ def _url(review: dict[str, object], claim: int = 0) -> str:
     return f"/api/reviews/{review['id']}/claims/{claims[claim]['id']}"
 
 
-async def test_a_person_confirms_a_claim_and_the_review_comes_back_updated(api: Api) -> None:
+async def test_a_claim_is_kept_from_the_start_and_a_person_rejects_and_restores_it(
+    api: Api,
+) -> None:
     app, client, _ = api
     data = await build_app_fixture(app)
     review = await _read(client, data.shots[-1])
+    assert [claim["status"] for claim in review["claims"]] == ["confirmed", "confirmed"]  # type: ignore[attr-defined]
 
-    response = await client.patch(_url(review), json={"status": "confirmed"})
+    rejected = await client.patch(_url(review), json={"status": "rejected"})
 
-    assert response.status_code == 200
-    updated = response.json()["data"]
+    assert rejected.status_code == 200
+    updated = rejected.json()["data"]
     assert updated["id"] == review["id"]
     first, second = updated["claims"]
-    assert (first["status"], first["reason"]) == ("confirmed", "")
-    assert first["answered_at"]
-    assert (second["status"], second["answered_at"]) == ("proposed", None)
-    detail = (await client.get(f"/api/shots/{data.shots[-1]}")).json()["data"]
-    assert detail["reading"]["unanswered"] == 1
+    assert (first["status"], second["status"]) == ("rejected", "confirmed")
+    assert first["answered_at"] and second["answered_at"] is None
+    assert "reason" not in first
 
-
-async def test_a_claim_is_rejected_with_a_reason_and_the_answer_can_be_changed(api: Api) -> None:
-    app, client, _ = api
-    data = await build_app_fixture(app)
-    review = await _read(client, data.shots[-1])
-
-    rejected = await client.patch(
-        _url(review), json={"status": "rejected", "reason": "  not what I saw  "}
-    )
-    assert rejected.json()["data"]["claims"][0]["status"] == "rejected"
-    assert rejected.json()["data"]["claims"][0]["reason"] == "not what I saw"
-
-    changed = await client.patch(_url(review), json={"status": "confirmed"})
-    claim = changed.json()["data"]["claims"][0]
-    assert (claim["status"], claim["reason"]) == ("confirmed", "")
+    restored = await client.patch(_url(review), json={"status": "confirmed"})
+    assert restored.json()["data"]["claims"][0]["status"] == "confirmed"
     again = await client.patch(_url(review), json={"status": "rejected"})
     assert again.json()["data"]["claims"][0]["status"] == "rejected"
 
 
-async def test_confirm_all_confirms_what_is_waiting_and_leaves_a_rejection_alone(api: Api) -> None:
+async def test_there_is_no_confirm_all_and_no_waiting_state(api: Api) -> None:
     app, client, _ = api
     data = await build_app_fixture(app)
     review = await _read(client, data.shots[-1])
-    await client.patch(_url(review, 1), json={"status": "rejected", "reason": "no"})
 
-    response = await client.post(f"/api/reviews/{review['id']}/claims/confirm-all")
-
-    assert response.status_code == 200
-    statuses = [claim["status"] for claim in response.json()["data"]["claims"]]
-    assert statuses == ["confirmed", "rejected"]
+    gone = await client.post(f"/api/reviews/{review['id']}/claims/confirm-all")
+    assert gone.status_code in (404, 405)
+    waiting = await client.patch(_url(review), json={"status": "proposed"})
+    assert waiting.status_code == 400
     detail = (await client.get(f"/api/shots/{data.shots[-1]}")).json()["data"]
-    assert detail["reading"]["unanswered"] == 0
-    # Confirming all again changes nothing and is not an error.
-    again = await client.post(f"/api/reviews/{review['id']}/claims/confirm-all")
-    assert again.status_code == 200
+    assert "unanswered" not in detail["reading"]
 
 
 async def _with_a_stance(
     app: FastAPI, client: httpx.AsyncClient, provider: FakeProvider
 ) -> dict[str, object]:
-    """A reading with two claims and a stance on the Set version's prediction."""
+    """A review with two claims and a stance on the Set version's prediction."""
     data = await build_app_fixture(app)
     await predict(data)
     stance = {"stance": "partly", "text": "The shot was faster.", "evidence": []}
@@ -107,98 +90,51 @@ async def _with_a_stance(
     return await _read(client, data.shots[-1])
 
 
-async def test_confirm_all_can_leave_a_kind_of_claim_waiting(api: Api) -> None:
-    """The stance is held back until the shot has a decision: Confirm all must not confirm it."""
+async def test_a_stance_is_kept_like_any_claim_and_a_person_may_reject_it(api: Api) -> None:
     app, client, provider = api
     review = await _with_a_stance(app, client, provider)
-    shot_id = review["shot_id"]
 
-    response = await client.post(
-        f"/api/reviews/{review['id']}/claims/confirm-all", json={"except_kinds": ["prediction"]}
-    )
-
-    assert response.status_code == 200
-    claims = response.json()["data"]["claims"]
-    assert [(c["kind"], c["status"]) for c in claims] == [
+    claims = review["claims"]
+    assert [(c["kind"], c["status"]) for c in claims] == [  # type: ignore[attr-defined]
         ("claim", "confirmed"),
         ("claim", "confirmed"),
-        ("prediction", "proposed"),
+        ("prediction", "confirmed"),
     ]
-    assert claims[2]["answered_at"] is None
-    detail = (await client.get(f"/api/shots/{shot_id}")).json()["data"]
-    assert detail["reading"]["unanswered"] == 1, "the held-back stance still counts"
-    # Nothing unconfirmed teaches: the stance is not served to the SQL view.
+    kinds = await app.state.db.fetch_all("SELECT kind FROM v_review_claims")
+    assert {row["kind"] for row in kinds} == {"claim", "prediction"}
+
+    await client.patch(_url(review, 2), json={"status": "rejected"})
     kinds = await app.state.db.fetch_all("SELECT kind FROM v_review_claims")
     assert {row["kind"] for row in kinds} == {"claim"}
-    # A later plain Confirm all (the person has now seen it) confirms the rest.
-    later = await client.post(f"/api/reviews/{review['id']}/claims/confirm-all")
-    assert [c["status"] for c in later.json()["data"]["claims"]] == ["confirmed"] * 3
 
 
-async def test_confirm_all_with_no_body_or_an_empty_list_confirms_everything(api: Api) -> None:
-    app, client, provider = api
-    review = await _with_a_stance(app, client, provider)
-
-    response = await client.post(
-        f"/api/reviews/{review['id']}/claims/confirm-all", json={"except_kinds": []}
-    )
-
-    assert {c["status"] for c in response.json()["data"]["claims"]} == {"confirmed"}
-
-
-async def test_an_unknown_kind_is_a_422_that_does_not_echo_it(api: Api) -> None:
-    app, client, provider = api
-    review = await _with_a_stance(app, client, provider)
-
-    response = await client.post(
-        f"/api/reviews/{review['id']}/claims/confirm-all",
-        json={"except_kinds": ["prediction", "secret-kind"]},
-    )
-
-    assert response.status_code == 422
-    assert "secret-kind" not in response.text
-    assert response.json()["error"]["details"]["field"] == "except_kinds"
-    stored = (await client.get(f"/api/reviews/{review['id']}")).json()["data"]
-    assert {c["status"] for c in stored["claims"]} == {"proposed"}, "nothing was confirmed"
-
-
-async def test_confirm_all_refuses_an_unknown_body_key(api: Api) -> None:
-    app, client, provider = api
-    review = await _with_a_stance(app, client, provider)
-    response = await client.post(
-        f"/api/reviews/{review['id']}/claims/confirm-all", json={"except": ["prediction"]}
-    )
-    assert response.status_code == 400
-
-
-async def test_only_the_newest_finished_reading_can_be_answered(api: Api) -> None:
+async def test_only_the_newest_finished_review_can_be_answered(api: Api) -> None:
     app, client, provider = api
     data = await build_app_fixture(app)
     old = await _read(client, data.shots[-1])
     provider.script = [json.dumps(reading(summary="The second reading."))]
     new = await _read(client, data.shots[-1])
 
-    answered = await client.patch(_url(old), json={"status": "confirmed"})
+    answered = await client.patch(_url(old), json={"status": "rejected"})
     assert answered.status_code == 409
     assert answered.json()["error"]["code"] == "REVIEW_SUPERSEDED"
-    assert (await client.post(f"/api/reviews/{old['id']}/claims/confirm-all")).status_code == 409
-    # Nothing of the old reading moved, and the new one still answers.
+    # Nothing of the old review moved, and the new one still answers.
     stored = (await client.get(f"/api/reviews/{old['id']}")).json()["data"]
-    assert {claim["status"] for claim in stored["claims"]} == {"proposed"}
-    assert (await client.patch(_url(new), json={"status": "confirmed"})).status_code == 200
+    assert {claim["status"] for claim in stored["claims"]} == {"confirmed"}
+    assert (await client.patch(_url(new), json={"status": "rejected"})).status_code == 200
 
 
-async def test_a_reading_that_is_running_or_failed_cannot_be_answered(api: Api) -> None:
+async def test_a_review_that_is_running_or_failed_cannot_be_answered(api: Api) -> None:
     app, client, _ = api
     data = await build_app_fixture(app)
     repo = ShotReviewsRepository(app.state.db)
     running = await repo.start(ReviewStart(shot_id=data.shots[-1]))
+    url = f"/api/reviews/{running}/claims/1"
 
-    response = await client.post(f"/api/reviews/{running}/claims/confirm-all")
-    assert response.status_code == 409
+    assert (await client.patch(url, json={"status": "rejected"})).status_code == 409
 
     await repo.finish(running, ReviewOutcome(status="failed", error="auth: bad key"))
-    assert (await client.post(f"/api/reviews/{running}/claims/confirm-all")).status_code == 409
+    assert (await client.patch(url, json={"status": "rejected"})).status_code == 409
 
 
 async def test_an_answer_names_a_review_and_a_claim_that_exist(api: Api) -> None:
@@ -207,11 +143,10 @@ async def test_an_answer_names_a_review_and_a_claim_that_exist(api: Api) -> None
     review = await _read(client, data.shots[-1])
 
     assert (
-        await client.patch("/api/reviews/999999/claims/1", json={"status": "confirmed"})
+        await client.patch("/api/reviews/999999/claims/1", json={"status": "rejected"})
     ).status_code == 404
-    assert (await client.post("/api/reviews/999999/claims/confirm-all")).status_code == 404
     missing = await client.patch(
-        f"/api/reviews/{review['id']}/claims/999999", json={"status": "confirmed"}
+        f"/api/reviews/{review['id']}/claims/999999", json={"status": "rejected"}
     )
     assert missing.status_code == 404
 
@@ -224,12 +159,12 @@ async def test_a_claim_of_another_review_is_not_answered_through_this_one(api: A
     stray = first["claims"][0]["id"]  # type: ignore[index]
 
     response = await client.patch(
-        f"/api/reviews/{second['id']}/claims/{stray}", json={"status": "confirmed"}
+        f"/api/reviews/{second['id']}/claims/{stray}", json={"status": "rejected"}
     )
 
     assert response.status_code == 404
     stored = (await client.get(f"/api/reviews/{first['id']}")).json()["data"]
-    assert stored["claims"][0]["status"] == "proposed"
+    assert stored["claims"][0]["status"] == "confirmed"
     assert provider.calls
 
 
@@ -240,10 +175,10 @@ async def test_a_claim_of_another_review_is_not_answered_through_this_one(api: A
         {"status": "maybe"},
         {},
         {"status": "confirmed", "extra": 1},
-        {"status": "rejected", "reason": "x" * 301},
+        {"status": "rejected", "reason": "no longer a field"},
     ],
 )
-async def test_an_answer_is_confirmed_or_rejected_and_nothing_else(
+async def test_an_answer_is_kept_or_rejected_and_nothing_else(
     api: Api, body: dict[str, object]
 ) -> None:
     app, client, _ = api
@@ -271,39 +206,41 @@ async def test_two_answers_arriving_together_leave_one_consistent_state_and_are_
     monkeypatch.setattr("gaggiclanker.db.repos.reviews.log", Recorder())
     first, second = await asyncio.gather(
         client.patch(_url(review), json={"status": "confirmed"}),
-        client.patch(_url(review), json={"status": "rejected", "reason": "no"}),
+        client.patch(_url(review), json={"status": "rejected"}),
     )
 
     assert first.status_code == second.status_code == 200
     final = (await client.get(f"/api/reviews/{review['id']}")).json()["data"]["claims"][0]
-    # One of them won, wholly: the status and the reason belong to the same answer.
-    assert (final["status"], final["reason"]) in {("confirmed", ""), ("rejected", "no")}
+    # One of them won, wholly, and the stored state is the last write's.
+    assert final["status"] in {"confirmed", "rejected"}
     answered = [e for e in logged if e["event"] == "review_claim_answered"]
     assert sorted(str(e["status"]) for e in answered) == ["confirmed", "rejected"]
 
 
-async def test_confirm_all_is_one_statement_so_a_failure_in_the_middle_confirms_nothing(
+async def test_an_answer_is_one_transaction_so_a_failure_after_the_write_undoes_it(
     fixture: Fixture,
 ) -> None:
     repo = ShotReviewsRepository(fixture.db)
     review = await repo.start(ReviewStart(shot_id=fixture.shots[-1]))
-    claims = [ClaimWrite(kind="claim", text=f"claim {n}") for n in range(3)]
+    claims = [ClaimWrite(kind="claim", text=f"claim {n}") for n in range(2)]
     await repo.finish(review, ReviewOutcome(status="ok", summary="s", claims=claims))
-    # The third claim cannot be confirmed: whatever the first two did is undone with it.
+    stored = await repo.get(review)
+    assert stored is not None
+    # The update itself raises: nothing may stay written.
     await fixture.db.execute(
-        "CREATE TRIGGER c36_refuse BEFORE UPDATE ON review_claims WHEN NEW.position = 2 "
+        "CREATE TRIGGER c38_refuse AFTER UPDATE ON review_claims "
         "BEGIN SELECT RAISE(ABORT, 'refused'); END"
     )
 
     with pytest.raises(Exception, match="refused"):
-        await repo.confirm_all(review)
+        await repo.answer(review, stored.claims[0].id, keep=False)
 
-    stored = await repo.get(review)
-    assert stored is not None
-    assert [claim.status for claim in stored.claims] == ["proposed", "proposed", "proposed"]
+    after = await repo.get(review)
+    assert after is not None
+    assert [claim.status for claim in after.claims] == ["confirmed", "confirmed"]
 
 
-async def test_a_reading_and_its_claims_are_written_in_one_transaction(fixture: Fixture) -> None:
+async def test_a_review_and_its_claims_are_written_in_one_transaction(fixture: Fixture) -> None:
     """The last claim's insert fails: the review is still `running` and no claim is stored."""
     repo = ShotReviewsRepository(fixture.db)
     review = await repo.start(ReviewStart(shot_id=fixture.shots[-1]))

@@ -115,7 +115,7 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     set_badge: null,
     source: "device",
     synced_at: "2026-03-04T08:15:30.000Z",
-    reading: { state: "unread", unanswered: 0 },
+    reading: { state: "unread" },
     ...overrides,
   };
 }
@@ -384,9 +384,7 @@ describe("ShotsPage", () => {
     // The Review column is the one place a reading shows in the table; the Flags column carries
     // none of it. A shot nobody can read has nothing in the column either.
     const user = setupUser();
-    getShots.mockResolvedValue(
-      listData([shot({ reading: { state: "not_readable", unanswered: 0 } })]),
-    );
+    getShots.mockResolvedValue(listData([shot({ reading: { state: "not_readable" } })]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
@@ -1258,7 +1256,6 @@ describe("ShotsPage open rows", () => {
         state: "read",
         verdict: "as_intended",
         in_force_id: 7,
-        unanswered: 1,
       }),
       reviews: [
         review({
@@ -1280,7 +1277,7 @@ describe("ShotsPage open rows", () => {
       "A model's one-line reading.",
     );
     expect(within(card).getByTestId("reading-verdict-badge")).toHaveTextContent("As intended");
-    expect(within(card).getByTestId("claim-confirm")).toBeInTheDocument();
+    expect(within(card).getByTestId("claim-reject")).toBeInTheDocument();
     // No link stands in for it any more.
     expect(within(panel).queryByRole("link", { name: "Reading" })).toBeNull();
     // Directly under the row's curve, and not beside the judgement.
@@ -1317,7 +1314,7 @@ describe("ShotsPage open rows", () => {
     getShot.mockResolvedValue({
       ...shot129,
       shot: { ...shot129.shot, id: 1 },
-      reading: readingBlock({ state: "read", verdict: "entries", in_force_id: 7, unanswered: 1 }),
+      reading: readingBlock({ state: "read", verdict: "entries", in_force_id: 7 }),
       reviews: [
         review({
           id: 7,
@@ -1886,7 +1883,7 @@ describe("ShotsPage Review column", () => {
   });
 
   it("leaves the cell empty for a shot with no warnings", async () => {
-    const unreadable = { state: "not_readable", unanswered: 0 } as const;
+    const unreadable = { state: "not_readable" } as const;
     getShots.mockResolvedValue(
       listData([
         shot({ id: 1, badge: null, warnings: [], reading: unreadable }),
@@ -3761,29 +3758,5 @@ describe("ShotsPage Review badge as a button", () => {
       within(screen.getByTestId("shot-rows")).queryAllByRole("button", { name: /fast flow/ }),
     ).toEqual([]);
     expect(runReview).not.toHaveBeenCalled();
-  });
-
-  it("draws a read shot's outlined and filled looks from the unanswered count", async () => {
-    getShots.mockResolvedValue(
-      listData([
-        shot({
-          id: 1,
-          device_id: "000101",
-          badge: "As intended",
-          reading: readingBlock({ state: "read", verdict: "as_intended", unanswered: 2 }),
-        }),
-        shot({
-          id: 2,
-          device_id: "000102",
-          badge: "As intended",
-          reading: readingBlock({ state: "read", verdict: "as_intended", unanswered: 0 }),
-        }),
-      ]),
-    );
-    renderWithShotRoute();
-    await listed();
-
-    const badges = screen.getAllByTestId("review-badge");
-    expect(badges.map((badge) => badge.getAttribute("data-filled"))).toEqual(["no", "yes"]);
   });
 });

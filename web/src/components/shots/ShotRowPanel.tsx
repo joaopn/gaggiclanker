@@ -203,8 +203,6 @@ export function ShotRowPanel({
                 reading={reading}
                 checks={fields.data?.checks}
                 span={claimSpan.controls}
-                decision={detail.data.judgement?.decision ?? null}
-                hasPrediction={Boolean(detail.data.set_version?.prediction)}
                 badge={shot.badge}
                 warnings={shot.warnings}
               />

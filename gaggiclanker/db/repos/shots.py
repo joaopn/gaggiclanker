@@ -296,9 +296,6 @@ class ShotWarningRow(BaseModel):
     #: signature says is part of the design: grey).
     status: str = "warning"
     expectation_id: int | None = None
-    #: A free-text expectation a reading failed that nobody has confirmed yet: the page draws it
-    #: outlined.
-    unverified: bool = False
 
 
 class ShotListItem(ShotListRow):

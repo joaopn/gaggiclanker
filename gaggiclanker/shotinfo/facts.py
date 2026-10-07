@@ -64,8 +64,8 @@ class ShotFacts:
     #: What was typed on the machine's own notes card, when it was pulled.
     note: DeviceShotNotesRow | None = None
     #: What the shot's readings are: the newest review of any status, the newest finished one and
-    #: its claims. A model's reading of the shot's data, made without the person's judgement,
-    #: and only ever *served* to a chat as what the person confirmed in it. ``None`` for facts
+    #: its claims. A model's review of the shot's data, made without the person's judgement,
+    #: and only ever *served* to a chat as the claims the person did not reject. ``None`` for facts
     #: built by hand, which read as a shot never read.
     reading: ReadingRecord | None = None
     #: Every stored sample in time order, or ``None`` when they were not
@@ -206,14 +206,12 @@ class ShotFacts:
 
     @property
     def shot_checks(self) -> ShotChecks:
-        """The checks **a chat is given**: the reading's free-text results only once confirmed.
+        """The checks **a chat is given**: the reading's free-text results, unless rejected.
 
-        An answer nobody confirmed leaves its expectation "checked by the reading, not
-        confirmed", and is never part of the verdict or the badge a chat reads. The person's own
-        view of the list, which also holds the answers nobody has confirmed (marked
-        ``unverified``), is :func:`gaggiclanker.review.reading.serve_reading`.
+        A result a person rejected leaves its expectation unchecked, as it does in the verdict and
+        the badge the person reads (:func:`gaggiclanker.review.reading.serve_reading`).
         """
-        return merge_reading(self.signature_checks, self.reading, "chat")
+        return merge_reading(self.signature_checks, self.reading)
 
     def share_of_target(self, weight_g: float | None) -> float | None:
         """A weight as a percentage of the filed version's target yield, to a tenth."""

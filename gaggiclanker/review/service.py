@@ -8,8 +8,8 @@ on purpose:
 
 **A reading writes one review and its claims, about one shot.** It opens the row and closes
 it, and touches no other table: no Set version, no insight, no draft, no conversation, no
-signature. Every claim it writes is `proposed`; what it says reaches the chat only after a
-person confirmed it, one claim at a time (:meth:`ReviewService.answer`).
+signature. Every claim it writes is kept (`confirmed`); what it says reaches the chat unless a
+person rejected the claim (:meth:`ReviewService.answer`, which also restores one).
 
 **The numbers are the server's.** The model attaches metric-language expressions to its claims;
 the evaluator works out every value (:mod:`gaggiclanker.review.evidence`), so no figure a person
@@ -43,7 +43,6 @@ running row back instead of a second call.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -385,19 +384,9 @@ class ReviewService:
 
     # ── a person's answers ──────────────────────────────────────────
 
-    async def answer(
-        self, review_id: int, claim_id: int, *, confirm: bool, reason: str = ""
-    ) -> AnswerResult:
-        """A person confirms or rejects one claim of the reading that answers for its shot."""
-        result = await self.reviews.answer(review_id, claim_id, confirm=confirm, reason=reason)
-        self._answered(result)
-        return result
-
-    async def confirm_all(
-        self, review_id: int, *, except_kinds: Sequence[str] = ()
-    ) -> AnswerResult:
-        """A person confirms every claim still waiting, except those of ``except_kinds``."""
-        result = await self.reviews.confirm_all(review_id, except_kinds=except_kinds)
+    async def answer(self, review_id: int, claim_id: int, *, keep: bool) -> AnswerResult:
+        """A person rejects one claim of the review that answers for its shot, or restores it."""
+        result = await self.reviews.answer(review_id, claim_id, keep=keep)
         self._answered(result)
         return result
 

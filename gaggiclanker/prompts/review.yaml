@@ -1,6 +1,6 @@
 name: review
 description: |
-  Review: one reading of one shot. One structured call: the shot's own
+  Review: one review of one shot. One structured call: the shot's own
   information (its checks first), the free-text expectations of its profile's
   confirmed signature, the prediction its Set version was filed with, the
   profile it brewed, its detected style and the matching knowledge rules and
@@ -9,10 +9,11 @@ description: |
   the shot moved against it come out.
 
   The model is never shown the person's judgement, the note typed on the
-  machine, the label, any other shot or any earlier reading, so a reading is
+  machine, the label, any other shot or any earlier review, so a review is
   about this shot alone. It predicts no taste, advises nothing and proposes
-  nothing: the schema has no field for any of them. Every claim it writes waits
-  for a person to confirm it, and only confirmed claims ever reach the chat.
+  nothing: the schema has no field for any of them. Every claim it writes is
+  kept unless a person rejects it, and the chat is told every claim that is
+  not rejected, never the summary.
 
   The numbers are not the model's. Each claim cites metric-language expressions
   and the server evaluates them on the shot; the claim's sentence carries no

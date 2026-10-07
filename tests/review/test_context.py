@@ -125,7 +125,6 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
             claims=[ClaimWrite(kind="claim", text="An earlier claim about this shot.")],
         ),
     )
-    await earlier.confirm_all(earlier_id)
     # Every row the leak test looks for is really there to leak.
     stored = await db.fetch_one(
         "SELECT rating, balance, notes, decision FROM shot_judgements WHERE shot_id = ?",
@@ -179,7 +178,7 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
         "Label:",
         "Counted:",
         "Machine note",
-        "Reading:",
+        "Review:",
         "Improve",
         "3/5",
         "Citric acid",
@@ -278,7 +277,7 @@ async def test_the_person_s_tiers_do_not_narrow_what_a_review_reads(fixture: Fix
 
 def test_a_review_reads_every_item_but_the_judgement_the_note_the_label_and_itself() -> None:
     keys = review_keys()
-    groups_left_out = {ITEMS[key].group for key in ("rating", "note_text", "reading_state")}
+    groups_left_out = {ITEMS[key].group for key in ("rating", "note_text", "review_state")}
 
     assert REVIEW_EXCLUDED_KEYS == {"label", "counted"}
     for item in CATALOGUE:
@@ -396,7 +395,6 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
             claims=[ClaimWrite(kind="claim", text="An earlier claim about this shot.")],
         ),
     )
-    await earlier.confirm_all(earlier_id)
     everything = frozenset(item.key for item in CATALOGUE)
     monkeypatch.setattr("gaggiclanker.review.context.review_keys", lambda: everything)
     rendered: list[ShotFacts] = []
@@ -417,7 +415,9 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
     assert "An earlier claim about this shot." not in review.shot
     assert "An earlier one-line reading." not in review.shot
     assert "earlier-model" not in review.shot
-    assert "Reading: not read" in review.shot, "the widened list rendered the reading group, empty"
+    assert "Review: not reviewed" in review.shot, (
+        "the widened list rendered the reading group, empty"
+    )
     assert "not labelled" in review.shot, "the widened list really did render the label"
 
     [facts] = rendered

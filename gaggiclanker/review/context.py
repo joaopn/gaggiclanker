@@ -88,11 +88,11 @@ REVIEW_CURVE_POINTS = 60
 #: renamed group heading cannot quietly let the group back in: the person's
 #: judgement (`rating`), the note typed on the machine (`note_text`: its rating,
 #: balance and notes are the judgement typed somewhere else) and the shot's own
-#: reading (`reading_state`: a reading is never shown an earlier one).
+#: review (`review_state`: a review is never shown an earlier one).
 REVIEW_EXCLUDED_GROUP_MEMBERS: tuple[str, ...] = (
     "rating",
     "note_text",
-    "reading_state",
+    "review_state",
 )
 
 #: Single items a review never reads, from groups it otherwise does: the

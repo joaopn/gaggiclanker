@@ -1,8 +1,8 @@
 """A shot's verdict and reading state, worked out at read time.
 
 Two halves. The first is the pure table: every state of the reading block and the badge text and
-verdict that go with it, how a reading's free-text answers are merged into the checks for the
-person and for the chat, and what makes an answer stop counting. The second is the Review sort
+verdict that go with it, how a reading's free-text answers are merged into the checks, and what
+makes an answer stop counting. The second is the Review sort
 over a seeded archive with a shot in every state, in the order the maintainer chose (work to do
 above work done), total and stable across pages, and moved at once by a reading finishing or a
 claim being answered.
@@ -108,7 +108,7 @@ def _answer(
     expectation_id: int,
     *,
     held: bool = False,
-    status: str = "proposed",
+    status: str = "confirmed",
     start_s: float | None = 12.0,
     fault: str | None = "unstable",
     position: int = 0,
@@ -128,7 +128,7 @@ def _answer(
     )
 
 
-def _claim(status: str = "proposed", position: int = 5) -> ReviewClaimRow:
+def _claim(status: str = "confirmed", position: int = 5) -> ReviewClaimRow:
     return ReviewClaimRow(
         id=100 + position,
         review_id=7,
@@ -162,7 +162,7 @@ class TestStates:
         assert (with_entry.block.state, with_entry.badge) == ("unread", "Shot: over target")
         without = serve_reading(_checks(confirmed=0), None, readable=True)
         assert (without.block.state, without.badge) == ("unread", "Review")
-        assert without.block.review_id is None and without.block.unanswered == 0
+        assert without.block.review_id is None
 
     def test_a_running_reading_says_so_whatever_the_checks_say(self) -> None:
         record = ReadingRecord(latest=_brief("running", review_id=9))
@@ -200,15 +200,13 @@ class TestStates:
 class TestMerge:
     def test_a_failed_critical_answer_is_red_and_an_important_one_amber(self) -> None:
         checks = _checks(_check(1, "critical"), _check(2, "important", phase="ramp", position=1))
-        merged = merge_reading(checks, _record(_answer(1), _answer(2, position=1)), "person")
+        merged = merge_reading(checks, _record(_answer(1), _answer(2, position=1)))
         entries = [(c.expectation_id, c.color, c.status) for c in merged.badge_entries]
         assert entries == [(1, "red", "failed"), (2, "amber", "failed")]
 
     def test_a_held_answer_is_in_the_held_group_and_a_context_one_never_in_the_badge(self) -> None:
         checks = _checks(_check(1, "critical"), _check(2, "context", position=1))
-        merged = merge_reading(
-            checks, _record(_answer(1, held=True), _answer(2, position=1)), "person"
-        )
+        merged = merge_reading(checks, _record(_answer(1, held=True), _answer(2, position=1)))
         assert merged.badge_entries == []
         by_id = {c.expectation_id: c for c in merged.checks}
         assert (by_id[1].status, by_id[1].rank, by_id[1].held) == ("held", 5, True)
@@ -218,39 +216,26 @@ class TestMerge:
         checks = _checks(_check(1, position=0), _check(2, position=1))
         late = _answer(1, start_s=20.0, position=0)
         early = _answer(2, start_s=3.0, position=1)
-        merged = merge_reading(checks, _record(late, early), "person")
+        merged = merge_reading(checks, _record(late, early))
         assert [c.expectation_id for c in merged.badge_entries] == [2, 1]
 
     def test_a_result_with_no_window_keeps_the_expectations_own_place(self) -> None:
-        merged = merge_reading(_checks(_check(1)), _record(_answer(1, start_s=None)), "person")
+        merged = merge_reading(_checks(_check(1)), _record(_answer(1, start_s=None)))
         assert merged.badge_entries[0].at_s == 20.0
 
-    def test_the_person_sees_an_unanswered_failure_marked_unverified_and_the_chat_does_not(
-        self,
-    ) -> None:
+    def test_an_answer_nobody_touched_counts_and_a_rejected_one_does_not(self) -> None:
         checks = _checks(_check(1))
-        record = _record(_answer(1, status="proposed"))
-
-        person = merge_reading(checks, record, "person")
-        assert [(c.status, c.unverified) for c in person.badge_entries] == [("failed", True)]
-
-        chat = merge_reading(checks, record, "chat")
-        assert chat.badge_entries == []
-        (only,) = chat.checks
+        kept = merge_reading(checks, _record(_answer(1)))
+        assert [(c.status, c.rank) for c in kept.badge_entries] == [("failed", 0)]
+        rejected = merge_reading(checks, _record(_answer(1, status="rejected")))
+        assert rejected.badge_entries == []
+        (only,) = rejected.checks
         assert only.status == "unchecked"
-        assert only.detail == "expectation 1 (checked by the reading, not confirmed)."
-
-    def test_a_confirmed_answer_counts_for_both_and_is_no_longer_unverified(self) -> None:
-        checks = _checks(_check(1))
-        record = _record(_answer(1, status="confirmed"))
-        for viewer in ("person", "chat"):
-            merged = merge_reading(checks, record, viewer)
-            assert [(c.status, c.unverified) for c in merged.badge_entries] == [("failed", False)]
 
     def test_a_rejected_failure_leaves_the_verdict(self) -> None:
         """Rejecting 'decline: unstable' can turn a red badge into a green one."""
         checks = _checks(_check(1), confirmed=4)
-        before = serve_reading(checks, _record(_answer(1, status="proposed")), readable=True)
+        before = serve_reading(checks, _record(_answer(1)), readable=True)
         assert (before.block.verdict, before.badge) == ("entries", "decline: unstable")
 
         after = serve_reading(checks, _record(_answer(1, status="rejected")), readable=True)
@@ -261,23 +246,20 @@ class TestMerge:
     def test_an_answer_stops_counting_when_its_expectation_is_no_longer_confirmed(self) -> None:
         """Re-proposing or rejecting the expectation takes its check out of the list."""
         record = _record(_answer(1))
-        assert merge_reading(_checks(_check(1)), record, "person").badge_entries
+        assert merge_reading(_checks(_check(1)), record).badge_entries
         # The expectation was re-proposed under a new id: there is no check 1 to answer.
-        retired = merge_reading(_checks(_check(2)), record, "person")
+        retired = merge_reading(_checks(_check(2)), record)
         assert retired.badge_entries == []
         assert [c.expectation_id for c in retired.checks] == [2]
         assert retired.checks[0].status == "unchecked"
 
     @pytest.mark.parametrize("status", ["running", "failed", "interrupted"])
-    def test_a_newer_reading_that_did_not_finish_hides_nothing_for_either_viewer(
-        self, status: str
-    ) -> None:
+    def test_a_newer_reading_that_did_not_finish_hides_nothing(self, status: str) -> None:
         """The reading in force is the newest finished one; an attempt since changes no result."""
         checks = _checks(_check(1))
-        record = _record(_answer(1, status="confirmed"), latest=_brief(status, review_id=8))
-        for viewer in ("person", "chat"):
-            merged = merge_reading(checks, record, viewer)
-            assert [c.expectation_id for c in merged.badge_entries] == [1], (status, viewer)
+        record = _record(_answer(1), latest=_brief(status, review_id=8))
+        merged = merge_reading(checks, record)
+        assert [c.expectation_id for c in merged.badge_entries] == [1], status
 
     def test_only_the_newest_finished_reading_is_in_force(self) -> None:
         """A newer finished reading replaces the one before it; the claims are its own."""
@@ -287,30 +269,30 @@ class TestMerge:
         )
         held = _answer(1, held=True, status="confirmed")
         record = ReadingRecord(latest=newer, finished=newer, claims=(held,))
-        assert merge_reading(checks, record, "person").badge_entries == []
+        assert merge_reading(checks, record).badge_entries == []
 
     def test_a_shot_never_read_merges_to_its_own_checks(self) -> None:
         checks = _checks(_check(1))
-        assert merge_reading(checks, None, "person") is checks
-        assert merge_reading(checks, ReadingRecord(), "chat") is checks
+        assert merge_reading(checks, None) is checks
+        assert merge_reading(checks, ReadingRecord()) is checks
 
     def test_the_other_kinds_of_claim_never_enter_the_checks(self) -> None:
         checks = _checks(_check(1))
-        record = _record(_claim("confirmed"), _claim("proposed", 6))
-        assert merge_reading(checks, record, "person") is checks
+        record = _record(_claim(), _claim("rejected", 6))
+        assert merge_reading(checks, record) is checks
 
 
 class TestRunningAgain:
     """A newer reading changes the badge's words and the sort bucket, nothing the person reads."""
 
-    def test_while_a_reading_runs_the_results_unanswered_and_summary_are_the_one_in_force(
+    def test_while_a_reading_runs_the_results_and_summary_are_the_one_in_force(
         self,
     ) -> None:
         checks = _checks(_check(1), confirmed=3)
         attempt = _brief("running", review_id=9).model_copy(
             update={"summary": "the attempt's own", "finished_at": None}
         )
-        record = _record(_answer(1), _claim("proposed"), latest=attempt)
+        record = _record(_answer(1), _claim(), latest=attempt)
         served = serve_reading(checks, record, readable=True)
         assert (served.block.state, served.badge, served.block.review_id) == (
             "running",
@@ -318,8 +300,7 @@ class TestRunningAgain:
             9,
         )
         assert served.block.verdict is None
-        assert [(c.status, c.unverified) for c in served.entries] == [("failed", True)]
-        assert served.block.unanswered == 2
+        assert [c.status for c in served.entries] == ["failed"]
         # Claims are answered through the reading in force, not the attempt.
         assert (served.block.review_id, served.block.in_force_id) == (9, 7)
         assert served.block.summary == "One sentence."
@@ -333,7 +314,6 @@ class TestRunningAgain:
         assert served.block.reason == "auth: bad key"
         assert (served.block.review_id, served.block.in_force_id) == (9, 7)
         assert [c.expectation_id for c in served.entries] == [1]
-        assert served.block.unanswered == 1
 
     def test_the_sort_puts_a_shot_being_read_again_by_its_entries_first_then_its_bucket(
         self,
@@ -361,27 +341,6 @@ class TestRunningAgain:
         served = serve_reading(_checks(_check(1)), record, readable=False)
         assert served.block.state == "not_readable"
         assert served.entries == []
-        assert served.block.unanswered == 0
-
-
-class TestUnanswered:
-    def test_every_kind_of_claim_waiting_counts_and_none_left_means_confirmed(self) -> None:
-        checks = _checks(_check(1))
-        record = _record(
-            _claim("proposed", 0),
-            _claim("confirmed", 1),
-            _claim("rejected", 2),
-            _answer(1, status="proposed", position=3),
-            _claim("proposed", 4).model_copy(update={"kind": "prediction", "stance": "partly"}),
-        )
-        assert serve_reading(checks, record, readable=True).block.unanswered == 3
-
-        answered = _record(_claim("confirmed", 0), _claim("rejected", 1))
-        assert serve_reading(checks, answered, readable=True).block.unanswered == 0
-
-    def test_nothing_is_unanswered_before_a_reading_has_finished(self) -> None:
-        record = ReadingRecord(latest=_brief("running"))
-        assert serve_reading(_checks(), record, readable=True).block.unanswered == 0
 
 
 def test_the_sort_key_orders_entries_by_the_checks_own_order_and_then_by_state() -> None:
@@ -518,7 +477,7 @@ async def test_the_key_is_total_and_stable_across_pages_and_ascending_is_its_rev
     assert await _order(fixture, descending=False) == everything[::-1]
 
 
-async def test_a_reading_finishing_or_a_claim_being_answered_moves_the_sort_at_once(
+async def test_a_reading_finishing_or_a_claim_being_rejected_moves_the_sort_at_once(
     fixture: Fixture,
 ) -> None:
     """Nothing is remembered about a reading that a change could leave stale."""
@@ -564,20 +523,10 @@ async def test_a_failed_free_text_answer_enters_the_sort_and_leaves_it_when_reje
     first = page.items[0]
     assert first.id == clean
     assert first.badge == "Pressurise: unstable"
-    assert [(w.status, w.severity, w.unverified) for w in first.warnings] == [
-        ("failed", "red", True)
-    ]
-    assert first.reading.unanswered == 1
+    assert [(w.status, w.severity) for w in first.warnings] == [("failed", "red")]
 
     (claim,) = (await repo.get(review)).claims  # type: ignore[union-attr]
-    await repo.answer(review, claim.id, confirm=True)
-    page = await ShotsRepository(fixture.db).list_shots(
-        limit=100, sort=REVIEW_SORT, set_id=fixture.set_id
-    )
-    assert page.items[0].warnings[0].unverified is False
-    assert page.items[0].reading.unanswered == 0
-
-    await repo.answer(review, claim.id, confirm=False, reason="it was fine")
+    await repo.answer(review, claim.id, keep=False)
     page = await ShotsRepository(fixture.db).list_shots(
         limit=100, sort=REVIEW_SORT, set_id=fixture.set_id
     )

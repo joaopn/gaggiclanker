@@ -58,8 +58,8 @@ Dose in: 18.0 g
 Dose out: 36.5 g
 Ratio: 1:2.03
 Grind as brewed: 14
-[Reading]
-Reading: not read
+[Review]
+Review: not reviewed
 [Curve]
 47 of 188 samples, shape-preserving; always kept: the first and last, each phase's first and last, peak pressure, first drip, both ends of the largest pressure drop
 t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),weight (g),temperature (°C),phase marker

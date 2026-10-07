@@ -99,8 +99,8 @@ class ShotDetailData(BaseModel):
     #: request for a list that is almost always empty or one row long is a round trip for
     #: nothing.
     reviews: list[ShotReviewRow] = Field(default_factory=list)
-    #: Whether the shot was read and how far the person has confirmed what it said: the same
-    #: block the shots list serves on every row.
+    #: Whether the shot was read and what the person made of it: the same block the shots list
+    #: serves on every row.
     reading: ReadingBlock
 
 

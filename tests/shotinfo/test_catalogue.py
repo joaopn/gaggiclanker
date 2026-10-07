@@ -47,7 +47,7 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Your judgement", 9),
     ("The version's recipe", 5),
     ("The note typed on the machine", 6),
-    ("Reading", 3),
+    ("Review", 3),
 )
 
 #: Every key, in catalogue order. A key is what a person's choice is stored
@@ -157,9 +157,9 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "note_grind",
     "note_bean",
     "note_text",
-    "reading_state",
-    "reading_claims",
-    "reading_prediction",
+    "review_state",
+    "review_claims",
+    "review_prediction",
 )
 
 #: The per-phase items a chat sees without asking: each phase's name, duration, how it
@@ -170,9 +170,9 @@ PHASE_LINE_ITEMS = frozenset({"phase_name", "phase_duration", "phase_ended_by", 
 EXPECTED_BASE: frozenset[str] = frozenset(
     {
         "checks",
-        "reading_state",
-        "reading_claims",
-        "reading_prediction",
+        "review_state",
+        "review_claims",
+        "review_prediction",
         *PHASE_LINE_ITEMS,
         "shot_id",
         "started_at",
@@ -433,9 +433,9 @@ def test_nothing_a_chat_saw_without_asking_is_gone_but_the_score_and_the_channel
         now - ORIGIN_DEV_BASE
         == {
             "checks",
-            "reading_state",
-            "reading_claims",
-            "reading_prediction",
+            "review_state",
+            "review_claims",
+            "review_prediction",
         }
         | PHASE_LINE_ITEMS
     )

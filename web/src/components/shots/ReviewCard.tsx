@@ -1,13 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookOpen, Check, Quote, Sparkles } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { AlertTriangle, BookOpen, Quote, Sparkles } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ReadingBlock, ReviewClaim, ShotCheck, ShotReview, ShotWarning } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { ClaimItem, type TierLook } from "@/components/shots/ReadingClaims";
 import { badgeView, TONE_CLASS, warningLine } from "@/components/shots/ReviewBadge";
 import { Button } from "@/components/ui/button";
-import { useAnswerClaim, useConfirmAllClaims, useRunReview } from "@/hooks/useReview";
+import { useAnswerClaim, useRunReview } from "@/hooks/useReview";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
 import type { ClaimSpanControls } from "@/lib/claimSpan";
 import { invalidateShots } from "@/lib/invalidate";
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 /** What the button does, said once before anybody presses it. */
 export const REVIEW_EXPLAINED =
-  "A model reads this shot's data, without your judgement, and writes claims about it: where in the curve something went wrong, with the numbers that say so. You confirm or reject each claim, and only a confirmed one reaches the chat. It does not guess how the cup tasted, and it changes nothing else.";
+  "A model reads this shot's data, without your judgement, and writes claims about it: where in the curve something went wrong, with the numbers that say so. Every claim is kept unless you reject it, and the chat is told the ones you kept. It does not guess how the cup tasted, and it changes nothing else.";
 
 /** How often a card waiting on a running reading re-reads the shot. */
 const RUNNING_REFRESH_MS = 5000;
@@ -42,7 +42,7 @@ function tierLook(check: ShotCheck | undefined): TierLook {
  * - running: the newest row is `running`;
  * - failed: the newest row failed or was interrupted, its error and the button;
  * - read: the summary, the free-text expectations it checked, the prediction, the claims with
- *   Confirm and Reject on each and Confirm all, the rules and excerpts it cited, the model and
+ *   Reject on each (Restore on a rejected one), the rules and excerpts it cited, the model and
  *   the time, and Read again.
  *
  * **The reading in force** is the newest finished one (`reading.in_force_id`), whatever has been
@@ -51,8 +51,7 @@ function tierLook(check: ShotCheck | undefined): TierLook {
  * which answers 409 for a claim). A re-read replaces it only when it finishes.
  *
  * Read again from a reading with confirmed claims asks once, inline, and says how many it sets
- * aside; the old reading stays stored. The prediction's stance is held back until the shot has a
- * decision, like the prediction itself: it would give the prediction away.
+ * aside; the old reading stays stored.
  */
 export function ReviewCard({
   shotId,
@@ -60,8 +59,6 @@ export function ReviewCard({
   reading,
   checks,
   span,
-  decision,
-  hasPrediction,
   badge,
   warnings,
 }: {
@@ -74,25 +71,16 @@ export function ReviewCard({
   checks?: ShotCheck[];
   /** What hovering and pressing a claim does to the chart. */
   span: ClaimSpanControls;
-  /** The shot's decision; the prediction is shown only once it has one. */
-  decision?: string | null;
-  /** Whether the shot's version predicted anything. */
-  hasPrediction?: boolean;
   /** The badge's served text and entries: the card's first line says the same thing. */
   badge?: string | null;
   warnings?: ShotWarning[];
 }) {
   const run = useRunReview();
   const answer = useAnswerClaim();
-  const confirmAll = useConfirmAllClaims();
   const queryClient = useQueryClient();
   const once = useSingleFlight();
   const startOnce = useSingleFlight();
   const [asking, setAsking] = useState(false);
-  // The stance is held back until the shot has a decision, like the version's prediction; "Show"
-  // is the deliberate way past that. The reveal belongs to one reading of one shot: the page keys
-  // this card by shot, and a new reading in force is a new secret.
-  const [revealedFor, setRevealedFor] = useState<number | null>(null);
   const askId = useId();
 
   const latest = reviews[0];
@@ -104,14 +92,7 @@ export function ReviewCard({
   const readable = reading?.state !== "not_readable";
   const busy = run.isPending || running;
   const claims = [...(inForce?.claims ?? [])].sort((a, b) => a.position - b.position);
-  const confirmedCount = claims.filter((claim) => claim.status === "confirmed").length;
-  const stanceHeld =
-    Boolean(hasPrediction) && decision == null && revealedFor !== (inForce?.id ?? null);
-  // What Confirm all will confirm: not a stance nobody has been shown.
-  const waitingCount = claims.filter(
-    (claim) => claim.status === "proposed" && !(stanceHeld && claim.kind === "prediction"),
-  ).length;
-  const answering = answer.isPending || confirmAll.isPending;
+  const answering = answer.isPending;
 
   // The event stream says when a running reading moves, but the bus is lossy:
   // while one is running the card also re-reads the shot now and then.
@@ -129,8 +110,8 @@ export function ReviewCard({
       setAsking(false);
       void attempt(() => run.mutateAsync({ shotId })).finally(release);
     });
-  // A reading with confirmed claims is not set aside by a stray press.
-  const readAgain = () => (confirmedCount > 0 ? setAsking(true) : start());
+  // A review in force is not set aside by a stray press.
+  const readAgain = () => (inForce ? setAsking(true) : start());
 
   const button = (label: string, variant: "default" | "outline") => (
     <Button
@@ -160,10 +141,7 @@ export function ReviewCard({
       className="space-y-2 rounded-md border border-status-warn/40 bg-status-warn/10 p-3 text-sm"
       data-testid="read-again-ask"
     >
-      <p>
-        This sets aside {confirmedCount} confirmed {confirmedCount === 1 ? "claim" : "claims"}. The
-        earlier reading stays stored.
-      </p>
+      <p>This replaces the current review. The earlier one stays stored.</p>
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
@@ -233,11 +211,8 @@ export function ReviewCard({
             checks={checks ?? []}
             span={span}
             busy={answering}
-            predictionShown={!stanceHeld}
-            onReveal={() => setRevealedFor(inForce.id)}
             verdict={{ badge, warnings, reading }}
-            waiting={waitingCount}
-            onConfirm={(claim) =>
+            onRestore={(claim) =>
               once((release) =>
                 answer.mutate(
                   { reviewId: inForce.id, claimId: claim.id, status: "confirmed" },
@@ -245,22 +220,10 @@ export function ReviewCard({
                 ),
               )
             }
-            onReject={(claim, reason) =>
+            onReject={(claim) =>
               once((release) =>
                 answer.mutate(
-                  { reviewId: inForce.id, claimId: claim.id, status: "rejected", reason },
-                  { onSettled: release },
-                ),
-              )
-            }
-            onConfirmAll={() =>
-              once((release) =>
-                confirmAll.mutate(
-                  {
-                    reviewId: inForce.id,
-                    // A stance nobody has been shown is not confirmed for them.
-                    ...(stanceHeld ? { exceptKinds: ["prediction"] } : {}),
-                  },
+                  { reviewId: inForce.id, claimId: claim.id, status: "rejected" },
                   { onSettled: release },
                 ),
               )
@@ -285,35 +248,19 @@ function Reading({
   checks,
   span,
   busy,
-  predictionShown,
-  onReveal,
   verdict,
-  waiting,
-  onConfirm,
+  onRestore,
   onReject,
-  onConfirmAll,
 }: {
   review: ShotReview;
   claims: ReviewClaim[];
   checks: ShotCheck[];
   span: ClaimSpanControls;
   busy: boolean;
-  predictionShown: boolean;
-  onReveal: () => void;
   verdict: { badge?: string | null; warnings?: ShotWarning[]; reading: ReadingBlock | undefined };
-  waiting: number;
-  onConfirm: (claim: ReviewClaim) => void;
-  onReject: (claim: ReviewClaim, reason: string) => void;
-  onConfirmAll: () => void;
+  onRestore: (claim: ReviewClaim) => void;
+  onReject: (claim: ReviewClaim) => void;
 }) {
-  // The Show button is replaced by what it revealed, so focus has to land on the section or it
-  // falls to the body. Only after a reveal: a stance shown from the start takes no focus.
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const wasHeld = useRef(!predictionShown);
-  useEffect(() => {
-    if (predictionShown && wasHeld.current) headingRef.current?.focus();
-    wasHeld.current = !predictionShown;
-  }, [predictionShown]);
   const rules = (review.rules_used ?? []) as string[];
   const excerpts = (review.excerpts_used ?? []) as string[];
   const freeText = claims.filter((claim) => claim.kind === "free_text");
@@ -329,7 +276,7 @@ function Reading({
       reviewId={review.id}
       controls={span}
       busy={busy}
-      onConfirm={onConfirm}
+      onRestore={onRestore}
       onReject={onReject}
       {...extra}
     />
@@ -337,11 +284,7 @@ function Reading({
 
   return (
     <div className="space-y-4" data-testid="review-reading">
-      <VerdictLine
-        {...verdict}
-        waiting={waiting}
-        stanceBehindShow={!predictionShown && prediction.some((c) => c.status === "proposed")}
-      />
+      <VerdictLine {...verdict} />
 
       {review.summary ? (
         <p className="text-sm" data-testid="review-summary-block">
@@ -368,34 +311,10 @@ function Reading({
 
       {prediction.length > 0 ? (
         <div data-testid="reading-prediction">
-          <h4
-            ref={headingRef}
-            tabIndex={-1}
-            className="mb-1.5 font-medium text-sm outline-none"
-            data-testid="prediction-heading"
-          >
+          <h4 className="mb-1.5 font-medium text-sm" data-testid="prediction-heading">
             The version's prediction
           </h4>
-          {predictionShown ? (
-            <ul className="space-y-2">{prediction.map((claim) => item(claim))}</ul>
-          ) : (
-            <div className="space-y-2" data-testid="prediction-hidden">
-              <p className="text-muted-foreground text-sm">
-                This shot was compared with its version's prediction. It shows once you have
-                recorded a decision, like the prediction itself, and Confirm all leaves it alone
-                until then.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                data-testid="prediction-show"
-                onClick={onReveal}
-              >
-                Show how the shot moved against it
-              </Button>
-            </div>
-          )}
+          <ul className="space-y-2">{prediction.map((claim) => item(claim))}</ul>
         </div>
       ) : null}
 
@@ -408,25 +327,6 @@ function Reading({
             It made no claim about this shot.
           </p>
         )}
-        {waiting > 0 ? (
-          <div className="mt-2">
-            <Button
-              type="button"
-              size="sm"
-              aria-disabled={busy}
-              className="aria-disabled:opacity-50"
-              data-testid="claims-confirm-all"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                if (busy) return;
-                onConfirmAll();
-              }}
-            >
-              <Check className="size-3.5" aria-hidden="true" />
-              Confirm all ({waiting})
-            </Button>
-          </div>
-        ) : null}
       </div>
 
       {rules.length > 0 ? (
@@ -522,16 +422,10 @@ function VerdictLine({
   badge,
   warnings,
   reading,
-  waiting,
-  stanceBehindShow,
 }: {
   badge?: string | null;
   warnings?: ShotWarning[];
   reading: ReadingBlock | undefined;
-  /** The claims that wait for an answer and are on screen: not a stance held back behind Show. */
-  waiting: number;
-  /** A proposed stance that waits behind Show, said apart so nothing hidden is counted. */
-  stanceBehindShow: boolean;
 }) {
   const view = badgeView(badge, warnings, reading);
   if (!view) return null;
@@ -562,15 +456,6 @@ function VerdictLine({
           <span className="min-w-0 truncate">{view.text}</span>
         </span>
         {why ? <span data-testid="reading-verdict-why">{why}</span> : null}
-        {state === "read" && (waiting > 0 || stanceBehindShow) ? (
-          <span className="text-muted-foreground text-xs" data-testid="reading-verdict-waiting">
-            {waiting > 0
-              ? `${waiting} ${waiting === 1 ? "claim waits" : "claims wait"} for your answer`
-              : null}
-            {waiting > 0 && stanceBehindShow ? ", and " : null}
-            {stanceBehindShow ? "the prediction stance waits behind Show" : null}
-          </span>
-        ) : null}
       </p>
       {verdict === "entries" && warnings && warnings.length > 0 ? (
         <ul className="list-disc space-y-0.5 pl-5 text-sm" data-testid="reading-verdict-entries">

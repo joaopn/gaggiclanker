@@ -66,6 +66,7 @@ SHIPPED: dict[str, str] = {
     "0046": "9b5e72d05e9aa52f1e33551ee63f4ae5a11f48e82a1759eaf36cf984ff2f4d29",
     "0047": "f5618a831bb5b2acd52bbdfffbee218a7a1daaab36bdf93a2a7e91166ae1e30d",
     "0048": "67b73300355b897f3333d298ad9755446b4e4761d21c28e9bcb11b50b9584a6b",
+    "0049": "83bf69ecfd7fac5ab2ebe371d4edd6fc5b0400e9f262b17289b569a844b9bca0",
 }
 
 

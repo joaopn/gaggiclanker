@@ -2,7 +2,7 @@ import type { ClaimEvidence, ReadingBlock, ReviewClaim } from "@/api/types";
 
 /** A shot's `reading` block, as the list, the detail and the fields serve it. */
 export function readingBlock(overrides: Partial<ReadingBlock> = {}): ReadingBlock {
-  return { state: "unread", unanswered: 0, ...overrides };
+  return { state: "unread", ...overrides };
 }
 
 /** One evidence item of a claim, as the server evaluated it. */
@@ -37,8 +37,7 @@ export function claim(overrides: Partial<ReviewClaim> = {}): ReviewClaim {
     expectation_id: null,
     held: null,
     stance: null,
-    status: "proposed",
-    reason: "",
+    status: "confirmed",
     answered_at: null,
     ...overrides,
   };

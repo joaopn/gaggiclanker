@@ -207,8 +207,6 @@ export function ShotDetailPage() {
             reading={shot.data.reading}
             checks={fields.data?.checks}
             span={claimSpan.controls}
-            decision={shot.data.judgement?.decision ?? null}
-            hasPrediction={Boolean(shot.data.set_version?.prediction)}
           />
         </section>
       ) : null}

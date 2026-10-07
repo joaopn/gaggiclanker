@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { act, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useEventInvalidation } from "@/hooks/useEventInvalidation";
-import { useAnswerClaim, useConfirmAllClaims, useRunReview } from "@/hooks/useReview";
+import { useAnswerClaim, useRunReview } from "@/hooks/useReview";
 import { queryKeys } from "@/lib/queryKeys";
 import type { SseMessage } from "@/lib/sse";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
@@ -13,25 +13,22 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { runReview, answerReviewClaim, confirmAllReviewClaims, handlers, subscribeToEventSource } =
-  vi.hoisted(() => {
-    const handlers: { current: { onMessage?: (m: SseMessage) => void } } = { current: {} };
-    return {
-      runReview: vi.fn(),
-      answerReviewClaim: vi.fn(),
-      confirmAllReviewClaims: vi.fn(),
-      handlers,
-      subscribeToEventSource: vi.fn((_url: string, given: Record<string, unknown>) => {
-        handlers.current = given;
-        return () => {};
-      }),
-    };
-  });
+const { runReview, answerReviewClaim, handlers, subscribeToEventSource } = vi.hoisted(() => {
+  const handlers: { current: { onMessage?: (m: SseMessage) => void } } = { current: {} };
+  return {
+    runReview: vi.fn(),
+    answerReviewClaim: vi.fn(),
+    handlers,
+    subscribeToEventSource: vi.fn((_url: string, given: Record<string, unknown>) => {
+      handlers.current = given;
+      return () => {};
+    }),
+  };
+});
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   runReview,
   answerReviewClaim,
-  confirmAllReviewClaims,
 }));
 vi.mock("@/lib/sse", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/sse")>()),
@@ -42,7 +39,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   runReview.mockResolvedValue(review({ status: "running", finished_at: null }));
   answerReviewClaim.mockResolvedValue(review());
-  confirmAllReviewClaims.mockResolvedValue(review());
 });
 
 function spyOn(queryClient: QueryClient): unknown[][] {
@@ -63,13 +59,8 @@ function spyOn(queryClient: QueryClient): unknown[][] {
  */
 const WRITES = [
   ["starting a reading", () => useRunReview(), { shotId: 129 }],
-  ["confirming a claim", () => useAnswerClaim(), { reviewId: 1, claimId: 2, status: "confirmed" }],
-  [
-    "rejecting a claim with a reason",
-    () => useAnswerClaim(),
-    { reviewId: 1, claimId: 2, status: "rejected", reason: "no" },
-  ],
-  ["confirming every claim", () => useConfirmAllClaims(), { reviewId: 1 }],
+  ["restoring a claim", () => useAnswerClaim(), { reviewId: 1, claimId: 2, status: "confirmed" }],
+  ["rejecting a claim", () => useAnswerClaim(), { reviewId: 1, claimId: 2, status: "rejected" }],
 ] as const;
 
 describe("every reading write invalidates what it touches", () => {
@@ -97,27 +88,11 @@ describe("every reading write invalidates what it touches", () => {
     expect(keys).toContainEqual(queryKeys.shots.all);
   });
 
-  it("sends an answer to its own route and Confirm all as one call", async () => {
+  it("sends an answer to its own route", async () => {
     const one = renderHookWithQueryClient(() => useAnswerClaim());
-    await one.result.current.mutateAsync({
-      reviewId: 4,
-      claimId: 9,
-      status: "rejected",
-      reason: "too tight",
-    });
-    expect(answerReviewClaim).toHaveBeenCalledWith(4, 9, {
-      status: "rejected",
-      reason: "too tight",
-    });
-    expect(confirmAllReviewClaims).not.toHaveBeenCalled();
-
-    const all = renderHookWithQueryClient(() => useConfirmAllClaims());
-    await all.result.current.mutateAsync({ reviewId: 4 });
-    expect(confirmAllReviewClaims).toHaveBeenCalledTimes(1);
-    expect(confirmAllReviewClaims).toHaveBeenCalledWith(4, undefined);
-
-    await all.result.current.mutateAsync({ reviewId: 4, exceptKinds: ["prediction"] });
-    expect(confirmAllReviewClaims).toHaveBeenLastCalledWith(4, ["prediction"]);
+    await one.result.current.mutateAsync({ reviewId: 4, claimId: 9, status: "rejected" });
+    expect(answerReviewClaim).toHaveBeenCalledTimes(1);
+    expect(answerReviewClaim).toHaveBeenCalledWith(4, 9, { status: "rejected" });
   });
 });
 

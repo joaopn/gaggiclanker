@@ -185,12 +185,12 @@ type ReviewStatus = Literal["running", "ok", "failed", "interrupted"]
 #: What one stored statement of a reading is. A `claim` is something the model says about a
 #: window of the shot, a `free_text` one answers one of the confirmed signature's free-text
 #: expectations, and a `prediction` says how the shot moved against the Set version's
-#: prediction. All three are answered the same way, by a person, one at a time.
+#: prediction. All three are kept or rejected the same way, by a person, one at a time.
 type ReviewClaimKind = Literal["claim", "free_text", "prediction"]
 
-#: A claim starts `proposed`; only a person moves it. Nothing proposed or rejected teaches the
-#: chat anything.
-type ReviewClaimStatus = Literal["proposed", "confirmed", "rejected"]
+#: A claim is kept (`confirmed`) until a person rejects it, and they may restore it. A rejected
+#: claim never teaches the chat anything.
+type ReviewClaimStatus = Literal["confirmed", "rejected"]
 
 #: How the shot moved against the prediction its Set version was filed with.
 type PredictionStance = Literal["as_predicted", "partly", "against", "not_shown"]

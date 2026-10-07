@@ -536,7 +536,7 @@ describe("ShotDetailPage Review card", () => {
     const user = setupUser();
     getShot.mockResolvedValue({
       ...shot129,
-      reading: readingBlock({ state: "read", review_id: 5, in_force_id: 5, unanswered: 1 }),
+      reading: readingBlock({ state: "read", review_id: 5, in_force_id: 5 }),
       reviews: [
         review({
           id: 5,
@@ -564,7 +564,7 @@ describe("ShotDetailPage Review card", () => {
     expect(screen.queryByTestId("chart-span")).toBeNull();
   });
 
-  it("does not carry an open Read again question, or a revealed stance, to the next shot", async () => {
+  it("does not carry an open Read again question to the next shot", async () => {
     const user = setupUser();
     // The production cache, as in the prediction test above: the route element is reused.
     const caching = new QueryClient({
@@ -619,21 +619,20 @@ describe("ShotDetailPage Review card", () => {
     await screen.findByTestId("review-card");
     await user.click(screen.getByRole("link", { name: "the next shot" }));
     await waitFor(() => expect(getShot).toHaveBeenCalledWith(130));
-    await screen.findByText(/stance of|compared with its version's prediction/);
+    await screen.findByText(/stance of/);
     await user.click(screen.getByRole("link", { name: "the first shot" }));
     await waitFor(() => expect(screen.getByTestId("review-card")).toBeInTheDocument());
 
-    // On 129: ask the question and reveal the stance.
+    // On 129: ask the question.
     await user.click(screen.getByTestId("run-review"));
     expect(screen.getByTestId("read-again-ask")).not.toHaveAttribute("hidden");
-    await user.click(screen.getByTestId("prediction-show"));
     expect(screen.getByText("stance of 129")).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "the next shot" }));
 
     await waitFor(() => expect(screen.getByTestId("read-again-ask")).toHaveAttribute("hidden"));
-    expect(screen.getByTestId("prediction-hidden")).toBeInTheDocument();
-    expect(screen.queryByText("stance of 130")).not.toBeInTheDocument();
+    expect(screen.queryByText("stance of 129")).not.toBeInTheDocument();
+    expect(screen.getByText("stance of 130")).toBeInTheDocument();
     // Nothing started a reading on the shot nobody asked about.
     expect(runReview).not.toHaveBeenCalled();
   });
@@ -646,7 +645,6 @@ describe("ShotDetailPage Review card", () => {
         verdict: "entries",
         review_id: 5,
         in_force_id: 5,
-        unanswered: 1,
       }),
       reviews: [
         review({ id: 5, shot_id: shot129.shot.id, claims: [claim({ id: 50, review_id: 5 })] }),
@@ -659,7 +657,6 @@ describe("ShotDetailPage Review card", () => {
         verdict: "entries",
         review_id: 5,
         in_force_id: 5,
-        unanswered: 1,
       }),
     });
     const { unmount } = renderShot();

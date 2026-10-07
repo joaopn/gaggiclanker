@@ -91,15 +91,15 @@ async def test_a_successful_run_stores_the_summary_the_claims_and_its_input(
     assert row.llm_call_id
     assert row.prediction_given == ""
 
-    # Two claims, in the order the model gave them, every one of them waiting for a person.
+    # Two claims, in the order the model gave them, every one of them kept until rejected.
     assert [(c.position, c.kind, c.status) for c in row.claims] == [
-        (0, "claim", "proposed"),
-        (1, "claim", "proposed"),
+        (0, "claim", "confirmed"),
+        (1, "claim", "confirmed"),
     ]
     first, second = row.claims
     assert (first.fault, second.fault) == ("fast flow", None)
     assert first.text == GOOD_REVIEW["claims"][0]["text"]
-    assert first.answered_at is None and first.reason == ""
+    assert first.answered_at is None
 
     # The input snapshot is what was sent, verbatim.
     detail = await ShotReviewsRepository(fixture.db).detail(row.id)
@@ -381,7 +381,7 @@ async def test_a_free_text_result_is_a_claim_with_the_expectations_own_fault_wor
     kinds = [claim.kind for claim in row.claims]
     assert kinds == ["claim", "claim", "free_text"]
     result = row.claims[-1]
-    assert (result.expectation_id, result.held, result.status) == (expectation, False, "proposed")
+    assert (result.expectation_id, result.held, result.status) == (expectation, False, "confirmed")
     # The word is the expectation's, not the model's, and only a failure carries one.
     assert result.fault == "unstable"
     assert result.phase == "Pressurise"
@@ -424,7 +424,7 @@ async def test_the_prediction_is_present_exactly_when_the_version_has_one(
     assert row.status == "ok"
     assert row.prediction_given.startswith("Expect a faster shot")
     last = row.claims[-1]
-    assert (last.kind, last.stance, last.status) == ("prediction", "partly", "proposed")
+    assert (last.kind, last.stance, last.status) == ("prediction", "partly", "confirmed")
     assert last.fault is None and last.start_s is None
 
 
@@ -741,7 +741,8 @@ async def test_events_are_published_on_the_llm_bus(fixture: Fixture, llm: LlmSer
     seen: list[SseEvent] = []
     with bus.subscribe() as queue:
         row = await service.run_review(fixture.shots[-1])
-        await service.confirm_all(row.id)
+        first = row.claims[0]
+        await service.answer(row.id, first.id, keep=False)
         while not queue.empty():
             seen.append(queue.get_nowait())
 

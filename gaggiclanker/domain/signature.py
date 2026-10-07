@@ -552,9 +552,6 @@ class Check:
     relative_to: str | None = None
     #: The limit as a person reads it: ``at most 15 % of target``, ``at most 3 g/s``.
     limit_text: str = ""
-    #: A free-text expectation answered by a reading nobody has confirmed yet. Only the person's
-    #: view carries one (the web draws it outlined); a chat is never given one.
-    unverified: bool = False
 
     @property
     def color(self) -> CheckColor | None:
@@ -584,7 +581,6 @@ class Check:
             "tier": self.tier,
             "status": self.status,
             "expectation_id": self.expectation_id,
-            "unverified": self.unverified,
         }
 
 

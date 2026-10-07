@@ -20,17 +20,15 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { runReview, answerReviewClaim, confirmAllReviewClaims, getVocabulary } = vi.hoisted(() => ({
+const { runReview, answerReviewClaim, getVocabulary } = vi.hoisted(() => ({
   runReview: vi.fn(),
   answerReviewClaim: vi.fn(),
-  confirmAllReviewClaims: vi.fn(),
   getVocabulary: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   runReview,
   answerReviewClaim,
-  confirmAllReviewClaims,
   getVocabulary,
 }));
 
@@ -39,7 +37,6 @@ beforeEach(() => {
   getVocabulary.mockResolvedValue(vocabulary);
   runReview.mockResolvedValue(review({ status: "running", finished_at: null }));
   answerReviewClaim.mockResolvedValue(review());
-  confirmAllReviewClaims.mockResolvedValue(review());
 });
 
 const NO_SPAN: ClaimSpanControls = {
@@ -53,13 +50,10 @@ function Card({
   reviews,
   reading,
   span = NO_SPAN,
-  ...rest
 }: {
   reviews: ShotReview[];
   reading?: ReadingBlock;
   span?: ClaimSpanControls;
-  decision?: string | null;
-  hasPrediction?: boolean;
 }) {
   const latest = reviews[0];
   const inForce = reviews.find((r) => r.status === "ok");
@@ -70,7 +64,7 @@ function Card({
       review_id: latest?.id,
       in_force_id: inForce?.id,
     });
-  return <ReviewCard shotId={129} reviews={reviews} reading={block} span={span} {...rest} />;
+  return <ReviewCard shotId={129} reviews={reviews} reading={block} span={span} />;
 }
 
 const observation = (overrides: Partial<ReviewClaim> = {}) => claim({ review_id: 1, ...overrides });
@@ -84,7 +78,7 @@ describe("ReviewCard", () => {
     expect(empty).toHaveTextContent(REVIEW_EXPLAINED);
     expect(REVIEW_EXPLAINED).toContain("without your judgement");
     expect(REVIEW_EXPLAINED).toContain("changes nothing else.");
-    expect(REVIEW_EXPLAINED).toMatch(/confirm or reject each claim/);
+    expect(REVIEW_EXPLAINED).toMatch(/kept unless you reject it/);
     expect(REVIEW_EXPLAINED).not.toMatch(/taste prediction|blind/i);
 
     await user.dblClick(within(empty).getByRole("button", { name: "Read this shot" }));
@@ -125,7 +119,7 @@ describe("ReviewCard", () => {
             claims: [observation({ review_id: 2 })],
           }),
         ]}
-        reading={readingBlock({ state: "running", review_id: 3, in_force_id: 2, unanswered: 1 })}
+        reading={readingBlock({ state: "running", review_id: 3, in_force_id: 2 })}
       />,
     );
 
@@ -145,17 +139,14 @@ describe("ReviewCard", () => {
           review({ id: 9, status: "running", finished_at: null, summary: null }),
           review({ id: 4, claims: [observation({ id: 40, review_id: 4 })] }),
         ]}
-        reading={readingBlock({ state: "running", review_id: 9, in_force_id: 4, unanswered: 1 })}
+        reading={readingBlock({ state: "running", review_id: 9, in_force_id: 4 })}
       />,
     );
 
-    await user.click(screen.getByTestId("claim-confirm"));
+    await user.click(screen.getByTestId("claim-reject"));
 
     await waitFor(() =>
-      expect(answerReviewClaim).toHaveBeenCalledWith(4, 40, {
-        status: "confirmed",
-        reason: undefined,
-      }),
+      expect(answerReviewClaim).toHaveBeenCalledWith(4, 40, { status: "rejected" }),
     );
   });
 
@@ -197,14 +188,11 @@ describe("ReviewCard", () => {
       renderWithQueryClient(
         <Card
           reviews={[full()]}
-          decision="keep"
-          hasPrediction
           reading={readingBlock({
             state: "read",
             verdict: "entries",
             review_id: 1,
             in_force_id: 1,
-            unanswered: 3,
           })}
         />,
       );
@@ -214,7 +202,6 @@ describe("ReviewCard", () => {
         screen.getByTestId("reading-expectations"),
         screen.getByTestId("reading-prediction"),
         screen.getByTestId("reading-claims"),
-        screen.getByTestId("claims-confirm-all"),
         screen.getByTestId("review-rules"),
         screen.getByTestId("review-excerpts"),
         screen.getByTestId("review-provenance"),
@@ -356,211 +343,80 @@ describe("ReviewCard", () => {
       );
     });
 
-    it("holds the prediction back until the shot has a decision, and reveals it on Show", async () => {
-      const user = setupUser();
-      const { rerender } = renderWithQueryClient(
-        <Card reviews={[full()]} decision={null} hasPrediction />,
-      );
-      expect(screen.getByTestId("prediction-hidden")).toBeInTheDocument();
-      expect(screen.queryByText("The shot was sweeter than predicted.")).toBeNull();
-      expect(screen.queryByTestId("claim-stance")).toBeNull();
-
-      await user.click(screen.getByTestId("prediction-show"));
+    it("shows the prediction stance from the start: a stance that reaches the chat is never hidden", () => {
+      renderWithQueryClient(<Card reviews={[full()]} />);
+      expect(screen.queryByTestId("prediction-show")).toBeNull();
       expect(screen.queryByTestId("prediction-hidden")).toBeNull();
       expect(screen.getByTestId("claim-stance")).toHaveTextContent("partly as predicted");
-      // Focus lands on the section the button was replaced by, not on the page.
-      expect(screen.getByTestId("prediction-heading")).toHaveFocus();
-
-      rerender(<Card reviews={[full()]} decision="keep" hasPrediction />);
       expect(screen.getByText("The shot was sweeter than predicted.")).toBeInTheDocument();
     });
 
-    it("shows the stance from the start once the shot has a decision, taking no focus", () => {
-      renderWithQueryClient(<Card reviews={[full()]} decision="keep" hasPrediction />);
-      expect(screen.queryByTestId("prediction-show")).toBeNull();
-      expect(screen.getByTestId("claim-stance")).toBeInTheDocument();
-      expect(screen.getByTestId("prediction-heading")).not.toHaveFocus();
+    it("keeps every claim from the start: no Confirm, no Confirm all, no waiting state", () => {
+      renderWithQueryClient(<Card reviews={[full()]} />);
+      expect(screen.queryByTestId("claim-confirm")).toBeNull();
+      expect(screen.queryByTestId("claims-confirm-all")).toBeNull();
+      expect(screen.queryByTestId("reading-verdict-waiting")).toBeNull();
+      for (const item of screen.getAllByTestId("claim")) {
+        expect(item).toHaveAttribute("data-status", "confirmed");
+        expect(within(item).queryByTestId("claim-status")).toBeNull();
+        expect(within(item).getByTestId("claim-reject")).toHaveTextContent("Reject");
+      }
     });
 
-    it("never confirms a stance nobody was shown: Confirm all leaves it out and does not count it", async () => {
+    it("rejects one claim with one call, a double click making one request", async () => {
       const user = setupUser();
-      renderWithQueryClient(<Card reviews={[full()]} decision={null} hasPrediction />);
-
-      // Three claims wait, one of them the hidden stance.
-      expect(screen.getByTestId("claims-confirm-all")).toHaveTextContent("Confirm all (2)");
-      await user.click(screen.getByTestId("claims-confirm-all"));
-
-      await waitFor(() => expect(confirmAllReviewClaims).toHaveBeenCalledTimes(1));
-      expect(confirmAllReviewClaims).toHaveBeenCalledWith(1, ["prediction"]);
-    });
-
-    it("includes the stance in Confirm all, and in its count, once it is revealed", async () => {
-      const user = setupUser();
-      renderWithQueryClient(<Card reviews={[full()]} decision={null} hasPrediction />);
-
-      await user.click(screen.getByTestId("prediction-show"));
-      expect(screen.getByTestId("claims-confirm-all")).toHaveTextContent("Confirm all (3)");
-      await user.click(screen.getByTestId("claims-confirm-all"));
-
-      await waitFor(() => expect(confirmAllReviewClaims).toHaveBeenCalledTimes(1));
-      expect(confirmAllReviewClaims).toHaveBeenCalledWith(1, undefined);
-    });
-
-    it("includes the stance in Confirm all when the shot has a decision", async () => {
-      const user = setupUser();
-      renderWithQueryClient(<Card reviews={[full()]} decision="keep" hasPrediction />);
-      expect(screen.getByTestId("claims-confirm-all")).toHaveTextContent("Confirm all (3)");
-      await user.click(screen.getByTestId("claims-confirm-all"));
-      await waitFor(() => expect(confirmAllReviewClaims).toHaveBeenCalledWith(1, undefined));
-    });
-
-    it("a reveal belongs to one reading: a new reading in force holds its stance back again", async () => {
-      const user = setupUser();
-      const { rerender } = renderWithQueryClient(
-        <Card reviews={[full()]} decision={null} hasPrediction />,
-      );
-      await user.click(screen.getByTestId("prediction-show"));
-      const next = review({ id: 2, claims: [{ ...prediction, id: 90, review_id: 2 }] });
-      rerender(<Card reviews={[next, full()]} decision={null} hasPrediction />);
-      expect(screen.getByTestId("prediction-hidden")).toBeInTheDocument();
-    });
-
-    it("confirms one claim with one call", async () => {
-      const user = setupUser();
-      renderWithQueryClient(<Card reviews={[full()]} decision="keep" />);
+      renderWithQueryClient(<Card reviews={[full()]} />);
 
       const item = screen
         .getAllByTestId("claim")
         .find((el) => el.getAttribute("data-claim-id") === "20");
       if (!item) throw new Error("no claim");
-      await user.dblClick(within(item).getByTestId("claim-confirm"));
+      await user.dblClick(within(item).getByTestId("claim-reject"));
 
       await waitFor(() => expect(answerReviewClaim).toHaveBeenCalledTimes(1));
-      expect(answerReviewClaim).toHaveBeenCalledWith(1, 20, {
-        status: "confirmed",
-        reason: undefined,
-      });
-      expect(confirmAllReviewClaims).not.toHaveBeenCalled();
+      expect(answerReviewClaim).toHaveBeenCalledWith(1, 20, { status: "rejected" });
     });
 
-    it("rejects with an optional one-line reason, Enter submitting", async () => {
-      const user = setupUser();
-      renderWithQueryClient(<Card reviews={[review({ claims: [found] })]} />);
-
-      await user.click(screen.getByTestId("claim-reject"));
-      await user.type(
-        screen.getByPlaceholderText("Why (optional)"),
-        "the pressure is steady{Enter}",
-      );
-
-      await waitFor(() => expect(answerReviewClaim).toHaveBeenCalledTimes(1));
-      expect(answerReviewClaim).toHaveBeenCalledWith(1, 20, {
-        status: "rejected",
-        reason: "the pressure is steady",
-      });
-    });
-
-    it("rejects with no reason too", async () => {
-      const user = setupUser();
-      renderWithQueryClient(<Card reviews={[review({ claims: [found] })]} />);
-
-      await user.click(screen.getByTestId("claim-reject"));
-      await user.click(screen.getByTestId("reason-submit"));
-
-      await waitFor(() => expect(answerReviewClaim).toHaveBeenCalledTimes(1));
-      expect(answerReviewClaim).toHaveBeenCalledWith(1, 20, { status: "rejected", reason: "" });
-    });
-
-    it("lets an answer be changed, each way", async () => {
+    it("a rejected claim says so and Restore brings it back, each with one call", async () => {
       const user = setupUser();
       renderWithQueryClient(
         <Card
           reviews={[
             review({
               claims: [
-                observation({ id: 30, position: 0, status: "confirmed" }),
-                observation({ id: 31, position: 1, status: "rejected", reason: "wrong phase" }),
+                observation({ id: 30, position: 0 }),
+                observation({ id: 31, position: 1, status: "rejected" }),
               ],
             }),
           ]}
         />,
       );
-      const [confirmed, rejected] = screen.getAllByTestId("claim");
-      expect(within(confirmed).queryByTestId("claim-confirm")).toBeNull();
+      const [kept, rejected] = screen.getAllByTestId("claim");
+      expect(within(kept).queryByTestId("claim-restore")).toBeNull();
       expect(within(rejected).queryByTestId("claim-reject")).toBeNull();
-      expect(within(rejected).getByTestId("claim-reason")).toHaveTextContent("wrong phase");
+      expect(within(rejected).getByTestId("claim-status")).toHaveTextContent("rejected");
 
-      await user.click(within(rejected).getByRole("button", { name: "Change to confirm" }));
+      await user.click(within(rejected).getByRole("button", { name: "Restore" }));
       await waitFor(() =>
-        expect(answerReviewClaim).toHaveBeenCalledWith(1, 31, {
-          status: "confirmed",
-          reason: undefined,
-        }),
+        expect(answerReviewClaim).toHaveBeenCalledWith(1, 31, { status: "confirmed" }),
       );
-      await user.click(within(confirmed).getByRole("button", { name: "Change to reject" }));
-      await user.click(screen.getByTestId("reason-submit"));
+      await user.click(within(kept).getByRole("button", { name: "Reject" }));
       await waitFor(() =>
-        expect(answerReviewClaim).toHaveBeenCalledWith(1, 30, { status: "rejected", reason: "" }),
+        expect(answerReviewClaim).toHaveBeenCalledWith(1, 30, { status: "rejected" }),
       );
+      expect(answerReviewClaim).toHaveBeenCalledTimes(2);
     });
 
-    it("confirms every waiting claim with one call, and offers it only while some wait", async () => {
-      const user = setupUser();
-      const { rerender } = renderWithQueryClient(<Card reviews={[full()]} decision="keep" />);
-
-      expect(screen.getByTestId("claims-confirm-all")).toHaveTextContent("Confirm all (3)");
-      await user.dblClick(screen.getByTestId("claims-confirm-all"));
-      await waitFor(() => expect(confirmAllReviewClaims).toHaveBeenCalledTimes(1));
-      expect(confirmAllReviewClaims).toHaveBeenCalledWith(1, undefined);
-      expect(answerReviewClaim).not.toHaveBeenCalled();
-
-      rerender(
-        <Card
-          reviews={[
-            review({
-              claims: [
-                observation({ status: "confirmed" }),
-                observation({ id: 2, status: "rejected" }),
-              ],
-            }),
-          ]}
-        />,
-      );
-      expect(screen.queryByTestId("claims-confirm-all")).toBeNull();
-    });
-
-    it("Read again with nothing confirmed starts a reading at once", async () => {
+    it("Read again asks once, inline, that it replaces the current review", async () => {
       const user = setupUser();
       renderWithQueryClient(<Card reviews={[review({ claims: [found] })]} />);
-
-      await user.click(screen.getByRole("button", { name: "Read again" }));
-
-      await waitFor(() => expect(runReview).toHaveBeenCalledTimes(1));
-      expect(screen.getByTestId("read-again-ask")).toHaveAttribute("hidden");
-    });
-
-    it("Read again asks once, inline, when claims are confirmed, and says how many it sets aside", async () => {
-      const user = setupUser();
-      renderWithQueryClient(
-        <Card
-          reviews={[
-            review({
-              claims: [
-                observation({ id: 1, status: "confirmed" }),
-                observation({ id: 2, position: 1, status: "confirmed" }),
-                observation({ id: 3, position: 2, status: "rejected" }),
-              ],
-            }),
-          ]}
-        />,
-      );
       const ask = screen.getByTestId("read-again-ask");
       expect(ask).toHaveAttribute("hidden");
 
       await user.click(screen.getByTestId("run-review"));
       expect(runReview).not.toHaveBeenCalled();
       expect(ask).not.toHaveAttribute("hidden");
-      expect(ask).toHaveTextContent("This sets aside 2 confirmed claims");
+      expect(ask).toHaveTextContent("This replaces the current review");
       expect(screen.getByTestId("run-review")).toHaveAttribute("aria-controls", ask.id);
 
       await user.click(screen.getByTestId("read-again-cancel"));
@@ -571,17 +427,6 @@ describe("ReviewCard", () => {
       await user.dblClick(screen.getByTestId("read-again-confirm"));
       await waitFor(() => expect(runReview).toHaveBeenCalledTimes(1));
       expect(runReview).toHaveBeenCalledWith(129, { model: undefined });
-    });
-
-    it("says one confirmed claim in the singular", async () => {
-      const user = setupUser();
-      renderWithQueryClient(
-        <Card reviews={[review({ claims: [observation({ status: "confirmed" })] })]} />,
-      );
-      await user.click(screen.getByTestId("run-review"));
-      expect(screen.getByTestId("read-again-ask")).toHaveTextContent(
-        "sets aside 1 confirmed claim.",
-      );
     });
 
     it("renders the reading in force, not an older one", () => {
@@ -753,13 +598,7 @@ describe("the verdict line, the card's first", () => {
         verdict: "entries",
         review_id: 1,
         in_force_id: 1,
-        unanswered: 2,
       }),
-    ],
-    [
-      "entries, answered",
-      entries,
-      readingBlock({ state: "read", verdict: "entries", review_id: 1, in_force_id: 1 }),
     ],
     [
       "as intended",
@@ -829,12 +668,12 @@ describe("the verdict line, the card's first", () => {
     ).toBeTruthy();
   });
 
-  it("lists the failures of an entries verdict, and says how many claims wait", () => {
+  it("lists the failures of an entries verdict, and never says a claim waits", () => {
     renderWithQueryClient(
       <ReviewCard
         shotId={129}
         reviews={[review({ id: 1, claims: [observation()] })]}
-        reading={readingBlock({ state: "read", verdict: "entries", in_force_id: 1, unanswered: 1 })}
+        reading={readingBlock({ state: "read", verdict: "entries", in_force_id: 1 })}
         span={NO_SPAN}
         badge={entries.badge}
         warnings={entries.warnings}
@@ -843,72 +682,7 @@ describe("the verdict line, the card's first", () => {
     expect(screen.getByTestId("reading-verdict-entries").querySelectorAll("li")).toHaveLength(
       entries.warnings.length,
     );
-    expect(screen.getByTestId("reading-verdict-waiting")).toHaveTextContent("1 claim waits");
-  });
-
-  it("counts only what is on screen: a stance behind Show waits apart, and is not counted", async () => {
-    const user = setupUser();
-    const stance = claim({
-      id: 22,
-      review_id: 1,
-      position: 2,
-      kind: "prediction",
-      stance: "partly",
-      start_s: null,
-      end_s: null,
-      text: "The shot was sweeter than predicted.",
-      evidence: [],
-    });
-    const reading = readingBlock({
-      state: "read",
-      verdict: "entries",
-      in_force_id: 1,
-      unanswered: 2,
-    });
-    const props = {
-      shotId: 129,
-      reading,
-      span: NO_SPAN,
-      badge: entries.badge,
-      warnings: entries.warnings,
-      hasPrediction: true,
-    };
-    renderWithQueryClient(
-      <ReviewCard {...props} reviews={[review({ id: 1, claims: [observation(), stance] })]} />,
-    );
-    expect(screen.getByTestId("reading-verdict-waiting")).toHaveTextContent(
-      "1 claim waits for your answer, and the prediction stance waits behind Show",
-    );
-    await user.click(screen.getByTestId("prediction-show"));
-    expect(screen.getByTestId("reading-verdict-waiting")).toHaveTextContent(
-      /^2 claims wait for your answer$/,
-    );
-  });
-
-  it("says only the stance waits when nothing else does", () => {
-    const stance = claim({
-      id: 22,
-      review_id: 1,
-      kind: "prediction",
-      stance: "partly",
-      start_s: null,
-      end_s: null,
-      evidence: [],
-    });
-    renderWithQueryClient(
-      <ReviewCard
-        shotId={129}
-        reviews={[review({ id: 1, claims: [observation({ status: "confirmed" }), stance] })]}
-        reading={readingBlock({ state: "read", verdict: "entries", in_force_id: 1, unanswered: 1 })}
-        span={NO_SPAN}
-        badge={entries.badge}
-        warnings={entries.warnings}
-        hasPrediction
-      />,
-    );
-    expect(screen.getByTestId("reading-verdict-waiting")).toHaveTextContent(
-      /^the prediction stance waits behind Show$/,
-    );
+    expect(screen.queryByTestId("reading-verdict-waiting")).toBeNull();
   });
 
   it("never says No signature for a verdict of failures whose badge text has not arrived", () => {
@@ -916,7 +690,7 @@ describe("the verdict line, the card's first", () => {
       <ReviewCard
         shotId={129}
         reviews={[review({ id: 1, claims: [observation()] })]}
-        reading={readingBlock({ state: "read", verdict: "entries", in_force_id: 1, unanswered: 1 })}
+        reading={readingBlock({ state: "read", verdict: "entries", in_force_id: 1 })}
         span={NO_SPAN}
         badge={undefined}
         warnings={undefined}
@@ -954,36 +728,30 @@ describe("answering goes through the reading in force during a re-read", () => {
     [
       "a running re-read",
       review({ id: 9, status: "running", finished_at: null, summary: null }),
-      readingBlock({ state: "running", review_id: 9, in_force_id: 4, unanswered: 2 }),
+      readingBlock({ state: "running", review_id: 9, in_force_id: 4 }),
     ],
     [
       "a failed re-read",
       review({ id: 9, status: "failed", error: "boom", summary: null }),
-      readingBlock({ state: "failed", review_id: 9, in_force_id: 4, unanswered: 2 }),
+      readingBlock({ state: "failed", review_id: 9, in_force_id: 4 }),
     ],
   ];
 
-  it.each(states)("Confirm all, %s", async (_name, newest, reading) => {
-    const user = setupUser();
-    renderWithQueryClient(<Card reviews={[newest, inForce]} reading={reading} />);
-    await user.click(screen.getByTestId("claims-confirm-all"));
-    await waitFor(() => expect(confirmAllReviewClaims).toHaveBeenCalledTimes(1));
-    // Never the newest attempt's id (9), which answers 409.
-    expect(confirmAllReviewClaims).toHaveBeenCalledWith(4, undefined);
-  });
-
-  it.each(states)("a single Confirm and a Reject, %s", async (_name, newest, reading) => {
-    const user = setupUser();
-    renderWithQueryClient(<Card reviews={[newest, inForce]} reading={reading} />);
-    const [first, second] = screen.getAllByTestId("claim");
-    await user.click(within(first).getByTestId("claim-confirm"));
-    await waitFor(() => expect(answerReviewClaim).toHaveBeenCalledTimes(1));
-    expect(answerReviewClaim.mock.calls[0].slice(0, 2)).toEqual([4, 40]);
-    await user.click(within(second).getByTestId("claim-reject"));
-    await user.click(screen.getByTestId("reason-submit"));
-    await waitFor(() => expect(answerReviewClaim).toHaveBeenCalledTimes(2));
-    expect(answerReviewClaim.mock.calls[1].slice(0, 2)).toEqual([4, 41]);
-  });
+  it.each(states)(
+    "a Reject goes to the review in force, never the attempt: %s",
+    async (_name, newest, reading) => {
+      const user = setupUser();
+      renderWithQueryClient(<Card reviews={[newest, inForce]} reading={reading} />);
+      const [first, second] = screen.getAllByTestId("claim");
+      await user.click(within(first).getByTestId("claim-reject"));
+      await waitFor(() => expect(answerReviewClaim).toHaveBeenCalledTimes(1));
+      // Never the newest attempt's id (9), which answers 409.
+      expect(answerReviewClaim.mock.calls[0].slice(0, 2)).toEqual([4, 40]);
+      await user.click(within(second).getByTestId("claim-reject"));
+      await waitFor(() => expect(answerReviewClaim).toHaveBeenCalledTimes(2));
+      expect(answerReviewClaim.mock.calls[1].slice(0, 2)).toEqual([4, 41]);
+    },
+  );
 });
 
 describe("the limit is said once", () => {

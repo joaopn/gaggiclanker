@@ -64,7 +64,7 @@ async def test_reading_a_shot_over_http(
     assert body["prediction_given"] == ""
     assert not {"description", "taste_balance", "taste_body", "taste_confidence"} & set(body)
     assert "input" not in body, "a row as a page reads it carries no input"
-    # The claims, each as the page reads it, every one waiting for a person.
+    # The claims, each as the page reads it, every one kept until a person rejects it.
     first = body["claims"][0]
     assert {
         "id",
@@ -82,10 +82,10 @@ async def test_reading_a_shot_over_http(
         "held",
         "stance",
         "status",
-        "reason",
         "answered_at",
     } <= set(first)
-    assert (first["kind"], first["status"], first["fault"]) == ("claim", "proposed", "fast flow")
+    assert "reason" not in first
+    assert (first["kind"], first["status"], first["fault"]) == ("claim", "confirmed", "fast flow")
     assert (first["phase"], first["window_text"]) == ("Pressurise", "the Pressurise")
     assert (first["start_s"], first["end_s"]) == (10.0, 27.75)
     assert set(first["evidence"][0]) == {
@@ -117,18 +117,17 @@ async def test_reading_a_shot_over_http(
     assert detail["reviews"][0]["claims"][0]["id"] == first["id"]
     assert detail["reading"]["state"] == "read"
     assert detail["reading"]["review_id"] == body["id"]
-    assert detail["reading"]["unanswered"] == 2
     assert detail["reading"]["summary"] == GOOD_REVIEW["summary"]
     assert "analyses" not in detail
 
 
-async def test_only_what_a_person_confirmed_reaches_the_chat(
+async def test_only_what_a_person_did_not_reject_reaches_the_chat(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
 ) -> None:
     """End to end: the button's route, a mocked provider, a person's answer, the chat's shot tool.
 
-    Nothing proposed or rejected teaches the chat, the summary never does, and only the count of
-    what is still unverified is said.
+    Every claim of the review in force teaches the chat unless a person rejected it, and the
+    summary never does.
     """
     app, client, _ = api
     data = await build_app_fixture(app)
@@ -145,23 +144,20 @@ async def test_only_what_a_person_confirmed_reaches_the_chat(
     assert reviewed["data"]["status"] == "ok"
     first, second = reviewed["data"]["claims"]
 
-    unanswered = await read_back()
-    assert "[Reading]" in unanswered
-    assert "0 claims confirmed, 2 unverified, 0 rejected" in unanswered
-    assert first["text"] not in unanswered and second["text"] not in unanswered
-    assert GOOD_REVIEW["summary"] not in unanswered
+    kept = await read_back()
+    assert "[Review]" in kept
+    assert "2 claims kept, 0 rejected" in kept
+    assert first["text"] in kept and second["text"] in kept
+    assert GOOD_REVIEW["summary"] not in kept
 
-    answered = await client.patch(
-        f"/api/reviews/{reviewed['data']['id']}/claims/{first['id']}", json={"status": "confirmed"}
-    )
-    assert answered.status_code == 200
-    await client.patch(
+    rejected = await client.patch(
         f"/api/reviews/{reviewed['data']['id']}/claims/{second['id']}",
-        json={"status": "rejected", "reason": "not what I saw"},
+        json={"status": "rejected"},
     )
+    assert rejected.status_code == 200
 
     text = await read_back()
-    assert "1 claim confirmed, 0 unverified, 1 rejected" in text
+    assert "1 claim kept, 1 rejected" in text
     assert first["text"] in text
     assert "fast flow" in text and "the Pressurise (10-27.75 s)" in text
     assert "mean of the machine's estimate of puck flow over the Pressurise" in text
@@ -313,7 +309,6 @@ async def test_the_shots_list_carries_the_reading_block_on_every_row(
         "review_id": None,
         "in_force_id": None,
         "verdict": None,
-        "unanswered": 0,
         "reason": None,
         "summary": None,
         "finished_at": None,
@@ -324,11 +319,10 @@ async def test_the_shots_list_carries_the_reading_block_on_every_row(
     assert after["badge"] == "No signature"
     assert after["reading"]["state"] == "read"  # type: ignore[index]
     assert after["reading"]["verdict"] == "no_signature"  # type: ignore[index]
-    assert after["reading"]["unanswered"] == 2  # type: ignore[index]
 
 
 @pytest.mark.parametrize("status", ["running", "failed", "interrupted"])
-async def test_a_newer_reading_that_did_not_finish_changes_only_the_badge_words(
+async def test_a_newer_review_that_did_not_finish_changes_only_the_badge_words(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider], status: str
 ) -> None:
     """The reading in force is the newest finished one, in the list, the detail and the fields."""
@@ -361,19 +355,17 @@ async def test_a_newer_reading_that_did_not_finish_changes_only_the_badge_words(
         assert served["reading"]["state"] == ("running" if status == "running" else "failed")
         assert served["reading"]["review_id"] == newer
         assert served["reading"]["in_force_id"] == in_force["id"]
-        # What the reading in force said is still there, unverified, and still waiting.
-        assert [(w["fault"], w["unverified"]) for w in served["warnings"]] == [("unstable", True)]
-        assert served["reading"]["unanswered"] == 3
+        # What the reading in force said is still there.
+        assert [w["fault"] for w in served["warnings"]] == ["unstable"]
     assert fields["reading"]["summary"] == GOOD_REVIEW["summary"]
     assert [c["status"] for c in fields["checks"] if c["kind"] == "free_text"] == ["failed"]
-    assert detail["reading"]["unanswered"] == 3
     assert detail["reading"]["in_force_id"] == in_force["id"]
     assert detail["reading"]["review_id"] == newer
     # The in-force reading's claims are the ones the detail lists beside the newer attempt.
     assert [r["id"] for r in detail["reviews"]] == [newer, in_force["id"]]
     # Its claims can still be answered; the attempt that has not finished has none to answer.
     claim = in_force["claims"][0]
-    answered = await app.state.reviews.answer(in_force["id"], claim["id"], confirm=True)
+    answered = await app.state.reviews.answer(in_force["id"], claim["id"], keep=False)
     assert answered.refused is None
 
 

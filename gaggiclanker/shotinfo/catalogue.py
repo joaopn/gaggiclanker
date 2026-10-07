@@ -88,7 +88,7 @@ __all__ = [
     "GROUP_NOTES",
     "ITEMS",
     "MEASURED_GROUPS",
-    "READING_GROUP",
+    "REVIEW_GROUP",
     "TIERS",
     "Channel",
     "FieldValue",
@@ -807,9 +807,9 @@ MEASURED_GROUPS: frozenset[str] = frozenset(
     }
 )
 
-#: The group a shot's reading is rendered under. Named once because the reading's own
-#: input leaves it out: a reading is never shown an earlier one.
-READING_GROUP = "Reading"
+#: The group a shot's review is rendered under. Named once because a review's own input leaves
+#: it out: a review is never shown an earlier one.
+REVIEW_GROUP = "Review"
 
 #: What a group says once for all its rows: a condition every row shares, or
 #: a layout that is not the ordinary ``label: value``. Part of each row's
@@ -851,13 +851,13 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "Duration; …`, with only the values that phase has. The pressure lines need a "
             "pressure sensor; the scale lines (cup, scale flow) need a scale."
         ),
-        READING_GROUP: (
-            "What the newest finished reading of the shot said, and only what the person "
-            "confirmed. A reading is a model's claims about this one shot, each tied to a "
-            "window of the shot and backed by numbers the server worked out, made without the "
-            "person's judgement: weigh a confirmed claim below the measured numbers and "
-            "below the person's judgement. Claims nobody confirmed are not shown, only counted "
-            "(`unverified`); a claim the numbers do not bear out says so."
+        REVIEW_GROUP: (
+            "What the newest finished review of the shot said: a model's claims about this one "
+            "shot, each tied to a window of the shot and backed by numbers the server worked "
+            "out, made without the person's judgement. Every claim the person did not reject is "
+            "shown, none that they rejected; the review's own summary is never shown. Weigh a "
+            "claim below the measured numbers and below the person's judgement; a claim the "
+            "numbers do not bear out says so."
         ),
         "Curve": (
             "One table: a line saying how many of the shot's samples it holds, a header naming "
@@ -873,15 +873,15 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
 )
 
 
-#: What every Reading item's meaning says, so a model reading the glossary never
+#: What every Review item's meaning says, so a model reading the glossary never
 #: mistakes one for a measurement or for the person's own view.
 _MODEL_WRITTEN = (
-    "Written by a model from this shot's data, without the person's judgement: a reading, not "
+    "Written by a model from this shot's data, without the person's judgement: a review, not "
     "a measurement."
 )
 
-#: What the items that carry a claim add: nothing unconfirmed is ever shown.
-_CONFIRMED_ONLY = " Shown only once the person confirmed it."
+#: What the items that carry a claim add: a claim the person rejected is never shown.
+_NOT_REJECTED = " A claim the person rejected is never shown."
 
 
 def _items() -> tuple[Item, ...]:
@@ -900,7 +900,7 @@ def _items() -> tuple[Item, ...]:
     judgement = "Your judgement"
     recipe = "The version's recipe"
     note = "The note typed on the machine"
-    reading = READING_GROUP
+    review = REVIEW_GROUP
     checks = CHECKS_GROUP
 
     return (
@@ -2002,57 +2002,57 @@ def _items() -> tuple[Item, ...]:
             default_tier="excluded",
             shot=lambda f: _quote(f.note.notes) if f.note is not None else None,
         ),
-        # ── the reading ──────────────────────────────────────────────
+        # ── the review ───────────────────────────────────────────────
         Item(
-            key="reading_state",
-            group=reading,
-            name="Whether the shot was read, and how much of it is confirmed",
-            label="Reading",
+            key="review_state",
+            group=review,
+            name="Whether the shot was reviewed, and how many claims were kept",
+            label="Review",
             meaning=(
-                "Whether a model read this shot (a click of the person's) and how its claims "
-                "stand: confirmed by the person, still unverified, or rejected. Only confirmed "
-                "claims are shown to you; an unverified one is only counted, and it may be "
-                "wrong. " + _MODEL_WRITTEN
+                "Whether a model reviewed this shot (a click of the person's) and how its claims "
+                "stand: kept, or rejected by the person. A rejected claim is only counted, not "
+                "shown. " + _MODEL_WRITTEN
             ),
             default_tier="base",
-            shot=_reading_state,
+            shot=_review_state,
         ),
         Item(
-            key="reading_claims",
-            group=reading,
-            name="The confirmed claims of the reading",
-            label="Reading claims",
+            key="review_claims",
+            group=review,
+            name="The claims of the review",
+            label="Review claims",
             meaning=(
-                "One line per claim the person confirmed: where in the shot (a phase or a span, "
-                "with its seconds), the fault word or `observation`, the sentence, then the "
-                "numbers behind it, each worked out by the server from the shot. A claim the "
+                "One line per claim the person did not reject: where in the shot (a phase or a "
+                "span, with its seconds), the fault word or `observation`, the sentence, then "
+                "the numbers behind it, each worked out by the server from the shot. A claim the "
                 "numbers do not bear out says so; weigh it accordingly. "
                 + _MODEL_WRITTEN
-                + _CONFIRMED_ONLY
+                + _NOT_REJECTED
             ),
             default_tier="base",
-            shot=_reading_claims,
-            shot_value=_reading_claims_value,
+            shot=_review_claims,
+            shot_value=_review_claims_value,
         ),
         Item(
-            key="reading_prediction",
-            group=reading,
+            key="review_prediction",
+            group=review,
             name="How the shot moved against its version's prediction",
-            label="Reading, against the prediction",
+            label="Review, against the prediction",
             meaning=(
-                "The confirmed verdict of the reading on the prediction the Set version was "
-                "filed with: as predicted, partly, against, or not shown by this shot, with the "
-                "sentence and numbers behind it. Absent when the version has no prediction or "
-                "the person did not confirm it. One shot grades nothing: the Set's own evidence "
-                "does. " + _MODEL_WRITTEN + _CONFIRMED_ONLY
+                "The review's verdict on the prediction the Set version was filed with: as "
+                "predicted, partly, against, or not shown by this shot, with the sentence and "
+                "numbers behind it. Absent when the version has no prediction or the person "
+                "rejected the verdict. One shot grades nothing: the Set's own evidence does. "
+                + _MODEL_WRITTEN
+                + _NOT_REJECTED
             ),
             default_tier="base",
-            shot=_reading_prediction,
+            shot=_review_prediction,
         ),
     )
 
 
-# ── the reading ──────────────────────────────────────────────────────
+# ── the review ───────────────────────────────────────────────────────
 
 _STANCE_WORDS: Mapping[str, str] = MappingProxyType(
     {
@@ -2084,32 +2084,34 @@ def _span(claim: ReviewClaimRow) -> str:
     return f"{where} ({claim.start_s:g}-{claim.end_s:g} s)"
 
 
-def _confirmed(f: ShotFacts, kind: str) -> list[ReviewClaimRow]:
-    """The newest finished reading's confirmed claims of one kind: nothing else is ever said."""
+def _kept(f: ShotFacts, kind: str) -> list[ReviewClaimRow]:
+    """The review in force's claims of one kind that nobody rejected: nothing else is ever said.
+
+    The one place the chat's claims are filtered: the status is read here and the summary is
+    never read at all.
+    """
     if f.reading is None or f.reading.finished is None:
         return []
-    return [c for c in f.reading.claims if c.kind == kind and c.status == "confirmed"]
+    return [c for c in f.reading.claims if c.kind == kind and c.status != "rejected"]
 
 
-def _reading_state(f: ShotFacts) -> str | None:
+def _review_state(f: ShotFacts) -> str | None:
     reading = f.reading
     if reading is None or reading.finished is None:
-        return "not read"
-    counts = {"confirmed": 0, "proposed": 0, "rejected": 0}
-    for claim in reading.claims:
-        counts[claim.status] += 1
+        return "not reviewed"
+    kept = sum(1 for claim in reading.claims if claim.status != "rejected")
+    rejected = len(reading.claims) - kept
     finished = reading.finished
     when = str(finished.finished_at or finished.created_at)[:10]
-    noun = "claim" if counts["confirmed"] == 1 else "claims"
+    noun = "claim" if kept == 1 else "claims"
     return (
-        f"read {when} by {finished.model or 'a model'}: {counts['confirmed']} {noun} confirmed, "
-        f"{counts['proposed']} unverified, {counts['rejected']} rejected"
+        f"reviewed {when} by {finished.model or 'a model'}: {kept} {noun} kept, {rejected} rejected"
     )
 
 
-def _reading_claims(f: ShotFacts) -> str | None:
+def _review_claims(f: ShotFacts) -> str | None:
     lines: list[str] = []
-    for claim in _confirmed(f, "claim"):
+    for claim in _kept(f, "claim"):
         line = f"{_span(claim)}: {claim.fault or 'observation'}: {claim.text}"
         numbers = _evidence_line(claim)
         if numbers:
@@ -2120,7 +2122,7 @@ def _reading_claims(f: ShotFacts) -> str | None:
     return "\n".join(lines) if lines else None
 
 
-def _reading_claims_value(f: ShotFacts) -> list[Any] | None:
+def _review_claims_value(f: ShotFacts) -> list[Any] | None:
     found = [
         {
             "phase": claim.phase,
@@ -2131,13 +2133,13 @@ def _reading_claims_value(f: ShotFacts) -> list[Any] | None:
             "text": claim.text,
             "supported": claim.supported,
         }
-        for claim in _confirmed(f, "claim")
+        for claim in _kept(f, "claim")
     ]
     return found or None
 
 
-def _reading_prediction(f: ShotFacts) -> str | None:
-    claims = _confirmed(f, "prediction")
+def _review_prediction(f: ShotFacts) -> str | None:
+    claims = _kept(f, "prediction")
     if not claims:
         return None
     claim = claims[0]

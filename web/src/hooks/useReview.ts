@@ -1,6 +1,6 @@
 import { type UseMutationResult, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { answerReviewClaim, confirmAllReviewClaims, runReview } from "@/api/client";
+import { answerReviewClaim, runReview } from "@/api/client";
 import type { ShotReview } from "@/api/types";
 import { invalidateReadings } from "@/lib/invalidate";
 
@@ -46,37 +46,19 @@ export function useRunReview(): UseMutationResult<
 }
 
 /**
- * Confirming or rejecting one claim. `reviewId` is the reading in force, never the newest
- * attempt: while a re-read runs, the newest id is not the one whose claims can be answered.
- * A refusal (409: another tab answered, or a newer reading finished) toasts and still
+ * Rejecting one claim, or restoring it. `reviewId` is the review in force, never the newest
+ * attempt: while a review is made again, the newest id is not the one whose claims can be
+ * answered. A refusal (409: another tab answered, or a newer review finished) toasts and still
  * re-reads, so the card shows what is true.
  */
 export function useAnswerClaim(): UseMutationResult<
   ShotReview,
   Error,
-  { reviewId: number; claimId: number; status: "confirmed" | "rejected"; reason?: string }
+  { reviewId: number; claimId: number; status: "confirmed" | "rejected" }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ reviewId, claimId, status, reason }) =>
-      answerReviewClaim(reviewId, claimId, { status, reason }),
-    onError: (error) => toast.error(error.message),
-    onSettled: () => void invalidateReadings(queryClient),
-  });
-}
-
-/**
- * Confirm every claim of the reading in force that is still waiting, except the kinds named: a
- * prediction's stance the person has not been shown stays proposed.
- */
-export function useConfirmAllClaims(): UseMutationResult<
-  ShotReview,
-  Error,
-  { reviewId: number; exceptKinds?: string[] }
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ reviewId, exceptKinds }) => confirmAllReviewClaims(reviewId, exceptKinds),
+    mutationFn: ({ reviewId, claimId, status }) => answerReviewClaim(reviewId, claimId, { status }),
     onError: (error) => toast.error(error.message),
     onSettled: () => void invalidateReadings(queryClient),
   });

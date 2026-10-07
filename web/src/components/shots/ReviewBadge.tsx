@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
  * label. The press stops propagation, so the row behind it never opens.
  *
  * The full list is the hover (`title` on the wrapper, which is not the described
- * element; unverified entries marked, the reading's summary last) and, for a screen
+ * element, the reading's summary last) and, for a screen
  * reader, one sentence the badge `aria-describedby`s, so it is read once. Not a popover:
  * a panel that opens on hover would fight the click. The wrapper keeps the structure
  * valid: a button and its description are siblings, never nested in a span. As a button
@@ -79,11 +79,7 @@ export function toneOf(severity: string | undefined): Tone {
 
 /** One warning as a line: "ramp: fast flow — the sentence with the numbers". */
 export function warningLine(warning: ShotWarning): string {
-  const line = `${warning.phase}: ${warning.fault} — ${warning.detail}`;
-  // A free-text result nobody has confirmed yet: said in the tooltip, as it is on the card. The
-  // mark goes before the sentence's full stop ("…fall together (unverified)."), and `sentences`
-  // adds the stop back for the screen-reader text.
-  return warning.unverified ? `${line.replace(/[.!?]$/, "")} (unverified)` : line;
+  return `${warning.phase}: ${warning.fault} — ${warning.detail}`;
 }
 
 /** The lines as one text: each ends in a full stop, and one that already does gets no second. */
@@ -140,13 +136,11 @@ export function badgeView(
       spinner: false,
     };
   }
-  const unanswered = (reading?.unanswered ?? 0) > 0;
   if (entries.length > 0 && badge) {
     return {
       text: badge,
       tone: toneOf(entries[0]?.severity),
-      // An unread or unreadable shot has nothing to answer: the tint it always had.
-      filled: state === "read" ? !unanswered : true,
+      filled: true,
       lines: [...entryLines, ...tail],
       entries: true,
       spinner: false,
@@ -166,7 +160,7 @@ export function badgeView(
     return {
       text: badge || fallback,
       tone: asIntended ? "good" : "muted",
-      filled: !unanswered,
+      filled: true,
       lines: tail,
       entries: false,
       spinner: false,

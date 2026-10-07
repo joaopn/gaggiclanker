@@ -1,4 +1,4 @@
-"""Review: a model's reading of one shot, started by a person and confirmed claim by claim.
+"""Review: a model's review of one shot, started by a person; its claims are kept unless rejected.
 
 Seven modules, read in the order the work happens:
 
@@ -16,12 +16,11 @@ Seven modules, read in the order the work happens:
 * :mod:`.service` — the run itself: a row, a call, the evidence, an outcome; and a person's
   answers to the claims.
 * :mod:`.reading` — the verdict, the reading state and the badge, worked out whenever a shot
-  is read: for the person (everything not rejected, unconfirmed marked) and for the chat
-  (confirmed only).
+  is read, the same for the person and for the chat (everything not rejected).
 
-A reading writes one review and its claims and does nothing else. Every claim starts
-`proposed`; what a chat is told is what a person confirmed. It proposes no change and asks
-nothing, and everything active is the chat's and the person's. There is no agent loop here on
+A review writes its claims and does nothing else. Every claim is kept (`confirmed`) until a
+person rejects it, and what a chat is told is every claim not rejected. It proposes no change and
+asks nothing, and everything active is the chat's and the person's. There is no agent loop here on
 purpose: the diagnostics are already deterministic and the evaluator is the server's, so the model
 is asked one question with everything in front of it rather than given tools to go and look.
 """

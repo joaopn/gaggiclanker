@@ -1,17 +1,18 @@
-"""A shot's reading as shot information: what the chat reads, and what it never does.
+"""A shot's review as shot information: what the chat reads, and what it never does.
 
-A reading is a model's claims about one shot, each waiting for a person to confirm it. The chat
-reads it through the one renderer, like every other item: the Reading group of the catalogue, at
-the base tier. These tests pin the rule the whole feature rests on (nothing unconfirmed teaches),
-one surface at a time, each as a test that fails when its filter is removed:
+A review is a model's claims about one shot, each kept until a person rejects it. The chat reads
+it through the one renderer, like every other item: the Review group of the catalogue, at the
+base tier. These tests pin the rule the whole feature rests on (nothing rejected teaches, and
+the summary never does), one surface at a time, each as a test that fails when its filter is
+removed:
 
 * the rendered shot at every tier, and the shot tools that serve it;
-* the Checks lines, where a free-text expectation's answer counts only once confirmed;
+* the Checks lines, where a free-text expectation's answer counts unless rejected;
 * the Set chat's opening context;
 * the SQL tool's views.
 
-And the smaller things: an unread shot says so, the newest finished reading is the one shown, a
-person's tiers move the group's items like any other, and the glossary says each line was
+And the smaller things: an unreviewed shot says so, the newest finished review is the one shown,
+a person's tiers move the group's items like any other, and the glossary says each line was
 written by a model.
 """
 
@@ -32,16 +33,16 @@ from gaggiclanker.db.repos.reviews import (
 )
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.shotinfo import CATALOGUE, default_tiers
-from gaggiclanker.shotinfo.catalogue import READING_GROUP
+from gaggiclanker.shotinfo.catalogue import REVIEW_GROUP
 from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.registry import ToolContext, registry
 from tests.review.conftest import Fixture, confirm_free_text
 
-READING_KEYS = [item.key for item in CATALOGUE if item.group == READING_GROUP]
+REVIEW_KEYS = [item.key for item in CATALOGUE if item.group == REVIEW_GROUP]
 
 #: Distinctive words, so a test can find a claim, the summary or an unconfirmed answer anywhere.
 CLAIM = "The cup was already full before the decline began."
-OTHER_CLAIM = "A stray observation nobody confirmed about the preinfusion."
+OTHER_CLAIM = "A stray observation the person rejected about the preinfusion."
 SUMMARY = "Distinctive summary: cup full early."
 ANSWER = "Distinctive free-text answer: pressure and flow rose together."
 STANCE = "Distinctive stance text: the shot was faster."
@@ -109,38 +110,46 @@ async def _reading(
     return review_id
 
 
-async def _answer(db: Database, review_id: int, position: int, *, confirm: bool) -> None:
+async def _answer(db: Database, review_id: int, position: int, *, keep: bool) -> None:
     repo = ShotReviewsRepository(db)
     review = await repo.get(review_id)
     assert review is not None
-    result = await repo.answer(review_id, review.claims[position].id, confirm=confirm)
+    result = await repo.answer(review_id, review.claims[position].id, keep=keep)
     assert result.refused is None
 
 
-def test_the_reading_group_is_three_base_items_none_locked() -> None:
+def test_the_review_group_is_three_base_items_none_locked() -> None:
     tiers = default_tiers()
-    assert READING_KEYS == ["reading_state", "reading_claims", "reading_prediction"]
-    assert {tiers[key] for key in READING_KEYS} == {"base"}
-    assert not [item.key for item in CATALOGUE if item.key in READING_KEYS and item.locked]
-    # The retired review items are gone, by the word.
-    assert not [item.key for item in CATALOGUE if item.key.startswith("review_")]
+    assert REVIEW_KEYS == ["review_state", "review_claims", "review_prediction"]
+    assert {tiers[key] for key in REVIEW_KEYS} == {"base"}
+    assert not [item.key for item in CATALOGUE if item.key in REVIEW_KEYS and item.locked]
+    # The retired taste items and the summary are gone, by the word.
+    retired = {
+        "review_taste_balance",
+        "review_taste_body",
+        "review_taste_confidence",
+        "review_description",
+        "review_summary",
+        "review_written_at",
+        "review_model",
+    }
+    assert not [item.key for item in CATALOGUE if item.key in retired]
 
 
-async def test_an_unread_shot_says_so_and_shows_no_claim(
+async def test_an_unreviewed_shot_says_so_and_shows_no_claim(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     for tool in ("get_shot", "get_shot_full"):
         text = (await call(ctx, tool, shot_id=archive.shots[-1]))["text"]
-        assert "Reading: not read" in text, tool
-        assert "Reading claims" not in text, tool
+        assert "Review: not reviewed" in text, tool
+        assert "Review claims" not in text, tool
 
 
-async def test_a_confirmed_claim_is_in_every_rendering_with_its_numbers(
+async def test_a_kept_claim_is_in_every_rendering_with_its_numbers(
     ctx: ToolContext, set_ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
-    review_id = await _reading(archive.db, shot)
-    await _answer(archive.db, review_id, 0, confirm=True)
+    await _reading(archive.db, shot)
 
     base = (await call(ctx, "get_shot", shot_id=shot))["text"]
     extended = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
@@ -148,25 +157,24 @@ async def test_a_confirmed_claim_is_in_every_rendering_with_its_numbers(
     compared = (await call(ctx, "compare_shots", shot_ids=[shot, archive.shots[0]]))["shots"]
 
     for text in (base, full, compared[0]["text"]):
-        assert f"[{READING_GROUP}]" in text
-        assert "1 claim confirmed, 0 unverified, 0 rejected" in text
+        assert f"[{REVIEW_GROUP}]" in text
+        assert "1 claim kept, 0 rejected" in text
         assert "by careful" in text
         assert (
             f"the Pressurise (10-27.75 s): early yield: {CLAIM} "
             "[cup weight at the end of the Pressurise: 36.4 g]"
         ) in text
-    # The reading is base: the extended-only rendering holds the extended items only.
-    assert "Reading claims" not in extended
-    # The other shot was never read.
-    assert "Reading: not read" in compared[1]["text"]
+    # The review is base: the extended-only rendering holds the extended items only.
+    assert "Review claims" not in extended
+    # The other shot was never reviewed.
+    assert "Review: not reviewed" in compared[1]["text"]
 
 
 async def test_the_summary_is_never_served_to_the_chat(
     ctx: ToolContext, set_ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
-    review_id = await _reading(archive.db, shot)
-    await ShotReviewsRepository(archive.db).confirm_all(review_id)
+    await _reading(archive.db, shot)
 
     for tool_context, tool in (
         (ctx, "get_shot"),
@@ -180,18 +188,17 @@ async def test_the_summary_is_never_served_to_the_chat(
     assert SUMMARY not in json.dumps(listed)
 
 
-async def test_a_claim_nobody_confirmed_is_only_counted(
+async def test_a_rejected_claim_is_only_counted_and_every_other_is_served(
     ctx: ToolContext, set_ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
     claims = [
         ClaimWrite(kind="claim", text=CLAIM, fault="early yield", evidence=[_evidence()]),
+        ClaimWrite(kind="claim", text="A claim nobody answered, kept all the same."),
         ClaimWrite(kind="claim", text=OTHER_CLAIM),
-        ClaimWrite(kind="claim", text="A rejected claim about the soak."),
     ]
     review_id = await _reading(archive.db, shot, claims=claims)
-    await _answer(archive.db, review_id, 0, confirm=True)
-    await _answer(archive.db, review_id, 2, confirm=False)
+    await _answer(archive.db, review_id, 2, keep=False)
 
     for tool_context, tool in (
         (ctx, "get_shot"),
@@ -200,13 +207,13 @@ async def test_a_claim_nobody_confirmed_is_only_counted(
     ):
         text = (await call(tool_context, tool, shot_id=shot))["text"]
         assert OTHER_CLAIM not in text, tool
-        assert "A rejected claim about the soak." not in text, tool
         if tool != "get_shot_extended":  # the base items are not in the extended rendering
-            assert "1 claim confirmed, 1 unverified, 1 rejected" in text, tool
+            assert "2 claims kept, 1 rejected" in text, tool
             assert CLAIM in text, tool
+            assert "A claim nobody answered, kept all the same." in text, tool
 
 
-async def test_a_prediction_stance_is_served_only_once_confirmed(
+async def test_a_prediction_stance_is_served_unless_rejected(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
@@ -218,13 +225,15 @@ async def test_a_prediction_stance_is_served_only_once_confirmed(
     ]
     review_id = await _reading(archive.db, shot, claims=claims)
 
+    text = (await call(ctx, "get_shot", shot_id=shot))["text"]
+    assert f"Review, against the prediction: partly as predicted: {STANCE}" in text
+    assert "cup weight at the end of the Pressurise: 36.4 g (held)" in text
+
+    await _answer(archive.db, review_id, 1, keep=False)
     assert STANCE not in (await call(ctx, "get_shot", shot_id=shot))["text"]
 
-    await _answer(archive.db, review_id, 1, confirm=True)
-    text = (await call(ctx, "get_shot", shot_id=shot))["text"]
-    assert f"Reading, against the prediction: partly as predicted: {STANCE}" in text
-    assert "cup weight at the end of the Pressurise: 36.4 g (held)" in text
-    assert CLAIM not in text
+    await _answer(archive.db, review_id, 1, keep=True)
+    assert STANCE in (await call(ctx, "get_shot", shot_id=shot))["text"]
 
 
 async def test_a_claim_the_numbers_do_not_bear_out_says_so_to_the_chat(
@@ -234,40 +243,33 @@ async def test_a_claim_the_numbers_do_not_bear_out_says_so_to_the_chat(
     claims = [
         ClaimWrite(kind="claim", text=CLAIM, evidence=[_evidence(None)], supported=False),
     ]
-    review_id = await _reading(archive.db, shot, claims=claims)
-    await ShotReviewsRepository(archive.db).confirm_all(review_id)
+    await _reading(archive.db, shot, claims=claims)
 
     text = (await call(ctx, "get_shot", shot_id=shot))["text"]
     assert "not measured (no recorded sample falls in the window)" in text
     assert "(the numbers do not bear this out)" in text
 
 
-async def test_the_newest_finished_reading_is_the_one_shown(
+async def test_the_newest_finished_review_is_the_one_shown(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
     first_claims = [ClaimWrite(kind="claim", text="First claim.")]
-    first = await _reading(archive.db, shot, claims=first_claims)
-    await ShotReviewsRepository(archive.db).confirm_all(first)
-    second = await _reading(
-        archive.db, shot, claims=[ClaimWrite(kind="claim", text="Second claim.")]
-    )
-    await ShotReviewsRepository(archive.db).confirm_all(second)
+    await _reading(archive.db, shot, claims=first_claims)
+    await _reading(archive.db, shot, claims=[ClaimWrite(kind="claim", text="Second claim.")])
     await _reading(archive.db, shot, status="failed")
 
     text = (await call(ctx, "get_shot", shot_id=shot))["text"]
 
     assert "Second claim." in text
-    assert "First claim." not in text, (
-        "the newest reading replaces the old one, confirmed claims included"
-    )
+    assert "First claim." not in text, "the newest review replaces the old one, kept claims too"
     assert (
         await archive.db.fetch_value("SELECT COUNT(*) FROM shot_reviews WHERE shot_id = ?", (shot,))
         == 3
     )
 
 
-async def test_a_free_text_answer_counts_in_the_chat_s_checks_only_once_confirmed(
+async def test_a_free_text_answer_counts_in_the_chat_s_checks_unless_rejected(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
@@ -287,24 +289,18 @@ async def test_a_free_text_answer_counts_in_the_chat_s_checks_only_once_confirme
     ]
     review_id = await _reading(archive.db, shot, claims=claims)
 
-    unconfirmed = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
-    assert ANSWER not in unconfirmed
-    assert "(checked by the reading, not confirmed)" in unconfirmed
-    assert "Pressurise: unstable (red, critical)" not in unconfirmed
-
-    await _answer(archive.db, review_id, 0, confirm=True)
-    confirmed = (await call(ctx, "get_shot", shot_id=shot))["text"]
-    assert "Pressurise: unstable (red, critical)" in confirmed
-    assert ANSWER in confirmed
-    assert "1 claim confirmed" in confirmed
+    kept = (await call(ctx, "get_shot", shot_id=shot))["text"]
+    assert "Pressurise: unstable (red, critical)" in kept
+    assert ANSWER in kept
+    assert "1 claim kept" in kept
 
     # Rejecting it takes it back out of the checks.
-    await _answer(archive.db, review_id, 0, confirm=False)
+    await _answer(archive.db, review_id, 0, keep=False)
     rejected = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
     assert ANSWER not in rejected and "Pressurise: unstable (red, critical)" not in rejected
 
 
-async def test_the_set_chat_s_opening_context_holds_only_confirmed_claims(
+async def test_the_set_chat_s_opening_context_holds_every_claim_not_rejected(
     archive: Fixture,
 ) -> None:
     from gaggiclanker.chat.context import opening_context
@@ -313,44 +309,44 @@ async def test_the_set_chat_s_opening_context_holds_only_confirmed_claims(
     shot = archive.shots[-1]
     claims = [ClaimWrite(kind="claim", text=CLAIM), ClaimWrite(kind="claim", text=OTHER_CLAIM)]
     review_id = await _reading(archive.db, shot, claims=claims)
-    await _answer(archive.db, review_id, 0, confirm=True)
+    await _answer(archive.db, review_id, 1, keep=False)
 
     text = await opening_context(archive.db, ToolScope.for_thread(archive.set_id))
     assert CLAIM in text
     assert OTHER_CLAIM not in text
     assert SUMMARY not in text
-    assert "1 claim confirmed, 1 unverified, 0 rejected" in text
+    assert "1 claim kept, 1 rejected" in text
 
 
-async def test_the_person_s_tiers_move_reading_items_like_any_other(
+async def test_the_person_s_tiers_move_review_items_like_any_other(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
-    review_id = await _reading(archive.db, shot)
-    await ShotReviewsRepository(archive.db).confirm_all(review_id)
+    await _reading(archive.db, shot)
     tiers = ShotInfoTiersRepository(archive.db)
 
-    await tiers.set_tier(ShotInfoTierWrite(item_key="reading_claims", tier="extended"))
-    await tiers.set_tier(ShotInfoTierWrite(item_key="reading_state", tier="excluded"))
+    await tiers.set_tier(ShotInfoTierWrite(item_key="review_claims", tier="extended"))
+    await tiers.set_tier(ShotInfoTierWrite(item_key="review_state", tier="excluded"))
 
     base = (await call(ctx, "get_shot", shot_id=shot))["text"]
     extended = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
-    assert CLAIM not in base and "Reading:" not in base
+    assert CLAIM not in base and "Review:" not in base
     assert CLAIM in extended
 
 
-def test_the_glossary_says_each_reading_line_was_written_by_a_model_and_confirmed() -> None:
+def test_the_glossary_says_each_review_line_was_written_by_a_model() -> None:
     glossary = render_glossary(default_tiers(), "base")
-    section = glossary.split(f"[{READING_GROUP}]\n", 1)[1]
-    labels = [item.label for item in CATALOGUE if item.group == READING_GROUP]
+    section = glossary.split(f"[{REVIEW_GROUP}]\n", 1)[1]
+    labels = [item.label for item in CATALOGUE if item.group == REVIEW_GROUP]
     for label in labels:
         entry = next(line for line in section.splitlines() if line.startswith(f"- {label} ["))
         assert "[base]" in entry, label
         assert "Written by a model from this shot's data, without the person's judgement" in entry
-        # Only the items that carry a claim are shown once confirmed; the state is counts.
-        assert ("once the person confirmed it" in entry) == (label != "Reading"), label
+        # Only the items that carry a claim say a rejected one is never shown; the state counts.
+        assert ("never shown" in entry) == (label != "Review"), label
         assert "not a measurement" in entry
-    assert "weigh a confirmed claim below the measured numbers" in section
+    assert "Weigh a claim below the measured numbers" in section
+    assert "the review's own summary is never shown" in section
 
 
 # ── the SQL tool ────────────────────────────────────────────────────
@@ -360,36 +356,36 @@ async def _query(ctx: ToolContext, sql: str) -> dict[str, Any]:
     return await call(ctx, "query_shots", sql=sql)
 
 
-async def test_the_claims_view_holds_confirmed_claims_of_the_newest_finished_reading_only(
+async def test_the_claims_view_holds_the_claims_not_rejected_of_the_newest_finished_review(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
     old = await _reading(archive.db, shot, claims=[ClaimWrite(kind="claim", text="Old claim.")])
-    await ShotReviewsRepository(archive.db).confirm_all(old)
     claims = [
         ClaimWrite(kind="claim", text=CLAIM, fault="early yield", evidence=[_evidence()]),
         ClaimWrite(kind="claim", text=OTHER_CLAIM),
-        ClaimWrite(kind="claim", text="A rejected one."),
+        ClaimWrite(kind="claim", text="A second kept one."),
     ]
     new = await _reading(archive.db, shot, claims=claims)
-    await _answer(archive.db, new, 0, confirm=True)
-    await _answer(archive.db, new, 2, confirm=False)
+    await _answer(archive.db, new, 1, keep=False)
 
-    found = await _query(ctx, "SELECT shot_id, fault, text FROM v_review_claims")
-    assert found["rows"] == [[shot, "early yield", CLAIM]]
+    found = await _query(ctx, "SELECT shot_id, text FROM v_review_claims ORDER BY position")
+    assert found["rows"] == [[shot, CLAIM], [shot, "A second kept one."]]
 
     counts = await _query(
-        ctx,
-        "SELECT review_id, confirmed_claims, unverified_claims FROM v_reviews ORDER BY review_id",
+        ctx, "SELECT review_id, kept_claims, rejected_claims FROM v_reviews ORDER BY review_id"
     )
-    assert counts["rows"] == [[old, 1, 0], [new, 1, 1]]
+    assert counts["rows"] == [[old, 1, 0], [new, 2, 1]]
 
 
-async def test_no_view_serves_the_summary_or_an_unconfirmed_claim(
+async def test_no_view_serves_the_summary_or_a_rejected_claim(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
-    await _reading(archive.db, shot, claims=[ClaimWrite(kind="claim", text=OTHER_CLAIM)])
+    review_id = await _reading(
+        archive.db, shot, claims=[ClaimWrite(kind="claim", text=OTHER_CLAIM)]
+    )
+    await _answer(archive.db, review_id, 0, keep=False)
 
     for view in ("v_reviews", "v_review_claims"):
         found = await _query(ctx, "SELECT * FROM " + view)  # noqa: S608 - two literal view names
@@ -406,7 +402,7 @@ async def test_no_view_serves_the_summary_or_an_unconfirmed_claim(
 
 
 @pytest.mark.parametrize("kind", ["claim", "free_text", "prediction"])
-async def test_the_view_serves_every_kind_once_confirmed(
+async def test_the_view_serves_every_kind_until_it_is_rejected(
     ctx: ToolContext, archive: Fixture, kind: str
 ) -> None:
     shot = archive.shots[-1]
@@ -421,12 +417,12 @@ async def test_the_view_serves_every_kind_once_confirmed(
         shot,
         claims=[ClaimWrite(kind=kind, text="A statement.", **extra)],  # type: ignore[arg-type]
     )
-    assert (await _query(ctx, "SELECT kind FROM v_review_claims"))["rows"] == []
-    await ShotReviewsRepository(archive.db).confirm_all(review_id)
     assert (await _query(ctx, "SELECT kind FROM v_review_claims"))["rows"] == [[kind]]
+    await _answer(archive.db, review_id, 0, keep=False)
+    assert (await _query(ctx, "SELECT kind FROM v_review_claims"))["rows"] == []
 
 
-# ── the reading in force is the newest finished one, whatever came after ─────
+# ── the review in force is the newest finished one, whatever came after ─────
 
 
 async def _newer(archive: Fixture, shot: int, status: str) -> int:
@@ -441,10 +437,10 @@ async def _newer(archive: Fixture, shot: int, status: str) -> int:
 
 
 @pytest.mark.parametrize("status", ["running", "failed", "interrupted"])
-async def test_a_newer_reading_that_did_not_finish_hides_nothing_of_the_one_in_force(
+async def test_a_newer_review_that_did_not_finish_hides_nothing_of_the_one_in_force(
     ctx: ToolContext, set_ctx: ToolContext, archive: Fixture, status: str
 ) -> None:
-    """Re-reading changes the badge's state text and nothing the chat or a query is told."""
+    """Reviewing again changes the badge's state text and nothing the chat or a query is told."""
     from gaggiclanker.chat.context import opening_context
     from gaggiclanker.tools.scope import ToolScope
 
@@ -463,8 +459,7 @@ async def test_a_newer_reading_that_did_not_finish_hides_nothing_of_the_one_in_f
         ),
     ]
     in_force = await _reading(archive.db, shot, claims=claims)
-    await _answer(archive.db, in_force, 0, confirm=True)
-    await _answer(archive.db, in_force, 2, confirm=True)
+    await _answer(archive.db, in_force, 1, keep=False)
     await _newer(archive, shot, status)
 
     for tool_context, tool in (
@@ -472,34 +467,35 @@ async def test_a_newer_reading_that_did_not_finish_hides_nothing_of_the_one_in_f
         (set_ctx, "get_shot_full"),
     ):
         text = (await call(tool_context, tool, shot_id=shot))["text"]
-        assert "2 claims confirmed, 1 unverified, 0 rejected" in text, (status, tool)
+        assert "2 claims kept, 1 rejected" in text, (status, tool)
         assert CLAIM in text and ANSWER in text, (status, tool)
         assert "Pressurise: unstable (red, critical)" in text, (status, tool)
         assert OTHER_CLAIM not in text and SUMMARY not in text, (status, tool)
     context = await opening_context(archive.db, ToolScope.for_thread(archive.set_id))
     assert CLAIM in context and OTHER_CLAIM not in context
 
-    # The view serves the same reading's confirmed claims, not nothing and not a newer one's.
+    # The view serves the same review's claims, not nothing and not a newer one's.
     served = await _query(ctx, "SELECT review_id, kind FROM v_review_claims ORDER BY position")
     assert served["rows"] == [[in_force, "claim"], [in_force, "free_text"]]
-    # And a person may still answer what is left on it.
-    result = await ShotReviewsRepository(archive.db).confirm_all(in_force)
+    # And a person may still restore what they rejected on it.
+    repo = ShotReviewsRepository(archive.db)
+    review = await repo.get(in_force)
+    assert review is not None
+    result = await repo.answer(in_force, review.claims[1].id, keep=True)
     assert result.refused is None and result.changed == 1
 
 
-async def test_a_newer_reading_replaces_the_one_in_force_only_when_it_finishes(
+async def test_a_newer_review_replaces_the_one_in_force_only_when_it_finishes(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
-    first = await _reading(archive.db, shot, claims=[ClaimWrite(kind="claim", text="First claim.")])
-    await ShotReviewsRepository(archive.db).confirm_all(first)
+    await _reading(archive.db, shot, claims=[ClaimWrite(kind="claim", text="First claim.")])
     running = await _newer(archive, shot, "running")
     assert "First claim." in (await call(ctx, "get_shot", shot_id=shot))["text"]
 
     second_claims = [ClaimWrite(kind="claim", text="Second claim.")]
     repo = ShotReviewsRepository(archive.db)
     await repo.finish(running, ReviewOutcome(status="ok", summary="s", claims=second_claims))
-    await repo.confirm_all(running)
 
     text = (await call(ctx, "get_shot", shot_id=shot))["text"]
     assert "Second claim." in text and "First claim." not in text

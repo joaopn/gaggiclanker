@@ -60,7 +60,6 @@ function CheckLine({
   detail,
   color,
   status,
-  unverified,
   link,
 }: {
   /** The shot's own phase name, cut inside the line when it is long. */
@@ -71,8 +70,6 @@ function CheckLine({
   detail?: string;
   color: Color;
   status: string;
-  /** A reading's result nobody has confirmed yet. */
-  unverified?: boolean;
   /** Where its claim is, for a result the reading made. */
   link?: ClaimLink;
 }) {
@@ -92,14 +89,6 @@ function CheckLine({
             {phase}
           </span>
           <span className="min-w-0 break-words">: {label}</span>
-          {unverified ? (
-            <span
-              className="ml-2 shrink-0 self-start rounded-full border border-border px-1.5 text-muted-foreground text-xs"
-              data-testid="check-unverified"
-            >
-              unverified
-            </span>
-          ) : null}
         </p>
         {lead ? <p className="break-words">{lead}</p> : null}
         {detail ? <p className="break-words text-muted-foreground">{detail}</p> : null}
@@ -238,7 +227,6 @@ export function ShotChecksCard({
       (claim) => claim.kind === "free_text" && claim.expectation_id === check.expectation_id,
     );
     return {
-      unverified: check.unverified,
       link: found ? { to: `#claim-${found.id}`, label: "See the claim in the reading" } : undefined,
     };
   };
@@ -381,7 +369,6 @@ export function ShotRowChecksCard({
             detail={warning.detail}
             color={warning.severity as Color}
             status={warning.status}
-            unverified={warning.unverified}
             link={claimLink(claims, warning.expectation_id)}
           />
         ))}

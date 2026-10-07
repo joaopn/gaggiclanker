@@ -141,9 +141,9 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "note_grind": "note.grind_setting@1",
         "note_bean": "note.bean@1",
         "note_text": "note.text@1",
-        # ── the reading ──────────────────────────────────────────────
-        "reading_state": "reading.state@1",
-        "reading_claims": "reading.confirmed_claims@1",
-        "reading_prediction": "reading.confirmed_prediction@1",
+        # ── the review ───────────────────────────────────────────────
+        "review_state": "review.state@1",
+        "review_claims": "review.kept_claims@1",
+        "review_prediction": "review.kept_prediction@1",
     }
 )

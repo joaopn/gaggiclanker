@@ -3,10 +3,10 @@
 The routes that start and list reviews live on the shot they are about
 (`POST /api/shots/{id}/reviews`, `GET /api/shots/{id}/reviews`); this router
 holds what is not about a shot: a single review, with the input the model was given, so any
-reading can be explained, and the two ways a person answers its claims, one at a time or all
-at once. Only a person answers: no tool, chat run or sync step reaches these.
+review can be explained, and the one way a person answers its claims: rejecting one, or
+restoring it. Only a person answers: no tool, chat run or sync step reaches these.
 
-Only the newest finished reading of a shot can be answered. A reading set aside by a newer
+Only the newest finished review of a shot can be answered. A review set aside by a newer
 one answers 409, and so does one that never finished.
 """
 
@@ -16,13 +16,12 @@ from typing import Literal
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.api.deps import ReviewServiceDep, ReviewsRepoDep
 from gaggiclanker.db.repos.reviews import AnswerResult, ShotReviewDetail, ShotReviewRow
-from gaggiclanker.domain.vocab import REVIEW_CLAIM_KINDS
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
-from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
+from gaggiclanker.infra.errors import Conflict, NotFound
 
 __all__ = ["router"]
 
@@ -42,22 +41,11 @@ async def get_review(review_id: int, reviews: ReviewsRepoDep) -> JSONResponse:
 
 
 class ClaimAnswer(BaseModel):
-    """`PATCH /api/reviews/{id}/claims/{claim_id}`: confirm or reject one claim."""
+    """`PATCH /api/reviews/{id}/claims/{claim_id}`: reject one claim, or restore it."""
 
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["confirmed", "rejected"]
-    #: One line, whichever the answer; empty when there is none to give.
-    reason: str = Field(default="", max_length=300)
-
-
-class ConfirmAll(BaseModel):
-    """`POST /api/reviews/{id}/claims/confirm-all`: optionally keep some kinds of claim waiting."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    #: Claims of these kinds (``claim``, ``free_text``, ``prediction``) stay `proposed`.
-    except_kinds: list[str] = Field(default_factory=list, max_length=10)
 
 
 def _answered(result: AnswerResult, review_id: int) -> JSONResponse:
@@ -81,44 +69,15 @@ def _answered(result: AnswerResult, review_id: int) -> JSONResponse:
 @router.patch(
     "/{review_id}/claims/{claim_id}",
     response_model=ApiResponse[ShotReviewRow],
-    summary="Confirm or reject one claim of a reading",
+    summary="Reject one claim of a review, or restore it",
 )
 async def answer_claim(
     review_id: int, claim_id: int, body: ClaimAnswer, reviewer: ReviewServiceDep
 ) -> JSONResponse:
     """A person's answer, which they may change: the last one wins.
 
-    Checked and written in one transaction, so a reading a newer one has set aside is refused
+    Checked and written in one transaction, so a review a newer one has set aside is refused
     rather than answered, and two answers arriving together leave one consistent state.
     """
-    result = await reviewer.answer(
-        review_id, claim_id, confirm=body.status == "confirmed", reason=body.reason
-    )
+    result = await reviewer.answer(review_id, claim_id, keep=body.status == "confirmed")
     return _answered(result, review_id)
-
-
-@router.post(
-    "/{review_id}/claims/confirm-all",
-    response_model=ApiResponse[ShotReviewRow],
-    summary="Confirm every claim of a reading that is still waiting",
-)
-async def confirm_all_claims(
-    review_id: int, reviewer: ReviewServiceDep, body: ConfirmAll | None = None
-) -> JSONResponse:
-    """Every `proposed` claim becomes `confirmed` in one transaction; answered ones stay.
-
-    ``except_kinds`` leaves the claims of those kinds `proposed`: the page holds a prediction's
-    stance back until the shot has a decision, so Confirm all must not confirm what was not shown.
-    An unknown kind is a 422 that names the field and never echoes what was sent.
-    """
-    kinds = [] if body is None else body.except_kinds
-    unknown = [kind for kind in kinds if kind not in REVIEW_CLAIM_KINDS]
-    if unknown:
-        raise Unprocessable(
-            "Some kinds of claim are not known",
-            details={
-                "field": "except_kinds",
-                "message": f"each kind is one of {', '.join(REVIEW_CLAIM_KINDS)}",
-            },
-        )
-    return _answered(await reviewer.confirm_all(review_id, except_kinds=kinds), review_id)

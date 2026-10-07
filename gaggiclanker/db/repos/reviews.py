@@ -11,15 +11,15 @@ server share the file) cannot both open one.
 
 A shot may carry several reviews: a person can read it again. The newest finished
 one (`status = 'ok'`) is the one that answers for the shot, everywhere: the shot
-page shows it first, only its claims can still be answered, and the chat is served
-only what a person confirmed in it. The earlier ones stay, each with the input it
-was given, so any reading can still be explained.
+page shows it first, only its claims can still be rejected or restored, and the chat is
+served every claim of it that a person did not reject. The earlier ones stay, each with
+the input it was given, so any review can still be explained.
 
 **What a reading says is a list of claims, written with the finished review in one
 transaction** (:meth:`ShotReviewsRepository.finish`), so a reading is never half there.
-Every claim starts `proposed`; only a person's answer (:meth:`answer`,
-:meth:`confirm_all`) moves it, inside one transaction that first checks the review
-is still the one that answers for its shot.
+Every claim is kept (`confirmed`) until a person rejects it (:meth:`answer`, which also
+restores one), inside one transaction that first checks the review is still the one that
+answers for its shot.
 """
 
 from __future__ import annotations
@@ -65,9 +65,6 @@ log = structlog.get_logger(__name__)
 #: sentence; anything longer is a stack of HTML from a proxy nobody wants on a
 #: shot page.
 ERROR_MAX = 1000
-
-#: How long the line a person may give with an answer is.
-REASON_MAX = 300
 
 #: Shot ids per query when a reading is looked up for many shots: far below SQLite's limit on
 #: bound variables, so the Review sort over a whole archive never meets it.
@@ -129,7 +126,7 @@ class EvidenceOut(BaseModel):
 
 
 class ClaimWrite(BaseModel):
-    """One statement of a finished reading, ready to store (always as ``proposed``)."""
+    """One statement of a finished review, ready to store (always kept: ``confirmed``)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -229,8 +226,7 @@ class ReviewClaimRow(BaseModel):
     expectation_id: int | None = None
     held: bool | None = None
     stance: PredictionStance | None = None
-    status: ReviewClaimStatus = "proposed"
-    reason: str = ""
+    status: ReviewClaimStatus = "confirmed"
     answered_at: str | None = None
 
     @model_validator(mode="before")
@@ -326,13 +322,13 @@ class ReadingRecord:
 
 @dataclass(frozen=True, slots=True)
 class AnswerResult:
-    """The outcome of answering a claim, or of confirming all of a reading's."""
+    """The outcome of rejecting or restoring a claim."""
 
     review: ShotReviewRow | None = None
     #: Why nothing was written: ``no_review``, ``no_claim`` (the claim is not this review's) or
     #: ``superseded`` (a newer finished reading answers for the shot, or this one is not finished).
     refused: Literal["no_review", "no_claim", "superseded"] | None = None
-    #: How many claims were moved (``confirm_all``); 1 for one answered claim.
+    #: 1 for the claim that was answered.
     changed: int = 0
 
 
@@ -366,7 +362,7 @@ _BRIEF_COLUMNS = (
 
 _CLAIM_COLUMNS = (
     "id, review_id, position, kind, window_text, phase, start_s, end_s, fault, text, "
-    "evidence_json, supported, expectation_id, held, stance, status, reason, answered_at"
+    "evidence_json, supported, expectation_id, held, stance, status, answered_at"
 )
 
 
@@ -591,70 +587,27 @@ class ShotReviewsRepository(Repository):
             return "superseded", shot_id
         return None, shot_id
 
-    async def answer(
-        self, review_id: int, claim_id: int, *, confirm: bool, reason: str = ""
-    ) -> AnswerResult:
-        """Confirm or reject one claim of the review that answers for its shot.
+    async def answer(self, review_id: int, claim_id: int, *, keep: bool) -> AnswerResult:
+        """Reject one claim of the review that answers for its shot, or restore it.
 
-        The check and the write share one transaction: a reading set aside by a newer one
-        between the two is refused, never answered. A person may change an answer; the last
-        one wins and each is logged. A claim answered again with the same status only moves
-        its reason and time.
+        The check and the write share one transaction: a review set aside by a newer one
+        between the two is refused, never answered. A person may change their mind; the last
+        answer wins and each is logged.
         """
+        status = "confirmed" if keep else "rejected"
         async with self._transaction():
             refused, _shot = await self._answering(review_id)
             if refused is not None:
                 return AnswerResult(refused=refused)  # type: ignore[arg-type]
             cursor = await self.db.execute(
-                "UPDATE review_claims SET status = ?, reason = ?, answered_at = ? "
+                "UPDATE review_claims SET status = ?, answered_at = ? "
                 "WHERE id = ? AND review_id = ?",
-                (
-                    "confirmed" if confirm else "rejected",
-                    reason.strip()[:REASON_MAX],
-                    utc_now(),
-                    claim_id,
-                    review_id,
-                ),
+                (status, utc_now(), claim_id, review_id),
             )
             if cursor.rowcount == 0:
                 return AnswerResult(refused="no_claim")
-            log.info(
-                "review_claim_answered",
-                review_id=review_id,
-                claim_id=claim_id,
-                status="confirmed" if confirm else "rejected",
-            )
+            log.info("review_claim_answered", review_id=review_id, claim_id=claim_id, status=status)
         return AnswerResult(review=await self.get(review_id), changed=1)
-
-    async def confirm_all(
-        self, review_id: int, *, except_kinds: Sequence[str] = ()
-    ) -> AnswerResult:
-        """Confirm every claim of the reading still waiting, in one transaction.
-
-        Claims a person already answered (a rejection included) are left as they are, and so are
-        claims of ``except_kinds``: they stay `proposed`. The page holds the prediction's stance
-        back until the shot has a decision, so a person pressing Confirm all has not seen it and
-        must not be taken to have confirmed it.
-        """
-        kinds = sorted(set(except_kinds))
-        async with self._transaction():
-            refused, _shot = await self._answering(review_id)
-            if refused is not None:
-                return AnswerResult(refused=refused)  # type: ignore[arg-type]
-            cursor = await self.db.execute(
-                "UPDATE review_claims SET status = 'confirmed', answered_at = ? "  # noqa: S608
-                "WHERE review_id = ? AND status = 'proposed' "
-                f"AND kind NOT IN ({', '.join('?' * len(kinds))})",
-                (utc_now(), review_id, *kinds),
-            )
-            changed = cursor.rowcount
-            log.info(
-                "review_claims_confirmed_all",
-                review_id=review_id,
-                changed=changed,
-                except_kinds=kinds,
-            )
-        return AnswerResult(review=await self.get(review_id), changed=changed)
 
     # ── boot ────────────────────────────────────────────────────────
 
