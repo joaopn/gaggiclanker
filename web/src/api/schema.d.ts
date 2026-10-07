@@ -2337,6 +2337,8 @@ export interface paths {
          *     from it: their bytes never parsed, so there is nothing to judge and the
          *     count would never reach zero. So are shots labelled Discard: the person
          *     already said the shot went wrong, and it counts towards no Set.
+         *     ``include_discarded=false`` leaves shots labelled Discard out of any list,
+         *     which is the Shots page's default view.
          *
          *     ``sort`` takes one of a fixed set of names — a sort column pasted out of a
          *     query string is an injection — and only the default one supports ``cursor``,
@@ -12868,6 +12870,7 @@ export interface operations {
                 cursor?: string | null;
                 from?: string | null;
                 include_deleted?: boolean;
+                include_discarded?: boolean;
                 limit?: number;
                 min_rating?: number | null;
                 needs_set?: boolean | null;

@@ -1016,6 +1016,7 @@ class ShotsRepository(Repository):
         needs_set: bool | None = None,
         quarantined: bool | None = None,
         include_deleted_on_device: bool = True,
+        include_discarded: bool = True,
         source: str | None = None,
         min_rating: int | None = None,
         sort: str = "started_at",
@@ -1072,6 +1073,10 @@ class ShotsRepository(Repository):
             params.append(int(quarantined))
         if not include_deleted_on_device:
             where.append("s.deleted_on_device = 0")
+        if not include_discarded:
+            # `j` is the shot's one judgement (`shot_judgements.shot_id` is its
+            # key); a shot nobody judged is not discarded.
+            where.append("(j.decision IS NULL OR j.decision != 'discard')")
 
         filters = " AND ".join(where)
         total = await self.db.fetch_value(

@@ -1037,6 +1037,32 @@ class TestJudgementAndAssignment:
         await client.delete(f"/api/shots/{shot_id}/judgement")
         assert await waiting() == (1, 1)
 
+    @pytest.mark.parametrize("sort", ["started_at", "duration", "check", "review", "rating"])
+    async def test_a_list_can_leave_out_discarded_shots(
+        self, client: httpx.AsyncClient, shot_id: int, sort: str
+    ) -> None:
+        """Only Discard is left out, on every sort: unjudged, Keep and Improve stay."""
+
+        async def listed(**params: str) -> tuple[int, list[int]]:
+            body = data(await client.get("/api/shots", params={"sort": sort, **params}))
+            return body["total"], [item["id"] for item in body["items"]]
+
+        hidden = {"include_discarded": "false"}
+        assert await listed(**hidden) == (1, [shot_id])
+        for decision, expected in (
+            ("keep", (1, [shot_id])),
+            ("improve", (1, [shot_id])),
+            ("discard", (0, [])),
+            (None, (1, [shot_id])),
+        ):
+            await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": decision})
+            assert await listed(**hidden) == expected, decision
+
+        await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": "discard"})
+        # The default, and every other caller, still lists it.
+        assert await listed() == (1, [shot_id])
+        assert await listed(include_discarded="true") == (1, [shot_id])
+
 
 class TestSetReferencesAndRefusals:
     """A stale id in a dropdown is a 422 naming it, never a 500.

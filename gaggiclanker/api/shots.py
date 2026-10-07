@@ -139,6 +139,7 @@ async def list_shots(
     needs_set: Annotated[bool | None, Query()] = None,
     quarantined: Annotated[bool | None, Query()] = None,
     include_deleted: Annotated[bool, Query()] = True,
+    include_discarded: Annotated[bool, Query()] = True,
     source: Annotated[Literal["device", "import"] | None, Query()] = None,
     min_rating: Annotated[int | None, Query(ge=0, le=5)] = None,
     sort: Annotated[SortKey, Query()] = "started_at",
@@ -162,6 +163,8 @@ async def list_shots(
     from it: their bytes never parsed, so there is nothing to judge and the
     count would never reach zero. So are shots labelled Discard: the person
     already said the shot went wrong, and it counts towards no Set.
+    ``include_discarded=false`` leaves shots labelled Discard out of any list,
+    which is the Shots page's default view.
 
     ``sort`` takes one of a fixed set of names — a sort column pasted out of a
     query string is an injection — and only the default one supports ``cursor``,
@@ -186,6 +189,7 @@ async def list_shots(
             needs_set=needs_set,
             quarantined=quarantined,
             include_deleted_on_device=include_deleted,
+            include_discarded=include_discarded,
             source=source,
             min_rating=min_rating,
             sort=sort,
