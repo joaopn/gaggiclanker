@@ -405,6 +405,19 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(downloadBackup).toHaveBeenLastCalledWith(true));
   });
 
+  it("shows the Reset card on the System page, closed until opened", async () => {
+    const user = setupUser();
+    renderAt("/settings/system");
+
+    expect(screen.queryByRole("button", { name: "Reset the app…" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+
+    expect(screen.getByRole("button", { name: "Reset the app…" })).toBeVisible();
+    expect(
+      screen.getByText("Download a backup above first if you want to keep any of it."),
+    ).toBeVisible();
+  });
+
   it("gives shot information a page of its own, not a registry form", async () => {
     getShotInformation.mockResolvedValue({
       groups: [{ name: "Outcome", note: null, items: [] }],

@@ -197,6 +197,12 @@ describe("RestoreSection", () => {
 });
 
 describe("refusalText", () => {
+  it("says a reset is under way in its own words", () => {
+    expect(refusalText(new ApiClientError("x", { code: "RESET_PENDING", status: 409 }))).toBe(
+      "A reset is under way; the app is about to restart.",
+    );
+  });
+
   it("falls back to the server's own words", () => {
     expect(refusalText(new Error("Something odd"))).toBe(
       "This file can't be restored: Something odd",

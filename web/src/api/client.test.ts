@@ -18,6 +18,7 @@ import {
   logout,
   patchSettings,
   putOnBoard,
+  resetApp,
   resolveBoardConflict,
   setAuthToken,
   setBoardActiveVersion,
@@ -535,6 +536,26 @@ describe("the backup endpoints", () => {
     expect(request.headers).toMatchObject({
       "Content-Type": "application/octet-stream",
       "X-Filename": "caf%C3%A9%20backup.db",
+      Authorization: "Bearer tok",
+    });
+  });
+
+  it("resetApp posts the confirmation word as JSON and nothing else", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(202, { ok: true, data: { restarting: true }, meta: { request_id: "r" } }),
+      );
+
+    await expect(resetApp()).resolves.toEqual({ restarting: true });
+
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe("/api/reset");
+    const request = init as RequestInit;
+    expect(request.method).toBe("POST");
+    expect(JSON.parse(String(request.body))).toEqual({ confirm: "reset" });
+    expect(request.headers).toMatchObject({
+      "Content-Type": "application/json",
       Authorization: "Bearer tok",
     });
   });

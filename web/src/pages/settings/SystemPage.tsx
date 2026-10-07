@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useDownloadBackup } from "@/hooks/useBackup";
 import { useHealth } from "@/hooks/useHealth";
 import type { SettingsPageInfo } from "@/lib/settingsPages";
+import { ResetSection } from "@/pages/settings/ResetSection";
 import { RestoreSection } from "@/pages/settings/RestoreSection";
 import { useOpenGroups } from "@/pages/settings/useOpenGroups";
 
@@ -83,6 +84,16 @@ export function SystemPage({ page }: { page: SettingsPageInfo }) {
           </Button>
         </div>
         <RestoreSection />
+      </SectionCard>
+
+      <SectionCard
+        id="reset"
+        collapsible
+        open={isOpen("reset")}
+        onOpenChange={(open) => setGroupOpen("reset", open)}
+        title="Reset"
+      >
+        <ResetSection />
       </SectionCard>
     </div>
   );

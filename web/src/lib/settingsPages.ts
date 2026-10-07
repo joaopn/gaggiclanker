@@ -91,7 +91,7 @@ export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
     id: "system",
     label: "System",
     icon: Server,
-    description: "The backend's health, and backup and restore of the whole app.",
+    description: "The backend's health, backup and restore, and reset.",
   },
   {
     id: "import",

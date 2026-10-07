@@ -79,6 +79,7 @@ import type {
   PromptData,
   PromptListData,
   ProposalDecline,
+  ResetData,
   RestoreApplyData,
   RestoreCheckData,
   RollbackWrite,
@@ -487,6 +488,14 @@ export async function cancelRestore(token: string): Promise<void> {
 /** Replace everything with the staged file; the server restarts after it answers. */
 export async function applyRestore(token: string): Promise<RestoreApplyData> {
   return fetchApi<RestoreApplyData>(`/backup/restore/${token}/apply`, { method: "POST" });
+}
+
+/** Delete everything in the app; the server restarts as a fresh install after it answers. */
+export async function resetApp(): Promise<ResetData> {
+  return fetchApi<ResetData>("/reset", {
+    method: "POST",
+    body: JSON.stringify({ confirm: "reset" }),
+  });
 }
 
 export async function getDeviceStatus(): Promise<DeviceStatusData> {
