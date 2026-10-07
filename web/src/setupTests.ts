@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+import { forgetBoxes } from "@/lib/shotBoxes";
 
 /**
  * jsdom is missing three things every component here touches.
@@ -111,6 +112,7 @@ if (!hasStorageShape(globalThis.localStorage)) {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  forgetBoxes();
   matchMediaState.matches = false;
   document.documentElement.className = "";
   document.documentElement.removeAttribute("data-theme");

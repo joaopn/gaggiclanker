@@ -21,9 +21,10 @@ import { cn } from "@/lib/utils";
  *
  * A check that could not be measured (no scale) is listed with its reason and counts neither
  * way. A shot read without a confirmed signature says so, and the line links to the profile
- * version's Signature card, where it is confirmed. A shot with nothing to say and no profile
- * to link has **no box at all**: a missing warning is not a verdict, and there is no
- * "all clear" to give.
+ * version's Signature card, where it is confirmed. The box is always there once the shot's
+ * checks are known (it is one of the five); with nothing to list it says one plain line and no
+ * more: "Nothing to check: no confirmed signature and no warnings", or "No check failed" when a
+ * confirmed signature is held against it. A missing warning is not a verdict.
  */
 
 type Color = "red" | "amber" | "grey" | null;
@@ -201,9 +202,9 @@ export function ShotChecksCard({
   onOpenChange?: (open: boolean) => void;
 }) {
   const all = checks ?? [];
-  const link = signature?.profile_version_id ?? null;
-  const unsigned = signature !== undefined && signature.confirmed === 0 && link !== null;
-  if (all.length === 0 && !unsigned) return null;
+  // Not yet known (the fields are loading): a box that says "nothing to check" now and lists
+  // failures a moment later would be a verdict nobody gave.
+  if (checks === undefined || signature === undefined) return null;
 
   const shown = all.filter((c) => c.status !== "held" && c.status !== "unchecked");
   const held = all.filter((c) => c.status === "held");
@@ -237,7 +238,14 @@ export function ShotChecksCard({
       description="What this shot was held against, by numbers alone. A warning is checked without knowing what the profile is for; a confirmed signature can mark one as expected (grey), and a failed expectation is red (critical) or amber (important)."
     >
       <div className="space-y-3" data-testid="shot-checks">
-        {signature ? <SignatureLine signature={signature} /> : null}
+        <SignatureLine signature={signature} />
+        {shown.length === 0 ? (
+          <p className="text-muted-foreground text-sm" data-testid="check-none">
+            {signature.confirmed === 0
+              ? "Nothing to check: no confirmed signature and no warnings."
+              : "No check failed."}
+          </p>
+        ) : null}
         {shown.length > 0 ? (
           <ul className="space-y-2" data-testid="check-list">
             {shown.map((check, index) => (

@@ -105,9 +105,15 @@ const FIELD = cn(
 export function JudgementForm({
   shotId,
   judgement,
+  open,
+  onOpenChange,
 }: {
   shotId: number;
   judgement: ShotJudgement | null | undefined;
+  /** When the box can be folded: whether it is open, and the way to change that. The form stays
+   * mounted while it is folded, so what was typed is still there when it opens. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const vocab = useVocabulary();
   const picks = useFlavorPicks();
@@ -138,6 +144,9 @@ export function JudgementForm({
   return (
     <SectionCard
       title="Your judgement"
+      collapsible={onOpenChange !== undefined}
+      open={open}
+      onOpenChange={onOpenChange}
       description="How the coffee tasted. Kept apart from the machine's own numbers on purpose: a perfectly executed shot of stale beans runs to its profile and tastes of cardboard."
       actions={
         judgement?.seeded_from_device_note ? (

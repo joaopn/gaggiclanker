@@ -2,77 +2,80 @@ import { AlertTriangle, ArrowLeft, Download } from "lucide-react";
 import { useEffect } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { shotRawUrl } from "@/api/client";
-import type { ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
 import { DiscussButton } from "@/components/chat/DiscussButton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import { AssignToSet } from "@/components/shots/AssignToSet";
 import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
-import { JudgementForm } from "@/components/shots/JudgementForm";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
-import { inForceClaims, ReviewBox } from "@/components/shots/ReviewBox";
-import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
-import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
+import { ShotBoxes, useShotBoxState } from "@/components/shots/ShotBoxes";
 import { ShotPhasesCard } from "@/components/shots/ShotPhasesCard";
 import { ShotContextCard, ShotWideCard } from "@/components/shots/ShotWideCards";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotFields, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { showClaim, useClaimSpan } from "@/lib/claimSpan";
+import { setBox } from "@/lib/shotBoxes";
 import { ASSIGN_ANCHOR, formatTime, profileName, REVIEW_ANCHOR } from "@/lib/shots";
 
 /**
  * One shot, in full.
  *
- * Composed top to bottom in the order somebody works through a shot: what it
- * was, what you thought of it, what the curves did, what a model's reading of them
- * claims (right under the curves, because each claim points into them), what each
- * diagnostic says, which phase it happened in, which Set it belongs to, what the
- * machine's own notes recorded, and finally the raw header for anybody checking
- * the archive against the device.
+ * Composed top to bottom in the order somebody works through a shot: what it was (the facts),
+ * then the five boxes in their fixed order (`ShotBoxes`: what you thought, the curves, the
+ * version's prediction, what a model's review of them claims, and what the numbers alone check),
+ * then what each diagnostic says, which phase it happened in, which Set it belongs to, what the
+ * machine's own notes recorded, and finally the raw header for anybody checking the archive
+ * against the device. Each box is open or folded as the person last left it.
  *
  * Code-split (`App.tsx` lazy-loads it) because this is the only route that
  * needs Chart.js, and a visit that only lists shots should not download it.
  */
-/** The Curves card's element id: a pinned claim scrolls it into view on a narrow screen. */
+/** The Curves box's element id: a pinned claim scrolls it into view on a narrow screen. */
 const CHART_CARD_ID = "shot-curves";
 
 export function ShotDetailPage() {
   const params = useParams();
   const shotId = Number.parseInt(params.shotId ?? "", 10);
   const shot = useShot(Number.isFinite(shotId) ? shotId : undefined);
-  // The full curve, not a sparkline: this is the page the samples exist for.
-  // Not fetched until the row says it is worth fetching: a quarantined shot
-  // has no samples at all, and asking before the row arrives would request
-  // them for every one of them.
+  // What the Review box marks on the chart, and whether Curves is open: the boxes are the page's
+  // children, but the full curve is asked for here, with the shot, and only while Curves is open
+  // (a quarantined shot has no samples at all).
+  const { curvesOpen, claimSpan } = useShotBoxState(
+    shot.data?.review?.in_force_id,
+    CHART_CARD_ID,
+    shotId,
+  );
   const samples = useShotSamples(Number.isFinite(shotId) ? shotId : undefined, {
-    enabled: shot.isSuccess && !shot.data.shot.quarantined,
+    enabled: shot.isSuccess && !shot.data.shot.quarantined && curvesOpen,
   });
   // What the page's cards, and its facts row, are built from: asked for with the
-  // shot, not after it, and waited for with it. The warnings card leads the page
-  // and a card that arrives late shifts the judgement under it by its own height.
+  // shot, not after it, and waited for with it. A box that arrives late shifts the
+  // ones under it by its own height.
   const fields = useShotFields(Number.isFinite(shotId) ? shotId : undefined);
   const { hash } = useLocation();
-  // What the Reading card marks on the chart: hovering, focusing or pinning a claim. The page
-  // holds it because the two cards are siblings; it is above the early returns because it is a hook.
-  const claimSpan = useClaimSpan(shot.data?.review?.in_force_id, CHART_CARD_ID, shotId);
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
   // rest here with `#set`, and a link to a shot's review comes here with
   // `#review`. Both panels are far down a long page, and landing at the top of
   // it would leave the reader to find the thing the link promised. It waits
-  // for the shot, because until then the panels do not exist.
+  // for the shot, because until then the panels do not exist. The Review box is
+  // opened first: a link to its review (or to one claim of it) is a link to what is in it.
   const arrived = shot.isSuccess;
   useEffect(() => {
     const anchor = hash.slice(1);
-    // A claim's own anchor (`#claim-12`, from the Checks card) lands on that claim.
+    // A claim's own anchor (`#claim-12`) lands on that claim.
     const claim = /^claim-\d+$/.test(anchor);
     if (!arrived || (anchor !== ASSIGN_ANCHOR && anchor !== REVIEW_ANCHOR && !claim)) return;
-    document.getElementById(anchor)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const wanted = anchor === REVIEW_ANCHOR || claim;
+    if (wanted) setBox("review", true);
+    const scroll = () =>
+      document.getElementById(anchor)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    // A claim is not on screen until the box has opened.
+    if (wanted) window.requestAnimationFrame(scroll);
+    else scroll();
   }, [arrived, hash]);
 
   useQueryErrorToast(shot.error, "Could not load this shot");
@@ -101,9 +104,6 @@ export function ShotDetailPage() {
 
   const row = shot.data.shot;
   const notes = shot.data.notes;
-  const diagnostics = (row.diagnostics ?? {}) as ShotDiagnosticsBlob;
-  const phases = (row.phases ?? []) as ShotPhase[];
-  const hasPressure = diagnostics.has_pressure !== false;
   // The facts that the shot-wide numbers repeat are those numbers: the server's
   // own rounding and its own ratio (the judgement's dose, else the version's),
   // never worked out again here.
@@ -153,60 +153,15 @@ export function ShotDetailPage() {
 
       {row.quarantined ? <QuarantineNotice reason={row.quarantine_reason} id={row.id} /> : null}
 
-      {/* What is plainly wrong comes first, above everything that asks for a
-          verdict: no card at all when there is nothing to say. */}
-      <ShotChecksCard
-        checks={fields.data?.checks.items}
-        signature={fields.data?.signature}
-        claims={inForceClaims(shot.data.reviews, shot.data.review?.in_force_id)}
-        onShowClaim={showClaim}
+      {/* The five boxes, in their fixed order, as in the shots list's open row. */}
+      <ShotBoxes
+        detail={shot.data}
+        fields={fields.data}
+        samples={samples}
+        chartId={CHART_CARD_ID}
+        claimSpan={claimSpan}
+        reviewId={REVIEW_ANCHOR}
       />
-
-      {/* What you thought comes first, straight under the facts: recording it
-          is what a shot page is opened for, and it should not wait below a
-          chart. The reading comes under the curves it points into, made without
-          your judgement. */}
-      {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and
-          a revealed prediction must not survive the change of subject. */}
-      <VersionPrediction
-        key={row.id}
-        shotId={row.id}
-        version={shot.data.set_version}
-        decision={shot.data.judgement?.decision ?? null}
-      />
-      <JudgementForm shotId={row.id} judgement={shot.data.judgement} />
-      {/* The curves on a row of their own below the judgement, never beside
-          it: the chart needs the page's full width to be read. */}
-      {!row.quarantined ? (
-        <ShotCurvesCard
-          shotId={row.id}
-          deviceId={row.device_id}
-          samples={samples.data}
-          pending={samples.isPending}
-          phases={phases}
-          hasPressure={hasPressure}
-          finalExitReason={row.final_exit_reason}
-          durationMs={row.duration_ms}
-          highlight={claimSpan.shown}
-          chartId={CHART_CARD_ID}
-        />
-      ) : null}
-
-      {/* The review, straight under the curve its claims point into: hovering a claim marks
-          its span there. Keyed by the shot: this route is reused across `/shots/:shotId`, and an
-          open "Review again?" question or a request in flight must not carry over to the next
-          shot, whose Review again would start a review nobody asked for. */}
-      {!row.quarantined ? (
-        <ReviewBox
-          key={`review-${row.id}`}
-          id={REVIEW_ANCHOR}
-          shotId={row.id}
-          reviews={shot.data.reviews ?? []}
-          review={shot.data.review}
-          checks={fields.data?.checks.items}
-          span={claimSpan.controls}
-        />
-      ) : null}
 
       {/* The numbers, straight under the curve they are read against: each
           phase, then the shot as a whole. Every word is the server's. */}

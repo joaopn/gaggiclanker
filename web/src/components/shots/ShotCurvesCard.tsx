@@ -36,6 +36,8 @@ export function ShotCurvesCard({
   durationMs,
   highlight,
   chartId,
+  open,
+  onOpenChange,
 }: {
   shotId: number;
   deviceId: string;
@@ -49,6 +51,10 @@ export function ShotCurvesCard({
   highlight?: { start: number; end: number } | null;
   /** The element id of the card, which a pinned claim scrolls into view on a narrow screen. */
   chartId?: string;
+  /** When the box can be folded: whether it is open, and the way to change that. Folded, the
+   * chart is not mounted at all (nor is its code downloaded). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [visible, setVisible] = useState<string[]>(DEFAULT_SERIES);
   const rows = samples?.samples ?? [];
@@ -59,6 +65,10 @@ export function ShotCurvesCard({
       id={chartId}
       className="scroll-mt-20"
       title="Curves"
+      collapsible={onOpenChange !== undefined}
+      lazy
+      open={open}
+      onOpenChange={onOpenChange}
       description={
         hasPressure
           ? "Actual signals solid, the profile's targets dashed, with the machine's own phase boundaries behind them."

@@ -12,6 +12,9 @@ import { cn } from "@/lib/utils";
  * Uncontrolled by default (`defaultOpen`); pass `open` and `onOpenChange` when
  * the page has to open a card itself, as the settings form does for a field
  * that failed validation.
+ *
+ * `lazy` mounts the body only while the card is open: for a body that costs something to have
+ * (a chart, a download) and holds nothing a person typed.
  */
 export function SectionCard({
   id,
@@ -22,6 +25,7 @@ export function SectionCard({
   className,
   contentClassName,
   collapsible = false,
+  lazy = false,
   open,
   defaultOpen = false,
   onOpenChange,
@@ -34,6 +38,7 @@ export function SectionCard({
   className?: string;
   contentClassName?: string;
   collapsible?: boolean;
+  lazy?: boolean;
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -85,7 +90,7 @@ export function SectionCard({
         hidden={!isOpen}
         className={cn(contentClassName, !isOpen && "hidden")}
       >
-        {children}
+        {lazy && !isOpen ? null : children}
       </CardContent>
     </Card>
   );

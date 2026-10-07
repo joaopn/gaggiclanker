@@ -14,8 +14,10 @@ import { PullButton } from "@/components/shots/PullButton";
 import { setChatQuestion } from "@/components/shots/SetChatBar";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
+import { BOXES_KEY } from "@/lib/shotBoxes";
 import { SHOT_SERIES } from "@/lib/shotChart";
 import { ShotsPage } from "@/pages/ShotsPage";
+import { openAllBoxes, openBoxes } from "@/test/boxFixtures";
 import { checksBlock, claim, reviewBlock } from "@/test/claimFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
@@ -1242,8 +1244,9 @@ describe("ShotsPage open rows", () => {
       shot({ id: 2, device_id: "000102", started_at: "2026-03-04T09:15:00.000Z" }),
     ]);
 
-  it("carries the whole Reading card in the open row, under the curve, with its claims", async () => {
-    // The reading is important information: it is not a link away from the row.
+  it("carries the whole Review box in the open row, under the curve, with its claims", async () => {
+    // The review is important information: it is not a link away from the row.
+    openAllBoxes();
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
@@ -1470,7 +1473,8 @@ describe("ShotsPage open rows", () => {
     expect(within(card).queryByTestId("run-review")).toBeNull();
   });
 
-  it("leads the open row with the shot's warnings, and has no card for a shot with none", async () => {
+  it("carries the Curve check in the open row, below the review, and no box for a shot with none", async () => {
+    openBoxes({ check: true });
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
@@ -1490,25 +1494,28 @@ describe("ShotsPage open rows", () => {
 
     await user.click(screen.getByRole("button", { name: "Shot 000101" }));
     const panel = await screen.findByTestId("shot-panel");
-    const lines = within(panel).getAllByTestId("check-line");
+    const lines = await within(panel).findAllByTestId("check-line");
     expect(lines).toHaveLength(3);
     expect(lines[1]).toHaveTextContent("decline: skipped");
-    // Above the judgement, as on the page.
-    expect(
-      within(panel)
-        .getByTestId("shot-checks")
-        .compareDocumentPosition(await within(panel).findByTestId("judgement-form")) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // Below the judgement and the review, as on the page.
+    const checks = within(panel).getByTestId("shot-checks");
+    for (const above of [
+      within(panel).getByTestId("judgement-form"),
+      within(panel).getByTestId("review-box"),
+    ]) {
+      expect(above.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
 
     await user.click(screen.getByRole("button", { name: "Shot 000101" }));
     await user.click(screen.getByRole("button", { name: "Shot 000102" }));
     const second = await screen.findByTestId("shot-panel");
     await within(second).findByTestId("judgement-form");
-    expect(within(second).queryByTestId("shot-checks")).not.toBeInTheDocument();
+    // The box is still there, saying one plain line and nothing more.
+    expect(within(second).getByTestId("check-none")).toHaveTextContent("Nothing to check");
   });
 
   it("opens the shot page's judgement, and the curves on their own row below it", async () => {
+    openAllBoxes();
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
@@ -1530,13 +1537,14 @@ describe("ShotsPage open rows", () => {
     expect(getShotSamples).toHaveBeenCalledWith(1, undefined);
     const form = within(panel).getByTestId("judgement-form");
 
-    // Rows, never side by side: the judgement across the top, the curves below it, and the
-    // reading under the curves — the machine's notes card is the shot page's.
+    // Rows, never side by side: the judgement across the top, the curves below it, then the
+    // review and the curve check — the machine's notes card is the shot page's.
     const stack = within(panel).getByTestId("panel-rows");
     expect(stack).not.toHaveClass("grid");
-    const [top, below] = Array.from(stack.children);
-    expect(stack.children).toHaveLength(3);
-    expect(stack.children[2]).toBe(within(panel).getByTestId("panel-review"));
+    const [top, below, reviewBox, checkBox] = Array.from(stack.children);
+    expect(stack.children).toHaveLength(4);
+    expect(reviewBox).toContainElement(within(panel).getByTestId("review-box"));
+    expect(checkBox).toContainElement(within(panel).getByTestId("shot-checks"));
     expect(top).toContainElement(form);
     expect(below).toContainElement(series);
     expect(
@@ -1563,6 +1571,32 @@ describe("ShotsPage open rows", () => {
     );
     // Still the list: opening a row is not a navigation.
     expect(screen.queryByText("the shot page")).not.toBeInTheDocument();
+  });
+
+  it("opens with the judgement open and Curves, Review and Curve check folded, and asks for no curve", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+
+    const panel = await screen.findByTestId("shot-panel");
+    await within(panel).findByTestId("judgement-form");
+    const state = (title: RegExp) =>
+      within(panel).getByRole("button", { name: title }).getAttribute("aria-expanded");
+    expect(state(/^Your judgement$/)).toBe("true");
+    expect(state(/^Curves$/)).toBe("false");
+    expect(state(/^Review$/)).toBe("false");
+    expect(state(/^Curve check$/)).toBe("false");
+    expect(within(panel).queryByTestId("chart-series")).toBeNull();
+    expect(getShotSamples).not.toHaveBeenCalled();
+
+    // Opening Curves asks for the curve then, and the choice is the page's too: one key.
+    await user.click(within(panel).getByRole("button", { name: /^Curves$/ }));
+    expect(await within(panel).findByTestId("chart-series")).toBeInTheDocument();
+    expect(getShotSamples).toHaveBeenCalledWith(1, undefined);
+    expect(JSON.parse(window.localStorage.getItem(BOXES_KEY) ?? "{}").curves).toBe(true);
   });
 
   it("closes when the row is clicked again", async () => {
@@ -1868,12 +1902,17 @@ describe("ShotsPage open rows", () => {
     getShots.mockResolvedValue(
       listData([shot({ quarantined: true, quarantine_reason: "bad magic bytes" })]),
     );
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, id: 1, quarantined: true, quarantine_reason: "bad magic bytes" },
+    });
 
     renderList();
     await listed();
     await user.click(toggle());
 
     expect(await screen.findByTestId("panel-quarantined")).toHaveTextContent("bad magic bytes");
+    expect(screen.queryByTestId("review-box")).not.toBeInTheDocument();
     expect(screen.queryByText("Curves")).not.toBeInTheDocument();
     expect(getShotSamples).not.toHaveBeenCalled();
   });
@@ -3772,10 +3811,17 @@ describe("ShotsPage Review column", () => {
 
     await user.click(screen.getByRole("button", { name: "As intended" }));
 
-    expect(await screen.findByTestId("shot-panel")).toBeInTheDocument();
+    const panel = await screen.findByTestId("shot-panel");
     expect(screen.getByRole("button", { name: "Shot 000104" })).toHaveAttribute(
       "aria-expanded",
       "true",
+    );
+    // With its Review box expanded: what the badge named is what the person came to read.
+    const reviewBox = await within(panel).findByRole("button", { name: /^Review$/ });
+    expect(reviewBox).toHaveAttribute("aria-expanded", "true");
+    expect(within(panel).getByRole("button", { name: /^Curves$/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
     );
     expect(runReview).not.toHaveBeenCalled();
     // Pressing it again leaves the row open: the badge opens, it does not toggle.

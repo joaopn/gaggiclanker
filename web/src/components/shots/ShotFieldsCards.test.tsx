@@ -8,6 +8,7 @@ import {
   leverFields,
   leverNoPressureFields,
   leverNoScaleFields,
+  leverSignedFields,
   realFields,
 } from "@/test/shotFieldsFixture";
 
@@ -35,14 +36,27 @@ describe("ShotChecksCard", () => {
     expect(lines[0]).toHaveAttribute("data-severity", "amber");
   });
 
-  it("draws no card, and no all-clear, for a shot with no checks and no profile", () => {
-    const { container } = renderWithQueryClient(
+  it("says one plain line, and no all-clear, for a shot with no checks and no signature", () => {
+    renderWithQueryClient(
       <ShotChecksCard checks={realFields.checks.items} signature={realFields.signature} />,
     );
+    expect(screen.getByText("Curve check")).toBeInTheDocument();
+    expect(screen.getByTestId("check-none")).toHaveTextContent(
+      "Nothing to check: no confirmed signature and no warnings.",
+    );
+    expect(screen.queryByTestId("check-list")).toBeNull();
+    expect(screen.queryByText(/all clear|no problems|passed/i)).toBeNull();
+  });
+
+  it("says no check failed when a confirmed signature held, and waits for the checks to be known", () => {
+    const held = leverSignedFields.checks.items.filter((check) => check.status === "held");
+    const { container, rerender } = renderWithQueryClient(
+      <ShotChecksCard checks={held} signature={leverSignedFields.signature} />,
+    );
+    expect(screen.getByTestId("check-none")).toHaveTextContent("No check failed.");
+    // Not yet known (the fields are loading): no box, and so no premature line.
+    rerender(<ShotChecksCard checks={undefined} signature={undefined} />);
     expect(container).toBeEmptyDOMElement();
-    expect(
-      renderWithQueryClient(<ShotChecksCard checks={undefined} signature={undefined} />).container,
-    ).toBeEmptyDOMElement();
   });
 });
 

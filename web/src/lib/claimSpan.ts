@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
-/** The span of one claim, in seconds into the shot. `reviewId` is the reading it belongs to. */
+/** The span of one claim, in seconds into the shot. `reviewId` is the review it belongs to. */
 export type ClaimSpan = { reviewId: number; claimId: number; start: number; end: number };
 
 /**
- * What the Reading card does with the chart: hover or focus a claim and its span is drawn, a
+ * What the Review box does with the chart: hover or focus a claim and its span is drawn, a
  * click pins it so a phone (which has no hover) can see it, and a second click lets it go. One
  * span at a time: the one under the pointer, else the pinned one.
  */
@@ -18,16 +18,21 @@ export type ClaimSpanControls = {
 };
 
 /**
- * The shared state of the shot page: the Reading card writes it, the Curves card reads it.
+ * The shared state of a shot's boxes: the Review box writes it, the Curves box reads it.
  *
- * `inForceId` is the reading whose claims can be on screen: a span that belongs to an older
- * reading (a re-read has just replaced it) is never drawn, so a stale box cannot outlive its
+ * `inForceId` is the review whose claims can be on screen: a span that belongs to an older
+ * review (a new one has just replaced it) is never drawn, so a stale mark cannot outlive its
  * claim.
+ *
+ * `onPin` is called when a press pins a span, before the chart is brought into view; it opens the
+ * Curves box when that is folded and answers whether it had to (the chart is then scrolled to once
+ * it has been drawn).
  */
 export function useClaimSpan(
   inForceId: number | null | undefined,
   chartId?: string,
   scope?: string | number,
+  onPin?: () => boolean,
 ): {
   shown: { start: number; end: number } | null;
   controls: ClaimSpanControls;
@@ -45,6 +50,8 @@ export function useClaimSpan(
   }
   const pinnedRef = useRef<ClaimSpan | null>(null);
   pinnedRef.current = pinned;
+  const onPinRef = useRef(onPin);
+  onPinRef.current = onPin;
   const look = useCallback((span: ClaimSpan | null) => setLooked(span), []);
   const pin = useCallback(
     (span: ClaimSpan) => {
@@ -54,7 +61,16 @@ export function useClaimSpan(
       // the chart is brought into view, by the least scrolling (`nearest`: none when it is
       // already there), at any width. Only the press that pins; letting a span go leaves the
       // reader where they are.
-      if (pinnedRef.current?.claimId !== span.claimId) revealChart(chartId);
+      if (pinnedRef.current?.claimId !== span.claimId) {
+        // The box the chart lives in may be folded: pinning opens it (and says it did), and the
+        // chart is brought into view once it has been drawn.
+        const opened = onPinRef.current?.() ?? false;
+        if (opened && typeof window !== "undefined") {
+          window.requestAnimationFrame(() => revealChart(chartId));
+        } else {
+          revealChart(chartId);
+        }
+      }
     },
     [chartId],
   );

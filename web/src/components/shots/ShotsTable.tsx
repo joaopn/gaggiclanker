@@ -24,6 +24,7 @@ import { useRunReview } from "@/hooks/useReview";
 import { usePatchJudgement } from "@/hooks/useSets";
 import { useVirtualRows } from "@/hooks/useVirtualRows";
 import { attempt } from "@/lib/mutations";
+import { setBox } from "@/lib/shotBoxes";
 import {
   type ColumnSize,
   clampWidth,
@@ -141,9 +142,11 @@ export function ShotsTable({
     [shots, openId, openIndex, panelHeight],
   );
 
-  // Pressing a reviewed badge opens the shot's row (and never closes one that is open).
+  // Pressing a reviewed badge opens the shot's row (and never closes one that is open), with its
+  // Review box open: what the badge named is what the person came to read.
   const showRow = useCallback(
     (id: number) => {
+      setBox("review", true);
       if (openId !== id) toggle(id);
     },
     [openId, toggle],

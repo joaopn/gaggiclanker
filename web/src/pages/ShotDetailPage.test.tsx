@@ -3,7 +3,9 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { Link, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShotDetailData, ShotSamplesData } from "@/api/types";
+import { BOXES_KEY, forgetBoxes } from "@/lib/shotBoxes";
 import { ShotDetailPage } from "@/pages/ShotDetailPage";
+import { openAllBoxes } from "@/test/boxFixtures";
 import { claim, reviewBlock } from "@/test/claimFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
@@ -213,6 +215,8 @@ describe("ShotDetailPage layout", () => {
 });
 
 describe("ShotDetailPage chart", () => {
+  beforeEach(openAllBoxes);
+
   it("draws every signal the file carries, with the machine's phase bands", async () => {
     renderShot();
 
@@ -296,7 +300,9 @@ describe("ShotDetailPage chart", () => {
 });
 
 describe("ShotDetailPage by phase", () => {
-  it("reads in the decided order: facts, warnings, judgement, curves, reading, phases, the shot, Set, context", async () => {
+  beforeEach(openAllBoxes);
+
+  it("reads in the decided order: facts, judgement, curves, review, curve check, phases, the shot, Set, context", async () => {
     getShotFields.mockResolvedValue(leverFields);
     renderShot();
 
@@ -304,10 +310,10 @@ describe("ShotDetailPage by phase", () => {
     // The page's own landmarks, top to bottom, as the DOM has them.
     const landmarks: Array<[string, HTMLElement]> = [
       ["facts", screen.getByTestId("shot-facts")],
-      ["warnings", screen.getByTestId("shot-checks")],
       ["judgement", screen.getByTestId("judgement-form")],
       ["curves", screen.getByText("Curves")],
-      ["reading", document.getElementById("review") as HTMLElement],
+      ["review", document.getElementById("review") as HTMLElement],
+      ["check", screen.getByTestId("shot-checks")],
       ["phases", screen.getAllByTestId("phase-row")[0]],
       ["shot", screen.getByTestId("shot-field-yield")],
       ["set", document.getElementById("set") as HTMLElement],
@@ -320,10 +326,10 @@ describe("ShotDetailPage by phase", () => {
       .map(([name]) => name);
     expect(order).toEqual([
       "facts",
-      "warnings",
       "judgement",
       "curves",
-      "reading",
+      "review",
+      "check",
       "phases",
       "shot",
       "set",
@@ -331,43 +337,7 @@ describe("ShotDetailPage by phase", () => {
     ]);
   });
 
-  it("says in the facts row what the shot-wide numbers say, not what the browser works out", async () => {
-    // Filed under a version with an 18 g dose, no dose typed: the chat is told
-    // 1:2.34, and 33.25 s is 33.2 s to the server's rounding (half to even).
-    getShotFields.mockResolvedValue(leverFields);
-    getShot.mockResolvedValue({
-      ...shot129,
-      shot: { ...shot129.shot, duration_ms: 33_250, volume_g: 42.2, final_exit_reason: 1 },
-      judgement: null,
-      notes: null,
-    });
-    renderShot();
-
-    await screen.findByTestId("shot-checks");
-    const facts = screen.getByTestId("shot-facts");
-    expect(facts).toHaveTextContent("33.2 s");
-    expect(facts).not.toHaveTextContent("33.3 s");
-    expect(facts).toHaveTextContent("1:2.34");
-    expect(facts).not.toHaveTextContent("dose unknown");
-    expect(facts).toHaveTextContent("Volumetric target");
-    // The same text as the shot-wide card repeats.
-    expect(screen.getByTestId("shot-field-ratio")).toHaveTextContent("1:2.34");
-    expect(screen.getByTestId("shot-field-shot_time")).toHaveTextContent("33.2 s");
-  });
-
-  it("waits for the numbers with the shot, so the warnings card cannot arrive late and shift the judgement", async () => {
-    let release: (value: unknown) => void = () => undefined;
-    getShotFields.mockReturnValue(new Promise((resolve) => (release = resolve)));
-    renderShot();
-
-    await waitFor(() => expect(getShotFields).toHaveBeenCalled());
-    expect(screen.queryByTestId("judgement-form")).not.toBeInTheDocument();
-    release(leverFields);
-    expect(await screen.findByTestId("shot-checks")).toBeInTheDocument();
-    expect(screen.getByTestId("judgement-form")).toBeInTheDocument();
-  });
-
-  it("shows the Checks of a shot read against a confirmed signature, red first, above the judgement", async () => {
+  it("shows the Curve check of a shot read against a confirmed signature, red first, below the review", async () => {
     getShotFields.mockResolvedValue(leverSignedFields);
     renderShot();
 
@@ -380,7 +350,7 @@ describe("ShotDetailPage by phase", () => {
       "/profiles#version-1",
     );
     expect(
-      checks.compareDocumentPosition(screen.getByTestId("judgement-form")) &
+      screen.getByTestId("judgement-form").compareDocumentPosition(checks) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
@@ -392,12 +362,14 @@ describe("ShotDetailPage by phase", () => {
     expect(getShotFields).toHaveBeenCalledWith(shot129.shot.id);
   });
 
-  it("has no warnings card when there is no warning, and no all-clear", async () => {
+  it("always has the Curve check box, with one plain line when there is nothing to show", async () => {
     renderShot();
 
     await screen.findAllByTestId("phase-row");
-    expect(screen.queryByTestId("shot-checks")).not.toBeInTheDocument();
-    expect(screen.queryByText("Checks")).not.toBeInTheDocument();
+    expect(screen.getByText("Curve check")).toBeInTheDocument();
+    expect(screen.getByTestId("check-none")).toHaveTextContent(
+      "Nothing to check: no confirmed signature and no warnings.",
+    );
     expect(screen.queryByText(/all clear|no problems/i)).not.toBeInTheDocument();
   });
 
@@ -483,6 +455,8 @@ describe("ShotDetailPage quarantine", () => {
 });
 
 describe("ShotDetailPage render budget", () => {
+  beforeEach(openAllBoxes);
+
   it("draws a 60-second shot inside the budget once the data has arrived", async () => {
     // The acceptance criterion: under 200 ms from data to drawn. What is
     // measured here is everything the browser would do — building nine series
@@ -502,7 +476,9 @@ describe("ShotDetailPage render budget", () => {
   });
 });
 
-describe("ShotDetailPage Review card", () => {
+describe("ShotDetailPage Review box", () => {
+  beforeEach(openAllBoxes);
+
   it("sits right under the Curves card, offers a reading, and renders what comes back", async () => {
     const user = setupUser();
     renderShot();
@@ -689,6 +665,233 @@ describe("ShotDetailPage Review card", () => {
     expect(await screen.findByTestId("review-box")).toBeInTheDocument();
     await waitFor(() => expect(scrolled).toContain("review"));
     expect(document.getElementById("review")).toContainElement(screen.getByTestId("review-box"));
+  });
+});
+
+describe("ShotDetailPage boxes", () => {
+  const withReview = () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      review: reviewBlock({
+        state: "reviewed",
+        verdict: "no_faults",
+        badge: "No faults",
+        in_force_id: 5,
+      }),
+      reviews: [
+        review({
+          id: 5,
+          shot_id: shot129.shot.id,
+          claims: [claim({ id: 50, review_id: 5, start_s: 9.5, end_s: 18 })],
+        }),
+      ],
+    });
+    getShotFields.mockResolvedValue(leverSignedFields);
+  };
+  const expanded = (title: string) =>
+    screen.getByRole("button", { name: new RegExp(`^${title}$`) }).getAttribute("aria-expanded");
+
+  it("opens the judgement and folds Curves, Review and Curve check by default, and draws no chart", async () => {
+    withReview();
+    renderShot();
+
+    await screen.findByTestId("judgement-form");
+    expect(expanded("Your judgement")).toBe("true");
+    expect(expanded("Curves")).toBe("false");
+    expect(expanded("Review")).toBe("false");
+    expect(expanded("Curve check")).toBe("false");
+    // Folded Curves draws nothing and asks for no curve.
+    expect(screen.queryByTestId("chart-series")).toBeNull();
+    expect(getShotSamples).not.toHaveBeenCalled();
+    // The version's prediction is not a box that folds.
+    expect(screen.queryByRole("button", { name: /^Version prediction/ })).toBeNull();
+  });
+
+  it("keeps the boxes in a fixed order: judgement, curves, review, curve check", async () => {
+    withReview();
+    renderShot();
+
+    await screen.findByTestId("judgement-form");
+    const cards = ["Your judgement", "Curves", "Review", "Curve check"].map((title) =>
+      screen.getByRole("button", { name: new RegExp(`^${title}`) }),
+    );
+    for (let i = 1; i < cards.length; i += 1) {
+      expect(
+        cards[i - 1].compareDocumentPosition(cards[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+        cards[i].textContent ?? "",
+      ).toBeTruthy();
+    }
+  });
+
+  it("puts the version's prediction right under the judgement, above Curves", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      set_version: version({ id: 3, version_major: 2, prediction: "a thinner end" }),
+    });
+    renderShot();
+
+    const prediction = await screen.findByTestId("version-prediction-row");
+    const judgement = screen.getByRole("button", { name: /^Your judgement$/ });
+    const curves = screen.getByRole("button", { name: /^Curves$/ });
+    const follows = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(judgement, prediction)).toBe(true);
+    expect(follows(prediction, curves)).toBe(true);
+  });
+
+  it("remembers each box per browser, and the memory survives a reload", async () => {
+    const user = setupUser();
+    withReview();
+    const first = renderShot();
+    await screen.findByTestId("judgement-form");
+
+    await user.click(screen.getByRole("button", { name: /^Curves$/ }));
+    await user.click(screen.getByRole("button", { name: /^Your judgement$/ }));
+    expect(await screen.findByTestId("chart-series")).toBeInTheDocument();
+    expect(getShotSamples).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.localStorage.getItem(BOXES_KEY) ?? "{}")).toEqual({
+      judgement: false,
+      curves: true,
+      review: false,
+      check: false,
+    });
+
+    first.unmount();
+    forgetBoxes();
+    renderShot();
+    await screen.findByRole("button", { name: /^Curves$/ });
+    expect(expanded("Curves")).toBe("true");
+    expect(expanded("Your judgement")).toBe("false");
+    expect(expanded("Review")).toBe("false");
+  });
+
+  it("keeps the judgement form mounted while it is folded, so what was typed survives", async () => {
+    const user = setupUser();
+    withReview();
+    renderShot();
+    const notes = await screen.findByLabelText("Notes");
+    await user.type(notes, "bright and a little thin");
+
+    await user.click(screen.getByRole("button", { name: /^Your judgement$/ }));
+    expect(screen.getByLabelText("Notes")).toHaveValue("bright and a little thin");
+    await user.click(screen.getByRole("button", { name: /^Your judgement$/ }));
+    expect(screen.getByLabelText("Notes")).toHaveValue("bright and a little thin");
+  });
+
+  it("uses the defaults for a stored value it does not understand, and when storage throws", async () => {
+    window.localStorage.setItem(BOXES_KEY, '{"curves": "yes", "review": 1');
+    withReview();
+    const first = renderShot();
+    await screen.findByTestId("judgement-form");
+    expect(expanded("Curves")).toBe("false");
+    first.unmount();
+
+    const user = setupUser();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    renderShot();
+    await screen.findByTestId("judgement-form");
+    expect(expanded("Your judgement")).toBe("true");
+    // The choice still obeys, for this tab.
+    await user.click(screen.getByRole("button", { name: /^Review$/ }));
+    expect(expanded("Review")).toBe("true");
+  });
+
+  it("opens the Review box for #review, and the claim's own anchor lands on the claim", async () => {
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
+      this: Element,
+    ) {
+      scrolled.push(this.id);
+    });
+    withReview();
+    renderWithQueryClient(
+      <Routes>
+        <Route path="/shots/:shotId" element={<ShotDetailPage />} />
+      </Routes>,
+      { initialEntries: [`/shots/${shot129.shot.id}#claim-50`] },
+    );
+
+    await screen.findByTestId("review-box");
+    await waitFor(() => expect(expanded("Review")).toBe("true"));
+    await waitFor(() => expect(scrolled).toContain("claim-50"));
+  });
+
+  it("pinning a claim opens Curves when it is folded, and brings the chart into view", async () => {
+    const user = setupUser();
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
+      this: Element,
+    ) {
+      scrolled.push(this.id);
+    });
+    withReview();
+    window.localStorage.setItem(
+      BOXES_KEY,
+      JSON.stringify({ judgement: true, curves: false, review: true, check: false }),
+    );
+    renderShot();
+
+    const span = await screen.findByTestId("claim-span");
+    expect(expanded("Curves")).toBe("false");
+    await user.click(span);
+
+    await waitFor(() => expect(expanded("Curves")).toBe("true"));
+    expect(await screen.findByTestId("chart-span")).toHaveTextContent("Marked: 9.5s to 18.0s");
+    await waitFor(() => expect(scrolled).toContain("shot-curves"));
+
+    // Letting the pin go does not fold it again, and a second pin does not scroll twice for nothing.
+    await user.click(span);
+    expect(expanded("Curves")).toBe("true");
+  });
+
+  it("a Curve check line links to the answer: it opens Review and focuses the claim", async () => {
+    const user = setupUser();
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => undefined);
+    const base = leverSignedFields.checks.items.find((check) => check.kind === "free_text");
+    if (!base) throw new Error("the fixture has no free-text check");
+    getShot.mockResolvedValue({
+      ...shot129,
+      review: reviewBlock({
+        state: "reviewed",
+        verdict: "no_faults",
+        badge: "No faults",
+        in_force_id: 5,
+      }),
+      reviews: [
+        review({
+          id: 5,
+          shot_id: shot129.shot.id,
+          claims: [
+            claim({
+              id: 77,
+              review_id: 5,
+              kind: "free_text",
+              expectation_id: base.expectation_id,
+              held: false,
+            }),
+          ],
+        }),
+      ],
+    });
+    getShotFields.mockResolvedValue(leverSignedFields);
+    window.localStorage.setItem(
+      BOXES_KEY,
+      JSON.stringify({ judgement: true, curves: false, review: false, check: true }),
+    );
+    renderShot();
+
+    await screen.findByTestId("shot-checks");
+    expect(expanded("Review")).toBe("false");
+    await user.click(screen.getByTestId("checks-unchecked-toggle"));
+    await user.click(screen.getByTestId("check-claim-link"));
+
+    await waitFor(() => expect(expanded("Review")).toBe("true"));
+    await waitFor(() => expect(document.getElementById("claim-77")).toHaveFocus());
   });
 });
 
