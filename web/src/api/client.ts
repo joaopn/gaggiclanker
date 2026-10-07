@@ -14,6 +14,7 @@
 import type {
   AuthStatusData,
   BackupData,
+  BeanImportData,
   BeanRow,
   BeanWrite,
   BoardRow,
@@ -942,6 +943,15 @@ export async function createBean(body: BeanWrite): Promise<BeanRow> {
 
 export async function updateBean(id: number, body: BeanWrite): Promise<BeanRow> {
   return fetchApi<BeanRow>(`/beans/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+/**
+ * Save a bean read from an exported JSON file, sent as read. The bean with the
+ * file's `id` gets the fields the file carries; no id, or one this archive does
+ * not hold, creates a new bean.
+ */
+export async function importBean(file: unknown): Promise<BeanImportData> {
+  return fetchApi<BeanImportData>("/beans/import", { method: "POST", body: JSON.stringify(file) });
 }
 
 /**

@@ -69,6 +69,7 @@ export type VocabTerm = components["schemas"]["Term"];
 export type MeasureTerm = components["schemas"]["MeasureTerm"];
 export type BeanRow = components["schemas"]["BeanRow"];
 export type BeanWrite = components["schemas"]["BeanWrite"];
+export type BeanImportData = components["schemas"]["BeanImportData"];
 export type GrinderRow = components["schemas"]["GrinderRow"];
 export type GrinderWrite = components["schemas"]["GrinderWrite"];
 export type SetRow = components["schemas"]["SetRow"];

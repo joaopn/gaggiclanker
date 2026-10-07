@@ -10,6 +10,16 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Beans export and import as JSON
+
+- **Every coffee on the Beans page has an Export JSON icon**, which downloads it as one file
+  (`ethiopia-guji.json`): its id and every field the form edits.
+- **Import JSON** on the Beans page reads one such file. When the file's `id` is a coffee you have,
+  the fields the file carries update it and the rest stay as recorded (`null` clears a field); with
+  no id, or an id this archive does not hold, the file adds a new coffee. A toast says which. A file
+  with an unknown field or a value outside the vocabularies is refused and nothing is written.
+  The same thing is `POST /api/beans/import`.
+
 ### The judgement form: doses above the notes, prefilled, and no grind
 
 - **Breaking: the grind a judgement recorded is deleted.** Migration 0050 drops

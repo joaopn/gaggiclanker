@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BeansPage } from "@/pages/BeansPage";
+import { ApiClientError } from "@/api/client";
+import { BeansPage, beanExport, beanFileName, readText } from "@/pages/BeansPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { bean, grinder, vocabulary } from "@/test/setsFixtures";
 
@@ -20,6 +22,7 @@ const {
   getMachines,
   getProfileVersions,
   getSimilarSets,
+  importBean,
 } = vi.hoisted(() => ({
   getBeans: vi.fn(),
   createBean: vi.fn(),
@@ -31,6 +34,7 @@ const {
   getMachines: vi.fn(),
   getProfileVersions: vi.fn(),
   getSimilarSets: vi.fn(),
+  importBean: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -44,6 +48,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getMachines,
   getProfileVersions,
   getSimilarSets,
+  importBean,
 }));
 
 beforeEach(() => {
@@ -249,6 +254,123 @@ describe("BeansPage", () => {
         roast_level: "medium-light",
         process: "washed",
       }),
+    );
+  });
+
+  it("exports a coffee as a JSON file of its id and the fields the form edits", async () => {
+    const created: Blob[] = [];
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      created.push(blob);
+      return "blob:bean";
+    });
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    getBeans.mockResolvedValue({ items: [bean({ acidity: 4, archived: true, set_count: 3 })] });
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Export Ethiopia Guji as JSON" }));
+
+    expect(click).toHaveBeenCalledTimes(1);
+    expect((click.mock.instances[0] as unknown as HTMLAnchorElement).download).toBe(
+      "ethiopia-guji.json",
+    );
+    expect(JSON.parse(await readText(created[0]))).toEqual({
+      id: 1,
+      name: "Ethiopia Guji",
+      roaster: "Hasbean",
+      origin: "Ethiopia",
+      process: "natural",
+      roast_level: "light",
+      decaf: false,
+      acidity: 4,
+      intensity: null,
+      sweetness: null,
+      description: "blueberry, jasmine",
+      notes: "",
+    });
+    click.mockRestore();
+  });
+
+  it("names the file after the coffee, falling back to the id", () => {
+    expect(beanFileName(bean({ name: "Café São Paulo #2" }))).toBe("cafe-sao-paulo-2.json");
+    expect(beanFileName(bean({ id: 7, name: "☕" }))).toBe("bean-7.json");
+    expect(Object.keys(beanExport(bean()))).not.toContain("set_count");
+  });
+
+  it("imports a JSON file as read and says whether it added or updated", async () => {
+    importBean.mockResolvedValue({ bean: bean({ id: 9, name: "Kenya AA" }), created: true });
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+    await screen.findByTestId("bean-list");
+    const file = new File(['{"name": "Kenya AA", "process": "washed"}'], "kenya.json", {
+      type: "application/json",
+    });
+
+    await user.upload(screen.getByTestId("bean-import-input"), file);
+
+    await waitFor(() => expect(importBean).toHaveBeenCalledTimes(1));
+    expect(importBean.mock.calls[0][0]).toEqual({ name: "Kenya AA", process: "washed" });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Added Kenya AA"));
+    // The list is read again, so the new coffee shows.
+    await waitFor(() => expect(getBeans.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it("says Updated when the file's id named an existing coffee", async () => {
+    importBean.mockResolvedValue({ bean: bean(), created: false });
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+    await screen.findByTestId("bean-list");
+
+    await user.upload(
+      screen.getByTestId("bean-import-input"),
+      new File(['{"id": 1, "notes": "x"}'], "guji.json", { type: "application/json" }),
+    );
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Updated Ethiopia Guji"));
+  });
+
+  it("refuses a file that is not one JSON object without calling the server", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+    await screen.findByTestId("bean-list");
+    const input = screen.getByTestId("bean-import-input");
+
+    await user.upload(input, new File(["{nope"], "broken.json", { type: "application/json" }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Could not import broken.json: it is not valid JSON",
+      ),
+    );
+    await user.upload(input, new File(["[{}]"], "list.json", { type: "application/json" }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Could not import list.json: the file must hold one coffee",
+      ),
+    );
+    expect(importBean).not.toHaveBeenCalled();
+  });
+
+  it("names the file and the field the server refused", async () => {
+    importBean.mockRejectedValue(
+      new ApiClientError("Validation failed for BeanWrite", {
+        status: 422,
+        details: [{ field: "process", message: "Input should be 'washed'", type: "enum" }],
+      }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+    await screen.findByTestId("bean-list");
+
+    await user.upload(
+      screen.getByTestId("bean-import-input"),
+      new File(['{"name": "x", "process": "boiled"}'], "x.json", { type: "application/json" }),
+    );
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Could not import x.json: Validation failed for BeanWrite (process: Input should be 'washed')",
+      ),
     );
   });
 

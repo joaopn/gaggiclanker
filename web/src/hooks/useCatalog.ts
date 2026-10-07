@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  ApiClientError,
   createBean,
   createGrinder,
   deleteBean,
@@ -14,12 +15,14 @@ import {
   getGrinders,
   getMachine,
   getVocabulary,
+  importBean,
   patchMachine,
   setBeanArchived,
   updateBean,
   updateGrinder,
 } from "@/api/client";
 import type {
+  BeanImportData,
   BeanRow,
   BeanWrite,
   GrinderRow,
@@ -80,6 +83,45 @@ export function useSaveBean(): UseMutationResult<BeanRow, Error, { id?: number; 
       void queryClient.invalidateQueries({ queryKey: queryKeys.sets.all });
     },
   });
+}
+
+/**
+ * Save a bean from an exported JSON file. Takes the file's name too, so a
+ * failure says which file it was before anything about the bean is known.
+ */
+export function useImportBean(): UseMutationResult<
+  BeanImportData,
+  Error,
+  { fileName: string; content: unknown }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ content }) => importBean(content),
+    onSuccess: ({ bean, created }) =>
+      toast.success(created ? `Added ${bean.name}` : `Updated ${bean.name}`),
+    onError: (error, { fileName }) =>
+      toast.error(`Could not import ${fileName}: ${describeImportError(error)}`),
+    onSettled: () => {
+      void invalidateBeans(queryClient);
+      // As for an edit: a Set card shows its bean's name.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sets.all });
+    },
+  });
+}
+
+/**
+ * The server's message plus the first field it names: "Validation failed for
+ * BeanWrite" alone does not say which line of the file to fix.
+ */
+function describeImportError(error: Error): string {
+  const details = error instanceof ApiClientError ? error.details : undefined;
+  const first = (Array.isArray(details) ? details[0] : details) as
+    | { field?: unknown; message?: unknown }
+    | null
+    | undefined;
+  return typeof first?.field === "string" && typeof first.message === "string"
+    ? `${error.message} (${first.field}: ${first.message})`
+    : error.message;
 }
 
 export function useArchiveBean(): UseMutationResult<

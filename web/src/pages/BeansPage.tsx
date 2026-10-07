@@ -1,6 +1,17 @@
-import { Archive, ArchiveRestore, Bean, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import {
+  Archive,
+  ArchiveRestore,
+  Bean,
+  FileDown,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import type { BeanRow, BeanWrite } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -15,6 +26,7 @@ import {
   useArchiveBean,
   useBeans,
   useDeleteBean,
+  useImportBean,
   useSaveBean,
   useVocabulary,
 } from "@/hooks/useCatalog";
@@ -43,6 +55,11 @@ import { cn } from "@/lib/utils";
  * Archive is how a coffee with history is retired; delete is for a bean nobody
  * used (a typo, a duplicate), and the server refuses it while a Set points at
  * the bean.
+ *
+ * Each coffee exports as one JSON file, and Import JSON reads one back: the
+ * file's `id` names the coffee it updates, with only the fields the file
+ * carries, and a file with no id or an id this archive does not hold adds a
+ * new coffee. No preview: the toast says which happened.
  */
 
 const FIELD = cn(
@@ -73,7 +90,28 @@ export function BeansPage() {
   // that the person does not have to find it again in a picker.
   const [startingFrom, setStartingFrom] = useState<number | undefined>(undefined);
   const navigate = useNavigate();
+  const importFile = useImportBean();
+  const importRef = useRef<HTMLInputElement>(null);
   useQueryErrorToast(beans.error, "Could not load the beans");
+
+  async function onImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    // Cleared so choosing the same file again, after fixing it, fires again.
+    event.target.value = "";
+    if (!file) return;
+    let content: unknown;
+    try {
+      content = JSON.parse(await readText(file));
+    } catch {
+      toast.error(`Could not import ${file.name}: it is not valid JSON`);
+      return;
+    }
+    if (content === null || typeof content !== "object" || Array.isArray(content)) {
+      toast.error(`Could not import ${file.name}: the file must hold one coffee`);
+      return;
+    }
+    await attempt(() => importFile.mutateAsync({ fileName: file.name, content }));
+  }
 
   const rows = beans.data?.items ?? [];
 
@@ -92,12 +130,30 @@ export function BeansPage() {
             >
               {showArchived ? "Hide archived" : "Show archived"}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => importRef.current?.click()}
+              disabled={importFile.isPending}
+            >
+              <Upload className="size-3.5" aria-hidden="true" />
+              {importFile.isPending ? "Importing…" : "Import JSON"}
+            </Button>
             <Button size="sm" onClick={() => setEditing("new")}>
               <Plus className="size-3.5" aria-hidden="true" />
               Add a coffee
             </Button>
           </div>
         }
+      />
+      <input
+        ref={importRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={onImport}
+        data-testid="bean-import-input"
+        aria-label="Bean JSON file to import"
       />
 
       {editing ? (
@@ -194,6 +250,14 @@ function BeanCard({
               <Sparkles className="size-3.5" aria-hidden="true" />
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => downloadBean(bean)}
+            aria-label={`Export ${bean.name} as JSON`}
+          >
+            <FileDown className="size-3.5" aria-hidden="true" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`Edit ${bean.name}`}>
             <Pencil className="size-3.5" aria-hidden="true" />
           </Button>
@@ -260,6 +324,61 @@ function BeanCard({
       </div>
     </SectionCard>
   );
+}
+
+/**
+ * What a bean's JSON file holds: its id and every field the form edits, in the
+ * form's order. Nothing that belongs to this archive rather than the coffee
+ * (archived, the Set count, when it was typed), so the file imports back as
+ * exactly the coffee it was exported from.
+ */
+export function beanExport(bean: BeanRow): { id: number } & BeanWrite {
+  return {
+    id: bean.id,
+    name: bean.name,
+    roaster: bean.roaster ?? null,
+    origin: bean.origin ?? null,
+    process: bean.process ?? null,
+    roast_level: bean.roast_level ?? null,
+    decaf: bean.decaf ?? false,
+    acidity: bean.acidity ?? null,
+    intensity: bean.intensity ?? null,
+    sweetness: bean.sweetness ?? null,
+    description: bean.description ?? "",
+    notes: bean.notes ?? "",
+  };
+}
+
+/** `Ethiopia Guji` → `ethiopia-guji.json`; a name with no letters falls back to the id. */
+export function beanFileName(bean: BeanRow): string {
+  const slug = bean.name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${slug || `bean-${bean.id}`}.json`;
+}
+
+/** A file's text through `FileReader`, which every browser and jsdom have. */
+export function readText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
+}
+
+function downloadBean(bean: BeanRow) {
+  const url = URL.createObjectURL(
+    new Blob([`${JSON.stringify(beanExport(bean), null, 2)}\n`], { type: "application/json" }),
+  );
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = beanFileName(bean);
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 /**
