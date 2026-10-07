@@ -214,6 +214,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/beans/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a bean from an exported JSON file
+         * @description Update the bean with the file's id, or create one.
+         *
+         *     The body is the file as read: the fields of a bean plus an optional `id`.
+         *     Anything else is refused by the bean model, so a typo in a field name is an
+         *     error rather than a field silently ignored.
+         */
+        post: operations["import_bean_api_beans_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -2907,6 +2931,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[BeanImportData] */
+        ApiResponse_BeanImportData_: {
+            data?: components["schemas"]["BeanImportData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[BeanListData] */
         ApiResponse_BeanListData_: {
             data?: components["schemas"]["BeanListData"] | null;
@@ -3688,6 +3720,15 @@ export interface components {
         };
         /** @enum {string} */
         Balance: "sour" | "balanced" | "bitter";
+        /**
+         * BeanImportData
+         * @description The bean an import saved, and whether it is a new one.
+         */
+        BeanImportData: {
+            bean: components["schemas"]["BeanRow"];
+            /** Created */
+            created: boolean;
+        };
         /** BeanListData */
         BeanListData: {
             /** Items */
@@ -9325,6 +9366,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_BeanRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_bean_api_beans_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BeanImportData_"];
                 };
             };
             /** @description Validation Error */

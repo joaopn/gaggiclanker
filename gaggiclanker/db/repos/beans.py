@@ -20,6 +20,7 @@ is refused while any Set points at it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Annotated, Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -177,6 +178,33 @@ class BeansRepository(Repository):
             {**values, "id": bean_id},
         )
         return None if cursor.rowcount == 0 else await self.get(bean_id)
+
+    async def import_one(
+        self, bean_id: int | None, fields: Mapping[str, Any]
+    ) -> tuple[BeanRow, bool]:
+        """Save a bean read from a file: update the one with that id, else create one.
+
+        Returns the row and whether it was created. An update changes only the
+        fields the file names, so a file carrying just a description leaves the
+        rest of the coffee as the person recorded it; a field written as `null`
+        clears it. An id this archive does not hold creates a new bean under a
+        fresh id rather than taking the file's, because ids are never reused and
+        a file from another installation must not claim one.
+
+        Read, merge and write in one transaction, so an edit landing between the
+        read and the write cannot be overwritten with the stale copy.
+        """
+        async with self.db.transaction():
+            current = None if bean_id is None else await self.get(bean_id)
+            if current is None:
+                return await self.create(BeanWrite.model_validate(fields)), True
+            stored = current.model_dump(include=set(_WRITABLE))
+            updated = await self.update(current.id, BeanWrite.model_validate({**stored, **fields}))
+            if (
+                updated is None
+            ):  # pragma: no cover - the read above found it inside this transaction
+                raise RuntimeError("the bean vanished inside its own transaction")
+            return updated, False
 
     async def set_archived(self, bean_id: int, *, archived: bool) -> BeanRow | None:
         cursor = await self.db.execute(

@@ -7,6 +7,11 @@ reference intact. `DELETE /api/beans/{id}` is for a bean nobody used — a typo,
 duplicate — and answers 409 while any Set points at it, because Sets cannot be
 deleted and a Set whose bean is gone is a Set whose page cannot render.
 
+`POST /api/beans/import` saves a bean read from a JSON file, the shape the
+Beans page exports: the bean with the file's `id` is updated with the fields
+the file carries, and a file with no id, or an id this archive does not hold,
+creates a new bean.
+
 `GET /api/beans/{id}/similar-sets` is the wizard's evidence query on its own. It
 lives here rather than under `/api/starting-points` because it is a fact about a
 bean and it costs nothing — the wizard shows those cards before anybody presses
@@ -16,16 +21,16 @@ this" is worth reading even if nobody asks the model anything.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Body, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.api.deps import BeansRepoDep, DatabaseDep
 from gaggiclanker.db.repos.beans import BeanRow, BeanWrite
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
-from gaggiclanker.infra.errors import Conflict, NotFound
+from gaggiclanker.infra.errors import BadRequest, Conflict, NotFound
 from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_sets
 
 __all__ = ["router"]
@@ -135,6 +140,41 @@ async def unarchive_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
     if row is None:
         raise NotFound(f"No bean {bean_id}")
     return envelope_response(row.model_dump(mode="json"))
+
+
+class BeanImportData(BaseModel):
+    """The bean an import saved, and whether it is a new one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bean: BeanRow
+    created: bool
+
+
+@router.post(
+    "/import",
+    response_model=ApiResponse[BeanImportData],
+    summary="Save a bean from an exported JSON file",
+)
+async def import_bean(body: Annotated[dict[str, Any], Body()], beans: BeansRepoDep) -> JSONResponse:
+    """Update the bean with the file's id, or create one.
+
+    The body is the file as read: the fields of a bean plus an optional `id`.
+    Anything else is refused by the bean model, so a typo in a field name is an
+    error rather than a field silently ignored.
+    """
+    fields = dict(body)
+    bean_id = fields.pop("id", None)
+    if bean_id is not None and (not isinstance(bean_id, int) or isinstance(bean_id, bool)):
+        raise BadRequest(
+            "The file's id must be a whole number.",
+            details={"field": "id", "message": "a whole number or absent"},
+        )
+    row, created = await beans.import_one(bean_id, fields)
+    return envelope_response(
+        BeanImportData(bean=row, created=created).model_dump(mode="json"),
+        status_code=201 if created else 200,
+    )
 
 
 @router.get(

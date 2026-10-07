@@ -249,6 +249,102 @@ class TestBeans:
         assert await app.state.db.fetch_all("PRAGMA foreign_key_check") == []
 
 
+class TestBeanImport:
+    """`POST /api/beans/import`: the file's id updates that bean, anything else creates."""
+
+    async def test_a_file_without_an_id_creates_a_bean(self, client: httpx.AsyncClient) -> None:
+        response = await client.post(
+            "/api/beans/import", json={"name": "Kenya AA", "process": "washed"}
+        )
+        assert response.status_code == 201
+        body = data(response)
+        assert body["created"] is True
+        assert body["bean"]["name"] == "Kenya AA"
+        assert body["bean"]["process"] == "washed"
+
+    async def test_an_unknown_id_creates_a_bean_under_a_fresh_id(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        body = data(await client.post("/api/beans/import", json={"id": 9999, "name": "Elsewhere"}))
+        assert body["created"] is True
+        assert body["bean"]["id"] not in (9999, bean_id)
+
+    async def test_a_known_id_updates_only_the_fields_the_file_names(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        created = data(
+            await client.post(
+                "/api/beans",
+                json={"name": "Guji", "roaster": "SQM", "acidity": 4, "notes": "mine"},
+            )
+        )
+        response = await client.post(
+            "/api/beans/import",
+            json={"id": created["id"], "description": "From the bag", "acidity": None},
+        )
+        assert response.status_code == 200
+        body = data(response)
+        assert body["created"] is False
+        bean = body["bean"]
+        assert bean["id"] == created["id"]
+        assert bean["description"] == "From the bag"
+        # Named as null in the file: cleared. Not named: left as recorded.
+        assert bean["acidity"] is None
+        assert (bean["name"], bean["roaster"], bean["notes"]) == ("Guji", "SQM", "mine")
+        assert len(data(await client.get("/api/beans"))["items"]) == 1
+
+    async def test_an_exported_bean_round_trips_unchanged(self, client: httpx.AsyncClient) -> None:
+        created = data(
+            await client.post(
+                "/api/beans",
+                json={"name": "Huila", "roaster": "Dak", "roast_level": "light", "decaf": True},
+            )
+        )
+        exported = {
+            k: v for k, v in created.items() if k not in ("archived", "created_at", "set_count")
+        }
+        body = data(await client.post("/api/beans/import", json=exported))
+        assert body["created"] is False
+        assert body["bean"] == created
+
+    async def test_an_archived_bean_stays_archived(self, client: httpx.AsyncClient) -> None:
+        created = data(await client.post("/api/beans", json={"name": "Old bag"}))
+        await client.post(f"/api/beans/{created['id']}/archive")
+        body = data(
+            await client.post("/api/beans/import", json={"id": created["id"], "notes": "x"})
+        )
+        assert body["bean"]["archived"] is True
+        assert body["bean"]["notes"] == "x"
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"name": "x", "process": "boiled"},
+            {"name": "x", "set_count": 3},
+            {"roaster": "no name"},
+            {"id": "7", "name": "x"},
+            {"id": True, "name": "x"},
+        ],
+    )
+    async def test_a_bad_file_writes_nothing(
+        self, client: httpx.AsyncClient, payload: dict[str, Any]
+    ) -> None:
+        response = await client.post("/api/beans/import", json=payload)
+        assert response.status_code in (400, 422)
+        error(response)
+        assert data(await client.get("/api/beans?include_archived=true"))["items"] == []
+
+    async def test_a_bad_update_leaves_the_bean_as_it_was(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        before = data(await client.get(f"/api/beans/{bean_id}"))
+        response = await client.post(
+            "/api/beans/import", json={"id": bean_id, "name": None, "notes": "lost"}
+        )
+        assert response.status_code == 422
+        assert data(await client.get(f"/api/beans/{bean_id}")) == before
+
+
 class TestGrinders:
     async def test_create_list_and_edit(self, client: httpx.AsyncClient) -> None:
         created = data(
