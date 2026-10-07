@@ -174,7 +174,7 @@ async def test_a_field_that_is_only_a_number_is_served_as_a_number(archive: Arch
                 seen += 1
     # A machine number is zero-padded and a grind setting is whatever the grinder
     # calls it ("14", "2.1"): both are words that happen to be digits.
-    words = {"machine_shot_number", "grind_as_brewed", "recipe_grind", "note_grind"}
+    words = {"machine_shot_number", "recipe_grind", "note_grind"}
     assert set(offenders) == words & set(offenders)
     assert seen > 0
     samples = ITEMS["phase_samples"].field(facts, facts.phases[2])

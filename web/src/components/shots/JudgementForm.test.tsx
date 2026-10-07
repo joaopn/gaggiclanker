@@ -43,15 +43,13 @@ describe("JudgementForm", () => {
     expect(screen.getByRole("button", { name: "Improve" })).toBeInTheDocument();
   });
 
-  it("computes the ratio from the two doses as they are typed", async () => {
-    const user = setupUser();
+  it("has no ratio and no grind: the server's ratio is elsewhere, and the grind is the recipe's", async () => {
     renderWithQueryClient(<JudgementForm shotId={1} judgement={null} />);
 
-    expect(await screen.findByTestId("judgement-ratio")).toHaveTextContent("needs both doses");
-    await user.type(screen.getByLabelText("Dose in (g)"), "18");
-    await user.type(screen.getByLabelText("Dose out (g)"), "36");
-
-    expect(screen.getByTestId("judgement-ratio")).toHaveTextContent("1:2.0");
+    await screen.findByLabelText("Dose in (g)");
+    expect(screen.queryByTestId("judgement-ratio")).toBeNull();
+    expect(screen.queryByLabelText("Grind")).toBeNull();
+    expect(screen.queryByText("Ratio")).toBeNull();
   });
 
   it("counts the notes against the machine's own 200-character limit", async () => {
@@ -75,7 +73,11 @@ describe("JudgementForm", () => {
     expect(right).toContainElement(notes);
     expect(right).toContainElement(screen.getByTestId("notes-counter"));
     expect(left).not.toContainElement(notes);
-    expect(left).toContainElement(screen.getByLabelText("Dose in (g)"));
+    // The doses are above the notes, in the same column.
+    const doseIn = screen.getByLabelText("Dose in (g)");
+    expect(right).toContainElement(doseIn);
+    expect(right).toContainElement(screen.getByLabelText("Dose out (g)"));
+    expect(doseIn.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(left).toHaveTextContent("Rating");
   });
 
@@ -145,7 +147,6 @@ describe("JudgementForm", () => {
       "aria-pressed",
       "true",
     );
-    expect(screen.getByTestId("judgement-ratio")).toHaveTextContent("1:2.0");
   });
 
   it("does not offer to withdraw a verdict that does not exist", async () => {
@@ -165,5 +166,74 @@ describe("JudgementForm", () => {
     // argument, so the assertion is on the first one.
     await waitFor(() => expect(deleteJudgement).toHaveBeenCalled());
     expect(deleteJudgement.mock.calls[0][0]).toBe(1);
+  });
+
+  describe("the doses start where the shot says, and only a save records them", () => {
+    it("shows the scale's yield and the Set version's dose as values, not placeholders", async () => {
+      renderWithQueryClient(
+        <JudgementForm shotId={1} judgement={null} prefill={{ doseIn: 18, doseOut: 36.4 }} />,
+      );
+
+      const doseIn = await screen.findByLabelText("Dose in (g)");
+      const doseOut = screen.getByLabelText("Dose out (g)");
+      expect(doseIn).toHaveValue("18");
+      expect(doseOut).toHaveValue("36.4");
+      expect(doseIn).not.toHaveAttribute("placeholder");
+      expect(doseOut).not.toHaveAttribute("placeholder");
+      // Nothing is saved by looking.
+      expect(putJudgement).not.toHaveBeenCalled();
+    });
+
+    it("leaves dose out empty for a shot with no scale, and dose in empty for an unfiled shot", async () => {
+      renderWithQueryClient(
+        <JudgementForm shotId={1} judgement={null} prefill={{ doseIn: null, doseOut: null }} />,
+      );
+      expect(await screen.findByLabelText("Dose in (g)")).toHaveValue("");
+      expect(screen.getByLabelText("Dose out (g)")).toHaveValue("");
+    });
+
+    it("fills each side on its own: a filed shot with no scale, a scale with no Set", async () => {
+      const { unmount } = renderWithQueryClient(
+        <JudgementForm shotId={1} judgement={null} prefill={{ doseIn: 18, doseOut: null }} />,
+      );
+      expect(await screen.findByLabelText("Dose in (g)")).toHaveValue("18");
+      expect(screen.getByLabelText("Dose out (g)")).toHaveValue("");
+      unmount();
+      renderWithQueryClient(
+        <JudgementForm shotId={1} judgement={null} prefill={{ doseIn: null, doseOut: 36.4 }} />,
+      );
+      expect(await screen.findByLabelText("Dose in (g)")).toHaveValue("");
+      expect(screen.getByLabelText("Dose out (g)")).toHaveValue("36.4");
+    });
+
+    it("lets a saved value win over the prefill, field by field", async () => {
+      renderWithQueryClient(
+        <JudgementForm
+          shotId={1}
+          judgement={judgement({ dose_in_g: 17.5, dose_out_g: null })}
+          prefill={{ doseIn: 18, doseOut: 36.4 }}
+        />,
+      );
+      expect(await screen.findByLabelText("Dose in (g)")).toHaveValue("17.5");
+      // Nothing saved for the dose out, so the scale's yield stands in until the next save.
+      expect(screen.getByLabelText("Dose out (g)")).toHaveValue("36.4");
+    });
+
+    it("saves what is shown, once the person saves, and a prefill edited is the edit", async () => {
+      const user = setupUser();
+      renderWithQueryClient(
+        <JudgementForm shotId={1} judgement={null} prefill={{ doseIn: 18, doseOut: 36.4 }} />,
+      );
+      const doseOut = await screen.findByLabelText("Dose out (g)");
+      await user.clear(doseOut);
+      await user.type(doseOut, "37");
+      await user.click(screen.getByRole("button", { name: "Save judgement" }));
+
+      await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+      const body = putJudgement.mock.calls[0][1];
+      expect(body.dose_in_g).toBe(18);
+      expect(body.dose_out_g).toBe(37);
+      expect(body).not.toHaveProperty("grind_setting");
+    });
   });
 });

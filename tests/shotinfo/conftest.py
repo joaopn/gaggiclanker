@@ -144,7 +144,6 @@ async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
                 aroma_notes=["floral.floral.jasmine"],
                 dose_in_g=18.0,
                 dose_out_g=36.5,
-                grind_setting="14",
                 notes="Sweet, a little thin at the end.",
                 decision="keep",
             ),

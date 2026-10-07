@@ -17,7 +17,6 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
-from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.knowledge import RulesRepository, RuleWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
@@ -101,8 +100,11 @@ async def _old_archive(db: Database, tmp_path: Path) -> dict[str, int]:
             "diagnostics_json = ?, derivation_version = 7 WHERE id = ?",
             (OLD_BLOB, ids[name]),
         )
-    await JudgementsRepository(db).upsert(
-        ids["lever"], JudgementWrite(rating=1, dose_in_g=18.0, dose_out_g=42.2)
+    # Raw SQL: this archive has the schema of its day, which the current repository cannot read.
+    await db.execute(
+        "INSERT INTO shot_judgements (shot_id, rating, dose_in_g, dose_out_g) "
+        "VALUES (?, 1, 18.0, 42.2)",
+        (ids["lever"],),
     )
     # A person's choices about items that were renamed, retired and kept.
     for key, tier in (

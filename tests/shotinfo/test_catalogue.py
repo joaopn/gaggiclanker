@@ -44,7 +44,7 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Profile compliance", 3),
     ("Phases", 31),
     ("Curve", 13),
-    ("Your judgement", 9),
+    ("Your judgement", 8),
     ("The version's recipe", 5),
     ("The note typed on the machine", 6),
     ("Review", 3),
@@ -145,7 +145,6 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "dose_in",
     "dose_out",
     "ratio",
-    "grind_as_brewed",
     "recipe_grind",
     "recipe_dose",
     "recipe_yield",
@@ -198,7 +197,6 @@ EXPECTED_BASE: frozenset[str] = frozenset(
         "dose_in",
         "dose_out",
         "ratio",
-        "grind_as_brewed",
     }
 )
 
@@ -415,7 +413,6 @@ ORIGIN_DEV_BASE = frozenset(
         "dose_in",
         "dose_out",
         "ratio",
-        "grind_as_brewed",
     }
 )
 RETIRED_FROM_BASE = frozenset({"execution_score", "channeling_risk"})

@@ -42,7 +42,6 @@ type FormState = {
   aromaNotes: string[];
   doseIn: string;
   doseOut: string;
-  grind: string;
   notes: string;
   decision: string | null;
 };
@@ -54,13 +53,28 @@ const EMPTY: FormState = {
   aromaNotes: [],
   doseIn: "",
   doseOut: "",
-  grind: "",
   notes: "",
   decision: null,
 };
 
-function toState(judgement: ShotJudgement | null | undefined): FormState {
-  if (!judgement) return EMPTY;
+/**
+ * What the form starts the doses at when the person has not recorded one: the Set version's dose
+ * when the shot is filed in a Set, the scale's yield when the shot has a scale. Values, not
+ * placeholders, so what is saved is what is seen, and nothing is saved until the person saves.
+ */
+export type DosePrefill = { doseIn?: number | null; doseOut?: number | null };
+
+/** A dose as the field shows it: to a tenth of a gram, no trailing zero. */
+function dose(value: number | null | undefined): string {
+  return value == null || !(value > 0) ? "" : String(Number(value.toFixed(1)));
+}
+
+function toState(
+  judgement: ShotJudgement | null | undefined,
+  prefill: DosePrefill = {},
+): FormState {
+  const prefilled = { doseIn: dose(prefill.doseIn), doseOut: dose(prefill.doseOut) };
+  if (!judgement) return { ...EMPTY, ...prefilled };
   return {
     rating: judgement.rating ?? null,
     balance: judgement.balance ?? null,
@@ -70,9 +84,9 @@ function toState(judgement: ShotJudgement | null | undefined): FormState {
     // One representation means there is no "empty string or undefined or zero"
     // question at every call site, and `toBody` is the single place where empty
     // means "not recorded".
-    doseIn: judgement.dose_in_g == null ? "" : String(judgement.dose_in_g),
-    doseOut: judgement.dose_out_g == null ? "" : String(judgement.dose_out_g),
-    grind: judgement.grind_setting ?? "",
+    // A person's own value wins over the prefill; the prefill only fills what is empty.
+    doseIn: judgement.dose_in_g == null ? prefilled.doseIn : String(judgement.dose_in_g),
+    doseOut: judgement.dose_out_g == null ? prefilled.doseOut : String(judgement.dose_out_g),
     notes: judgement.notes ?? "",
     decision: judgement.decision ?? null,
   };
@@ -91,7 +105,6 @@ export function toBody(state: FormState): JudgementWrite {
     aroma_notes: state.aromaNotes,
     dose_in_g: toNumber(state.doseIn),
     dose_out_g: toNumber(state.doseOut),
-    grind_setting: state.grind.trim() || null,
     notes: state.notes,
     decision: state.decision as JudgementWrite["decision"],
   };
@@ -105,11 +118,14 @@ const FIELD = cn(
 export function JudgementForm({
   shotId,
   judgement,
+  prefill,
   open,
   onOpenChange,
 }: {
   shotId: number;
   judgement: ShotJudgement | null | undefined;
+  /** Where the doses start when the judgement has none (see {@link DosePrefill}). */
+  prefill?: DosePrefill;
   /** When the box can be folded: whether it is open, and the way to change that. The form stays
    * mounted while it is folded, so what was typed is still there when it opens. */
   open?: boolean;
@@ -120,22 +136,19 @@ export function JudgementForm({
   const wheel = useMemo(() => flattenWheel(vocab.data?.flavor_wheel ?? []), [vocab.data]);
   const save = useSaveJudgement();
   const remove = useDeleteJudgement();
-  const [state, setState] = useState<FormState>(() => toState(judgement));
-  const ids = { doseIn: useId(), doseOut: useId(), grind: useId(), notes: useId() };
+  const [state, setState] = useState<FormState>(() => toState(judgement, prefill));
+  const ids = { doseIn: useId(), doseOut: useId(), notes: useId() };
 
   // Re-seed when the server's copy changes identity — a sync that seeded this
   // shot from the machine's notes card, or a different shot rendered through
   // the same component. Keyed on `updated_at` rather than on the object, which
   // is a new reference on every refetch and would throw away half-typed input
   // every time the list refreshed.
-  const stamp = judgement?.updated_at ?? "none";
+  // The prefill is part of that identity: a shot filed (or its yield arriving) after the form
+  // opened starts the doses at the new values, as a different shot would.
+  const stamp = `${judgement?.updated_at ?? "none"}|${dose(prefill?.doseIn)}|${dose(prefill?.doseOut)}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the stamp is the identity
-  useEffect(() => setState(toState(judgement)), [stamp]);
-
-  const ratio =
-    toNumber(state.doseIn) && toNumber(state.doseOut)
-      ? `1:${((toNumber(state.doseOut) as number) / (toNumber(state.doseIn) as number)).toFixed(1)}`
-      : null;
+  useEffect(() => setState(toState(judgement, prefill)), [stamp]);
 
   function set<K extends keyof FormState>(key: K, next: FormState[K]) {
     setState((current) => ({ ...current, [key]: next }));
@@ -225,8 +238,12 @@ export function JudgementForm({
                 }}
               />
             ) : null}
+          </div>
 
-            <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
+          <div className="flex min-w-0 flex-col">
+            {/* The doses sit above the notes: what went in and what came out are said before the
+                words about the cup. Prefilled values are values, not placeholders. */}
+            <div className="mb-3 grid grid-cols-2 gap-3">
               <Field label="Dose in (g)" htmlFor={ids.doseIn}>
                 <input
                   id={ids.doseIn}
@@ -245,27 +262,7 @@ export function JudgementForm({
                   onChange={(event) => set("doseOut", event.target.value)}
                 />
               </Field>
-              <Field label="Ratio">
-                <p
-                  className="flex h-8 items-center text-sm tabular-nums"
-                  data-testid="judgement-ratio"
-                >
-                  {ratio ?? <span className="text-muted-foreground">needs both doses</span>}
-                </p>
-              </Field>
-              <Field label="Grind" htmlFor={ids.grind}>
-                <input
-                  id={ids.grind}
-                  className={FIELD}
-                  value={state.grind}
-                  placeholder="22, or 3.5"
-                  onChange={(event) => set("grind", event.target.value)}
-                />
-              </Field>
             </div>
-          </div>
-
-          <div className="flex min-w-0 flex-col">
             <label htmlFor={ids.notes} className="mb-1 block text-muted-foreground text-xs">
               Notes
             </label>

@@ -895,6 +895,52 @@ describe("ShotDetailPage boxes", () => {
   });
 });
 
+describe("ShotDetailPage judgement prefills", () => {
+  const doses = async () => [
+    (await screen.findByLabelText("Dose in (g)")) as HTMLInputElement,
+    screen.getByLabelText("Dose out (g)") as HTMLInputElement,
+  ];
+
+  it("starts dose out at the scale's yield and dose in at the Set version's dose", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, scale_connected: true, volume_g: 36.4 },
+      judgement: null,
+      set_version: version({ id: 3, dose_g: 18 }),
+    });
+    renderShot();
+    const [doseIn, doseOut] = await doses();
+    expect(doseIn).toHaveValue("18");
+    expect(doseOut).toHaveValue("36.4");
+  });
+
+  it("leaves dose out empty without a scale, and dose in empty when the shot is unfiled", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, scale_connected: false, volume_g: 36.4 },
+      judgement: null,
+      set_version: null,
+    });
+    renderShot();
+    const [doseIn, doseOut] = await doses();
+    expect(doseIn).toHaveValue("");
+    expect(doseOut).toHaveValue("");
+  });
+
+  it("lets what the person saved win over both", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, scale_connected: true, volume_g: 36.4 },
+      judgement: judgement({ shot_id: shot129.shot.id, dose_in_g: 17.5, dose_out_g: 38 }),
+      set_version: version({ id: 3, dose_g: 18 }),
+    });
+    renderShot();
+    const [doseIn, doseOut] = await doses();
+    expect(doseIn).toHaveValue("17.5");
+    expect(doseOut).toHaveValue("38");
+  });
+});
+
 describe("ShotDetailPage Set panel", () => {
   it("scrolls to the Assign panel when the link asks for it", async () => {
     // The shots list's needs-a-Set menu offers only three Sets and sends the

@@ -1259,7 +1259,9 @@ async def test_0029_keeps_every_shot_and_everything_that_hangs_off_it(
     assert len(before["shots"]) == 4 and len(before["shot_samples"]) == 8
     assert len(before["shot_reviews"]) == 3
 
-    assert "0029" in await run_migrations(db)
+    # Through 0048 only: 0050 later drops a judgement column and remakes `v_judgements`, and the
+    # point here is that 0029 itself carried everything.
+    assert "0029" in await _migrate_through(db, tmp_path, "0048")
 
     # 0048 later deletes every stored review (the reading replaced them); everything 0029 carried
     # is otherwise exactly as it was.

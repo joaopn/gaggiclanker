@@ -10,6 +10,25 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The judgement form: doses above the notes, prefilled, and no grind
+
+- **Breaking: the grind a judgement recorded is deleted.** Migration 0050 drops
+  `shot_judgements.grind_setting` and remakes `v_judgements` without it, and the `grind_setting`
+  field leaves the judgement API; whatever people typed into the form's Grind box is gone. The grind
+  a shot was brewed at is the Set version's recipe grind (`recipe_grind`) or the machine's own note
+  (`note_grind`), both unchanged. The shot-information item `grind_as_brewed`, its method id and
+  its glossary entry go with it (a tier you chose for it is dropped), and importing or syncing the
+  machine's notes card no longer copies its grind into a judgement.
+- **Dose in and dose out sit above the notes, and start at what the shot says.** Dose out starts at
+  the scale's yield when the shot has a scale, dose in at the Set version's dose when the shot is
+  filed in a Set; without them the fields are empty. They are values, not placeholders, you can edit
+  them, and nothing is saved until you save the judgement; a value you saved earlier wins. The ratio
+  is no longer in the form: it stays on "The shot" card and in what the chat is told, where your own
+  dose still overrides the scale's.
+- **The grind is set by the Set version.** "New version from this shot" has its own **Grind** field,
+  starting at the Set's current recipe grind and becoming the new version's grind (with its number);
+  the doses still come from your judgement, and emptying the field inherits the parent's grind.
+
 ### A shot's review is claims you can reject, kept apart from the checks the numbers make
 
 - **Breaking: every stored review is deleted, and so is any edit you made to the two review

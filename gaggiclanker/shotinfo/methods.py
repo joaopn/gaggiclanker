@@ -129,7 +129,6 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "dose_in": "judgement.dose_in@1",
         "dose_out": "judgement.dose_out@1",
         "ratio": "readtime.yield_over_dose@2",
-        "grind_as_brewed": "judgement.grind_setting@1",
         "recipe_grind": "recipe.grind_setting@1",
         "recipe_dose": "recipe.dose@1",
         "recipe_yield": "recipe.target_yield@1",

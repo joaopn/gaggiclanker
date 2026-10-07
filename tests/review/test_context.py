@@ -174,7 +174,6 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
         "Dose in:",
         "Dose out:",
         "Ratio:",
-        "Grind as brewed:",
         "Label:",
         "Counted:",
         "Machine note",

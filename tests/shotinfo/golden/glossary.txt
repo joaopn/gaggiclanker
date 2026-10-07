@@ -56,7 +56,6 @@ One line per phase, headed by the phase: `phase 2 · ramp: duration 5.0 s; ended
 - Dose in [base]: The ground coffee the person put in the basket, in grams.
 - Dose out [base]: The beverage weight the person recorded, in grams. Where it differs from the scale's yield, it is the person correcting the scale.
 - Ratio [base]: Dose out divided by dose in, written 1:2.00. Longer ratios extract more. The dose in is the person's when entered, else the version's; the dose out is the person's when entered, else the scale's yield. Absent without both.
-- Grind as brewed [base]: The grind setting the person says this shot was actually ground at, in the grinder's own units. It can differ from the recipe's.
 
 [Review]
 What the newest finished review of the shot said: a model's claims about this one shot, each tied to a window of the shot and backed by numbers the server worked out, made without the person's judgement. Every claim the person did not reject is shown, none that they rejected; the review's own summary is never shown. Weigh a claim below the measured numbers and below the person's judgement; a claim the numbers do not bear out says so.

@@ -1132,7 +1132,6 @@ describe("ShotsPage Decision column", () => {
       aroma_notes: ["fruity.berry"],
       dose_in_g: 18,
       dose_out_g: 36,
-      grind_setting: "22",
       notes: "sharp at the end",
       decision: "keep",
     });
@@ -1556,9 +1555,10 @@ describe("ShotsPage open rows", () => {
     expect(within(below as HTMLElement).getByText("Curves")).toBeInTheDocument();
     expect(within(panel).queryByTestId("device-notes")).not.toBeInTheDocument();
 
-    // The shot page's full form: doses, grind, the notes column, and Save.
+    // The shot page's full form: doses above the notes, and Save; no ratio, no grind.
     expect(within(form).getByLabelText("Dose in (g)")).toBeInTheDocument();
-    expect(within(form).getByLabelText("Grind")).toBeInTheDocument();
+    expect(within(form).queryByLabelText("Grind")).toBeNull();
+    expect(within(form).queryByTestId("judgement-ratio")).toBeNull();
     expect(within(form).getByLabelText("Notes")).toBeInTheDocument();
     expect(within(form).getByRole("button", { name: "Save judgement" })).toBeInTheDocument();
     // And the curve's own controls: the series toggles and the downloads.
@@ -2899,7 +2899,6 @@ describe("ShotsPage row editing", () => {
       aroma_notes: ["fruity.berry"],
       dose_in_g: 18,
       dose_out_g: 36,
-      grind_setting: "22",
       notes: "sharp at the end",
       decision: "improve",
     });

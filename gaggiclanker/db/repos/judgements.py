@@ -40,9 +40,6 @@ log = structlog.get_logger(__name__)
 #: limit rather than a made-up one.
 NOTES_MAX = 200
 
-#: The grind setting's cap. The firmware has none at all, so this is ours.
-GRIND_MAX = 100
-
 
 def _within(value: float | None, low: float, high: float) -> float | None:
     """The value, or ``None`` when the machine gave us one we do not believe.
@@ -79,7 +76,6 @@ class JudgementWrite(BaseModel):
     aroma_notes: list[str] = Field(default_factory=list)
     dose_in_g: float | None = Field(default=None, gt=0, le=100)
     dose_out_g: float | None = Field(default=None, gt=0, le=500)
-    grind_setting: str | None = Field(default=None, max_length=GRIND_MAX)
     notes: str = Field(default="", max_length=NOTES_MAX)
     decision: Decision | None = None
 
@@ -106,7 +102,6 @@ class ShotJudgementRow(BaseModel):
     aroma_notes: list[str] = Field(default_factory=list, validation_alias="aroma_notes_json")
     dose_in_g: float | None = None
     dose_out_g: float | None = None
-    grind_setting: str | None = None
     notes: str = ""
     decision: Decision | None = None
     #: True while this judgement is still exactly what the machine's notes card
@@ -152,7 +147,6 @@ def _values(shot_id: int, judgement: JudgementWrite) -> dict[str, Any]:
         "aroma_notes_json": dumps(payload["aroma_notes"]),
         "dose_in_g": payload["dose_in_g"],
         "dose_out_g": payload["dose_out_g"],
-        "grind_setting": payload["grind_setting"],
         "notes": payload["notes"],
         "decision": payload["decision"],
     }
@@ -234,9 +228,6 @@ class JudgementsRepository(Repository):
                 # that the ratio and the chat would then reason from.
                 dose_in_g=_within(parsed.dose_in, 0, 100),
                 dose_out_g=_within(parsed.dose_out, 0, 500),
-                # Truncated rather than dropped: a grind setting is a label, so
-                # the prefix is the part that means something.
-                grind_setting=(notes.grind_setting or None) and notes.grind_setting[:GRIND_MAX],
                 notes=notes.notes[:NOTES_MAX],
             )
         except ValidationError as exc:
@@ -247,7 +238,6 @@ class JudgementsRepository(Repository):
                 judgement.rating,
                 judgement.dose_in_g,
                 judgement.dose_out_g,
-                judgement.grind_setting,
                 judgement.notes,
             )
         ):

@@ -101,6 +101,12 @@ export function ShotBoxes({
       <JudgementForm
         shotId={row.id}
         judgement={detail.judgement}
+        // Where the doses start when the person has recorded none: the Set version's dose (when
+        // the shot is filed) and the scale's yield (when it has a scale).
+        prefill={{
+          doseIn: detail.set_version?.dose_g ?? null,
+          doseOut: row.scale_connected ? (row.volume_g ?? null) : null,
+        }}
         open={judgementOpen}
         onOpenChange={setJudgement}
       />

@@ -401,7 +401,6 @@ async def build_fixture(db: Database) -> Fixture:
                 taste_notes=list(entry["taste"]),
                 dose_in_g=18.0,
                 dose_out_g=float(entry["final_weight_g"]),
-                grind_setting="22 numbers",
                 notes=str(entry["notes"]),
             ),
         )
@@ -436,7 +435,6 @@ async def build_fixture(db: Database) -> Fixture:
             aroma_notes=["floral.floral.jasmine"],
             dose_in_g=18.0,
             dose_out_g=37.5,
-            grind_setting="22 numbers",
             notes="Sharp up front, nothing behind it.",
             decision="improve",
         ),

@@ -34,7 +34,6 @@ class TestJudgement:
                 aroma_notes=["floral.floral.jasmine"],
                 dose_in_g=18.0,
                 dose_out_g=36.0,
-                grind_setting="22",
                 notes="a bit sharp on the finish",
                 decision="improve",
             ),
@@ -115,7 +114,8 @@ class TestSeedingFromDeviceNotes:
         assert row is not None
         assert (row.rating, row.balance) == (4, "bitter")
         assert (row.dose_in_g, row.dose_out_g) == (18.0, 36.5)
-        assert row.grind_setting == "3.2"
+        # The card's grind is the card's own; the judgement no longer has one.
+        assert not hasattr(row, "grind_setting")
         assert row.notes == "harsh at the end"
         assert row.seeded_from_device_note is True
         assert row.device_synced_at is not None
@@ -175,7 +175,7 @@ class TestNotesTheFirmwareAcceptsAndWeDoNot:
     """The machine's notes card validates almost nothing.
 
     `saveNotes` stores whatever object it is handed, so `doseIn: "0"`,
-    `doseIn: "150"`, `doseOut: "600"` and a grind setting longer than our column
+    `doseIn: "150"`, `doseOut: "600"`
     are all things a real machine can serve. Each one used to raise a
     `ValidationError` out of the seeding call: in the sync engine that aborted
     the rest of the notes pass (swallowed by the shots loop, so the symptom was
@@ -189,9 +189,8 @@ class TestNotesTheFirmwareAcceptsAndWeDoNot:
             ("doseIn", "0"),
             ("doseIn", "150"),
             ("doseOut", "600"),
-            ("grindSetting", "x" * 250),
         ],
-        ids=["zero dose", "implausible dose in", "implausible dose out", "very long grind"],
+        ids=["zero dose", "implausible dose in", "implausible dose out"],
     )
     async def test_seeding_never_raises_and_drops_what_it_cannot_believe(
         self, wired: Fixtures, field: str, value: str
@@ -209,13 +208,8 @@ class TestNotesTheFirmwareAcceptsAndWeDoNot:
         assert row.rating == 4
         if field == "doseIn":
             assert row.dose_in_g is None
-        elif field == "doseOut":
-            assert row.dose_out_g is None
         else:
-            # Truncated rather than dropped: a grind setting is a label, so the
-            # prefix is the part that means something.
-            assert row.grind_setting is not None
-            assert len(row.grind_setting) == 100
+            assert row.dose_out_g is None
 
     async def test_a_note_with_nothing_believable_left_is_skipped_not_raised(
         self, wired: Fixtures

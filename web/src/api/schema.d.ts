@@ -5431,8 +5431,6 @@ export interface components {
             dose_in_g?: number | null;
             /** Dose Out G */
             dose_out_g?: number | null;
-            /** Grind Setting */
-            grind_setting?: string | null;
             /**
              * Notes
              * @default
@@ -7869,8 +7867,6 @@ export interface components {
             dose_in_g?: number | null;
             /** Dose Out G */
             dose_out_g?: number | null;
-            /** Grind Setting */
-            grind_setting?: string | null;
             /**
              * Notes
              * @default

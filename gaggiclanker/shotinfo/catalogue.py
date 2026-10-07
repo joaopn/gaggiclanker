@@ -1875,22 +1875,6 @@ def _items() -> tuple[Item, ...]:
             default_tier="base",
             shot=lambda f: f"1:{_fixed(value, 2)}" if (value := ratio(f)) is not None else None,
         ),
-        Item(
-            key="grind_as_brewed",
-            group=judgement,
-            name="Grind as brewed",
-            label="Grind as brewed",
-            meaning=(
-                "The grind setting the person says this shot was actually ground at, in the "
-                "grinder's own units. It can differ from the recipe's."
-            ),
-            default_tier="base",
-            shot=lambda f: (
-                (f.judgement.grind_setting or "").strip() or None
-                if f.judgement is not None
-                else None
-            ),
-        ),
         # ── the version's recipe ─────────────────────────────────────
         Item(
             key="recipe_grind",

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import type { SetRow, SetVersionRow, ShotJudgement } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
-import { useAddSetVersion, useAssignShot, useSets } from "@/hooks/useSets";
+import { useAddSetVersion, useAssignShot, useSet, useSets } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
 import { grindPatch, versionSummary } from "@/lib/sets";
 import { cn } from "@/lib/utils";
@@ -40,7 +40,10 @@ export function AssignToSet({
   const [choice, setChoice] = useState<string>("");
   const [branching, setBranching] = useState(false);
   const [intent, setIntent] = useState("");
-  const ids = { set: useId(), intent: useId() };
+  // The grind typed into the branch form; `null` until the person touches it, so the field shows
+  // the current version's recipe grind and a Set that moves under the form moves it too.
+  const [grindInput, setGrindInput] = useState<string | null>(null);
+  const ids = { set: useId(), intent: useId(), grind: useId() };
 
   const rows = sets.data?.items ?? [];
   // Nothing is preselected for a shot with no Set. The matcher already files
@@ -57,6 +60,14 @@ export function AssignToSet({
   const chosenSet = rows.find((row) => String(row.current_version_id) === choice);
   const branchTarget = assignedSet ?? chosenSet;
   const dirty = choice !== preselected;
+  // The grind the new version starts from: the Set's current version's recipe grind. A grind
+  // belongs to the Set version, so it is set here and not in the judgement.
+  const target = useSet(branching ? branchTarget?.id : undefined);
+  const parent = target.data?.versions.find(
+    (entry) => entry.version.id === target.data?.set.current_version_id,
+  )?.version;
+  const recipeGrind = parent?.grind_setting ?? "";
+  const grind = grindInput ?? recipeGrind;
 
   return (
     <SectionCard
@@ -147,12 +158,26 @@ export function AssignToSet({
             data-testid="branch-form"
           >
             <p className="text-muted-foreground text-xs">
-              Records what you actually pulled — the grind and doses from your judgement — as{" "}
+              Records what you actually pulled — the doses from your judgement and the grind you set
+              here — as{" "}
               {/* A grind, dose or yield change is a minor version by the shared
                   rule, and this form sends nothing else. */}
               {branchTarget.next_minor_label} of {branchTarget.name}, and files this shot under it.
             </p>
             <CopiedValues judgement={judgement} />
+            <div>
+              <label htmlFor={ids.grind} className="mb-1 block text-muted-foreground text-xs">
+                Grind
+              </label>
+              <input
+                id={ids.grind}
+                className={FIELD}
+                inputMode="decimal"
+                placeholder="22, or 3.5"
+                value={grind}
+                onChange={(event) => setGrindInput(event.target.value)}
+              />
+            </div>
             <div>
               <label htmlFor={ids.intent} className="mb-1 block text-muted-foreground text-xs">
                 What are you trying?
@@ -180,11 +205,10 @@ export function AssignToSet({
                       origin: "manual",
                       // Only the fields the judgement actually carries are sent:
                       // omitting one inherits the parent's value, and sending an
-                      // empty one would record "cleared" as a change. The grind
-                      // goes through the shared helper so the *number* travels
-                      // with the text — a version with only the text is a gap in
-                      // the trend line nobody attributes to a missing field.
-                      ...grindPatch(judgement?.grind_setting),
+                      // empty one would record "cleared" as a change.
+                      // The grind in the field (the recipe's own when left as shown), with its
+                      // number, through the shared helper; emptied, it inherits the parent's.
+                      ...grindPatch(grind),
                       ...(judgement?.dose_in_g ? { dose_g: judgement.dose_in_g } : {}),
                       ...(judgement?.dose_out_g ? { target_yield_g: judgement.dose_out_g } : {}),
                     },
@@ -197,6 +221,7 @@ export function AssignToSet({
                 await attempt(() => assign.mutateAsync({ shotId, setVersionId: version.id }));
                 setBranching(false);
                 setIntent("");
+                setGrindInput(null);
               }}
             >
               Create version
@@ -219,7 +244,6 @@ function SetOption({ row }: { row: SetRow }) {
 
 function CopiedValues({ judgement }: { judgement: ShotJudgement | null | undefined }) {
   const parts = [
-    judgement?.grind_setting ? `grind ${judgement.grind_setting}` : null,
     judgement?.dose_in_g ? `${judgement.dose_in_g} g in` : null,
     judgement?.dose_out_g ? `${judgement.dose_out_g} g out` : null,
   ].filter(Boolean);
@@ -229,8 +253,8 @@ function CopiedValues({ judgement }: { judgement: ShotJudgement | null | undefin
         <>Copying: {parts.join(" · ")}</>
       ) : (
         <span className="text-muted-foreground">
-          Your judgement records no grind or doses, so the new version inherits the old recipe
-          unchanged. Fill those in first if you changed something.
+          Your judgement records no doses, so the new version inherits the old recipe unchanged.
+          Fill those in first if you changed something.
         </span>
       )}
     </p>

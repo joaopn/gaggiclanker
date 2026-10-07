@@ -341,7 +341,6 @@ export function judgement(overrides: Partial<ShotJudgement> = {}): ShotJudgement
     aroma_notes: ["fruity.berry"],
     dose_in_g: 18,
     dose_out_g: 36,
-    grind_setting: "22",
     notes: "sharp at the end",
     decision: "improve",
     seeded_from_device_note: false,

@@ -533,7 +533,6 @@ function toWrite(judgement: ShotJudgement | null | undefined): JudgementWrite {
     aroma_notes: judgement?.aroma_notes ?? [],
     dose_in_g: judgement?.dose_in_g ?? null,
     dose_out_g: judgement?.dose_out_g ?? null,
-    grind_setting: judgement?.grind_setting ?? null,
     notes: judgement?.notes ?? "",
     decision: judgement?.decision ?? null,
   };
