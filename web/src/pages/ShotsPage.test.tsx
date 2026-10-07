@@ -2317,19 +2317,28 @@ describe("ShotsPage hide discarded", () => {
     );
   });
 
-  it("reads the unticked state from the URL", async () => {
+  it("remembers an untick in this browser, not in the address", async () => {
+    const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?discarded=show"] });
+    const first = renderWithQueryClient(<ShotsPage />);
 
+    await user.click(await screen.findByRole("checkbox", { name: "Hide discarded" }));
+    expect(window.localStorage.getItem("shots.hideDiscarded.v1")).toBe("0");
+    first.unmount();
+
+    // A fresh visit, with a clean address, still shows the discarded shots.
+    getShots.mockClear();
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots"] });
     expect(await screen.findByRole("checkbox", { name: "Hide discarded" })).not.toBeChecked();
+    await waitFor(() => expect(getShots).toHaveBeenCalled());
+    expect(getShots.mock.calls.at(-1)?.[0]).not.toHaveProperty("include_discarded", false);
   });
 
   it("keeps the tickbox as it is when the filters are cleared", async () => {
     const user = setupUser();
+    window.localStorage.setItem("shots.hideDiscarded.v1", "0");
     getShots.mockResolvedValue(listData([shot()]));
-    renderWithQueryClient(<ShotsPage />, {
-      initialEntries: ["/shots?discarded=show&min_rating=4"],
-    });
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?min_rating=4"] });
     await openFilters(user);
 
     await user.click(screen.getByRole("button", { name: /Clear all/ }));

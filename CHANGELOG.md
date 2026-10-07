@@ -14,8 +14,8 @@ first (`POST /api/backup`), because there is no down-migration.
 
 - **Hide discarded**, a tickbox on the Shots page on its own line under the buttons, right-aligned
   and ticked by default, leaves shots labelled Discard out of the list, its paging and its count.
-  Untick it to see them; the choice is in the address (`?discarded=show`), so a link carries it and
-  Clear all leaves it alone.
+  Untick it to see them; this browser remembers the choice for every later visit, and Clear all
+  leaves it alone.
   A shot you label Discard while it is ticked leaves the list at the next refresh. The API's
   `GET /api/shots` takes `include_discarded=false` for the same thing and still lists every shot by
   default.

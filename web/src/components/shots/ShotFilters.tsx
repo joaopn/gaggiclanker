@@ -214,14 +214,8 @@ export function ShotFilters({
             onClick={() =>
               // The sort survives: it is not one of the filters this button
               // clears, and somebody who chose "worst first" did not ask for
-              // it to be undone by a button labelled "Clear all". So does the
-              // Hide discarded tickbox, which is outside this panel.
-              onChange({
-                ...DEFAULT_FILTERS,
-                showDiscarded: value.showDiscarded,
-                sort: value.sort,
-                order: value.order,
-              })
+              // it to be undone by a button labelled "Clear all".
+              onChange({ ...DEFAULT_FILTERS, sort: value.sort, order: value.order })
             }
           >
             <RotateCcw className="size-3.5" aria-hidden="true" />

@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileVersions, useShotsInfinite, useSyncStatus } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useSet, useSets } from "@/hooks/useSets";
+import { loadHideDiscarded, saveHideDiscarded } from "@/lib/hideDiscarded";
 import {
   loadShotColumns,
   loadShotWidths,
@@ -119,7 +120,20 @@ export function ShotsPage() {
     setFilters({ ...filters, sort: key, order: "desc" });
   }
 
-  const params = useMemo(() => toParams(filters, PAGE_SIZE), [filters]);
+  // Remembered in this browser, not the query string (`lib/hideDiscarded.ts`).
+  const [hideDiscarded, setHideDiscarded] = useState(() => loadHideDiscarded());
+  function chooseHideDiscarded(next: boolean) {
+    setHideDiscarded(next);
+    saveHideDiscarded(next);
+  }
+  const params = useMemo(
+    // Sent only to hide: the server lists every shot unless told otherwise.
+    () => ({
+      ...toParams(filters, PAGE_SIZE),
+      include_discarded: hideDiscarded ? false : undefined,
+    }),
+    [filters, hideDiscarded],
+  );
   const shots = useShotsInfinite(params);
   const sync = useSyncStatus();
   // Both sources, so an imported profile can be filtered on even though no
@@ -183,7 +197,7 @@ export function ShotsPage() {
   const needsSet = counts?.needs_set ?? 0;
   // An empty unfiltered list over a non-empty archive: everything is hidden
   // by the tickbox, and "No shots archived yet" would be untrue.
-  const onlyDiscarded = !filters.showDiscarded && (counts?.total ?? 0) > 0;
+  const onlyDiscarded = hideDiscarded && (counts?.total ?? 0) > 0;
 
   return (
     <div className="space-y-4">
@@ -239,11 +253,9 @@ export function ShotsPage() {
               <input
                 type="checkbox"
                 className="size-4 accent-primary"
-                checked={!filters.showDiscarded}
+                checked={hideDiscarded}
                 data-testid="hide-discarded"
-                onChange={(event) =>
-                  setFilters({ ...filters, showDiscarded: !event.target.checked })
-                }
+                onChange={(event) => chooseHideDiscarded(event.target.checked)}
               />
               Hide discarded
             </label>

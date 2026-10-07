@@ -38,7 +38,6 @@ describe("toParams", () => {
       min_rating: undefined,
       source: undefined,
       quarantined: undefined,
-      include_discarded: false,
       sort: "started_at",
       order: "desc",
     });
@@ -95,23 +94,11 @@ describe("the query string", () => {
       minRating: "3",
       source: "import",
       quarantined: "yes",
-      showDiscarded: true,
       sort: "duration",
       order: "asc",
     };
 
     expect(fromSearchParams(toSearchParams(state))).toEqual(state);
-  });
-
-  it("hides discarded shots unless the URL says to show them", () => {
-    expect(DEFAULT_FILTERS.showDiscarded).toBe(false);
-    expect(toParams(DEFAULT_FILTERS, 50).include_discarded).toBe(false);
-    const shown = fromSearchParams(new URLSearchParams("discarded=show"));
-    expect(shown.showDiscarded).toBe(true);
-    expect(toParams(shown, 50).include_discarded).toBeUndefined();
-    expect(toSearchParams(shown).toString()).toBe("discarded=show");
-    // Not counted on the Filters button: the tickbox sits beside it.
-    expect(activeFilterCount(shown)).toBe(0);
   });
 
   it("reads the link the profiles page writes", () => {

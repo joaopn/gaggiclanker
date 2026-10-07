@@ -38,13 +38,6 @@ export type ShotFilterState = {
   source: "" | "device" | "import";
   /** "" any, "yes" only quarantined, "no" only readable. */
   quarantined: "" | "yes" | "no";
-  /**
-   * The Hide discarded tickbox, unticked. Off by default, so the list leaves
-   * out shots labelled Discard until somebody asks for them. Not one of the
-   * Filters button's filters: the tickbox sits beside it, and Clear all leaves
-   * it as it is, like the sort.
-   */
-  showDiscarded: boolean;
   sort: ShotSort;
   order: "asc" | "desc";
 };
@@ -58,7 +51,6 @@ export const DEFAULT_FILTERS: ShotFilterState = {
   minRating: "",
   source: "",
   quarantined: "",
-  showDiscarded: false,
   sort: "started_at",
   order: "desc",
 };
@@ -144,7 +136,6 @@ export function fromSearchParams(params: URLSearchParams): ShotFilterState {
       : "",
     source: source === "device" || source === "import" ? source : "",
     quarantined: quarantined === "yes" || quarantined === "no" ? quarantined : "",
-    showDiscarded: params.get("discarded") === "show",
     sort: SORTS.includes(sort as ShotSort) ? (sort as ShotSort) : "started_at",
     order: order === "asc" ? "asc" : "desc",
   };
@@ -162,7 +153,6 @@ export function toSearchParams(state: ShotFilterState): URLSearchParams {
   if (state.minRating) params.set("min_rating", state.minRating);
   if (state.source) params.set("source", state.source);
   if (state.quarantined) params.set("quarantined", state.quarantined);
-  if (state.showDiscarded) params.set("discarded", "show");
   if (state.sort !== "started_at") params.set("sort", state.sort);
   if (state.order !== "desc") params.set("order", state.order);
   return params;
@@ -188,8 +178,6 @@ export function toParams(state: ShotFilterState, limit: number): ShotListParams 
     min_rating: Number.isFinite(rating) ? rating : undefined,
     source: state.source || undefined,
     quarantined: state.quarantined === "" ? undefined : state.quarantined === "yes",
-    // Sent only to hide: the server lists every shot unless told otherwise.
-    include_discarded: state.showDiscarded ? undefined : false,
     sort: state.sort,
     order: state.order,
   };
