@@ -29,7 +29,7 @@ has forgotten how it works.
          │                                   │
          ▼                                   ▼
   ┌──────────────────────────────────────────────────────────┐
-  │ db/  repositories, migrations, VACUUM INTO backups       │
+  │ db/  repositories, migrations, backup download, restore  │
   │      one SQLite file under DATA_DIR                      │
   └──────────────────────────────────────────────────────────┘
 ```
@@ -82,7 +82,7 @@ the archive tells them apart by the profile a shot was brewed with.
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, the diagnostics (numbers only: resistance, adherence, the summary statistics), the per-phase metrics and the shot's facts (`phase_metrics.py`: what ended each phase, the cup at its end, the flows, the water, the profile's phases never begun, the first fast-flow window) the warnings (`warnings.py`: one pure function from a shot's stored numbers, its filed version's target yield and its profile's phase names) and the signature (`signature.py`: the fault-word table, the validation a proposal passes and the one function that merges a shot's warnings with the results of its profile version's confirmed expectations into an ordered list of checks, red, amber, grey, held, context, free text). Pure functions over bytes and numbers. There is no score and no band anywhere: a number carries no grade. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and six gated write methods: five profile operations and `start_flush` — nothing else. Only profiles are ever stored on the machine; `start_flush` (`POST /api/device/flush`, the top bar's Flush button, shown only with the switch on) runs the machine's own flush once, in brew mode with nothing running, and is not audited. `save_profile`, `delete_profile`, `select_profile`, `favorite_profile` and `unfavorite_profile` are reached only by the board's write phase, inside a sync (switch on): the save of a profile version the machine does not hold, the removal of a superseded profile or one that is switched off (guarded by a fresh load), the select and favourite that move the star and the selection to the profile that replaces another, and the favourite flag that matches a profile's home-screen setting; a standalone select has no route (only `scripts/profile_gate.py` selects). `drafts/machine.py` holds the re-read, the no-duplicate save and the guarded removal. Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
-| `db/` | Repositories — the only code that writes SQL — plus migrations and backups. |
+| `db/` | Repositories — the only code that writes SQL — plus migrations, the backup download and the restore (stage, check, swap at shutdown). |
 | `infra/` | Request ids, the error envelope, the SSE bus, the task registry, the auth guard's neighbours. |
 | `auth/` | Optional single-user auth: the policy, the password hashing, the ASGI guard. |
 

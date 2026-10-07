@@ -85,11 +85,12 @@ an IP for the machine's host.
    hides `~/.claude` along with it. Any OpenAI-compatible gateway works too;
    see LLM settings below.
 6. **Take a backup** once there is something worth keeping: **Settings →
-   System → Backup**, or `curl -X POST localhost:8042/api/backup`.
+   System → Backup & restore → Download backup**, or
+   `curl -o backup.db 'localhost:8042/api/backup?include_keys=false'`.
 
-Your data lives in `./data` — one SQLite file plus `backups/`. Back it up by
-copying that directory, or call `POST /api/backup` for a consistent snapshot
-taken while the app is running.
+Your data lives in `./data` — one SQLite file. Back it up from the Settings page
+(a consistent snapshot, taken while the app is running), or copy that directory
+while the app is stopped.
 
 ### The pages
 
@@ -472,7 +473,7 @@ open the database, which the image already sets and most people never touch:
 
 | Variable | Default | What it is |
 |---|---|---|
-| `DATA_DIR` | `./data` (`/app/data` in the image) | Where the SQLite file and `backups/` live. |
+| `DATA_DIR` | `./data` (`/app/data` in the image) | Where the SQLite file lives. |
 | `HOST` | `0.0.0.0` | Bind address. |
 | `PORT` | `8042` | Bind port; the healthcheck reads it too. The one value given at spawn — see the Quick start. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning` or `error`. |
@@ -605,33 +606,59 @@ is going to face the internet.
 
 ### Backup and restore
 
-Everything is in one SQLite file under `DATA_DIR` (`./data` by default), so a
-backup is a file copy and a restore is a file copy back.
+Everything is in one SQLite file under `DATA_DIR` (`./data` by default): shots with
+their raw bytes, Sets, beans, profiles, chats, knowledge and every setting. **Settings →
+System → Backup & restore** downloads it as one file and puts one back.
+
+**Download.** *Download backup* gives you `gaggiclanker-<UTC>.db`, a complete gaggiclanker
+database with a small `backup_manifest` table that says when and by which version it was
+taken. It is a consistent snapshot (SQLite's `VACUUM INTO`, on its own connection), so it
+can be taken while the app is running and syncing, which a plain `cp` of a database with a
+hot WAL cannot promise. By default the API keys and tokens are **not** in it (the LLM API
+key, the Anthropic key, the Claude Code token and the session signing key; nothing of them
+is left in the file's bytes). Tick *Include API keys and tokens* to put them in, in plain
+text: keep that file somewhere safe. The sign-in user and password hash are always in the
+file, so a restored app still asks for a password. Nobody's open sign-in is: sessions are
+never in a backup.
+
+For a scripted backup:
 
 ```bash
-curl -X POST localhost:8042/api/backup     # or Settings -> Backup in the UI
-ls data/backups/
+curl -o backup.db 'localhost:8042/api/backup?include_keys=false'
 ```
 
-`POST /api/backup` uses SQLite's `VACUUM INTO`, so the copy is consistent and
-can be taken while the app is running and syncing — which a plain `cp` of a
-database with a hot WAL cannot promise. To restore:
+With sign-in on the request needs the session token (`-H "Authorization: Bearer <token>"`,
+from `POST /api/auth/login`).
 
-```bash
-docker compose down
-cp data/backups/gaggiclanker-<timestamp>.db data/gaggiclanker.db
-rm -f data/gaggiclanker.db-wal data/gaggiclanker.db-shm   # stale sidecars
-docker compose up -d
-```
+**Restore from file.** *Restore from file…* takes a file you uploaded, never one kept on the
+server: a gaggiclanker download, or a plain copy of a gaggiclanker database. The server checks
+it first and changes nothing: it must be a SQLite file that passes its integrity check, hold
+the app's tables, have a migration history this version knows (a file from a newer version,
+or with an altered migration, is refused; an older one is accepted and migrated at the next
+start), and be under 1 GB. The page then shows what the file holds beside what the app holds
+now. Confirming:
 
-Stop the app first. The `-wal` and `-shm` sidecars belong to the file they were
-written next to; leaving them beside a restored database is how a restore
-silently reinstates the state you were trying to undo. Copying the whole `data/`
-directory while the app is **stopped** works too, and is the simplest thing to
-put in a cron job.
+- **replaces everything** in the app with the file;
+- **does not keep what was there**: the replaced database is gone, so download a backup
+  first if you want to be able to go back;
+- switches **Writes to the machine off** (switch it on again when you are ready), signs
+  everyone out, and for each API key or token the file does not hold, keeps the one this app
+  has now;
+- **restarts the app**: it stops itself after answering, and Docker's
+  `restart: unless-stopped` (already in `compose.yml`) starts it again on the restored data.
+  Under `uv run` or any other launcher that does not restart a stopped process, start it
+  again by hand; the restore is done either way, and the next start opens the restored data.
 
-The backup carries the signing secret for auth sessions as well, so restoring
-one does not sign everybody out.
+An interruption cannot lose both: the new file is renamed over the old one in a single step,
+so a crash leaves the old data (and a staging file the next start deletes) or the new.
+Restoring is refused with a message while a sync, a chat answer, a review or another
+background job is running. The app's own chat runs are stopped before the swap. An MCP client
+started outside the app (stdio) keeps the old file open until it reconnects.
+
+By hand, with the app stopped, a restore is still a file copy: copy a downloaded file over
+`data/gaggiclanker.db` and delete `data/gaggiclanker.db-wal` and `data/gaggiclanker.db-shm`.
+The sidecars belong to the file they were written next to; leaving them beside a restored
+database reinstates the state you were trying to undo.
 
 ### LLM settings
 

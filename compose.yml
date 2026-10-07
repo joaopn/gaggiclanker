@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
 
     # Everything that must survive a container recreate: the SQLite file, its
-    # WAL sidecars, and backups/. One mount, so a backup is a file copy.
+    # WAL sidecars and the restore staging file. One mount, so the data is a file you can copy.
     #
     # A bind mount, so the database is a file you can see, copy and restore
     # without docker commands. When this directory does not exist yet, Docker

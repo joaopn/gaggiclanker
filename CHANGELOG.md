@@ -6,9 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the versions are [semantic](https://semver.org/). Until 1.0 the database schema
 may change between releases; migrations are forward-only and run at boot, so an
 upgrade is `docker compose pull && docker compose up -d` — but take a backup
-first (`POST /api/backup`), because there is no down-migration.
+first (Settings → System → Backup & restore), because there is no down-migration.
 
 ## [Unreleased]
+
+### Backup and restore
+
+- **Settings → System → Backup & restore** downloads the whole app as one file
+  (`gaggiclanker-<UTC>.db`: shots, Sets, beans, profiles, chats, knowledge and settings) and
+  restores from one you upload. *Include API keys and tokens* (off by default) puts the LLM
+  API key, the Anthropic key, the Claude Code token and the session signing key in the file in
+  plain text; the sign-in user and password hash are always in it, and sessions never are.
+- **Restore** checks the file first and changes nothing (SQLite, integrity, tables, a migration
+  history this version knows; newer or altered is refused, older is migrated at the next start),
+  shows what the file holds beside what is there now, and on confirm replaces everything,
+  switches Writes to the machine off, signs everyone out, keeps this app's own keys where the file
+  has none, and restarts the app (Docker's `restart: unless-stopped` brings it back; under
+  `uv run` start it by hand). The replaced database is not kept: download a backup first.
+- **API change, no data change, no wipe:** `GET /api/backup` now downloads the file
+  (`?include_keys=true` for the keys); `POST /api/backup` and the list of copies under `backups/`
+  are gone, and nothing writes to `backups/` any more. New: `POST /api/backup/restore` (raw body,
+  up to 1 GB), `DELETE /api/backup/restore/{token}` and `POST /api/backup/restore/{token}/apply`.
 
 ### Flush from the top bar
 
