@@ -2,213 +2,76 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ReviewBadge } from "@/components/shots/ReviewBadge";
-import { readingBlock } from "@/test/readingFixtures";
-import { leverSignedFields, turboFields } from "@/test/shotFieldsFixture";
-import { LEVER_BADGE, LEVER_WARNINGS } from "@/test/warningFixtures";
+import { reviewBlock } from "@/test/claimFixtures";
+import { LEVER_WARNINGS } from "@/test/warningFixtures";
+
+const faults = [
+  { ...LEVER_WARNINGS[1], phase: "decline", fault: "unstable", severity: "amber" },
+  { ...LEVER_WARNINGS[0], phase: "ramp", fault: "fast flow", severity: "amber" },
+];
+
+const reviewed = (overrides = {}) =>
+  reviewBlock({
+    state: "reviewed",
+    verdict: "entries",
+    badge: "decline: unstable +1",
+    entries: faults,
+    summary: "A fast ramp and a wandering decline.",
+    ...overrides,
+  });
 
 describe("ReviewBadge", () => {
-  it("says the first warning, and how many more there are", () => {
-    render(<ReviewBadge badge={LEVER_BADGE} warnings={LEVER_WARNINGS} />);
-
-    const badge = screen.getByTestId("review-badge");
-    expect(badge).toHaveTextContent("ramp: fast flow +2");
-    expect(badge).toHaveAttribute("data-tone", "warn");
-  });
-
-  it("says a single warning without a count", () => {
-    render(<ReviewBadge badge="decline: skipped" warnings={[LEVER_WARNINGS[1]]} />);
-
-    expect(screen.getByTestId("review-badge")).toHaveTextContent(/^decline: skipped/);
-    expect(screen.getByTestId("review-badge")).not.toHaveTextContent("+");
-  });
-
-  it("lists every warning with its sentence on hover, and for a screen reader", () => {
-    render(<ReviewBadge badge={LEVER_BADGE} warnings={LEVER_WARNINGS} />);
-
-    const lines = (screen.getByTestId("review-badge-wrap").getAttribute("title") ?? "").split("\n");
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toMatch(/^ramp: fast flow — The scale flow averaged 4\.00 g\/s/);
-    expect(lines[1]).toMatch(/^decline: skipped — The shot stopped on its volumetric target/);
-    expect(lines[2]).toMatch(/^Shot: over target — The final weight, 42\.2 g/);
-    // Read once: the badge is described by the hidden sentence, and carries no
-    // title of its own that a screen reader would add a second time.
-    const badge = screen.getByTestId("review-badge");
-    expect(badge).not.toHaveAttribute("title");
-    expect(badge).toHaveAttribute("aria-describedby", screen.getByTestId("review-badge-list").id);
-    expect(screen.getByTestId("review-badge-list")).toHaveTextContent(
-      /ramp: fast flow — .*\. decline: skipped — .*\. Shot: over target — /,
+  it("is a Review button for a shot nobody has reviewed, and nothing where nothing can be pressed", () => {
+    const onStart = vi.fn();
+    const { container, rerender } = render(
+      <ReviewBadge review={reviewBlock()} onStart={onStart} />,
     );
-    // A sentence that already ends in a full stop gets no second one.
-    expect(screen.getByTestId("review-badge-list").textContent).not.toMatch(/\.\./);
-    // Not a list inside the badge's own element, so the badge can be a button.
-    expect(badge.querySelector("ul, ol, li")).toBeNull();
-    expect(screen.getByTestId("review-badge-list").tagName).toBe("SPAN");
-  });
+    const button = screen.getByRole("button", { name: "Review" });
+    expect(button.tagName).toBe("BUTTON");
+    fireEvent.click(button);
+    expect(onStart).toHaveBeenCalledTimes(1);
 
-  it("adds a full stop only to a line that has none", () => {
-    render(
-      <ReviewBadge
-        badge="a: b +1"
-        warnings={[
-          { ...LEVER_WARNINGS[0], phase: "a", fault: "b", detail: "It ran" },
-          { ...LEVER_WARNINGS[1], phase: "c", fault: "d", detail: "It stopped." },
-        ]}
-      />,
-    );
-    expect(screen.getByTestId("review-badge-list")).toHaveTextContent(
-      "a: b — It ran. c: d — It stopped.",
-    );
-  });
-
-  it("draws nothing for a shot with no warnings: a missing warning is not a verdict", () => {
-    const { container } = render(<ReviewBadge badge={null} warnings={[]} />);
+    rerender(<ReviewBadge review={reviewBlock()} />);
     expect(container).toBeEmptyDOMElement();
-
-    const { container: absent } = render(<ReviewBadge badge={undefined} warnings={undefined} />);
-    expect(absent).toBeEmptyDOMElement();
   });
 
-  it("colours a critical failure red, by its own severity and not the others'", () => {
+  it("draws nothing for a shot nobody can review", () => {
+    const { container } = render(
+      <ReviewBadge review={reviewBlock({ state: "not_reviewable" })} onStart={() => undefined} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+    expect(render(<ReviewBadge review={undefined} />).container).toBeEmptyDOMElement();
+  });
+
+  it("says Reviewing… with a spinner while one runs: grey, inert, no button", async () => {
+    const onStart = vi.fn();
     render(
       <ReviewBadge
-        badge="decline: skipped"
-        warnings={[{ ...LEVER_WARNINGS[1], severity: "red" }]}
-      />,
-    );
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "bad");
-  });
-
-  it("takes its colour from the first entry's severity: red, amber or grey", () => {
-    const { rerender } = render(
-      <ReviewBadge badge={leverSignedFields.badge} warnings={leverSignedFields.warnings} />,
-    );
-    // The served list starts with a failed critical expectation: red, though amber ones follow.
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("ramp: early yield +4");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "bad");
-
-    rerender(<ReviewBadge badge={LEVER_BADGE} warnings={LEVER_WARNINGS} />);
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "warn");
-
-    // Grey: a warning the signature expects. Nothing in the list is amber.
-    rerender(<ReviewBadge badge={turboFields.badge} warnings={turboFields.warnings} />);
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("main: fast flow");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "muted");
-
-    // The order decides, not the worst of the list: a grey entry first is grey.
-    rerender(
-      <ReviewBadge
-        badge="a: b +1"
-        warnings={[
-          { ...turboFields.warnings[0], phase: "a", fault: "b" },
-          { ...LEVER_WARNINGS[0], severity: "red" },
-        ]}
-      />,
-    );
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "muted");
-  });
-
-  it("cuts only the phase name, never the fault word or the count", () => {
-    const phase = "Final push to the cup, long";
-    render(
-      <ReviewBadge
-        badge={`${phase}: early yield +1`}
-        warnings={[
-          { ...LEVER_WARNINGS[0], phase, fault: "early yield", severity: "red" },
-          LEVER_WARNINGS[1],
-        ]}
-        className="w-24"
-      />,
-    );
-
-    // The structure that gives the rule (layout is measured in Chromium, which jsdom has not):
-    // one flexible box clips what is left, holding the phase (the only part that shrinks) and the
-    // fault word (its own width, never shrunk by sharing a shortfall with the phase); the count
-    // sits outside the box and never shrinks.
-    const badge = screen.getByTestId("review-badge");
-    const [box, count] = Array.from(badge.children);
-    expect(box).toHaveAttribute("data-testid", "review-badge-text");
-    expect(box).toHaveClass("flex", "min-w-0", "flex-1", "overflow-hidden");
-    const name = screen.getByTestId("review-badge-phase");
-    const fault = screen.getByTestId("review-badge-fault");
-    expect(name.parentElement).toBe(box);
-    expect(fault.parentElement).toBe(box);
-    expect(name).toHaveClass("truncate", "min-w-0");
-    expect(name).toHaveTextContent(phase);
-    expect(fault).toHaveTextContent(": early yield");
-    // No shrink factor on the fault: a factor shares the shortfall out by width, so the fault
-    // would lose a fraction of a pixel (an ellipsis) whenever the phase is cut.
-    expect(fault).toHaveClass("shrink-0", "max-w-full", "truncate");
-    expect(fault.className).not.toMatch(/(^|\s)shrink(\s|$|-\[)/);
-    expect(name.className).not.toMatch(/shrink/);
-    expect(count).toHaveTextContent("+1");
-    expect(count).toHaveClass("shrink-0");
-    expect(badge).toHaveClass("shrink", "overflow-hidden");
-    expect(screen.getByTestId("review-badge-wrap")).toHaveClass("overflow-hidden");
-  });
-
-  it("truncates a long phase name inside its column and never the count", () => {
-    render(
-      <ReviewBadge
-        badge="a very long phase name indeed: skipped +2"
-        warnings={LEVER_WARNINGS}
-        className="w-24"
-      />,
-    );
-    const [name, count] = Array.from(screen.getByTestId("review-badge").children);
-    expect(name).toHaveClass("truncate");
-    expect(name).toHaveTextContent("a very long phase name indeed: skipped");
-    // Outside the span that is cut: it stays visible when the name does not fit.
-    expect(count).toHaveTextContent("+2");
-    expect(count).not.toHaveClass("truncate");
-    expect(count).toHaveClass("shrink-0");
-    expect(screen.getByTestId("review-badge")).toHaveClass("max-w-full");
-  });
-});
-
-describe("ReviewBadge reading states", () => {
-  const entries = { badge: leverSignedFields.badge, warnings: leverSignedFields.warnings };
-
-  it("says Review, neutral and outlined, for an unread shot with nothing to say", () => {
-    render(
-      <ReviewBadge
-        badge="Review"
-        warnings={[]}
-        reading={readingBlock()}
-        onPress={() => undefined}
+        review={reviewBlock({ state: "running", badge: "Reviewing…" })}
+        onStart={onStart}
+        onOpen={onStart}
       />,
     );
     const badge = screen.getByTestId("review-badge");
-    expect(badge).toHaveTextContent("Review");
+    expect(badge).toHaveTextContent("Reviewing…");
     expect(badge).toHaveAttribute("data-tone", "muted");
-    expect(badge).toHaveAttribute("data-filled", "no");
-    expect(badge).toHaveClass("bg-transparent");
-  });
-
-  it("keeps the checks' entries, filled, for an unread shot that has some", () => {
-    render(<ReviewBadge {...entries} reading={readingBlock()} />);
-    const badge = screen.getByTestId("review-badge");
-    expect(badge).toHaveTextContent("ramp: early yield +4");
-    expect(badge).toHaveAttribute("data-tone", "bad");
-    expect(badge).toHaveAttribute("data-filled", "yes");
-  });
-
-  it("says Reading… with a spinner while one runs, grey", () => {
-    render(
-      <ReviewBadge badge="Reading…" warnings={[]} reading={readingBlock({ state: "running" })} />,
-    );
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("Reading…");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "muted");
+    expect(badge).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByTestId("review-badge-spinner")).toBeInTheDocument();
-    // Nothing is confirmed of a reading that has not finished: outlined, not filled.
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-filled", "no");
+    expect(screen.queryByRole("button")).toBeNull();
+    await userEvent.click(badge);
+    expect(onStart).not.toHaveBeenCalled();
   });
 
-  it("says Failed to run, grey, with the reason in the tooltip", () => {
+  it("says Failed to run, grey, the reason in the tooltip, with a Retry button", () => {
+    const onStart = vi.fn();
     render(
       <ReviewBadge
-        badge="Failed to run"
-        warnings={[]}
-        reading={readingBlock({ state: "failed", reason: "the provider timed out" })}
+        review={reviewBlock({
+          state: "failed",
+          badge: "Failed to run",
+          reason: "the provider timed out",
+        })}
+        onStart={onStart}
       />,
     );
     expect(screen.getByTestId("review-badge")).toHaveTextContent("Failed to run");
@@ -217,195 +80,150 @@ describe("ReviewBadge reading states", () => {
       "title",
       "Failed to run: the provider timed out",
     );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onStart).toHaveBeenCalledTimes(1);
   });
 
-  it("is filled whenever a review has something to say, and keeps the tone of its verdict", () => {
-    const { rerender } = render(
-      <ReviewBadge {...entries} reading={readingBlock({ state: "read", verdict: "entries" })} />,
-    );
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-filled", "yes");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "bad");
-    rerender(
+  it("names the model's first fault and counts the rest, in the first fault's tone", () => {
+    render(<ReviewBadge review={reviewed()} />);
+    const badge = screen.getByTestId("review-badge");
+    expect(badge).toHaveTextContent("decline: unstable +1");
+    expect(badge).toHaveAttribute("data-tone", "warn");
+    expect(screen.getByTestId("review-badge-phase")).toHaveTextContent("decline");
+    expect(screen.getByTestId("review-badge-fault")).toHaveTextContent(": unstable");
+  });
+
+  it("colours a critical failure red", () => {
+    render(
       <ReviewBadge
-        badge="As intended"
-        warnings={[]}
-        reading={readingBlock({ state: "read", verdict: "as_intended" })}
+        review={reviewed({
+          badge: "decline: unstable",
+          entries: [{ ...faults[0], severity: "red" }],
+        })}
+      />,
+    );
+    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "bad");
+  });
+
+  it("says As intended in green and No faults in grey", () => {
+    const { rerender } = render(
+      <ReviewBadge
+        review={reviewBlock({
+          state: "reviewed",
+          verdict: "as_intended",
+          badge: "As intended",
+        })}
       />,
     );
     expect(screen.getByTestId("review-badge")).toHaveTextContent("As intended");
     expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "good");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-filled", "yes");
     rerender(
       <ReviewBadge
-        badge="No signature"
-        warnings={[]}
-        reading={readingBlock({ state: "read", verdict: "no_signature" })}
+        review={reviewBlock({ state: "reviewed", verdict: "no_faults", badge: "No faults" })}
       />,
     );
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("No signature");
+    expect(screen.getByTestId("review-badge")).toHaveTextContent("No faults");
     expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "muted");
   });
 
-  it("lists the entries in the tooltip and ends it with the summary", () => {
+  it("opens the review when a reviewed badge is pressed, and the press never reaches the row", async () => {
+    const onOpen = vi.fn();
+    const row = vi.fn();
+    render(
+      // biome-ignore lint/a11y/useKeyWithClickEvents: a stand-in for the row's own toggle.
+      // biome-ignore lint/a11y/noStaticElementInteractions: a stand-in for the row's own toggle.
+      <div onClick={row}>
+        <ReviewBadge review={reviewed()} onOpen={onOpen} />
+      </div>,
+    );
+    const badge = screen.getByRole("button", { name: /decline\s*: unstable/ });
+    await userEvent.click(badge);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(row).not.toHaveBeenCalled();
+  });
+
+  it("starts a review without the press reaching the row", async () => {
+    const onStart = vi.fn();
+    const row = vi.fn();
+    render(
+      // biome-ignore lint/a11y/useKeyWithClickEvents: a stand-in for the row's own toggle.
+      // biome-ignore lint/a11y/noStaticElementInteractions: a stand-in for the row's own toggle.
+      <div onClick={row}>
+        <ReviewBadge review={reviewBlock()} onStart={onStart} />
+      </div>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(row).not.toHaveBeenCalled();
+  });
+
+  it("lists the faults with their sentences on hover and ends the tooltip with the summary", () => {
+    render(<ReviewBadge review={reviewed()} />);
+    const lines = (screen.getByTestId("review-badge-wrap").getAttribute("title") ?? "").split("\n");
+    expect(lines[0]).toMatch(/^decline: unstable — /);
+    expect(lines[1]).toMatch(/^ramp: fast flow — /);
+    expect(lines[lines.length - 1]).toBe(
+      "The model's summary: A fast ramp and a wandering decline.",
+    );
+  });
+
+  it("labels the summary under Failed to run as the earlier review's", () => {
     render(
       <ReviewBadge
-        badge="decline: unstable"
-        warnings={[{ ...LEVER_WARNINGS[1], phase: "decline", fault: "unstable" }]}
-        reading={readingBlock({
-          state: "read",
-          verdict: "entries",
-          summary: "A fast ramp and a wandering decline.",
+        review={reviewBlock({
+          state: "failed",
+          badge: "Failed to run",
+          reason: "timed out",
+          summary: "A clean lever shot.",
         })}
       />,
     );
     const lines = (screen.getByTestId("review-badge-wrap").getAttribute("title") ?? "").split("\n");
-    expect(lines[0]).toMatch(/^decline: unstable — /);
-    expect(lines[lines.length - 1]).toBe("A fast ramp and a wandering decline.");
+    expect(lines).toEqual(["Failed to run: timed out", "Last review: A clean lever shot."]);
   });
 
-  it("draws nothing for a shot nobody can read and nothing is wrong with", () => {
-    const { container } = render(
-      <ReviewBadge badge={null} warnings={[]} reading={readingBlock({ state: "not_readable" })} />,
-    );
-    expect(container).toBeEmptyDOMElement();
-  });
-});
-
-describe("ReviewBadge as a button", () => {
-  it("is a plain label with a screen-reader sentence unless the table gives it a press", () => {
-    render(
-      <ReviewBadge
-        badge="As intended"
-        warnings={[]}
-        reading={readingBlock({ state: "read", verdict: "as_intended" })}
-      />,
-    );
-    expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByTestId("review-badge-list")).toHaveClass("sr-only");
-    // An unread shot has nothing to show where it cannot be pressed.
-    const { container } = render(
-      <ReviewBadge badge="Review" warnings={[]} reading={readingBlock()} />,
-    );
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it("is a real button with a hidden description when it can be pressed", () => {
-    render(
-      <ReviewBadge
-        badge="Review"
-        warnings={[]}
-        reading={readingBlock()}
-        onPress={() => undefined}
-      />,
-    );
-    const button = screen.getByRole("button", { name: "Review" });
-    expect(button).toBe(screen.getByTestId("review-badge"));
+  it("describes a button badge in hidden text, and a plain one in screen-reader text, once", () => {
+    const { rerender } = render(<ReviewBadge review={reviewed()} onOpen={() => undefined} />);
     const list = screen.getByTestId("review-badge-list");
     expect(list).toHaveClass("hidden");
-    expect(list).not.toHaveClass("sr-only");
-    expect(button).toHaveAccessibleDescription(/Press to have a model read this shot/);
-    // The description is a sibling, never inside the button.
-    expect(button.contains(list)).toBe(false);
-  });
-
-  it("is never a button on a shot nobody can read", () => {
-    render(
-      <ReviewBadge
-        badge="ramp: early yield"
-        warnings={[leverSignedFields.warnings[0]]}
-        reading={readingBlock({ state: "not_readable" })}
-        onPress={() => undefined}
-      />,
+    expect(screen.getByRole("button", { name: /decline\s*: unstable/ })).toHaveAttribute(
+      "aria-describedby",
+      list.id,
     );
-    expect(screen.queryByRole("button")).toBeNull();
+    rerender(<ReviewBadge review={reviewed()} />);
+    expect(screen.getByTestId("review-badge-list")).toHaveClass("sr-only");
+    expect(screen.getByTestId("review-badge")).not.toHaveAttribute("title");
   });
 
-  it("presses once per click and never lets the row behind it see the click", async () => {
-    const onPress = vi.fn();
-    const rowClick = vi.fn();
-    render(
-      // biome-ignore lint/a11y/noStaticElementInteractions: stands in for the row's toggle
-      // biome-ignore lint/a11y/useKeyWithClickEvents: stands in for the row's toggle
-      <div onClick={rowClick}>
-        <ReviewBadge badge="Review" warnings={[]} reading={readingBlock()} onPress={onPress} />
-      </div>,
-    );
-    await userEvent.click(screen.getByRole("button"));
-    expect(onPress).toHaveBeenCalledTimes(1);
-    expect(rowClick).not.toHaveBeenCalled();
-  });
-
-  it("is inert while a reading runs: click, Enter and Space do nothing", async () => {
-    const onPress = vi.fn();
-    const rowClick = vi.fn();
-    render(
-      // biome-ignore lint/a11y/noStaticElementInteractions: stands in for the row's toggle
-      // biome-ignore lint/a11y/useKeyWithClickEvents: stands in for the row's toggle
-      <div onClick={rowClick}>
-        <ReviewBadge
-          badge="Reading…"
-          warnings={[]}
-          reading={readingBlock({ state: "running" })}
-          onPress={onPress}
-        />
-      </div>,
-    );
-    const button = screen.getByRole("button");
-    expect(button).toHaveAttribute("aria-disabled", "true");
-    await userEvent.click(button);
-    button.focus();
-    await userEvent.keyboard("{Enter}");
-    await userEvent.keyboard(" ");
-    fireEvent.click(button);
-    expect(onPress).not.toHaveBeenCalled();
-    expect(rowClick).not.toHaveBeenCalled();
-  });
-
-  it("keeps the phase-truncates, fault-whole structure as a button", () => {
+  it("cuts only the phase name, never the fault word or the count", () => {
     const phase = "Final push to the cup, long";
     render(
       <ReviewBadge
-        badge={`${phase}: early yield +1`}
-        warnings={[
-          { ...LEVER_WARNINGS[0], phase, fault: "early yield", severity: "red" },
-          LEVER_WARNINGS[1],
-        ]}
-        reading={readingBlock()}
-        onPress={() => undefined}
+        review={reviewed({
+          badge: `${phase}: early yield +1`,
+          entries: [{ ...faults[0], phase, fault: "early yield" }, faults[1]],
+        })}
         className="w-24"
       />,
     );
-    const button = screen.getByRole("button");
-    const [box, count] = Array.from(button.children);
+    const badge = screen.getByTestId("review-badge");
+    const [box, count] = Array.from(badge.children);
     expect(box).toHaveAttribute("data-testid", "review-badge-text");
-    expect(screen.getByTestId("review-badge-fault")).toHaveClass("shrink-0", "truncate");
+    expect(box).toHaveClass("flex", "min-w-0", "flex-1", "overflow-hidden");
+    expect(screen.getByTestId("review-badge-phase")).toHaveClass("truncate", "min-w-0");
+    const fault = screen.getByTestId("review-badge-fault");
+    expect(fault).toHaveClass("shrink-0", "max-w-full", "truncate");
+    expect(fault.className).not.toMatch(/(^|\s)shrink(\s|$|-\[)/);
     expect(count).toHaveTextContent("+1");
     expect(count).toHaveClass("shrink-0");
   });
-});
 
-describe("ReviewBadge without the served text", () => {
-  it("never says No signature unless the verdict is that", () => {
-    const entries = readingBlock({ state: "read", verdict: "entries" });
-    const { rerender } = render(<ReviewBadge badge={null} warnings={[]} reading={entries} />);
-    expect(screen.getByTestId("review-badge")).not.toHaveTextContent("No signature");
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("Failures loading…");
-    expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "muted");
-    rerender(
+  it("never shows a deterministic check: it renders only the review block it is given", () => {
+    render(
       <ReviewBadge
-        badge={null}
-        warnings={[]}
-        reading={readingBlock({ state: "read", verdict: "no_signature" })}
+        review={reviewBlock({ state: "reviewed", verdict: "no_faults", badge: "No faults" })}
       />,
     );
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("No signature");
-    rerender(
-      <ReviewBadge
-        badge={undefined}
-        warnings={undefined}
-        reading={readingBlock({ state: "read", verdict: "as_intended" })}
-      />,
-    );
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("As intended");
+    expect(screen.getByTestId("review-badge")).toHaveTextContent(/^No faults$/);
   });
 });

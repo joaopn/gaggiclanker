@@ -1,4 +1,4 @@
-import type { ShotWarning } from "@/api/types";
+import type { ShotEntry } from "@/api/types";
 import { leverFields } from "@/test/shotFieldsFixture";
 
 /**
@@ -8,6 +8,6 @@ import { leverFields } from "@/test/shotFieldsFixture";
  * phase began, and the cup ended over its target. Taken from the served document
  * rather than written out again, so the numbers cannot drift from it.
  */
-export const LEVER_WARNINGS: ShotWarning[] = leverFields.warnings;
+export const LEVER_WARNINGS: ShotEntry[] = leverFields.checks.entries;
 
-export const LEVER_BADGE: string = leverFields.badge ?? "";
+export const LEVER_BADGE: string = leverFields.checks.badge ?? "";

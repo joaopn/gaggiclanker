@@ -4,7 +4,7 @@ import { Link, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShotDetailData, ShotSamplesData } from "@/api/types";
 import { ShotDetailPage } from "@/pages/ShotDetailPage";
-import { claim, readingBlock } from "@/test/readingFixtures";
+import { claim, reviewBlock } from "@/test/claimFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
 import { judgement, version, vocabulary } from "@/test/setsFixtures";
@@ -507,7 +507,7 @@ describe("ShotDetailPage Review card", () => {
     const user = setupUser();
     renderShot();
 
-    const card = await screen.findByTestId("review-card");
+    const card = await screen.findByTestId("review-box");
     const curves = screen.getByText("Curves");
     expect(curves.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // Nothing between the Curves card and the Reading card but the Reading card's own section.
@@ -520,7 +520,7 @@ describe("ShotDetailPage Review card", () => {
       judgement: judgement({ shot_id: shot129.shot.id, balance: "balanced" }),
       reviews: [review({ shot_id: shot129.shot.id })],
     });
-    await user.click(within(card).getByRole("button", { name: "Read this shot" }));
+    await user.click(within(card).getByRole("button", { name: "Review this shot" }));
 
     await waitFor(() => expect(runReview.mock.calls[0]?.[0]).toBe(shot129.shot.id));
     expect(await screen.findByTestId("review-summary")).toHaveTextContent(
@@ -536,7 +536,7 @@ describe("ShotDetailPage Review card", () => {
     const user = setupUser();
     getShot.mockResolvedValue({
       ...shot129,
-      reading: readingBlock({ state: "read", review_id: 5, in_force_id: 5 }),
+      review: reviewBlock({ state: "reviewed", review_id: 5, in_force_id: 5 }),
       reviews: [
         review({
           id: 5,
@@ -564,7 +564,7 @@ describe("ShotDetailPage Review card", () => {
     expect(screen.queryByTestId("chart-span")).toBeNull();
   });
 
-  it("does not carry an open Read again question to the next shot", async () => {
+  it("does not carry an open Review again question to the next shot", async () => {
     const user = setupUser();
     // The production cache, as in the prediction test above: the route element is reused.
     const caching = new QueryClient({
@@ -578,7 +578,7 @@ describe("ShotDetailPage Review card", () => {
       shot: { ...shot129.shot, id, device_id: String(id) },
       judgement: null,
       set_version: version({ id: id * 10, version_major: 2, prediction: `what ${id} did` }),
-      reading: readingBlock({ state: "read", review_id: id, in_force_id: id }),
+      review: reviewBlock({ state: "reviewed", review_id: id, in_force_id: id }),
       reviews: [
         review({
           id,
@@ -616,33 +616,36 @@ describe("ShotDetailPage Review card", () => {
     );
 
     // Visit both so each is cached and fresh, then come back to one the cache answers at once.
-    await screen.findByTestId("review-card");
+    await screen.findByTestId("review-box");
     await user.click(screen.getByRole("link", { name: "the next shot" }));
     await waitFor(() => expect(getShot).toHaveBeenCalledWith(130));
     await screen.findByText(/stance of/);
     await user.click(screen.getByRole("link", { name: "the first shot" }));
-    await waitFor(() => expect(screen.getByTestId("review-card")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("review-box")).toBeInTheDocument());
 
     // On 129: ask the question.
     await user.click(screen.getByTestId("run-review"));
-    expect(screen.getByTestId("read-again-ask")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("review-again-ask")).not.toHaveAttribute("hidden");
     expect(screen.getByText("stance of 129")).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "the next shot" }));
 
-    await waitFor(() => expect(screen.getByTestId("read-again-ask")).toHaveAttribute("hidden"));
+    await waitFor(() => expect(screen.getByTestId("review-again-ask")).toHaveAttribute("hidden"));
     expect(screen.queryByText("stance of 129")).not.toBeInTheDocument();
     expect(screen.getByText("stance of 130")).toBeInTheDocument();
     // Nothing started a reading on the shot nobody asked about.
     expect(runReview).not.toHaveBeenCalled();
   });
 
-  it("says in the verdict line what the badge says, and never No signature when the fields failed", async () => {
+  it("says in the verdict line what the Review badge says, from the detail alone", async () => {
+    const entry = leverSignedFields.checks.entries[0];
     getShot.mockResolvedValue({
       ...shot129,
-      reading: readingBlock({
-        state: "read",
+      review: reviewBlock({
+        state: "reviewed",
         verdict: "entries",
+        badge: `${entry.phase}: ${entry.fault}`,
+        entries: [entry],
         review_id: 5,
         in_force_id: 5,
       }),
@@ -650,29 +653,12 @@ describe("ShotDetailPage Review card", () => {
         review({ id: 5, shot_id: shot129.shot.id, claims: [claim({ id: 50, review_id: 5 })] }),
       ],
     });
-    getShotFields.mockResolvedValue({
-      ...leverSignedFields,
-      reading: readingBlock({
-        state: "read",
-        verdict: "entries",
-        review_id: 5,
-        in_force_id: 5,
-      }),
-    });
-    const { unmount } = renderShot();
-    const line = await screen.findByTestId("reading-verdict-badge");
-    // The badge's own text, from the same served fields.
-    expect(line).toHaveTextContent(leverSignedFields.badge ?? "");
-    expect(line).not.toHaveTextContent("No signature");
-    unmount();
-
-    // The fields never arrive (a 500): the page still loads from the detail, and the line must
-    // not fall back to a word that contradicts the failures.
+    // The fields never arrive (a 500): the review's verdict does not depend on them.
     getShotFields.mockRejectedValue(new Error("boom"));
     renderShot();
-    const failed = await screen.findByTestId("reading-verdict-badge");
-    expect(failed).not.toHaveTextContent("No signature");
-    expect(screen.getByTestId("reading-verdict-why")).toHaveTextContent("still loading");
+    const line = await screen.findByTestId("review-verdict-badge");
+    expect(line).toHaveTextContent(`${entry.phase}: ${entry.fault}`);
+    expect(screen.getByTestId("review-verdict-entries")).toHaveTextContent(entry.detail);
   });
 
   it("is not offered for a quarantined shot", async () => {
@@ -682,7 +668,7 @@ describe("ShotDetailPage Review card", () => {
     renderShot();
 
     expect(await screen.findByTestId("quarantine-reason")).toBeInTheDocument();
-    expect(screen.queryByTestId("review-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("review-box")).not.toBeInTheDocument();
   });
 
   it("scrolls to the review when the link asks for it", async () => {
@@ -700,9 +686,9 @@ describe("ShotDetailPage Review card", () => {
       { initialEntries: [`/shots/${shot129.shot.id}#review`] },
     );
 
-    expect(await screen.findByTestId("review-card")).toBeInTheDocument();
+    expect(await screen.findByTestId("review-box")).toBeInTheDocument();
     await waitFor(() => expect(scrolled).toContain("review"));
-    expect(document.getElementById("review")).toContainElement(screen.getByTestId("review-card"));
+    expect(document.getElementById("review")).toContainElement(screen.getByTestId("review-box"));
   });
 });
 

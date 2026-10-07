@@ -4,12 +4,12 @@ import { Link } from "react-router-dom";
 import type { ShotDiagnosticsBlob, ShotListRow, ShotPhase } from "@/api/types";
 import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import { JudgementForm } from "@/components/shots/JudgementForm";
-import { ReviewCard } from "@/components/shots/ReviewCard";
-import { inForceClaims, ShotRowChecksCard } from "@/components/shots/ShotChecksCard";
+import { inForceClaims, ReviewBox } from "@/components/shots/ReviewBox";
+import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotFields, useShotSamples } from "@/hooks/useArchive";
-import { useClaimSpan } from "@/lib/claimSpan";
+import { showClaim, useClaimSpan } from "@/lib/claimSpan";
 import { formatTime, profileName } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
@@ -56,7 +56,7 @@ export function ShotRowPanel({
   const chartId = `row-curves-${shot.id}`;
   // What the reading card marks on this row's own chart, keyed to the row by the panel's own
   // lifetime: it mounts when the row opens and goes when it closes.
-  const claimSpan = useClaimSpan(detail.data?.reading?.in_force_id, chartId);
+  const claimSpan = useClaimSpan(detail.data?.review?.in_force_id, chartId);
   // A quarantined shot has no samples at all; asking would be a 404 per open.
   const samples = useShotSamples(shot.id, { enabled: !shot.quarantined });
   const ready = !detail.isPending && (shot.quarantined || !samples.isPending);
@@ -84,7 +84,7 @@ export function ShotRowPanel({
   const shotPage = `/shots/${shot.id}`;
   const row = detail.data?.shot;
   const reviews = detail.data?.reviews;
-  const reading = detail.data?.reading ?? shot.reading;
+  const review = detail.data?.review ?? shot.review;
   const diagnostics = (row?.diagnostics ?? {}) as ShotDiagnosticsBlob;
 
   return (
@@ -129,9 +129,11 @@ export function ShotRowPanel({
         {/* What is plainly wrong comes first here as on the page. The list row
           carries the warnings, so there is nothing more to fetch. */}
         <div className="mb-3 empty:hidden">
-          <ShotRowChecksCard
-            warnings={shot.warnings}
-            claims={inForceClaims(reviews, reading?.in_force_id)}
+          <ShotChecksCard
+            checks={fields.data?.checks.items}
+            signature={fields.data?.signature}
+            claims={inForceClaims(reviews, review?.in_force_id)}
+            onShowClaim={showClaim}
           />
         </div>
 
@@ -196,15 +198,13 @@ export function ShotRowPanel({
             the table keys each row by its shot and mounts this panel only for the open one, so
             the panel (and the card's state) is one shot's for its whole life. */}
           {shot.quarantined || detail.isPending || detail.isError ? null : (
-            <div className="min-w-0" data-testid="panel-reading">
-              <ReviewCard
+            <div className="min-w-0" data-testid="panel-review">
+              <ReviewBox
                 shotId={shot.id}
                 reviews={detail.data.reviews ?? []}
-                reading={reading}
-                checks={fields.data?.checks}
+                review={review}
+                checks={fields.data?.checks.items}
                 span={claimSpan.controls}
-                badge={shot.badge}
-                warnings={shot.warnings}
               />
             </div>
           )}

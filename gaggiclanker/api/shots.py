@@ -42,7 +42,7 @@ from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_r
 from gaggiclanker.infra.errors import BadRequest, Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, rate_limit
 from gaggiclanker.infra.request_context import get_request_id
-from gaggiclanker.review.reading import ReadingBlock
+from gaggiclanker.review.reading import ChecksBlock, ReviewBlock
 from gaggiclanker.review.service import review_task_name
 from gaggiclanker.shotinfo.evaluation import UnreadableShot, evaluate_for_shot
 from gaggiclanker.shotinfo.fields import ShotFields, shot_fields
@@ -58,7 +58,7 @@ MAX_LIMIT = 500
 
 #: The sorts the list accepts, spelled once and shared with the repository so
 #: the OpenAPI enum and the SQL cannot drift apart.
-type SortKey = Literal["started_at", "duration", "rating", "review"]
+type SortKey = Literal["started_at", "duration", "rating", "check", "review"]
 
 
 class ShotListData(BaseModel):
@@ -95,13 +95,14 @@ class ShotDetailData(BaseModel):
     #: The Set version this shot is attached to, resolved. NULL is `needs_set`.
     set_version: SetVersionRow | None = None
     #: Every review of this shot, newest first, each with its claims. Sent with the shot
-    #: rather than fetched separately because the Reading card is on this page and a second
+    #: rather than fetched separately because the Review box is on this page and a second
     #: request for a list that is almost always empty or one row long is a round trip for
     #: nothing.
     reviews: list[ShotReviewRow] = Field(default_factory=list)
-    #: Whether the shot was read and what the person made of it: the same block the shots list
-    #: serves on every row.
-    reading: ReadingBlock
+    #: The shot's Curve check (the deterministic checks and warnings) and its review (what the
+    #: model wrote): the same two blocks the shots list serves on every row.
+    checks: ChecksBlock
+    review: ReviewBlock
 
 
 class ShotSamplesData(BaseModel):
@@ -230,7 +231,8 @@ async def get_shot(
             judgement=await judgements.get(shot_id),
             set_version=version,
             reviews=await reviews.for_shot(shot_id),
-            reading=served.block,
+            checks=served.checks_block,
+            review=served.review,
         ).model_dump(mode="json")
     )
 

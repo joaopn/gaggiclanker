@@ -288,9 +288,8 @@ describe("VersionTimeline", () => {
         set_version_id: 22,
         set_badge: { set_id: 3, set_name: "Guji on the Niche", version_label: "v2" },
         synced_at: "2026-04-03T08:16:00.000Z",
-        badge: LEVER_BADGE,
-        warnings: LEVER_WARNINGS,
-        reading: { state: "unread" },
+        checks: { badge: LEVER_BADGE, entries: LEVER_WARNINGS },
+        review: { state: "unreviewed", entries: [] },
       },
     ];
     // The judgement's rating wins over the device's: the archive's copy is the
@@ -304,8 +303,9 @@ describe("VersionTimeline", () => {
     const shots = screen.getByTestId("version-shots");
     expect(shots).toHaveTextContent("9 Bar Espresso");
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "5");
-    // The same badge as the shots table's Review column.
-    expect(within(shots).getByTestId("review-badge")).toHaveTextContent("ramp: fast flow +2");
+    // The same badge as the shots table's Curve check column, and never the review's.
+    expect(within(shots).getByTestId("check-badge")).toHaveTextContent("ramp: fast flow +2");
+    expect(within(shots).queryByTestId("review-badge")).toBeNull();
   });
 
   it("reads as an experiment: prediction, labels, outcome, restores", async () => {

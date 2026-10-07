@@ -18,7 +18,12 @@ export type BackupData = components["schemas"]["BackupData"];
 export type DeviceStatusData = components["schemas"]["DeviceStatusData"];
 export type ShotListData = components["schemas"]["ShotListData"];
 export type ShotListRow = components["schemas"]["ShotListItem"];
-export type ShotWarning = components["schemas"]["ShotWarningRow"];
+/** One entry of a badge: a fault, from the Curve check or from the review. */
+export type ShotEntry = components["schemas"]["EntryOut"];
+/** The Curve check of a shot: the deterministic checks and warnings only. */
+export type ChecksBlock = components["schemas"]["ChecksBlock"];
+/** The Curve check with every check behind it, as the fields serve it. */
+export type FieldChecks = components["schemas"]["FieldChecks"];
 export type ShotCheck = components["schemas"]["CheckOut"];
 export type ShotSignatureState = components["schemas"]["SignatureStateOut"];
 export type SignatureData = components["schemas"]["SignatureData"];
@@ -129,8 +134,9 @@ export type ShotReview = components["schemas"]["ShotReviewRow"];
 export type ShotReviewDetail = components["schemas"]["ShotReviewDetail"];
 export type ReviewListData = components["schemas"]["ReviewListData"];
 export type ReviewRequest = components["schemas"]["ReviewRequest"];
-export type ReadingBlock = components["schemas"]["ReadingBlock"];
-export type ReadingState = components["schemas"]["ReadingState"];
+/** What the model wrote about a shot, and whether there is a review. */
+export type ReviewBlock = components["schemas"]["ReviewBlock"];
+export type ReviewState = components["schemas"]["ReviewState"];
 export type ReviewClaim = components["schemas"]["ReviewClaimRow"];
 export type ReviewClaimStatus = components["schemas"]["ReviewClaimStatus"];
 export type ClaimEvidence = components["schemas"]["EvidenceOut"];
@@ -287,7 +293,7 @@ export function isSecretSetting(setting: ResolvedSetting): setting is SecretSett
  * The filters `GET /api/shots` accepts. `cursor` and `offset` are alternatives
  * and the server answers 400 if both are sent, so a caller picks one.
  */
-export type ShotSort = "started_at" | "duration" | "rating" | "review";
+export type ShotSort = "started_at" | "duration" | "rating" | "check" | "review";
 
 export type ShotListParams = {
   limit?: number;

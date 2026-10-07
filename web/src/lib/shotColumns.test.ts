@@ -7,6 +7,7 @@ import {
   loadShotWidths,
   PREVIOUS_DEFAULT_SHOT_COLUMNS,
   SHOT_COLUMNS,
+  SHOT_COLUMNS_CHECK_KEY,
   SHOT_COLUMNS_KEY,
   SHOT_WIDTHS_KEY,
   type ShotColumnId,
@@ -77,12 +78,15 @@ describe("loadShotColumns", () => {
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
   });
 
-  it("puts Review where Score was: after Yield and before Rating, on by default", () => {
+  it("puts Curve check and then Review where Score was: after Yield, before Rating, both on", () => {
     const ids = SHOT_COLUMNS.map((column) => column.id);
     expect(ids).not.toContain("score");
-    expect(ids.indexOf("review")).toBe(ids.indexOf("yield") + 1);
+    expect(ids.indexOf("check")).toBe(ids.indexOf("yield") + 1);
+    expect(ids.indexOf("review")).toBe(ids.indexOf("check") + 1);
     expect(ids.indexOf("rating")).toBe(ids.indexOf("review") + 1);
+    expect(DEFAULT_SHOT_COLUMNS).toContain("check");
     expect(DEFAULT_SHOT_COLUMNS).toContain("review");
+    expect(SHOT_COLUMNS.find((column) => column.id === "check")?.label).toBe("Curve check");
   });
 
   it("reads a layout stored before the change, naming score, as review in the same place", () => {
@@ -107,9 +111,44 @@ describe("loadShotColumns", () => {
       SHOT_COLUMNS_KEY,
       JSON.stringify(["time", "score", "rating", "flags"]),
     );
-    expect(loadShotColumns()).toEqual(["time", "review", "rating", "flags"]);
+    expect(loadShotColumns()).toEqual(["time", "check", "review", "rating", "flags"]);
     window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["time", "rating", "flags"]));
     expect(loadShotColumns()).toEqual(["time", "rating", "flags"]);
+  });
+
+  it("adds Curve check in front of Review in a stored layout that shows Review, once", () => {
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["time", "review", "flags"]));
+    expect(loadShotColumns()).toEqual(["time", "check", "review", "flags"]);
+    // Written back, with the mark that says it was done.
+    expect(JSON.parse(window.localStorage.getItem(SHOT_COLUMNS_KEY) ?? "[]")).toEqual([
+      "time",
+      "check",
+      "review",
+      "flags",
+    ]);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_CHECK_KEY)).toBe("1");
+    // A person who then turns it off (saving the layout) has made a choice: it stays off.
+    saveShotColumns(["time", "review", "flags"]);
+    expect(loadShotColumns()).toEqual(["time", "review", "flags"]);
+  });
+
+  it("keeps every other stored choice: a layout without Review, or already with Curve check", () => {
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["time", "flags"]));
+    expect(loadShotColumns()).toEqual(["time", "flags"]);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_CHECK_KEY)).toBeNull();
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["review", "check", "time"]));
+    expect(loadShotColumns()).toEqual(["review", "check", "time"]);
+  });
+
+  it("adds Curve check in memory when nothing can be stored, and never throws", () => {
+    const store = new Map<string, string>([[SHOT_COLUMNS_KEY, JSON.stringify(["time", "review"])]]);
+    const readOnly = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: () => {
+        throw new Error("full");
+      },
+    } as unknown as Storage;
+    expect(loadShotColumns(readOnly)).toEqual(["time", "check", "review"]);
   });
 
   it.each(PREVIOUS_DEFAULT_SHOT_COLUMNS.map((generation, index) => [index, generation]))(
@@ -268,7 +307,8 @@ describe("column sizes", () => {
       curve: 6,
       duration: 5.25,
       yield: 3,
-      review: 9,
+      check: 9,
+      review: 10.5,
       rating: 5.5,
       notes: 14,
       decision: 9.75,
@@ -288,7 +328,7 @@ describe("column widths", () => {
 
   it("raises a width dragged on the old Score column below Review's minimum to it", () => {
     window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 5.5 }));
-    expect(loadShotWidths()).toEqual({ review: 8.75 });
+    expect(loadShotWidths()).toEqual({ review: 9.75 });
   });
 
   it("keeps the width dragged on the old Score column for Review", () => {
@@ -296,7 +336,7 @@ describe("column widths", () => {
     expect(loadShotWidths()).toEqual({ review: 11, time: 8 });
     // A stored Review width under the minimum is raised: the fault word is never cut by a drag.
     window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ review: 7 }));
-    expect(loadShotWidths()).toEqual({ review: 8.75 });
+    expect(loadShotWidths()).toEqual({ review: 9.75 });
     // Review's own width wins once it has been dragged.
     window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 5.5, review: 12 }));
     expect(loadShotWidths()).toEqual({ review: 12 });

@@ -222,7 +222,11 @@ async def test_the_next_boot_derives_every_shot_again_without_the_score(
             assert "execution_score" not in body
         # Served as fields, with the lever shot's own warnings (it is filed under 36 g).
         fields = (await client.get(f"/api/shots/{ids['lever']}/fields")).json()["data"]
-        assert [w["fault"] for w in fields["warnings"]] == ["fast flow", "skipped", "over target"]
+        assert [w["fault"] for w in fields["checks"]["entries"]] == [
+            "fast flow",
+            "skipped",
+            "over target",
+        ]
 
 
 async def _decline_rule_after_migrating(

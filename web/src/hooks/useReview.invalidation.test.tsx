@@ -55,7 +55,7 @@ function spyOn(queryClient: QueryClient): unknown[][] {
  * A reading is shown by the shots list (the badge and its state), each shot's detail (claims)
  * and fields (the checks a reading's free-text results join), and the Set pages that list the
  * shot with its badge. Every write and every event is pinned, because a missing key is a badge
- * that still says Reading… after the answer, and nothing else in a render test shows it.
+ * that still says Reviewing… after the answer, and nothing else in a render test shows it.
  */
 const WRITES = [
   ["starting a reading", () => useRunReview(), { shotId: 129 }],

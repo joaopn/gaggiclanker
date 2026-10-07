@@ -17,18 +17,18 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.domain.signature import Check
-from gaggiclanker.review.reading import ReadingBlock, serve_reading
+from gaggiclanker.review.reading import ChecksBlock, ReviewBlock, serve_review
 from gaggiclanker.shotinfo.catalogue import ALSO_SERVED, CATALOGUE, MEASURED_GROUPS, FieldValue
 from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import load_shots
 
 __all__ = [
     "CheckOut",
+    "FieldChecks",
     "FieldOut",
     "PhaseFields",
     "ShotFields",
     "SignatureStateOut",
-    "WarningOut",
     "shot_fields",
     "shot_fields_of",
 ]
@@ -70,27 +70,6 @@ class FieldOut(BaseModel):
     source: str
     #: The sentence a chat is given for the same value.
     text: str
-
-
-class WarningOut(BaseModel):
-    """One entry of the badge: a failed critical or important expectation, or a warning."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    #: The shot's own phase name, or ``Shot`` for a fault of the whole shot.
-    phase: str
-    fault: str
-    #: ``red`` (a failed critical expectation), ``amber`` (a failed important one, or a universal
-    #: warning nothing marks as expected) or ``grey`` (a warning the signature expects).
-    severity: str
-    detail: str
-    phase_number: int | None
-    at_s: float
-    #: The tier of the expectation behind it, ``None`` for a warning nothing marks as expected.
-    tier: str | None = None
-    #: ``failed``, ``warning`` or ``expected``.
-    status: str = "warning"
-    expectation_id: int | None = None
 
 
 class CheckOut(BaseModel):
@@ -140,6 +119,17 @@ class CheckOut(BaseModel):
     expectation_id: int | None
 
 
+class FieldChecks(ChecksBlock):
+    """The Curve check of a shot with every check behind it.
+
+    ``badge`` and ``entries`` are what the shots list serves; ``items`` is the whole ordered
+    list, the held and the unmeasured and the free-text ones too (a free-text expectation is
+    "checked by the review": the review's own claims say how it came out).
+    """
+
+    items: list[CheckOut]
+
+
 class SignatureStateOut(BaseModel):
     """Whether the shot was read against a confirmed signature."""
 
@@ -169,17 +159,13 @@ class ShotFields(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     shot_id: int
-    #: What the badge is made of, most severe first, then in the order of the shot: failed
-    #: critical expectations, failed important ones, universal warnings, expected warnings.
-    #: Worked out when read.
-    warnings: list[WarningOut]
-    #: The badge text, built by code: ``ramp: early yield +1``, or the state's own words
-    #: (``Review``, ``Reading…``, ``Failed to run``, ``As intended``, ``No signature``).
-    badge: str | None
-    #: Whether the shot was read, and how: the same block the shots list serves.
-    reading: ReadingBlock
-    #: Every check in order, the held and the unmeasured and the free-text ones too.
-    checks: list[CheckOut]
+    #: The Curve check: what the badge is made of (most severe first, then in the order of the
+    #: shot: failed critical expectations, failed important ones, universal warnings, expected
+    #: warnings) and every check in order. Worked out when read, and never changed by a review.
+    checks: FieldChecks
+    #: The review: what the model wrote, and whether there is one. The same block the shots list
+    #: serves on every row.
+    review: ReviewBlock
     #: Whether the shot was read against a confirmed signature.
     signature: SignatureStateOut
     #: The target yield of the version the shot is filed under, when it has one.
@@ -265,19 +251,21 @@ def shot_fields_of(facts: ShotFacts) -> ShotFields:
             )
         )
 
-    served = serve_reading(
+    served = serve_review(
         facts.signature_checks,
         facts.reading,
-        readable=not facts.shot.quarantined and facts.shot.judgement_decision != "discard",
+        reviewable=not facts.shot.quarantined and facts.shot.judgement_decision != "discard",
     )
     checks = served.checks
     share = facts.share_of_target(facts.shot.final_weight_g if facts.shot.scale_connected else None)
     return ShotFields(
         shot_id=facts.shot_id,
-        warnings=[WarningOut.model_validate(c.as_dict()) for c in checks.badge_entries],
-        badge=served.badge,
-        reading=served.block,
-        checks=[_check_out(c) for c in checks.checks],
+        checks=FieldChecks(
+            badge=served.checks_block.badge,
+            entries=served.checks_block.entries,
+            items=[_check_out(c) for c in checks.checks],
+        ),
+        review=served.review,
         signature=SignatureStateOut(
             profile_version_id=checks.state.profile_version_id,
             confirmed=checks.state.confirmed,

@@ -766,7 +766,7 @@ describe("SetDetailPage has no model-reading surface", () => {
     expect(screen.queryByTestId("analyse-set")).toBeNull();
     expect(screen.queryByRole("button", { name: /analyse|review/i })).toBeNull();
     expect(screen.queryByTestId("large-batch-warning")).toBeNull();
-    expect(screen.queryByTestId("review-card")).toBeNull();
+    expect(screen.queryByTestId("review-box")).toBeNull();
   });
 });
 

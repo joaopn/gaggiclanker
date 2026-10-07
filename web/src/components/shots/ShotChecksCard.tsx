@@ -1,42 +1,35 @@
 import { AlertTriangle, ChevronRight, CircleDashed, Info } from "lucide-react";
 import { useId, useState } from "react";
 import { Link } from "react-router-dom";
-import type {
-  ReviewClaim,
-  ShotCheck,
-  ShotReview,
-  ShotSignatureState,
-  ShotWarning,
-} from "@/api/types";
+import type { ReviewClaim, ShotCheck, ShotSignatureState } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { signatureHref } from "@/lib/signatures";
 import { cn } from "@/lib/utils";
 
 /**
- * What the shot was checked against, and how it came out: first on the page, above the judgement.
+ * The Curve check: what the shot was checked against, and how it came out. Deterministic only:
+ * nothing a model wrote is here, and a review never changes it.
  *
- * One list, in the order the server gives it (`checks[]`): failed critical expectations in red,
+ * One list, in the order the server gives it (`checks.items`): failed critical expectations in red,
  * failed important ones and warnings nothing marks as expected in amber, expected warnings in
- * grey, then the held ones and the ones only a reading can check. Those last two are collapsed:
+ * grey, then the held ones and the ones only the review can answer. Those last two are collapsed:
  * a held expectation is a pass and a free-text one is not a verdict, so neither is put in front
  * of what failed. Each line gives its value against its limit ("117.2 % of target, at most
- * 15 % of target"), with the expectation's own sentence beneath it.
+ * 15 % of target"), with the expectation's own sentence beneath it. A free-text expectation is
+ * listed as "checked by the review", with a link that expands the Review box and scrolls to
+ * the model's answer to it.
  *
  * A check that could not be measured (no scale) is listed with its reason and counts neither
  * way. A shot read without a confirmed signature says so, and the line links to the profile
  * version's Signature card, where it is confirmed. A shot with nothing to say and no profile
- * to link has **no card at all**: a missing warning is not a verdict, and there is no
+ * to link has **no box at all**: a missing warning is not a verdict, and there is no
  * "all clear" to give.
  */
 
 type Color = "red" | "amber" | "grey" | null;
 
-/**
- * Where a free-text result's claim is. On the shot page it is an anchor (`to`); in the open row an
- * anchor would navigate (`/shots#claim-23` drops the sort and closes the row), so there it is a
- * button that scrolls the claim in the row's own card into view and focuses it (`onPress`).
- */
-type ClaimLink = { label: string; to?: string; onPress?: () => void };
+/** Where the review's answer to a free-text expectation is: a link that shows it. */
+type ClaimLink = { label: string; onPress: () => void };
 
 const LINE_CLASS: Record<"red" | "amber" | "grey" | "none", string> = {
   red: "border-status-bad/40 bg-status-bad/10",
@@ -70,7 +63,7 @@ function CheckLine({
   detail?: string;
   color: Color;
   status: string;
-  /** Where its claim is, for a result the reading made. */
+  /** Where the review's answer is, for a free-text expectation it answered. */
   link?: ClaimLink;
 }) {
   const tone = color ?? "none";
@@ -92,7 +85,7 @@ function CheckLine({
         </p>
         {lead ? <p className="break-words">{lead}</p> : null}
         {detail ? <p className="break-words text-muted-foreground">{detail}</p> : null}
-        {link?.onPress ? (
+        {link ? (
           <button
             type="button"
             className="text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
@@ -101,14 +94,6 @@ function CheckLine({
           >
             {link.label}
           </button>
-        ) : link?.to ? (
-          <Link
-            to={link.to}
-            className="text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
-            data-testid="check-claim-link"
-          >
-            {link.label}
-          </Link>
         ) : null}
       </div>
     </li>
@@ -155,10 +140,6 @@ function lineOf(check: ShotCheck) {
   if (check.status === "held") {
     return { phase, label: "held", detail: check.detail || check.sentence };
   }
-  if (check.kind === "free_text" && check.status === "failed") {
-    // The reading's result: the expectation's own fault word, and what the reading said.
-    return { ...title, detail: check.detail };
-  }
   if (check.kind === "free_text") {
     return { phase, label: check.sentence, detail: undefined };
   }
@@ -204,11 +185,20 @@ export function ShotChecksCard({
   checks,
   signature,
   claims,
+  onShowClaim,
+  open,
+  onOpenChange,
 }: {
+  /** Every check, in order (`checks.items` of the fields). */
   checks: ShotCheck[] | undefined;
   signature: ShotSignatureState | undefined;
-  /** The claims of the reading in force, so a free-text result can link to its claim. */
+  /** The claims of the review in force, so a free-text expectation can link to its answer. */
   claims?: ReviewClaim[];
+  /** Expands the Review box and scrolls to one claim; without it no link is drawn. */
+  onShowClaim?: (claimId: number) => void;
+  /** When the box can be folded: whether it is open, and the way to change that. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const all = checks ?? [];
   const link = signature?.profile_version_id ?? null;
@@ -218,22 +208,33 @@ export function ShotChecksCard({
   const shown = all.filter((c) => c.status !== "held" && c.status !== "unchecked");
   const held = all.filter((c) => c.status === "held");
   const unchecked = all.filter((c) => c.status === "unchecked");
-  // What a reading's free-text result adds to a line: whether it waits for a person, and its claim.
-  const resultOf = (check: ShotCheck) => {
-    if (check.kind !== "free_text" || (check.status !== "held" && check.status !== "failed")) {
-      return {};
-    }
-    const found = claims?.find(
-      (claim) => claim.kind === "free_text" && claim.expectation_id === check.expectation_id,
-    );
-    return {
-      link: found ? { to: `#claim-${found.id}`, label: "See the claim in the reading" } : undefined,
-    };
+  // The model's answer to a free-text expectation, when it gave one that was not rejected.
+  const answerOf = (check: ShotCheck): { link?: ClaimLink } => {
+    const found =
+      check.kind === "free_text" && onShowClaim
+        ? claims?.find(
+            (claim) =>
+              claim.kind === "free_text" &&
+              claim.status !== "rejected" &&
+              claim.expectation_id === check.expectation_id,
+          )
+        : undefined;
+    return found
+      ? {
+          link: {
+            label: "See the answer in the review",
+            onPress: () => onShowClaim?.(found.id),
+          },
+        }
+      : {};
   };
   return (
     <SectionCard
-      title="Checks"
-      description="What this shot was held against. A warning is checked without knowing what the profile is for; a confirmed signature can mark one as expected (grey), and a failed expectation is red (critical) or amber (important)."
+      title="Curve check"
+      collapsible={onOpenChange !== undefined}
+      open={open}
+      onOpenChange={onOpenChange}
+      description="What this shot was held against, by numbers alone. A warning is checked without knowing what the profile is for; a confirmed signature can mark one as expected (grey), and a failed expectation is red (critical) or amber (important)."
     >
       <div className="space-y-3" data-testid="shot-checks">
         {signature ? <SignatureLine signature={signature} /> : null}
@@ -246,7 +247,6 @@ export function ShotChecksCard({
                 color={check.color as Color}
                 status={check.status}
                 {...lineOf(check)}
-                {...resultOf(check)}
               />
             ))}
           </ul>
@@ -260,13 +260,12 @@ export function ShotChecksCard({
                 color={null}
                 status={check.status}
                 {...lineOf(check)}
-                {...resultOf(check)}
               />
             ))}
           </Collapsed>
         ) : null}
         {unchecked.length > 0 ? (
-          <Collapsed label={`${unchecked.length} checked by the reading`} testId="checks-unchecked">
+          <Collapsed label={`${unchecked.length} checked by the review`} testId="checks-unchecked">
             {unchecked.map((check, index) => (
               <CheckLine
                 // biome-ignore lint/suspicious/noArrayIndexKey: the list is the server's order and never reordered here
@@ -274,6 +273,7 @@ export function ShotChecksCard({
                 color={null}
                 status={check.status}
                 {...lineOf(check)}
+                {...answerOf(check)}
               />
             ))}
           </Collapsed>
@@ -300,79 +300,5 @@ function SignatureLine({ signature }: { signature: ShotSignatureState }) {
       </Link>
       .
     </p>
-  );
-}
-
-/** The claims of the reading in force: what a Checks line links to. */
-export function inForceClaims(
-  reviews: ShotReview[] | undefined,
-  inForceId: number | null | undefined,
-): ReviewClaim[] | undefined {
-  const found = (reviews ?? []).find((review) =>
-    inForceId != null ? review.id === inForceId : review.status === "ok",
-  );
-  return found?.claims;
-}
-
-function showClaim(claimId: number): void {
-  const element = document.getElementById(`claim-${claimId}`);
-  if (!element) return;
-  // `nearest`: the least scrolling that shows it, none when it is in view already.
-  element.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  element.focus({ preventScroll: true });
-}
-
-function claimLink(
-  claims: ReviewClaim[] | undefined,
-  expectationId: number | null | undefined,
-): ClaimLink | undefined {
-  const found =
-    expectationId == null
-      ? undefined
-      : claims?.find(
-          (claim) => claim.kind === "free_text" && claim.expectation_id === expectationId,
-        );
-  return found
-    ? { label: "See the claim in the reading", onPress: () => showClaim(found.id) }
-    : undefined;
-}
-
-/**
- * The same lines for a shots-list row, from what the row carries.
- *
- * A row has the badge's entries (the failed critical and important expectations and the
- * warnings, most severe first) and neither the held checks nor the signature state, so this
- * is the short list; the shot page has the whole one.
- */
-export function ShotRowChecksCard({
-  warnings,
-  claims,
-}: {
-  warnings: ShotWarning[] | undefined;
-  /** The claims of the reading in force, which the open row shows below: a result links to its claim. */
-  claims?: ReviewClaim[];
-}) {
-  if (!warnings || warnings.length === 0) return null;
-  return (
-    <SectionCard
-      title="Checks"
-      description="What failed or was warned of. The shot page lists every check, the held ones too."
-    >
-      <ul className="space-y-2" data-testid="shot-checks">
-        {warnings.map((warning, index) => (
-          <CheckLine
-            // Two failed expectations may share a phase and a fault word: the expectation is
-            // the identity when there is one, and the position (the server's order) when not.
-            key={warning.expectation_id != null ? `e${warning.expectation_id}` : `w${index}`}
-            phase={warning.phase}
-            label={warning.fault}
-            detail={warning.detail}
-            color={warning.severity as Color}
-            status={warning.status}
-            link={claimLink(claims, warning.expectation_id)}
-          />
-        ))}
-      </ul>
-    </SectionCard>
   );
 }

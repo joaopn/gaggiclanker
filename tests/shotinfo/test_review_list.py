@@ -1,6 +1,6 @@
-"""The shots list carries each shot's warnings and sorts by them (the Review column).
+"""The shots list carries each shot's Curve check and sorts by it (the Curve check column).
 
-The warnings depend on where a shot is filed, so the list works them out when it
+The checks depend on where a shot is filed, so the list works them out when it
 reads, from the stored derivation and the filed version's target, and stores
 nothing. Every shot here is derived from a real fixture; the one with no scale
 has its weight channels zeroed and its flag cleared.
@@ -19,7 +19,7 @@ from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
-from gaggiclanker.db.repos.shots import REVIEW_SORT, ShotsRepository
+from gaggiclanker.db.repos.shots import CHECK_SORT, ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.sync.derive import derive_shot
@@ -40,33 +40,37 @@ async def _add_lever(archive: Archive) -> int:
     return shot
 
 
-async def test_a_listed_shot_carries_its_warnings_and_the_badge_text(archive: Archive) -> None:
+async def test_a_listed_shot_carries_its_curve_check_and_the_badge_text(archive: Archive) -> None:
     lever = await _add_lever(archive)
     page = await ShotsRepository(archive.db).list_shots(limit=10)
     rows = {row.id: row for row in page.items}
 
-    assert rows[lever].badge == "ramp: fast flow +2"
-    assert [(w.phase, w.fault, w.severity) for w in rows[lever].warnings] == [
+    assert rows[lever].checks.badge == "ramp: fast flow +2"
+    assert [(w.phase, w.fault, w.severity) for w in rows[lever].checks.entries] == [
         ("ramp", "fast flow", "amber"),
         ("decline", "skipped", "amber"),
         ("Shot", "over target", "amber"),
     ]
-    assert rows[lever].warnings[1].detail.startswith("The shot stopped on its volumetric target")
-    assert rows[archive.shot].badge == "Shot: under target"
+    assert (
+        rows[lever].checks.entries[1].detail.startswith("The shot stopped on its volumetric target")
+    )
+    assert rows[archive.shot].checks.badge == "Shot: under target"
     # No scale: the yield warnings need one, so there is nothing to say.
-    assert rows[archive.no_scale].warnings == []
-    # Nothing to name and nobody has read it: the badge is the button's own word.
-    assert rows[archive.no_scale].badge == "Review"
-    assert rows[archive.no_scale].reading.state == "unread"
+    assert rows[archive.no_scale].checks.entries == []
+    # Nothing to name: no Curve check badge, and nobody has reviewed it, so the Review column is
+    # the button's alone.
+    assert rows[archive.no_scale].checks.badge is None
+    assert rows[archive.no_scale].review.state == "unreviewed"
+    assert rows[archive.no_scale].review.badge is None
 
 
-async def test_the_review_sort_puts_the_most_severe_first_and_the_clean_shots_last(
+async def test_the_curve_check_sort_puts_the_most_severe_first_and_the_clean_shots_last(
     archive: Archive,
 ) -> None:
     lever = await _add_lever(archive)
     repo = ShotsRepository(archive.db)
 
-    worst_first = await repo.list_shots(limit=10, sort=REVIEW_SORT, descending=True)
+    worst_first = await repo.list_shots(limit=10, sort=CHECK_SORT, descending=True)
     ids = [row.id for row in worst_first.items]
     # A phase's warning before a shot-wide one, a shot with none last.
     assert ids[0] == lever
@@ -75,7 +79,7 @@ async def test_the_review_sort_puts_the_most_severe_first_and_the_clean_shots_la
     assert ids[1:-1] == [archive.no_pressure, archive.shot]
     assert worst_first.total == 4
 
-    reversed_ = await repo.list_shots(limit=10, sort=REVIEW_SORT, descending=False)
+    reversed_ = await repo.list_shots(limit=10, sort=CHECK_SORT, descending=False)
     assert [row.id for row in reversed_.items] == ids[::-1]
 
 
@@ -95,27 +99,26 @@ async def test_shots_with_the_same_warning_come_newest_by_start_time_not_by_id(
     repo = ShotsRepository(archive.db)
 
     newest_first = [
-        row.id for row in (await repo.list_shots(limit=10, sort=REVIEW_SORT, descending=True)).items
+        row.id for row in (await repo.list_shots(limit=10, sort=CHECK_SORT, descending=True)).items
     ]
     assert newest_first[:2] == [archive.shot, archive.no_pressure]
     oldest_first = [
-        row.id
-        for row in (await repo.list_shots(limit=10, sort=REVIEW_SORT, descending=False)).items
+        row.id for row in (await repo.list_shots(limit=10, sort=CHECK_SORT, descending=False)).items
     ]
     assert oldest_first == newest_first[::-1]
 
 
-async def test_the_review_sort_pages_by_offset_and_refuses_a_cursor(archive: Archive) -> None:
+async def test_the_curve_check_sort_pages_by_offset_and_refuses_a_cursor(archive: Archive) -> None:
     lever = await _add_lever(archive)
     repo = ShotsRepository(archive.db)
-    everything = [row.id for row in (await repo.list_shots(limit=10, sort=REVIEW_SORT)).items]
-    second = await repo.list_shots(limit=2, offset=2, sort=REVIEW_SORT)
+    everything = [row.id for row in (await repo.list_shots(limit=10, sort=CHECK_SORT)).items]
+    second = await repo.list_shots(limit=2, offset=2, sort=CHECK_SORT)
     assert [row.id for row in second.items] == everything[2:]
     assert second.total == 4
     assert second.next_cursor is None
     assert everything[0] == lever
     with pytest.raises(ValueError, match="cursor"):
-        await repo.list_shots(sort=REVIEW_SORT, cursor="anything")
+        await repo.list_shots(sort=CHECK_SORT, cursor="anything")
 
 
 async def test_refiling_a_shot_changes_its_listed_warnings_and_its_place_in_the_sort(
@@ -130,17 +133,17 @@ async def test_refiling_a_shot_changes_its_listed_warnings_and_its_place_in_the_
     assert roomy is not None
     # Under a 60 g target the lever's 42.2 g is 70 %: under, not over.
     assert await sets.assign_shot(lever, roomy.id)
-    page = await repo.list_shots(limit=10, sort=REVIEW_SORT)
+    page = await repo.list_shots(limit=10, sort=CHECK_SORT)
     row = next(item for item in page.items if item.id == lever)
-    assert [w.fault for w in row.warnings] == ["fast flow", "skipped", "under target"]
+    assert [w.fault for w in row.checks.entries] == ["fast flow", "skipped", "under target"]
 
     assert await sets.assign_shot(lever, None)
     row = next(item for item in (await repo.list_shots(limit=10)).items if item.id == lever)
-    assert [w.fault for w in row.warnings] == ["fast flow", "skipped"]
-    assert row.badge == "ramp: fast flow +1"
+    assert [w.fault for w in row.checks.entries] == ["fast flow", "skipped"]
+    assert row.checks.badge == "ramp: fast flow +1"
 
 
-async def test_the_list_and_the_set_routes_serve_the_badge_and_the_sort(
+async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     db: Database = app.state.db
@@ -164,15 +167,16 @@ async def test_the_list_and_the_set_routes_serve_the_badge_and_the_sort(
     assert row.current_version_id is not None
     assert await sets.assign_shot(shot, row.current_version_id)
 
-    listed: dict[str, Any] = data(await client.get("/api/shots?sort=review&order=desc"))
+    listed: dict[str, Any] = data(await client.get("/api/shots?sort=check&order=desc"))
     assert [item["id"] for item in listed["items"]] == [shot]
-    assert listed["items"][0]["badge"] == "ramp: fast flow +2"
-    assert [w["fault"] for w in listed["items"][0]["warnings"]] == [
+    assert listed["items"][0]["checks"]["badge"] == "ramp: fast flow +2"
+    assert listed["items"][0]["review"]["state"] == "unreviewed"
+    assert [w["fault"] for w in listed["items"][0]["checks"]["entries"]] == [
         "fast flow",
         "skipped",
         "over target",
     ]
     detail: dict[str, Any] = data(await client.get(f"/api/sets/{row.id}"))
     in_set = detail["versions"][0]["shots"]
-    assert [item["badge"] for item in in_set] == ["ramp: fast flow +2"]
-    assert (await client.get("/api/shots?sort=review&cursor=abc")).status_code == 400
+    assert [item["checks"]["badge"] for item in in_set] == ["ramp: fast flow +2"]
+    assert (await client.get("/api/shots?sort=check&cursor=abc")).status_code == 400

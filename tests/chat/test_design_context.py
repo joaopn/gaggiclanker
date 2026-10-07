@@ -286,7 +286,7 @@ async def test_the_design_is_told_what_the_forked_profile_is_for_and_what_it_pro
     assert f"What profile version {profile_id} is FOR" in answered
     assert (
         f"- #{first.id} critical, whole shot, free_text "
-        "(checked by the reading, fails as unstable): the bloom holds" in answered
+        "(checked by the review, fails as unstable): the bloom holds" in answered
     )
     assert 'the finish tapers (rejected by the person. They said: "not for a fork"' in answered
     # The confirmed signature is told to every reader of the design, the rejection to nobody else.

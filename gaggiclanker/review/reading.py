@@ -1,31 +1,32 @@
-"""A shot's verdict and reading state, worked out whenever it is read.
+"""A shot's Curve check and its review, worked out whenever it is read, and kept apart.
 
-Nothing here is stored. The verdict is a function of the shot's checks as they are now (the
-confirmed signature's results and the universal warnings, :mod:`gaggiclanker.domain.signature`)
-and of the reading in force, so confirming an expectation, rejecting a claim or reading the shot
-again changes it at once, with no re-derivation and no migration.
+Nothing here is stored. A shot serves two things that used to be one cell, and they never
+change each other:
 
-**The reading in force is the shot's newest finished (`ok`) reading, for every viewer.** A newer
-reading that is running, failed or was interrupted changes only the badge's state text
-(``Reading…``, ``Failed to run``) and where the shot sorts; it never hides or replaces the
-results of the reading in force. One that finishes `ok` replaces it.
+* **The Curve check** is the deterministic part: the shot's failed critical and important
+  expectations and its warnings, from the confirmed signature of its profile version and the
+  shot's own numbers (:mod:`gaggiclanker.domain.signature`). It is the same for a shot that was
+  reviewed, is being reviewed, whose review failed, or whose claims a person rejected. Free-text
+  expectations are not part of it: a number cannot decide them, so the review answers them.
+* **The review** is what the model wrote, as the **review in force**: the shot's newest finished
+  (`ok`) review, for every viewer. A newer review that is running, failed or was interrupted
+  changes only the state and the badge's words (``Reviewing…``, ``Failed to run``) and where the
+  shot sorts; it never hides or replaces the claims of the review in force. One that finishes
+  `ok` replaces it.
 
-The free-text expectations of a confirmed signature can only be answered by a reading. A
-reading's answer becomes a check of the expectation's tier (a failed critical one red, an
-important one amber, a held one in the held group), unless a person rejected it: a rejected
-answer leaves the verdict, so rejecting "decline: unstable" can turn a red badge green. The
-person and the chat are given the same thing.
+**The review's faults are built by code from its claims, never typed by the model**, and they
+come from claims a person did not reject and whose numbers bear them out: a free-text
+expectation the model says failed (red for a critical one, amber for an important one, while
+the expectation is still confirmed under the same id) and a claim that carries a fault word
+(amber). They are ordered by tier rank, then a phase's before a whole-shot one, then by where
+the window starts.
 
-An answer counts only while its expectation is still confirmed **under the same id** (re-proposing
-or rejecting the expectation retires it, because the check it would replace is no longer there).
-
-**The reading state** of a shot (``not_readable``, ``unread``, ``running``, ``failed``, ``read``)
-and the badge text that goes with it are built here by code and never by the model.
+The person and the chat see the same claims: every claim of the review in force that is not
+rejected, and never the summary.
 """
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass
 from typing import Literal
 
@@ -33,214 +34,316 @@ from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.repos.reviews import ReadingRecord, ReviewClaimRow
 from gaggiclanker.domain.signature import Check, ShotChecks
-from gaggiclanker.domain.warnings import badge_text
+from gaggiclanker.domain.warnings import SHOT, badge_text
 
 __all__ = [
-    "READING_TEXT",
-    "ReadingBlock",
+    "REVIEW_TEXT",
+    "ChecksBlock",
+    "EntryOut",
+    "ReviewBlock",
+    "ReviewEntry",
     "Served",
-    "merge_reading",
+    "review_entries",
     "review_key",
-    "serve_reading",
+    "serve_review",
 ]
 
-type ReadingState = Literal["not_readable", "unread", "running", "failed", "read"]
-type Verdict = Literal["entries", "as_intended", "no_signature"]
+type ReviewState = Literal["not_reviewable", "unreviewed", "running", "failed", "reviewed"]
+type Verdict = Literal["entries", "as_intended", "no_faults"]
 
 #: The badge text of every state that has no entry to name, in one place.
-READING_TEXT = {
-    "unread": "Review",
-    "running": "Reading…",
+REVIEW_TEXT = {
+    "running": "Reviewing…",
     "failed": "Failed to run",
     "as_intended": "As intended",
-    "no_signature": "No signature",
+    "no_faults": "No faults",
 }
 
+#: The ranks of the review's own entries. A failed free-text expectation takes its tier's rank (the
+#: same 0 and 1 a failed measure has, so the colours agree); a claim with a fault word follows.
+_RANK_CRITICAL, _RANK_IMPORTANT, _RANK_CLAIM = 0, 1, 2
 
-class ReadingBlock(BaseModel):
-    """The ``reading`` block of a shot, as the list, the detail and the fields serve it."""
+
+class EntryOut(BaseModel):
+    """One entry of a badge: a fault, as the lists, the detail and the fields serve it."""
 
     model_config = ConfigDict(extra="forbid")
 
-    #: ``not_readable`` (discarded or quarantined), ``unread``, ``running``, ``failed`` or ``read``.
-    state: ReadingState
-    #: The newest review's id, whatever its state (the reading in force is the newest finished
-    #: one, which `reviews` on the shot detail lists); ``None`` for a shot never read.
-    review_id: int | None = None
-    #: Once read: ``entries`` (the badge names the failures), ``as_intended`` (a confirmed
-    #: signature and nothing failed) or ``no_signature`` (nothing to be checked against).
+    #: The shot's own phase name, or ``Shot`` for a fault of the whole shot.
+    phase: str
+    fault: str
+    #: ``red`` (a failed critical expectation), ``amber`` (a failed important one, a claim with a
+    #: fault word, or a universal warning nothing marks as expected) or ``grey`` (a warning the
+    #: signature expects).
+    severity: str
+    detail: str
+    phase_number: int | None
+    at_s: float
+    #: The tier of the expectation behind it (``critical``, ``important``, ``context``), or
+    #: ``None`` for a universal warning nothing marks as expected, and for a claim.
+    tier: str | None = None
+    #: ``failed`` (an expectation), ``warning`` (a universal one), ``expected`` (one the signature
+    #: says is part of the design: grey) or ``claim`` (the review's observation).
+    status: str = "warning"
+    expectation_id: int | None = None
+    #: The review claim behind an entry the review made; ``None`` for a check.
+    claim_id: int | None = None
+
+
+class ChecksBlock(BaseModel):
+    """The Curve check of a shot: only the deterministic checks and warnings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ``ramp: early yield +1``, built by code; ``None`` when nothing failed or was raised.
+    badge: str | None = None
+    #: Most severe first, then in the order of the shot.
+    entries: list[EntryOut]
+
+
+class ReviewBlock(BaseModel):
+    """The review of a shot: what the model wrote, and whether there is one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ``not_reviewable`` (discarded or quarantined), ``unreviewed``, ``running``, ``failed`` (the
+    #: newest review failed or was interrupted) or ``reviewed``.
+    state: ReviewState
+    #: The Review column's text: the faults, ``Reviewing…``, ``Failed to run``, ``As intended`` or
+    #: ``No faults``; ``None`` for a shot nobody can review and for one not reviewed yet.
+    badge: str | None = None
+    #: The model's faults in "phase: fault" form, from the review in force; never from a claim a
+    #: person rejected, and also while a newer review runs or after one failed.
+    entries: list[EntryOut]
+    #: Once reviewed: ``entries``, ``as_intended`` (a confirmed signature and no fault) or
+    #: ``no_faults`` (no confirmed signature to hold it against).
     verdict: Verdict | None = None
-    #: The id of the reading in force: the shot's newest finished (`ok`) review, or ``None`` when
-    #: it has none. Claims are answered through this id; ``review_id`` is the newest attempt's and
-    #: differs from it while a newer reading runs or after it failed.
-    in_force_id: int | None = None
-    #: Why it failed, for a ``failed`` reading.
-    reason: str | None = None
-    #: The one sentence of the reading in force: the person's, never served to a chat.
+    #: The one sentence of the review in force: the person's, never served to a chat.
     summary: str | None = None
-    finished_at: str | None = None
+    #: Why the newest review failed, for a ``failed`` state.
+    reason: str | None = None
+    #: The newest review's id, whatever its state; ``None`` for a shot never reviewed.
+    review_id: int | None = None
+    #: The id of the review in force: the shot's newest finished (`ok`) review, or ``None``. Claims
+    #: are answered through this id; ``review_id`` differs from it while a newer review runs or
+    #: after it failed.
+    in_force_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewEntry:
+    """One fault the review made, before it is served."""
+
+    phase: str
+    fault: str
+    severity: str
+    detail: str
+    phase_number: int | None
+    at_s: float
+    tier: str | None
+    status: str
+    expectation_id: int | None
+    claim_id: int
+    rank: int
+    seq: int
+    shot_wide: bool
+
+    @property
+    def badge(self) -> str:
+        """``ramp: early yield``."""
+        return f"{self.phase}: {self.fault}"
+
+    def order(self) -> tuple[int, bool, float, int]:
+        return (self.rank, self.shot_wide, self.at_s, self.seq)
+
+    def out(self) -> EntryOut:
+        return EntryOut(
+            phase=self.phase,
+            fault=self.fault,
+            severity=self.severity,
+            detail=self.detail,
+            phase_number=self.phase_number,
+            at_s=self.at_s,
+            tier=self.tier,
+            status=self.status,
+            expectation_id=self.expectation_id,
+            claim_id=self.claim_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class Served:
-    """One shot as the person reads it: the reading block, the merged checks and the badge."""
+    """One shot as the person reads it: the Curve check, and the review beside it."""
 
-    block: ReadingBlock
+    #: The checks the Curve check is made of, with the signature state (the whole list, held and
+    #: unmeasured and free-text ones too, as the fields serve it).
     checks: ShotChecks
-    #: The text of the badge: the failures, ``Reading…``, ``Failed to run``, ``As intended``,
-    #: ``No signature``, ``Review``; ``None`` for a shot nobody can read and nothing is wrong with.
-    badge: str | None
-
-    @property
-    def entries(self) -> list[Check]:
-        return self.checks.badge_entries
+    checks_block: ChecksBlock
+    review: ReviewBlock
+    #: The review's own entries, in order, for the sort.
+    review_entries: tuple[ReviewEntry, ...]
 
 
-def _result_check(base: Check, claim: ReviewClaimRow) -> Check:
-    """A free-text expectation's check, answered by a reading."""
-    held = bool(claim.held)
-    if base.tier == "context":
-        rank = 6
-    elif held:
-        rank = 5
-    else:
-        rank = 0 if base.tier == "critical" else 1
-    verdict = "held" if held else "failed"
-    return dataclasses.replace(
-        base,
-        status="held" if held else "failed",
-        held=held,
-        # Only a failure has a word; the expectation's own, as the reading wrote it down.
-        fault=None if held else (claim.fault or base.fault),
-        detail=f"{base.sentence}; the reading says it {verdict}: {claim.text}",
-        # Ordered by where the reading's window starts, as a measure is by its phase.
-        at_s=claim.start_s if claim.start_s is not None else base.at_s,
-        rank=rank,
-    )
+def check_entry_out(check: Check) -> EntryOut:
+    return EntryOut.model_validate({**check.as_dict(), "claim_id": None})
 
 
-def merge_reading(checks: ShotChecks, record: ReadingRecord | None) -> ShotChecks:
-    """The checks with the reading's free-text answers merged in."""
-    if record is None:
-        return checks
-    # The reading in force, whatever has been started since.
-    if record.finished is None:
-        return checks
-    counted = {
+def review_entries(
+    signature_checks: ShotChecks, claims: tuple[ReviewClaimRow, ...]
+) -> list[ReviewEntry]:
+    """The faults of the review in force, from the claims a person did not reject.
+
+    A claim the numbers do not bear out (``supported`` false) is no fault either: it stays in the
+    review box, marked, and the chat is still told it, but the badge, its "+N" and the sort key
+    leave it out.
+
+    A free-text result counts only while its expectation is still confirmed **under the same
+    id** (re-proposing or rejecting the expectation retires it: the tier it would be drawn in is
+    gone with it), and only a result that failed. A held one, and one on a context expectation,
+    raise nothing.
+    """
+    expectations = {
         c.expectation_id: c
-        for c in record.claims
-        if c.kind == "free_text" and c.expectation_id is not None and c.status != "rejected"
+        for c in signature_checks.checks
+        if c.kind == "free_text" and c.expectation_id is not None
     }
-    changed = False
-    merged: list[Check] = []
-    for check in checks.checks:
-        claim = (
-            counted.get(check.expectation_id)
-            if check.kind == "free_text" and check.expectation_id is not None
-            else None
-        )
-        if claim is None:
-            merged.append(check)
-        else:
-            merged.append(_result_check(check, claim))
-            changed = True
-    if not changed:
-        return checks
-    merged.sort(key=Check.order)
-    return ShotChecks(checks=tuple(merged), state=checks.state)
+    found: list[ReviewEntry] = []
+    for claim in claims:
+        if claim.status == "rejected" or not claim.supported:
+            continue
+        if claim.kind == "free_text":
+            base = expectations.get(claim.expectation_id) if claim.expectation_id else None
+            if base is None or claim.held or base.tier not in ("critical", "important"):
+                continue
+            rank = _RANK_CRITICAL if base.tier == "critical" else _RANK_IMPORTANT
+            found.append(
+                ReviewEntry(
+                    phase=base.phase,
+                    fault=claim.fault or base.fault or "",
+                    severity="red" if rank == _RANK_CRITICAL else "amber",
+                    detail=f"{base.sentence}; the review says it failed: {claim.text}",
+                    phase_number=base.phase_number,
+                    # Ordered by where the review's window starts, as a measure is by its phase.
+                    at_s=claim.start_s if claim.start_s is not None else base.at_s,
+                    tier=base.tier,
+                    status="failed",
+                    expectation_id=base.expectation_id,
+                    claim_id=claim.id,
+                    rank=rank,
+                    seq=claim.position,
+                    shot_wide=base.shot_wide,
+                )
+            )
+        elif claim.kind == "claim" and claim.fault:
+            found.append(
+                ReviewEntry(
+                    phase=claim.phase or SHOT,
+                    fault=claim.fault,
+                    severity="amber",
+                    detail=claim.text,
+                    phase_number=None,
+                    at_s=claim.start_s if claim.start_s is not None else 0.0,
+                    tier=None,
+                    status="claim",
+                    expectation_id=None,
+                    claim_id=claim.id,
+                    rank=_RANK_CLAIM,
+                    seq=claim.position,
+                    shot_wide=claim.phase is None,
+                )
+            )
+    return sorted(found, key=ReviewEntry.order)
 
 
-def _state(record: ReadingRecord | None, *, readable: bool) -> ReadingState:
-    if not readable:
-        return "not_readable"
+def _state(record: ReadingRecord | None, *, reviewable: bool) -> ReviewState:
+    if not reviewable:
+        return "not_reviewable"
     latest = record.latest if record is not None else None
     if latest is None:
-        return "unread"
+        return "unreviewed"
     if latest.status == "running":
         return "running"
     if latest.status != "ok":
         return "failed"
-    return "read"
+    return "reviewed"
 
 
-def serve_reading(
+def serve_review(
     signature_checks: ShotChecks,
     record: ReadingRecord | None,
     *,
-    readable: bool,
+    reviewable: bool,
 ) -> Served:
-    """The reading block, merged checks and badge of one shot for the person.
+    """The Curve check and the review of one shot.
 
-    ``readable`` is false for a shot that was discarded or quarantined: its checks and badge are
-    served as they are and nothing can be started on it. The results, the
-    summary and the time are those of the reading in force (the newest finished one), also while
-    a newer one runs or after it failed; only ``state``, ``review_id`` (the newest review's) and
-    the badge's words follow the newest attempt.
+    ``reviewable`` is false for a shot that was discarded or quarantined: its Curve check is
+    served as it is, its review block names no entries and nothing can be started on it. The
+    claims, the summary and the entries are those of the review in force (the newest finished
+    one), also while a newer one runs or after it failed; only ``state``, ``review_id`` (the
+    newest review's) and the badge's words follow the newest attempt. **The Curve check is
+    ``signature_checks`` whatever the review does.**
     """
-    state = _state(record, readable=readable)
-    checks = (
-        merge_reading(signature_checks, record)
-        if state in ("read", "running", "failed")
-        else signature_checks
-    )
-    entries = checks.badge_entries
+    state = _state(record, reviewable=reviewable)
     latest = record.latest if record is not None else None
     in_force = record.finished if record is not None else None
+    claims = record.claims if record is not None and in_force is not None else ()
+    entries: list[ReviewEntry] = (
+        review_entries(signature_checks, claims) if state != "not_reviewable" else []
+    )
+    check_entries = signature_checks.badge_entries
 
     verdict: Verdict | None = None
     reason: str | None = None
-    summary: str | None = None
-    finished_at: str | None = None
-    badge: str | None
-    if record is not None and in_force is not None and state in ("read", "running", "failed"):
-        summary = in_force.summary
-        finished_at = in_force.finished_at
-    if state == "read":
-        verdict = (
-            "entries"
-            if entries
-            else ("as_intended" if checks.state.read_with_signature else "no_signature")
-        )
-        badge = badge_text(entries) if entries else READING_TEXT[verdict]
+    badge: str | None = None
+    if state == "reviewed":
+        if entries:
+            verdict = "entries"
+            badge = badge_text(entries)
+        else:
+            verdict = "as_intended" if signature_checks.state.read_with_signature else "no_faults"
+            badge = REVIEW_TEXT[verdict]
     elif state == "running":
-        badge = READING_TEXT["running"]
+        badge = REVIEW_TEXT["running"]
     elif state == "failed":
         assert latest is not None
         reason = latest.error
-        badge = READING_TEXT["failed"]
-    elif state == "unread":
-        badge = badge_text(entries) or READING_TEXT["unread"]
-    else:
-        badge = badge_text(entries)
+        badge = REVIEW_TEXT["failed"]
     return Served(
-        block=ReadingBlock(
+        checks=signature_checks,
+        checks_block=ChecksBlock(
+            badge=badge_text(check_entries),
+            entries=[check_entry_out(c) for c in check_entries],
+        ),
+        review=ReviewBlock(
             state=state,
+            badge=badge,
+            entries=[entry.out() for entry in entries],
+            verdict=verdict,
+            summary=in_force.summary
+            if in_force is not None and state != "not_reviewable"
+            else None,
+            reason=reason,
             review_id=latest.id if latest is not None else None,
             in_force_id=in_force.id if in_force is not None else None,
-            verdict=verdict,
-            reason=reason,
-            summary=summary,
-            finished_at=finished_at,
         ),
-        checks=checks,
-        badge=badge,
+        review_entries=tuple(entries),
     )
 
 
 def _group(served: Served) -> int:
-    """Where a shot with no badge entry stands in the Review sort (the entries come first).
+    """Where a shot with no fault to name stands in the Review sort (the entries come first).
 
-    Work to do above work done: ``Failed to run``, then ``Reading…``, then ``No signature``, then
-    unread shots, then ``As intended``, then shots nobody can read and nothing is wrong with.
+    Work to do above work done: ``Failed to run``, then ``Reviewing…``, then ``No faults``, then
+    shots not reviewed yet, then ``As intended``, then shots nobody can review.
     """
-    state, verdict = served.block.state, served.block.verdict
+    state, verdict = served.review.state, served.review.verdict
     if state == "failed":
         return 1
     if state == "running":
         return 2
-    if state == "read":
-        return 3 if verdict == "no_signature" else 5
-    if state == "unread":
+    if state == "reviewed":
+        return 3 if verdict == "no_faults" else 5
+    if state == "unreviewed":
         return 4
     return 6
 
@@ -248,12 +351,11 @@ def _group(served: Served) -> int:
 def review_key(served: Served) -> tuple[int, tuple[int, bool, float, int]]:
     """What the shots table's Review column sorts by (smaller is worse, so first when descending).
 
-    A shot with a badge entry sorts by its first entry, the one the badge names: its group (red,
-    amber, an unexpected warning, an expected one), a phase's before a whole-shot one, then the
-    time in the shot. The others follow in the order of :func:`_group`. Shots with an equal key
-    are put newest first by the caller (`ShotsRepository`), which makes the whole key total.
+    What the column shows is what it sorts by. A reviewed shot with a fault sorts by its first
+    entry, the one the badge names: its tier's rank, a phase's before a whole-shot one, then the
+    time in the shot. Every other shot follows in the order of :func:`_group`. Shots with an equal
+    key are put newest first by the caller (`ShotsRepository`), which makes the whole key total.
     """
-    entries = served.entries
-    if entries:
-        return (0, entries[0].order())
+    if served.review.state == "reviewed" and served.review_entries:
+        return (0, served.review_entries[0].order())
     return (_group(served), (0, False, 0.0, 0))

@@ -76,7 +76,7 @@ describe("what the card shows", () => {
       "computed",
       "computed",
       "warning expected",
-      "checked by the reading",
+      "checked by the review",
     ]);
     const ramp = await item(expectationOf(signatureProposed, "ramp", "measure").id);
     expect(within(ramp).getByTestId("expectation-phase")).toHaveTextContent("ramp");

@@ -1,11 +1,11 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReadingBlock, ReviewClaim, ShotReview } from "@/api/types";
+import type { ReviewBlock, ReviewClaim, ShotReview } from "@/api/types";
 import { ReviewBadge } from "@/components/shots/ReviewBadge";
-import { REVIEW_EXPLAINED, ReviewCard } from "@/components/shots/ReviewCard";
+import { REVIEW_EXPLAINED, ReviewBox } from "@/components/shots/ReviewBox";
 import { type ClaimSpanControls, useClaimSpan } from "@/lib/claimSpan";
 import { queryKeys } from "@/lib/queryKeys";
-import { claim, evidence, readingBlock } from "@/test/readingFixtures";
+import { claim, evidence, reviewBlock } from "@/test/claimFixtures";
 import {
   createTestQueryClient,
   renderWithQueryClient,
@@ -52,25 +52,25 @@ function Card({
   span = NO_SPAN,
 }: {
   reviews: ShotReview[];
-  reading?: ReadingBlock;
+  reading?: ReviewBlock;
   span?: ClaimSpanControls;
 }) {
   const latest = reviews[0];
   const inForce = reviews.find((r) => r.status === "ok");
   const block =
     reading ??
-    readingBlock({
-      state: latest === undefined ? "unread" : latest.status === "ok" ? "read" : "failed",
+    reviewBlock({
+      state: latest === undefined ? "unreviewed" : latest.status === "ok" ? "reviewed" : "failed",
       review_id: latest?.id,
       in_force_id: inForce?.id,
     });
-  return <ReviewCard shotId={129} reviews={reviews} reading={block} span={span} />;
+  return <ReviewBox shotId={129} reviews={reviews} review={block} span={span} />;
 }
 
 const observation = (overrides: Partial<ReviewClaim> = {}) => claim({ review_id: 1, ...overrides });
 
-describe("ReviewCard", () => {
-  it("before any reading: the button and one line saying what it does", async () => {
+describe("ReviewBox", () => {
+  it("before any review: the button and one line saying what it does", async () => {
     const user = setupUser();
     renderWithQueryClient(<Card reviews={[]} />);
 
@@ -81,17 +81,17 @@ describe("ReviewCard", () => {
     expect(REVIEW_EXPLAINED).toMatch(/kept unless you reject it/);
     expect(REVIEW_EXPLAINED).not.toMatch(/taste prediction|blind/i);
 
-    await user.dblClick(within(empty).getByRole("button", { name: "Read this shot" }));
+    await user.dblClick(within(empty).getByRole("button", { name: "Review this shot" }));
 
     // A double click is one request.
     await waitFor(() => expect(runReview).toHaveBeenCalledTimes(1));
     expect(runReview).toHaveBeenCalledWith(129, { model: undefined });
-    expect(screen.queryByTestId("review-reading")).toBeNull();
+    expect(screen.queryByTestId("review-reviewed")).toBeNull();
   });
 
-  it("says a discarded shot is not read, with no button", () => {
-    renderWithQueryClient(<Card reviews={[]} reading={readingBlock({ state: "not_readable" })} />);
-    expect(screen.getByTestId("review-unreadable")).toHaveTextContent("not read");
+  it("says a discarded shot is not reviewed, with no button", () => {
+    renderWithQueryClient(<Card reviews={[]} reading={reviewBlock({ state: "not_reviewable" })} />);
+    expect(screen.getByTestId("review-unreviewable")).toHaveTextContent("not reviewed");
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -99,15 +99,15 @@ describe("ReviewCard", () => {
     renderWithQueryClient(
       <Card
         reviews={[review({ id: 2, status: "running", finished_at: null, summary: null })]}
-        reading={readingBlock({ state: "running", review_id: 2 })}
+        reading={reviewBlock({ state: "running", review_id: 2 })}
       />,
     );
 
-    expect(screen.getByTestId("review-running")).toHaveTextContent("Reading this shot since");
+    expect(screen.getByTestId("review-running")).toHaveTextContent("Reviewing this shot since");
     expect(screen.queryByTestId("review-empty")).toBeNull();
   });
 
-  it("while a re-read runs, the earlier reading stays below it and its Read again is held", async () => {
+  it("while a re-review runs, the earlier review stays below it and its Review again is held", async () => {
     const user = setupUser();
     renderWithQueryClient(
       <Card
@@ -115,23 +115,23 @@ describe("ReviewCard", () => {
           review({ id: 3, status: "running", finished_at: null, summary: null }),
           review({
             id: 2,
-            summary: "The reading in force.",
+            summary: "The review in force.",
             claims: [observation({ review_id: 2 })],
           }),
         ]}
-        reading={readingBlock({ state: "running", review_id: 3, in_force_id: 2 })}
+        reading={reviewBlock({ state: "running", review_id: 3, in_force_id: 2 })}
       />,
     );
 
-    expect(screen.getByTestId("review-running")).toHaveTextContent("earlier reading stays below");
-    expect(screen.getByTestId("review-summary")).toHaveTextContent("The reading in force.");
+    expect(screen.getByTestId("review-running")).toHaveTextContent("earlier review stays below");
+    expect(screen.getByTestId("review-summary")).toHaveTextContent("The review in force.");
     const button = screen.getByTestId("run-review");
     expect(button).toHaveAttribute("aria-disabled", "true");
     await user.click(button);
     expect(runReview).not.toHaveBeenCalled();
   });
 
-  it("answers a claim through the reading in force, never the newest attempt", async () => {
+  it("answers a claim through the review in force, never the newest attempt", async () => {
     const user = setupUser();
     renderWithQueryClient(
       <Card
@@ -139,7 +139,7 @@ describe("ReviewCard", () => {
           review({ id: 9, status: "running", finished_at: null, summary: null }),
           review({ id: 4, claims: [observation({ id: 40, review_id: 4 })] }),
         ]}
-        reading={readingBlock({ state: "running", review_id: 9, in_force_id: 4 })}
+        reading={reviewBlock({ state: "running", review_id: 9, in_force_id: 4 })}
       />,
     );
 
@@ -150,7 +150,7 @@ describe("ReviewCard", () => {
     );
   });
 
-  describe("a finished reading", () => {
+  describe("a finished review", () => {
     const freeText = claim({
       id: 21,
       review_id: 1,
@@ -184,12 +184,12 @@ describe("ReviewCard", () => {
         claims: [found, freeText, prediction],
       });
 
-    it("shows the summary, the expectations, the prediction, the claims, then the provenance and Read again, in that order", () => {
+    it("shows the summary, the expectations, the prediction, the claims, then the provenance and Review again, in that order", () => {
       renderWithQueryClient(
         <Card
           reviews={[full()]}
-          reading={readingBlock({
-            state: "read",
+          reading={reviewBlock({
+            state: "reviewed",
             verdict: "entries",
             review_id: 1,
             in_force_id: 1,
@@ -199,13 +199,13 @@ describe("ReviewCard", () => {
 
       const order = [
         screen.getByTestId("review-summary"),
-        screen.getByTestId("reading-expectations"),
-        screen.getByTestId("reading-prediction"),
-        screen.getByTestId("reading-claims"),
+        screen.getByTestId("review-expectations"),
+        screen.getByTestId("review-prediction"),
+        screen.getByTestId("review-claims"),
         screen.getByTestId("review-rules"),
         screen.getByTestId("review-excerpts"),
         screen.getByTestId("review-provenance"),
-        screen.getByTestId("read-again-ask"),
+        screen.getByTestId("review-again-ask"),
         screen.getByTestId("run-review"),
       ];
       for (let i = 1; i < order.length; i += 1) {
@@ -321,10 +321,10 @@ describe("ReviewCard", () => {
 
     it("shows a free-text result held or failed, with its expectation and its tier colour", () => {
       renderWithQueryClient(
-        <ReviewCard
+        <ReviewBox
           shotId={129}
           reviews={[full()]}
-          reading={readingBlock({ state: "read", review_id: 1, in_force_id: 1 })}
+          review={reviewBlock({ state: "reviewed", review_id: 1, in_force_id: 1 })}
           span={NO_SPAN}
           checks={[
             {
@@ -335,7 +335,7 @@ describe("ReviewCard", () => {
           ]}
         />,
       );
-      const item = within(screen.getByTestId("reading-expectations")).getByTestId("claim");
+      const item = within(screen.getByTestId("review-expectations")).getByTestId("claim");
       expect(within(item).getByTestId("claim-result")).toHaveTextContent("failed");
       expect(item).toHaveClass("border-status-bad/40");
       expect(within(item).getByTestId("claim-expectation")).toHaveTextContent(
@@ -355,7 +355,7 @@ describe("ReviewCard", () => {
       renderWithQueryClient(<Card reviews={[full()]} />);
       expect(screen.queryByTestId("claim-confirm")).toBeNull();
       expect(screen.queryByTestId("claims-confirm-all")).toBeNull();
-      expect(screen.queryByTestId("reading-verdict-waiting")).toBeNull();
+      expect(screen.queryByTestId("review-verdict-waiting")).toBeNull();
       for (const item of screen.getAllByTestId("claim")) {
         expect(item).toHaveAttribute("data-status", "confirmed");
         expect(within(item).queryByTestId("claim-status")).toBeNull();
@@ -377,7 +377,7 @@ describe("ReviewCard", () => {
       expect(answerReviewClaim).toHaveBeenCalledWith(1, 20, { status: "rejected" });
     });
 
-    it("a rejected claim says so and Restore brings it back, each with one call", async () => {
+    it('keeps a rejected claim out of the lists behind "N rejected · show", each with Restore', async () => {
       const user = setupUser();
       renderWithQueryClient(
         <Card
@@ -386,31 +386,49 @@ describe("ReviewCard", () => {
               claims: [
                 observation({ id: 30, position: 0 }),
                 observation({ id: 31, position: 1, status: "rejected" }),
+                observation({ id: 32, position: 2, status: "rejected" }),
               ],
             }),
           ]}
         />,
       );
-      const [kept, rejected] = screen.getAllByTestId("claim");
-      expect(within(kept).queryByTestId("claim-restore")).toBeNull();
-      expect(within(rejected).queryByTestId("claim-reject")).toBeNull();
-      expect(within(rejected).getByTestId("claim-status")).toHaveTextContent("rejected");
+      // The list shows what was kept; the rejected ones are one line, folded.
+      const list = within(screen.getByTestId("review-claims"));
+      expect(list.getAllByTestId("claim")).toHaveLength(1);
+      const toggle = screen.getByTestId("review-rejected-toggle");
+      expect(toggle).toHaveTextContent("2 rejected · show");
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      const folded = screen.getByTestId("review-rejected");
+      expect(within(folded).getAllByTestId("claim")).toHaveLength(2);
 
-      await user.click(within(rejected).getByRole("button", { name: "Restore" }));
+      await user.click(toggle);
+      expect(toggle).toHaveTextContent("2 rejected · hide");
+      const rejected = within(folded).getAllByTestId("claim");
+      expect(within(rejected[0]).getByTestId("claim-status")).toHaveTextContent("rejected");
+      expect(within(rejected[0]).queryByTestId("claim-reject")).toBeNull();
+
+      await user.click(within(rejected[0]).getByRole("button", { name: "Restore" }));
       await waitFor(() =>
         expect(answerReviewClaim).toHaveBeenCalledWith(1, 31, { status: "confirmed" }),
       );
-      await user.click(within(kept).getByRole("button", { name: "Reject" }));
+      await user.click(
+        within(list.getAllByTestId("claim")[0]).getByRole("button", { name: "Reject" }),
+      );
       await waitFor(() =>
         expect(answerReviewClaim).toHaveBeenCalledWith(1, 30, { status: "rejected" }),
       );
       expect(answerReviewClaim).toHaveBeenCalledTimes(2);
     });
 
-    it("Read again asks once, inline, that it replaces the current review", async () => {
+    it("has no rejected line when nothing is rejected", () => {
+      renderWithQueryClient(<Card reviews={[review({ claims: [observation()] })]} />);
+      expect(screen.queryByTestId("review-rejected")).toBeNull();
+    });
+
+    it("Review again asks once, inline, that it replaces the current review", async () => {
       const user = setupUser();
       renderWithQueryClient(<Card reviews={[review({ claims: [found] })]} />);
-      const ask = screen.getByTestId("read-again-ask");
+      const ask = screen.getByTestId("review-again-ask");
       expect(ask).toHaveAttribute("hidden");
 
       await user.click(screen.getByTestId("run-review"));
@@ -419,27 +437,27 @@ describe("ReviewCard", () => {
       expect(ask).toHaveTextContent("This replaces the current review");
       expect(screen.getByTestId("run-review")).toHaveAttribute("aria-controls", ask.id);
 
-      await user.click(screen.getByTestId("read-again-cancel"));
+      await user.click(screen.getByTestId("review-again-cancel"));
       expect(ask).toHaveAttribute("hidden");
       expect(runReview).not.toHaveBeenCalled();
 
       await user.click(screen.getByTestId("run-review"));
-      await user.dblClick(screen.getByTestId("read-again-confirm"));
+      await user.dblClick(screen.getByTestId("review-again-confirm"));
       await waitFor(() => expect(runReview).toHaveBeenCalledTimes(1));
       expect(runReview).toHaveBeenCalledWith(129, { model: undefined });
     });
 
-    it("renders the reading in force, not an older one", () => {
+    it("renders the review in force, not an older one", () => {
       renderWithQueryClient(
         <Card
           reviews={[
-            review({ id: 3, summary: "The newest reading." }),
-            review({ id: 2, summary: "An older reading." }),
+            review({ id: 3, summary: "The newest review." }),
+            review({ id: 2, summary: "An older review." }),
           ]}
         />,
       );
-      expect(screen.getByTestId("review-summary")).toHaveTextContent("The newest reading.");
-      expect(screen.queryByText("An older reading.")).toBeNull();
+      expect(screen.getByTestId("review-summary")).toHaveTextContent("The newest review.");
+      expect(screen.queryByText("An older review.")).toBeNull();
     });
   });
 
@@ -448,27 +466,27 @@ describe("ReviewCard", () => {
       <Card
         reviews={[
           review({ id: 4, status: "failed", error: "auth: invalid api key", summary: null }),
-          review({ id: 3, summary: "The last good reading." }),
+          review({ id: 3, summary: "The last good review." }),
         ]}
-        reading={readingBlock({ state: "failed", review_id: 4, in_force_id: 3, reason: "auth" })}
+        reading={reviewBlock({ state: "failed", review_id: 4, in_force_id: 3, reason: "auth" })}
       />,
     );
 
-    expect(screen.getByTestId("review-failed")).toHaveTextContent("That reading did not complete");
+    expect(screen.getByTestId("review-failed")).toHaveTextContent("That review did not complete");
     expect(screen.getByTestId("review-error")).toHaveTextContent("auth: invalid api key");
-    expect(screen.getByRole("button", { name: "Read again" })).not.toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Review again" })).not.toHaveAttribute(
       "aria-disabled",
       "true",
     );
-    expect(screen.getByTestId("review-summary")).toHaveTextContent("The last good reading.");
+    expect(screen.getByTestId("review-summary")).toHaveTextContent("The last good review.");
   });
 
-  it("an interrupted reading says the process stopped", () => {
+  it("an interrupted review says the process stopped", () => {
     renderWithQueryClient(
       <Card reviews={[review({ status: "interrupted", error: "stopped", summary: null })]} />,
     );
     expect(screen.getByTestId("review-failed")).toHaveTextContent("Interrupted");
-    expect(screen.queryByTestId("review-reading")).toBeNull();
+    expect(screen.queryByTestId("review-reviewed")).toBeNull();
   });
 
   describe("hovering a claim", () => {
@@ -536,7 +554,7 @@ describe("ReviewCard", () => {
     });
   });
 
-  describe("while a reading runs, the card re-reads its shot", () => {
+  describe("while a review runs, the card re-reads its shot", () => {
     afterEach(() => {
       vi.useRealTimers();
     });
@@ -585,138 +603,122 @@ describe("ReviewCard", () => {
   });
 });
 
-describe("the verdict line, the card's first", () => {
-  const entries = { badge: leverSignedFields.badge, warnings: leverSignedFields.warnings };
-  const cases: Array<
-    [string, { badge: string | null; warnings: typeof entries.warnings }, ReadingBlock]
-  > = [
+describe("the verdict line, the box's first", () => {
+  const faults = leverSignedFields.checks.entries.slice(0, 2);
+  const cases: Array<[string, ReviewBlock]> = [
     [
       "entries",
-      entries,
-      readingBlock({
-        state: "read",
+      reviewBlock({
+        state: "reviewed",
         verdict: "entries",
+        badge: "ramp: early yield +1",
+        entries: faults,
         review_id: 1,
         in_force_id: 1,
       }),
     ],
     [
       "as intended",
-      { badge: "As intended", warnings: [] },
-      readingBlock({ state: "read", verdict: "as_intended", review_id: 1, in_force_id: 1 }),
+      reviewBlock({
+        state: "reviewed",
+        verdict: "as_intended",
+        badge: "As intended",
+        review_id: 1,
+        in_force_id: 1,
+      }),
     ],
     [
-      "no signature",
-      { badge: "No signature", warnings: [] },
-      readingBlock({ state: "read", verdict: "no_signature", review_id: 1, in_force_id: 1 }),
+      "no faults",
+      reviewBlock({
+        state: "reviewed",
+        verdict: "no_faults",
+        badge: "No faults",
+        review_id: 1,
+        in_force_id: 1,
+      }),
     ],
     [
       "running",
-      { badge: "Reading…", warnings: [] },
-      readingBlock({ state: "running", review_id: 2, in_force_id: 1 }),
+      reviewBlock({ state: "running", badge: "Reviewing…", review_id: 2, in_force_id: 1 }),
     ],
     [
       "failed",
-      { badge: "Failed to run", warnings: [] },
-      readingBlock({ state: "failed", review_id: 2, in_force_id: 1, reason: "timed out" }),
+      reviewBlock({
+        state: "failed",
+        badge: "Failed to run",
+        review_id: 2,
+        in_force_id: 1,
+        reason: "timed out",
+      }),
     ],
   ];
 
-  it.each(cases)("says what the badge says, in its tone and fill: %s", (_name, served, reading) => {
+  it.each(cases)("says what the Review badge says, in its tone: %s", (_name, block) => {
     const reviews = [review({ id: 1, claims: [observation()] })];
     const { container } = renderWithQueryClient(
       <>
-        <ReviewBadge badge={served.badge} warnings={served.warnings} reading={reading} />
-        <ReviewCard
-          shotId={129}
-          reviews={reviews}
-          reading={reading}
-          span={NO_SPAN}
-          badge={served.badge}
-          warnings={served.warnings}
-        />
+        <ReviewBadge review={block} />
+        <ReviewBox shotId={129} reviews={reviews} review={block} span={NO_SPAN} />
       </>,
     );
     const badge = container.querySelector('[data-testid="review-badge"]');
-    const line = screen.getByTestId("reading-verdict-badge");
+    const line = screen.getByTestId("review-verdict-badge");
     expect(line).toHaveTextContent((badge?.textContent ?? "").trim());
     expect(line.getAttribute("data-tone")).toBe(badge?.getAttribute("data-tone"));
-    expect(line.getAttribute("data-filled")).toBe(badge?.getAttribute("data-filled"));
   });
 
-  it("is the first thing in a reading, and the model's summary comes after it, labelled", () => {
+  it("is the first thing in a review, and the model's summary comes after it, labelled", () => {
     renderWithQueryClient(
-      <ReviewCard
+      <ReviewBox
         shotId={129}
         reviews={[review({ id: 1, summary: "A clean lever shot." })]}
-        reading={readingBlock({ state: "read", verdict: "no_signature", in_force_id: 1 })}
+        review={reviewBlock({
+          state: "reviewed",
+          verdict: "no_faults",
+          badge: "No faults",
+          in_force_id: 1,
+        })}
         span={NO_SPAN}
-        badge="No signature"
-        warnings={[]}
       />,
     );
-    const reading = screen.getByTestId("review-reading");
-    expect(reading.firstElementChild).toBe(screen.getByTestId("reading-verdict"));
-    expect(screen.getByTestId("reading-verdict-why")).toHaveTextContent(
-      "read without a confirmed signature, so nothing was checked against the profile's intent",
+    const reviewed = screen.getByTestId("review-reviewed");
+    expect(reviewed.firstElementChild).toBe(screen.getByTestId("review-verdict"));
+    expect(screen.getByTestId("review-verdict-why")).toHaveTextContent(
+      "the model found no fault; the profile has no confirmed signature to hold the shot to",
     );
     const summary = screen.getByTestId("review-summary-block");
     expect(summary).toHaveTextContent("The model's summary: A clean lever shot.");
     expect(
-      screen.getByTestId("reading-verdict").compareDocumentPosition(summary) &
+      screen.getByTestId("review-verdict").compareDocumentPosition(summary) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  it("lists the failures of an entries verdict, and never says a claim waits", () => {
+  it("lists the faults of an entries verdict, and never says a claim waits", () => {
     renderWithQueryClient(
-      <ReviewCard
+      <ReviewBox
         shotId={129}
         reviews={[review({ id: 1, claims: [observation()] })]}
-        reading={readingBlock({ state: "read", verdict: "entries", in_force_id: 1 })}
+        review={cases[0][1]}
         span={NO_SPAN}
-        badge={entries.badge}
-        warnings={entries.warnings}
       />,
     );
-    expect(screen.getByTestId("reading-verdict-entries").querySelectorAll("li")).toHaveLength(
-      entries.warnings.length,
+    expect(screen.getByTestId("review-verdict-entries").querySelectorAll("li")).toHaveLength(
+      faults.length,
     );
-    expect(screen.queryByTestId("reading-verdict-waiting")).toBeNull();
-  });
-
-  it("never says No signature for a verdict of failures whose badge text has not arrived", () => {
-    renderWithQueryClient(
-      <ReviewCard
-        shotId={129}
-        reviews={[review({ id: 1, claims: [observation()] })]}
-        reading={readingBlock({ state: "read", verdict: "entries", in_force_id: 1 })}
-        span={NO_SPAN}
-        badge={undefined}
-        warnings={undefined}
-      />,
-    );
-    expect(screen.getByTestId("reading-verdict-badge")).not.toHaveTextContent("No signature");
-    expect(screen.getByTestId("reading-verdict-why")).toHaveTextContent("still loading");
+    expect(screen.queryByTestId("review-verdict-waiting")).toBeNull();
   });
 
   it("says As intended with its reason", () => {
     renderWithQueryClient(
-      <ReviewCard
-        shotId={129}
-        reviews={[review({ id: 1 })]}
-        reading={readingBlock({ state: "read", verdict: "as_intended", in_force_id: 1 })}
-        span={NO_SPAN}
-        badge="As intended"
-        warnings={[]}
-      />,
+      <ReviewBox shotId={129} reviews={[review({ id: 1 })]} review={cases[1][1]} span={NO_SPAN} />,
     );
-    expect(screen.getByTestId("reading-verdict-badge")).toHaveTextContent("As intended");
-    expect(screen.getByTestId("reading-verdict-why")).toHaveTextContent("held");
+    expect(screen.getByTestId("review-verdict-badge")).toHaveTextContent("As intended");
+    expect(screen.getByTestId("review-verdict-why")).toHaveTextContent("confirmed signature");
   });
 });
 
-describe("answering goes through the reading in force during a re-read", () => {
+describe("answering goes through the review in force during a re-read", () => {
   const inForce = review({
     id: 4,
     claims: [
@@ -724,16 +726,16 @@ describe("answering goes through the reading in force during a re-read", () => {
       observation({ id: 41, review_id: 4, position: 1 }),
     ],
   });
-  const states: Array<[string, ShotReview, ReadingBlock]> = [
+  const states: Array<[string, ShotReview, ReviewBlock]> = [
     [
       "a running re-read",
       review({ id: 9, status: "running", finished_at: null, summary: null }),
-      readingBlock({ state: "running", review_id: 9, in_force_id: 4 }),
+      reviewBlock({ state: "running", review_id: 9, in_force_id: 4 }),
     ],
     [
       "a failed re-read",
       review({ id: 9, status: "failed", error: "boom", summary: null }),
-      readingBlock({ state: "failed", review_id: 9, in_force_id: 4 }),
+      reviewBlock({ state: "failed", review_id: 9, in_force_id: 4 }),
     ],
   ];
 

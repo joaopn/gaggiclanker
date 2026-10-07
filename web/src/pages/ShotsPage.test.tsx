@@ -16,11 +16,11 @@ import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { SHOT_SERIES } from "@/lib/shotChart";
 import { ShotsPage } from "@/pages/ShotsPage";
-import { claim, readingBlock } from "@/test/readingFixtures";
+import { checksBlock, claim, reviewBlock } from "@/test/claimFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
 import { flavorPicks, judgement, setDetail, setRow, vocabulary } from "@/test/setsFixtures";
-import { leverSignedFields } from "@/test/shotFieldsFixture";
+import { leverFields, leverSignedFields, realFields } from "@/test/shotFieldsFixture";
 import { shot129, shot129Samples, syntheticSamples } from "@/test/shotFixture";
 import { LEVER_BADGE, LEVER_WARNINGS } from "@/test/warningFixtures";
 
@@ -115,7 +115,8 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     set_badge: null,
     source: "device",
     synced_at: "2026-03-04T08:15:30.000Z",
-    reading: { state: "unread" },
+    checks: { entries: [] },
+    review: { state: "unreviewed", entries: [] },
     ...overrides,
   };
 }
@@ -381,10 +382,12 @@ describe("ShotsPage", () => {
   });
 
   it("shows the Set badge on every row, and no review state among the flags", async () => {
-    // The Review column is the one place a reading shows in the table; the Flags column carries
-    // none of it. A shot nobody can read has nothing in the column either.
+    // The Review column is the one place a review shows in the table; the Flags column carries
+    // none of it. A shot nobody can review has nothing in the column either.
     const user = setupUser();
-    getShots.mockResolvedValue(listData([shot({ reading: { state: "not_readable" } })]));
+    getShots.mockResolvedValue(
+      listData([shot({ review: { state: "not_reviewable", entries: [] } })]),
+    );
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
@@ -1017,6 +1020,7 @@ describe("ShotsPage column widths", () => {
       "5.25rem",
       "3rem",
       "9rem",
+      "10.5rem",
       "5.5rem",
       "9.75rem",
     ]);
@@ -1244,17 +1248,22 @@ describe("ShotsPage open rows", () => {
     getShots.mockResolvedValue(
       listData([
         shot({
-          badge: "As intended",
-          reading: readingBlock({ state: "read", verdict: "as_intended", in_force_id: 7 }),
+          review: reviewBlock({
+            state: "reviewed",
+            verdict: "as_intended",
+            badge: "As intended",
+            in_force_id: 7,
+          }),
         }),
       ]),
     );
     getShot.mockResolvedValue({
       ...shot129,
       shot: { ...shot129.shot, id: 1 },
-      reading: readingBlock({
-        state: "read",
+      review: reviewBlock({
+        state: "reviewed",
         verdict: "as_intended",
+        badge: "As intended",
         in_force_id: 7,
       }),
       reviews: [
@@ -1272,11 +1281,11 @@ describe("ShotsPage open rows", () => {
     await user.click(toggle());
 
     const panel = await screen.findByTestId("shot-panel");
-    const card = await within(panel).findByTestId("review-card");
+    const card = await within(panel).findByTestId("review-box");
     expect(within(card).getByTestId("review-summary")).toHaveTextContent(
       "A model's one-line reading.",
     );
-    expect(within(card).getByTestId("reading-verdict-badge")).toHaveTextContent("As intended");
+    expect(within(card).getByTestId("review-verdict-badge")).toHaveTextContent("As intended");
     expect(within(card).getByTestId("claim-reject")).toBeInTheDocument();
     // No link stands in for it any more.
     expect(within(panel).queryByRole("link", { name: "Reading" })).toBeNull();
@@ -1298,23 +1307,26 @@ describe("ShotsPage open rows", () => {
 
   it("colours a critical free-text failure red in the open row, with its expectation's sentence", async () => {
     const user = setupUser();
-    const base = leverSignedFields.checks.find((check) => check.kind === "free_text");
+    const base = leverSignedFields.checks.items.find((check) => check.kind === "free_text");
     if (!base) throw new Error("the fixture has no free-text check");
     getShotFields.mockResolvedValue({
       ...leverSignedFields,
-      checks: leverSignedFields.checks.map((check) =>
-        check === base ? { ...check, tier: "critical", status: "failed", color: "red" } : check,
-      ),
+      checks: {
+        ...leverSignedFields.checks,
+        items: leverSignedFields.checks.items.map((check) =>
+          check === base ? { ...check, tier: "critical" } : check,
+        ),
+      },
     });
     getShots.mockResolvedValue(
       listData([
-        shot({ reading: readingBlock({ state: "read", verdict: "entries", in_force_id: 7 }) }),
+        shot({ review: reviewBlock({ state: "reviewed", verdict: "entries", in_force_id: 7 }) }),
       ]),
     );
     getShot.mockResolvedValue({
       ...shot129,
       shot: { ...shot129.shot, id: 1 },
-      reading: readingBlock({ state: "read", verdict: "entries", in_force_id: 7 }),
+      review: reviewBlock({ state: "reviewed", verdict: "entries", in_force_id: 7 }),
       reviews: [
         review({
           id: 7,
@@ -1383,38 +1395,47 @@ describe("ShotsPage open rows", () => {
     getShots.mockResolvedValue(
       listData([
         shot({
-          badge: "No signature",
-          reading: readingBlock({ state: "read", verdict: "no_signature", in_force_id: 7 }),
+          review: reviewBlock({
+            state: "reviewed",
+            verdict: "no_faults",
+            badge: "No faults",
+            in_force_id: 7,
+          }),
         }),
       ]),
     );
     getShot.mockResolvedValue({
       ...shot129,
       shot: { ...shot129.shot, id: 1 },
-      reading: readingBlock({ state: "read", verdict: "no_signature", in_force_id: 7 }),
+      review: reviewBlock({
+        state: "reviewed",
+        verdict: "no_faults",
+        badge: "No faults",
+        in_force_id: 7,
+      }),
       reviews: [review({ id: 7, shot_id: 1 })],
     });
     renderList();
     await listed();
     await user.click(toggle());
     const line = await within(await screen.findByTestId("shot-panel")).findByTestId(
-      "reading-verdict-badge",
+      "review-verdict-badge",
     );
-    expect(line).toHaveTextContent("No signature");
+    expect(line).toHaveTextContent("No faults");
     expect(
       within(screen.getByTestId("shot-rows")).getAllByTestId("review-badge")[0],
-    ).toHaveTextContent("No signature");
+    ).toHaveTextContent("No faults");
   });
 
   it("shows a discarded shot's last reading in the open row, with no Read button", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
-      listData([shot({ reading: readingBlock({ state: "not_readable" }) })]),
+      listData([shot({ review: reviewBlock({ state: "not_reviewable" }) })]),
     );
     getShot.mockResolvedValue({
       ...shot129,
       shot: { ...shot129.shot, id: 1 },
-      reading: readingBlock({ state: "not_readable", in_force_id: 7 }),
+      review: reviewBlock({ state: "not_reviewable", in_force_id: 7 }),
       reviews: [review({ id: 7, shot_id: 1, summary: "Read before it was discarded." })],
     });
     renderList();
@@ -1422,7 +1443,7 @@ describe("ShotsPage open rows", () => {
 
     await user.click(toggle());
 
-    const card = await within(await screen.findByTestId("shot-panel")).findByTestId("review-card");
+    const card = await within(await screen.findByTestId("shot-panel")).findByTestId("review-box");
     expect(within(card).getByTestId("review-summary")).toHaveTextContent(
       "Read before it was discarded.",
     );
@@ -1433,19 +1454,19 @@ describe("ShotsPage open rows", () => {
   it("gives a discarded shot with no reading a line and no button in the open row", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
-      listData([shot({ reading: readingBlock({ state: "not_readable" }) })]),
+      listData([shot({ review: reviewBlock({ state: "not_reviewable" }) })]),
     );
     getShot.mockResolvedValue({
       ...shot129,
       shot: { ...shot129.shot, id: 1 },
-      reading: readingBlock({ state: "not_readable" }),
+      review: reviewBlock({ state: "not_reviewable" }),
       reviews: [],
     });
     renderList();
     await listed();
     await user.click(toggle());
-    const card = await within(await screen.findByTestId("shot-panel")).findByTestId("review-card");
-    expect(within(card).getByTestId("review-unreadable")).toBeInTheDocument();
+    const card = await within(await screen.findByTestId("shot-panel")).findByTestId("review-box");
+    expect(within(card).getByTestId("review-unreviewable")).toBeInTheDocument();
     expect(within(card).queryByTestId("run-review")).toBeNull();
   });
 
@@ -1453,9 +1474,16 @@ describe("ShotsPage open rows", () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
-        shot({ id: 1, device_id: "000101", badge: LEVER_BADGE, warnings: LEVER_WARNINGS }),
+        shot({
+          id: 1,
+          device_id: "000101",
+          checks: checksBlock({ badge: LEVER_BADGE, entries: LEVER_WARNINGS }),
+        }),
         shot({ id: 2, device_id: "000102" }),
       ]),
+    );
+    getShotFields.mockImplementation(async (id: number) =>
+      id === 1 ? leverFields : { ...realFields, shot_id: id },
     );
     renderList();
     await listed();
@@ -1508,7 +1536,7 @@ describe("ShotsPage open rows", () => {
     expect(stack).not.toHaveClass("grid");
     const [top, below] = Array.from(stack.children);
     expect(stack.children).toHaveLength(3);
-    expect(stack.children[2]).toBe(within(panel).getByTestId("panel-reading"));
+    expect(stack.children[2]).toBe(within(panel).getByTestId("panel-review"));
     expect(top).toContainElement(form);
     expect(below).toContainElement(series);
     expect(
@@ -1864,94 +1892,128 @@ describe("ShotsPage open rows", () => {
   });
 });
 
-describe("ShotsPage Review column", () => {
+describe("ShotsPage Curve check column", () => {
+  const withChecks = (overrides: Partial<ShotListRow> = {}) =>
+    shot({
+      id: 1,
+      checks: checksBlock({ badge: LEVER_BADGE, entries: LEVER_WARNINGS }),
+      ...overrides,
+    });
+
   it("shows the first warning and how many more, with the whole list on hover", async () => {
-    getShots.mockResolvedValue(
-      listData([shot({ id: 1, badge: LEVER_BADGE, warnings: LEVER_WARNINGS })]),
-    );
+    getShots.mockResolvedValue(listData([withChecks()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    const badge = screen.getByTestId("review-badge");
+    const badge = screen.getByTestId("check-badge");
     expect(badge).toHaveTextContent("ramp: fast flow +2");
-    expect(screen.getByTestId("review-badge-wrap").getAttribute("title")?.split("\n")).toHaveLength(
+    expect(screen.getByTestId("check-badge-wrap").getAttribute("title")?.split("\n")).toHaveLength(
       3,
     );
-    expect(screen.getByTestId("header-review")).toHaveTextContent("Review");
+    expect(screen.getByTestId("header-check")).toHaveTextContent("Curve check");
     expect(screen.queryByTestId("header-score")).not.toBeInTheDocument();
   });
 
-  it("leaves the cell empty for a shot with no warnings", async () => {
-    const unreadable = { state: "not_readable" } as const;
+  it("is on every shot, a discarded or quarantined one included, and leaves the cell empty for none", async () => {
     getShots.mockResolvedValue(
       listData([
-        shot({ id: 1, badge: null, warnings: [], reading: unreadable }),
-        shot({ id: 2, reading: unreadable }),
+        withChecks({ review: reviewBlock({ state: "not_reviewable" }) }),
+        shot({ id: 2, device_id: "000102", review: reviewBlock({ state: "not_reviewable" }) }),
       ]),
     );
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
+    expect(screen.getAllByTestId("check-badge")).toHaveLength(1);
+    // Nothing is in the Review column of a shot nobody can review.
     expect(screen.queryByTestId("review-badge")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("review-start")).not.toBeInTheDocument();
   });
 
-  it("sorts by the server's order, most severe first, and reverses on a second click", async () => {
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot()]));
+  it("is the deterministic checks only: a review beside it never changes it", async () => {
+    getShots.mockResolvedValue(
+      listData([
+        withChecks({
+          review: reviewBlock({
+            state: "reviewed",
+            verdict: "entries",
+            badge: "decline: unstable",
+            entries: [{ ...LEVER_WARNINGS[1], phase: "decline", fault: "unstable" }],
+          }),
+        }),
+      ]),
+    );
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
-    await user.click(screen.getByTestId("sort-review"));
 
-    await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "review", order: "desc" }),
-      ),
-    );
-    expect(screen.getByTestId("header-review")).toHaveAttribute("aria-sort", "descending");
-    await user.click(screen.getByTestId("sort-review"));
-    await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "review", order: "asc" }),
-      ),
-    );
+    expect(screen.getByTestId("check-badge")).toHaveTextContent("ramp: fast flow +2");
+    expect(screen.getByTestId("review-badge")).toHaveTextContent("decline: unstable");
+    expect(screen.getByTestId("check-badge")).not.toHaveTextContent("unstable");
+    expect(screen.getByTestId("review-badge")).not.toHaveTextContent("fast flow");
   });
 
-  it("pages by offset, never by cursor: the order is the server's, not the cursor's key", async () => {
-    // A cursor is only issued for started_at descending; Review's first click is
-    // descending too, so the sort alone must not choose keyset.
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot()], { total: 200, next_cursor: "abc" }));
+  it.each(["check", "review"] as const)(
+    "sorts by the server's %s order, most severe first, and reverses on a second click",
+    async (key) => {
+      const user = setupUser();
+      getShots.mockResolvedValue(listData([shot()]));
 
-    renderWithQueryClient(<ShotsPage />);
-    await listed();
-    await user.click(screen.getByTestId("sort-review"));
-    await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "review", order: "desc" }),
-      ),
-    );
+      renderWithQueryClient(<ShotsPage />);
+      await listed();
+      await user.click(screen.getByTestId(`sort-${key}`));
 
-    await user.click(await screen.findByRole("button", { name: "Load more" }));
-    await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "review", offset: 1 }),
-      ),
-    );
-    expect(getShots).not.toHaveBeenCalledWith(expect.objectContaining({ cursor: "abc" }));
-  });
+      await waitFor(() =>
+        expect(getShots).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: key, order: "desc" }),
+        ),
+      );
+      expect(screen.getByTestId(`header-${key}`)).toHaveAttribute("aria-sort", "descending");
+      await user.click(screen.getByTestId(`sort-${key}`));
+      await waitFor(() =>
+        expect(getShots).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: key, order: "asc" }),
+        ),
+      );
+    },
+  );
+
+  it.each(["check", "review"] as const)(
+    "pages by offset, never by cursor, when sorted by %s",
+    async (key) => {
+      // A cursor is only issued for started_at descending; the first click on a badge column is
+      // descending too, so the sort alone must not choose keyset.
+      const user = setupUser();
+      getShots.mockResolvedValue(listData([shot()], { total: 200, next_cursor: "abc" }));
+
+      renderWithQueryClient(<ShotsPage />);
+      await listed();
+      await user.click(screen.getByTestId(`sort-${key}`));
+      await waitFor(() =>
+        expect(getShots).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: key, order: "desc" }),
+        ),
+      );
+
+      await user.click(await screen.findByRole("button", { name: "Load more" }));
+      await waitFor(() =>
+        expect(getShots).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: key, offset: 1 }),
+        ),
+      );
+      expect(getShots).not.toHaveBeenCalledWith(expect.objectContaining({ cursor: "abc" }));
+    },
+  );
 
   it("does not open the row when the badge is clicked", async () => {
     const user = setupUser();
-    getShots.mockResolvedValue(
-      listData([shot({ id: 1, badge: LEVER_BADGE, warnings: LEVER_WARNINGS })]),
-    );
+    getShots.mockResolvedValue(listData([withChecks()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
-    await user.click(screen.getByTestId("review-badge"));
+    await user.click(screen.getByTestId("check-badge"));
 
     expect(screen.getByRole("button", { name: "Shot 000101" })).toHaveAttribute(
       "aria-expanded",
@@ -2244,7 +2306,7 @@ describe("ShotsPage compare drawer", () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
-        shot({ id: 1, badge: LEVER_BADGE, warnings: LEVER_WARNINGS }),
+        shot({ id: 1, checks: checksBlock({ badge: LEVER_BADGE, entries: LEVER_WARNINGS }) }),
         shot({ id: 2, device_id: "000102" }),
       ]),
     );
@@ -2255,8 +2317,8 @@ describe("ShotsPage compare drawer", () => {
     await user.click(screen.getByRole("checkbox", { name: "Compare shot 000102" }));
 
     const drawer = await screen.findByTestId("compare-drawer");
-    expect(within(drawer).getAllByTestId("review-badge")).toHaveLength(1);
-    expect(within(drawer).getByTestId("review-badge")).toHaveTextContent("ramp: fast flow +2");
+    expect(within(drawer).getAllByTestId("check-badge")).toHaveLength(1);
+    expect(within(drawer).getByTestId("check-badge")).toHaveTextContent("ramp: fast flow +2");
   });
 
   it("stops at three, because a fourth line makes the overlay unreadable", async () => {
@@ -3640,123 +3702,133 @@ describe("ShotsPage bar of Set conversations", () => {
   });
 });
 
-describe("ShotsPage Review badge as a button", () => {
-  function ShotProbe() {
-    const { pathname, hash } = useLocation();
-    return <p data-testid="shot-probe">{`${pathname}${hash}`}</p>;
-  }
-
-  function renderWithShotRoute() {
-    return renderWithQueryClient(
-      <Routes>
-        <Route path="/" element={<ShotsPage />} />
-        <Route path="/shots/:shotId" element={<ShotProbe />} />
-      </Routes>,
-    );
-  }
-
+describe("ShotsPage Review column", () => {
   beforeEach(() => {
     runReview.mockResolvedValue(review({ status: "running", finished_at: null }));
   });
 
-  it("starts one reading from an unread shot's badge, on a double click too, and never opens the row", async () => {
+  it("starts one review from a shot's Review button, on a double click too, and never opens the row", async () => {
     const user = setupUser();
-    getShots.mockResolvedValue(
-      listData([shot({ id: 1, device_id: "000101", badge: "Review", reading: readingBlock() })]),
-    );
-    renderWithShotRoute();
+    getShots.mockResolvedValue(listData([shot({ id: 1, device_id: "000101" })]));
+    renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    const button = screen.getByRole("button", { name: "Review" });
-    await user.dblClick(button);
+    await user.dblClick(screen.getByTestId("review-start"));
 
     await waitFor(() => expect(runReview).toHaveBeenCalledTimes(1));
     expect(runReview).toHaveBeenCalledWith(1, { model: undefined });
     expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Shot 000101" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
-  it("starts a new reading from a failed one", async () => {
+  it("shows Failed to run with a Retry button that starts a new review", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
         shot({
           id: 1,
-          badge: "Failed to run",
-          reading: readingBlock({ state: "failed", reason: "timed out" }),
+          review: reviewBlock({ state: "failed", badge: "Failed to run", reason: "timed out" }),
         }),
       ]),
     );
-    renderWithShotRoute();
+    renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    await user.click(screen.getByRole("button", { name: "Failed to run" }));
+    expect(screen.getByTestId("review-badge")).toHaveTextContent("Failed to run");
+    await user.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(runReview).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
   });
 
-  it("takes a read shot's badge to the Reading card, without a request and without opening the row", async () => {
+  it("opens the row when a reviewed badge is pressed, without a request, and keeps it open on a second press", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
         shot({
           id: 4,
-          badge: "As intended",
-          reading: readingBlock({ state: "read", verdict: "as_intended", review_id: 9 }),
+          device_id: "000104",
+          review: reviewBlock({
+            state: "reviewed",
+            verdict: "as_intended",
+            badge: "As intended",
+            review_id: 9,
+            in_force_id: 9,
+          }),
         }),
       ]),
     );
-    renderWithShotRoute();
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, id: 4 },
+      review: reviewBlock({ state: "reviewed", in_force_id: 9 }),
+      reviews: [review({ id: 9, shot_id: 4 })],
+    });
+    renderWithQueryClient(<ShotsPage />);
     await listed();
 
     await user.click(screen.getByRole("button", { name: "As intended" }));
 
-    expect(screen.getByTestId("shot-probe")).toHaveTextContent("/shots/4#review");
+    expect(await screen.findByTestId("shot-panel")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Shot 000104" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(runReview).not.toHaveBeenCalled();
+    // Pressing it again leaves the row open: the badge opens, it does not toggle.
+    await user.click(screen.getByRole("button", { name: "As intended" }));
+    expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
   });
 
-  it("is inert while a reading runs, and the row stays shut", async () => {
+  it("is inert while a review runs: a grey badge, no button, and the row stays shut", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
-      listData([shot({ id: 1, badge: "Reading…", reading: readingBlock({ state: "running" }) })]),
+      listData([
+        shot({
+          id: 1,
+          review: reviewBlock({ state: "running", badge: "Reviewing…" }),
+        }),
+      ]),
     );
-    renderWithShotRoute();
+    renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    const button = screen.getByRole("button", { name: "Reading…" });
-    expect(button).toHaveAttribute("aria-disabled", "true");
-    await user.click(button);
-    button.focus();
-    await user.keyboard("{Enter}");
-    await user.keyboard(" ");
+    const badge = screen.getByTestId("review-badge");
+    expect(badge).toHaveTextContent("Reviewing…");
+    expect(badge).toHaveAttribute("aria-disabled", "true");
+    expect(
+      within(screen.getByTestId("shot-rows")).queryByRole("button", { name: /review/i }),
+    ).toBeNull();
+    await user.click(badge);
 
     expect(runReview).not.toHaveBeenCalled();
     expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
   });
 
-  it("gives a discarded or quarantined shot no button", async () => {
+  it("has nothing at all in the cell of a discarded or quarantined shot", async () => {
     getShots.mockResolvedValue(
       listData([
         shot({
           id: 1,
           device_id: "000101",
-          badge: LEVER_BADGE,
-          warnings: LEVER_WARNINGS,
-          reading: readingBlock({ state: "not_readable" }),
+          checks: checksBlock({ badge: LEVER_BADGE, entries: LEVER_WARNINGS }),
+          review: reviewBlock({ state: "not_reviewable" }),
         }),
-        shot({ id: 2, device_id: "000102", reading: readingBlock({ state: "not_readable" }) }),
+        shot({ id: 2, device_id: "000102", review: reviewBlock({ state: "not_reviewable" }) }),
       ]),
     );
-    renderWithShotRoute();
+    renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    // The first still shows what is wrong with it; neither can be pressed.
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("ramp: fast flow +2");
-    expect(within(screen.getByTestId("shot-rows")).queryByTestId("review-badge-list")).toHaveClass(
-      "sr-only",
-    );
-    expect(
-      within(screen.getByTestId("shot-rows")).queryAllByRole("button", { name: /fast flow/ }),
-    ).toEqual([]);
+    const cells = screen
+      .getAllByTestId("shot-row")
+      .map((row) => row.querySelector('[data-column="review"]'));
+    for (const cell of cells) expect(cell).toBeEmptyDOMElement();
+    // The first still shows what is wrong with it, in the Curve check column.
+    expect(screen.getByTestId("check-badge")).toHaveTextContent("ramp: fast flow +2");
     expect(runReview).not.toHaveBeenCalled();
   });
 });

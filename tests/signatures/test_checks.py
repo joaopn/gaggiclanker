@@ -13,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.shots import REVIEW_SORT, ShotListItem, ShotsRepository
+from gaggiclanker.db.repos.shots import CHECK_SORT, ShotListItem, ShotsRepository
 from gaggiclanker.db.repos.signatures import ExpectationRow, SignatureRepository
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.shotinfo import load_shots
@@ -93,8 +93,8 @@ async def test_a_confirmed_lever_signature_makes_the_badge_red_and_names_the_fau
 
     row = await _row(db, lever.shot)
 
-    assert row.badge == "ramp: early yield +4"
-    assert [(w.phase, w.fault, w.severity, w.status, w.tier) for w in row.warnings] == [
+    assert row.checks.badge == "ramp: early yield +4"
+    assert [(w.phase, w.fault, w.severity, w.status, w.tier) for w in row.checks.entries] == [
         ("ramp", "early yield", "red", "failed", "critical"),
         ("decline", "skipped", "red", "failed", "critical"),
         ("soak", "early yield", "amber", "failed", "important"),
@@ -108,8 +108,8 @@ async def test_the_same_shot_with_no_confirmed_signature_reads_as_it_always_did(
 ) -> None:
     lever = await _lever(db)
     before = await _row(db, lever.shot)
-    assert before.badge == "ramp: fast flow +2"
-    assert {w.severity for w in before.warnings} == {"amber"}
+    assert before.checks.badge == "ramp: fast flow +2"
+    assert {w.severity for w in before.checks.entries} == {"amber"}
 
     # Proposed is not confirmed: the row, the badge and the order are what they were.
     await _propose(lever, confirm=False)
@@ -141,8 +141,8 @@ async def test_confirming_changes_every_shot_at_once_and_stores_nothing_on_a_sho
     ]
     await _propose(lever, confirm=True)
 
-    assert (await _row(db, lever.shot)).badge == "ramp: early yield +4"
-    assert (await _row(db, second)).badge == "ramp: early yield +4"
+    assert (await _row(db, lever.shot)).checks.badge == "ramp: early yield +4"
+    assert (await _row(db, second)).checks.badge == "ramp: early yield +4"
     assert stored == [
         tuple(r)
         for r in await db.fetch_all(
@@ -172,20 +172,24 @@ async def test_an_override_changes_only_its_own_set_versions_shots(db: Database)
         thread_id=None,
     )
     # Proposed: nothing moves.
-    assert (await _row(db, lever.shot)).badge == "ramp: early yield +4"
+    assert (await _row(db, lever.shot)).checks.badge == "ramp: early yield +4"
     await SignatureRepository(db).answer_override(override.id, confirm=True)
 
     mine, theirs = await _row(db, lever.shot), await _row(db, other_shot)
-    assert mine.badge == "decline: skipped +3"  # the ramp now holds at 1.3
-    assert theirs.badge == "ramp: early yield +4"  # the other version still reads the profile's
+    assert mine.checks.badge == "decline: skipped +3"  # the ramp now holds at 1.3
+    assert (
+        theirs.checks.badge == "ramp: early yield +4"
+    )  # the other version still reads the profile's
     # A rejected override changes nothing either.
     await SignatureRepository(db).answer_override(
         override.id, confirm=False
     )  # already answered: refused
-    assert (await _row(db, lever.shot)).badge == "decline: skipped +3"
+    assert (await _row(db, lever.shot)).checks.badge == "decline: skipped +3"
 
 
-async def test_the_review_sort_follows_the_badge_red_amber_grey_then_none(db: Database) -> None:
+async def test_the_curve_check_sort_follows_the_badge_red_amber_grey_then_none(
+    db: Database,
+) -> None:
     lever = await _lever(db)
     turbo_version = await _version(db, turbo_profile())
     turbo_set, _ = await make_set_versions(db, turbo_version, target=42.0)
@@ -216,23 +220,21 @@ async def test_the_review_sort_follows_the_badge_red_amber_grey_then_none(db: Da
     await SignatureRepository(db).confirm_all(turbo_version)
     repo = ShotsRepository(db)
 
-    before = await repo.list_shots(limit=10, sort=REVIEW_SORT, descending=True)
+    before = await repo.list_shots(limit=10, sort=CHECK_SORT, descending=True)
     # No signature yet: the lever's amber fast flow in the ramp, the turbo's amber fast flow in
     # the main phase (which the turbo signature already marks expected: grey), the no-scale
     # lever's amber fast flow and skipped.
     by_id = {row.id: row for row in before.items}
-    assert by_id[turbo].badge == "main: fast flow"
-    assert [w.severity for w in by_id[turbo].warnings] == ["grey"]
+    assert by_id[turbo].checks.badge == "main: fast flow"
+    assert [w.severity for w in by_id[turbo].checks.entries] == ["grey"]
     order = [row.id for row in before.items]
     assert order.index(turbo) > order.index(lever.shot)  # grey after amber
 
     await _propose(lever, confirm=True)
-    after = await repo.list_shots(limit=10, sort=REVIEW_SORT, descending=True)
+    after = await repo.list_shots(limit=10, sort=CHECK_SORT, descending=True)
     assert after.items[0].id in (lever.shot, no_scale)
     assert [row.id for row in after.items][-1] == turbo
-    assert (await repo.list_shots(limit=10, sort=REVIEW_SORT, descending=False)).items[
-        0
-    ].id == turbo
+    assert (await repo.list_shots(limit=10, sort=CHECK_SORT, descending=False)).items[0].id == turbo
 
 
 async def test_a_turbo_with_its_fast_flow_expected_shows_no_amber(db: Database) -> None:
@@ -245,7 +247,7 @@ async def test_a_turbo_with_its_fast_flow_expected_shows_no_amber(db: Database) 
         slog=turbo_shot(),
         profile=turbo_profile(),
     )
-    assert (await _row(db, shot)).warnings[0].severity == "amber"
+    assert (await _row(db, shot)).checks.entries[0].severity == "amber"
 
     await SignatureService(db).propose(
         version,
@@ -259,10 +261,13 @@ async def test_a_turbo_with_its_fast_flow_expected_shows_no_amber(db: Database) 
     await SignatureRepository(db).confirm_all(version)
 
     row = await _row(db, shot)
-    assert (row.badge, [w.severity for w in row.warnings]) == ("main: fast flow", ["grey"])
+    assert (row.checks.badge, [w.severity for w in row.checks.entries]) == (
+        "main: fast flow",
+        ["grey"],
+    )
     document = await shot_fields(db, shot)
     assert document is not None
-    assert [(c.status, c.color) for c in document.checks] == [("expected", "grey")]
+    assert [(c.status, c.color) for c in document.checks.items] == [("expected", "grey")]
 
 
 async def test_the_fields_serve_the_ordered_list_with_value_and_state(db: Database) -> None:
@@ -276,7 +281,7 @@ async def test_the_fields_serve_the_ordered_list_with_value_and_state(db: Databa
     document = await shot_fields(db, lever.shot)
     assert document is not None
     assert document.signature.text == "confirmed, 4 expectations"
-    first = document.checks[0]
+    first = document.checks.items[0]
     assert (first.kind, first.tier, first.status, first.color, first.fault) == (
         "measure",
         "critical",
@@ -290,10 +295,16 @@ async def test_the_fields_serve_the_ordered_list_with_value_and_state(db: Databa
     assert first.compare == {"op": "<=", "value": 0.15}
     assert (first.relative_to, first.limit_text) == ("target_yield", "at most 15 % of target")
     assert first.sentence.startswith("cup weight at the end of the ramp")
-    assert [c.status for c in document.checks][-1] == "unchecked"
-    assert document.badge == "ramp: early yield +4"
-    assert len(document.warnings) == 5
-    assert [w.severity for w in document.warnings] == ["red", "red", "amber", "amber", "amber"]
+    assert [c.status for c in document.checks.items][-1] == "unchecked"
+    assert document.checks.badge == "ramp: early yield +4"
+    assert len(document.checks.entries) == 5
+    assert [w.severity for w in document.checks.entries] == [
+        "red",
+        "red",
+        "amber",
+        "amber",
+        "amber",
+    ]
 
 
 # ── unconfirmed never teaches ────────────────────────────────────────
@@ -313,8 +324,8 @@ async def test_nothing_proposed_reaches_a_check_a_render_or_a_field(db: Database
     await SignatureRepository(db).answer(rows[0].id, confirm=False, reject_reason="no")
 
     [facts] = await load_shots(db, [lever.shot])
-    assert facts.shot_checks.state.confirmed == 0
-    assert [c.badge for c in facts.shot_checks.checks if c.in_badge] == [
+    assert facts.signature_checks.state.confirmed == 0
+    assert [c.badge for c in facts.signature_checks.checks if c.in_badge] == [
         "ramp: fast flow",
         "decline: skipped",
         "Shot: over target",
@@ -323,7 +334,7 @@ async def test_nothing_proposed_reaches_a_check_a_render_or_a_field(db: Database
         assert render_shot(facts, tier, default_tiers(), curve_points=60) == text  # type: ignore[arg-type]
         assert "early yield" not in text and "decline begins" not in text
     assert (await shot_fields(db, lever.shot)).model_dump() == plain_fields  # type: ignore[union-attr]
-    assert (await _row(db, lever.shot)).badge == "ramp: fast flow +2"
+    assert (await _row(db, lever.shot)).checks.badge == "ramp: fast flow +2"
 
 
 async def test_a_signature_shows_in_every_rendering_once_confirmed(db: Database) -> None:
@@ -339,7 +350,7 @@ async def test_a_signature_shows_in_every_rendering_once_confirmed(db: Database)
     assert "decline: skipped (red, critical): the decline begins; it never began." in base
     extended = render_shot(facts, "extended", tiers, curve_points=60)
     assert "pressure and flow fall together through the decline" in extended
-    assert "checked by the reading" in extended
+    assert "checked by the review" in extended
     assert "pressure and flow fall together" not in "\n".join(base)
 
 
@@ -359,11 +370,11 @@ async def test_a_shot_with_no_scale_is_not_measured_never_held_or_failed(db: Dat
 
     document = await shot_fields(db, shot)
     assert document is not None
-    cups = [c for c in document.checks if c.kind == "measure"]
+    cups = [c for c in document.checks.items if c.kind == "measure"]
     assert [(c.status, c.held, c.value) for c in cups] == [("unmeasured", None, None)] * 2
     assert all("scale" in (c.absent or "") for c in cups)
     # Nothing unmeasured is in the badge.
-    assert all(c.kind != "measure" for c in document.checks if c.color is not None)
+    assert all(c.kind != "measure" for c in document.checks.items if c.color is not None)
 
 
 async def test_a_shot_with_no_pressure_sensor_cannot_fail_a_flow_or_pressure_expectation(
@@ -413,7 +424,7 @@ async def test_a_shot_with_no_pressure_sensor_cannot_fail_a_flow_or_pressure_exp
 
     document = await shot_fields(db, shot)
     assert document is not None
-    measures = [c for c in document.checks if c.kind == "measure"]
+    measures = [c for c in document.checks.items if c.kind == "measure"]
     assert [c.status for c in measures] == ["unmeasured", "unmeasured"]
     assert all("pressure sensor" in (c.absent or "") for c in measures)
 
@@ -431,16 +442,16 @@ async def test_the_shot_routes_serve_the_same_checks(
     listed = (await client.get("/api/shots?sort=review")).json()["data"]
     row = next(item for item in listed["items"] if item["id"] == lever.shot)
 
-    assert fields["badge"] == row["badge"] == "ramp: early yield +4"
-    assert fields["warnings"] == row["warnings"]
+    assert fields["checks"]["badge"] == row["checks"]["badge"] == "ramp: early yield +4"
+    assert fields["checks"]["entries"] == row["checks"]["entries"]
     assert fields["signature"] == {
         "profile_version_id": lever.version,
         "confirmed": 4,
         "text": "confirmed, 4 expectations",
     }
-    first = fields["checks"][0]
+    first = fields["checks"]["items"][0]
     assert first["fault"] == "early yield" and first["color"] == "red"
-    assert json.dumps(fields["warnings"][0]).count("severity") == 1
+    assert json.dumps(fields["checks"]["entries"][0]).count("severity") == 1
 
 
 async def test_a_signature_of_only_reached_and_expects_warning_reads_through_the_database(
@@ -461,13 +472,13 @@ async def test_a_signature_of_only_reached_and_expects_warning_reads_through_the
     row = await _row(db, lever.shot)
     # The ramp began (held, so nothing on the badge), and the skipped decline is by design: grey,
     # after the warnings nothing marks as expected.
-    assert [(w.fault, w.severity, w.status) for w in row.warnings] == [
+    assert [(w.fault, w.severity, w.status) for w in row.checks.entries] == [
         ("fast flow", "amber", "warning"),
         ("over target", "amber", "warning"),
         ("skipped", "grey", "expected"),
     ]
-    assert row.badge == "ramp: fast flow +2"
+    assert row.checks.badge == "ramp: fast flow +2"
     document = await shot_fields(db, lever.shot)
     assert document is not None
-    reached = next(c for c in document.checks if c.kind == "reached")
+    reached = next(c for c in document.checks.items if c.kind == "reached")
     assert (reached.status, reached.held, reached.value) == ("held", True, None)

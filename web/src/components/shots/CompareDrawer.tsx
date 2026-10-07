@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import type { ShotListRow } from "@/api/types";
-import { ReviewBadge } from "@/components/shots/ReviewBadge";
+import { CheckBadge } from "@/components/shots/CheckBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShotSamples } from "@/hooks/useArchive";
@@ -89,12 +89,7 @@ export function CompareDrawer({
                 {formatTime(shot.started_at)} · {formatSeconds(shot.duration_ms)} ·{" "}
                 {formatGrams(shot.volume_g)}
               </span>
-              <ReviewBadge
-                badge={shot.badge}
-                warnings={shot.warnings}
-                reading={shot.reading}
-                className="max-w-48"
-              />
+              <CheckBadge checks={shot.checks} className="max-w-48" />
               <button
                 type="button"
                 onClick={() => onRemove(shot.id)}

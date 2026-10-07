@@ -4182,6 +4182,16 @@ export interface components {
             value: number | null;
         };
         /**
+         * ChecksBlock
+         * @description The Curve check of a shot: only the deterministic checks and warnings.
+         */
+        ChecksBlock: {
+            /** Badge */
+            badge?: string | null;
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+        };
+        /**
          * ChunkHit
          * @description One search result: the chunk, its BM25 score and a quotable snippet.
          */
@@ -4750,6 +4760,35 @@ export interface components {
             notes: string;
         };
         /**
+         * EntryOut
+         * @description One entry of a badge: a fault, as the lists, the detail and the fields serve it.
+         */
+        EntryOut: {
+            /** At S */
+            at_s: number;
+            /** Claim Id */
+            claim_id?: number | null;
+            /** Detail */
+            detail: string;
+            /** Expectation Id */
+            expectation_id?: number | null;
+            /** Fault */
+            fault: string;
+            /** Phase */
+            phase: string;
+            /** Phase Number */
+            phase_number: number | null;
+            /** Severity */
+            severity: string;
+            /**
+             * Status
+             * @default warning
+             */
+            status: string;
+            /** Tier */
+            tier?: string | null;
+        };
+        /**
          * EvaluateBody
          * @description `POST /api/shots/{id}/evaluate`: up to 50 expressions of the metric language.
          *
@@ -4936,6 +4975,22 @@ export interface components {
             label: string;
         };
         /**
+         * FieldChecks
+         * @description The Curve check of a shot with every check behind it.
+         *
+         *     ``badge`` and ``entries`` are what the shots list serves; ``items`` is the whole ordered
+         *     list, the held and the unmeasured and the free-text ones too (a free-text expectation is
+         *     "checked by the review": the review's own claims say how it came out).
+         */
+        FieldChecks: {
+            /** Badge */
+            badge?: string | null;
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+            /** Items */
+            items: components["schemas"]["CheckOut"][];
+        };
+        /**
          * FieldOut
          * @description One item's value on the shot (or on one of its phases).
          */
@@ -5034,7 +5089,7 @@ export interface components {
             ok: boolean;
         };
         /** @enum {string} */
-        gaggiclanker__review__reading__Verdict: "entries" | "as_intended" | "no_signature";
+        gaggiclanker__review__reading__Verdict: "entries" | "as_intended" | "no_faults";
         /** GrinderListData */
         GrinderListData: {
             /** Items */
@@ -6491,26 +6546,6 @@ export interface components {
             stopped: boolean;
         };
         /**
-         * ReadingBlock
-         * @description The ``reading`` block of a shot, as the list, the detail and the fields serve it.
-         */
-        ReadingBlock: {
-            /** Finished At */
-            finished_at?: string | null;
-            /** In Force Id */
-            in_force_id?: number | null;
-            /** Reason */
-            reason?: string | null;
-            /** Review Id */
-            review_id?: number | null;
-            state: components["schemas"]["ReadingState"];
-            /** Summary */
-            summary?: string | null;
-            verdict?: components["schemas"]["gaggiclanker__review__reading__Verdict"] | null;
-        };
-        /** @enum {string} */
-        ReadingState: "not_readable" | "unread" | "running" | "failed" | "read";
-        /**
          * RejectBody
          * @description `POST .../reject`: an optional one-line reason, which the proposing conversation is told.
          */
@@ -6596,6 +6631,26 @@ export interface components {
              */
             star: number;
         };
+        /**
+         * ReviewBlock
+         * @description The review of a shot: what the model wrote, and whether there is one.
+         */
+        ReviewBlock: {
+            /** Badge */
+            badge?: string | null;
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+            /** In Force Id */
+            in_force_id?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /** Review Id */
+            review_id?: number | null;
+            state: components["schemas"]["ReviewState"];
+            /** Summary */
+            summary?: string | null;
+            verdict?: components["schemas"]["gaggiclanker__review__reading__Verdict"] | null;
+        };
         /** @enum {string} */
         ReviewClaimKind: "claim" | "free_text" | "prediction";
         /**
@@ -6665,6 +6720,8 @@ export interface components {
              */
             model: string;
         };
+        /** @enum {string} */
+        ReviewState: "not_reviewable" | "unreviewed" | "running" | "failed" | "reviewed";
         /** @enum {string} */
         ReviewStatus: "running" | "ok" | "failed" | "interrupted";
         /** @enum {string} */
@@ -7603,9 +7660,10 @@ export interface components {
          *     a disagreement between them visible.
          */
         ShotDetailData: {
+            checks: components["schemas"]["ChecksBlock"];
             judgement?: components["schemas"]["ShotJudgementRow"] | null;
             notes?: components["schemas"]["DeviceShotNotesRow"] | null;
-            reading: components["schemas"]["ReadingBlock"];
+            review: components["schemas"]["ReviewBlock"];
             /** Reviews */
             reviews?: components["schemas"]["ShotReviewRow"][];
             set_version?: components["schemas"]["SetVersionRow"] | null;
@@ -7746,13 +7804,10 @@ export interface components {
          * @description `GET /api/shots/{id}/fields`.
          */
         ShotFields: {
-            /** Badge */
-            badge: string | null;
-            /** Checks */
-            checks: components["schemas"]["CheckOut"][];
+            checks: components["schemas"]["FieldChecks"];
             /** Phases */
             phases: components["schemas"]["PhaseFields"][];
-            reading: components["schemas"]["ReadingBlock"];
+            review: components["schemas"]["ReviewBlock"];
             /** Shot */
             shot: components["schemas"]["FieldOut"][];
             /** Shot Id */
@@ -7760,8 +7815,6 @@ export interface components {
             signature: components["schemas"]["SignatureStateOut"];
             /** Target Yield G */
             target_yield_g: number | null;
-            /** Warnings */
-            warnings: components["schemas"]["WarningOut"][];
             /** Yield Share Pct */
             yield_share_pct: number | null;
         };
@@ -7868,16 +7921,16 @@ export interface components {
         };
         /**
          * ShotListItem
-         * @description A row of the shots list: the line, and what is plainly wrong with the shot.
+         * @description A row of the shots list: the line, its Curve check and its review.
          *
-         *     The warnings depend on the version the shot is filed under (its target
-         *     yield) and on its profile version's **confirmed** signature, so they are worked out
-         *     when the row is read and never stored: a shot refiled or discarded, or a
-         *     signature confirmed, needs no re-derivation. The most severe comes first.
+         *     Both depend on the version the shot is filed under (its target yield), on its profile
+         *     version's **confirmed** signature and on the review in force, so they are worked out when the
+         *     row is read and never stored: a shot refiled or discarded, a signature confirmed or a claim
+         *     rejected needs no re-derivation. The Curve check is the deterministic checks and warnings only
+         *     and never changes with a review; the review is what the model wrote.
          */
         ShotListItem: {
-            /** Badge */
-            badge?: string | null;
+            checks: components["schemas"]["ChecksBlock"];
             /**
              * Deleted On Device
              * @default false
@@ -7945,7 +7998,7 @@ export interface components {
             quarantined: boolean;
             /** Rating */
             rating?: number | null;
-            reading: components["schemas"]["ReadingBlock"];
+            review: components["schemas"]["ReviewBlock"];
             /**
              * Sample Count
              * @default 0
@@ -7975,8 +8028,6 @@ export interface components {
             synced_at: string;
             /** Volume G */
             volume_g?: number | null;
-            /** Warnings */
-            warnings?: components["schemas"]["ShotWarningRow"][];
         };
         /**
          * ShotReviewDetail
@@ -8161,33 +8212,6 @@ export interface components {
             version_label: string;
         };
         /**
-         * ShotWarningRow
-         * @description One entry of a listed shot's badge: a failed expectation or a warning, red, amber or grey.
-         */
-        ShotWarningRow: {
-            /** At S */
-            at_s: number;
-            /** Detail */
-            detail: string;
-            /** Expectation Id */
-            expectation_id?: number | null;
-            /** Fault */
-            fault: string;
-            /** Phase */
-            phase: string;
-            /** Phase Number */
-            phase_number: number | null;
-            /** Severity */
-            severity: string;
-            /**
-             * Status
-             * @default warning
-             */
-            status: string;
-            /** Tier */
-            tier?: string | null;
-        };
-        /**
          * SignatureAnswer
          * @description What answering one expectation, or all that wait, did, and the signature as it now stands.
          */
@@ -8351,7 +8375,7 @@ export interface components {
         /** @enum {string} */
         SkipReason: "gone" | "not_confirmed" | "scope_changed" | "replaced_gone";
         /** @enum {string} */
-        SortKey: "started_at" | "duration" | "rating" | "review";
+        SortKey: "started_at" | "duration" | "rating" | "check" | "review";
         /** @enum {string} */
         SpreadMeasure: "shot_time_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "brew_flow_ml_s" | "rating";
         /** StarredBody */
@@ -8898,33 +8922,6 @@ export interface components {
             step_units: components["schemas"]["Term"][];
             /** Version Outcomes */
             version_outcomes: components["schemas"]["Term"][];
-        };
-        /**
-         * WarningOut
-         * @description One entry of the badge: a failed critical or important expectation, or a warning.
-         */
-        WarningOut: {
-            /** At S */
-            at_s: number;
-            /** Detail */
-            detail: string;
-            /** Expectation Id */
-            expectation_id?: number | null;
-            /** Fault */
-            fault: string;
-            /** Phase */
-            phase: string;
-            /** Phase Number */
-            phase_number: number | null;
-            /** Severity */
-            severity: string;
-            /**
-             * Status
-             * @default warning
-             */
-            status: string;
-            /** Tier */
-            tier?: string | null;
         };
         /** WindowOut */
         WindowOut: {

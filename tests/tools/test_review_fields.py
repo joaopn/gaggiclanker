@@ -250,6 +250,60 @@ async def test_a_claim_the_numbers_do_not_bear_out_says_so_to_the_chat(
     assert "(the numbers do not bear this out)" in text
 
 
+async def test_a_claim_the_numbers_do_not_bear_out_still_reaches_the_chat(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """Left out of the badge, not out of what the model is told (unless it is rejected)."""
+    shot = archive.shots[-1]
+    claims = [
+        ClaimWrite(
+            kind="claim",
+            text=CLAIM,
+            fault="early yield",
+            evidence=[_evidence(None)],
+            supported=False,
+        )
+    ]
+    review_id = await _reading(archive.db, shot, claims=claims)
+    text = (await call(ctx, "get_shot", shot_id=shot))["text"]
+    assert CLAIM in text and "(the numbers do not bear this out)" in text
+
+    await _answer(archive.db, review_id, 0, keep=False)
+    assert CLAIM not in (await call(ctx, "get_shot", shot_id=shot))["text"]
+
+
+async def test_the_structured_claims_value_and_the_fields_route_never_carry_a_rejected_claim(
+    archive: Fixture,
+) -> None:
+    """The accessor behind `review_claims` (the structured value) filters like the text does, and
+    `/fields` never serves a rejected one (its review block names the kept claims only)."""
+    from gaggiclanker.shotinfo import ITEMS
+    from gaggiclanker.shotinfo.fields import shot_fields
+    from gaggiclanker.shotinfo.render import load_shots
+
+    shot = archive.shots[-1]
+    claims = [
+        ClaimWrite(kind="claim", text=CLAIM, fault="early yield"),
+        ClaimWrite(kind="claim", text=OTHER_CLAIM, fault="unstable"),
+        ClaimWrite(kind="free_text", expectation_id=1, held=True, text=ANSWER),
+    ]
+    review_id = await _reading(archive.db, shot, claims=claims)
+    await _answer(archive.db, review_id, 1, keep=False)
+    await _answer(archive.db, review_id, 2, keep=False)
+
+    (facts,) = await load_shots(archive.db, [shot])
+    found = ITEMS["review_claims"].field(facts)
+    assert found is not None
+    assert [entry["text"] for entry in found.value] == [CLAIM]  # type: ignore[union-attr,index]
+    assert OTHER_CLAIM not in json.dumps(found.value) and ANSWER not in json.dumps(found.value)
+
+    fields = await shot_fields(archive.db, shot)
+    assert fields is not None
+    served = json.dumps(fields.model_dump(mode="json"))
+    assert OTHER_CLAIM not in served and ANSWER not in served
+    assert "review_claims" not in {item.name for item in fields.shot}
+
+
 async def test_the_newest_finished_review_is_the_one_shown(
     ctx: ToolContext, archive: Fixture
 ) -> None:
@@ -269,9 +323,11 @@ async def test_the_newest_finished_review_is_the_one_shown(
     )
 
 
-async def test_a_free_text_answer_counts_in_the_chat_s_checks_unless_rejected(
+async def test_a_free_text_answer_is_a_review_claim_and_never_part_of_the_checks(
     ctx: ToolContext, archive: Fixture
 ) -> None:
+    """The Checks group is deterministic; the review's answer to a free-text expectation is a line
+    of the Review group while nobody rejects it."""
     shot = archive.shots[-1]
     expectation = await confirm_free_text(archive)
     claims = [
@@ -290,14 +346,20 @@ async def test_a_free_text_answer_counts_in_the_chat_s_checks_unless_rejected(
     review_id = await _reading(archive.db, shot, claims=claims)
 
     kept = (await call(ctx, "get_shot", shot_id=shot))["text"]
-    assert "Pressurise: unstable (red, critical)" in kept
     assert ANSWER in kept
+    assert "failed (unstable)" in kept
     assert "1 claim kept" in kept
+    # The checks do not change: no failure is merged into them.
+    assert "Pressurise: unstable (red, critical)" not in kept
+    extended = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
+    assert "checked by the review" in extended
+    assert ANSWER not in extended
 
-    # Rejecting it takes it back out of the checks.
+    # Rejecting it takes it out of the chat altogether.
     await _answer(archive.db, review_id, 0, keep=False)
-    rejected = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
-    assert ANSWER not in rejected and "Pressurise: unstable (red, critical)" not in rejected
+    rejected = (await call(ctx, "get_shot", shot_id=shot))["text"]
+    assert ANSWER not in rejected and "1 claim kept" not in rejected
+    assert "0 claims kept, 1 rejected" in rejected
 
 
 async def test_the_set_chat_s_opening_context_holds_every_claim_not_rejected(
@@ -469,7 +531,6 @@ async def test_a_newer_review_that_did_not_finish_hides_nothing_of_the_one_in_fo
         text = (await call(tool_context, tool, shot_id=shot))["text"]
         assert "2 claims kept, 1 rejected" in text, (status, tool)
         assert CLAIM in text and ANSWER in text, (status, tool)
-        assert "Pressurise: unstable (red, critical)" in text, (status, tool)
         assert OTHER_CLAIM not in text and SUMMARY not in text, (status, tool)
     context = await opening_context(archive.db, ToolScope.for_thread(archive.set_id))
     assert CLAIM in context and OTHER_CLAIM not in context

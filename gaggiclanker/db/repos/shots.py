@@ -24,13 +24,14 @@ from gaggiclanker.db.repos.base import JsonList, JsonObject, JsonText, utc_now
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
-from gaggiclanker.domain.signature import ShotChecks
+from gaggiclanker.domain.signature import ShotChecks, check_key
 from gaggiclanker.domain.vocab import Decision
 from gaggiclanker.domain.warnings import shot_warnings
-from gaggiclanker.review.reading import ReadingBlock, Served, review_key, serve_reading
+from gaggiclanker.review.reading import ChecksBlock, ReviewBlock, Served, review_key, serve_review
 from gaggiclanker.signatures.checks import CheckSubject, checks_for_shots
 
 __all__ = [
+    "CHECK_SORT",
     "REVIEW_SORT",
     "SAMPLE_FIELDS",
     "ExampleShotRow",
@@ -45,7 +46,6 @@ __all__ = [
     "ShotSampleRow",
     "ShotSetBadge",
     "ShotState",
-    "ShotWarningRow",
     "ShotsRepository",
 ]
 
@@ -275,48 +275,20 @@ class ShotListRow(BaseModel):
         return payload
 
 
-class ShotWarningRow(BaseModel):
-    """One entry of a listed shot's badge: a failed expectation or a warning, red, amber or grey."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    #: The shot's own phase name, or ``Shot`` for a fault of the whole shot.
-    phase: str
-    fault: str
-    #: ``red`` (a failed critical expectation), ``amber`` (a failed important one, or a universal
-    #: warning nothing marks as expected) or ``grey`` (a warning the signature expects).
-    severity: str
-    detail: str
-    phase_number: int | None
-    at_s: float
-    #: The tier of the expectation behind it (``critical``, ``important``, ``context``), or
-    #: ``None`` for a universal warning nothing marks as expected.
-    tier: str | None = None
-    #: ``failed`` (an expectation), ``warning`` (a universal one) or ``expected`` (one the
-    #: signature says is part of the design: grey).
-    status: str = "warning"
-    expectation_id: int | None = None
-
-
 class ShotListItem(ShotListRow):
-    """A row of the shots list: the line, and what is plainly wrong with the shot.
+    """A row of the shots list: the line, its Curve check and its review.
 
-    The warnings depend on the version the shot is filed under (its target
-    yield) and on its profile version's **confirmed** signature, so they are worked out
-    when the row is read and never stored: a shot refiled or discarded, or a
-    signature confirmed, needs no re-derivation. The most severe comes first.
+    Both depend on the version the shot is filed under (its target yield), on its profile
+    version's **confirmed** signature and on the review in force, so they are worked out when the
+    row is read and never stored: a shot refiled or discarded, a signature confirmed or a claim
+    rejected needs no re-derivation. The Curve check is the deterministic checks and warnings only
+    and never changes with a review; the review is what the model wrote.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    warnings: list[ShotWarningRow] = Field(default_factory=list)
-    #: The Review column's text, built by code (``ramp: early yield +1``, ``Review``,
-    #: ``Reading…``, ``Failed to run``, ``As intended``, ``No signature``); ``None`` for a shot
-    #: nobody can read and nothing is wrong with.
-    badge: str | None = None
-    #: Whether the shot was read and how far the person has confirmed what it said. Worked out
-    #: when the row is read, like the warnings.
-    reading: ReadingBlock
+    checks: ChecksBlock
+    review: ReviewBlock
 
 
 class ShotDetailRow(ShotListRow):
@@ -473,9 +445,10 @@ _ORDER_KEY = "COALESCE(s.started_at, '')"
 #: What "the rating" means when something has to pick one number.
 _RATING_KEY = "COALESCE(j.rating, n.rating, s.index_rating)"
 
-#: The Review column's sort. Not a column: the order is the badge's, which is
-#: worked out from the stored derivation and the filed version's target when the
-#: list is read (`_review_sorted_ids`), so its entry below names no SQL.
+#: The Curve check and Review columns' sorts. Not columns: the order is the badge's, which is
+#: worked out from the stored derivation, the filed version's target and the review in force
+#: when the list is read (`_badge_sorted_ids`), so their entries below name no SQL.
+CHECK_SORT = "check"
 REVIEW_SORT = "review"
 
 #: What a shot's checks are worked out from, per shot: the numbers `shot_warnings` reads, the
@@ -496,6 +469,7 @@ _REVIEW_COLUMNS = """
 """
 
 SORT_KEYS: dict[str, str] = {
+    CHECK_SORT: "",
     REVIEW_SORT: "",
     "started_at": _ORDER_KEY,
     "duration": "s.duration_ms",
@@ -1105,12 +1079,12 @@ class ShotsRepository(Repository):
             params,
         )
 
-        if sort == REVIEW_SORT:
-            ordered = await self._review_sorted_ids(filters, params, descending)
+        if sort in (CHECK_SORT, REVIEW_SORT):
+            ordered = await self._badge_sorted_ids(filters, params, descending, by=sort)
             wanted = ordered[offset or 0 :][:limit]
             page_rows = await self._list_rows_by_id(wanted)
             return ShotPage(
-                items=await self._with_warnings(page_rows), total=int(total or 0), next_cursor=None
+                items=await self._with_checks(page_rows), total=int(total or 0), next_cursor=None
             )
 
         page_params = list(params)
@@ -1130,7 +1104,7 @@ class ShotsRepository(Repository):
             """,
             [*page_params, limit, offset or 0],
         )
-        items = await self._with_warnings(self.to_models(ShotListRow, rows))
+        items = await self._with_checks(self.to_models(ShotListRow, rows))
         # A cursor is only meaningful for the default sort walked forwards:
         # handing one back to a caller paging by `offset`, or sorting by another key,
         # would let it mix two orderings and skip rows.
@@ -1154,25 +1128,25 @@ class ShotsRepository(Repository):
         return [found[shot_id] for shot_id in shot_ids if shot_id in found]
 
     async def served(self, shot_ids: Sequence[int]) -> dict[int, Served]:
-        """These shots as the person reads them: merged checks, reading block and badge."""
+        """These shots as the person reads them: the Curve check and the review."""
         if not shot_ids:
             return {}
         marks = ", ".join("?" * len(shot_ids))
         return await self._served_for(f"s.id IN ({marks})", list(shot_ids))
 
     async def _served_for(self, where_sql: str, params: Sequence[Any]) -> dict[int, Served]:
-        """Every shot the condition selects, as the person reads it: checks, reading, badge.
+        """Every shot the condition selects, as the person reads it: Curve check and review.
 
-        The checks are the universal warnings merged with the results of the **confirmed**
+        The Curve check is the universal warnings merged with the results of the **confirmed**
         signature of the profile version each shot brewed (and its Set version's confirmed
-        override), then with the reading's answers to the free-text expectations. Nothing
-        proposed or rejected in a signature is ever read here.
+        override); nothing proposed or rejected in a signature is ever read here. The review is
+        the one in force, beside it and never mixed into it.
         """
-        checks, readable = await self._checks_for(where_sql, params)
+        checks, reviewable = await self._checks_for(where_sql, params)
         readings = await ShotReviewsRepository(self.db).readings_for_shots(list(checks))
         return {
-            shot_id: serve_reading(
-                found, readings.get(shot_id), readable=readable.get(shot_id, True)
+            shot_id: serve_review(
+                found, readings.get(shot_id), reviewable=reviewable.get(shot_id, True)
             )
             for shot_id, found in checks.items()
         }
@@ -1180,17 +1154,17 @@ class ShotsRepository(Repository):
     async def _checks_for(
         self, where_sql: str, params: Sequence[Any]
     ) -> tuple[dict[int, ShotChecks], dict[int, bool]]:
-        """The signature checks of every shot the condition selects, and whether it may be read.
+        """The signature checks of every shot the condition selects, and whether it may be reviewed.
 
-        A shot nobody can read is one whose bytes never parsed or that was labelled Discard.
+        A shot nobody can review is one whose bytes never parsed or that was labelled Discard.
         """
         rows = await self.db.fetch_all(
             f"SELECT {_REVIEW_COLUMNS} {_LIST_FROM} WHERE {where_sql}", list(params)
         )
         subjects: list[CheckSubject] = []
-        readable: dict[int, bool] = {}
+        reviewable: dict[int, bool] = {}
         for row in rows:
-            readable[int(row["id"])] = (
+            reviewable[int(row["id"])] = (
                 not row["quarantined"] and row["judgement_decision"] != "discard"
             )
             target = row["target_yield_g"]
@@ -1226,10 +1200,10 @@ class ShotsRepository(Repository):
                     revision=str(row["updated_at"]),
                 )
             )
-        return await checks_for_shots(self.db, subjects), readable
+        return await checks_for_shots(self.db, subjects), reviewable
 
-    async def _with_warnings(self, rows: Sequence[ShotListRow]) -> list[ShotListItem]:
-        """The page's rows with their warnings, badge and reading, which are read, not stored."""
+    async def _with_checks(self, rows: Sequence[ShotListRow]) -> list[ShotListItem]:
+        """The page's rows with their Curve check and review, which are read, not stored."""
         if not rows:
             return []
         placeholders = ", ".join("?" * len(rows))
@@ -1243,28 +1217,27 @@ class ShotsRepository(Repository):
                 ShotListItem.model_validate(
                     {
                         **row.model_dump(),
-                        "warnings": [entry.as_dict() for entry in found.entries],
-                        "badge": found.badge,
-                        "reading": found.block,
+                        "checks": found.checks_block,
+                        "review": found.review,
                     }
                 )
             )
         return items
 
-    async def _review_sorted_ids(
-        self, filters: str, params: Sequence[Any], descending: bool
+    async def _badge_sorted_ids(
+        self, filters: str, params: Sequence[Any], descending: bool, *, by: str
     ) -> list[int]:
-        """Every matching shot's id in the Review column's order.
+        """Every matching shot's id in the Curve check column's or the Review column's order.
 
-        Descending is the interesting end, as for every other column. The key is
-        the shot's own first badge entry, the one its badge names, so what the column
-        shows and how it sorts cannot disagree: a failed critical expectation first,
-        then a failed important one, an unexpected warning, an expected one, then a
-        phase's entry before a whole-shot one and the earlier in the shot. Shots with
-        no entry follow, work to do above work done: ``Failed to run``, ``Reading…``,
-        ``No signature``, unread, ``As intended``, and last the shots nobody can read.
-        Shots with the same key come newest first (by start time, then id), which
-        makes the key total. Ascending is the exact reverse of all of it.
+        Descending is the interesting end, as for every other column. What a column shows is what
+        it sorts by, so the two cannot disagree. **Curve check:** the shot's first badge entry, the
+        one its badge names: a failed critical expectation first, then a failed important one, an
+        unexpected warning, an expected one, then a phase's entry before a whole-shot one and the
+        earlier in the shot; shots with none last. **Review:** a reviewed shot's first fault by the
+        same rule, then, work to do above work done, ``Failed to run``, ``Reviewing…``, ``No
+        faults``, shots not reviewed, ``As intended``, and last the shots nobody can review. In
+        both, shots with the same key come newest first (by start time, then id), which makes the
+        key total, and ascending is the exact reverse of all of it.
         """
         served = await self._served_for(filters, params)
         started = {
@@ -1276,7 +1249,10 @@ class ShotsRepository(Repository):
         }
         # Two stable passes: newest first, then by the key.
         newest_first = sorted(served, key=lambda sid: (started.get(sid, ""), sid), reverse=True)
-        ordered = sorted(newest_first, key=lambda sid: review_key(served[sid]))
+        if by == CHECK_SORT:
+            ordered = sorted(newest_first, key=lambda sid: check_key(served[sid].checks))
+        else:
+            ordered = sorted(newest_first, key=lambda sid: review_key(served[sid]))
         return ordered if descending else ordered[::-1]
 
 

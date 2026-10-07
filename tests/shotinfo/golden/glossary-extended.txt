@@ -2,7 +2,7 @@ SHOT FIELDS, EXTENDED
 The meanings of the extended fields, sent once in the conversation, with a shot read in detail. The preamble and group notes of the SHOT FIELDS section of the system prompt apply to them too.
 
 [Checks]
-- Held checks [extended]: The expectations of the confirmed signature that held on this shot, the context expectations whatever they came to (they inform and never raise the badge), and the free-text ones, which only the per-shot reading checks and are never decided by a number. Said only when there is something to say.
+- Held checks [extended]: The expectations of the confirmed signature that held on this shot, the context expectations whatever they came to (they inform and never raise the badge), and the free-text ones, which only the review answers (see the Review group) and are never decided by a number. Said only when there is something to say.
 
 [Outcome]
 - Yield against target [extended]: The yield as a share of the target yield of the version the shot is filed under, in %. Worked out when the shot is read: refile the shot and it moves. Needs a scale and a version with a target.

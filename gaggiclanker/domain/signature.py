@@ -12,7 +12,7 @@ profile names (or none, for the whole shot) and one of four kinds:
   on a turbo's main phase), so on a shot that raises it the warning is shown as
   expected and the expectation holds;
 * ``free_text``: what no expression says; never checked here (the per-shot
-  reading is what reads it), shown apart as "checked by the reading".
+  review is what reads it), shown apart as "checked by the review".
 
 This module is pure. It holds the fault-word table (what a measure's channel and
 the direction it failed *mean*), the validation a proposal passes, and the one
@@ -76,6 +76,7 @@ __all__ = [
     "SignatureState",
     "ValidExpectation",
     "build_checks",
+    "check_key",
     "expectation_line",
     "fault_for_failure",
     "fault_words",
@@ -621,6 +622,20 @@ class ShotChecks:
         return build_checks(warnings=warnings, expectations=[], override=None, data=None)
 
 
+def check_key(checks: ShotChecks) -> tuple[int, tuple[int, bool, float, int]]:
+    """What the shots table's Curve check column sorts by: the order of the badge's own entry.
+
+    A shot with a badge sorts by its first entry, the one the badge names: its group (red,
+    amber, an unexpected warning, an expected one), a phase's before a whole-shot one, then
+    the time in the shot. A shot with none sorts after every shot that has one. Smaller is
+    worse. Shots with an equal key are put newest first by the caller (`ShotsRepository`).
+    """
+    entries = checks.badge_entries
+    if not entries:
+        return (1, (0, False, 0.0, 0))
+    return (0, entries[0].order())
+
+
 def _warning_check(warning: ShotWarning, *, expected_by: ExpectationLike | None) -> Check:
     if expected_by is None:
         rank, tier = 2, None
@@ -821,7 +836,7 @@ def build_checks(
                     phase_number=number,
                     fault=exp.fault,
                     sentence=exp.sentence,
-                    detail=f"{exp.sentence} (checked by the reading, not by a number).",
+                    detail=f"{exp.sentence} (checked by the review, not by a number).",
                     value=None,
                     unit="",
                     held=None,
@@ -988,7 +1003,7 @@ def _fault_phrase(exp: ExpectationLike) -> str:
         ]
         return "fails as " + " or ".join(found)
     if exp.kind == "free_text":
-        return f"checked by the reading, fails as {exp.fault}"
+        return f"checked by the review, fails as {exp.fault}"
     return f"fails as {exp.fault}"
 
 

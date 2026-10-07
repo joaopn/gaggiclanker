@@ -9,7 +9,7 @@ import pytest
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
-from gaggiclanker.db.repos.shots import REVIEW_SORT, ShotsRepository
+from gaggiclanker.db.repos.shots import CHECK_SORT, ShotsRepository
 from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.shotinfo.fields import shot_fields
@@ -38,8 +38,8 @@ async def _signed(db: Database) -> tuple[int, int, int, int]:
 
 
 async def _badge(db: Database, shot: int) -> str | None:
-    page = await ShotsRepository(db).list_shots(limit=50, sort=REVIEW_SORT)
-    return next(row.badge for row in page.items if row.id == shot)
+    page = await ShotsRepository(db).list_shots(limit=50, sort=CHECK_SORT)
+    return next(row.checks.badge for row in page.items if row.id == shot)
 
 
 async def test_no_read_path_parses_a_log(db: Database, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -52,7 +52,7 @@ async def test_no_read_path_parses_a_log(db: Database, monkeypatch: pytest.Monke
     monkeypatch.setattr("gaggiclanker.signatures.checks.stored_samples", refuse, raising=False)
     assert await _badge(db, shot) == "ramp: early yield +3"
     document = await shot_fields(db, shot)
-    assert document is not None and document.badge == "ramp: early yield +3"
+    assert document is not None and document.checks.badge == "ramp: early yield +3"
 
 
 async def test_a_shot_is_worked_out_once_and_then_remembered(
@@ -165,10 +165,10 @@ async def test_the_memory_is_bounded_but_never_below_one_requests_working_set(
         return await original(self, ids)
 
     monkeypatch.setattr(SignatureRepository, "stored_samples", counting)
-    await shots.list_shots(limit=2, sort=REVIEW_SORT)
+    await shots.list_shots(limit=2, sort=CHECK_SORT)
     assert len(checks_module._MEMO) == 6
     reads_after_first = reads
-    await shots.list_shots(limit=2, offset=2, sort=REVIEW_SORT)
+    await shots.list_shots(limit=2, offset=2, sort=CHECK_SORT)
     assert reads == reads_after_first
 
 
@@ -177,7 +177,7 @@ async def test_the_list_and_the_fields_share_one_entry_per_shot(db: Database) ->
     await _badge(db, shot)
     assert len(checks_module._MEMO) == 1
     document = await shot_fields(db, shot)
-    assert document is not None and document.badge == "ramp: early yield +3"
+    assert document is not None and document.checks.badge == "ramp: early yield +3"
     assert len(checks_module._MEMO) == 1, "the fields route used its own key"
 
 
@@ -239,7 +239,7 @@ async def test_a_replaced_copy_of_a_shot_is_not_served_from_the_memory(db: Datab
     assert after is not None and after.startswith("ramp: fast flow")
     document = await shot_fields(db, shot)
     assert document is not None
-    measure = next(c for c in document.checks if c.kind == "measure")
+    measure = next(c for c in document.checks.items if c.kind == "measure")
     assert (measure.status, measure.value) == ("failed", 9.0)
 
 
@@ -328,11 +328,11 @@ async def test_a_quarantined_shot_has_no_checks_and_logs_nothing(db: Database) -
     )
     assert await SetsRepository(db).assign_shot(quarantined, set_version) in (True, False)
     with structlog.testing.capture_logs() as logs:
-        page = await shots.list_shots(limit=50, sort=REVIEW_SORT, quarantined=True)
+        page = await shots.list_shots(limit=50, sort=CHECK_SORT, quarantined=True)
         document = await shot_fields(db, quarantined)
     row = next(r for r in page.items if r.id == quarantined)
-    assert (row.badge, row.warnings) == (None, [])
-    assert document is not None and document.checks == []
+    assert (row.checks.badge, row.checks.entries) == (None, [])
+    assert document is not None and document.checks.items == []
     assert [e for e in logs if e["log_level"] in ("warning", "error")] == []
 
 
@@ -406,7 +406,7 @@ async def test_what_the_shot_is_filed_under_is_part_of_the_key_even_when_the_sho
     async def statuses() -> dict[int, str]:
         document = await shot_fields(db, shot)
         assert document is not None
-        return {c.expectation_id: c.status for c in document.checks if c.kind == "measure"}  # type: ignore[misc]
+        return {c.expectation_id: c.status for c in document.checks.items if c.kind == "measure"}  # type: ignore[misc]
 
     assert await statuses() == {by_dose.id: "failed", by_target.id: "failed"}
     await db.execute("UPDATE set_versions SET dose_g = 22 WHERE id = ?", (first,))

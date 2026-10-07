@@ -6,8 +6,8 @@ import { VersionEvidence } from "@/components/sets/VersionEvidence";
 import { VersionOutcomeControl } from "@/components/sets/VersionOutcomeControl";
 import { VersionOverrides } from "@/components/sets/VersionOverrides";
 import { VersionPredictionEditor } from "@/components/sets/VersionPredictionEditor";
+import { CheckBadge } from "@/components/shots/CheckBadge";
 import { RatingStars } from "@/components/shots/RatingStars";
-import { ReviewBadge } from "@/components/shots/ReviewBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
@@ -327,11 +327,7 @@ export function VersionTimeline({
                       {profileName(shot)}
                     </span>
                     <span className="tabular-nums">{formatSeconds(shot.duration_ms)}</span>
-                    <ReviewBadge
-                      badge={shot.badge}
-                      warnings={shot.warnings}
-                      reading={shot.reading}
-                    />
+                    <CheckBadge checks={shot.checks} />
                     <RatingStars rating={judgement?.rating ?? shot.rating ?? null} />
                   </Link>
                 </li>

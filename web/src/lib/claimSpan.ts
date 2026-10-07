@@ -70,3 +70,15 @@ function revealChart(chartId: string | undefined): void {
   if (!chartId || typeof document === "undefined") return;
   document.getElementById(chartId)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
+
+/**
+ * Brings one claim of the Review box into view and puts focus on it: the least scrolling that shows
+ * it (`nearest`, none when it is in view already). The caller has opened the box first.
+ */
+export function showClaim(claimId: number): void {
+  if (typeof document === "undefined") return;
+  const element = document.getElementById(`claim-${claimId}`);
+  if (!element) return;
+  element.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  element.focus({ preventScroll: true });
+}

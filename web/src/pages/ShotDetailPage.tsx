@@ -13,8 +13,8 @@ import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
 import { JudgementForm } from "@/components/shots/JudgementForm";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
-import { ReviewCard } from "@/components/shots/ReviewCard";
-import { inForceClaims, ShotChecksCard } from "@/components/shots/ShotChecksCard";
+import { inForceClaims, ReviewBox } from "@/components/shots/ReviewBox";
+import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { ShotPhasesCard } from "@/components/shots/ShotPhasesCard";
 import { ShotContextCard, ShotWideCard } from "@/components/shots/ShotWideCards";
@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotFields, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { useClaimSpan } from "@/lib/claimSpan";
+import { showClaim, useClaimSpan } from "@/lib/claimSpan";
 import { ASSIGN_ANCHOR, formatTime, profileName, REVIEW_ANCHOR } from "@/lib/shots";
 
 /**
@@ -59,7 +59,7 @@ export function ShotDetailPage() {
   const { hash } = useLocation();
   // What the Reading card marks on the chart: hovering, focusing or pinning a claim. The page
   // holds it because the two cards are siblings; it is above the early returns because it is a hook.
-  const claimSpan = useClaimSpan(shot.data?.reading?.in_force_id, CHART_CARD_ID, shotId);
+  const claimSpan = useClaimSpan(shot.data?.review?.in_force_id, CHART_CARD_ID, shotId);
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
   // rest here with `#set`, and a link to a shot's review comes here with
@@ -156,9 +156,10 @@ export function ShotDetailPage() {
       {/* What is plainly wrong comes first, above everything that asks for a
           verdict: no card at all when there is nothing to say. */}
       <ShotChecksCard
-        checks={fields.data?.checks}
+        checks={fields.data?.checks.items}
         signature={fields.data?.signature}
-        claims={inForceClaims(shot.data.reviews, shot.data.reading?.in_force_id)}
+        claims={inForceClaims(shot.data.reviews, shot.data.review?.in_force_id)}
+        onShowClaim={showClaim}
       />
 
       {/* What you thought comes first, straight under the facts: recording it
@@ -191,24 +192,20 @@ export function ShotDetailPage() {
         />
       ) : null}
 
-      {/* The reading, straight under the curve its claims point into: hovering a claim marks
-          its span there. */}
+      {/* The review, straight under the curve its claims point into: hovering a claim marks
+          its span there. Keyed by the shot: this route is reused across `/shots/:shotId`, and an
+          open "Review again?" question or a request in flight must not carry over to the next
+          shot, whose Review again would start a review nobody asked for. */}
       {!row.quarantined ? (
-        <section id={REVIEW_ANCHOR} className="scroll-mt-20">
-          {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and an open "Read
-              again?" question, a revealed stance or a request in flight must not carry over to
-              the next shot, whose Read again would start a reading nobody asked for. */}
-          <ReviewCard
-            key={row.id}
-            shotId={row.id}
-            badge={fields.data?.badge}
-            warnings={fields.data?.warnings}
-            reviews={shot.data.reviews ?? []}
-            reading={shot.data.reading}
-            checks={fields.data?.checks}
-            span={claimSpan.controls}
-          />
-        </section>
+        <ReviewBox
+          key={`review-${row.id}`}
+          id={REVIEW_ANCHOR}
+          shotId={row.id}
+          reviews={shot.data.reviews ?? []}
+          review={shot.data.review}
+          checks={fields.data?.checks.items}
+          span={claimSpan.controls}
+        />
       ) : null}
 
       {/* The numbers, straight under the curve they are read against: each

@@ -22,7 +22,7 @@ import {
 describe("ShotChecksCard", () => {
   it("says each warning as phase: fault with its sentence, most severe first as served", () => {
     renderWithQueryClient(
-      <ShotChecksCard checks={leverFields.checks} signature={leverFields.signature} />,
+      <ShotChecksCard checks={leverFields.checks.items} signature={leverFields.signature} />,
     );
 
     const lines = screen.getAllByTestId("check-line");
@@ -37,7 +37,7 @@ describe("ShotChecksCard", () => {
 
   it("draws no card, and no all-clear, for a shot with no checks and no profile", () => {
     const { container } = renderWithQueryClient(
-      <ShotChecksCard checks={realFields.checks} signature={realFields.signature} />,
+      <ShotChecksCard checks={realFields.checks.items} signature={realFields.signature} />,
     );
     expect(container).toBeEmptyDOMElement();
     expect(

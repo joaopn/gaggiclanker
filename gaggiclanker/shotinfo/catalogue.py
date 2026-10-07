@@ -611,12 +611,12 @@ def _check_line(check: Check) -> str:
 def _check_lines(f: ShotFacts, *, base: bool) -> list[Check]:
     # What the base item carries: failed checks, expected warnings and what could not be
     # measured. The extended item carries the held ones, the context ones and the free text.
-    return [c for c in f.shot_checks.checks if (c.rank <= 4) == base]
+    return [c for c in f.signature_checks.checks if (c.rank <= 4) == base]
 
 
 def _checks_text(f: ShotFacts) -> str | None:
     """The signature's state, then every failed or unmeasured check, most severe first."""
-    lines = [f"signature: {f.shot_checks.state.text}"]
+    lines = [f"signature: {f.signature_checks.state.text}"]
     lines += [_check_line(c) for c in _check_lines(f, base=True)]
     return "\n".join(lines)
 
@@ -627,7 +627,7 @@ def _checks_value(f: ShotFacts) -> list[Any] | None:
 
 
 def _checks_more_text(f: ShotFacts) -> str | None:
-    """What held, the context expectations and the ones only the reading can check."""
+    """What held, the context expectations and the ones only the review can answer."""
     lines = [_check_line(c) for c in _check_lines(f, base=False)]
     return "\n".join(lines) if lines else None
 
@@ -914,7 +914,7 @@ def _items() -> tuple[Item, ...]:
                 "What failed against the signature, the profile's confirmed intent: "
                 "expectations per phase with a tier (critical, important, context) and a kind "
                 "(a measure held against a limit, a phase that must begin, a warning that is "
-                "part of the design, free text only the reading checks). A failure is named "
+                "part of the design, free text only the review answers). A failure is named "
                 "`phase: fault` from a fixed list (early yield, little yield, fast flow, slow "
                 "flow, skipped, cut short, low pressure, high pressure, unstable, temperature, "
                 "over target, under target). The universal warnings need no signature: over "
@@ -939,9 +939,9 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 "The expectations of the confirmed signature that held on this shot, the "
                 "context expectations whatever they came to (they inform and never raise "
-                "the badge), and the free-text ones, which only the per-shot reading checks "
-                "and are never decided by a number. Said only when there is something to "
-                "say."
+                "the badge), and the free-text ones, which only the review answers (see the "
+                "Review group) and are never decided by a number. Said only when there is "
+                "something to say."
             ),
             default_tier="extended",
             shot=_checks_more_text,
@@ -2024,10 +2024,10 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 "One line per claim the person did not reject: where in the shot (a phase or a "
                 "span, with its seconds), the fault word or `observation`, the sentence, then "
-                "the numbers behind it, each worked out by the server from the shot. A claim the "
-                "numbers do not bear out says so; weigh it accordingly. "
-                + _MODEL_WRITTEN
-                + _NOT_REJECTED
+                "the numbers behind it, each worked out by the server from the shot. The "
+                "free-text expectations of the signature, which no number decides, are answered "
+                "here: the expectation, whether it held or failed, and why. A claim the numbers "
+                "do not bear out says so; weigh it accordingly. " + _MODEL_WRITTEN + _NOT_REJECTED
             ),
             default_tier="base",
             shot=_review_claims,
@@ -2109,22 +2109,46 @@ def _review_state(f: ShotFacts) -> str | None:
     )
 
 
-def _review_claims(f: ShotFacts) -> str | None:
-    lines: list[str] = []
-    for claim in _kept(f, "claim"):
+def _expectations(f: ShotFacts) -> dict[int, Check]:
+    """The signature's free-text expectations by id, to say which one a result answers."""
+    return {
+        c.expectation_id: c
+        for c in f.signature_checks.checks
+        if c.kind == "free_text" and c.expectation_id is not None
+    }
+
+
+def _claim_line(claim: ReviewClaimRow, expectations: Mapping[int, Check]) -> str:
+    """One kept claim: where, what it says, the numbers behind it, and whether they bear it out."""
+    if claim.kind == "free_text":
+        base = expectations.get(claim.expectation_id) if claim.expectation_id else None
+        verdict = "held" if claim.held else f"failed ({claim.fault or 'no fault word'})"
+        subject = f"expectation {base.sentence!r} {verdict}" if base else f"expectation {verdict}"
+        line = f"{_span(claim)}: {subject}: {claim.text}"
+    else:
         line = f"{_span(claim)}: {claim.fault or 'observation'}: {claim.text}"
-        numbers = _evidence_line(claim)
-        if numbers:
-            line += f" [{numbers}]"
-        if not claim.supported:
-            line += " (the numbers do not bear this out)"
-        lines.append(line)
+    numbers = _evidence_line(claim)
+    if numbers:
+        line += f" [{numbers}]"
+    if not claim.supported:
+        line += " (the numbers do not bear this out)"
+    return line
+
+
+def _review_claims(f: ShotFacts) -> str | None:
+    expectations = _expectations(f)
+    lines = [
+        _claim_line(claim, expectations)
+        for kind in ("claim", "free_text")
+        for claim in _kept(f, kind)
+    ]
     return "\n".join(lines) if lines else None
 
 
 def _review_claims_value(f: ShotFacts) -> list[Any] | None:
     found = [
         {
+            "kind": claim.kind,
             "phase": claim.phase,
             "window": claim.window_text,
             "start_s": claim.start_s,
@@ -2132,8 +2156,11 @@ def _review_claims_value(f: ShotFacts) -> list[Any] | None:
             "fault": claim.fault,
             "text": claim.text,
             "supported": claim.supported,
+            "expectation_id": claim.expectation_id,
+            "held": claim.held,
         }
-        for claim in _kept(f, "claim")
+        for kind in ("claim", "free_text")
+        for claim in _kept(f, kind)
     ]
     return found or None
 

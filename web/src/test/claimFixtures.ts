@@ -1,8 +1,13 @@
-import type { ClaimEvidence, ReadingBlock, ReviewClaim } from "@/api/types";
+import type { ChecksBlock, ClaimEvidence, ReviewBlock, ReviewClaim } from "@/api/types";
 
-/** A shot's `reading` block, as the list, the detail and the fields serve it. */
-export function readingBlock(overrides: Partial<ReadingBlock> = {}): ReadingBlock {
-  return { state: "unread", ...overrides };
+/** A shot's `review` block, as the list, the detail and the fields serve it. */
+export function reviewBlock(overrides: Partial<ReviewBlock> = {}): ReviewBlock {
+  return { state: "unreviewed", entries: [], ...overrides };
+}
+
+/** A shot's `checks` block (the Curve check), as the list and the detail serve it. */
+export function checksBlock(overrides: Partial<ChecksBlock> = {}): ChecksBlock {
+  return { entries: [], ...overrides };
 }
 
 /** One evidence item of a claim, as the server evaluated it. */
@@ -19,7 +24,7 @@ export function evidence(overrides: Partial<ClaimEvidence> = {}): ClaimEvidence 
   };
 }
 
-/** One claim of a reading. Hand-written: nothing here is a derived number. */
+/** One claim of a review. Hand-written: nothing here is a derived number. */
 export function claim(overrides: Partial<ReviewClaim> = {}): ReviewClaim {
   return {
     id: 10,

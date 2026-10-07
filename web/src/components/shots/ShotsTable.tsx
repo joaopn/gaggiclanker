@@ -8,9 +8,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
 import type { ShotListRow, ShotSort } from "@/api/types";
 import { SetBadge } from "@/components/sets/SetBadge";
+import { CheckBadge } from "@/components/shots/CheckBadge";
 import { CurveChooser } from "@/components/shots/CurveChooser";
 import { DecisionCell } from "@/components/shots/DecisionCell";
 import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
@@ -34,14 +34,7 @@ import {
   type ShotWidths,
 } from "@/lib/shotColumns";
 import type { CurveChoice } from "@/lib/shotCurves";
-import {
-  formatGrams,
-  formatListTime,
-  formatSeconds,
-  formatTime,
-  profileName,
-  REVIEW_ANCHOR,
-} from "@/lib/shots";
+import { formatGrams, formatListTime, formatSeconds, formatTime, profileName } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
 /**
@@ -73,6 +66,7 @@ export const ROW_HEIGHT = 52;
 const SORTABLE: Partial<Record<ShotColumnId, ShotSort>> = {
   time: "started_at",
   duration: "duration",
+  check: "check",
   review: "review",
   rating: "rating",
 };
@@ -145,6 +139,14 @@ export function ShotsTable({
       revealed.current = false;
     },
     [shots, openId, openIndex, panelHeight],
+  );
+
+  // Pressing a reviewed badge opens the shot's row (and never closes one that is open).
+  const showRow = useCallback(
+    (id: number) => {
+      if (openId !== id) toggle(id);
+    },
+    [openId, toggle],
   );
 
   const close = useCallback(() => {
@@ -240,6 +242,7 @@ export function ShotsTable({
             open={shot.id === openId}
             panelId={`${panelPrefix}-${shot.id}`}
             onToggle={toggle}
+            onOpenReview={showRow}
             onClose={close}
             onMeasure={measure}
             scrollRef={scrollRef}
@@ -543,6 +546,7 @@ function ShotRow({
   open,
   panelId,
   onToggle,
+  onOpenReview,
   onClose,
   onMeasure,
   scrollRef,
@@ -556,6 +560,8 @@ function ShotRow({
   open: boolean;
   panelId: string;
   onToggle: (id: number) => void;
+  /** Opens the shot's row (it stays open when it already is) with its Review box showing. */
+  onOpenReview: (id: number) => void;
   onClose: () => void;
   onMeasure: (height: number, ready: boolean) => void;
   scrollRef: RefObject<HTMLElement | null>;
@@ -640,7 +646,7 @@ function ShotRow({
                 column.narrowHidden && "hidden md:block",
               )}
             >
-              <Cell shot={shot} id={column.id} curves={curves} />
+              <Cell shot={shot} id={column.id} curves={curves} onOpenReview={onOpenReview} />
             </div>
           ))}
         </div>
@@ -662,7 +668,17 @@ function ShotRow({
  */
 const INTERACTIVE = "relative z-[1]";
 
-function Cell({ shot, id, curves }: { shot: ShotListRow; id: ShotColumnId; curves: CurveChoice }) {
+function Cell({
+  shot,
+  id,
+  curves,
+  onOpenReview,
+}: {
+  shot: ShotListRow;
+  id: ShotColumnId;
+  curves: CurveChoice;
+  onOpenReview: (id: number) => void;
+}) {
   switch (id) {
     case "time":
       return (
@@ -683,10 +699,14 @@ function Cell({ shot, id, curves }: { shot: ShotListRow; id: ShotColumnId; curve
       return <span className="text-sm tabular-nums">{formatSeconds(shot.duration_ms)}</span>;
     case "yield":
       return <span className="text-sm tabular-nums">{formatGrams(shot.volume_g)}</span>;
-    case "review":
+    case "check":
       // Lifted above the row's stretched toggle like the stars, so the hover list is
-      // reachable and a click is not the row's.
-      return <ReviewCell shot={shot} />;
+      // reachable.
+      return <CheckBadge checks={shot.checks} className={INTERACTIVE} />;
+    case "review":
+      // Lifted above the row's stretched toggle like the stars, so the buttons and the hover
+      // list are reachable and a click on them is not the row's.
+      return <ReviewCell shot={shot} onOpen={() => onOpenReview(shot.id)} />;
     case "rating":
       return <RatingCell shot={shot} />;
     case "set":
@@ -748,26 +768,19 @@ function Cell({ shot, id, curves }: { shot: ShotListRow; id: ShotColumnId; curve
  * as older than a verdict nobody gave.
  */
 /**
- * The Review column: the badge, as the button that starts a reading.
+ * The Review column: the Review button that starts a review, and what the model wrote.
  *
- * A press on a shot nobody has read, or whose reading failed, asks for one; on a read shot it
- * goes to the shot page's Reading card, where the claims are confirmed and Read again lives,
- * so a stray click never throws away a reading; while one runs the badge is inert. The ref makes
- * a double click one request: the second click arrives before the first has re-rendered anything.
- * The server answers a press while one runs with that row, so a click that slips through is not a
- * second reading either.
+ * Review and Retry start one; a reviewed badge opens the shot's row with its Review box
+ * showing; "Reviewing…" is inert. None of them toggles the row. The ref makes a double click one
+ * request: the second click arrives before the first has re-rendered anything. The server
+ * answers a press while one runs with that row, so a click that slips through is not a second
+ * review either.
  */
-function ReviewCell({ shot }: { shot: ShotListRow }) {
+function ReviewCell({ shot, onOpen }: { shot: ShotListRow; onOpen: () => void }) {
   const run = useRunReview();
-  const navigate = useNavigate();
   const starting = useRef(false);
-  const state = shot.reading?.state;
 
-  const press = () => {
-    if (state === "read") {
-      navigate(`/shots/${shot.id}#${REVIEW_ANCHOR}`);
-      return;
-    }
+  const start = () => {
     if (starting.current) return;
     starting.current = true;
     void attempt(() => run.mutateAsync({ shotId: shot.id })).finally(() => {
@@ -776,13 +789,7 @@ function ReviewCell({ shot }: { shot: ShotListRow }) {
   };
 
   return (
-    <ReviewBadge
-      badge={shot.badge}
-      warnings={shot.warnings}
-      reading={shot.reading}
-      onPress={press}
-      className={INTERACTIVE}
-    />
+    <ReviewBadge review={shot.review} onStart={start} onOpen={onOpen} className={INTERACTIVE} />
   );
 }
 

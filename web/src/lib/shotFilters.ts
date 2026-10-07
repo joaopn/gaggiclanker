@@ -116,7 +116,7 @@ function dayEnd(day: string): string | undefined {
  * is user input, and a typed-in `?sort=nonsense` should show the archive, not
  * an error page.
  */
-const SORTS: ShotSort[] = ["started_at", "duration", "review", "rating"];
+const SORTS: ShotSort[] = ["started_at", "duration", "check", "review", "rating"];
 
 export function fromSearchParams(params: URLSearchParams): ShotFilterState {
   const source = params.get("source") ?? "";

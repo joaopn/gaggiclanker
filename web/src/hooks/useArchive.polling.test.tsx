@@ -1,7 +1,7 @@
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { READING_POLL_MS, useShots, useShotsInfinite } from "@/hooks/useArchive";
-import { readingBlock } from "@/test/readingFixtures";
+import { reviewBlock } from "@/test/claimFixtures";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
 
 const { getShots } = vi.hoisted(() => ({ getShots: vi.fn() }));
@@ -10,8 +10,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getShots,
 }));
 
-const page = (state: "running" | "read" | "unread") => ({
-  items: [{ id: 1, reading: readingBlock({ state }) }],
+const page = (state: "running" | "reviewed" | "unreviewed") => ({
+  items: [{ id: 1, review: reviewBlock({ state }) }],
   total: 1,
   limit: 50,
   offset: null,
@@ -33,7 +33,7 @@ describe.each([
   ["the shots page's list", () => useShotsInfinite()],
 ])("%s while a reading runs", (_name, hook) => {
   it("re-reads every few seconds, and stops once nothing is running", async () => {
-    getShots.mockResolvedValueOnce(page("running")).mockResolvedValue(page("read"));
+    getShots.mockResolvedValueOnce(page("running")).mockResolvedValue(page("reviewed"));
     renderHookWithQueryClient(hook as () => any);
     await waitFor(() => expect(getShots).toHaveBeenCalledTimes(1));
 
@@ -50,7 +50,7 @@ describe.each([
   });
 
   it("does not poll a list with nothing running", async () => {
-    getShots.mockResolvedValue(page("unread"));
+    getShots.mockResolvedValue(page("unreviewed"));
     renderHookWithQueryClient(hook as () => any);
     await waitFor(() => expect(getShots).toHaveBeenCalledTimes(1));
     await act(async () => {

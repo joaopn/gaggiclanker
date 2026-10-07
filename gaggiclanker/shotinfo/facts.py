@@ -30,7 +30,6 @@ from gaggiclanker.db.repos.shots import ShotDetailRow, ShotSampleRow
 from gaggiclanker.domain.signature import ShotChecks
 from gaggiclanker.domain.slog import FIELD_DEFS
 from gaggiclanker.domain.warnings import ShotWarning, percent_of_target, shot_warnings
-from gaggiclanker.review.reading import merge_reading
 from gaggiclanker.signatures.checks import CheckSubject
 
 __all__ = ["ShotFacts", "number"]
@@ -201,17 +200,12 @@ class ShotFacts:
 
     @property
     def signature_checks(self) -> ShotChecks:
-        """The checks before any reading: the confirmed signature's results and the warnings."""
-        return self.checks if self.checks is not None else ShotChecks.from_warnings(self.warnings)
+        """The Curve check's checks: the confirmed signature's results and the warnings.
 
-    @property
-    def shot_checks(self) -> ShotChecks:
-        """The checks **a chat is given**: the reading's free-text results, unless rejected.
-
-        A result a person rejected leaves its expectation unchecked, as it does in the verdict and
-        the badge the person reads (:func:`gaggiclanker.review.reading.serve_reading`).
+        The one list a chat is given as the shot's checks too: a review never changes it, and what
+        the review said about a free-text expectation is in the Review group beside it.
         """
-        return merge_reading(self.signature_checks, self.reading)
+        return self.checks if self.checks is not None else ShotChecks.from_warnings(self.warnings)
 
     def share_of_target(self, weight_g: float | None) -> float | None:
         """A weight as a percentage of the filed version's target yield, to a tenth."""

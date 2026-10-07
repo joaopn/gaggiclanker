@@ -20,7 +20,7 @@ export const KIND_LABEL: Record<SignatureExpectation["kind"], string> = {
   measure: "computed",
   reached: "phase reached",
   expects_warning: "warning expected",
-  free_text: "checked by the reading",
+  free_text: "checked by the review",
 };
 
 export const STATUS_LABEL: Record<SignatureExpectation["status"], string> = {

@@ -2,10 +2,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BookOpen, Quote, Sparkles } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ReadingBlock, ReviewClaim, ShotCheck, ShotReview, ShotWarning } from "@/api/types";
+import type { ReviewBlock, ReviewClaim, ShotCheck, ShotReview } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { ClaimItem, type TierLook } from "@/components/shots/ReadingClaims";
-import { badgeView, TONE_CLASS, warningLine } from "@/components/shots/ReviewBadge";
+import { entryLine, reviewTone, TONE_CLASS } from "@/components/shots/badgeParts";
+import { ClaimItem, type TierLook } from "@/components/shots/ReviewClaims";
 import { Button } from "@/components/ui/button";
 import { useAnswerClaim, useRunReview } from "@/hooks/useReview";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
@@ -19,8 +19,19 @@ import { cn } from "@/lib/utils";
 export const REVIEW_EXPLAINED =
   "A model reads this shot's data, without your judgement, and writes claims about it: where in the curve something went wrong, with the numbers that say so. Every claim is kept unless you reject it, and the chat is told the ones you kept. It does not guess how the cup tasted, and it changes nothing else.";
 
-/** How often a card waiting on a running reading re-reads the shot. */
+/** How often a box waiting on a running review re-reads the shot. */
 const RUNNING_REFRESH_MS = 5000;
+
+/** The claims of the review in force: what a Curve check line links to. */
+export function inForceClaims(
+  reviews: ShotReview[] | undefined,
+  inForceId: number | null | undefined,
+): ReviewClaim[] | undefined {
+  const found = (reviews ?? []).find((row) =>
+    inForceId != null ? row.id === inForceId : row.status === "ok",
+  );
+  return found?.claims;
+}
 
 /** The colour of an expectation's tier: the one a failed result is drawn in. */
 function tierLook(check: ShotCheck | undefined): TierLook {
@@ -31,49 +42,52 @@ function tierLook(check: ShotCheck | undefined): TierLook {
 }
 
 /**
- * A model's reading of this shot, the claims it makes, and the button that asks for one.
+ * A model's review of this shot, the claims it makes, and the button that asks for one.
  *
- * Placed under the Curves card because the claims point into the curve: hovering or focusing a
- * claim marks its span there, and pressing it pins the mark. The states are read from the rows
- * and the shot's `reading` block, never from the mutation, so a reading started in another tab
- * shows up here too:
+ * The box says what the model wrote and nothing else: the deterministic checks are the Curve
+ * check box's. Claims point into the curve, so hovering or focusing one marks its span on the
+ * chart and pressing it pins the mark. The states are read from the rows and the shot's `review`
+ * block, never from the mutation, so a review started in another tab shows up here too:
  *
  * - none yet: the button and one line saying what it does;
  * - running: the newest row is `running`;
  * - failed: the newest row failed or was interrupted, its error and the button;
- * - read: the summary, the free-text expectations it checked, the prediction, the claims with
- *   Reject on each (Restore on a rejected one), the rules and excerpts it cited, the model and
- *   the time, and Read again.
+ * - reviewed: the verdict, the model's summary, the free-text expectations it answered, the
+ *   prediction stance, the claims with Reject on each (and the rejected ones behind "N rejected ·
+ *   show", each with Restore), the rules and excerpts it cited, the model and the time, and
+ *   Review again.
  *
- * **The reading in force** is the newest finished one (`reading.in_force_id`), whatever has been
- * started since: while a re-read runs or after one failed, its results stay below the state, and
- * its claims are answered through that id, never through `reading.review_id` (the newest attempt,
- * which answers 409 for a claim). A re-read replaces it only when it finishes.
+ * **The review in force** is the newest finished one (`review.in_force_id`), whatever has been
+ * started since: while a new one runs or after one failed, its results stay below the state, and
+ * its claims are answered through that id, never through `review.review_id` (the newest attempt,
+ * which answers 409 for a claim). A new review replaces it only when it finishes.
  *
- * Read again from a reading with confirmed claims asks once, inline, and says how many it sets
- * aside; the old reading stays stored.
+ * Review again asks once, inline, that it replaces the current review; the old one stays stored.
  */
-export function ReviewCard({
+export function ReviewBox({
   shotId,
   reviews,
-  reading,
+  review,
   checks,
   span,
-  badge,
-  warnings,
+  id,
+  open,
+  onOpenChange,
 }: {
   shotId: number;
   /** Every review of the shot, newest first, as the shot detail carries them. */
   reviews: ShotReview[];
-  /** The shot's `reading` block: which reading is in force, and whether the shot can be read. */
-  reading: ReadingBlock | undefined;
+  /** The shot's `review` block: which review is in force, and whether the shot can be reviewed. */
+  review: ReviewBlock | undefined;
   /** The shot's checks, for the colour of the tier each free-text expectation sits in. */
   checks?: ShotCheck[];
   /** What hovering and pressing a claim does to the chart. */
   span: ClaimSpanControls;
-  /** The badge's served text and entries: the card's first line says the same thing. */
-  badge?: string | null;
-  warnings?: ShotWarning[];
+  /** The element id the page links to (`#review`); the open row has none. */
+  id?: string;
+  /** When the box can be folded: whether it is open, and the way to change that. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const run = useRunReview();
   const answer = useAnswerClaim();
@@ -85,17 +99,16 @@ export function ReviewCard({
 
   const latest = reviews[0];
   const inForce =
-    reviews.find((review) => review.id === reading?.in_force_id) ??
-    reviews.find((review) => review.status === "ok");
+    reviews.find((row) => row.id === review?.in_force_id) ??
+    reviews.find((row) => row.status === "ok");
   const running = latest?.status === "running";
   const failed = latest !== undefined && latest.status !== "ok" && latest.status !== "running";
-  const readable = reading?.state !== "not_readable";
+  const reviewable = review?.state !== "not_reviewable";
   const busy = run.isPending || running;
   const claims = [...(inForce?.claims ?? [])].sort((a, b) => a.position - b.position);
-  const answering = answer.isPending;
 
-  // The event stream says when a running reading moves, but the bus is lossy:
-  // while one is running the card also re-reads the shot now and then.
+  // The event stream says when a running review moves, but the bus is lossy:
+  // while one is running the box also re-reads the shot now and then.
   useEffect(() => {
     if (!running) return;
     const timer = window.setInterval(
@@ -111,7 +124,7 @@ export function ReviewCard({
       void attempt(() => run.mutateAsync({ shotId })).finally(release);
     });
   // A review in force is not set aside by a stray press.
-  const readAgain = () => (inForce ? setAsking(true) : start());
+  const reviewAgain = () => (inForce ? setAsking(true) : start());
 
   const button = (label: string, variant: "default" | "outline") => (
     <Button
@@ -125,11 +138,11 @@ export function ReviewCard({
       onMouseDown={(event) => event.preventDefault()}
       onClick={() => {
         if (busy) return;
-        readAgain();
+        reviewAgain();
       }}
     >
       <Sparkles className={cn("size-3.5", busy ? "animate-pulse" : undefined)} aria-hidden="true" />
-      {busy ? "Reading…" : label}
+      {busy ? "Reviewing…" : label}
     </Button>
   );
 
@@ -139,14 +152,14 @@ export function ReviewCard({
       id={askId}
       hidden={!asking}
       className="space-y-2 rounded-md border border-status-warn/40 bg-status-warn/10 p-3 text-sm"
-      data-testid="read-again-ask"
+      data-testid="review-again-ask"
     >
       <p>This replaces the current review. The earlier one stays stored.</p>
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           size="sm"
-          data-testid="read-again-confirm"
+          data-testid="review-again-confirm"
           aria-disabled={busy}
           className="aria-disabled:opacity-50"
           onClick={() => {
@@ -154,13 +167,13 @@ export function ReviewCard({
             start();
           }}
         >
-          Read again
+          Review again
         </Button>
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          data-testid="read-again-cancel"
+          data-testid="review-again-cancel"
           onClick={() => setAsking(false)}
         >
           Keep it
@@ -171,47 +184,52 @@ export function ReviewCard({
 
   return (
     <SectionCard
-      title="Reading"
+      id={id}
+      className="scroll-mt-20"
+      title="Review"
+      collapsible={onOpenChange !== undefined}
+      open={open}
+      onOpenChange={onOpenChange}
       description={inForce || failed || running ? REVIEW_EXPLAINED : undefined}
     >
-      <div data-testid="review-card" className="space-y-4">
-        {latest === undefined && readable ? (
+      <div data-testid="review-box" className="space-y-4">
+        {latest === undefined && reviewable ? (
           <div className="space-y-3" data-testid="review-empty">
             <p className="text-muted-foreground text-sm">{REVIEW_EXPLAINED}</p>
-            {button("Read this shot", "default")}
+            {button("Review this shot", "default")}
           </div>
         ) : null}
 
-        {!readable && latest === undefined ? (
-          <p className="text-muted-foreground text-sm" data-testid="review-unreadable">
-            A discarded shot is not read.
+        {!reviewable && latest === undefined ? (
+          <p className="text-muted-foreground text-sm" data-testid="review-unreviewable">
+            A discarded shot is not reviewed.
           </p>
         ) : null}
 
         {running ? (
           <p className="text-muted-foreground text-sm" data-testid="review-running" role="status">
-            Reading this shot since {formatTime(latest.created_at)}
+            Reviewing this shot since {formatTime(latest.created_at)}
             {latest.model ? ` on ${latest.model}` : ""}.
-            {inForce ? " The earlier reading stays below until this one finishes." : ""}
+            {inForce ? " The earlier review stays below until this one finishes." : ""}
           </p>
         ) : null}
 
         {failed ? (
           <div className="space-y-2">
             <FailedReview review={latest} />
-            {readable && inForce ? askNode : null}
-            {readable ? button("Read again", "default") : null}
+            {reviewable && inForce ? askNode : null}
+            {reviewable ? button("Review again", "default") : null}
           </div>
         ) : null}
 
         {inForce ? (
-          <Reading
+          <Reviewed
             review={inForce}
             claims={claims}
             checks={checks ?? []}
             span={span}
-            busy={answering}
-            verdict={{ badge, warnings, reading }}
+            busy={answer.isPending}
+            block={review}
             onRestore={(claim) =>
               once((release) =>
                 answer.mutate(
@@ -231,10 +249,10 @@ export function ReviewCard({
           />
         ) : null}
 
-        {inForce && !failed && readable ? (
+        {inForce && !failed && reviewable ? (
           <div className="space-y-2">
             {askNode}
-            {button("Read again", "outline")}
+            {button("Review again", "outline")}
           </div>
         ) : null}
       </div>
@@ -242,13 +260,13 @@ export function ReviewCard({
   );
 }
 
-function Reading({
+function Reviewed({
   review,
   claims,
   checks,
   span,
   busy,
-  verdict,
+  block,
   onRestore,
   onReject,
 }: {
@@ -257,19 +275,23 @@ function Reading({
   checks: ShotCheck[];
   span: ClaimSpanControls;
   busy: boolean;
-  verdict: { badge?: string | null; warnings?: ShotWarning[]; reading: ReadingBlock | undefined };
+  block: ReviewBlock | undefined;
   onRestore: (claim: ReviewClaim) => void;
   onReject: (claim: ReviewClaim) => void;
 }) {
+  const [showRejected, setShowRejected] = useState(false);
+  const rejectedId = useId();
   const rules = (review.rules_used ?? []) as string[];
   const excerpts = (review.excerpts_used ?? []) as string[];
-  const freeText = claims.filter((claim) => claim.kind === "free_text");
-  const prediction = claims.filter((claim) => claim.kind === "prediction");
-  const observations = claims.filter((claim) => claim.kind === "claim");
+  const kept = claims.filter((claim) => claim.status !== "rejected");
+  const rejected = claims.filter((claim) => claim.status === "rejected");
+  const freeText = kept.filter((claim) => claim.kind === "free_text");
+  const prediction = kept.filter((claim) => claim.kind === "prediction");
+  const observations = kept.filter((claim) => claim.kind === "claim");
   const checkOf = (claim: ReviewClaim) =>
     checks.find((check) => check.expectation_id === claim.expectation_id);
 
-  const item = (claim: ReviewClaim, extra: { tier?: TierLook; expectation?: string } = {}) => (
+  const item = (claim: ReviewClaim) => (
     <ClaimItem
       key={claim.id}
       claim={claim}
@@ -278,13 +300,14 @@ function Reading({
       busy={busy}
       onRestore={onRestore}
       onReject={onReject}
-      {...extra}
+      tier={claim.kind === "free_text" ? tierLook(checkOf(claim)) : undefined}
+      expectation={claim.kind === "free_text" ? checkOf(claim)?.sentence : undefined}
     />
   );
 
   return (
-    <div className="space-y-4" data-testid="review-reading">
-      <VerdictLine {...verdict} />
+    <div className="space-y-4" data-testid="review-reviewed">
+      <VerdictLine block={block} />
 
       {review.summary ? (
         <p className="text-sm" data-testid="review-summary-block">
@@ -296,38 +319,51 @@ function Reading({
       ) : null}
 
       {freeText.length > 0 ? (
-        <div data-testid="reading-expectations">
+        <div data-testid="review-expectations">
           <h4 className="mb-1.5 font-medium text-sm">Expectations it checked</h4>
-          <ul className="space-y-2">
-            {freeText.map((claim) =>
-              item(claim, {
-                tier: tierLook(checkOf(claim)),
-                expectation: checkOf(claim)?.sentence,
-              }),
-            )}
-          </ul>
+          <ul className="space-y-2">{freeText.map(item)}</ul>
         </div>
       ) : null}
 
       {prediction.length > 0 ? (
-        <div data-testid="reading-prediction">
+        <div data-testid="review-prediction">
           <h4 className="mb-1.5 font-medium text-sm" data-testid="prediction-heading">
             The version's prediction
           </h4>
-          <ul className="space-y-2">{prediction.map((claim) => item(claim))}</ul>
+          <ul className="space-y-2">{prediction.map(item)}</ul>
         </div>
       ) : null}
 
-      <div data-testid="reading-claims">
+      <div data-testid="review-claims">
         <h4 className="mb-1.5 font-medium text-sm">What it found</h4>
         {observations.length > 0 ? (
-          <ul className="space-y-2">{observations.map((claim) => item(claim))}</ul>
+          <ul className="space-y-2">{observations.map(item)}</ul>
         ) : (
           <p className="text-muted-foreground text-sm" data-testid="claims-none">
-            It made no claim about this shot.
+            {rejected.some((claim) => claim.kind === "claim")
+              ? "Every claim about this shot was rejected."
+              : "It made no claim about this shot."}
           </p>
         )}
       </div>
+
+      {rejected.length > 0 ? (
+        <div data-testid="review-rejected">
+          <button
+            type="button"
+            className="text-muted-foreground text-sm underline underline-offset-2 hover:text-foreground"
+            aria-expanded={showRejected}
+            aria-controls={rejectedId}
+            data-testid="review-rejected-toggle"
+            onClick={() => setShowRejected((value) => !value)}
+          >
+            {rejected.length} rejected · {showRejected ? "hide" : "show"}
+          </button>
+          <ul id={rejectedId} hidden={!showRejected} className="mt-2 space-y-2">
+            {rejected.map(item)}
+          </ul>
+        </div>
+      ) : null}
 
       {rules.length > 0 ? (
         <div>
@@ -378,7 +414,7 @@ function Reading({
 
       <p className="text-muted-foreground text-xs" data-testid="review-provenance">
         Written {formatTime(review.finished_at ?? review.created_at)}
-        {review.model ? ` by ${review.model}` : ""}. A model's reading of this shot's data, not a
+        {review.model ? ` by ${review.model}` : ""}. A model's review of this shot's data, not a
         measurement.
       </p>
     </div>
@@ -391,8 +427,8 @@ function FailedReview({ review }: { review: ShotReview }) {
       <p className="flex items-center gap-1.5 font-medium text-sm">
         <AlertTriangle className="size-3.5 text-status-warn-text" aria-hidden="true" />
         {review.status === "interrupted"
-          ? "Interrupted — the process stopped before this reading finished"
-          : "That reading did not complete"}
+          ? "Interrupted — the process stopped before this review finished"
+          : "That review did not complete"}
       </p>
       {review.error ? (
         <p className="mt-1 font-mono text-muted-foreground text-xs" data-testid="review-error">
@@ -405,66 +441,50 @@ function FailedReview({ review }: { review: ShotReview }) {
 
 /** What a verdict means, in a sentence: why the badge says what it says. */
 const VERDICT_WORDS = {
-  no_signature:
-    "read without a confirmed signature, so nothing was checked against the profile's intent",
-  as_intended: "every check of the confirmed signature held",
+  no_faults: "the model found no fault; the profile has no confirmed signature to hold the shot to",
+  as_intended: "the model found no fault against the profile's confirmed signature",
 } as const;
 
 /**
- * The card's first line: the badge's verdict, in its words and colour, and why.
+ * The box's first line: the Review badge's verdict, in its words and colour, and why.
  *
- * Built by code from the served `reading` block and the badge's entries, the same inputs and the
- * same function (`badgeView`) as the badge, so the card can never look as if it disagrees with
- * the badge: a "No signature" shot says so here, whatever the model's own summary goes on to say
- * (that comes after it, labelled as the model's words). Failures are listed with their sentences.
+ * Built by code from the served `review` block, the same inputs and the same tone function as the
+ * Review column's badge, so the box can never look as if it disagrees with the badge: a "No
+ * faults" shot says so here, whatever the model's own summary goes on to say (that comes after
+ * it, labelled as the model's words). Faults are listed with their sentences.
  */
-function VerdictLine({
-  badge,
-  warnings,
-  reading,
-}: {
-  badge?: string | null;
-  warnings?: ShotWarning[];
-  reading: ReadingBlock | undefined;
-}) {
-  const view = badgeView(badge, warnings, reading);
-  if (!view) return null;
-  const state = reading?.state;
-  const verdict = reading?.verdict;
+function VerdictLine({ block }: { block: ReviewBlock | undefined }) {
+  if (!block || block.state === "unreviewed" || block.state === "not_reviewable") return null;
+  const tone = reviewTone(block);
+  const verdict = block.verdict;
   const why =
-    state === "failed"
-      ? (reading?.reason ?? "")
-      : state === "running"
-        ? "a new reading is running; the earlier one stays below until it finishes"
-        : verdict === "no_signature" || verdict === "as_intended"
+    block.state === "failed"
+      ? (block.reason ?? "")
+      : block.state === "running"
+        ? "a new review is running; the earlier one stays below until it finishes"
+        : verdict === "no_faults" || verdict === "as_intended"
           ? VERDICT_WORDS[verdict]
-          : verdict === "entries" && !(warnings && warnings.length > 0)
-            ? "its failures are still loading"
-            : "";
+          : "";
   return (
-    <div className="space-y-1" data-testid="reading-verdict" data-state={state}>
+    <div className="space-y-1" data-testid="review-verdict" data-state={block.state}>
       <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
         <span
           className={cn(
             "inline-flex max-w-full items-center rounded-full border px-2 py-0.5 font-medium text-xs",
-            TONE_CLASS[view.tone][view.filled ? "filled" : "outlined"],
+            TONE_CLASS[tone][block.state === "running" ? "outlined" : "filled"],
           )}
-          data-testid="reading-verdict-badge"
-          data-tone={view.tone}
-          data-filled={view.filled ? "yes" : "no"}
+          data-testid="review-verdict-badge"
+          data-tone={tone}
         >
-          <span className="min-w-0 truncate">{view.text}</span>
+          <span className="min-w-0 truncate">{block.badge}</span>
         </span>
-        {why ? <span data-testid="reading-verdict-why">{why}</span> : null}
+        {why ? <span data-testid="review-verdict-why">{why}</span> : null}
       </p>
-      {verdict === "entries" && warnings && warnings.length > 0 ? (
-        <ul className="list-disc space-y-0.5 pl-5 text-sm" data-testid="reading-verdict-entries">
-          {warnings.map((warning, index) => (
-            <li
-              // biome-ignore lint/suspicious/noArrayIndexKey: the server's order, never reordered here
-              key={index}
-            >
-              {warningLine(warning)}
+      {block.entries.length > 0 ? (
+        <ul className="list-disc space-y-0.5 pl-5 text-sm" data-testid="review-verdict-entries">
+          {block.entries.map((entry) => (
+            <li key={`${entry.claim_id ?? entry.expectation_id}-${entry.fault}`}>
+              {entryLine(entry)}
             </li>
           ))}
         </ul>

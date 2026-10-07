@@ -76,7 +76,7 @@ async def test_there_is_no_confirm_all_and_no_waiting_state(api: Api) -> None:
     waiting = await client.patch(_url(review), json={"status": "proposed"})
     assert waiting.status_code == 400
     detail = (await client.get(f"/api/shots/{data.shots[-1]}")).json()["data"]
-    assert "unanswered" not in detail["reading"]
+    assert "unanswered" not in detail["review"]
 
 
 async def _with_a_stance(

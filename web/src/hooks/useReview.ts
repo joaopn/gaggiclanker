@@ -21,7 +21,7 @@ import { invalidateReadings } from "@/lib/invalidate";
  * happened. So `onSuccess` branches on `status`.
  *
  * Starting changes what the shots list, the shot's detail and fields, and the Set pages say
- * (the badge turns to Reading…), so it invalidates all of them, as an answer does.
+ * (the badge turns to Reviewing…), so it invalidates all of them, as an answer does.
  */
 export function useRunReview(): UseMutationResult<
   ShotReview,

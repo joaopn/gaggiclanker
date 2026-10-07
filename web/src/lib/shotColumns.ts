@@ -19,6 +19,7 @@ export type ShotColumnId =
   | "curve"
   | "duration"
   | "yield"
+  | "check"
   | "review"
   | "rating"
   | "set"
@@ -97,15 +98,20 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // "36.0 g" is 2.5rem, the heading 2.3rem — and Yield does not sort, so no
   // arrow ever appears beside it.
   { id: "yield", label: "Yield", size: { rem: 3, min: 2.75, max: 8 }, narrowHidden: true },
-  // The badge says "phase: fault" and "+N" for the rest: "decline: skipped +2"
-  // is 8.6rem as measured in headless Chromium (badge padding and border
-  // included), so 9rem holds it; the sorted heading is 3.1rem. A longer phase
-  // name, or a "+12", truncates inside the column and the whole list is on
-  // hover. The minimum is 8.75rem: with the phase gone, the longest fault word and the
-  // widest count (": high pressure +12", 8.55rem in Chromium with the badge's padding and
-  // border) still fit whole, so a drag can never cut the fault. A stored width below it
-  // (the old Score column's, or a drag from before) is raised to it on load.
-  { id: "review", label: "Review", size: { rem: 9, min: 8.75, max: 24 } },
+  // The deterministic checks and warnings: "phase: fault" and "+N" for the rest.
+  // "decline: skipped +2" is 8.6rem as measured in headless Chromium (badge padding and
+  // border included), so 9rem holds it; the sorted heading is 6.2rem. A longer phase name,
+  // or a "+12", truncates inside the column and the whole list is on hover. The minimum is
+  // 8.75rem: with the phase gone, the longest fault word and the widest count (": high
+  // pressure +12", 8.55rem in Chromium with the badge's padding and border) still fit
+  // whole, so a drag can never cut the fault.
+  { id: "check", label: "Curve check", size: { rem: 9, min: 8.75, max: 24 } },
+  // What the model wrote: the same "phase: fault +N" badge, or the Review button, or a grey
+  // "Failed to run" with its Retry button beside it. The minimum is what the two together
+  // need: "Failed to run" and "Retry" are 9.7rem in headless Chromium, and the longest fault
+  // with its count is narrower, so a drag can never cut either. A stored width below it (the
+  // old Score column's, or a drag from before) is raised to it on load.
+  { id: "review", label: "Review", size: { rem: 10.5, min: 9.75, max: 24 } },
   // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit,
   // and wider than the sorted heading.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },
@@ -141,8 +147,8 @@ export const SHOT_COLUMNS: ShotColumn[] = [
  * machine, incomplete) that matter on a handful of rows — Decision, "keep this
  * recipe, improve on it, or bin the shot", is the question every shot ends on,
  * and a column that answers it with a click is worth more than a badge. Review
- * is on: its badge is the button that starts a reading, and the open row carries
- * the reading itself.
+ * is on: its Review button starts a review, and the open row carries the review itself.
+ * Curve check sits just before it: what the deterministic checks say about the shot.
  */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "set",
@@ -150,6 +156,7 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "profile",
   "duration",
   "yield",
+  "check",
   "review",
   "rating",
   "decision",
@@ -172,6 +179,8 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
  * the browser this is for.
  */
 export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly ShotColumnId[])[] = [
+  // Before the Curve check column was split from Review.
+  ["set", "time", "profile", "duration", "yield", "review", "rating", "decision"],
   // Before Profile joined the default row.
   ["set", "time", "duration", "yield", "review", "rating", "decision"],
   // Before the column after Rating (Decision) replaced Flags.
@@ -193,6 +202,14 @@ function isPreviousDefault(ids: ShotColumnId[]): boolean {
 
 /** Bump the suffix when the meaning of a stored value changes, never the keys. */
 export const SHOT_COLUMNS_KEY = "shots.columns.v1";
+
+/**
+ * Set once the Curve check column has been added to a stored layout, or once the person chose
+ * their columns themselves. The column is added in front of Review in every stored layout that
+ * shows Review, exactly once (the maintainer asked for it, as the Score column became Review);
+ * after that a layout without it is a choice and is kept. Any other stored choice is untouched.
+ */
+export const SHOT_COLUMNS_CHECK_KEY = "shots.columns.check.v1";
 
 /**
  * Columns that were replaced, and what took their place. The Analyse button
@@ -228,10 +245,31 @@ export function loadShotColumns(storage: Storage | undefined = safeStorage()): S
       .map((value) => (typeof value === "string" ? (REPLACED[value] ?? value) : value))
       .filter(isColumnId);
     if (known.length === 0 || isPreviousDefault(known)) return DEFAULT_SHOT_COLUMNS;
-    return known;
+    return withCurveCheck(known, storage);
   } catch {
     return DEFAULT_SHOT_COLUMNS;
   }
+}
+
+/** The stored layout with Curve check added in front of Review, once; see the key above. */
+function withCurveCheck(known: ShotColumnId[], storage: Storage | undefined): ShotColumnId[] {
+  if (!known.includes("review") || known.includes("check")) return known;
+  let done = false;
+  try {
+    done = (storage?.getItem(SHOT_COLUMNS_CHECK_KEY) ?? null) !== null;
+  } catch {
+    done = false;
+  }
+  if (done) return known;
+  const added = known.flatMap((id): ShotColumnId[] => (id === "review" ? ["check", id] : [id]));
+  try {
+    storage?.setItem(SHOT_COLUMNS_KEY, JSON.stringify(added));
+    storage?.setItem(SHOT_COLUMNS_CHECK_KEY, "1");
+  } catch {
+    // Not remembered: the next load adds it again, which is what a person who cannot save
+    // anything would want.
+  }
+  return added;
 }
 
 export function saveShotColumns(
@@ -240,6 +278,8 @@ export function saveShotColumns(
 ): void {
   try {
     storage?.setItem(SHOT_COLUMNS_KEY, JSON.stringify(visible));
+    // A layout the person chose is theirs: Curve check is not added to it behind their back.
+    storage?.setItem(SHOT_COLUMNS_CHECK_KEY, "1");
   } catch {
     // A view preference is not worth a toast. The table is already showing
     // what was asked for; it just will not still be doing so tomorrow.

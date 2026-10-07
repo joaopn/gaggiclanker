@@ -325,8 +325,8 @@ async def test_each_phases_cup_share_of_the_target_is_the_constructed_one(
     }
     assert document.yield_share_pct == pytest.approx(117.2, abs=0.05)
     assert document.target_yield_g == TARGET_YIELD_G
-    assert document.badge == "ramp: fast flow +2"
-    assert [w.fault for w in document.warnings] == ["fast flow", "skipped", "over target"]
+    assert document.checks.badge == "ramp: fast flow +2"
+    assert [w.fault for w in document.checks.entries] == ["fast flow", "skipped", "over target"]
     ended = {
         phase.number: next(f.text for f in phase.fields if f.key == "phase_ended_by")
         for phase in document.phases
@@ -386,8 +386,12 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
 
     document: dict[str, Any] = data(await client.get(f"/api/shots/{shot}/fields"))
     assert document["shot_id"] == shot
-    assert document["badge"] == "ramp: fast flow +2"
-    assert [w["fault"] for w in document["warnings"]] == ["fast flow", "skipped", "over target"]
+    assert document["checks"]["badge"] == "ramp: fast flow +2"
+    assert [w["fault"] for w in document["checks"]["entries"]] == [
+        "fast flow",
+        "skipped",
+        "over target",
+    ]
     assert document["target_yield_g"] == TARGET_YIELD_G
     assert document["yield_share_pct"] == pytest.approx(117.2, abs=0.05)
     cup = next(f for f in document["phases"][2]["fields"] if f["key"] == "phase_cup_end")
@@ -404,7 +408,11 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
     assert other is not None
     assert await sets.assign_shot(shot, other.id)
     refiled: dict[str, Any] = data(await client.get(f"/api/shots/{shot}/fields"))
-    assert [w["fault"] for w in refiled["warnings"]] == ["fast flow", "skipped", "under target"]
+    assert [w["fault"] for w in refiled["checks"]["entries"]] == [
+        "fast flow",
+        "skipped",
+        "under target",
+    ]
     assert refiled["yield_share_pct"] == pytest.approx(70.3, abs=0.05)
 
 
@@ -421,9 +429,9 @@ async def test_a_shot_with_nothing_derived_has_no_phases_and_no_warnings(
     shot = await make_shot(app.state.db, "000777")
     document: dict[str, Any] = data(await client.get(f"/api/shots/{shot}/fields"))
     assert document["phases"] == []
-    assert document["warnings"] == []
-    assert document["badge"] == "Review"
-    assert document["reading"]["state"] == "unread"
+    assert document["checks"]["entries"] == []
+    assert document["checks"]["badge"] is None
+    assert document["review"]["state"] == "unreviewed"
     assert document["target_yield_g"] is None
 
 
