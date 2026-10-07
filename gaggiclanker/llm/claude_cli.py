@@ -71,6 +71,7 @@ import structlog
 
 from gaggiclanker.infra.outbound import outbound_http_client
 from gaggiclanker.llm.providers.claude_code import ClaudeCodeProvider
+from gaggiclanker.settings import CLAUDE_CODE_DIRNAME
 
 __all__ = [
     "CHANNELS",
@@ -92,7 +93,7 @@ REGISTRY = "https://registry.npmjs.org"
 #: npm's own dist-tags on the wrapper package. ``stable`` is what the image pins.
 CHANNELS: tuple[str, ...] = ("stable", "latest")
 #: The directory under DATA_DIR, and the pointer file inside it.
-INSTALL_DIR = "claude-code"
+INSTALL_DIR = CLAUDE_CODE_DIRNAME
 CURRENT_FILE = "current"
 #: The image's own version when the install was made; see ``reconcile``.
 IMAGE_FILE = "image"

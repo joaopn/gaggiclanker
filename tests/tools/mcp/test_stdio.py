@@ -1005,3 +1005,21 @@ async def test_a_child_for_a_set_being_designed_serves_the_design_tools_only(
     finally:
         await db.close()
     assert waiting is not None and waiting.thread_id == thread_id
+
+
+def test_the_mcp_command_refuses_while_a_reset_is_waiting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Same rule as the import: the archive it would open is about to be deleted."""
+    from gaggiclanker.__main__ import main
+
+    (tmp_path / "gaggiclanker.db").write_bytes(b"an archive")
+    (tmp_path / "reset-requested").write_text("reset\n")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+
+    status = main(["mcp"])
+
+    captured = capsys.readouterr()
+    assert status == 1
+    assert captured.out == ""
+    assert "A reset is waiting to finish: start the app once, then run this again." in captured.err

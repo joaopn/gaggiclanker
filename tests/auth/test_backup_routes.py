@@ -1,7 +1,7 @@
 """The backup and restore routes need a sign-in when it is on, every one of them.
 
-(`test_guard.py` enumerates the whole router; this names the five that can read the
-archive or replace it, with the method each answers, so a loosened guard says which.)
+(`test_guard.py` enumerates the whole router; this names the ones that can read the
+archive, replace it or empty it, with the method each answers, so a loosened guard says which.)
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ TOKEN = "0" * 32
         ("post", "/api/backup/restore"),
         ("delete", f"/api/backup/restore/{TOKEN}"),
         ("post", f"/api/backup/restore/{TOKEN}/apply"),
+        ("post", "/api/reset"),
     ],
 )
 async def test_the_backup_routes_are_guarded(

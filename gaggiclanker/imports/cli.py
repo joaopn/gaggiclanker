@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -128,6 +129,14 @@ async def run_import(
 
 def import_command(args: argparse.Namespace) -> int:
     """Run an import and print one line per file. Returns the exit status."""
+    # Imported here: see run_import for why this module keeps its imports light.
+    from gaggiclanker.db.reset import RESET_WAITING_MESSAGE, reset_is_waiting
+
+    # The database about to be deleted is not one to write to: the import would report
+    # success and the next start would serve nothing.
+    if reset_is_waiting(EnvSettings().data_dir):
+        print(RESET_WAITING_MESSAGE, file=sys.stderr)
+        return 1
     summary = asyncio.run(run_import(args.paths, replace=args.replace))
     for item in summary.items:
         subject = item.device_id or item.label or item.kind

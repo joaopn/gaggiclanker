@@ -98,14 +98,17 @@ def _display_name(raw: str | None) -> str:
     return name.strip()[:200] or "backup.db"
 
 
-def _refuse_while_pending(app: FastAPI) -> None:
-    """Once an apply is accepted the prepared file is the one the swap will use.
+def refuse_while_pending(app: FastAPI) -> None:
+    """Once an apply (or a reset) is accepted the work it prepared is the one the restart does.
 
-    A cancel or a new upload then would delete it, the swap would fail, and the app would come
-    back on the old data while the page said "Restoring…".
+    A cancel or a new upload then would delete the prepared file, the swap would fail, and the
+    app would come back on the old data while the page said "Restoring…". The restore and the
+    reset exclude each other for the same reason: each ends in the one restart.
     """
     if app.state.restore_pending is not None:
         raise Conflict("A restore is already under way.", code="RESTORE_PENDING")
+    if app.state.reset_pending:
+        raise Conflict("A reset is already under way.", code="RESET_PENDING")
 
 
 @router.post(
@@ -119,7 +122,7 @@ async def check_restore(
     env: EnvSettingsDep,
     x_filename: Annotated[str | None, Header()] = None,
 ) -> JSONResponse:
-    _refuse_while_pending(request.app)
+    refuse_while_pending(request.app)
     state = BackupStateRepository(db)
     declared = request.headers.get("content-length")
     token, path = await stage_upload(
@@ -162,7 +165,7 @@ async def check_restore(
     summary="Cancel a staged restore: delete the uploaded file",
 )
 async def cancel_restore(token: str, request: Request, env: EnvSettingsDep) -> JSONResponse:
-    _refuse_while_pending(request.app)
+    refuse_while_pending(request.app)
     path = staged_path(env.data_dir, token)
     existed = path.exists()
     discard_staged(path)
@@ -171,6 +174,15 @@ async def cancel_restore(token: str, request: Request, env: EnvSettingsDep) -> J
 
 class RestoreApplyData(BaseModel):
     restarting: bool
+
+
+def refuse_while_busy(app: FastAPI, *, code: str) -> None:
+    """The 409 both restart routes give while work that a restart would cut off is running."""
+    if work_in_flight(app):
+        raise Conflict(
+            "A sync, a chat answer or a review is running. Try again when it finishes.",
+            code=code,
+        )
 
 
 def work_in_flight(app: FastAPI) -> bool:
@@ -205,15 +217,14 @@ async def apply_restore(
         raise NotFound("There is no staged file to restore. Choose the file again.")
     # No await between this check and the mark: a second apply, or a second tab, finds the
     # restore already pending and is refused instead of racing the first.
-    _refuse_while_pending(app)
-    if work_in_flight(app):
+    refuse_while_pending(app)
+    try:
+        refuse_while_busy(app, code="RESTORE_BUSY")
+    except Conflict:
         # The upload is stale by the time the work ends; asking for the file again is cheap
         # next to a staged copy of the archive sitting in the data directory indefinitely.
         discard_staged(path)
-        raise Conflict(
-            "A sync, a chat answer or a review is running. Try again when it finishes.",
-            code="RESTORE_BUSY",
-        )
+        raise
     app.state.restore_pending = PendingRestore(path=path, schema_version="")
     try:
         live_settings = await SettingsRepository(db).get_all()

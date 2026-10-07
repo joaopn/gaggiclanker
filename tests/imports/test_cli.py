@@ -131,3 +131,20 @@ def test_a_bare_invocation_still_means_serve(monkeypatch: pytest.MonkeyPatch) ->
 
     assert main([]) == 0
     assert served == [True]
+
+
+def test_the_command_refuses_while_a_reset_is_waiting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The database it would write is about to be deleted: say so, change nothing."""
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "reset-requested").write_text("reset\n")
+    monkeypatch.setenv("DATA_DIR", str(data))
+
+    status = main(["import", str(EXPORT_FIXTURES / "shot-129.json")])
+
+    captured = capsys.readouterr()
+    assert status == 1
+    assert "A reset is waiting to finish: start the app once, then run this again." in captured.err
+    assert not (data / "gaggiclanker.db").exists()

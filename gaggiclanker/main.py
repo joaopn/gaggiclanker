@@ -44,6 +44,7 @@ from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
+from gaggiclanker.db.reset import complete_reset
 from gaggiclanker.db.restore import (
     PendingRestore,
     clean_stale_staging,
@@ -277,6 +278,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # not a matter of taste.
     check_configuration(env)
     ensure_data_dir(env.data_dir)
+    # A reset the last run committed to is finished before anything is opened, so no old
+    # write-ahead log can be replayed onto the new database.
+    complete_reset(env.data_dir)
     # A download cut off by a stop leaves a full copy of the database in a temp directory.
     clean_stale_exports(env.data_dir)
     # An upload that never finished, or a restore nobody applied, left a staging
@@ -612,6 +616,8 @@ def create_app(env: EnvSettings | None = None, *, web_dist: Path | None = None) 
     app.state.env = env
     #: A restore the apply route accepted and the lifespan swaps in after shutdown.
     app.state.restore_pending = None
+    #: A reset the route accepted (its marker is on disk); the next boot carries it out.
+    app.state.reset_pending = False
     #: What the apply route runs once its answer is sent. SIGTERM, so uvicorn shuts down
     #: gracefully and the lifespan's own teardown runs in its usual order. A test replaces it.
     app.state.terminate_process = terminate_process

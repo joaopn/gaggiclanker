@@ -40,6 +40,7 @@ from gaggiclanker.domain.address import host_problem
 from gaggiclanker.infra.outbound import PROXY_ENV_KEYS, url_carries_userinfo
 
 __all__ = [
+    "CLAUDE_CODE_DIRNAME",
     "DEVICE_WRITES_ENV_KEY",
     "FORMER_SETTING_ENV_KEYS",
     "REMOVED_SETTINGS",
@@ -88,6 +89,10 @@ SettingType = Literal["string", "int", "float", "bool"]
 # recognise a key you pasted ("sk-p..." vs "sk-o...") and useless to anyone who
 # does not already have it.
 SECRET_HINT_LENGTH = 4
+
+#: The directory under ``DATA_DIR`` the Claude Code installer writes into. Named here, low in the
+#: dependency order, because the reset deletes it and must not import the LLM layer to know it.
+CLAUDE_CODE_DIRNAME = "claude-code"
 
 # What a rejected value is told, per declared type. Fixed strings, never
 # f-strings carrying the input: these messages travel to the client in

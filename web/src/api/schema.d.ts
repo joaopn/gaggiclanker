@@ -1690,6 +1690,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete everything in the app and restart it as a fresh install */
+        post: operations["reset_app_api_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reviews/{review_id}": {
         parameters: {
             query?: never;
@@ -3437,6 +3454,14 @@ export interface components {
         /** ApiResponse[RateLimitData] */
         ApiResponse_RateLimitData_: {
             data?: components["schemas"]["RateLimitData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ResetData] */
+        ApiResponse_ResetData_: {
+            data?: components["schemas"]["ResetData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -6687,6 +6712,22 @@ export interface components {
         RenameBody: {
             /** Title */
             title: string;
+        };
+        /** ResetData */
+        ResetData: {
+            /** Restarting */
+            restarting: boolean;
+        };
+        /**
+         * ResetRequest
+         * @description The button sends the word; it only guards against a stray request.
+         */
+        ResetRequest: {
+            /**
+             * Confirm
+             * @constant
+             */
+            confirm: "reset";
         };
         /** RestoreApplyData */
         RestoreApplyData: {
@@ -11996,6 +12037,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["gaggiclanker__infra__envelope__ApiResponse_ReloadData___1"];
+                };
+            };
+        };
+    };
+    reset_app_api_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ResetData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -333,10 +333,18 @@ async def _check_scope_exists(db: Database, scope: ToolScope, thread_id: int | N
 def mcp_command(args: argparse.Namespace) -> int:
     """The argparse entry point. Synchronous, because ``main`` is."""
     import asyncio
+    import sys
 
+    from gaggiclanker.db.reset import RESET_WAITING_MESSAGE, reset_is_waiting
+
+    data_dir = _data_dir(args.data_dir)
+    # stdout is the protocol channel; the refusal goes to stderr and the exit status.
+    if reset_is_waiting(data_dir):
+        print(RESET_WAITING_MESSAGE, file=sys.stderr)
+        return 1
     return asyncio.run(
         serve_stdio(
-            _data_dir(args.data_dir),
+            data_dir,
             scope=scope_from(args),
             thread_id=thread_from(args),
             meanings_in_context=meanings_in_context_from(),

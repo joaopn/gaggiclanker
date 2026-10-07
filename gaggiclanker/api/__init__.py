@@ -22,6 +22,7 @@ from gaggiclanker.api import (
     profile_board,
     profiles,
     prompts,
+    reset,
     reviews,
     sets,
     settings,
@@ -41,6 +42,7 @@ api_router = APIRouter(prefix="/api")
 api_router.include_router(auth.router)
 api_router.include_router(settings.router)
 api_router.include_router(backup.router)
+api_router.include_router(reset.router)
 api_router.include_router(device.router)
 api_router.include_router(sync.router)
 api_router.include_router(shots.router)
