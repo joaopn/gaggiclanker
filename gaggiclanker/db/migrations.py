@@ -58,8 +58,11 @@ from gaggiclanker.db.connection import Database
 
 __all__ = [
     "FOREIGN_KEYS_OFF_MARKER",
+    "ChangedMigration",
     "Migration",
     "MigrationError",
+    "NewerDatabase",
+    "classify_ledger",
     "load_migrations",
     "run_migrations",
     "statements",
@@ -374,18 +377,27 @@ async def _applied(db: Database) -> dict[str, str]:
     return {str(row["version"]): str(row["checksum"]) for row in rows}
 
 
-async def run_migrations(db: Database, directory: Path | None = None) -> list[str]:
-    """Apply every pending migration. Returns the versions applied this run."""
-    await db.execute(_LEDGER_DDL)
+class NewerDatabase(MigrationError):
+    """The ledger names a migration this build does not have."""
 
-    migrations = load_migrations(directory)
-    applied = await _applied(db)
 
+class ChangedMigration(MigrationError):
+    """An applied migration's file now runs different statements than the ledger recorded."""
+
+
+def classify_ledger(applied: dict[str, str], migrations: list[Migration]) -> list[Migration]:
+    """Check a ledger (version -> checksum) against the files; return the legacy-checksum rows.
+
+    Raises :class:`NewerDatabase` for a version with no file and :class:`ChangedMigration`
+    for a checksum that matches neither the statements, the raw bytes nor the frozen byte
+    checksum. The boot runs it on the live ledger and the restore check on an uploaded
+    file's, so what a boot would refuse is exactly what a restore refuses.
+    """
     legacy: list[Migration] = []
     for version, checksum in applied.items():
         known = next((m for m in migrations if m.version == version), None)
         if known is None:
-            raise MigrationError(
+            raise NewerDatabase(
                 f"migration {version} is recorded in schema_migrations but its file is missing; "
                 "this database was written by a newer version of gaggiclanker"
             )
@@ -394,11 +406,22 @@ async def run_migrations(db: Database, directory: Path | None = None) -> list[st
         if checksum in (known.byte_checksum, _legacy_bytes(known)):
             legacy.append(known)
             continue
-        raise MigrationError(
+        raise ChangedMigration(
             f"migration {version}_{known.name} changed after it was applied "
             f"(recorded {checksum[:12]}, file {known.checksum[:12]}). "
             "Migrations are immutable once shipped: add a new one instead."
         )
+    return legacy
+
+
+async def run_migrations(db: Database, directory: Path | None = None) -> list[str]:
+    """Apply every pending migration. Returns the versions applied this run."""
+    await db.execute(_LEDGER_DDL)
+
+    migrations = load_migrations(directory)
+    applied = await _applied(db)
+
+    legacy = classify_ledger(applied, migrations)
 
     if legacy:
         # Only after every row checked out: a refused boot rewrites nothing.

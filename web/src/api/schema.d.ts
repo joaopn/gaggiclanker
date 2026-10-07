@@ -102,6 +102,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/backup/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload a file to restore and check it (nothing changes yet) */
+        post: operations["check_restore_api_backup_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/backup/restore/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a staged restore: delete the uploaded file */
+        delete: operations["cancel_restore_api_backup_restore__token__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/beans": {
         parameters: {
             query?: never;
@@ -3391,6 +3425,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[RestoreCheckData] */
+        ApiResponse_RestoreCheckData_: {
+            data?: components["schemas"]["RestoreCheckData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RestoreDiscardData] */
+        ApiResponse_RestoreDiscardData_: {
+            data?: components["schemas"]["RestoreDiscardData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[ResumeData] */
         ApiResponse_ResumeData_: {
             data?: components["schemas"]["ResumeData"] | null;
@@ -3706,6 +3756,22 @@ export interface components {
         AutomatchWrite: {
             /** Automatch */
             automatch: boolean;
+        };
+        /**
+         * BackupManifest
+         * @description The one row of ``backup_manifest``: what a file is and when it was taken.
+         */
+        BackupManifest: {
+            /** App Version */
+            app_version: string;
+            /** Created At */
+            created_at: string;
+            /** Format Version */
+            format_version: number;
+            /** Keys Included */
+            keys_included: boolean;
+            /** Schema Version */
+            schema_version: string;
         };
         /** @enum {string} */
         Balance: "sour" | "balanced" | "bitter";
@@ -6598,6 +6664,39 @@ export interface components {
             title: string;
         };
         /**
+         * RestoreCheckData
+         * @description What the preview shows about a staged file. Nothing has changed yet.
+         */
+        RestoreCheckData: {
+            /** Filename */
+            filename: string;
+            in_file: components["schemas"]["RestoreCounts"];
+            /** Keys Here */
+            keys_here: boolean;
+            /** Keys In File */
+            keys_in_file: boolean;
+            manifest: components["schemas"]["BackupManifest"] | null;
+            now: components["schemas"]["RestoreCounts"];
+            /** Size Bytes */
+            size_bytes: number;
+            /** Token */
+            token: string;
+        };
+        /** RestoreCounts */
+        RestoreCounts: {
+            /** Beans */
+            beans: number;
+            /** Sets */
+            sets: number;
+            /** Shots */
+            shots: number;
+        };
+        /** RestoreDiscardData */
+        RestoreDiscardData: {
+            /** Deleted */
+            deleted: boolean;
+        };
+        /**
          * RestsOnRow
          * @description A version an insight rests on, as shown: its name, then and now.
          */
@@ -9098,6 +9197,68 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_restore_api_backup_restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-filename"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RestoreCheckData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_restore_api_backup_restore__token__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RestoreDiscardData_"];
                 };
             };
             /** @description Validation Error */

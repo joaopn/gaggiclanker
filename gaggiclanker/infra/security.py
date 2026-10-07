@@ -22,6 +22,7 @@ from gaggiclanker.infra.errors import PayloadTooLarge
 
 __all__ = [
     "DEFAULT_MAX_BODY_BYTES",
+    "RESTORE_MAX_BODY_BYTES",
     "SECURITY_HEADERS",
     "UPLOAD_MAX_BODY_BYTES",
     "BodyLimitMiddleware",
@@ -44,6 +45,13 @@ DEFAULT_MAX_BODY_BYTES = 1024 * 1024
 #: legitimate 50 MB payload. What it stops is a 500 MB upload being read into
 #: memory at all before anything gets the chance to be helpful about it.
 UPLOAD_MAX_BODY_BYTES = 64 * 1024 * 1024
+
+#: The restore upload takes a whole archive as a raw body: raw `.slog` bytes of
+#: every shot. Its own route prefix; ``gaggiclanker.db.restore`` repeats the
+#: limit as the bytes arrive.
+RESTORE_MAX_BODY_BYTES = 1024 * 1024 * 1024
+
+_RESTORE_PREFIX = "/api/backup/restore"
 
 #: Path prefixes that get the larger limit.
 _UPLOAD_PREFIXES: tuple[str, ...] = ("/api/import",)
@@ -70,6 +78,8 @@ SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
 
 def limit_for_path(path: str) -> int:
     """The body limit that applies to ``path``."""
+    if path == _RESTORE_PREFIX or path.startswith(f"{_RESTORE_PREFIX}/"):
+        return RESTORE_MAX_BODY_BYTES
     if path.startswith(_UPLOAD_PREFIXES):
         return UPLOAD_MAX_BODY_BYTES
     return DEFAULT_MAX_BODY_BYTES

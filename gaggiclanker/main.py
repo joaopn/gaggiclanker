@@ -42,6 +42,7 @@ from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
+from gaggiclanker.db.restore import clean_stale_staging
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import (
@@ -271,6 +272,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ensure_data_dir(env.data_dir)
     # A download cut off by a stop leaves a full copy of the database in a temp directory.
     clean_stale_exports(env.data_dir)
+    # An upload that never finished, or a restore nobody applied, left a staging
+    # file: gone before anything opens, so it cannot be mistaken for data.
+    clean_stale_staging(env.data_dir)
 
     db = Database(env.database_path)
     await db.connect()
