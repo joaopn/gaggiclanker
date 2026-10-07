@@ -660,6 +660,27 @@ By hand, with the app stopped, a restore is still a file copy: copy a downloaded
 The sidecars belong to the file they were written next to; leaving them beside a restored
 database reinstates the state you were trying to undo.
 
+### Reset
+
+**Settings → System → Reset** puts the app back to a fresh install. It deletes every shot,
+Set, bean, profile, chat, insight, edited prompt and setting, **the API keys and tokens**, the
+downloaded Claude Code program, and any leftover upload or export; **sign-in is switched off
+afterwards** (anyone who can reach the app can use it until you set a password again). Nothing
+on the machine changes: its profiles and shots stay on it, and after you enter its address
+again the next sync pulls its shots back in as new. It cannot be undone, so download a backup
+(above) first if you want to keep any of it. The button asks once more, inline, before it
+does anything, and is refused with a message while a sync, a chat answer, a review or another
+background job runs, or while a restore is pending.
+
+The route first writes a `reset-requested` file into `DATA_DIR`, answers, and stops the app.
+The deleting happens at the **next start, before the database is opened**, so a crash or a
+kill after the answer still ends in a fresh install, and no old write-ahead log is ever
+replayed onto the new database. Docker's `restart: unless-stopped` starts it again at once;
+under `uv run` or any launcher that does not restart a stopped process, start it again by
+hand and the reset completes then. Until then `gaggiclanker import` and `gaggiclanker mcp`
+refuse to start (they would write to a database that is about to be deleted). What is left
+in `DATA_DIR` is a new `gaggiclanker.db`.
+
 ### LLM settings
 
 A review, the chat and the drafts go through one provider, chosen with `GAGGICLANKER_LLM_PROVIDER`:

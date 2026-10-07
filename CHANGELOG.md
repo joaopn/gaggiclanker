@@ -28,6 +28,21 @@ first (Settings → System → Backup & restore), because there is no down-migra
   are gone, and nothing writes to `backups/` any more. New: `POST /api/backup/restore` (raw body,
   up to 1 GB), `DELETE /api/backup/restore/{token}` and `POST /api/backup/restore/{token}/apply`.
 
+### Reset
+
+- **Settings → System → Reset** puts the app back to a fresh install: every shot, Set, bean,
+  profile, chat, insight, edited prompt and setting is deleted, with the API keys and tokens,
+  the downloaded Claude Code program and any leftover upload or export. **Sign-in is switched
+  off afterwards.** The machine is not touched. A second inline confirm sits between the
+  button and the reset; it is refused while a sync, chat answer, review or install runs, and
+  while a restore is pending (and a restore is refused while a reset is). The app restarts
+  (Docker brings it back; under `uv run` start it by hand).
+- The route writes a `reset-requested` marker and the next start, before the database is
+  opened, deletes the data; a kill after the answer still finishes the reset. While that
+  marker waits, `gaggiclanker import` and `gaggiclanker mcp` refuse to start. New:
+  `POST /api/reset` with `{"confirm": "reset"}`. No migration, no wipe of an existing
+  database unless the person resets.
+
 ### Flush from the top bar
 
 - **A Flush button sits beside the Writes switch while writes are on.** One click runs the
