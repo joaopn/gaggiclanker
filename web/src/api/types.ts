@@ -11,6 +11,8 @@ import type { components } from "@/api/schema";
  */
 
 export type HealthData = components["schemas"]["HealthData"];
+export type RestoreCheckData = components["schemas"]["RestoreCheckData"];
+export type RestoreApplyData = components["schemas"]["RestoreApplyData"];
 export type AuthStatusData = components["schemas"]["AuthStatusData"];
 export type LoginData = components["schemas"]["LoginData"];
 export type PasswordData = components["schemas"]["PasswordData"];

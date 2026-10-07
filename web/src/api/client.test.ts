@@ -3,6 +3,8 @@ import {
   __resetApiClientAuthForTests,
   ApiClientError,
   chatTranscriptUrl,
+  checkRestore,
+  downloadBackup,
   downloadFile,
   fetchApi,
   getBoardConflict,
@@ -485,5 +487,55 @@ describe("downloadFile", () => {
     await expect(downloadFile("/api/x", "x.md")).rejects.toThrow("Download failed (502)");
 
     expect(click).not.toHaveBeenCalled();
+  });
+});
+
+describe("the backup endpoints", () => {
+  beforeEach(() => {
+    __resetApiClientAuthForTests("tok");
+    URL.createObjectURL = vi.fn(() => "blob:backup");
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  });
+
+  it("asks for the keys only when told to, and signs the request", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("db", { status: 200 }));
+
+    await downloadBackup(false);
+    await downloadBackup(true);
+
+    expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual([
+      "/api/backup?include_keys=false",
+      "/api/backup?include_keys=true",
+    ]);
+    expect(((fetchSpy.mock.calls[0]?.[1] ?? {}) as RequestInit).headers).toEqual({
+      Authorization: "Bearer tok",
+    });
+  });
+
+  it("uploads the file as a raw body with its name percent-encoded in a header", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        data: { token: "t" },
+        meta: { request_id: "r" },
+      }),
+    );
+    const file = new File(["SQLite format 3"], "café backup.db");
+
+    await checkRestore(file);
+
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe("/api/backup/restore");
+    const request = init as RequestInit;
+    expect(request.method).toBe("POST");
+    expect(request.body).toBe(file);
+    expect(request.headers).toMatchObject({
+      "Content-Type": "application/octet-stream",
+      "X-Filename": "caf%C3%A9%20backup.db",
+      Authorization: "Bearer tok",
+    });
   });
 });

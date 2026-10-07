@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useDownloadBackup } from "@/hooks/useBackup";
 import { useHealth } from "@/hooks/useHealth";
 import type { SettingsPageInfo } from "@/lib/settingsPages";
+import { RestoreSection } from "@/pages/settings/RestoreSection";
 import { useOpenGroups } from "@/pages/settings/useOpenGroups";
 
 /** What the backend reports about itself, and the whole app as one downloadable file. */
@@ -51,6 +52,7 @@ export function SystemPage({ page }: { page: SettingsPageInfo }) {
         onOpenChange={(open) => setGroupOpen("backup", open)}
         title="Backup & restore"
         description="The whole app in one file, and putting one back."
+        contentClassName="space-y-6"
       >
         <div className="space-y-2">
           <h3 className="font-medium text-sm">Back up</h3>
@@ -80,6 +82,7 @@ export function SystemPage({ page }: { page: SettingsPageInfo }) {
             {backup.isPending ? "Preparing..." : "Download backup"}
           </Button>
         </div>
+        <RestoreSection />
       </SectionCard>
     </div>
   );

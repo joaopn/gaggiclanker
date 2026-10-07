@@ -79,6 +79,8 @@ import type {
   PromptData,
   PromptListData,
   ProposalDecline,
+  RestoreApplyData,
+  RestoreCheckData,
   RollbackWrite,
   SetCreate,
   SetDesignCreate,
@@ -458,6 +460,33 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsMap> 
 /** Download everything in the app as one file; the keys are in it only when asked for. */
 export async function downloadBackup(includeKeys: boolean): Promise<string> {
   return downloadFile(`${API_BASE}/backup?include_keys=${includeKeys}`, "gaggiclanker-backup.db");
+}
+
+/**
+ * Upload a file to restore and have the server check it. Nothing changes yet.
+ *
+ * A raw body, not multipart (the server streams it into the data directory); the name rides
+ * in a header, percent-encoded because a header value cannot hold every file name.
+ */
+export async function checkRestore(file: File): Promise<RestoreCheckData> {
+  return fetchApi<RestoreCheckData>("/backup/restore", {
+    method: "POST",
+    body: file,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-Filename": encodeURIComponent(file.name),
+    },
+  });
+}
+
+/** Delete the staged file (Cancel). */
+export async function cancelRestore(token: string): Promise<void> {
+  await fetchApi<unknown>(`/backup/restore/${token}`, { method: "DELETE" });
+}
+
+/** Replace everything with the staged file; the server restarts after it answers. */
+export async function applyRestore(token: string): Promise<RestoreApplyData> {
+  return fetchApi<RestoreApplyData>(`/backup/restore/${token}/apply`, { method: "POST" });
 }
 
 export async function getDeviceStatus(): Promise<DeviceStatusData> {
