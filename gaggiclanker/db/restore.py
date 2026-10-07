@@ -1,4 +1,4 @@
-"""Restore a database from an uploaded file: stage it, check it, and (later) swap it in.
+"""Restore a database from an uploaded file: stage it, check it, prepare it, swap it in.
 
 The restore takes **only an uploaded file**: no copy kept on the server is ever
 offered. The upload is streamed into ``DATA_DIR/restore-staging-<token>.db`` —
@@ -16,15 +16,28 @@ What "a file we can restore" means (every one is a refusal with its own code):
   boot's own rule: what a boot would refuse, a restore refuses before touching
   anything). An *older* file is fine: the next boot migrates it;
 * ``PRAGMA foreign_key_check`` is empty.
+
+**Applying** is three steps in three places. :func:`prepare_staged` makes the staged
+file what the app should start with (no manifest, nobody signed in, the Writes switch
+off, this app's own keys filled in where the file has none). The route then marks the
+restore pending and, after its answer is sent, stops the process the ordinary way. The
+lifespan runs :func:`swap_in` once ``_shutdown`` has closed the database: one atomic
+``os.replace`` of the staged file over the live one on one filesystem. There is no
+moment without a database: a crash before the replace leaves the old file (and a
+staging file the next boot deletes), a crash after it leaves the new one. Nothing of
+the replaced database is kept; keeping a copy is the person's job, by downloading a
+backup first.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import re
 import secrets
 import sqlite3
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,17 +53,23 @@ from gaggiclanker.db.migrations import (
     load_migrations,
 )
 from gaggiclanker.infra.errors import AppError, BadRequest, PayloadTooLarge
+from gaggiclanker.settings import SETTINGS_REGISTRY
 
 __all__ = [
     "MAX_RESTORE_BYTES",
+    "RESTORE_MARKER",
     "STAGING_GLOB",
+    "PendingRestore",
     "RestoreCounts",
     "RestoreRefused",
     "StagedRestore",
     "clean_stale_staging",
+    "consume_restore_marker",
     "discard_staged",
+    "prepare_staged",
     "stage_upload",
     "staged_path",
+    "swap_in",
     "validate_staged",
 ]
 
@@ -81,6 +100,14 @@ class RestoreCounts(BaseModel):
     shots: int
     sets: int
     beans: int
+
+
+@dataclass(frozen=True, slots=True)
+class PendingRestore:
+    """A restore the app has accepted: prepared, and waiting for the process to stop."""
+
+    path: Path
+    schema_version: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,3 +295,114 @@ def _validate_open(path: Path, token: str) -> StagedRestore:
         )
     finally:
         conn.close()
+
+
+def prepare_staged(path: Path, live_settings: Mapping[str, str]) -> str:
+    """Make the staged file what the app starts with after the restore; returns its schema version.
+
+    On the staged copy only. Drops the manifest; deletes every session (a token belongs
+    to the app that issued it); switches the Writes switch off, because a restored
+    profile list with Writes on would make the machine match it at the first pull; and,
+    for each API key or token the file does not hold, copies this app's value in (so
+    restoring your own keyless backup on the same box does not break the chat).
+    """
+    conn = sqlite3.connect(path, isolation_level=None)
+    try:
+        # DELETE journal: the staged file must be one file when it is renamed into place.
+        conn.execute("PRAGMA journal_mode = DELETE")
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DROP TABLE IF EXISTS backup_manifest")
+        # A file from before sign-in existed has no session table, and is still a file the
+        # check accepted: the preparation must work on every one of those.
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'auth_sessions'"
+        ).fetchone():
+            conn.execute("DELETE FROM auth_sessions")
+        # `updated_at` moves as it does in the settings repository.
+        upsert = (
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
+        )
+        conn.execute(
+            upsert,
+            ("deviceWritesEnabled", SETTINGS_REGISTRY["deviceWritesEnabled"].serialize(False)),
+        )
+        for key in KEY_SETTING_KEYS:
+            held = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+            if (held is None or held[0] == "") and live_settings.get(key):
+                conn.execute(upsert, (key, live_settings[key]))
+        conn.execute("COMMIT")
+        row = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
+        return str(row[0] or "")
+    finally:
+        conn.close()
+        for sidecar in _sidecars(path):
+            sidecar.unlink(missing_ok=True)
+
+
+#: Written beside the swap, read and deleted at the next boot, so the log says once that the
+#: data it opened came from a restore.
+RESTORE_MARKER = "restore-done.json"
+
+
+def _fsync_path(path: Path, *, directory: bool = False) -> None:
+    fd = os.open(path, os.O_RDONLY | (os.O_DIRECTORY if directory else 0))
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def swap_in(
+    data_dir: Path,
+    live: Path,
+    staged: Path,
+    *,
+    schema_version: str,
+    before_replace: Callable[[], None] | None = None,
+    after_replace: Callable[[], None] | None = None,
+) -> bool:
+    """Replace the live database file with the staged one. The database must be closed.
+
+    Returns whether the swap happened. It refuses (and the old database stays) when the
+    old file still has a non-empty ``-wal``: the close checkpoints and truncates, so
+    content there means a close that failed or a second process that still holds the
+    file, and deleting it would lose committed data.
+
+    The two hooks exist for the fault-injection tests (a crash just before and just
+    after the replace); nothing in the app passes them.
+    """
+    wal = Path(f"{live}-wal")
+    if wal.exists() and wal.stat().st_size > 0:
+        log.error("restore_swap_refused", reason="wal_not_empty")
+        return False
+    # Before the replace, never after: a stale -wal beside the new file is a log SQLite
+    # would try to apply to it. The old file was checkpointed, so nothing is lost.
+    for sidecar in (wal, Path(f"{live}-shm")):
+        sidecar.unlink(missing_ok=True)
+    _fsync_path(staged)
+    if before_replace is not None:
+        before_replace()
+    os.replace(staged, live)
+    if after_replace is not None:
+        after_replace()
+    _fsync_path(data_dir, directory=True)
+    (data_dir / RESTORE_MARKER).write_text(
+        json.dumps({"schema_version": schema_version}), encoding="utf-8"
+    )
+    log.info("backup_restored", schema_version=schema_version)
+    return True
+
+
+def consume_restore_marker(data_dir: Path) -> dict[str, str] | None:
+    """The note a swap left for this boot, deleted as it is read; ``None`` when there is none."""
+    marker = data_dir / RESTORE_MARKER
+    if not marker.exists():
+        return None
+    try:
+        raw = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    marker.unlink(missing_ok=True)
+    return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}

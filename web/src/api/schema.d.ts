@@ -136,6 +136,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/backup/restore/{token}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace everything with the staged file and restart the app */
+        post: operations["apply_restore_api_backup_restore__token__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/beans": {
         parameters: {
             query?: never;
@@ -3425,6 +3442,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[RestoreApplyData] */
+        ApiResponse_RestoreApplyData_: {
+            data?: components["schemas"]["RestoreApplyData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[RestoreCheckData] */
         ApiResponse_RestoreCheckData_: {
             data?: components["schemas"]["RestoreCheckData"] | null;
@@ -6663,6 +6688,11 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** RestoreApplyData */
+        RestoreApplyData: {
+            /** Restarting */
+            restarting: boolean;
+        };
         /**
          * RestoreCheckData
          * @description What the preview shows about a staged file. Nothing has changed yet.
@@ -9259,6 +9289,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_RestoreDiscardData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_restore_api_backup_restore__token__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RestoreApplyData_"];
                 };
             };
             /** @description Validation Error */

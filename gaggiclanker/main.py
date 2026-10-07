@@ -13,7 +13,9 @@ nothing is mid-write when the file is released.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import signal
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -42,7 +44,12 @@ from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
-from gaggiclanker.db.restore import clean_stale_staging
+from gaggiclanker.db.restore import (
+    PendingRestore,
+    clean_stale_staging,
+    consume_restore_marker,
+    swap_in,
+)
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import (
@@ -296,11 +303,41 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise
 
     log.info("app_started", version=__version__, data_dir=str(env.data_dir))
+    restored = consume_restore_marker(env.data_dir)
+    if restored is not None:
+        log.info("restore_booted", **restored)
     try:
         yield
     finally:
         await _shutdown(app, db)
         log.info("app_stopped")
+        await _swap_in_restore(app, db)
+
+
+async def _swap_in_restore(app: FastAPI, db: Database) -> None:
+    """Put an accepted restore in place, once the database is closed and not before.
+
+    A rename over an open SQLite file would leave this process, and any other reader,
+    holding the old inode; so the swap waits for ``_shutdown`` and checks it did its job.
+    A failure here is logged and not raised: the old database is still the file on disk,
+    and a non-zero exit would only restart the app onto it anyway.
+    """
+    pending: PendingRestore | None = getattr(app.state, "restore_pending", None)
+    if pending is None:
+        return
+    env: EnvSettings = app.state.env
+    try:
+        if db.is_connected:
+            raise RuntimeError("the database is still open after shutdown")
+        await asyncio.to_thread(
+            swap_in,
+            env.data_dir,
+            env.database_path,
+            pending.path,
+            schema_version=pending.schema_version,
+        )
+    except Exception:
+        log.error("restore_swap_failed", exc_info=True)
 
 
 async def _start(app: FastAPI, db: Database) -> None:
@@ -545,6 +582,11 @@ def build_device_connection(
     )
 
 
+def terminate_process() -> None:
+    """Ask this process to stop the way a container stop does."""
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
 def create_app(env: EnvSettings | None = None, *, web_dist: Path | None = None) -> FastAPI:
     """Build the application.
 
@@ -568,6 +610,11 @@ def create_app(env: EnvSettings | None = None, *, web_dist: Path | None = None) 
         openapi_url="/api/openapi.json",
     )
     app.state.env = env
+    #: A restore the apply route accepted and the lifespan swaps in after shutdown.
+    app.state.restore_pending = None
+    #: What the apply route runs once its answer is sent. SIGTERM, so uvicorn shuts down
+    #: gracefully and the lifespan's own teardown runs in its usual order. A test replaces it.
+    app.state.terminate_process = terminate_process
 
     # Middleware is applied outermost-last, so this block reads bottom-up. The
     # resulting order, outermost first:
