@@ -104,6 +104,37 @@ database.
   page (Settings → Prompts) to read the new rule, or change that paragraph yourself. The
   signature itself reaches an edited prompt either way, since it travels in the opening context.
 
+### A phase that ended before the machine logged a sample of it
+
+- **A shot with a phase that was over at once now says so.** When a phase exits on a pressure
+  target and the group is still pressurised from a flush or the last shot (4.8 bar was seen
+  against a 2.8 bar exit), the machine logs no sample of it and the log opens in the next phase.
+  The shot used to show only the later phases, and the review blamed the one that came first for
+  not having a fill before it. Now the phase list has a row for it, in the profile's order, with
+  why it ended and when and no numbers; the Curve check has an amber **Fill: skipped** warning
+  at 0 s ("The Fill ended on its pressure target before the first sample: pressure was already
+  4.8 bar."), a signature's "the Fill begins" fails with that reason, and a measure on the Fill
+  reads "ended before it was measured" instead of "the shot did not reach it". The review gets a
+  signal and an excerpt search of its own for it, so it is not told the shot stopped on a target.
+- **A review can make a claim about such a phase.** It may name the skipped fill in a claim's
+  window ("Fill: skipped"); the claim is placed at the moment the phase ended, is backed by
+  numbers from the rest of the shot (nothing was measured over the phase itself), and the Review
+  badge then reads "Fill: skipped".
+- **Why a phase ended is read from the right place.** The machine keeps one exit reason per
+  phase-table row, the reason of the phase before it in the profile. When a phase is jumped over,
+  the phase logged just before the jump used to be given the reason of the one skipped; it now
+  reads Unknown, and the skipped phase has that reason. Where a reason is missing the text says
+  "the machine did not log why".
+- **A rule for the design and Set chats**: a fill or pre-infusion that exits on a pressure target
+  is skipped whenever the group starts at or above that pressure; exit it on volume, weight or
+  time, or above what the group holds at rest. When the design chat writes a profile's signature
+  it is asked to give each phase the profile needs to run a "begins" expectation.
+- **Phase types follow the profile.** A phase is a pre-infusion or a brew phase as its profile
+  says, before the guess from its name and its pressure curve; the curve rule counts the
+  profile's phase number, not the order the phases were logged in. A ramp that opens a shot whose
+  fill was skipped is a brew phase, not a pre-infusion. The archive re-derives at the next start,
+  no wipe needed.
+
 ### Cup flow
 
 - **The flow the scale sees is drawn and used first wherever there is a scale.** The shot chart
