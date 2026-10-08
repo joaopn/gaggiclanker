@@ -1,6 +1,6 @@
-"""0039 gives an insight its Set, and agent-written insights are placed on the one Set they fit.
+"""Agent-written insights are placed on the one Set they fit, once.
 
-The move is not SQL, because "fits" is the live matching rule and a copy of its
+The placement is not SQL, because "fits" is the live matching rule and a copy of its
 logic in SQL would be a second rule. So these tests build databases like the
 maintainer's — several Sets on one bean and one grinder, an archived one, a Set
 being designed, insights from analyses and chats with and without evidence,
@@ -13,7 +13,6 @@ several, hand-written ones never move, and nothing is lost.
 from __future__ import annotations
 
 import json
-import shutil
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,7 +22,6 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import MIGRATIONS_DIR, run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.insight_placement import InsightPlacementBuilder
@@ -41,6 +39,7 @@ from gaggiclanker.db.repos.sets import (
     SetVersionWrite,
     SetWrite,
 )
+from gaggiclanker.db.schema import create_schema
 from tests.sets.conftest import make_shot
 
 
@@ -48,7 +47,7 @@ from tests.sets.conftest import make_shot
 async def db(data_dir: Path) -> AsyncIterator[Database]:
     database = Database(data_dir / "test.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:
@@ -232,43 +231,6 @@ async def _rows(db: Database) -> dict[int, dict[str, Any]]:
         int(row["id"]): dict(zip(row.keys(), tuple(row), strict=True))
         for row in await db.fetch_all("SELECT * FROM knowledge_insights ORDER BY id")
     }
-
-
-class TestTheUpgrade:
-    async def test_existing_insights_survive_as_general_ones(
-        self, data_dir: Path, tmp_path: Path
-    ) -> None:
-        database = Database(data_dir / "old.db")
-        await database.connect()
-        try:
-            directory = tmp_path / "below-0039"
-            directory.mkdir()
-            for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-                if path.name < "0039":
-                    shutil.copy(path, directory / path.name)
-            await run_migrations(database, directory)
-            await database.execute(
-                "INSERT INTO knowledge_insights "
-                "(scope_json, text, source, confirmed, confirmed_at) "
-                "VALUES ('{\"bean_id\": 1}', 'Kept.', 'chat', 1, '2026-01-01T00:00:00Z'), "
-                "('{}', 'Waiting.', 'analysis', 0, NULL)"
-            )
-
-            # Later migrations run too; this file is about 0039 being the first of them.
-            assert (await run_migrations(database))[0] == "0039"
-            rows = await _rows(database)
-
-            assert [
-                (r["text"], r["set_id"], r["set_version_id"], r["dismissed"]) for r in rows.values()
-            ] == [
-                ("Kept.", None, None, 0),
-                ("Waiting.", None, None, 0),
-            ]
-            assert rows[1]["confirmed"] == 1 and rows[1]["confirmed_at"] == "2026-01-01T00:00:00Z"
-            assert await database.fetch_all("PRAGMA foreign_key_check") == []
-            assert await database.fetch_value("SELECT COUNT(*) FROM insight_placement_build") == 0
-        finally:
-            await database.close()
 
 
 class TestWhereEachOneLands:

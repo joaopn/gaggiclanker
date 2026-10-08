@@ -122,3 +122,36 @@ async def test_a_prediction_compares_only_to_a_version_made_earlier(wired: Fixtu
     assert await wired.sets.comparison_target(set_id, second.id, third.id) is not None
     assert await wired.sets.comparison_target(set_id, third.id, second.id) is None
     assert await wired.sets.comparison_target(set_id, second.id, second.id) is None
+
+
+async def test_an_old_roll_back_row_keeps_its_line_and_the_next_version_forks_from_the_current(
+    wired: Fixtures,
+) -> None:
+    """A version written by the first roll back (v3 restores v1.1) is history that stays.
+
+    Raw rows, because nothing writes `restores_version_id` any more: the line walks from the
+    pointer by parent and steps over what a roll back stepped over.
+    """
+    db = wired.db
+    set_id = await _set(wired)
+    first = await wired.sets.current_version(set_id)
+    assert first is not None
+    await db.execute("UPDATE set_versions SET created_at = '2026-01-01T00:00:00.000Z'")
+    rows = [
+        # id, major, minor, parent, restores, created
+        (first.id + 1, 1, 1, first.id, None, "2026-01-02T00:00:00.000Z"),
+        (first.id + 2, 2, 0, first.id + 1, None, "2026-01-03T00:00:00.000Z"),
+        (first.id + 3, 3, 0, first.id + 2, first.id + 1, "2026-01-04T00:00:00.000Z"),
+    ]
+    for vid, major, minor, parent, restores, created in rows:
+        await db.execute(
+            "INSERT INTO set_versions (id, set_id, version_major, version_minor, "
+            "parent_version_id, restores_version_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (vid, set_id, major, minor, parent, restores, created),
+        )
+    await db.execute("UPDATE sets SET current_version_id = ?", (first.id + 3,))
+
+    assert await wired.sets.dead_end_versions([set_id]) == {first.id + 2}
+    added = await wired.sets.add_version(set_id, SetVersionPatch(grind_setting="19"))
+    assert added is not None and added.version_label == "v3.1"
+    assert added.parent_version_id == first.id + 3

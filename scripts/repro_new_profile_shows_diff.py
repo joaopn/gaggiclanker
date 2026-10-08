@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -31,8 +30,6 @@ from typing import Any
 
 import httpx
 
-from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import MIGRATIONS_DIR, run_migrations
 from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL, ProfilesRepository
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.main import create_app
@@ -105,52 +102,11 @@ async def listed(client: httpx.AsyncClient, draft_id: int) -> dict[str, Any]:
     return dict(next(row for row in rows if row["id"] == draft_id))
 
 
-async def archive_from_before_the_upgrade(path: Path, scratch: Path) -> int:
-    """A database as the app left it before drafts were marked new, holding one old draft.
-
-    The draft is based on the synthetic baseline and carries the stop-condition list that was
-    computed against it, which is what the old card warned about. Built from the migrations that
-    exist below 0035, so on a tree without that migration it is simply the current schema.
-    """
-    directory = scratch / "migrations"
-    directory.mkdir()
-    for file in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        if file.name < "0035":
-            shutil.copy(file, directory / file.name)
-    db = Database(path)
-    await db.connect()
-    try:
-        await run_migrations(db, directory)
-
-        async def version(label: str, description: str, content_hash: str) -> int:
-            cursor = await db.execute(
-                "INSERT INTO profile_versions (content_hash, label, type, json, source)"
-                " VALUES (?, ?, 'pro', ?, 'draft')",
-                (content_hash, label, json.dumps({"label": label, "description": description})),
-            )
-            return int(cursor.lastrowid or 0)
-
-        base = await version(SYNTHETIC_BASE_LABEL, OLD_BASE_DESCRIPTION, "old-base")
-        drafted = await version("Old design [AI]", "", "old-draft")
-        stops = json.dumps(
-            [{"phase_index": 0, "kind": "changed", "before": {"value": 36}, "after": {"value": 40}}]
-        )
-        cursor = await db.execute(
-            "INSERT INTO profile_drafts (base_version_id, draft_version_id, status, created_at,"
-            " updated_at, stop_condition_changes_json) VALUES (?, ?, 'draft', 'x', 'x', ?)",
-            (base, drafted, stops),
-        )
-        return int(cursor.lastrowid or 0)
-    finally:
-        await db.close()
-
-
 async def main() -> int:
     ok = True
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "data").mkdir()
-        old_draft = await archive_from_before_the_upgrade(root / "data" / "gaggiclanker.db", root)
         env = EnvSettings(DATA_DIR=str(root / "data"), LOG_LEVEL="warning", LOG_JSON=True)  # type: ignore[call-arg]
         app = create_app(env, web_dist=root / "no-dist")
         async with app.router.lifespan_context(app):
@@ -240,14 +196,6 @@ async def main() -> int:
                 moved["phases"][-1]["targets"] = [
                     {"type": "volumetric", "operator": "gte", "value": 61}
                 ]
-                detail = data(await client.get(f"/api/profile-drafts/{old_draft}"))
-                ok &= verdict(
-                    "(d) a draft made before the upgrade",
-                    detail,
-                    await listed(client, old_draft),
-                    new=True,
-                )
-
                 edited = data(
                     await client.post(
                         "/api/profile-drafts",

@@ -12,12 +12,11 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import MIGRATIONS_DIR, run_migrations
 from gaggiclanker.db.repos.profiles import (
-    SYNTHETIC_BASE_DESCRIPTION,
     SYNTHETIC_BASE_LABEL,
     ProfilesRepository,
 )
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile
 from tests.drafts.conftest import BASE_LABEL, data
@@ -206,111 +205,6 @@ async def test_the_versions_list_does_not_hold_the_synthetic_base(
     assert page["total"] == len(page["items"])
 
 
-# ── the migration ────────────────────────────────────────────────────
-
-
-async def _migrate(db: Database, tmp_path: Path, *, below: str | None) -> None:
-    import shutil
-
-    directory = tmp_path / f"upto-{below}"
-    directory.mkdir()
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        if below is None or path.name < below:
-            shutil.copy(path, directory / path.name)
-    await run_migrations(db, directory)
-
-
-@pytest.fixture
-async def plain_db(tmp_path: Path) -> Any:
-    db = Database(tmp_path / "m.db")
-    await db.connect()
-    try:
-        yield db
-    finally:
-        await db.close()
-
-
-async def _version(db: Database, label: str, description: str, hash_: str) -> int:
-    document = json.dumps({"label": label, "description": description})
-    cursor = await db.execute(
-        "INSERT INTO profile_versions (content_hash, label, type, json, source)"
-        " VALUES (?, ?, 'pro', ?, 'draft')",
-        (hash_, label, document),
-    )
-    return int(cursor.lastrowid or 0)
-
-
-WIZARD = "Proposed by the starting-point wizard"
-
-
-async def _draft(db: Database, base: int, drafted: int, notes: str = "") -> int:
-    cursor = await db.execute(
-        "INSERT INTO profile_drafts (base_version_id, draft_version_id, notes, status, created_at,"
-        " updated_at, stop_condition_changes_json)"
-        " VALUES (?, ?, ?, 'draft', 'x', 'x', '[{\"n\": 1}]')",
-        (base, drafted, notes),
-    )
-    return int(cursor.lastrowid or 0)
-
-
-async def test_existing_drafts_on_the_synthetic_base_become_new_and_no_others(
-    plain_db: Database, tmp_path: Path
-) -> None:
-    await _migrate(plain_db, tmp_path, below="0035")
-    synthetic = await _version(plain_db, SYNTHETIC_BASE_LABEL, SYNTHETIC_BASE_DESCRIPTION, "h1")
-    # A person's profile that happens to carry the same label is not the synthetic base.
-    lookalike = await _version(plain_db, SYNTHETIC_BASE_LABEL, "Mine", "h2")
-    other = await _version(plain_db, "Other", "", "h3")
-    on_synthetic = await _draft(plain_db, synthetic, other)
-    on_lookalike = await _draft(plain_db, lookalike, other)
-    on_real = await _draft(plain_db, other, lookalike)
-    wizard = await _draft(plain_db, other, lookalike, notes=f"{WIZARD} (recommended).")
-    redraft = await _draft(
-        plain_db,
-        other,
-        lookalike,
-        notes=f"{WIZARD} (recommended): the draft brews at 94 °C, and this profile is where "
-        "that lives.",
-    )
-
-    refined = await _draft(
-        plain_db, other, lookalike, notes=f"{WIZARD} (recommended).\nA bit longer, please."
-    )
-    # Only the exact first line counts: a person's own words that merely start alike do not.
-    lookalike_notes = await _draft(
-        plain_db, other, lookalike, notes=f"{WIZARD} (recommended). Mine\nmore"
-    )
-
-    await _migrate(plain_db, tmp_path, below=None)
-
-    rows = await plain_db.fetch_all(
-        "SELECT id, is_new, stop_condition_changes_json AS stops FROM profile_drafts"
-    )
-    assert {row["id"]: row["is_new"] for row in rows} == {
-        on_synthetic: 1,
-        on_lookalike: 0,
-        on_real: 0,
-        wizard: 1,
-        redraft: 0,
-        refined: 1,
-        lookalike_notes: 0,
-    }
-    # The stored list was computed against the stand-in base: a new draft has none, an edit
-    # keeps it.
-    assert {row["id"]: row["stops"] for row in rows} == {
-        id_: "[]" if new else '[{"n": 1}]'
-        for id_, new in (
-            (on_synthetic, True),
-            (on_lookalike, False),
-            (on_real, False),
-            (wizard, True),
-            (redraft, False),
-            (refined, True),
-            (lookalike_notes, False),
-        )
-    }
-
-
 # ── stop conditions: a new profile changes none ──────────────────────
 
 
@@ -370,49 +264,6 @@ async def test_a_new_draft_and_an_edit_that_moves_a_stop_are_put_without_any_fla
     assert row["pending_draft_id"] == new.id
     assert renamed.status_code == 201
     assert renamed.json()["data"]["pending_draft_id"] == edit.id
-
-
-async def _apply_the_backfill(db: Database) -> None:
-    """Run 0035's own UPDATE statements on a database that already holds the new column."""
-    sql = "\n".join(
-        line
-        for line in (MIGRATIONS_DIR / "0035_draft_is_new.sql").read_text().splitlines()
-        if not line.lstrip().startswith("--")
-    )
-    for statement in sql.split(";"):
-        if statement.strip().startswith("UPDATE"):
-            await db.execute(statement)
-
-
-async def test_a_draft_made_before_the_upgrade_is_put_without_the_stale_acknowledgement(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
-) -> None:
-    """Its stored stop list was a diff against the stand-in base, so the old code demanded one."""
-    app, client, _ = adopted
-    base = await ProfilesRepository(app.state.db).empty_base()
-    wizard_notes = f"{WIZARD} (recommended)."
-    old = await app.state.draft_proposals.create_manual(
-        base_version_id=base, document=_document(44), notes=wizard_notes
-    )
-    real_base = int(
-        await app.state.db.fetch_value(
-            "SELECT d.current_version_id FROM device_profiles d "
-            "JOIN profile_versions v ON v.id = d.current_version_id "
-            "WHERE v.label = '9 Bar Espresso'"
-        )
-    )
-    other = await app.state.draft_proposals.create_manual(
-        base_version_id=real_base, document={**_document(45), "label": "Other"}
-    )
-    assert len(old.stop_condition_changes or []) == 1 and not old.is_new
-
-    await _apply_the_backfill(app.state.db)
-
-    migrated = (await _detail(client, old.id))["draft"]
-    assert migrated["is_new"] is True and migrated["stop_condition_changes"] == []
-    assert (await _detail(client, other.id))["draft"]["stop_condition_changes"] != []
-    row = await put(client, {"id": old.id})
-    assert row["pending_draft_id"] == old.id
 
 
 # ── refining a new draft ─────────────────────────────────────────────
@@ -486,12 +337,22 @@ async def test_a_new_draft_whose_stored_base_moved_on_the_machine_does_not_warn(
 # ── the synthetic base is nobody's profile ───────────────────────────
 
 
+@pytest.fixture
+async def plain_db(tmp_path: Path) -> Any:
+    db = Database(tmp_path / "m.db")
+    await db.connect()
+    await create_schema(db)
+    try:
+        yield db
+    finally:
+        await db.close()
+
+
 async def test_the_synthetic_base_is_not_a_candidate_a_default_base_or_a_row_of_v_profiles(
-    plain_db: Database, tmp_path: Path
+    plain_db: Database,
 ) -> None:
     from gaggiclanker.starting.context import profile_candidates
 
-    await _migrate(plain_db, tmp_path, below=None)
     profiles = ProfilesRepository(plain_db)
     real, _ = await profiles.ensure_version(Profile.model_validate(_document(40)))
     # Stored after the real one, so it is the newest: the tie-break would pick it.

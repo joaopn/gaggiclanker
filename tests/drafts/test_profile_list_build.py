@@ -1,40 +1,31 @@
-"""0036 gives every profile its own on-the-machine switch and version list, and the list is
-filled from everything the archive stores: each rule of how versions are grouped is a test here."""
+"""The profile list is filled from everything the archive stores, once, at the first boot that
+finds it empty: each rule of how versions are grouped is a test here."""
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import MIGRATIONS_DIR, run_migrations
 from gaggiclanker.db.repos.profile_list import (
     ProfileListBuilder,
     stripped_label,
     version_source_for_draft,
 )
+from gaggiclanker.db.schema import create_schema
 
 
 @pytest.fixture
 async def db(data_dir: Path) -> AsyncIterator[Database]:
     database = Database(data_dir / "test.db")
     await database.connect()
+    await create_schema(database)
     try:
         yield database
     finally:
         await database.close()
-
-
-async def _below(db: Database, tmp_path: Path) -> None:
-    directory = tmp_path / "below-0036"
-    directory.mkdir()
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        if path.name < "0036":
-            shutil.copy(path, directory / path.name)
-    await run_migrations(db, directory)
 
 
 async def _version(
@@ -154,10 +145,8 @@ async def _profiles(db: Database) -> dict[str, dict[str, object]]:
     return found
 
 
-async def test_the_list_is_built_from_everything_stored(db: Database, tmp_path: Path) -> None:
-    await _below(db, tmp_path)
+async def test_the_list_is_built_from_everything_stored(db: Database) -> None:
     await _seed(db)
-    assert "0036" in await run_migrations(db)
 
     counts = await ProfileListBuilder(db).build()
     assert counts is not None and counts["profiles_made"] == 4
@@ -206,10 +195,8 @@ async def test_the_list_is_built_from_everything_stored(db: Database, tmp_path: 
     await _assert_no_shared_labels(db)
 
 
-async def test_building_twice_changes_nothing(db: Database, tmp_path: Path) -> None:
-    await _below(db, tmp_path)
+async def test_building_twice_changes_nothing(db: Database) -> None:
     await _seed(db)
-    await run_migrations(db)
     builder = ProfileListBuilder(db)
     assert await builder.build() is not None
     first = await _profiles(db)
@@ -223,15 +210,11 @@ async def test_building_twice_changes_nothing(db: Database, tmp_path: Path) -> N
     assert second["4"]["on"] == 1
 
 
-async def test_a_tombstone_whose_file_a_live_row_stands_on_lets_go_of_it(
-    db: Database, tmp_path: Path
-) -> None:
-    await _below(db, tmp_path)
+async def test_a_tombstone_whose_file_a_live_row_stands_on_lets_go_of_it(db: Database) -> None:
     await _version(db, 1, "One [AI]", source="draft")
     await _version(db, 2, "Two [AI]", source="draft")
     await _row(db, 1, "One [AI]", 1, device="same")
     await _row(db, 2, "Two [AI]", 2, device="same", deleted=True)
-    await run_migrations(db)
     await ProfileListBuilder(db).build()
     row = await db.fetch_one("SELECT * FROM profile_board WHERE id = 2")
     assert row is not None
@@ -240,17 +223,14 @@ async def test_a_tombstone_whose_file_a_live_row_stands_on_lets_go_of_it(
 
 
 async def test_an_empty_archive_is_built_and_marked(db: Database) -> None:
-    await run_migrations(db)
     counts = await ProfileListBuilder(db).build()
     assert counts is not None and counts["profiles_made"] == 0
     assert await ProfileListBuilder(db).built()
 
 
-async def test_existing_rows_start_on_and_lose_nothing(db: Database, tmp_path: Path) -> None:
-    await _below(db, tmp_path)
+async def test_a_board_row_starts_on_the_machine_unless_said_otherwise(db: Database) -> None:
     await _version(db, 1, "P")
     await _row(db, 1, "P", 1, device="x", device_version=1, star=0)
-    assert "0036" in await run_migrations(db)
     row = await db.fetch_one("SELECT * FROM profile_board")
     assert row is not None and row["on_machine"] == 1 and row["on_home_screen"] == 0
     assert row["device_profile_id"] == "x"
@@ -269,16 +249,13 @@ def test_a_draft_with_nothing_an_agent_adds_is_a_persons_edit() -> None:
     assert version_source_for_draft({"change_summary": "Raised the pressure."}) == "agent"
 
 
-async def test_agent_work_stays_with_the_profile_a_put_would_have_put_it_in(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_agent_work_stays_with_the_profile_a_put_would_have_put_it_in(db: Database) -> None:
     """The fill replays old drafts through the put's own rule, never by label without the suffix.
 
     A firmware "Turbo Shot" keeps its own versions; "Turbo Shot [AI]" versions made for a Set and
     the version that renamed it for that Set are one profile; a chain of "Blooming [AI]" drafts
     joins the board row it ended up on; a fork of an imported profile is not merged into it.
     """
-    await _below(db, tmp_path)
     for vid, label, source in (
         (1, "Turbo Shot", "device"),
         (2, "Turbo Shot [AI]", "draft"),
@@ -306,7 +283,6 @@ async def test_agent_work_stays_with_the_profile_a_put_would_have_put_it_in(
     await _row(db, 2, "Blooming", 5, device="fb", device_version=5, origin="adopted")
     await _row(db, 3, "Blooming [AI]", 8, device="pb", device_version=8)
     await _row(db, 4, "Mine [AI]", 11, device="fm", device_version=11, origin="adopted")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -324,11 +300,8 @@ async def test_agent_work_stays_with_the_profile_a_put_would_have_put_it_in(
     await _assert_no_shared_labels(db)
 
 
-async def test_separate_drafts_of_one_default_make_one_profile_not_several(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_separate_drafts_of_one_default_make_one_profile_not_several(db: Database) -> None:
     """Three attempts from the firmware "Classic" and two from "Lever" each end as one profile."""
-    await _below(db, tmp_path)
     for vid, label, source in (
         (1, "Classic", "device"),
         (2, "Classic [AI]", "draft"),
@@ -348,7 +321,6 @@ async def test_separate_drafts_of_one_default_make_one_profile_not_several(
     await _draft(db, 6, base=6, version=8, status="pushed", pushed="l2")
     await _row(db, 1, "Classic", 1, device="d1", device_version=1, origin="adopted")
     await _row(db, 2, "Lever", 6, device="d2", device_version=6, origin="adopted")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -363,8 +335,7 @@ async def test_separate_drafts_of_one_default_make_one_profile_not_several(
     await _assert_no_shared_labels(db)
 
 
-async def test_what_a_draft_replaced_is_the_same_profile(db: Database, tmp_path: Path) -> None:
-    await _below(db, tmp_path)
+async def test_what_a_draft_replaced_is_the_same_profile(db: Database) -> None:
     for vid, label, source in (
         (1, "Foo", "device"),
         (2, "Foo [AI]", "draft"),
@@ -374,7 +345,6 @@ async def test_what_a_draft_replaced_is_the_same_profile(db: Database, tmp_path:
     await _draft(db, 1, base=1, version=2, status="superseded")
     # A different name, no Set: by the put's rule a new profile, but it replaced version 2.
     await _draft(db, 2, base=2, version=3, status="pushed", pushed="p", replaced=2)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -383,17 +353,13 @@ async def test_what_a_draft_replaced_is_the_same_profile(db: Database, tmp_path:
     assert len(joined) == 1 and [v for v, _ in joined[0]["versions"]] == [2, 3]  # type: ignore[attr-defined]
 
 
-async def test_two_profiles_that_exist_are_never_merged_by_a_draft(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_two_profiles_that_exist_are_never_merged_by_a_draft(db: Database) -> None:
     """An old database can hold two live rows with one label; a draft linking them leaves both."""
-    await _below(db, tmp_path)
     await _version(db, 1, "X [AI]", source="draft")
     await _version(db, 2, "X [AI]", source="draft")
     await _draft(db, 1, base=1, version=2, status="pushed", pushed="b", replaced=1)
     await _row(db, 1, "X [AI]", 1, device="a", device_version=1)
     await _row(db, 2, "X [AI]", 2, device="b", device_version=2)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -403,12 +369,11 @@ async def test_two_profiles_that_exist_are_never_merged_by_a_draft(
 
 
 async def test_a_set_chain_renamed_onto_a_held_name_joins_the_profile_that_has_it(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """Whatever path placed a version, no two profiles end with one name: a Set's chain that
     was renamed to a name a live row holds joins that row. Only current names count, so a
     later fresh draft with the chain's former name is a profile of its own."""
-    await _below(db, tmp_path)
     for vid, label, source in (
         (1, "Classic", "device"),
         (2, "Chosen [AI]", "draft"),
@@ -426,7 +391,6 @@ async def test_a_set_chain_renamed_onto_a_held_name_joins_the_profile_that_has_i
     await _draft(db, 6, base=1, version=9, status="discarded")
     await _row(db, 1, "Classic", 1, device="d1", device_version=1, origin="adopted")
     await _row(db, 2, "Chosen [AI]", 2, device="c1", device_version=2)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -438,17 +402,13 @@ async def test_a_set_chain_renamed_onto_a_held_name_joins_the_profile_that_has_i
     await _assert_no_shared_labels(db)
 
 
-async def test_a_made_profile_is_active_on_its_newest_pushed_version(
-    db: Database, tmp_path: Path
-) -> None:
-    await _below(db, tmp_path)
+async def test_a_made_profile_is_active_on_its_newest_pushed_version(db: Database) -> None:
     await _version(db, 1, "Base", source="device")
     for vid in (7, 8, 9):
         await _version(db, vid, "Alt [AI]" if vid != 8 else "Pushed name [AI]", source="draft")
     await _draft(db, 1, base=1, version=7, status="superseded")
     await _draft(db, 2, base=7, version=8, status="pushed", pushed="p", replaced=7)
     await _draft(db, 3, base=8, version=9, status="discarded", replaced=8)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -467,14 +427,12 @@ async def test_a_made_profile_is_active_on_its_newest_pushed_version(
 
 
 async def test_an_import_or_pre_board_version_joins_the_profile_with_exactly_its_name(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
-    await _below(db, tmp_path)
     await _version(db, 1, "Lever", source="device")
     await _version(db, 2, "Lever", source="import")
     await _version(db, 3, "Lever [AI]", source="import")
     await _row(db, 1, "Lever", 1, device="d", device_version=1, origin="adopted")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -484,19 +442,15 @@ async def test_an_import_or_pre_board_version_joins_the_profile_with_exactly_its
     assert other["label"] == "Lever [AI]" and other["versions"] == [(3, "import")]
 
 
-async def test_a_sets_chain_alone_links_a_renamed_version_to_its_profile(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_a_sets_chain_alone_links_a_renamed_version_to_its_profile(db: Database) -> None:
     """No file, no replaced version: the Set's profile is the one its draft is named for, and a
     renamed draft is a profile of its own (the put's rule: a name never changes through a
     version)."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Base", source="device")
     await _version(db, 2, "First [AI]", source="draft")
     await _version(db, 3, "Second [AI]", source="draft")
     await _draft(db, 1, base=1, version=2, status="superseded", set_id=5)
     await _draft(db, 2, base=2, version=3, status="discarded", set_id=5)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -507,13 +461,10 @@ async def test_a_sets_chain_alone_links_a_renamed_version_to_its_profile(
     assert [v for v, _ in second["versions"]] == [3] and second["label"] == "Second [AI]"  # type: ignore[attr-defined]
 
 
-async def test_a_new_draft_never_continues_the_profile_of_its_stored_base(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_a_new_draft_never_continues_the_profile_of_its_stored_base(db: Database) -> None:
     """A draft designed from scratch is stored against some base only to have a diff anchor. In
     the fill, as in the put, it does not join that base's profile even when the labels agree,
     and the synthetic baseline is never a profile."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Mine [AI]", source="draft")
     await _version(db, 2, "Empty baseline", source="draft")
     await _version(db, 3, "Mine [AI]", source="draft")
@@ -521,7 +472,6 @@ async def test_a_new_draft_never_continues_the_profile_of_its_stored_base(
     await _draft(db, 1, base=1, version=3, status="pushed", pushed="p3", is_new=True)
     await _draft(db, 2, base=2, version=4, status="discarded", is_new=True)
     await _row(db, 1, "Mine [AI]", 1, device="p1", device_version=1)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -535,13 +485,10 @@ async def test_a_new_draft_never_continues_the_profile_of_its_stored_base(
     await _assert_no_shared_labels(db)
 
 
-async def test_a_made_profiles_name_comes_from_its_newest_pushed_version(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_a_made_profiles_name_comes_from_its_newest_pushed_version(db: Database) -> None:
     """Pushed ``A [AI]``, then a discarded rename ``B [AI]``: the profile is ``A [AI]`` for the
     fill's own questions as well as in the row it makes, so a lone ``B [AI]`` version does not
     join it (a profile is only ever known by its current name, never by an unpushed one)."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Base", source="device")
     await _version(db, 7, "A [AI]", source="draft")
     await _version(db, 8, "A [AI]", source="draft")
@@ -552,7 +499,6 @@ async def test_a_made_profiles_name_comes_from_its_newest_pushed_version(
     await _draft(db, 3, base=8, version=9, status="discarded", replaced=8)
     # Another, unrelated draft that happens to carry the rename's name.
     await _draft(db, 4, base=1, version=10, status="discarded")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -566,17 +512,15 @@ async def test_a_made_profiles_name_comes_from_its_newest_pushed_version(
 
 
 async def test_what_a_draft_replaced_stays_with_the_profile_that_already_owns_it(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """A draft's version lands in a made group, and the version it replaced belongs to a profile
     that exists: the made group joins that profile. The profile keeps every version it had; they
     are not moved out into a new profile."""
-    await _below(db, tmp_path)
     await _version(db, 2, "Foo [AI]", source="draft")
     await _version(db, 3, "Renamed [AI]", source="draft")
     await _draft(db, 2, base=2, version=3, status="pushed", pushed="p", replaced=2)
     await _row(db, 1, "Foo [AI]", 2, device="p0", device_version=2)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -587,18 +531,16 @@ async def test_what_a_draft_replaced_stays_with_the_profile_that_already_owns_it
 
 
 async def test_a_second_change_to_a_profile_of_the_persons_joins_the_first_copy(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """The fill asks the same lineage question a put does: a draft based on a profile the app did
     not make continues the app's copy of it (named with the suffix) when one exists."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Foo", source="device")
     await _version(db, 2, "Foo [AI]", source="draft")
     await _version(db, 3, "Foo [AI]", source="draft")
     await _draft(db, 1, base=1, version=2, status="pushed", pushed="p")
     await _draft(db, 2, base=1, version=3, status="discarded")
     await _row(db, 1, "Foo", 1, device="d1", device_version=1, origin="adopted")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -610,11 +552,10 @@ async def test_a_second_change_to_a_profile_of_the_persons_joins_the_first_copy(
 
 
 async def test_a_version_a_pushed_file_placed_is_not_pulled_into_another_group_by_its_name(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """A draft pushed as the file a profile stands on belongs to that profile. Its label happens
     to be the name another (made) group has: the fill does not merge the two."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Bar", source="device")
     await _version(db, 2, "Base", source="device")
     await _version(db, 3, "Foo [AI]", source="draft")
@@ -622,7 +563,6 @@ async def test_a_version_a_pushed_file_placed_is_not_pulled_into_another_group_b
     await _draft(db, 1, base=2, version=3, status="pushed", pushed="p2")
     await _draft(db, 2, base=2, version=4, status="discarded")
     await _row(db, 1, "Bar", 1, device="p2", device_version=1, origin="adopted")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -644,14 +584,12 @@ async def _file(
 
 
 async def test_a_file_the_machine_holds_with_no_row_becomes_a_profile_that_is_on(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """Made on the display after the board (the old page's "on the machine, not on the board"):
     the fill must not make it something the next sync removes. It is on, starred as the file is."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Made on the display", source="device")
     await _file(db, "disp1", 1, favorite=0)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -659,14 +597,10 @@ async def test_a_file_the_machine_holds_with_no_row_becomes_a_profile_that_is_on
     assert row["label"] == "Made on the display" and row["on"] == 1 and row["star"] == 0
 
 
-async def test_a_file_that_joins_an_existing_profile_by_name_switches_it_on(
-    db: Database, tmp_path: Path
-) -> None:
-    await _below(db, tmp_path)
+async def test_a_file_that_joins_an_existing_profile_by_name_switches_it_on(db: Database) -> None:
     await _version(db, 1, "Foo", source="import")
     await _version(db, 2, "Foo", source="device")
     await _file(db, "disp1", 2)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -674,17 +608,13 @@ async def test_a_file_that_joins_an_existing_profile_by_name_switches_it_on(
     assert [v for v, _ in row["versions"]] == [1, 2] and row["on"] == 1  # type: ignore[attr-defined]
 
 
-async def test_a_file_a_live_row_stands_on_does_not_switch_a_made_profile_on(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_a_file_a_live_row_stands_on_does_not_switch_a_made_profile_on(db: Database) -> None:
     """Only what no row accounts for is turned on: here the file belongs to a row, so a profile
     made from an unrelated stored version stays off."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Mine", source="device")
     await _version(db, 2, "Old idea", source="import")
     await _file(db, "d1", 1)
     await _row(db, 1, "Mine", 1, device="d1", device_version=1, origin="adopted")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -694,16 +624,12 @@ async def test_a_file_a_live_row_stands_on_does_not_switch_a_made_profile_on(
     assert other["label"] == "Old idea" and other["on"] == 0
 
 
-async def test_a_deleted_row_whose_file_is_still_on_the_machine_comes_back_on(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_a_deleted_row_whose_file_is_still_on_the_machine_comes_back_on(db: Database) -> None:
     """The old page said a deleted profile would stay on the machine: after the upgrade the
     machine holds exactly what it held, and the person switches off what they want gone."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Dropped", source="device")
     await _file(db, "d1", 1, favorite=0)
     await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -712,16 +638,14 @@ async def test_a_deleted_row_whose_file_is_still_on_the_machine_comes_back_on(
 
 
 async def test_a_deleted_row_comes_back_on_through_its_own_file_even_if_edited_since(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """Its file is still there, holding another version now (edited on the display): the row
     stands on that file, so it stays on the machine."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Dropped", source="device")
     await _version(db, 2, "Edited elsewhere", source="device")
     await _file(db, "d1", 2)
     await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -730,13 +654,11 @@ async def test_a_deleted_row_comes_back_on_through_its_own_file_even_if_edited_s
 
 
 async def test_a_deleted_row_comes_back_on_through_a_file_that_holds_its_version(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
-    await _below(db, tmp_path)
     await _version(db, 1, "Dropped", source="device")
     await _file(db, "other-id", 1)
     await _row(db, 1, "Dropped", 1, device="gone", device_version=1, origin="adopted", deleted=True)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -744,15 +666,11 @@ async def test_a_deleted_row_comes_back_on_through_a_file_that_holds_its_version
     assert row["on"] == 1
 
 
-async def test_a_deleted_row_whose_file_is_gone_comes_back_off(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_a_deleted_row_whose_file_is_gone_comes_back_off(db: Database) -> None:
     """Gone from the machine (the mirror marks it deleted, as a wipe does): nothing to keep."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Dropped", source="device")
     await _file(db, "d1", 1, deleted=True)
     await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -760,18 +678,14 @@ async def test_a_deleted_row_whose_file_is_gone_comes_back_off(
     assert row["label"] == "Dropped" and row["on"] == 0
 
 
-async def test_files_a_wipe_took_do_not_switch_their_old_profiles_on(
-    db: Database, tmp_path: Path
-) -> None:
+async def test_files_a_wipe_took_do_not_switch_their_old_profiles_on(db: Database) -> None:
     """Only files the mirror holds now count: the old agent copies a firmware update wiped are
     in the mirror marked deleted, and their profiles stay off."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Wiped [AI]", source="draft")
     await _version(db, 2, "Display made", source="device")
     await _draft(db, 1, base=2, version=1, status="pushed", pushed="w1")
     await _file(db, "w1", 1, deleted=True)
     await _file(db, "gone2", 2, deleted=True)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -780,17 +694,15 @@ async def test_files_a_wipe_took_do_not_switch_their_old_profiles_on(
 
 
 async def test_a_file_a_live_row_stands_on_is_not_turned_on_through_a_made_profile(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """The file belongs to a row (edited on the display since, so the mirror holds another
     version of it): the row's own handling decides what happens, not the fill's rule for files
     nobody accounts for."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Mine", source="device")
     await _version(db, 3, "Edited on display", source="device")
     await _file(db, "d1", 3)
     await _row(db, 1, "Mine", 1, device="d1", device_version=1, origin="adopted")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -799,17 +711,15 @@ async def test_a_file_a_live_row_stands_on_is_not_turned_on_through_a_made_profi
 
 
 async def test_a_deleted_row_edited_on_the_display_comes_back_on_its_edited_version(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """Case 7 of the upgrade: deleted on the old page, then edited on the display. The row stands
     on its file and its active version is what the file holds now, so the first sync has nothing
     to push and nothing to remove: the person's edit is not undone."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Dropped", source="device")
     await _version(db, 2, "Dropped", source="device")  # the edited content, same name
     await _file(db, "d1", 2, favorite=0)
     await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -822,14 +732,12 @@ async def test_a_deleted_row_edited_on_the_display_comes_back_on_its_edited_vers
 
 
 async def test_a_profile_made_for_a_file_stands_on_it_with_the_version_the_file_holds(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
-    await _below(db, tmp_path)
     # The file holds the older version; a newer one exists in the archive (an import).
     await _version(db, 1, "Foo", source="device")
     await _version(db, 2, "Foo", source="import")
     await _file(db, "disp1", 1, favorite=0)
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
@@ -839,18 +747,16 @@ async def test_a_profile_made_for_a_file_stands_on_it_with_the_version_the_file_
 
 
 async def test_a_deleted_row_whose_file_a_live_row_stands_on_comes_back_off_without_a_file(
-    db: Database, tmp_path: Path
+    db: Database,
 ) -> None:
     """Case 8: the deleted row's own file now holds another profile's current version (a live
     row stands on it). The row does not stand on that file or take its version: it comes back
     off with no file, and no two live profiles share a name."""
-    await _below(db, tmp_path)
     await _version(db, 1, "Dropped", source="device")
     await _version(db, 5, "Other", source="device")
     await _file(db, "d1", 5)
     await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
     await _row(db, 2, "Other", 5, device="d1", device_version=5, origin="adopted")
-    await run_migrations(db)
 
     await ProfileListBuilder(db).build()
 
