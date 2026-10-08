@@ -8581,7 +8581,7 @@ export interface components {
         /** @enum {string} */
         SortKey: "started_at" | "duration" | "rating" | "check" | "review";
         /** @enum {string} */
-        SpreadMeasure: "shot_time_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "brew_flow_ml_s" | "rating";
+        SpreadMeasure: "shot_time_s" | "cup_first_drip_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "cup_flow_g_s" | "brew_flow_ml_s" | "rating";
         /** StarredBody */
         StarredBody: {
             /** Starred */

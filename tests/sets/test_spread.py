@@ -9,6 +9,7 @@ predicted something, the evidence for it.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from typing import Any
 
@@ -24,14 +25,26 @@ from gaggiclanker.db.repos.sets import (
     SetWrite,
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.domain.exports import slog_to_raw
+from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.domain.vocab import SPREAD_MEASURES
+from gaggiclanker.sync.derive import derive_shot
+from tests.domain.helpers import SLOG_FIXTURES
 from tests.sets.conftest import Fixtures
 
 
-def diagnostics(*, first_drip_s: Any = 6.5, max_bar: Any = 9.2, brew_flow: Any = 1.8) -> str:
+def diagnostics(
+    *,
+    first_drip_s: Any = 6.5,
+    max_bar: Any = 9.2,
+    brew_flow: Any = 1.8,
+    cup_first_drip_s: Any = None,
+    cup_flow: Any = None,
+) -> str:
     """A diagnostics document shaped the way the ingest path writes one.
 
-    Only the three paths the spread reads are filled in. Written out here rather
+    Only the paths the spread reads are filled in (the cup ones are absent unless given,
+    as on a shot with no scale). Written out here rather
     than run through the diagnostics engine on purpose: the point of the query
     is that it reads what is already stored, so the test has to state what
     "already stored" looks like — including the shapes a hand-edited row or an
@@ -44,10 +57,18 @@ def diagnostics(*, first_drip_s: Any = 6.5, max_bar: Any = 9.2, brew_flow: Any =
     return json.dumps(
         {
             "summary": {
-                "flow": {"time_to_first_drip_s": first_drip_s},
+                "flow": {
+                    "time_to_first_drip_s": first_drip_s,
+                    "cup_first_drip_s": cup_first_drip_s,
+                },
                 "pressure": pressure,
             },
-            "diagnostics": {"extraction": {"flow_avg_brew_ml_s": brew_flow}},
+            "diagnostics": {
+                "extraction": {
+                    "flow_avg_brew_ml_s": brew_flow,
+                    "cup_flow_avg_brew_g_s": cup_flow,
+                }
+            },
         }
     )
 
@@ -135,7 +156,10 @@ class TestWhereEachMeasureComesFrom:
         """Two columns, three JSON paths out of the stored diagnostics, one judgement."""
         set_id, version_id = await a_set(wired)
         shot_id = await store_shot(
-            wired.shots, "000001", diagnostics_json=diagnostics(), final_weight_g=36.4
+            wired.shots,
+            "000001",
+            diagnostics_json=diagnostics(cup_first_drip_s=2.25, cup_flow=1.4),
+            final_weight_g=36.4,
         )
         assert await wired.sets.assign_shot(shot_id, version_id)
         await JudgementsRepository(wired.db).upsert(
@@ -149,6 +173,8 @@ class TestWhereEachMeasureComesFrom:
         assert counted.yield_g == 36.4
         assert counted.peak_pressure_bar == 9.2
         assert counted.brew_flow_ml_s == 1.8
+        assert counted.cup_first_drip_s == 2.25
+        assert counted.cup_flow_g_s == 1.4
         assert counted.rating == 4
         assert (counted.balance, counted.decision) == ("sour", "improve")
 
@@ -219,6 +245,40 @@ class TestWhereEachMeasureComesFrom:
 
         assert counted.first_drip_s == 0.0
 
+    async def test_a_shot_with_no_scale_has_puck_values_and_no_cup_values(
+        self, wired: Fixtures
+    ) -> None:
+        """The same real shot with and without its scale: only the cup's numbers go.
+
+        The no-scale shot is the fixture with ``v`` and ``vf`` zeroed, as a board with
+        no scale logs it, put through the real derivation. It still has a first puck
+        flow and a puck flow, so a Set holds both kinds side by side and never has to
+        pool a cup value with a puck one.
+        """
+        slog = parse_slog((SLOG_FIXTURES / "shot_196_baseline_high.slog").read_bytes())
+        blank = dataclasses.replace(
+            slog, samples=[s.model_copy(update={"v": 0.0, "vf": 0.0}) for s in slog.samples]
+        )
+        stored = {
+            name: derive_shot(shot, slog_to_raw(shot), device_id="000001").shot.diagnostics_json
+            for name, shot in (("scale", slog), ("bare", blank))
+        }
+        set_id, version_id = await a_set(wired)
+        ids = {}
+        for number, (name, blob) in enumerate(stored.items(), start=1):
+            ids[name] = await store_shot(wired.shots, f"00000{number}", diagnostics_json=blob)
+            assert await wired.sets.assign_shot(ids[name], version_id)
+
+        counted = {shot.shot_id: shot for shot in await wired.sets.counted_shots(set_id)}
+
+        assert counted[ids["scale"]].cup_first_drip_s == 12.0
+        assert counted[ids["scale"]].cup_flow_g_s is not None
+        assert counted[ids["scale"]].first_drip_s is not None
+        assert counted[ids["bare"]].cup_first_drip_s is None
+        assert counted[ids["bare"]].cup_flow_g_s is None
+        assert counted[ids["bare"]].first_drip_s == counted[ids["scale"]].first_drip_s
+        assert counted[ids["bare"]].brew_flow_ml_s == counted[ids["scale"]].brew_flow_ml_s
+
     @pytest.mark.parametrize("odd", ["9.2", {"bar": 9.2}, True, [9.2], None], ids=str)
     async def test_a_path_holding_something_that_is_not_a_number_is_no_value(
         self, wired: Fixtures, odd: Any
@@ -233,7 +293,9 @@ class TestWhereEachMeasureComesFrom:
         shot_id = await store_shot(
             wired.shots,
             "000001",
-            diagnostics_json=diagnostics(first_drip_s=odd, max_bar=odd, brew_flow=odd),
+            diagnostics_json=diagnostics(
+                first_drip_s=odd, max_bar=odd, brew_flow=odd, cup_first_drip_s=odd, cup_flow=odd
+            ),
         )
         assert await wired.sets.assign_shot(shot_id, version_id)
 
@@ -242,6 +304,8 @@ class TestWhereEachMeasureComesFrom:
         assert counted.first_drip_s is None
         assert counted.peak_pressure_bar is None
         assert counted.brew_flow_ml_s is None
+        assert counted.cup_first_drip_s is None
+        assert counted.cup_flow_g_s is None
 
     @pytest.mark.parametrize(
         ("dose_out_g", "final_weight_g", "index_volume_g", "expected"),
@@ -587,6 +651,6 @@ class TestTheSetDetail:
 
         detail = self.data(await client.get(f"/api/sets/{created['id']}"))
 
-        assert len(detail["spread"]) == 6
+        assert len(detail["spread"]) == len(SPREAD_MEASURES)
         assert all(entry["value"] is None for entry in detail["spread"])
         assert all(entry["recorded"] == 0 for entry in detail["spread"])

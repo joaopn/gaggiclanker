@@ -169,7 +169,13 @@ def test_every_spread_measure_is_served_with_its_words_and_its_unit() -> None:
     served = vocabulary().spread_measures
 
     assert [term.value for term in served] == list(SPREAD_MEASURES)
-    assert [term.label for term in served][:2] == ["Shot time", "Time to first drip"]
+    assert [term.label for term in served][:2] == ["Shot time", "First drip"]
+    # The cup measures are the scale's; the puck ones keep their numbers under their own names.
+    labels = {term.value: term.label for term in served}
+    assert labels["first_drip_s"] == "First puck flow"
+    assert labels["brew_flow_ml_s"] == "Puck flow"
+    assert labels["cup_flow_g_s"] == "Cup flow"
+    assert {term.value: term.unit for term in served}["cup_flow_g_s"] == "g/s"
     assert {term.value: term.unit for term in served}["peak_pressure_bar"] == "bar"
     # The rating is a number of stars, not a quantity.
     assert {term.value: term.unit for term in served}["rating"] == ""

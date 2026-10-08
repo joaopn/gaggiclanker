@@ -243,3 +243,6 @@ __marimo__/
 /CLAUDE.md
 /.claude
 /PLAN
+
+# TypeScript incremental build state
+/web/tsconfig.tsbuildinfo

@@ -92,9 +92,11 @@ MEASURED_DEGREES_OF_FREEDOM = 3
 #: what counts as evidence.
 MEASURE_FLOORS: dict[SpreadMeasure, float] = {
     "shot_time_s": 2.0,
+    "cup_first_drip_s": 1.0,
     "first_drip_s": 1.0,
     "yield_g": 1.0,
     "peak_pressure_bar": 0.3,
+    "cup_flow_g_s": 0.2,
     "brew_flow_ml_s": 0.2,
     "rating": 0.5,
 }
@@ -137,9 +139,13 @@ class CountedShot(BaseModel):
     target_yield_g: float | None = None
 
     shot_time_s: float | None = None
+    #: Cup measures are absent on a shot with no scale, and puck measures are what a shot
+    #: with one still has: the two kinds are separate measures, never pooled into one.
+    cup_first_drip_s: float | None = None
     first_drip_s: float | None = None
     yield_g: float | None = None
     peak_pressure_bar: float | None = None
+    cup_flow_g_s: float | None = None
     brew_flow_ml_s: float | None = None
     rating: float | None = None
 

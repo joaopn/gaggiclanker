@@ -87,8 +87,8 @@ describe("SetSpread", () => {
     expect(await screen.findByText(/^Peak pressure/)).toHaveTextContent(
       "Peak pressure ±0.20 bar · from 6 repeat shots of 3 recipes",
     );
-    expect(screen.getByText(/^Average brew flow/)).toHaveTextContent(
-      "Average brew flow: not measured yet · differences under 0.200 ml/s are not counted",
+    expect(screen.getByText(/^Puck flow/)).toHaveTextContent(
+      "Puck flow: not measured yet · differences under 0.200 ml/s are not counted",
     );
   });
 

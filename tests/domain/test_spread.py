@@ -174,9 +174,11 @@ def test_the_floors_are_the_numbers_the_design_named() -> None:
     """Conservative first numbers, one per measure, and no measure without one."""
     assert MEASURE_FLOORS == {
         "shot_time_s": 2.0,
+        "cup_first_drip_s": 1.0,
         "first_drip_s": 1.0,
         "yield_g": 1.0,
         "peak_pressure_bar": 0.3,
+        "cup_flow_g_s": 0.2,
         "brew_flow_ml_s": 0.2,
         "rating": 0.5,
     }
@@ -236,9 +238,9 @@ def test_the_report_is_one_rounded_entry_per_measure_in_vocabulary_order() -> No
     assert times.degrees_of_freedom == 3
     assert times.floor == 2.0
     # Every measure is served, including the ones this Set holds nothing for.
-    assert report[3].measure == "peak_pressure_bar"
-    assert report[3].value is None
-    assert report[3].recorded == 0
+    peak = next(entry for entry in report if entry.measure == "peak_pressure_bar")
+    assert peak.value is None
+    assert peak.recorded == 0
 
 
 def test_bar_and_flow_are_served_to_two_decimals() -> None:

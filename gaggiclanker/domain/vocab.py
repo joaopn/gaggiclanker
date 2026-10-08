@@ -156,9 +156,11 @@ type OutcomeState = Literal[
 #: quietly serving nothing.
 type SpreadMeasure = Literal[
     "shot_time_s",
+    "cup_first_drip_s",
     "first_drip_s",
     "yield_g",
     "peak_pressure_bar",
+    "cup_flow_g_s",
     "brew_flow_ml_s",
     "rating",
 ]
@@ -242,9 +244,11 @@ SPREAD_MEASURES: tuple[SpreadMeasure, ...] = get_args(SpreadMeasure.__value__)
 #: this is how a measure is *read* and the front end is served it.
 MEASURE_DECIMALS: dict[SpreadMeasure, int] = {
     "shot_time_s": 1,
+    "cup_first_drip_s": 1,
     "first_drip_s": 1,
     "yield_g": 1,
     "peak_pressure_bar": 2,
+    "cup_flow_g_s": 2,
     "brew_flow_ml_s": 2,
     "rating": 1,
 }
@@ -584,17 +588,21 @@ _OUTCOME_LABELS = {
 #: start of a line the reader finishes with a number.
 _MEASURE_LABELS = {
     "shot_time_s": "Shot time",
-    "first_drip_s": "Time to first drip",
+    "cup_first_drip_s": "First drip",
+    "first_drip_s": "First puck flow",
     "yield_g": "Yield",
     "peak_pressure_bar": "Peak pressure",
-    "brew_flow_ml_s": "Average brew flow",
+    "cup_flow_g_s": "Cup flow",
+    "brew_flow_ml_s": "Puck flow",
     "rating": "Rating",
 }
 _MEASURE_UNITS = {
     "shot_time_s": "s",
+    "cup_first_drip_s": "s",
     "first_drip_s": "s",
     "yield_g": "g",
     "peak_pressure_bar": "bar",
+    "cup_flow_g_s": "g/s",
     "brew_flow_ml_s": "ml/s",
     "rating": "",
 }

@@ -630,7 +630,7 @@ class FieldChange(BaseModel):
 class SetShotRow(BaseModel):
     """One shot of a Set as it is read back one line at a time.
 
-    The six measures the spread is worked out from, the person's verdict, and
+    The eight measures the spread is worked out from, the person's verdict, and
     the two flags that say a shot's numbers are not to be trusted. Everything
     optional, because every one of them is something that may not have been
     recorded — and a missing number is a fact, never a zero.
@@ -648,9 +648,11 @@ class SetShotRow(BaseModel):
     incomplete: bool = False
 
     shot_time_s: float | None = None
+    cup_first_drip_s: float | None = None
     first_drip_s: float | None = None
     yield_g: float | None = None
     peak_pressure_bar: float | None = None
+    cup_flow_g_s: float | None = None
     brew_flow_ml_s: float | None = None
 
     rating: int | None = None
@@ -938,7 +940,7 @@ def track_record(versions: Sequence[SetVersionRow]) -> SetTrackRecord:
     return SetTrackRecord(**counts)
 
 
-#: The six measures, read out of what is stored, for every caller that wants
+#: The eight measures, read out of what is stored, for every caller that wants
 #: them. One constant rather than the same CASE expressions written twice: the
 #: spread holds a difference against these numbers and a chat reads the same
 #: shots one line each, and two copies of "zero means not recorded" would drift
@@ -957,6 +959,12 @@ _HAS_PUCK_FLOW = (
 _MEASURE_COLUMNS = f"""
                    CASE WHEN sh.duration_ms > 0 THEN sh.duration_ms / 1000.0 END AS shot_time_s,
                    CASE WHEN json_type(sh.diagnostics_json,
+                                       '$.summary.flow.cup_first_drip_s')
+                             IN ('integer', 'real')
+                        THEN json_extract(sh.diagnostics_json,
+                                          '$.summary.flow.cup_first_drip_s')
+                        END AS cup_first_drip_s,
+                   CASE WHEN json_type(sh.diagnostics_json,
                                        '$.summary.flow.time_to_first_drip_s')
                              IN ('integer', 'real')
                          AND {_HAS_PUCK_FLOW}
@@ -969,6 +977,14 @@ _MEASURE_COLUMNS = f"""
                          AND json_extract(sh.diagnostics_json, '$.summary.pressure.max_bar') > 0
                         THEN json_extract(sh.diagnostics_json, '$.summary.pressure.max_bar')
                         END AS peak_pressure_bar,
+                   CASE WHEN json_type(sh.diagnostics_json,
+                                       '$.diagnostics.extraction.cup_flow_avg_brew_g_s')
+                             IN ('integer', 'real')
+                         AND json_extract(sh.diagnostics_json,
+                                          '$.diagnostics.extraction.cup_flow_avg_brew_g_s') > 0
+                        THEN json_extract(sh.diagnostics_json,
+                                          '$.diagnostics.extraction.cup_flow_avg_brew_g_s')
+                        END AS cup_flow_g_s,
                    CASE WHEN json_type(sh.diagnostics_json,
                                        '$.diagnostics.extraction.flow_avg_brew_ml_s')
                              IN ('integer', 'real')

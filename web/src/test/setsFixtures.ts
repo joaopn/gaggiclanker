@@ -78,13 +78,20 @@ export const vocabulary: Vocabulary = {
     { value: "failed", label: "Failed" },
     { value: "inconclusive", label: "Inconclusive" },
   ],
-  // The six measures the spread and the evidence are reported per, with the
+  // The eight measures the spread and the evidence are reported per, with the
   // unit each one is read in — the server's list, not a copy typed here.
   spread_measures: [
     { value: "shot_time_s", label: "Shot time", unit: "s", decimals: 1, difference_decimals: 2 },
     {
+      value: "cup_first_drip_s",
+      label: "First drip",
+      unit: "s",
+      decimals: 1,
+      difference_decimals: 2,
+    },
+    {
       value: "first_drip_s",
-      label: "Time to first drip",
+      label: "First puck flow",
       unit: "s",
       decimals: 1,
       difference_decimals: 2,
@@ -98,8 +105,15 @@ export const vocabulary: Vocabulary = {
       difference_decimals: 3,
     },
     {
+      value: "cup_flow_g_s",
+      label: "Cup flow",
+      unit: "g/s",
+      decimals: 2,
+      difference_decimals: 3,
+    },
+    {
       value: "brew_flow_ml_s",
-      label: "Average brew flow",
+      label: "Puck flow",
       unit: "ml/s",
       decimals: 2,
       difference_decimals: 3,
@@ -614,9 +628,11 @@ export function spreadReport(
       2,
       { value: 1.8, measured: true, shots: 9, degrees_of_freedom: 5, recorded: 9 },
     ],
+    ["cup_first_drip_s", 1, {}],
     ["first_drip_s", 1, { recorded: 4 }],
     ["yield_g", 1, { value: 0.4, shots: 4, degrees_of_freedom: 2, recorded: 4 }],
     ["peak_pressure_bar", 0.3, {}],
+    ["cup_flow_g_s", 0.2, {}],
     ["brew_flow_ml_s", 0.2, {}],
     ["rating", 0.5, { value: 0.5, measured: true, shots: 9, degrees_of_freedom: 5, recorded: 9 }],
   ];

@@ -30,10 +30,10 @@ Track record: 1 of 3 graded predictions held (0 partly, 1 failed, 1 inconclusive
 HOW MUCH THIS SET VARIES WHEN NOTHING CHANGED
 This is the yardstick. A difference smaller than it is not a result.
 - Shot time: ±0.8 s, from 5 repeat shots of 1 recipe.
-- Time to first drip: ±0.3 s, from 5 repeat shots of 1 recipe.
+- First puck flow: ±0.3 s, from 5 repeat shots of 1 recipe.
 - Yield: ±0.2 g, from 5 repeat shots of 1 recipe.
 - Peak pressure: ±0.08 bar, from 5 repeat shots of 1 recipe.
-- Average brew flow: ±0.06 ml/s, from 5 repeat shots of 1 recipe.
+- Puck flow: ±0.06 ml/s, from 5 repeat shots of 1 recipe.
 - Rating: ±0.4, from 5 repeat shots of 1 recipe.
 
 THE EVIDENCE FOR v2.2 AGAINST v2.1
@@ -42,10 +42,12 @@ Every counted shot of both versions, never a chosen one.
 | measure | v2.2 | v2.1 | difference | verdict |
 | --- | --- | --- | --- | --- |
 | Shot time | 36.0 s over 1 shot | 33.5 s over 3 shots | +2.50 s | beyond the spread (held against 2.00 s) |
-| Time to first drip | 8.0 s over 1 shot | 7.2 s over 3 shots | +0.77 s | inside the spread (held against 1.00 s) |
+| First drip | nothing recorded | nothing recorded | — | nothing to compare |
+| First puck flow | 8.0 s over 1 shot | 7.2 s over 3 shots | +0.77 s | inside the spread (held against 1.00 s) |
 | Yield | 36.3 g over 1 shot | 36.1 g over 3 shots | +0.20 g | inside the spread (held against 1.00 g) |
 | Peak pressure | 9.30 bar over 1 shot | 9.15 bar over 3 shots | +0.150 bar | inside the spread (held against 0.300 bar) |
-| Average brew flow | 1.70 ml/s over 1 shot | 1.88 ml/s over 3 shots | -0.177 ml/s | inside the spread (held against 0.200 ml/s) |
+| Cup flow | nothing recorded | nothing recorded | — | nothing to compare |
+| Puck flow | 1.70 ml/s over 1 shot | 1.88 ml/s over 3 shots | -0.177 ml/s | inside the spread (held against 0.200 ml/s) |
 | Rating | 3.0 over 1 shot | 4.3 over 3 shots | -1.33 | beyond the spread (held against 1.03) |
 
 v2.2: 1 counted shot — 0 sour, 1 balanced, 0 bitter; 0 Keep, 1 Improve, 0 unlabelled.
@@ -107,7 +109,7 @@ Ratio: 1:2.02
 Review: not reviewed
 
 THE GOLD STANDARD
-5 Keep shots on the line being brewed, on v1, v2.1. Their averages: shot time 33.5 s, time to first drip 7.2 s, yield 36.1 g, peak pressure 9.15 bar, average brew flow 1.88 ml/s, rating 4.2.
+5 Keep shots on the line being brewed, on v1, v2.1. Their averages: shot time 33.5 s, first puck flow 7.2 s, yield 36.1 g, peak pressure 9.15 bar, puck flow 1.88 ml/s, rating 4.2.
 That is what good has tasted like here. An Improve shot is compared with it.
 
 CONFIRMED INSIGHTS THAT APPLY HERE
