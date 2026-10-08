@@ -380,7 +380,7 @@ async def test_making_a_version_active_is_refused_when_its_name_is_taken(
     taken = data(await client.get(f"/api/profile-versions/{other['current_version_id']}"))
     document = {**taken["profile"], "phases": taken["profile"]["phases"]}
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**document, "label": "Old name [AI]", "id": None})
+        Profile.model_validate({**document, "label": "Old name", "id": None})
     )
     await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
 
@@ -413,6 +413,73 @@ async def test_keeping_the_machines_side_is_refused_when_its_name_is_taken(
 
     assert refused.status_code == 409 and error(refused)["details"]["reason"] == "duplicate_label"
     assert other["row"]["id"] != row["row"]["id"]
+
+
+async def test_making_a_version_active_is_refused_when_its_name_differs_only_in_case(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    mine = await app_row(app, client, fake, provider, 8)
+    await put(client, await variant_draft(app, client, "Old name", 6))
+    base = await ProfilesRepository(app.state.db).get_version(mine["current_version_id"])
+    assert base is not None and base.profile is not None
+    version, _ = await ProfilesRepository(app.state.db).ensure_version(
+        Profile.model_validate({**base.profile, "label": "OLD NAME ", "id": None})
+    )
+    await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
+
+    refused = await client.put(
+        f"/api/profile-board/{mine['id']}/active-version", json={"version_id": version.id}
+    )
+
+    assert refused.status_code == 409
+    assert error(refused)["details"]["reason"] == "duplicate_label"
+
+
+async def test_a_version_of_the_same_profile_differing_only_in_case_is_not_refused_against_it(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    # The taken-name check leaves out the profile being changed: its own older version, named
+    # with other capitals, is not "already in the list" because of the profile itself.
+    app, client, fake = adopted
+    mine = await app_row(app, client, fake, provider, 8)
+    base = await ProfilesRepository(app.state.db).get_version(mine["current_version_id"])
+    assert base is not None and base.profile is not None
+    version, _ = await ProfilesRepository(app.state.db).ensure_version(
+        Profile.model_validate({**base.profile, "label": mine["label"].upper(), "id": None})
+    )
+    await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
+
+    made = await client.put(
+        f"/api/profile-board/{mine['id']}/active-version", json={"version_id": version.id}
+    )
+
+    assert made.status_code == 200
+    assert data(made)["current_version_id"] == version.id
+
+
+async def test_keeping_the_machines_side_is_refused_when_its_name_differs_only_in_case(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    await app_row(app, client, fake, provider)
+    row = row_for(await get_board(client), APP_LABEL)
+    file = row["machine"]["device_id"]
+    index = next(i for i, p in enumerate(fake.profiles) if p["id"] == file)
+    fake.profiles[index] = {
+        **fake.profiles[index],
+        "label": BASE_LABEL.upper(),
+        "temperature": 70.0,
+    }
+    await pull(app)
+    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
+
+    refused = await client.post(
+        f"/api/profile-board/{row['row']['id']}/conflict",
+        json={"keep": "machine", "content_hash": seen["machine"]["content_hash"]},
+    )
+
+    assert refused.status_code == 409 and error(refused)["details"]["reason"] == "duplicate_label"
 
 
 async def test_a_profile_switched_back_on_since_the_plan_keeps_its_file(

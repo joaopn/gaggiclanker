@@ -89,7 +89,7 @@ class DeviceWritesRepository(Repository):
     async def created_by_us(self, device_id: str, *, host: str | None = None) -> bool:
         """Whether this box successfully saved a profile under this id.
 
-        Half of the delete guard; the label suffix is the other half. Scoped to
+        Scoped to
         the host when one is given, because a person may point this box at a
         second machine and an id is only unique within one of them.
         """

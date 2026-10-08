@@ -79,6 +79,10 @@ system: |
        * pre-infusion at 2-3 ml/s below 4 bar for 3-10 s, or a pump-off bloom of
          5-15 s for a fresh or lightly-roasted bag;
        * a ramp of 3-5 s into the brew phase;
+       * a `label` of its own, the name it will be stored under exactly: not the
+         name of any profile in the library (the library you were given lists names
+         that are taken; a profile with a taken name is refused and the option
+         is wasted);
        * and **the last phase must terminate near the yield** — a `volumetric`
          target at the yield in grams, or a `pumped` target at about the yield
          plus 25-30 ml when there is no scale. A profile with no terminating

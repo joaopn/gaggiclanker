@@ -54,7 +54,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
-from gaggiclanker.db.repos.lineage import lineage_owner
+from gaggiclanker.db.repos.lineage import place_draft, taken_name_sentence
 from gaggiclanker.db.repos.profile_board import (
     BoardRow,
     BoardRowPatch,
@@ -72,7 +72,7 @@ from gaggiclanker.db.repos.sets import SetsRepository, SetVersionRow, VersionRef
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
-from gaggiclanker.domain.models import APP_PROFILE_SUFFIX, Profile, profile_content_hash
+from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.domain.profile_policy import ProfileRejected, enforce
 from gaggiclanker.drafts.board_plan import (
     ANOTHER_ROW,
@@ -94,6 +94,7 @@ from gaggiclanker.drafts.board_versions import (
     SetBrewing,
     short_hash,
 )
+from gaggiclanker.drafts.live_lineage import LiveLineage
 from gaggiclanker.drafts.machine import (
     CHANGED_SINCE,
     NO_SUCCESSOR,
@@ -104,7 +105,7 @@ from gaggiclanker.drafts.machine import (
     read_machine,
     remove_profile,
 )
-from gaggiclanker.drafts.proposals import DraftProposals, profile_from_version
+from gaggiclanker.drafts.proposals import DraftProposals, TakenName, profile_from_version
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import SignatureService
@@ -240,6 +241,9 @@ class BoardLanding(BaseModel):
     row_label: str | None = None
     #: A put that would bring a deleted profile back (its file still waits to be dealt with).
     revives_label: str | None = None
+    #: Why a put would be refused: the draft is new or renamed and its name is already a
+    #: profile (the sentence the put answers with), else ``None``.
+    refused: str | None = None
 
 
 class DraftLanding(BaseModel):
@@ -325,6 +329,8 @@ class _Destination:
 
     row: BoardRow | None = None
     revived: BoardRow | None = None
+    #: The sentence a put is refused with (a new or renamed draft whose name is taken).
+    refused: str | None = None
 
 
 @dataclass
@@ -571,7 +577,7 @@ class BoardService:
                 )
             else:
                 if machine.label != row.label:
-                    holder = await self.board.find_live_by_label(machine.label, excluding=row.id)
+                    holder = await self.board.find_live_by_name_key(machine.label, excluding=row.id)
                     if holder is not None:
                         raise Conflict(
                             f"The list already has {holder.label}; rename or switch off that one "
@@ -603,7 +609,8 @@ class BoardService:
         A draft that lands on a profile is a **proposed version** of it; one that lands on none
         is a proposed new profile. A draft whose document is already one of a profile's
         versions is not a proposal (the version is listed), and neither is one with no document.
-        The landing is the one a put runs (``_lineage_row``), a Set draft's by its Set.
+        The landing is the one a put runs (``place_draft``, through ``_destination``); a Set
+        draft's is found by its Set.
         """
         found: list[BoardProposal] = []
         by_draft = {landing.draft_id: landing for landing in landings}
@@ -733,6 +740,8 @@ class BoardService:
     ) -> BoardLanding:
         dest = await self._destination(draft, version, set_id)
         row = dest.row
+        if dest.refused is not None:
+            return BoardLanding(refused=dest.refused)
         if row is None:
             return BoardLanding(revives_label=None if dest.revived is None else dest.revived.label)
         # Every proposal is an independent candidate: making another one active never blocks or
@@ -744,14 +753,23 @@ class BoardService:
     ) -> _Destination:
         """Where a put of this draft lands.
 
-        The one place that decides, for the put and for the read of where a put lands: the
-        live profile with exactly the draft's name (a Set's profile first), else a deleted row
-        it brings back, else a new row. Two live profiles never share a label because a put
-        continues the one that has it instead of adding a second.
+        The one place that decides, for the put and for the read of where a put lands, through
+        ``place_draft``: the live profile the draft continues (a Set's profile first), else
+        refused (a new or renamed draft whose name is taken), else a deleted row it brings back,
+        else a new row. Two live profiles never share a name because a put never adds a second.
         """
-        row = await self._lineage_row(draft, version, set_id)
-        if row is not None:
-            return _Destination(row=row)
+        base = await self.profiles.get_version(draft.base_version_id)
+        placed = await place_draft(
+            LiveLineage(self.db),
+            label=version.label,
+            base_version_id=None if draft.is_new else draft.base_version_id,
+            base_label=None if draft.is_new or base is None else base.label,
+            set_id=set_id,
+        )
+        if placed.refused:
+            return _Destination(refused=taken_name_sentence(version.label.strip()))
+        if placed.owner is not None:
+            return _Destination(row=placed.owner)
         return _Destination(revived=await self._revivable(version))
 
     async def _revivable(self, version: ProfileVersionRow) -> BoardRow | None:
@@ -788,12 +806,11 @@ class BoardService:
         stop condition is put like any other: the card shows the change, and the agent is
         told never to make one unprompted, but nothing here refuses it.
 
-        The profile it is a new version of is found by lineage: for a draft recorded on a Set,
-        the board profile standing for the Set's current version; otherwise the profile the
-        draft was made from, and only when the label is unchanged (the draft keeps its base's
-        label, so a renamed or forked draft is a new profile). A draft made from a profile the
-        person wrote themselves carries the app label and so lands beside it, as a new row,
-        unless the board already has a profile with that label, which refuses it.
+        Where it lands is decided by ``place_draft``, the same function the draft constructor and
+        the page's landing ask: a draft continues its base's live profile when its label is that
+        profile's name (a Set's profile first, when its name is the draft's); a new or renamed
+        draft whose name is already a live profile (it became one after the draft was made) is
+        refused with the same sentence, and the draft stays as it was.
         """
         # Every check and the write in one transaction: two puts of the same draft (a
         # double click) are serialised, and the second finds the first's row.
@@ -812,6 +829,8 @@ class BoardService:
                 raise Conflict("That profile version is already in the list.")
 
             dest = await self._destination(draft, version, set_id)
+            if dest.refused is not None:
+                raise TakenName(version.label.strip())
             row = dest.row
             if draft.status == "draft":
                 await self.drafts.set_status(draft.id, "approved")
@@ -864,16 +883,6 @@ class BoardService:
             await self.board.add_version(updated.id, version.id, source)
             return updated
 
-    async def _lineage_row(
-        self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
-    ) -> BoardRow | None:
-        """The live profile a put of this draft continues: ``lineage_owner``, over the live list."""
-        return await lineage_owner(
-            _LiveLineage(self),
-            set_id=set_id,
-            version_label=version.label,
-        )
-
     async def resume(self) -> None:
         """Let the next sync write again after it paused for a suspected machine reset.
 
@@ -882,18 +891,15 @@ class BoardService:
         """
         await self.board.resume()
 
-    async def _saved_by_the_app(
-        self, device_id: str, label: str, content_hash: str, *, host: str
-    ) -> bool:
+    async def _saved_by_the_app(self, device_id: str, content_hash: str, *, host: str) -> bool:
         """Whether a machine file is this app's own save, still exactly as it was saved.
 
-        The first adoption's rule: the app label, an ``ok`` save of that id on this host, and
-        content equal to what that save sent. It only sets a profile's ``origin``, which is
-        information: a sync no longer treats the app's profiles and the person's differently.
+        The save audit alone decides: an ``ok`` save of that id on this host, with content equal
+        to what that save sent. The name says nothing (a person may call their own profile
+        anything, "[AI]" included). It only sets a profile's ``origin``, which is information: a
+        sync does not treat the app's profiles and the person's differently.
         """
-        return label.rstrip().endswith(
-            APP_PROFILE_SUFFIX.strip()
-        ) and await self.writes.saved_with_content(device_id, host=host, content_hash=content_hash)
+        return await self.writes.saved_with_content(device_id, host=host, content_hash=content_hash)
 
     async def set_on_machine(self, row_id: int, on: bool) -> BoardRow:
         """Switch a profile on or off the machine. The next sync follows; nothing is sent now."""
@@ -944,7 +950,7 @@ class BoardService:
                     details={"reason": "policy"},
                 )
             if version.label != row.label:
-                holder = await self.board.find_live_by_label(version.label, excluding=row.id)
+                holder = await self.board.find_live_by_name_key(version.label, excluding=row.id)
                 if holder is not None:
                     raise Conflict(
                         f"The list already has {holder.label}; rename or switch off that one "
@@ -1182,9 +1188,7 @@ class BoardService:
             assert updated is not None
             return updated
         # A file this app saved itself is the app's own profile (information only).
-        ours = await self._saved_by_the_app(
-            device_id, profile.label, version.content_hash, host=phase.host
-        )
+        ours = await self._saved_by_the_app(device_id, version.content_hash, host=phase.host)
         return await self.board.insert(
             BoardRowWrite(
                 label=version.label,
@@ -1917,32 +1921,6 @@ def _sets_brewing(
         if (version_id is not None and version_id in version_ids)
         or (device_id is not None and file == device_id)
     ]
-
-
-class _LiveLineage:
-    """The lineage rule's questions, answered from the live list and the Sets."""
-
-    def __init__(self, service: BoardService) -> None:
-        self.service = service
-
-    async def by_set(self, set_id: int) -> BoardRow | None:
-        service = self.service
-        current = await service.sets.current_version(set_id)
-        if current is None or current.profile_version_id is None:
-            return None
-        found = await service.sets.current_device_profile(set_id)
-        row = None
-        if found is not None:
-            row = await service.board.find_live_by_device(found[0])
-        if row is None:
-            row = await service.board.find_live_by_listed_version(current.profile_version_id)
-        return row
-
-    async def by_label(self, label: str) -> BoardRow | None:
-        return await self.service.board.find_live_by_label(label)
-
-    def label_of(self, profile: BoardRow) -> str:
-        return profile.label
 
 
 def _is_settled(removal: Removal) -> bool:

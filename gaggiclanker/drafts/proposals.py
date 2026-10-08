@@ -10,7 +10,7 @@ which also pushes and rolls back and therefore holds the machine connection.
 A tool cannot reach a client it was never given a path to.
 
 **This is the one place a draft document is built.** :meth:`prepare` clamps,
-re-checks and applies the label suffix; :meth:`store` is the only insert. The
+re-checks and names the label; :meth:`store` is the only insert. The
 route-facing service delegates to both for a manual draft and for one the model
 generated, so a draft typed by hand, proposed in chat, taken from a starting
 point or drafted from notes all go through the same offline layers.
@@ -26,8 +26,7 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.lineage import draft_label
-from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
+from gaggiclanker.db.repos.lineage import place_draft, taken_name_sentence
 from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftRow,
     ProfileDraftsRepository,
@@ -46,6 +45,7 @@ from gaggiclanker.domain.profile_policy import (
     clamp,
     diff_stop_conditions,
 )
+from gaggiclanker.drafts.live_lineage import LiveLineage
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import DraftSignature, SignatureService, split_duplicates
@@ -54,6 +54,7 @@ __all__ = [
     "DraftProposals",
     "DraftSignature",
     "PreparedDraft",
+    "TakenName",
     "profile_from_version",
     "schema_errors",
 ]
@@ -66,6 +67,14 @@ class PreparedDraft:
     profile: Profile
     clamp_changes: list[PolicyChange]
     stop_condition_changes: list[StopConditionChange]
+
+
+class TakenName(Conflict):
+    """A new or renamed draft asked for the name of a profile that is already in the list."""
+
+    def __init__(self, label: str) -> None:
+        super().__init__(taken_name_sentence(label))
+        self.label = label
 
 
 class DraftProposals:
@@ -88,21 +97,10 @@ class DraftProposals:
         resolved = await self.settings.resolve_all()
         return bounds_from({key: setting.value for key, setting in resolved.items()})
 
-    async def label_for(self, base_version_id: int, label: str) -> str:
-        """The label a draft of this base is stored under: the profile's own name when the draft
-        continues the profile the base belongs to (a version never renames a profile), else the
-        app's ``[AI]`` suffix is added, as for any profile it writes."""
-        board = ProfileBoardRepository(self.db)
-        row = await board.find_live_by_listed_version(base_version_id)
-        if row is None:
-            device = await self.profiles.find_device_id_for_version(base_version_id)
-            row = None if device is None else await board.find_live_by_device(device)
-        return draft_label(label, None if row is None else row.label)
-
     async def prepare(
         self, base_version_id: int, base: Profile, candidate: Profile, *, is_new: bool = False
     ) -> PreparedDraft:
-        """Clamp, re-check, name the label, diff the stop conditions.
+        """Clamp, re-check, refuse a taken name, diff the stop conditions.
 
         A new profile has no stop-condition changes: there is nothing it changes the stops *of*,
         and the base it is stored against is not a profile anybody brews, so a diff against it
@@ -118,12 +116,20 @@ class DraftProposals:
         violations = check(clamped, bounds)
         if violations:
             raise _rejected(violations)
-        # A profile written from scratch is a profile of its own: it is marked as the agent's.
-        label = (
-            draft_label(clamped.label, None)
-            if is_new
-            else await self.label_for(base_version_id, clamped.label)
+        # The name is what it was given, but for a change to a profile, which carries that
+        # profile's own name. One rule decides (`place_draft`), the same one the put and the
+        # page's landing ask: a new or renamed draft must not take a name a profile has.
+        if not clamped.label.strip():
+            raise Unprocessable("A profile needs a name")
+        placement = await place_draft(
+            LiveLineage(self.db),
+            label=clamped.label,
+            base_version_id=None if is_new else base_version_id,
+            base_label=None if is_new else base.label,
         )
+        if placement.refused:
+            raise TakenName(placement.name)
+        label = placement.name
         document = clamped.for_new_device_profile(label=label)
         return PreparedDraft(
             profile=document,
@@ -163,7 +169,7 @@ class DraftProposals:
         as one and not as an edit of the base it has to be stored against.
 
         ``new_profile_only`` refuses a document that, **as it would be stored**
-        — clamped, suffixed — is a profile version the archive already has. A
+        — clamped — is a profile version the archive already has. A
         new Set's recipe carries a profile of its own, because two Sets naming
         one profile version make the matcher ambiguous and nothing is filed.
         Checked on the prepared document's content hash, before anything is

@@ -357,8 +357,9 @@ against the strict schema and the safety policy; save it unchanged to propose a 
 is), or the chat or the starting-point wizard proposing one. A change that keeps a profile's
 name is a new version of that profile, whoever made it and whichever version you edited: the
 machine's own profiles and ones made on its display included, under their exact name. A
-changed name, or a profile written from scratch, is a profile of its own named with the `[AI]`
-suffix. It waits inside its profile's dropdown, marked **Proposed**, or as a row marked **New**
+changed name, or a profile written from scratch, is a profile of its own, stored under exactly the
+name it was given (the app adds nothing to it), and a name that is already a profile is refused.
+It waits inside its profile's dropdown, marked **Proposed**, or as a row marked **New**
 when it is a new profile. **Make
 active** is one click: it approves the proposal (the card of an edit says so when it changes when
 the machine stops pumping, and asks for nothing; a new profile is shown whole), and for a proposal made for a Set it records the Set's

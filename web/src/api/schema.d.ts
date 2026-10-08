@@ -3912,6 +3912,8 @@ export interface components {
          * @description Where a put of one draft would land: the row it continues, or a new profile.
          */
         BoardLanding: {
+            /** Refused */
+            refused?: string | null;
             /** Revives Label */
             revives_label?: string | null;
             /** Row Id */

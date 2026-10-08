@@ -22,6 +22,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
+from gaggiclanker.db.repos.lineage import taken_name_sentence
 from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
@@ -132,11 +133,6 @@ async def variant_draft(
     off the one person's profile names each.
     """
     return await manual_draft(app, client, BASE_LABEL, name, bar)
-
-
-def app_label_of(name: str) -> str:
-    """What the suffix makes of a variant's label."""
-    return f"{name} [AI]"
 
 
 async def draft_from(
@@ -338,24 +334,28 @@ async def test_a_new_version_replaces_only_the_copy_the_app_wrote(
     assert board["actions"] == []
 
 
-async def test_a_draft_named_like_an_existing_profile_continues_it_until_that_one_is_deleted(
+async def test_a_draft_named_like_a_profile_that_appeared_is_refused_until_that_one_is_deleted(
     writes_on: Live, fake_device: FakeDevice, provider: FakeProvider
 ) -> None:
     app, client = writes_on
-    # Carries the app label but was not saved by this app, as a profile made by another
-    # tool does.
+    # A fork of another profile, made while no profile has its name (a name already in the list
+    # is refused at creation).
+    draft = await manual_draft(app, client, BASE_LABEL, "Legacy [AI]", 7)
+    # Then a profile made by another tool takes that name (the app did not save it).
     legacy = copy.deepcopy(fake_device.profiles[0])
     legacy.update(id="legacy", label="Legacy [AI]")
     fake_device.profiles.append(legacy)
     fake_device.favorite_profile_ids.add("legacy")
     await pull(app)  # adoption (and the mirror)
     adopted_row = row_for(await get_board(client), "Legacy [AI]")
-    # A fork of another profile that is named like it: a draft continues the live profile with
-    # exactly its name, whoever made it, so it is a version of Legacy and not a second profile.
-    draft = await manual_draft(app, client, BASE_LABEL, "Legacy [AI]", 7)
+    # The draft is a fork under that name, not a change to Legacy, so a put would land it on a
+    # profile it is not a version of: the landing says it is refused, and the put is.
     await approve(app, draft)
     [found] = [x for x in (await get_board(client))["landings"] if x["draft_id"] == draft["id"]]
-    assert found["plain"]["row_id"] == adopted_row["row"]["id"]
+    assert found["plain"]["refused"] == taken_name_sentence("Legacy [AI]")
+    assert found["plain"]["row_id"] is None
+    refused = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
+    assert refused.status_code == 409
     assert len((await get_board(client))["rows"]) == len(fake_device.profiles)
 
     # Taking the person's profile off the board (it stays on the machine) frees the label.
@@ -537,7 +537,7 @@ async def test_a_conflict_does_not_stop_the_other_profiles_syncing(
 
     run = await pull(app)
 
-    assert [i["label"] for i in summary_of(run)["pushed"]] == ["Other [AI]"]
+    assert [i["label"] for i in summary_of(run)["pushed"]] == ["Other"]
     assert [i["label"] for i in summary_of(run)["conflicts"]] == [APP_LABEL]
 
 
@@ -1034,11 +1034,11 @@ async def test_a_copy_that_another_board_profile_already_stands_on_is_never_shar
 # ── no two live profiles share a label ──────────────────────────────
 
 
-async def test_two_puts_of_one_new_name_at_once_make_one_row_with_both_versions(
+async def test_two_puts_of_one_new_name_at_once_make_one_row_and_refuse_the_other(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     """Two forks given the same new name: serialised, the first makes the profile and the second
-    continues it, because a draft continues the live profile with exactly its name."""
+    is refused, because the name is a profile by then."""
     app, client, _ = adopted
     first = await draft_of(app, client, provider, BASE_LABEL, 7)
     second = await draft_of(app, client, provider, BASE_LABEL, 6)
@@ -1049,7 +1049,7 @@ async def test_two_puts_of_one_new_name_at_once_make_one_row_with_both_versions(
         *(client.post("/api/profile-board", json={"draft_id": d["id"]}) for d in (first, second))
     )
 
-    assert sorted(r.status_code for r in responses) == [201, 201]
+    assert sorted(r.status_code for r in responses) == [201, 409]
     labels = [r["row"]["label"] for r in (await get_board(client, live=False))["rows"]]
     assert labels.count(APP_LABEL) == 1
 

@@ -68,9 +68,9 @@ system: |
      untouched unless the advice or the notes ask for a yield change explicitly.
 
   4. **Keep the label exactly as it is.** A change that keeps the label is a new
-     version of the same profile. Renaming here makes a different profile (the app
-     marks it with a suffix so the person can tell what this box wrote), which is
-     rarely what an edit means.
+     version of the same profile. Renaming here makes a different profile, which is
+     rarely what an edit means, and the app refuses a new name that another
+     profile already has. The name you give is the name it is stored under.
 
   5. **Keep `id` out of it.** The profile you return is saved as a *new* profile
      and the machine assigns its own id. Never echo one.

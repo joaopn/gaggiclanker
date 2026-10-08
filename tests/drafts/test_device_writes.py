@@ -23,15 +23,15 @@ from gaggiclanker.domain.models import (
     Profile,
     canonical_profile_json,
     profile_content_hash,
-    with_app_suffix,
 )
 from tests.drafts.conftest import base_profile
+from tests.drafts.helpers import forked
 
 
 async def a_new_profile(app: FastAPI, label: str | None = None) -> Profile:
     """The mirrored 9 Bar profile, ready to be saved as something of ours."""
     profile = await base_profile(app)
-    return profile.for_new_device_profile(label=with_app_suffix(label or profile.label))
+    return profile.for_new_device_profile(label=forked(label or profile.label))
 
 
 async def audit(app: FastAPI) -> list[tuple[str, str, str | None]]:

@@ -7,7 +7,7 @@ The shape of the whole feature is a path and one invariant.
 **The invariant: every document that leaves this module has been through
 :func:`~gaggiclanker.domain.profile_policy.enforce`.** There is exactly one
 place a profile is built (:meth:`.proposals.DraftProposals.prepare`) and it
-clamps, re-checks and applies the label suffix before anything is stored. A
+clamps, re-checks and names the label before anything is stored. A
 caller cannot construct a draft that skipped a layer, because there is no other
 constructor. That half lives in its own class, built without the machine
 connection, so the chat's tools can propose a draft without holding anything
@@ -21,11 +21,9 @@ what a draft needs before that (drafting, refining, discarding) and
 :meth:`ProfileDraftService.attach_to_set`, which the write phase calls once a profile is on
 the machine, so a Set records the version the same way whoever put the profile there.
 
-**The suffix is applied at draft time, not at write time.** crema appends "[AI]"
-as it saves. Doing it earlier means the document a person approves, the document
-that goes on the wire and the document the round trip compares against are one
-document with one content hash — and the diff shows the rename, which is
-honest, because the profile on the machine really will be called that.
+**The name is fixed at draft time, not at write time.** The label a person or the agent gave the
+draft is the label of the document that is approved, the one that goes on the wire and the one the
+round trip compares against: one document, one content hash. The app adds nothing to a name.
 """
 
 from __future__ import annotations
@@ -125,9 +123,7 @@ class ProfileDraftService:
         bounds = await self.bounds()
         clamped, changes = clamp(candidate, bounds)
         violations = check(clamped, bounds)
-        final = clamped.for_new_device_profile(
-            label=await self.proposals.label_for(base_version_id, clamped.label)
-        )
+        final = clamped.for_new_device_profile(label=clamped.label)
         return DraftPreview(
             valid=not violations,
             violations=violations,

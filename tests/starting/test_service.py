@@ -248,6 +248,62 @@ async def test_an_option_hotter_than_the_profile_it_picked_stages_a_draft(
     }
 
 
+async def _live_profile_named(fixture: Fixture, label: str, *, other_temperature: float) -> None:
+    """A live board profile with this name whose current version is a different one."""
+    from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+
+    profiles = ProfilesRepository(fixture.db)
+    base = await profiles.get_version(fixture.profile_version_id)
+    assert base is not None and base.profile is not None
+    other, _ = await profiles.ensure_version(
+        Profile.model_validate({**base.profile, "temperature": other_temperature})
+    )
+    assert other.id != fixture.profile_version_id and other.label == label
+    await ProfileBoardRepository(fixture.db).insert(
+        BoardRowWrite(label=label, current_version_id=other.id, origin="adopted")
+    )
+
+
+async def test_a_temperature_option_on_a_version_outside_the_list_is_not_a_rename(
+    starting: StartingPointService, fixture: Fixture, provider: FakeProvider
+) -> None:
+    """The picked version is no live profile's version (a superseded draft's, say) but carries
+    the name of a live profile. Redrafting its temperature renames nothing, and the wizard has
+    no name field to fix a refusal with."""
+    base = await ProfilesRepository(fixture.db).get_version(fixture.profile_version_id)
+    assert base is not None
+    await _live_profile_named(fixture, base.label, other_temperature=91.0)
+    provider.script = [
+        json.dumps(option_with(profile_version_id=fixture.profile_version_id, temperature_c=96.0))
+    ]
+    run = await _propose(starting, fixture)
+
+    accepted = await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
+
+    assert accepted.draft is not None and accepted.draft.draft_label == base.label
+
+
+async def test_an_authored_profile_with_a_taken_name_is_refused_in_the_wizards_words(
+    starting: StartingPointService, fixture: Fixture, provider: FakeProvider
+) -> None:
+    base = await ProfilesRepository(fixture.db).get_version(fixture.profile_version_id)
+    assert base is not None
+    await _live_profile_named(fixture, base.label, other_temperature=91.0)
+    provider.script = [
+        json.dumps(option_with(profile={**GOOD_PROFILE, "label": base.label.upper()}))
+    ]
+    run = await _propose(starting, fixture)
+
+    with pytest.raises(Conflict) as refused:
+        await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
+
+    assert "Ask for another suggestion" in str(refused.value)
+    assert base.label.upper() in str(refused.value)
+    # The refusal released the run: another option can still be taken.
+    after = await StartingPointRunsRepository(fixture.db).get(run.id)  # type: ignore[attr-defined]
+    assert after is not None and after.accepted_option is None
+
+
 async def test_an_option_that_agrees_with_its_profile_stages_nothing(
     starting: StartingPointService, fixture: Fixture, provider: FakeProvider
 ) -> None:

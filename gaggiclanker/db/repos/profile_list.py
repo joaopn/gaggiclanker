@@ -23,15 +23,15 @@ The grouping, in order:
    file held, the one that did not verify, the one it was left from by going back), and the
    versions of the drafts that were put on the machine as the file it stands on or that were
    waiting on it.
-3. **The stored drafts, replayed oldest first, through the rule a put uses**
-   (``lineage_owner``, shared with the live put): a version lands in the profile a put of it
-   would have landed in (the Set's chain, or the profile whose version list has its base when
-   the name is the profile's own). A draft stored before a change could keep a profile's name
-   carries the suffix on a base that has none, so it fails the name test and is grouped as it
-   always was: a firmware profile does not absorb the agent's old work. A renamed version of a
-   Set's profile stays with it. What a draft replaced on the machine is
-   the same profile. A version that would start a
-   new profile joins the one that already has exactly its label, so no two profiles share a name.
+3. **The stored drafts, replayed oldest first, through the rule history was written under**
+   (``lineage_owner``, exact names): a version lands in the profile a put of it would then have
+   landed in (the Set's chain, or the profile whose version list has its base when the name is
+   the profile's own). A draft stored before a change could keep a profile's name
+   carries the "[AI]" marker the app then added, on a base that has none, so it fails the name
+   test and is grouped as it always was: a firmware profile does not absorb the agent's old
+   work. A renamed version of a Set's profile stays with it. What a draft replaced on the
+   machine is the same profile. A version that would start a new
+   profile joins the one that already has exactly its label, so no two profiles share a name.
 4. **What no draft made** (imports, versions the machine held before the board) joins the
    profile with exactly that label, else becomes a profile of its own. The suffix is never
    stripped.
@@ -63,17 +63,19 @@ from gaggiclanker.db.repos.lineage import lineage_owner
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository, VersionSource
 from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL
 from gaggiclanker.db.repository import Repository
-from gaggiclanker.domain.models import APP_PROFILE_SUFFIX
 
 __all__ = ["ProfileListBuilder", "stripped_label", "version_source_for_draft"]
 
 log = structlog.get_logger(__name__)
 
-_SUFFIX = APP_PROFILE_SUFFIX.strip()
+#: The marker earlier versions of the app added to the names of profiles the agent wrote. The app
+#: no longer adds it, but stored drafts and versions carry it, and this one-time fill replays that
+#: history, grouping "X" and "X [AI]" as the app did then. Nothing outside the fill reads it.
+_SUFFIX = "[AI]"
 
 
 def stripped_label(label: str) -> str:
-    """The label without the app's suffix, which marks agent-made profiles and nothing else."""
+    """The label without the marker earlier versions of the app added (stored history only)."""
     text = label.rstrip()
     if text.endswith(_SUFFIX):
         text = text[: -len(_SUFFIX)]
@@ -237,7 +239,8 @@ class ProfileListBuilder(Repository):
         profile_rows = [by_id[i] for i in sorted({*(r.id for r in live), *(r.id for r in revived)})]
 
         # 2. Group the versions: what the rows name, then the stored drafts replayed, oldest
-        # first, through the rule a put uses (`lineage_owner`), then what is left by exact label.
+        # first, through the rule history was written under (`lineage_owner`), then what is left
+        # by exact label.
         pushed_versions = {
             int(d["draft_version_id"])
             for d in drafts

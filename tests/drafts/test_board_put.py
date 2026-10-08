@@ -16,7 +16,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
-from tests.drafts.helpers import APP_LABEL, draft_of, make_set_on, set_device_ids
+from tests.drafts.helpers import APP_LABEL, draft_of, make_set_on, same_name_draft, set_device_ids
 from tests.drafts.test_board import (
     adopted,
     approve,
@@ -143,7 +143,7 @@ async def test_the_sets_version_and_the_major_choice_ride_on_the_same_request(
     row = await variant_draft(app, client, "For a set", 8)
     first = await put(client, row)
     set_id = await make_set_on(client, "One click set", first["current_version_id"])
-    newer = await draft_of(app, client, provider, "For a set [AI]", 7)
+    newer = await same_name_draft(app, client, provider, "For a set", 7)
     await app.state.db.execute(
         "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, newer["id"])
     )

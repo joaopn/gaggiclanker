@@ -21,6 +21,8 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
+from gaggiclanker.db.repos.lineage import taken_name_sentence
+from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL, ProfilesRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
@@ -116,6 +118,28 @@ async def _draft_count(db: Database) -> int:
     return len(await ProfileDraftsRepository(db).list_drafts(limit=1000))
 
 
+async def test_the_initial_recipe_refuses_a_name_that_is_already_a_profile(
+    archive: Fixture,
+) -> None:
+    """Written from zero, the profile is new: a name in the list is refused in the one
+    sentence, and nothing is left behind."""
+    await ProfileBoardRepository(archive.db).insert(
+        BoardRowWrite(
+            label="Designed in chat",
+            current_version_id=archive.profile_version_id,
+            origin="adopted",
+        )
+    )
+    row = await _designed(archive.db, archive.bean_id, archive.grinder_id)
+    before = await _draft_count(archive.db)
+
+    outcome = await _propose(await _design_ctx(archive.db, row, with_thread=True))
+
+    assert not outcome.ok
+    assert outcome.data["detail"] == taken_name_sentence("Designed in chat")
+    assert await _draft_count(archive.db) == before
+
+
 # -- get_profile -----------------------------------------------------------------
 
 
@@ -194,7 +218,7 @@ async def test_the_initial_recipe_is_one_waiting_card_with_a_draft_of_its_own(
     assert draft.change_summary == RECIPE["reason"]
     assert "Kenya, designed" in draft.notes
     assert data["recipe"]["profile_version_id"] == draft.draft_version_id
-    assert data["recipe"]["profile_label"] == "Designed in chat [AI]"
+    assert data["recipe"]["profile_label"] == "Designed in chat"
     assert data["recipe"]["profile_temperature_c"] == 92
     assert (data["recipe"]["dose_g"], data["recipe"]["target_yield_g"]) == (18, 40)
     assert "Nothing exists yet" in data["note"]

@@ -691,6 +691,37 @@ async def test_a_copy_the_app_saved_before_adoption_is_continued_by_a_later_draf
     assert len([p for p in fake_device.profiles if p["label"] == STAGED]) == 1
 
 
+async def test_origin_comes_from_the_save_audit_alone_not_from_the_name(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    """A file the app saved under a plain name is the app's (origin ``draft``); a file the person
+    made with "[AI]" in its name, and no save of ours behind it, is not."""
+    app, client = writes_on
+    saved = copy.deepcopy(next(p for p in fake_device.profiles if p["id"] == "9bar"))
+    saved.update(id="plain1", label="Saved without a marker")
+    fake_device.profiles.append(saved)
+    await DeviceWritesRepository(app.state.db).record(
+        DeviceWriteWrite(
+            kind="profile_save",
+            host=app.state.connection.client.host,
+            device_id="plain1",
+            payload_hash=profile_content_hash(Profile.model_validate(saved)),
+            result="ok",
+        )
+    )
+    theirs = copy.deepcopy(saved)
+    theirs.update(
+        id="theirs1", label="Made by hand [AI]", temperature=float(saved["temperature"]) + 1
+    )
+    fake_device.profiles.append(theirs)
+
+    await pull(app)
+
+    board = await get_board(client)
+    assert row_for(board, "Saved without a marker")["row"]["origin"] == "draft"
+    assert row_for(board, "Made by hand [AI]")["row"]["origin"] == "adopted"
+
+
 async def test_a_persons_profile_ending_in_the_app_label_is_continued_like_any_other(
     writes_on: Live, fake_device: FakeDevice, provider: FakeProvider
 ) -> None:
@@ -923,7 +954,7 @@ async def test_a_row_revived_between_the_plan_and_its_removal_keeps_its_file(
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 9)  # another app row: the machine is not "reset"
     await app_row(app, client, fake, provider, 8, name="Second")
-    rows = [r for r in (await get_board(client))["rows"] if r["row"]["label"] == "Second [AI]"]
+    rows = [r for r in (await get_board(client))["rows"] if r["row"]["label"] == "Second"]
     victim = rows[-1]
     file = victim["machine"]["device_id"]
     await tombstone(client, victim["row"]["id"])

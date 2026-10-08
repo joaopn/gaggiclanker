@@ -32,7 +32,9 @@ ROOT = Path(__file__).resolve().parents[1]
 RETIRED = re.compile(
     r"execution[ _]score|\bbands?\b|channeling (risk|indicator)|primary[ _]signal"
     r"|\b(VERY_LOW|VERY_HIGH|WITHIN_TOLERANCE|INSUFFICIENT_DATA|EXCELLENT|GRADUAL_DECLINE)\b"
-    r"|erosion",
+    r"|erosion"
+    # The app no longer adds "[AI]" to a name; nothing may tell a model or a person it does.
+    r"|\[AI\][ ]suffix|suffix[^\n]{0,24}\[AI\]",
     re.IGNORECASE,
 )
 

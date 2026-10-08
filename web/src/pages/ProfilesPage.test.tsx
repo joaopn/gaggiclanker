@@ -934,6 +934,18 @@ describe("proposed versions", () => {
     expect(within(panel).getByTestId("decline-proposal")).toBeInTheDocument();
   });
 
+  it("offers no Make active when the server says the name is already a profile", async () => {
+    const user = setupUser();
+    const sentence =
+      "Bloom is already a profile: draft a change from it, or choose another name for a new one.";
+    withProposal({}, { plain: { row_id: null, row_label: null, refused: sentence } });
+    const panel = await open(user);
+
+    expect(within(panel).getByTestId("proposal-name-taken")).toHaveTextContent(sentence);
+    expect(within(panel).queryByTestId("make-proposal-active")).not.toBeInTheDocument();
+    expect(within(panel).getByTestId("decline-proposal")).toBeInTheDocument();
+  });
+
   it("sends one put when Make active is clicked twice at once", async () => {
     const user = setupUser();
     withProposal();

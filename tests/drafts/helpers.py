@@ -17,11 +17,19 @@ from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow, DeviceWritesRepository
 from gaggiclanker.db.repos.profile_board import BoardRowPatch
 from gaggiclanker.device.fake import FakeDevice
-from gaggiclanker.domain.models import with_app_suffix
 from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data
 from tests.llm.conftest import FakeProvider
 
 APP_LABEL = f"{BASE_LABEL} [AI]"
+
+
+def forked(label: str) -> str:
+    """A name of its own for a fork of ``label``.
+
+    The app adds nothing to a name; a test that wants a second profile beside the one it forks
+    gives it a different name, and this is the one the suite uses.
+    """
+    return label if label.endswith(" [AI]") else f"{label} [AI]"
 
 
 async def tombstone(client: httpx.AsyncClient, row_id: int) -> httpx.Response:
@@ -49,13 +57,21 @@ Live = tuple[FastAPI, httpx.AsyncClient]
 async def draft_of(
     app: FastAPI, client: httpx.AsyncClient, provider: FakeProvider, label: str, bar: float
 ) -> dict[str, Any]:
-    """A draft of the mirrored profile ``label`` with its first pump set to ``bar``."""
+    """A draft of the mirrored profile ``label`` with its first pump set to ``bar``.
+
+    A fork under another name (``forked(label)``); when that fork is already a profile on the
+    board, a name cannot be taken twice, so it is a change to that profile, which keeps its name
+    (the earlier behaviour: a second fork of one name was a version of the first).
+    """
+    rows = data(await client.get("/api/profile-board"))["rows"]
+    if any(r["row"]["label"] == forked(label) for r in rows):
+        return await same_name_draft(app, client, provider, forked(label), bar)
     profile = await base_profile(app, label)
     document = profile.model_dump(mode="json", exclude={"annotations", "id"})
     document["phases"][0]["pump"] = {"target": "pressure", "pressure": bar, "flow": 0}
-    # The agent writing a fork: a profile of its own, named with the suffix. (A change that keeps
+    # The agent writing a fork: a profile of its own under a name of its own. (A change that keeps
     # the profile's name is a version of it; ``same_name_draft`` below makes that one.)
-    document["label"] = with_app_suffix(label)
+    document["label"] = forked(label)
     provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
     response = await client.post(
         "/api/profile-drafts",

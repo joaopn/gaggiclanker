@@ -64,16 +64,6 @@ PROFILE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,31}$"
 #: phase entry instead of driving to a fixed setpoint (BrewProcess.h:206-209).
 HOLD_MEASURED = -1.0
 
-#: What gaggiclanker appends to the label of every profile it writes to the
-#: machine: a marker, on the display and in the list, that tells a profile the
-#: agent made from one a person authored. It decides nothing: every profile the
-#: app has synced is the app's to manage, and what stands between a profile and
-#: its removal is the content check against a fresh load, never this label.
-#:
-#: crema's convention, and kept identical on purpose — a shared archive of
-#: GaggiMate profiles is more useful if "[AI]" means the same thing in both.
-APP_PROFILE_SUFFIX = " [AI]"
-
 
 class Transition(DeviceModel):
     """How the pump setpoint ramps into a phase."""
@@ -301,19 +291,6 @@ def _canonical_phase(phase: dict[str, Any]) -> dict[str, Any]:
 def profile_content_hash(profile: Profile) -> str:
     """sha256 of :func:`canonical_profile_json` — the profile's content identity."""
     return hashlib.sha256(canonical_profile_json(profile).encode("utf-8")).hexdigest()
-
-
-def with_app_suffix(label: str) -> str:
-    """``"9 Bar"`` -> ``"9 Bar [AI]"``, and idempotent.
-
-    Idempotent because a draft is routinely refined from a profile this box
-    already pushed, and ``"9 Bar [AI] [AI]"`` on the machine's brew screen would
-    be this feature's most visible bug.
-    """
-    stripped = label.rstrip()
-    if stripped.endswith(APP_PROFILE_SUFFIX.strip()):
-        return stripped
-    return f"{stripped}{APP_PROFILE_SUFFIX}"
 
 
 def _normalise_numbers(value: Any) -> Any:

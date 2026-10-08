@@ -71,7 +71,7 @@ from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_policy import clamp
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.sets import grind_value, set_name
-from gaggiclanker.drafts.proposals import DraftProposals
+from gaggiclanker.drafts.proposals import DraftProposals, TakenName
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskSpawner
@@ -536,16 +536,23 @@ class StartingPointService:
         # not edited — so the draft is marked new and shown as a profile, not as a diff.
         # Its stored base is only the library's default one, because a draft needs a base.
         base_version_id = await ProfilesRepository(self.db).default_draft_base()
-        draft: ProfileDraftRow = await self.drafts.create_manual(
-            base_version_id=base_version_id,
-            # `to_device()`, not `model_dump()`: it re-expands the `^_`
-            # annotation keys and drops the `annotations` field itself, which
-            # `Profile`'s own validator refuses as an input key.
-            document=option.profile.to_device(),
-            change_summary=option.profile_note or option.headline,
-            notes=f"Proposed by the starting-point wizard ({option.option}).",
-            is_new=True,
-        )
+        try:
+            draft: ProfileDraftRow = await self.drafts.create_manual(
+                base_version_id=base_version_id,
+                # `to_device()`, not `model_dump()`: it re-expands the `^_`
+                # annotation keys and drops the `annotations` field itself, which
+                # `Profile`'s own validator refuses as an input key.
+                document=option.profile.to_device(),
+                change_summary=option.profile_note or option.headline,
+                notes=f"Proposed by the starting-point wizard ({option.option}).",
+                is_new=True,
+            )
+        except TakenName as taken:
+            # The wizard has no name field: the person's way out is another suggestion.
+            raise Conflict(
+                f"The suggested name {taken.label} is already a profile. Ask for another "
+                "suggestion, or pick an option that uses a profile you already have."
+            ) from None
         return draft
 
     async def _temperature_draft_for(self, option: StartingPointOption) -> ProfileDraftRow | None:

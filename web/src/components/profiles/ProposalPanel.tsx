@@ -68,10 +68,12 @@ export function ProposalPanel({
   const busy = put.isPending || discard.isPending;
   const alreadyThere = landing?.already_on_board_label ?? null;
   // Every proposal is an independent candidate: another one being made active never blocks this
-  // one, and a name never blocks it either (it continues the profile that has the name). Only a
-  // document that is already in the list leaves nothing to make active.
-  const plainBlocked = alreadyThere !== null;
-  const setBlocked = alreadyThere !== null;
+  // one. Two things leave nothing to make active: a document that is already in the list, and
+  // a new or renamed draft whose name is already a profile. The server says the second one
+  // (the sentence the put answers with), and there is no Make active to press.
+  const refused = landing?.plain.refused ?? landing?.for_set?.refused ?? null;
+  const plainBlocked = alreadyThere !== null || refused !== null;
+  const setBlocked = alreadyThere !== null || refused !== null;
   const forSet =
     draft.set_id != null && draft.set_name != null && landing?.for_set != null
       ? {
@@ -165,9 +167,13 @@ export function ProposalPanel({
           Checking where it would land…
         </p>
       ) : alreadyThere !== null ? (
-        <p className="text-sm" data-testid="proposal-already-there">
+        <p className="break-words text-sm" data-testid="proposal-already-there">
           This exact profile is already in the list as {alreadyThere}, so there is nothing to make
           active. Decline this one, or edit a copy into something else.
+        </p>
+      ) : refused !== null ? (
+        <p className="break-words text-sm" data-testid="proposal-name-taken">
+          {refused} Decline this one, or edit a copy under another name.
         </p>
       ) : null}
 

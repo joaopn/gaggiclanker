@@ -12,6 +12,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.lineage import taken_name_sentence
 from gaggiclanker.db.repos.profiles import (
     SYNTHETIC_BASE_LABEL,
     ProfilesRepository,
@@ -19,10 +20,10 @@ from gaggiclanker.db.repos.profiles import (
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile
-from tests.drafts.conftest import BASE_LABEL, data
-from tests.drafts.helpers import APP_LABEL, manual_draft
-from tests.drafts.test_board import adopted, approve, get_board, put, row_for
-from tests.drafts.test_board_landings import landing
+from gaggiclanker.infra.errors import Conflict
+from tests.drafts.conftest import BASE_LABEL, data, error
+from tests.drafts.helpers import manual_draft
+from tests.drafts.test_board import adopted, get_board, put
 from tests.llm.conftest import FakeProvider
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
@@ -75,7 +76,7 @@ async def test_the_detail_of_a_new_draft_says_so_and_serves_no_base(
     assert detail["base_profile"] is None
     assert detail["draft"]["base_label"] is None
     assert detail["draft"]["base_is_current"] is True
-    assert detail["draft_profile"]["label"] == "From zero [AI]"
+    assert detail["draft_profile"]["label"] == "From zero"
     assert SYNTHETIC_BASE_LABEL not in json.dumps(detail)
 
 
@@ -92,33 +93,32 @@ async def test_the_detail_of_an_edit_still_serves_its_diff(
     assert detail["draft"]["base_label"] == "9 Bar Espresso"
 
 
-async def test_a_new_draft_named_like_an_existing_profile_is_named_with_the_suffix(
+async def test_a_new_draft_named_like_an_existing_profile_is_refused(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    """A profile written from scratch always gets the app's suffix, even when its name is that
-    of a profile that exists: it never continues the person's profile, and so never renames it.
-    (Named like an app profile, it is that profile's name already: see the next test.)"""
+    """A profile written from scratch never continues a profile that exists, and the app adds
+    nothing to its name to keep them apart: a name that is already a profile is refused, in the
+    one sentence every path uses, and nothing is stored."""
     app, client, _ = adopted
-    firmware = row_for(await get_board(client), BASE_LABEL)["row"]
+    before = len((await get_board(client))["rows"])
     base = await ProfilesRepository(app.state.db).empty_base()
     version = await ProfilesRepository(app.state.db).get_version(base)
     assert version is not None and version.profile is not None
     document = copy.deepcopy(version.profile)
     document["label"] = BASE_LABEL
+    drafts_before = len(data(await client.get("/api/profile-drafts"))["items"])
 
-    fresh = await app.state.draft_proposals.create_manual(
-        base_version_id=base, document=document, is_new=True
-    )
-    await approve(app, dict(fresh.model_dump(mode="json")))
+    with pytest.raises(Conflict) as refused:
+        await app.state.draft_proposals.create_manual(
+            base_version_id=base, document=document, is_new=True
+        )
 
-    assert fresh.draft_label == APP_LABEL
-    board = await get_board(client)
-    found = landing(board, dict(fresh.model_dump(mode="json")))["plain"]
-    assert found["row_id"] is None, "a new profile beside the firmware's, never a version of it"
-    assert row_for(board, BASE_LABEL)["row"]["id"] == firmware["id"]
+    assert str(refused.value) == taken_name_sentence(BASE_LABEL)
+    assert len(data(await client.get("/api/profile-drafts"))["items"]) == drafts_before
+    assert len((await get_board(client))["rows"]) == before
 
 
-async def test_two_new_drafts_with_one_name_are_versions_of_one_profile(
+async def test_two_new_drafts_with_one_name_make_one_profile_and_the_second_put_is_refused(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     app, client, _ = adopted
@@ -137,16 +137,21 @@ async def test_two_new_drafts_with_one_name_are_versions_of_one_profile(
         )
 
     first = await put(client, {"id": drafts[0].id})
-    second = await put(client, {"id": drafts[1].id})
+    refused = await client.post("/api/profile-board", json={"draft_id": drafts[1].id})
 
-    assert first["label"] == "Zero [AI]" and second["id"] == first["id"]
+    assert first["label"] == "Zero"
+    assert refused.status_code == 409
+    assert error(refused)["message"] == taken_name_sentence("Zero")
     versions = data(await client.get(f"/api/profile-board/{first['id']}/versions"))["versions"]
-    assert len(versions) == 2
+    assert len(versions) == 1
 
 
-async def test_a_refinement_of_an_active_new_draft_is_a_version_of_its_profile(
+async def test_a_refinement_of_a_new_draft_that_is_now_a_profile_is_refused(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
+    """Once a new draft is put, its name is a live profile. A refinement is still a new profile's
+    draft (it continues nothing), so the same refusal applies, and it says what to do: draft a
+    change from the profile. (After the sync the draft is pushed and cannot be refined at all.)"""
     app, client, _ = adopted
     base = await ProfilesRepository(app.state.db).empty_base()
     version = await ProfilesRepository(app.state.db).get_version(base)
@@ -160,14 +165,12 @@ async def test_a_refinement_of_an_active_new_draft_is_a_version_of_its_profile(
     document["phases"][0]["duration"] = 25
     provider.script = [json.dumps({"profile": document, "change_summary": "shorter"})]
 
-    refined = data(
-        await client.post(f"/api/profile-drafts/{new.id}/refine", json={"notes": "shorter"})
-    )
-    board = await get_board(client)
+    refused = await client.post(f"/api/profile-drafts/{new.id}/refine", json={"notes": "shorter"})
 
-    [proposal] = [p for p in board["proposals"] if p["draft"]["id"] == refined["id"]]
-    assert proposal["row_id"] == made["id"]
-    assert (await put(client, refined))["id"] == made["id"]
+    assert refused.status_code == 409
+    assert error(refused)["message"] == taken_name_sentence("Zero")
+    board = await get_board(client)
+    assert [p for p in board["proposals"] if p["row_id"] == made["id"]] == []
 
 
 async def test_a_refinement_of_a_new_draft_is_new(
@@ -286,7 +289,7 @@ async def test_refining_a_new_draft_does_not_show_the_stand_in_base_as_the_machi
     user = "\n".join(m.content for m in provider.calls[-1].messages)
     assert SYNTHETIC_BASE_LABEL not in user and "An empty baseline" not in user
     assert "this is a new profile that is not on the machine" in user
-    assert "Zero [AI]" in user  # the draft being refined is the document to work from
+    assert "Zero" in user  # the draft being refined is the document to work from
     assert refined["is_new"] is True and refined["stop_condition_changes"] == []
 
 

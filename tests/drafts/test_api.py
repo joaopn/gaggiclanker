@@ -21,7 +21,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.device.fake import FakeDevice
-from gaggiclanker.domain.models import Profile, with_app_suffix
+from gaggiclanker.domain.models import Profile
 from tests.drafts.conftest import (
     BASE_LABEL,
     base_profile,
@@ -30,7 +30,7 @@ from tests.drafts.conftest import (
     error,
     mirror_only,
 )
-from tests.drafts.helpers import APP_LABEL, tombstone
+from tests.drafts.helpers import APP_LABEL, forked, tombstone
 from tests.drafts.test_board import adopted, get_board, pull, put, row_for
 from tests.llm.conftest import FakeProvider
 
@@ -48,7 +48,7 @@ async def a_draft(
     """Ask for one draft, with the model scripted to return an edited profile."""
     profile = await base_profile(app)
     document = profile.model_dump(mode="json", exclude={"annotations", "id"})
-    document["label"] = with_app_suffix(profile.label)  # a fork, as in `lower_pressure`
+    document["label"] = forked(profile.label)  # a fork, as in `lower_pressure`
     if edit:
         document.update(edit)
     provider.script = [
@@ -65,21 +65,21 @@ def lower_pressure(profile: Profile, bar: float) -> dict[str, Any]:
     """The edit every test here makes: one number, in one phase."""
     document = profile.model_dump(mode="json", exclude={"annotations", "id"})
     document["phases"][0]["pump"] = {"target": "pressure", "pressure": bar, "flow": 0}
-    # A fork written by the agent: a profile of its own, named with the suffix. A change that
+    # A fork written by the agent: a profile of its own under a name of its own. A change that
     # keeps the profile's name is a version of it, and has its own tests.
-    document["label"] = with_app_suffix(profile.label)
+    document["label"] = forked(profile.label)
     return document
 
 
 # ── drafting ─────────────────────────────────────────────────────────
 
 
-async def test_a_draft_stores_a_profile_version_with_the_suffix_applied(
+async def test_a_draft_stores_a_profile_version_under_the_name_it_was_given(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
     """The document a person approves is the document that gets pushed.
 
-    The suffix is applied here rather than at push time, so the version row, the
+    The name is fixed here rather than at push time, so the version row, the
     diff, the bytes on the wire and the round-trip comparison are all one
     document with one content hash.
     """

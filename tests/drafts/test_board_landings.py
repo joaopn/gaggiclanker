@@ -1,6 +1,6 @@
 """Where a put of an approved draft would land, as the board read says it.
 
-The same ``_lineage_row`` a put runs decides it; these scenarios are the ones a page got wrong
+The same ``place_draft`` a put runs decides it; these scenarios are the ones a page got wrong
 when it guessed (two variants of a profile of yours are two new profiles, not one overtaking
 the other).
 """
@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI
 
+from gaggiclanker.db.repos.lineage import taken_name_sentence
 from gaggiclanker.db.repos.profile_board import (
     BoardRowPatch,
     BoardRowWrite,
@@ -64,25 +65,27 @@ async def test_two_variants_of_a_profile_of_yours_with_labels_of_their_own_each_
         assert found["for_set"] is None and found["already_on_board_label"] is None
 
 
-async def test_two_forks_with_one_name_are_versions_of_one_profile(
+async def test_the_second_of_two_new_drafts_with_one_name_is_refused_once_the_first_is_a_profile(
     writes_on: Live, fake_device: FakeDevice, provider: FakeProvider
 ) -> None:
-    """A draft continues the live profile with exactly its name: the second fork lands on the
-    profile the first one made, and is not refused for a taken name."""
+    """Both drafts were made while the name was free. Once the first is put, the name is a
+    profile: the second would land on it (a version nobody asked for), so its put is refused in
+    the creation guard's sentence and the list keeps one profile of the name."""
     app, client = writes_on
     await pull(app)
     first = await draft_of(app, client, provider, BASE_LABEL, 7)
     second = await draft_of(app, client, provider, BASE_LABEL, 6)
     await approve(app, first)
     await approve(app, second)
-    # Neither continues anything while the other is not in the list: the landing is per draft.
     assert landing(await get_board(client), second)["plain"]["row_id"] is None
 
-    made = await put(client, first)
+    await put(client, first)
+    refused = await client.post("/api/profile-board", json={"draft_id": second["id"]})
 
-    found = landing(await get_board(client), second)["plain"]
-    assert found["row_id"] == made["id"]
-    assert (await put(client, second))["id"] == made["id"]
+    assert refused.status_code == 409
+    assert error(refused)["message"] == taken_name_sentence(APP_LABEL)
+    labels = [r["row"]["label"] for r in (await get_board(client))["rows"]]
+    assert labels.count(APP_LABEL) == 1
 
 
 async def test_two_changes_of_a_persons_profile_that_keep_its_name_are_both_versions_of_it(
@@ -156,12 +159,14 @@ async def test_a_fork_named_like_an_app_profile_continues_that_profile(
     assert len((await get_board(client))["rows"]) == rows
 
 
-async def test_a_set_draft_renamed_onto_another_profiles_name_continues_that_profile(
+async def test_a_set_draft_renamed_onto_a_name_that_became_a_profile_is_refused_by_landing_and_put(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
+    """The refusal is first at creation. A name that becomes a profile after the draft was made
+    (the race) is refused the same way when the page's landing is read and when the put runs: a
+    rename never lands on a profile it is not a version of, for the Set or without it."""
     app, client, fake = adopted
     first = await app_row(app, client, fake, provider, 8, name="First")
-    second = await app_row(app, client, fake, provider, 7, name="Second")
     set_id = await make_set_on(client, "Rename set", first["current_version_id"])
     version = data(await client.get(f"/api/profile-versions/{first['current_version_id']}"))
     document = dict(version["profile"])
@@ -178,6 +183,7 @@ async def test_a_set_draft_renamed_onto_another_profiles_name_continues_that_pro
             )
         )
     )
+    second = await app_row(app, client, fake, provider, 7, name="Second")
     await app.state.db.execute(
         "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, renamed["id"])
     )
@@ -185,9 +191,13 @@ async def test_a_set_draft_renamed_onto_another_profiles_name_continues_that_pro
 
     found = landing(await get_board(client), renamed)
 
-    # Renamed, it is not First (a name never changes through a version); it is named "Second
-    # [AI]", so it continues the profile with that name, plain or for the Set.
-    assert found["for_set"]["row_id"] == second["id"] == found["plain"]["row_id"]
+    sentence = taken_name_sentence("Second")
+    assert found["plain"]["refused"] == found["for_set"]["refused"] == sentence
+    assert found["plain"]["row_id"] is None and found["for_set"]["row_id"] is None
+    for body in ({}, {"set_id": set_id}):
+        refused = await client.post("/api/profile-board", json={"draft_id": renamed["id"], **body})
+        assert refused.status_code == 409 and error(refused)["message"] == sentence
+    assert second["id"] in [r["row"]["id"] for r in (await get_board(client))["rows"]]
     labels = [r["row"]["label"] for r in (await get_board(client))["rows"]]
     assert len(labels) == len(set(labels))
 

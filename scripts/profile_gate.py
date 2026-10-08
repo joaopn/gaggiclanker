@@ -46,7 +46,6 @@ from gaggiclanker.domain.models import (
     Profile,
     canonical_profile_json,
     profile_content_hash,
-    with_app_suffix,
 )
 from gaggiclanker.domain.profile_policy import (
     DEFAULT_BOUNDS,
@@ -54,6 +53,10 @@ from gaggiclanker.domain.profile_policy import (
     check,
     clamp,
 )
+
+#: What the gate adds to the name of the profiles it saves, so one left on a machine is
+#: recognisable as its own. The app itself adds nothing to a name.
+GATE_MARK = " [gate]"
 
 #: `MODE_BREW` from `src/display/core/constants.h`.
 MODE_BREW = 1
@@ -115,7 +118,9 @@ def apply_policy(profile: Profile, bounds: PolicyBounds) -> tuple[Profile | None
 
 async def round_trip(client: GaggimateClient, profile: Profile) -> tuple[str | None, bool]:
     """Layer 3. Save, read back, compare. Returns the device id and whether it matched."""
-    sent = profile.for_new_device_profile(label=with_app_suffix(profile.label))
+    # The gate's own mark, so a profile it left on a machine is recognisable as its own.
+    label = profile.label if profile.label.endswith(GATE_MARK) else f"{profile.label}{GATE_MARK}"
+    sent = profile.for_new_device_profile(label=label)
     stored = await client.save_profile(sent)
     device_id = stored.id
     if device_id is None:

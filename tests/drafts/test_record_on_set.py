@@ -17,6 +17,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch
 from gaggiclanker.device.fake import FakeDevice
@@ -73,9 +74,14 @@ async def drafted_for(
     the safety bounds, and nothing that could write to the machine.
     """
     profile = await base_profile(app)
+    document = lower_pressure(profile, bar)
+    # A second change to the fork keeps its name: a name cannot be taken twice.
+    existing = await ProfileBoardRepository(app.state.db).find_live_by_label(document["label"])
     row = await app.state.draft_proposals.create_manual(
-        base_version_id=await base_version_id(app),
-        document=lower_pressure(profile, bar),
+        base_version_id=await base_version_id(app)
+        if existing is None
+        else existing.current_version_id,
+        document=document,
         change_summary=f"Down to {bar:g} bar.",
         notes="Proposed in chat.",
         set_id=set_id,

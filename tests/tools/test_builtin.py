@@ -782,6 +782,48 @@ async def test_a_profile_draft_in_a_set_conversation_needs_a_prediction(
     assert "cannot be proposed without a prediction" in data["detail"]
 
 
+async def test_a_profile_draft_renamed_onto_a_profile_that_exists_is_refused(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """A rename never takes a name that is already a profile; keeping the base profile's own
+    name is a change to it, not a rename, and is not refused."""
+    from gaggiclanker.db.repos.lineage import taken_name_sentence
+    from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+
+    stored = await ProfilesRepository(archive.db).get_version(archive.profile_version_id)
+    assert stored is not None
+    board = ProfileBoardRepository(archive.db)
+    await board.insert(
+        BoardRowWrite(
+            label=stored.label, current_version_id=archive.profile_version_id, origin="adopted"
+        )
+    )
+    await board.insert(
+        BoardRowWrite(
+            label="Taken", current_version_id=archive.profile_version_id, origin="adopted"
+        )
+    )
+
+    data = await refuse(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"label": "Taken"},
+        reason="Renamed.",
+    )
+    assert data["detail"] == taken_name_sentence("Taken")
+
+    kept = await call(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+    )
+    stored_draft = await ProfileDraftsRepository(archive.db).get(kept["draft_id"])
+    assert stored_draft is not None and stored_draft.draft_label == stored.label
+
+
 async def test_a_profile_draft_outside_a_set_needs_none(ctx: ToolContext, archive: Fixture) -> None:
     """A draft that belongs to no experiment has nothing to be graded against."""
     data = await call(

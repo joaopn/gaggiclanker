@@ -24,7 +24,7 @@ import pytest
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.device.fake import FakeDevice
-from gaggiclanker.domain.models import Profile, profile_content_hash, with_app_suffix
+from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.drafts.machine import (
     CHANGED_SINCE,
     GONE,
@@ -34,14 +34,14 @@ from gaggiclanker.drafts.machine import (
     remove_profile,
 )
 from tests.drafts.conftest import BASE_LABEL, base_profile
-from tests.drafts.helpers import Live, audit, kinds
+from tests.drafts.helpers import Live, audit, forked, kinds
 
 
 async def app_profile(app: Any, name: str, pressure: float) -> Profile:
-    """A profile carrying the app suffix, as a draft's document does."""
+    """A fork under a name of its own, as a draft's document is."""
     base = await base_profile(app, BASE_LABEL)
     document = base.model_dump(mode="json", exclude={"annotations", "id"})
-    document["label"] = with_app_suffix(name)
+    document["label"] = forked(name)
     document["phases"][0]["pump"] = {"target": "pressure", "pressure": pressure, "flow": 0}
     return Profile.model_validate(document)
 

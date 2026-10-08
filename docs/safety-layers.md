@@ -102,8 +102,8 @@ profiles that are on**.
 
 **Every profile the app has synced is the app's to manage**: a firmware default or a profile
 made on the display is pushed, replaced, starred and removed like one the agent made. The
-`[AI]` suffix marks profiles the agent wrote from scratch, and renames, and decides nothing. What stands between a profile and
-its removal is whether the app has *seen* what the file holds: the one removal guard is a
+name a profile has says nothing about who made it (the app adds nothing to a name, and "[AI]" in one is
+the person's own choice). What stands between a profile and its removal is whether the app has *seen* what the file holds: the one removal guard is a
 fresh load, immediately before the delete (and again inside the client's `delete_profile`),
 that must hash to the content the archive recorded for that file.
 

@@ -93,4 +93,4 @@ For full documentation, see the Automatic Pro knowledge file.
 
 ---
 
-*All profiles marked [AI] were created by your barista assistant and can be safely deleted via the MCP tools. For full profile JSON definitions, see `GAGGIMATE_PROFILE_CREATION_GUIDE.md`.*
+*A profile your barista assistant proposed is an ordinary profile under the name it was given; switch it off on the Profiles page to take it off the machine at the next sync. For full profile JSON definitions, see `GAGGIMATE_PROFILE_CREATION_GUIDE.md`.*

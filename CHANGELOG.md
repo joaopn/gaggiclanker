@@ -50,6 +50,10 @@ database.
 
 - The Profiles page shows each pro profile's curve, the pressure and flow it aims for over time, as the machine's own web page draws it. An open row starts with the active version's curve, and every other version in the list shows its own above its summary or what changed. A solid line is what the pump aims for in a phase and a dashed line is only a limit; each phase starts at a line with its name, which is left out when the chart is narrow. Profiles that are not "pro" get no curve, as on the machine, and keep their summary. The curve is a port of the GaggiMate firmware's (v1.9.0) own drawing code, checked point by point against it.
 
+### Profile names are exactly what you or the agent give them
+
+The app no longer adds "[AI]" to the names of profiles the agent writes or that you rename: a new or renamed profile is stored and shown under the name it was given (add "[AI]" yourself if you want it). Existing profiles keep their names. A new profile cannot take a name another profile already has: the agent's draft tools and the JSON editor refuse it with "<name> is already a profile: draft a change from it, or choose another name for a new one." Names that differ only in case or surrounding whitespace count as the same name ("bloom" and "Bloom " are taken by "Bloom"), and a new name's surrounding whitespace is not stored. The same refusal applies at Make active if the name became a profile after the draft was made, and the Profiles page then shows the reason instead of a Make active button. A change that keeps a profile's name is still a new version of it. A profile's origin (the app's own or yours) now comes from the app's save record alone, not from its name, and the sync no longer treats "Bloom" and "Bloom [AI]" on the machine as one profile.
+
 ### Sync is in the top bar, on every page
 
 - **Sync moved from the Shots page to the top bar**, first in it, before the machine status. A

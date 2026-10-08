@@ -46,7 +46,6 @@ from gaggiclanker.domain.models import (
     Profile,
     canonical_profile_json,
     profile_content_hash,
-    with_app_suffix,
 )
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.llm.budget import RateLimitBudget
@@ -70,6 +69,14 @@ pytestmark = pytest.mark.simulator
 #: brews with is the shipped 9 Bar (28 s, volumetric 36 g) and the simulator has
 #: no scale, so it exits on duration.
 BREW_TIMEOUT_S = 90.0
+
+#: What this file adds to the name of every profile it makes on the machine, so that a test can
+#: tell its own profiles from the simulator's and clean up exactly those. The app adds nothing.
+TEST_MARK = " [sim test]"
+
+
+def with_test_mark(label: str) -> str:
+    return label if label.endswith(TEST_MARK) else f"{label}{TEST_MARK}"
 
 
 async def delete_now(client: Any, profile_id: str) -> None:
@@ -154,7 +161,7 @@ async def put_on_board(
     document["phases"] = [dict(phase) for phase in document["phases"]]
     # A fork: the agent writing a profile of its own beside the simulator's (a change that kept
     # the name would be a new version of that profile).
-    document["label"] = with_app_suffix(str(document["label"]))
+    document["label"] = with_test_mark(str(document["label"]))
     first = document["phases"][0]
     first["pump"] = (
         {**first["pump"], "pressure": bar}
@@ -229,7 +236,7 @@ async def test_every_fixture_profile_survives_a_round_trip_through_the_firmware(
     try:
         for name, document in every_profile_fixture():
             sent = Profile.model_validate(document).for_new_device_profile(
-                label=with_app_suffix(f"{name} gate")
+                label=with_test_mark(f"{name} gate")
             )
             stored = await client.save_profile(sent)
             assert stored.id is not None, name
@@ -285,7 +292,7 @@ async def test_a_generated_draft_is_synced_verified_brewed_and_deleted(
         # round trip already did: `req:profiles:list` re-reads every file.
         listed = {profile.id: profile for profile in await device.list_profiles()}
         assert device_id in listed
-        assert listed[device_id].label.endswith("[AI]")
+        assert listed[device_id].label.endswith(TEST_MARK)
 
         # Selecting is a separate, deliberate action: a sync never does it.
         await device.select_profile(device_id)
@@ -522,7 +529,7 @@ async def test_an_older_version_made_active_replaces_the_newer_file_on_the_real_
         assert str(restored["device_id"]) in listed and newer_id not in listed
     finally:
         for p in await device.list_profiles():
-            if str(p.label).endswith("[AI]"):
+            if str(p.label).endswith(TEST_MARK):
                 await delete_now(device, str(p.id))
 
 
@@ -561,7 +568,7 @@ async def test_a_profile_edited_on_the_display_is_a_conflict_and_keeping_the_app
         assert str(new["device_id"]) in listed and file not in listed
     finally:
         for p in await device.list_profiles():
-            if str(p.label).endswith("[AI]"):
+            if str(p.label).endswith(TEST_MARK):
                 await delete_now(device, str(p.id))
 
 
@@ -618,7 +625,9 @@ async def test_a_firmware_default_switched_off_is_removed_and_back_on_pushed_aga
         await sync(app)
         board = data(await client.get("/api/profile-board?live=true"))
         target = next(
-            r for r in board["rows"] if not r["utility"] and not r["row"]["label"].endswith("[AI]")
+            r
+            for r in board["rows"]
+            if not r["utility"] and not r["row"]["label"].endswith(TEST_MARK)
         )
         row_id, label = target["row"]["id"], target["row"]["label"]
         file = target["machine"]["device_id"]

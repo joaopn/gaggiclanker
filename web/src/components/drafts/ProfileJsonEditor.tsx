@@ -97,8 +97,8 @@ export function ProfileJsonEditor({
           <DialogDescription>
             Saved as a proposed new version of {label}, not active until you make it active. Keep
             its name: a profile is always known by one name, so a changed name makes a profile of
-            its own (named with [AI]) instead. It goes through the same schema and the same safety
-            policy as anything a model writes.
+            its own, under exactly the name you type (one that is already a profile is refused). It
+            goes through the same schema and the same safety policy as anything a model writes.
           </DialogDescription>
         </DialogHeader>
 

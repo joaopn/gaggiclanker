@@ -58,7 +58,7 @@ class DraftPreview(BaseModel):
     violations: list[Violation] = Field(default_factory=list)
     clamp_changes: list[PolicyChange] = Field(default_factory=list)
     stop_condition_changes: list[StopConditionChange] = Field(default_factory=list)
-    #: The document as it would be stored: clamped, with the label suffixed.
+    #: The document as it would be stored: clamped, under the label it was given.
     #: ``None`` when it did not validate at all.
     profile: dict[str, Any] | None = None
 
@@ -81,5 +81,5 @@ class ProfileDraftDetail(BaseModel):
     #: profile (``draft.is_new``): it was derived from nothing, and the base it is stored
     #: against is only there because a draft must have one.
     base_profile: dict[str, Any] | None = None
-    #: The profile that would be written to the machine, suffix and all.
+    #: The profile that would be written to the machine, under its own name.
     draft_profile: dict[str, Any] | None = None

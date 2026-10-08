@@ -8,14 +8,18 @@ person's own, never the agent's (``made_by``).
 from __future__ import annotations
 
 import copy
+import json
 from typing import Any
 
 import httpx
+import pytest
 from fastapi import FastAPI
 
+from gaggiclanker.db.repos.lineage import taken_name_sentence
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.device.fake import FakeDevice
-from tests.drafts.conftest import BASE_LABEL, data
+from gaggiclanker.infra.errors import Conflict
+from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
 from tests.drafts.helpers import APP_LABEL, draft_of, make_set_on, same_name_draft
 from tests.drafts.test_board import adopted, app_row, get_board, pull, put, row_for, summary_of
 from tests.llm.conftest import FakeProvider
@@ -94,7 +98,7 @@ async def test_an_edit_of_an_older_version_lands_on_its_profile_not_a_dead_end(
 async def test_an_edit_of_a_profile_the_app_did_not_make_is_a_version_of_it_with_its_name(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
-    """The firmware's own profile: no suffix, no second profile, and its name never changes."""
+    """The firmware's own profile: no second profile, and its name never changes."""
     app, client, fake = adopted
     row = row_for(await get_board(client), BASE_LABEL)["row"]
 
@@ -144,7 +148,7 @@ async def test_the_editors_live_preview_shows_the_name_the_copy_will_be_saved_un
     )
 
     assert kept["profile"]["label"] == BASE_LABEL
-    assert renamed["profile"]["label"] == "Something else [AI]"
+    assert renamed["profile"]["label"] == "Something else"
 
 
 async def test_the_agents_change_to_a_profile_the_app_did_not_make_is_a_version_of_it(
@@ -184,11 +188,11 @@ async def test_the_agents_change_for_a_set_to_a_profile_the_app_did_not_make_is_
     assert (await put(client, draft, set_id=set_id))["id"] == row["id"]
 
 
-async def test_a_profile_written_from_scratch_still_gets_the_app_suffix(
+async def test_a_fork_under_another_name_is_a_profile_of_its_own_with_that_name(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     """A fork under another name, as a design or a starting point writes one: a profile of its
-    own, marked as the agent's by its name."""
+    own, stored under exactly the name it was given."""
     app, client, _ = adopted
 
     forked = await draft_of(app, client, provider, BASE_LABEL, 7)
@@ -224,11 +228,33 @@ async def test_an_edit_that_renames_the_profile_is_a_profile_of_its_own(
     board = await get_board(client)
     [proposal] = [p for p in board["proposals"] if p["draft"]["id"] == draft["id"]]
 
-    assert draft["draft_label"] == "Something else [AI]"
+    assert draft["draft_label"] == "Something else"
     assert proposal["row_id"] is None
     landed = await put(client, draft)
     assert landed["id"] != row["id"]
     assert row_for(await get_board(client), BASE_LABEL)["row"]["label"] == BASE_LABEL
+
+
+async def test_a_drafted_rename_onto_another_profiles_name_is_refused(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    """The model's own draft (notes, no document) goes through the same constructor: the same
+    refusal, the same sentence, and a draft that keeps the base's name is fine."""
+    app, client, fake = adopted
+    await app_row(app, client, fake, provider, 8)  # a profile named APP_LABEL
+    base = await base_profile(app, BASE_LABEL)
+    document = base.model_dump(mode="json", exclude={"annotations", "id"})
+    body = {"base_version_id": await base_version_id(app, BASE_LABEL), "notes": "rename it"}
+    document["label"] = APP_LABEL
+    provider.script = [json.dumps({"profile": document, "change_summary": "renamed"})]
+
+    refused = await client.post("/api/profile-drafts", json=body)
+
+    assert refused.status_code == 409
+    assert error(refused)["message"] == taken_name_sentence(APP_LABEL)
+    document["label"] = BASE_LABEL
+    provider.script = [json.dumps({"profile": document, "change_summary": "same name"})]
+    assert (await client.post("/api/profile-drafts", json=body)).status_code == 201
 
 
 async def test_two_edits_of_one_profile_are_independent_candidates(
@@ -314,7 +340,7 @@ async def test_a_hand_edit_is_recorded_as_the_persons_and_an_agent_draft_as_the_
     row = row_for(await get_board(client), APP_LABEL)["row"]
 
     by_hand = await edit_copy(app, client, row["current_version_id"], 6)
-    by_agent = await draft_of(app, client, provider, APP_LABEL, 5)
+    by_agent = await same_name_draft(app, client, provider, APP_LABEL, 5)
 
     assert by_hand["made_by"] == "edit" and by_agent["made_by"] == "agent"
     await put(client, by_hand)
@@ -376,7 +402,7 @@ async def test_a_renamed_set_draft_is_a_profile_of_its_own_and_the_firmware_prof
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     """The Set brews the firmware's profile; its draft renames it ("9 Bar Warm"). It is stored
-    as "9 Bar Warm [AI]", lands as a profile of its own (the Set button and the plain one alike)
+    as "9 Bar Warm", lands as a profile of its own (the Set button and the plain one alike)
     and the next sync leaves the firmware profile where it is."""
     app, client, fake = adopted
     row = row_for(await get_board(client), BASE_LABEL)["row"]
@@ -404,19 +430,19 @@ async def test_a_renamed_set_draft_is_a_profile_of_its_own_and_the_firmware_prof
 
     board = await get_board(client)
     [proposal] = [p for p in board["proposals"] if p["draft"]["id"] == draft["id"]]
-    assert draft["draft_label"] == "9 Bar Warm [AI]"
+    assert draft["draft_label"] == "9 Bar Warm"
     # Same landing for the Set button and the plain one: a profile of its own.
     assert proposal["landing"]["plain"]["row_id"] is None
     assert proposal["landing"]["for_set"]["row_id"] is None
 
     made = await put(client, draft, set_id=set_id)
 
-    assert made["id"] != row["id"] and made["label"] == "9 Bar Warm [AI]"
+    assert made["id"] != row["id"] and made["label"] == "9 Bar Warm"
     assert row_for(await get_board(client), BASE_LABEL)["row"]["id"] == row["id"]
     run = await pull(app)
     assert run.status == "ok", run.error
     labels = [p["label"] for p in fake.profiles]
-    assert BASE_LABEL in labels and "9 Bar Warm [AI]" in labels
+    assert BASE_LABEL in labels and "9 Bar Warm" in labels
     assert summary_of(run)["removed"] == []
 
 
@@ -439,11 +465,12 @@ async def test_an_edit_of_an_older_version_of_a_firmware_default_keeps_its_name(
     assert proposal["row_id"] == row["id"]
 
 
-async def test_a_from_scratch_draft_named_like_a_profile_gets_the_suffix_whatever_its_base(
+async def test_a_from_scratch_draft_named_like_a_profile_is_refused_whatever_its_base(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     """Stored against a real profile instead of the empty baseline, a from-scratch draft that
-    carries that profile's own name still does not continue it: it is named with the suffix."""
+    carries that profile's own name does not continue it: it is refused, like any new profile
+    that takes a name already in the list."""
     app, client, _ = adopted
     row = row_for(await get_board(client), BASE_LABEL)["row"]
     version = await ProfilesRepository(app.state.db).get_version(row["current_version_id"])
@@ -451,11 +478,41 @@ async def test_a_from_scratch_draft_named_like_a_profile_gets_the_suffix_whateve
     document = copy.deepcopy(dict(version.profile))
     document.pop("id", None)
 
-    fresh = await app.state.draft_proposals.create_manual(
-        base_version_id=version.id, document=document, is_new=True
+    with pytest.raises(Conflict) as refused:
+        await app.state.draft_proposals.create_manual(
+            base_version_id=version.id, document=document, is_new=True
+        )
+
+    assert str(refused.value) == taken_name_sentence(BASE_LABEL)
+
+
+async def test_a_rename_onto_another_profiles_name_is_refused_by_the_editors_route(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    """The JSON editor's route and an edited copy under a new name: the envelope's error, once,
+    and no draft stored. A change that keeps the base profile's own name is not a rename."""
+    app, client, fake = adopted
+    await app_row(app, client, fake, provider, 8)  # a second profile, named APP_LABEL
+    row = row_for(await get_board(client), BASE_LABEL)["row"]
+    version = await ProfilesRepository(app.state.db).get_version(row["current_version_id"])
+    assert version is not None and version.profile is not None
+    document = copy.deepcopy(dict(version.profile))
+    document.pop("id", None)
+    drafts_before = len(data(await client.get("/api/profile-drafts"))["items"])
+
+    document["label"] = APP_LABEL
+    refused = await client.post(
+        "/api/profile-drafts", json={"base_version_id": version.id, "profile": document}
     )
 
-    assert fresh.draft_label == APP_LABEL
+    assert refused.status_code == 409
+    assert error(refused)["message"] == taken_name_sentence(APP_LABEL)
+    assert len(data(await client.get("/api/profile-drafts"))["items"]) == drafts_before
+    document["label"] = BASE_LABEL
+    kept = await client.post(
+        "/api/profile-drafts", json={"base_version_id": version.id, "profile": document}
+    )
+    assert kept.status_code == 201
 
 
 async def test_with_two_profiles_of_one_name_a_sets_draft_goes_to_the_sets_one(

@@ -17,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.lineage import name_key
 from gaggiclanker.db.repository import Repository
 
 __all__ = [
@@ -223,6 +224,16 @@ class ProfileBoardRepository(Repository):
             (label, excluding),
         )
         return self.to_model(BoardRow, row)
+
+    async def find_live_by_name_key(
+        self, label: str, *, excluding: int | None = None
+    ) -> BoardRow | None:
+        """A live row whose name is this one but for case and surrounding whitespace."""
+        wanted = name_key(label)
+        for row in await self.list_rows():
+            if row.id != excluding and name_key(row.label) == wanted:
+                return row
+        return None
 
     async def find_live_by_device(self, device_id: str) -> BoardRow | None:
         """The live row that holds this machine file, if any."""
