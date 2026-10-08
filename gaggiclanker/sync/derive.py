@@ -33,7 +33,7 @@ from gaggiclanker.db.repos.shots import (
 from gaggiclanker.domain.diagnostics import as_sample_dicts, brew_has_scale, transform_shot
 from gaggiclanker.domain.firmware_values import compute_firmware_values
 from gaggiclanker.domain.models import IndexEntry
-from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
+from gaggiclanker.domain.phase_control import PhaseControl, phase_controls, phase_types
 from gaggiclanker.domain.phase_metrics import compute_phase_metrics
 from gaggiclanker.domain.slog import Slog, SlogError, parse_slog
 
@@ -92,7 +92,11 @@ log = structlog.get_logger(__name__)
 #: (``summary.flow.cup_first_drip_s``) and the mean cup flow of the brew
 #: (``diagnostics.extraction.cup_flow_avg_brew_g_s``), and the per-phase scale flow and
 #: the fast-flow window read the floored value. The puck-flow numbers are unchanged.
-DERIVATION_VERSION = 10
+#: 11: a phase's type (``phase_type`` in its diagnostics) is the profile's own ``phase`` field
+#: when the shot's profile is known, then the name, then the curve, and the curve rule counts the
+#: profile's phase number and not the logged order: a ramp that opens a shot whose fill ended
+#: before the first sample is a brew phase, not a pre-infusion.
+DERIVATION_VERSION = 11
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these
@@ -217,7 +221,11 @@ def _attach_diagnostics(
     """
     try:
         transformed = transform_shot(
-            slog, "per_phase", has_pressure=has_pressure, phase_controls=controls
+            slog,
+            "per_phase",
+            has_pressure=has_pressure,
+            phase_controls=controls,
+            phase_types=phase_types(profile),
         )
         samples = as_sample_dicts(slog)
         shot_metrics, phase_metrics = compute_phase_metrics(

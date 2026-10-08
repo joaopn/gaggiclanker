@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Literal
 
-__all__ = ["PhaseControl", "phase_controls"]
+__all__ = ["PhaseControl", "phase_controls", "phase_types"]
 
 #: What one phase drives the pump by. ``power`` is the simple form: a fixed
 #: duty cycle, with no pressure or flow target to follow.
@@ -48,3 +48,23 @@ def phase_controls(profile: Mapping[str, Any] | None) -> tuple[PhaseControl, ...
         else:
             return None
     return tuple(controls)
+
+
+def phase_types(profile: Mapping[str, Any] | None) -> tuple[str | None, ...] | None:
+    """The profile's own ``phase`` field of each phase (``preinfusion`` or ``brew``), in order.
+
+    ``None`` with no readable phase list; a phase that states neither is ``None`` in the
+    tuple, so the shot's phase is typed from its name or curve instead. Lenient like
+    :func:`phase_controls`: the document may be anything the archive stored.
+    """
+    if profile is None:
+        return None
+    phases = profile.get("phases")
+    if not isinstance(phases, list):
+        return None
+    return tuple(
+        phase["phase"]
+        if isinstance(phase, Mapping) and phase.get("phase") in ("preinfusion", "brew")
+        else None
+        for phase in phases
+    )

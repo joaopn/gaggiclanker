@@ -470,11 +470,29 @@ def _classify_phase(
     phase_samples: list[SampleDict] | None = None,
     phase_index: int = 0,
     total_phases: int = 1,
+    profile_type: str | None = None,
 ) -> str:
-    """Classify a phase as preinfusion / brew / decline; name first, then shape."""
-    result = _classify_phase_by_name(name)
-    if result is not None:
-        return result
+    """Classify a phase as preinfusion / brew / decline.
+
+    The profile's own word comes first when the shot's profile is known: it says what the
+    person designed the phase to be, and a curve cannot (a ramp that opens a shot whose fill
+    ended before the first sample looks like a pre-infusion and is a brew phase). The
+    profile only distinguishes pre-infusion from brew, so a brew phase may still read as the
+    decline its name or its curve shows. Without a profile it is the name, then the shape.
+    ``phase_index`` is the phase's number in the profile, not its place in what was logged.
+    """
+    by_name = _classify_phase_by_name(name)
+    if profile_type == "preinfusion":
+        return "preinfusion"
+    if profile_type == "brew":
+        if by_name == "decline":
+            return "decline"
+        if phase_samples is not None:
+            shape = _classify_phase_by_telemetry(phase_samples, phase_index, total_phases)
+            return "decline" if shape == "decline" else "brew"
+        return "brew"
+    if by_name is not None:
+        return by_name
     if phase_samples is not None:
         return _classify_phase_by_telemetry(phase_samples, phase_index, total_phases)
     return "brew"
@@ -1253,6 +1271,13 @@ def _select_samples(samples: list[SampleDict]) -> list[TransformedSample]:
     return result
 
 
+def _profile_type(phase_types: Sequence[str | None] | None, number: int) -> str | None:
+    """The profile's own type of the phase with this number, when the profile has one."""
+    if phase_types is None or not 0 <= number < len(phase_types):
+        return None
+    return phase_types[number]
+
+
 def build_phases(
     slog: Slog,
     *,
@@ -1260,6 +1285,7 @@ def build_phases(
     include_diagnostics: bool = False,
     has_pressure: bool | None = None,
     phase_controls: Sequence[PhaseControl] | None = None,
+    phase_types: Sequence[str | None] | None = None,
 ) -> list[PhaseData]:
     """Per-phase statistics, optionally with samples and diagnostics."""
     samples = as_sample_dicts(slog)
@@ -1273,7 +1299,8 @@ def build_phases(
     steering = _steering(samples, phase_controls)
 
     if transitions:
-        for i, (transition, span) in enumerate(_phase_ranges(len(samples), transitions)):
+        last_phase_number = max(t.phase_number for t in transitions)
+        for transition, span in _phase_ranges(len(samples), transitions):
             phase_samples = samples[span.start : span.stop]
             if not phase_samples:
                 continue
@@ -1305,8 +1332,9 @@ def build_phases(
                 phase_type = _classify_phase(
                     transition.phase_name,
                     phase_samples=phase_samples,
-                    phase_index=i,
-                    total_phases=len(transitions),
+                    phase_index=transition.phase_number,
+                    total_phases=last_phase_number + 1,
+                    profile_type=_profile_type(phase_types, transition.phase_number),
                 )
                 pd["diagnostics"] = _compute_phase_diagnostics(
                     phase_samples,
@@ -1352,6 +1380,7 @@ def transform_shot(
     *,
     has_pressure: bool | None = None,
     phase_controls: Sequence[PhaseControl] | None = None,
+    phase_types: Sequence[str | None] | None = None,
 ) -> TransformedShot:
     """Render a shot at one of three detail levels.
 
@@ -1366,7 +1395,9 @@ def transform_shot(
     feeds an LLM prompt, and a typo should cost tokens, not the analysis.
 
     `phase_controls` is what each phase of the shot's profile steers the pump by.
-    Without it no adherence is worked out, at any level.
+    Without it no adherence is worked out, at any level. `phase_types` is the profile's own
+    type of each phase (``preinfusion`` or ``brew``), which a phase's type is read from before
+    its name or its curve.
     """
     if detail not in VALID_DETAIL_LEVELS:
         detail = "summary"
@@ -1393,6 +1424,7 @@ def transform_shot(
             include_diagnostics=True,
             has_pressure=pressure_ok,
             phase_controls=phase_controls,
+            phase_types=phase_types,
         )
         diagnostics = compute_shot_diagnostics(
             slog, has_pressure=pressure_ok, phase_controls=phase_controls
@@ -1404,6 +1436,7 @@ def transform_shot(
             include_diagnostics=True,
             has_pressure=pressure_ok,
             phase_controls=phase_controls,
+            phase_types=phase_types,
         )
         diagnostics = compute_shot_diagnostics(
             slog, has_pressure=pressure_ok, phase_controls=phase_controls

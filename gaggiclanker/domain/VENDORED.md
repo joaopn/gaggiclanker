@@ -169,6 +169,15 @@ them; item 11 retired them.
     is read from them. What replaced the judgement: facts per phase
     (`phase_metrics.py`) and four warnings that need no knowledge of the profile
     (`warnings.py`). `DERIVATION_VERSION` 8 brings stored shots along.
+12. **A phase's type is the profile's word first.** Upstream's `_classify_phase` tried the
+    phase name and then the pressure curve, and the curve rule ("the first phase, at
+    low pressure and rising, is a pre-infusion") counted the *logged* order, so a shot whose
+    profile's first phase ended before the machine logged a sample typed its second phase
+    (a brew ramp) as a pre-infusion. Now the shot's profile, when known, says: its
+    `phase` field `preinfusion` is a pre-infusion, `brew` a brew phase (which may still be
+    the decline its name or curve shows, the profile having no word for it); without a
+    profile it is the name, then the curve, which counts the phase's number in the
+    profile. The thresholds are unchanged. `DERIVATION_VERSION` 11 brings stored shots along.
 
 ---
 
