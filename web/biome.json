@@ -9,7 +9,13 @@
     "lineEnding": "lf"
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!src/api/schema.d.ts"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!src/api/schema.d.ts",
+      "!src/lib/profileCurve.golden.json"
+    ]
   },
   "css": { "parser": { "tailwindDirectives": true } },
   "javascript": { "formatter": { "quoteStyle": "double" } },
