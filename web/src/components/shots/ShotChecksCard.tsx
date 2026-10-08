@@ -125,7 +125,12 @@ function lineOf(check: ShotCheck) {
   if (check.status === "unmeasured") {
     return {
       phase,
-      label: "not measured",
+      // A phase that was over before the machine logged a sample of it was not skipped by the
+      // check: it ended before there was anything to measure.
+      label:
+        check.absent_reason === "ended_before_sampled"
+          ? "ended before it was measured"
+          : "not measured",
       lead: check.absent ?? undefined,
       detail: check.sentence,
     };

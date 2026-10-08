@@ -21,6 +21,8 @@ const raw = JSON.parse(rawFixture) as {
   leverSignedNoScale: ShotFieldsData;
   turbo: ShotFieldsData;
   real: ShotFieldsData;
+  fillEnded: ShotFieldsData;
+  fillEndedSigned: ShotFieldsData;
 };
 
 export const leverFields: ShotFieldsData = raw.lever;
@@ -33,3 +35,11 @@ export const leverSignedNoScaleFields: ShotFieldsData = raw.leverSignedNoScale;
 /** A turbo-like profile whose confirmed signature expects fast flow: grey, nothing amber. */
 export const turboFields: ShotFieldsData = raw.turbo;
 export const realFields: ShotFieldsData = raw.real;
+/**
+ * A real shot whose profile's first phase (a fill that exits on a pressure target) was over
+ * before the machine logged its first sample, read without a signature: the Fill has a row
+ * with a reason and no samples, and a warning at 0 s.
+ */
+export const fillEndedFields: ShotFieldsData = raw.fillEnded;
+/** The same shot against a signature: the fill must begin (fails) and its peak pressure is at most 3 bar (not measured). */
+export const fillEndedSignedFields: ShotFieldsData = raw.fillEndedSigned;

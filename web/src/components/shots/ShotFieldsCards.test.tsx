@@ -5,10 +5,13 @@ import { ShotPhasesCard } from "@/components/shots/ShotPhasesCard";
 import { ShotContextCard, ShotWideCard } from "@/components/shots/ShotWideCards";
 import { renderWithQueryClient } from "@/test/renderWithQueryClient";
 import {
+  fillEndedFields,
+  fillEndedSignedFields,
   leverFields,
   leverNoPressureFields,
   leverNoScaleFields,
   leverSignedFields,
+  leverSignedNoScaleFields,
   realFields,
 } from "@/test/shotFieldsFixture";
 
@@ -311,5 +314,82 @@ describe("ShotWideCard and ShotContextCard", () => {
     expect(screen.queryByTestId("shot-field-peak_pressure")).not.toBeInTheDocument();
     expect(screen.queryByTestId("shot-field-machine_puck_resistance")).not.toBeInTheDocument();
     expect(screen.getByTestId("shot-field-yield")).toBeInTheDocument();
+  });
+});
+
+describe("a fill that ended before the machine logged a sample of it", () => {
+  it("is a row of its own in the profile's order, with its reason and no numbers", () => {
+    render(<ShotPhasesCard fields={fillEndedFields} />);
+
+    const rows = screen.getAllByRole("row").slice(1);
+    // The Fill first (profile order), then the two phases the shot ran.
+    expect(rows.map((row) => row.querySelector("td span")?.textContent)).toEqual([
+      "Fill",
+      "Ramp",
+      "Decline",
+    ]);
+    const fill = screen.getByTestId("phase-unsampled");
+    expect(fill).toBe(rows[0]);
+    expect(fill).toHaveTextContent(
+      "Fill ended on its pressure target before the first sample (at 0.0 s)",
+    );
+    // Not a row of empty cells, and not a number in it: no pressure, flow or cup.
+    expect(within(fill).queryByTestId("phase-cell-cup")).not.toBeInTheDocument();
+    expect(fill.textContent).not.toMatch(/bar|ml|\bg\b/);
+    expect(screen.getAllByTestId("phase-row")).toHaveLength(2);
+    // A phase that was sampled is a phase, not a missing one.
+    expect(screen.queryByTestId("phase-not-reached")).not.toBeInTheDocument();
+  });
+
+  it("is a skipped warning at 0 s with the pressure the group already held", () => {
+    renderWithQueryClient(
+      <ShotChecksCard
+        checks={fillEndedFields.checks.items}
+        signature={fillEndedFields.signature}
+      />,
+    );
+
+    const [line] = screen.getAllByTestId("check-line");
+    expect(line.querySelector("p")).toHaveTextContent("Fill: skipped");
+    expect(line).toHaveAttribute("data-severity", "amber");
+    expect(line).toHaveTextContent(
+      "The Fill ended on its pressure target before the first sample: pressure was already 4.8 bar.",
+    );
+  });
+
+  it("fails a reached expectation on it, and says its measure ended before it was measured", () => {
+    renderWithQueryClient(
+      <ShotChecksCard
+        checks={fillEndedSignedFields.checks.items}
+        signature={fillEndedSignedFields.signature}
+      />,
+    );
+
+    const lines = screen.getAllByTestId("check-line");
+    expect(lines).toHaveLength(2);
+    expect(lines[0].querySelector("p")).toHaveTextContent("Fill: skipped");
+    expect(lines[0]).toHaveAttribute("data-severity", "red");
+    expect(lines[0]).toHaveTextContent("it ended on its pressure target before the first sample");
+    expect(lines[1]).toHaveAttribute("data-status", "unmeasured");
+    expect(lines[1].querySelector("p")).toHaveTextContent("Fill: ended before it was measured");
+    expect(lines[1]).toHaveTextContent(
+      "the Fill ended on its pressure target before the first sample",
+    );
+    expect(lines[1]).not.toHaveTextContent("did not reach");
+  });
+
+  it("leaves a phase that cannot be measured for another reason as not measured", () => {
+    renderWithQueryClient(
+      <ShotChecksCard
+        checks={leverSignedNoScaleFields.checks.items}
+        signature={leverSignedNoScaleFields.signature}
+      />,
+    );
+
+    const unmeasured = screen
+      .getAllByTestId("check-line")
+      .filter((line) => line.getAttribute("data-status") === "unmeasured");
+    expect(unmeasured.length).toBeGreaterThan(0);
+    for (const line of unmeasured) expect(line).toHaveTextContent("not measured");
   });
 });

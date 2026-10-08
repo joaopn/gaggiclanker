@@ -27,7 +27,12 @@ Shot-fields documents:
   cup checks are not measured;
 * ``turbo``: a turbo-like profile whose confirmed signature expects ``fast flow``: the
   warning is grey, nothing is amber;
-* ``real``: the exported shot, in no Set, with no warning and no target.
+* ``real``: the exported shot, in no Set, with no warning and no target;
+* ``fillEnded`` and ``fillEndedSigned``: a real shot whose profile's first phase (a fill that
+  exits on a pressure target) was over before the machine logged its first sample, in no Set,
+  read without a signature and against one (the fill must begin; its peak pressure at most
+  3 bar): the phase list has a row for the fill with no samples, the warning sits at 0 s, the
+  expectation fails and the measure ended before it was measured.
 
 Signature documents: ``none`` (a version nobody proposed anything for), ``inForce`` (what a
 conversation proposed: every expectation in force, none answered), ``mixed`` (one rejected with
@@ -73,6 +78,7 @@ from gaggiclanker.domain.slog import Slog  # noqa: E402
 from gaggiclanker.shotinfo.fields import shot_fields  # noqa: E402
 from gaggiclanker.signatures.service import SignatureService  # noqa: E402
 from gaggiclanker.sync.derive import derive_shot  # noqa: E402
+from tests.domain.helpers import fill_ended_shot  # noqa: E402
 from tests.lever_shot import (  # noqa: E402
     LEVER_PROFILE,
     TARGET_YIELD_G,
@@ -273,6 +279,31 @@ async def _turbo(scene: Scene) -> Any:
     return await scene.fields(shot)
 
 
+async def _fill_ended(scene: Scene, *, signed: bool) -> Any:
+    slog, _, profile = fill_ended_shot()
+    version = await scene.version(profile)
+    shot = await scene.add_shot(slog, profile=profile, version_id=version, set_version_id=None)
+    if signed:
+        await scene.service.propose(
+            version,
+            [
+                ExpectationInput(tier="critical", kind="reached", phase="Fill"),
+                ExpectationInput(
+                    tier="important",
+                    kind="measure",
+                    expression={
+                        "channel": "pressure",
+                        "op": "max",
+                        "window": {"phase": "Fill"},
+                        "compare": {"op": "<=", "value": 3.0},
+                    },
+                ),
+            ],
+            reason="a lever's fill must run before the pressure comes up",
+        )
+    return await scene.fields(shot)
+
+
 async def _real(scene: Scene, export: Slog) -> Any:
     shot = await scene.add_shot(export, profile=None, version_id=None, set_version_id=None)
     return await scene.fields(shot)
@@ -381,8 +412,13 @@ async def build() -> None:
         "turbo": await _scene(_turbo),
         "real": await _scene(lambda s: _real(s, export)),
     }
+    signatures = await _scene(_signatures)
+    # Built after the signature documents: the fixed clock ticks once per row written, so a
+    # scene built before them would move the timestamps of every signature document.
+    fields["fillEnded"] = await _scene(lambda s: _fill_ended(s, signed=False))
+    fields["fillEndedSigned"] = await _scene(lambda s: _fill_ended(s, signed=True))
     _write(FIELDS_TARGET, fields)
-    _write(SIGNATURE_TARGET, await _scene(_signatures))
+    _write(SIGNATURE_TARGET, signatures)
 
 
 if __name__ == "__main__":

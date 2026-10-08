@@ -59,6 +59,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 24.75,
           "expectation_id": null
         },
@@ -79,6 +80,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 33.25,
           "expectation_id": null
         },
@@ -99,6 +101,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 33.25,
           "expectation_id": null
         }
@@ -484,6 +487,7 @@
         "name": "preinfusion",
         "start_s": 0.0,
         "duration_s": 7.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -929,6 +933,7 @@
         "name": "soak",
         "start_s": 7.2,
         "duration_s": 10.0,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -1374,6 +1379,7 @@
         "name": "ramp",
         "start_s": 17.2,
         "duration_s": 16.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -1921,6 +1927,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 33.25,
           "expectation_id": null
         }
@@ -2254,6 +2261,7 @@
         "name": "preinfusion",
         "start_s": 0.0,
         "duration_s": 7.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -2604,6 +2612,7 @@
         "name": "soak",
         "start_s": 7.2,
         "duration_s": 10.0,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -2954,6 +2963,7 @@
         "name": "ramp",
         "start_s": 17.2,
         "duration_s": 16.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -3418,6 +3428,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 33.25,
           "expectation_id": null
         },
@@ -3438,6 +3449,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 33.25,
           "expectation_id": null
         }
@@ -3616,6 +3628,7 @@
         "name": "preinfusion",
         "start_s": 0.0,
         "duration_s": 7.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -3890,6 +3903,7 @@
         "name": "soak",
         "start_s": 7.2,
         "duration_s": 10.0,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -4164,6 +4178,7 @@
         "name": "ramp",
         "start_s": 17.2,
         "duration_s": 16.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -4522,6 +4537,7 @@
           "limit_text": "at most 15 % of target",
           "held": false,
           "absent": null,
+          "absent_reason": null,
           "at_s": 17.2,
           "expectation_id": 2
         },
@@ -4542,6 +4558,7 @@
           "limit_text": "",
           "held": false,
           "absent": null,
+          "absent_reason": null,
           "at_s": 33.25,
           "expectation_id": 1
         },
@@ -4565,6 +4582,7 @@
           "limit_text": "at most 5 % of target",
           "held": false,
           "absent": null,
+          "absent_reason": null,
           "at_s": 7.2,
           "expectation_id": 3
         },
@@ -4585,6 +4603,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 33.25,
           "expectation_id": null
         },
@@ -4605,6 +4624,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 24.75,
           "expectation_id": 5
         },
@@ -4628,6 +4648,7 @@
           "limit_text": "at most 5 % of target",
           "held": true,
           "absent": null,
+          "absent_reason": null,
           "at_s": 0.0,
           "expectation_id": 4
         },
@@ -4648,6 +4669,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 0.0,
           "expectation_id": 6
         }
@@ -5033,6 +5055,7 @@
         "name": "preinfusion",
         "start_s": 0.0,
         "duration_s": 7.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -5478,6 +5501,7 @@
         "name": "soak",
         "start_s": 7.2,
         "duration_s": 10.0,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -5923,6 +5947,7 @@
         "name": "ramp",
         "start_s": 17.2,
         "duration_s": 16.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -6470,6 +6495,7 @@
           "limit_text": "",
           "held": false,
           "absent": null,
+          "absent_reason": null,
           "at_s": 33.25,
           "expectation_id": 1
         },
@@ -6493,6 +6519,7 @@
           "limit_text": "at most 5 % of target",
           "held": null,
           "absent": "the shot has no scale, and the weight is never estimated",
+          "absent_reason": null,
           "at_s": 0.0,
           "expectation_id": 4
         },
@@ -6516,6 +6543,7 @@
           "limit_text": "at most 5 % of target",
           "held": null,
           "absent": "the shot has no scale, and the weight is never estimated",
+          "absent_reason": null,
           "at_s": 7.2,
           "expectation_id": 3
         },
@@ -6539,6 +6567,7 @@
           "limit_text": "at most 15 % of target",
           "held": null,
           "absent": "the shot has no scale, and the weight is never estimated",
+          "absent_reason": null,
           "at_s": 17.2,
           "expectation_id": 2
         },
@@ -6559,6 +6588,7 @@
           "limit_text": "",
           "held": true,
           "absent": null,
+          "absent_reason": null,
           "at_s": 17.2,
           "expectation_id": 5
         },
@@ -6579,6 +6609,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 0.0,
           "expectation_id": 6
         }
@@ -6912,6 +6943,7 @@
         "name": "preinfusion",
         "start_s": 0.0,
         "duration_s": 7.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -7262,6 +7294,7 @@
         "name": "soak",
         "start_s": 7.2,
         "duration_s": 10.0,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -7612,6 +7645,7 @@
         "name": "ramp",
         "start_s": 17.2,
         "duration_s": 16.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -8064,6 +8098,7 @@
           "limit_text": "",
           "held": null,
           "absent": null,
+          "absent_reason": null,
           "at_s": 24.75,
           "expectation_id": 1
         }
@@ -8431,6 +8466,7 @@
         "name": "fill",
         "start_s": 0.0,
         "duration_s": 7.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -8876,6 +8912,7 @@
         "name": "hold",
         "start_s": 7.2,
         "duration_s": 10.0,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -9283,6 +9320,7 @@
         "name": "main",
         "start_s": 17.2,
         "duration_s": 16.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -10137,6 +10175,7 @@
         "name": "fill",
         "start_s": 0.0,
         "duration_s": 4.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -10594,6 +10633,7 @@
         "name": "soak",
         "start_s": 4.2,
         "duration_s": 9.8,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -11070,6 +11110,7 @@
         "name": "ramp",
         "start_s": 14.0,
         "duration_s": 6.0,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -11527,6 +11568,7 @@
         "name": "decline 9-4",
         "start_s": 20.0,
         "duration_s": 33.2,
+        "sampled": true,
         "fields": [
           {
             "key": "phase_name",
@@ -11957,6 +11999,2974 @@
             "method": "phase.sample_count@1",
             "source": "computed",
             "text": "133"
+          }
+        ]
+      }
+    ]
+  },
+  "fillEnded": {
+    "shot_id": 1,
+    "checks": {
+      "badge": "Fill: skipped",
+      "entries": [
+        {
+          "phase": "Fill",
+          "fault": "skipped",
+          "severity": "amber",
+          "detail": "The Fill ended on its pressure target before the first sample: pressure was already 4.8 bar.",
+          "phase_number": 0,
+          "at_s": 0.0,
+          "tier": null,
+          "status": "warning",
+          "expectation_id": null,
+          "claim_id": null
+        }
+      ],
+      "items": [
+        {
+          "kind": "warning",
+          "status": "warning",
+          "tier": null,
+          "color": "amber",
+          "phase": "Fill",
+          "phase_number": 0,
+          "fault": "skipped",
+          "sentence": "The Fill ended on its pressure target before the first sample: pressure was already 4.8 bar.",
+          "detail": "The Fill ended on its pressure target before the first sample: pressure was already 4.8 bar.",
+          "value": null,
+          "unit": "",
+          "compare": null,
+          "relative_to": null,
+          "limit_text": "",
+          "held": null,
+          "absent": null,
+          "absent_reason": null,
+          "at_s": 0.0,
+          "expectation_id": null
+        }
+      ]
+    },
+    "review": {
+      "state": "unreviewed",
+      "badge": null,
+      "entries": [],
+      "verdict": null,
+      "summary": null,
+      "reason": null,
+      "review_id": null,
+      "in_force_id": null
+    },
+    "signature": {
+      "profile_version_id": 1,
+      "confirmed": 0,
+      "text": "read without a signature"
+    },
+    "target_yield_g": null,
+    "yield_share_pct": null,
+    "shot": [
+      {
+        "key": "shot_time",
+        "group": "Outcome",
+        "name": "Shot time",
+        "label": "Shot time",
+        "value": 33.827,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "header.duration@1",
+        "source": "computed",
+        "text": "33.8 s"
+      },
+      {
+        "key": "yield",
+        "group": "Outcome",
+        "name": "Yield (final weight)",
+        "label": "Yield",
+        "value": 31.9,
+        "unit": "g",
+        "phase": null,
+        "window": null,
+        "method": "header.final_weight@1",
+        "source": "computed",
+        "text": "31.9 g"
+      },
+      {
+        "key": "exit_reason",
+        "group": "Outcome",
+        "name": "Exit reason",
+        "label": "Exit reason",
+        "value": "Volumetric target",
+        "unit": "",
+        "phase": null,
+        "window": null,
+        "method": "header.final_exit_reason@1",
+        "source": "computed",
+        "text": "Volumetric target"
+      },
+      {
+        "key": "cup_first_drip",
+        "group": "Timing",
+        "name": "First drip",
+        "label": "First drip",
+        "value": 4.51,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "samples.cup_first_drip@1",
+        "source": "computed",
+        "text": "4.5 s"
+      },
+      {
+        "key": "preinfusion_time",
+        "group": "Timing",
+        "name": "Pre-infusion time",
+        "label": "Pre-infusion time",
+        "value": 0.0,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "samples.half_peak_pressure_time@1",
+        "source": "computed",
+        "text": "0.0 s"
+      },
+      {
+        "key": "main_extraction_time",
+        "group": "Timing",
+        "name": "Main extraction time",
+        "label": "Main extraction time",
+        "value": 33.8,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "samples.after_half_peak_pressure@1",
+        "source": "computed",
+        "text": "33.8 s"
+      },
+      {
+        "key": "average_temperature",
+        "group": "Temperature",
+        "name": "Average temperature",
+        "label": "Average temperature",
+        "value": 90.6,
+        "unit": "\u00b0C",
+        "phase": null,
+        "window": null,
+        "method": "samples.temperature_mean@1",
+        "source": "computed",
+        "text": "90.6 \u00b0C"
+      },
+      {
+        "key": "target_temperature",
+        "group": "Temperature",
+        "name": "Target temperature (average)",
+        "label": "Target temperature",
+        "value": 92.0,
+        "unit": "\u00b0C",
+        "phase": null,
+        "window": null,
+        "method": "samples.target_temperature_mean@1",
+        "source": "computed",
+        "text": "92.0 \u00b0C"
+      },
+      {
+        "key": "minimum_temperature",
+        "group": "Temperature",
+        "name": "Minimum temperature",
+        "label": "Minimum temperature",
+        "value": 89.5,
+        "unit": "\u00b0C",
+        "phase": null,
+        "window": null,
+        "method": "samples.temperature_min@1",
+        "source": "computed",
+        "text": "89.5 \u00b0C"
+      },
+      {
+        "key": "maximum_temperature",
+        "group": "Temperature",
+        "name": "Maximum temperature",
+        "label": "Maximum temperature",
+        "value": 92.3,
+        "unit": "\u00b0C",
+        "phase": null,
+        "window": null,
+        "method": "samples.temperature_max@1",
+        "source": "computed",
+        "text": "92.3 \u00b0C"
+      },
+      {
+        "key": "peak_pressure",
+        "group": "Pressure",
+        "name": "Peak pressure",
+        "label": "Peak pressure",
+        "value": 8.3,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "samples.pressure_max@1",
+        "source": "computed",
+        "text": "8.30 bar"
+      },
+      {
+        "key": "average_pressure",
+        "group": "Pressure",
+        "name": "Average pressure",
+        "label": "Average pressure",
+        "value": 5.3,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "samples.pressure_mean@1",
+        "source": "computed",
+        "text": "5.3 bar"
+      },
+      {
+        "key": "minimum_pressure",
+        "group": "Pressure",
+        "name": "Minimum pressure",
+        "label": "Minimum pressure",
+        "value": 1.4,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "samples.pressure_min@1",
+        "source": "computed",
+        "text": "1.4 bar"
+      },
+      {
+        "key": "peak_pressure_time",
+        "group": "Pressure",
+        "name": "Time of peak pressure",
+        "label": "Time of peak pressure",
+        "value": 4.5,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "samples.pressure_max_time@1",
+        "source": "computed",
+        "text": "4.5 s"
+      },
+      {
+        "key": "brew_cup_flow",
+        "group": "Flow and volume",
+        "name": "Brew cup flow",
+        "label": "Cup flow",
+        "value": 0.94,
+        "unit": "g/s",
+        "phase": null,
+        "window": null,
+        "method": "brew.cup_flow_mean@1",
+        "source": "computed",
+        "text": "0.94 g/s"
+      },
+      {
+        "key": "brew_flow",
+        "group": "Flow and volume",
+        "name": "Average brew puck flow",
+        "label": "Average brew puck flow",
+        "value": 1.05,
+        "unit": "ml/s",
+        "phase": null,
+        "window": null,
+        "method": "brew.puck_flow_mean@1",
+        "source": "computed",
+        "text": "1.05 ml/s"
+      },
+      {
+        "key": "average_flow",
+        "group": "Flow and volume",
+        "name": "Average puck flow (whole shot)",
+        "label": "Average puck flow",
+        "value": 1.0,
+        "unit": "ml/s",
+        "phase": null,
+        "window": null,
+        "method": "samples.puck_flow_mean@1",
+        "source": "computed",
+        "text": "1.0 ml/s"
+      },
+      {
+        "key": "peak_flow",
+        "group": "Flow and volume",
+        "name": "Peak puck flow",
+        "label": "Peak puck flow",
+        "value": 1.7,
+        "unit": "ml/s",
+        "phase": null,
+        "window": null,
+        "method": "samples.puck_flow_max@1",
+        "source": "computed",
+        "text": "1.7 ml/s"
+      },
+      {
+        "key": "total_volume",
+        "group": "Flow and volume",
+        "name": "Total volume pumped (estimated)",
+        "label": "Total volume (estimated)",
+        "value": 35.6,
+        "unit": "ml",
+        "phase": null,
+        "window": null,
+        "method": "samples.puck_flow_integral@1",
+        "source": "computed",
+        "text": "35.6 ml"
+      },
+      {
+        "key": "weight_rate",
+        "group": "Weight",
+        "name": "Average weight rate",
+        "label": "Average weight rate",
+        "value": 0.99,
+        "unit": "g/s",
+        "phase": null,
+        "window": null,
+        "method": "brew.weight_rate_mean@1",
+        "source": "computed",
+        "text": "0.99 g/s"
+      },
+      {
+        "key": "resistance_level",
+        "group": "Puck resistance",
+        "name": "Resistance level (average)",
+        "label": "Resistance level",
+        "value": 2.35,
+        "unit": "",
+        "phase": null,
+        "window": null,
+        "method": "resistance.pr2_brew_mean@1",
+        "source": "computed",
+        "text": "2.35, from the machine"
+      },
+      {
+        "key": "resistance_slope",
+        "group": "Puck resistance",
+        "name": "Resistance slope",
+        "label": "Resistance slope",
+        "value": -0.13,
+        "unit": "1/s",
+        "phase": null,
+        "window": null,
+        "method": "resistance.pr2_brew_slope@1",
+        "source": "computed",
+        "text": "-0.13 /s"
+      },
+      {
+        "key": "machine_puck_resistance",
+        "group": "Puck resistance",
+        "name": "Machine puck resistance (firmware analyzer), whole shot",
+        "label": "Machine puck resistance (s\u00b7\u221abar/mL)",
+        "value": {
+          "avg": 1.345,
+          "start": 0.48,
+          "end": 1.12,
+          "min": 0.14,
+          "max": 2.17
+        },
+        "unit": "s\u00b7\u221abar/mL",
+        "phase": null,
+        "window": null,
+        "method": "firmware.pr_whole@1",
+        "source": "computed",
+        "text": "avg 1.34 (start 0.48, end 1.12, min 0.14, max 2.17)"
+      },
+      {
+        "key": "liquid_resistance",
+        "group": "Puck resistance",
+        "name": "Liquid resistance (firmware analyzer), whole shot",
+        "label": "Liquid resistance (bar\u00b7s/mL)",
+        "value": {
+          "avg": 3.244,
+          "start": 0.831,
+          "end": 2.24,
+          "min": 0.166,
+          "max": 5.863
+        },
+        "unit": "bar\u00b7s/mL",
+        "phase": null,
+        "window": null,
+        "method": "firmware.lr_whole@1",
+        "source": "computed",
+        "text": "avg 3.24 (start 0.83, end 2.24, min 0.17, max 5.86)"
+      },
+      {
+        "key": "pressure_adherence",
+        "group": "Profile compliance",
+        "name": "Pressure adherence (RMSE)",
+        "label": "Pressure adherence",
+        "value": 2.02,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "compliance.pressure_rmse@1",
+        "source": "computed",
+        "text": "2.02 bar"
+      },
+      {
+        "key": "pressure_undershoot_max",
+        "group": "Profile compliance",
+        "name": "Largest pressure undershoot",
+        "label": "Largest pressure undershoot",
+        "value": 7.0,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "compliance.pressure_undershoot@1",
+        "source": "computed",
+        "text": "7.00 bar"
+      }
+    ],
+    "phases": [
+      {
+        "number": 0,
+        "name": "Fill",
+        "start_s": 0.0,
+        "duration_s": 0.0,
+        "sampled": false,
+        "fields": [
+          {
+            "key": "phase_name",
+            "group": "Phases",
+            "name": "Phase name and number",
+            "label": "phase",
+            "value": "0 \u00b7 Fill",
+            "unit": "",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "header.phase_table@1",
+            "source": "computed",
+            "text": "0 \u00b7 Fill"
+          },
+          {
+            "key": "phase_start",
+            "group": "Phases",
+            "name": "Phase start",
+            "label": "start",
+            "value": 0.0,
+            "unit": "s",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "phase.start@1",
+            "source": "computed",
+            "text": "0.0 s"
+          },
+          {
+            "key": "phase_duration",
+            "group": "Phases",
+            "name": "Phase duration",
+            "label": "duration",
+            "value": 0.0,
+            "unit": "s",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "phase.duration@1",
+            "source": "computed",
+            "text": "0.0 s"
+          },
+          {
+            "key": "phase_ended_by",
+            "group": "Phases",
+            "name": "How the phase ended",
+            "label": "ended by",
+            "value": 2,
+            "unit": "",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "phase.ended_by_next_transition_reason@1",
+            "source": "computed",
+            "text": "ended on its pressure target before the first sample"
+          },
+          {
+            "key": "phase_samples",
+            "group": "Phases",
+            "name": "Phase sample count",
+            "label": "samples",
+            "value": 0,
+            "unit": "",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "phase.sample_count@1",
+            "source": "computed",
+            "text": "0"
+          }
+        ]
+      },
+      {
+        "number": 1,
+        "name": "Ramp",
+        "start_s": 0.0,
+        "duration_s": 4.2,
+        "sampled": true,
+        "fields": [
+          {
+            "key": "phase_name",
+            "group": "Phases",
+            "name": "Phase name and number",
+            "label": "phase",
+            "value": "1 \u00b7 Ramp",
+            "unit": "",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "header.phase_table@1",
+            "source": "computed",
+            "text": "1 \u00b7 Ramp"
+          },
+          {
+            "key": "phase_type",
+            "group": "Phases",
+            "name": "Phase type",
+            "label": "type",
+            "value": "brew",
+            "unit": "",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.type_by_name_then_shape@1",
+            "source": "computed",
+            "text": "brew"
+          },
+          {
+            "key": "phase_start",
+            "group": "Phases",
+            "name": "Phase start",
+            "label": "start",
+            "value": 0.0,
+            "unit": "s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.start@1",
+            "source": "computed",
+            "text": "0.0 s"
+          },
+          {
+            "key": "phase_duration",
+            "group": "Phases",
+            "name": "Phase duration",
+            "label": "duration",
+            "value": 4.2,
+            "unit": "s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.duration@1",
+            "source": "computed",
+            "text": "4.2 s"
+          },
+          {
+            "key": "phase_ended_by",
+            "group": "Phases",
+            "name": "How the phase ended",
+            "label": "ended by",
+            "value": 5,
+            "unit": "",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.ended_by_next_transition_reason@1",
+            "source": "computed",
+            "text": "Duration"
+          },
+          {
+            "key": "phase_pressure",
+            "group": "Phases",
+            "name": "Phase average pressure",
+            "label": "pressure",
+            "value": 2.8,
+            "unit": "bar",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.pressure_mean@1",
+            "source": "computed",
+            "text": "2.8 bar"
+          },
+          {
+            "key": "phase_pressure_peak",
+            "group": "Phases",
+            "name": "Phase peak pressure",
+            "label": "peak pressure",
+            "value": 5.9,
+            "unit": "bar",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"pressure\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "5.9 bar"
+          },
+          {
+            "key": "phase_pressure_end",
+            "group": "Phases",
+            "name": "Phase pressure at its end",
+            "label": "pressure at end",
+            "value": 5.9,
+            "unit": "bar",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"pressure\",\"op\":\"at_end\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "5.9 bar"
+          },
+          {
+            "key": "phase_temperature",
+            "group": "Phases",
+            "name": "Phase average temperature",
+            "label": "temperature",
+            "value": 91.6,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.temperature_mean@1",
+            "source": "computed",
+            "text": "91.6 \u00b0C"
+          },
+          {
+            "key": "phase_temperature_min",
+            "group": "Phases",
+            "name": "Phase lowest temperature",
+            "label": "lowest temperature",
+            "value": 91.1,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"temperature\",\"op\":\"min\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "91.1 \u00b0C"
+          },
+          {
+            "key": "phase_temperature_target",
+            "group": "Phases",
+            "name": "Phase target temperature",
+            "label": "target temperature",
+            "value": 92.0,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"target_temperature\",\"op\":\"mean\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "92.0 \u00b0C"
+          },
+          {
+            "key": "phase_volume",
+            "group": "Phases",
+            "name": "Phase puck volume (estimated)",
+            "label": "puck volume (estimated)",
+            "value": 0.0,
+            "unit": "ml",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.puck_flow_integral@1",
+            "source": "computed",
+            "text": "0.0 ml"
+          },
+          {
+            "key": "phase_flow",
+            "group": "Phases",
+            "name": "Phase average puck flow",
+            "label": "puck flow",
+            "value": 0.0,
+            "unit": "ml/s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.puck_flow_mean@1",
+            "source": "computed",
+            "text": "0.00 ml/s"
+          },
+          {
+            "key": "phase_flow_peak",
+            "group": "Phases",
+            "name": "Phase peak puck flow",
+            "label": "peak puck flow",
+            "value": 0.0,
+            "unit": "ml/s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"puck_flow\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.00 ml/s"
+          },
+          {
+            "key": "phase_scale_flow",
+            "group": "Phases",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
+            "value": 0.02,
+            "unit": "g/s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"scale_flow\",\"op\":\"mean\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.02 g/s"
+          },
+          {
+            "key": "phase_scale_flow_peak",
+            "group": "Phases",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
+            "value": 0.2,
+            "unit": "g/s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"scale_flow\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.20 g/s"
+          },
+          {
+            "key": "phase_cup_end",
+            "group": "Phases",
+            "name": "Cup weight at the phase's end",
+            "label": "cup at end",
+            "value": 0.0,
+            "unit": "g",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"cup_weight\",\"op\":\"at_end\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.0 g"
+          },
+          {
+            "key": "phase_cup_gained",
+            "group": "Phases",
+            "name": "Cup weight gained in the phase",
+            "label": "cup gained",
+            "value": 0.0,
+            "unit": "g",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"cup_weight\",\"op\":\"gained\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.0 g"
+          },
+          {
+            "key": "phase_water",
+            "group": "Phases",
+            "name": "Water pumped in the phase",
+            "label": "water pumped",
+            "value": 30.1,
+            "unit": "ml",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"water_pumped\",\"op\":\"gained\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "30.1 ml"
+          },
+          {
+            "key": "phase_pressure_adherence",
+            "group": "Phases",
+            "name": "Phase pressure adherence (RMSE)",
+            "label": "pressure adherence",
+            "value": 5.41,
+            "unit": "bar",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "compliance.phase_pressure_rmse@1",
+            "source": "computed",
+            "text": "5.41 bar"
+          },
+          {
+            "key": "phase_machine_resistance",
+            "group": "Phases",
+            "name": "Phase machine puck resistance (firmware analyzer)",
+            "label": "machine puck resistance (s\u00b7\u221abar/mL)",
+            "value": {
+              "avg": 0.193,
+              "start": 0.48,
+              "end": 0.4,
+              "min": 0.14,
+              "max": 0.48
+            },
+            "unit": "s\u00b7\u221abar/mL",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "firmware.pr_phase@1",
+            "source": "computed",
+            "text": "avg 0.19 (start 0.48, end 0.40, min 0.14, max 0.48)"
+          },
+          {
+            "key": "phase_liquid_resistance",
+            "group": "Phases",
+            "name": "Phase liquid resistance (firmware analyzer)",
+            "label": "liquid resistance (bar\u00b7s/mL)",
+            "value": {
+              "avg": 0.324,
+              "start": 0.831,
+              "end": 0.972,
+              "min": 0.166,
+              "max": 0.972
+            },
+            "unit": "bar\u00b7s/mL",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "firmware.lr_phase@1",
+            "source": "computed",
+            "text": "avg 0.32 (start 0.83, end 0.97, min 0.17, max 0.97)"
+          },
+          {
+            "key": "phase_samples",
+            "group": "Phases",
+            "name": "Phase sample count",
+            "label": "samples",
+            "value": 17,
+            "unit": "",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.sample_count@1",
+            "source": "computed",
+            "text": "17"
+          }
+        ]
+      },
+      {
+        "number": 2,
+        "name": "Decline",
+        "start_s": 4.3,
+        "duration_s": 29.8,
+        "sampled": true,
+        "fields": [
+          {
+            "key": "phase_name",
+            "group": "Phases",
+            "name": "Phase name and number",
+            "label": "phase",
+            "value": "2 \u00b7 Decline",
+            "unit": "",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "header.phase_table@1",
+            "source": "computed",
+            "text": "2 \u00b7 Decline"
+          },
+          {
+            "key": "phase_type",
+            "group": "Phases",
+            "name": "Phase type",
+            "label": "type",
+            "value": "decline",
+            "unit": "",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.type_by_name_then_shape@1",
+            "source": "computed",
+            "text": "decline"
+          },
+          {
+            "key": "phase_start",
+            "group": "Phases",
+            "name": "Phase start",
+            "label": "start",
+            "value": 4.3,
+            "unit": "s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.start@1",
+            "source": "computed",
+            "text": "4.3 s"
+          },
+          {
+            "key": "phase_duration",
+            "group": "Phases",
+            "name": "Phase duration",
+            "label": "duration",
+            "value": 29.8,
+            "unit": "s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.duration@1",
+            "source": "computed",
+            "text": "29.8 s"
+          },
+          {
+            "key": "phase_ended_by",
+            "group": "Phases",
+            "name": "How the phase ended",
+            "label": "ended by",
+            "value": 1,
+            "unit": "",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.ended_by_next_transition_reason@1",
+            "source": "computed",
+            "text": "Volumetric target"
+          },
+          {
+            "key": "phase_pressure",
+            "group": "Phases",
+            "name": "Phase average pressure",
+            "label": "pressure",
+            "value": 5.6,
+            "unit": "bar",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.pressure_mean@1",
+            "source": "computed",
+            "text": "5.6 bar"
+          },
+          {
+            "key": "phase_pressure_peak",
+            "group": "Phases",
+            "name": "Phase peak pressure",
+            "label": "peak pressure",
+            "value": 8.3,
+            "unit": "bar",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"pressure\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "8.3 bar"
+          },
+          {
+            "key": "phase_pressure_end",
+            "group": "Phases",
+            "name": "Phase pressure at its end",
+            "label": "pressure at end",
+            "value": 3.9,
+            "unit": "bar",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"pressure\",\"op\":\"at_end\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "3.9 bar"
+          },
+          {
+            "key": "phase_temperature",
+            "group": "Phases",
+            "name": "Phase average temperature",
+            "label": "temperature",
+            "value": 90.5,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.temperature_mean@1",
+            "source": "computed",
+            "text": "90.5 \u00b0C"
+          },
+          {
+            "key": "phase_temperature_min",
+            "group": "Phases",
+            "name": "Phase lowest temperature",
+            "label": "lowest temperature",
+            "value": 89.5,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"temperature\",\"op\":\"min\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "89.5 \u00b0C"
+          },
+          {
+            "key": "phase_temperature_target",
+            "group": "Phases",
+            "name": "Phase target temperature",
+            "label": "target temperature",
+            "value": 92.0,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"target_temperature\",\"op\":\"mean\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "92.0 \u00b0C"
+          },
+          {
+            "key": "phase_volume",
+            "group": "Phases",
+            "name": "Phase puck volume (estimated)",
+            "label": "puck volume (estimated)",
+            "value": 35.6,
+            "unit": "ml",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.puck_flow_integral@1",
+            "source": "computed",
+            "text": "35.6 ml"
+          },
+          {
+            "key": "phase_flow",
+            "group": "Phases",
+            "name": "Phase average puck flow",
+            "label": "puck flow",
+            "value": 1.2,
+            "unit": "ml/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.puck_flow_mean@1",
+            "source": "computed",
+            "text": "1.20 ml/s"
+          },
+          {
+            "key": "phase_flow_peak",
+            "group": "Phases",
+            "name": "Phase peak puck flow",
+            "label": "peak puck flow",
+            "value": 1.72,
+            "unit": "ml/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"puck_flow\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "1.72 ml/s"
+          },
+          {
+            "key": "phase_scale_flow",
+            "group": "Phases",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
+            "value": 1.07,
+            "unit": "g/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"scale_flow\",\"op\":\"mean\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "1.07 g/s"
+          },
+          {
+            "key": "phase_scale_flow_peak",
+            "group": "Phases",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
+            "value": 1.61,
+            "unit": "g/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"scale_flow\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "1.61 g/s"
+          },
+          {
+            "key": "phase_cup_end",
+            "group": "Phases",
+            "name": "Cup weight at the phase's end",
+            "label": "cup at end",
+            "value": 31.9,
+            "unit": "g",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"cup_weight\",\"op\":\"at_end\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "31.9 g"
+          },
+          {
+            "key": "phase_cup_gained",
+            "group": "Phases",
+            "name": "Cup weight gained in the phase",
+            "label": "cup gained",
+            "value": 31.9,
+            "unit": "g",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"cup_weight\",\"op\":\"gained\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "31.9 g"
+          },
+          {
+            "key": "phase_water",
+            "group": "Phases",
+            "name": "Water pumped in the phase",
+            "label": "water pumped",
+            "value": 42.6,
+            "unit": "ml",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"water_pumped\",\"op\":\"gained\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "42.6 ml"
+          },
+          {
+            "key": "phase_cup_first_drip",
+            "group": "Phases",
+            "name": "First drip, in the phase that holds it",
+            "label": "first drip",
+            "value": 4.51,
+            "unit": "s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.cup_first_drip@1",
+            "source": "computed",
+            "text": "4.5 s"
+          },
+          {
+            "key": "phase_pressure_adherence",
+            "group": "Phases",
+            "name": "Phase pressure adherence (RMSE)",
+            "label": "pressure adherence",
+            "value": 0.15,
+            "unit": "bar",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "compliance.phase_pressure_rmse@1",
+            "source": "computed",
+            "text": "0.15 bar"
+          },
+          {
+            "key": "phase_taper",
+            "group": "Phases",
+            "name": "Phase taper rate and smoothness (decline)",
+            "label": "taper",
+            "value": -0.15,
+            "unit": "bar/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.pressure_taper@1",
+            "source": "computed",
+            "text": "-0.15 bar/s, 0.43 bar/s"
+          },
+          {
+            "key": "phase_machine_resistance",
+            "group": "Phases",
+            "name": "Phase machine puck resistance (firmware analyzer)",
+            "label": "machine puck resistance (s\u00b7\u221abar/mL)",
+            "value": {
+              "avg": 1.505,
+              "start": 0.57,
+              "end": 1.12,
+              "min": 0.57,
+              "max": 2.17
+            },
+            "unit": "s\u00b7\u221abar/mL",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "firmware.pr_phase@1",
+            "source": "computed",
+            "text": "avg 1.50 (start 0.57, end 1.12, min 0.57, max 2.17)"
+          },
+          {
+            "key": "phase_liquid_resistance",
+            "group": "Phases",
+            "name": "Phase liquid resistance (firmware analyzer)",
+            "label": "liquid resistance (bar\u00b7s/mL)",
+            "value": {
+              "avg": 3.646,
+              "start": 1.592,
+              "end": 2.24,
+              "min": 1.592,
+              "max": 5.863
+            },
+            "unit": "bar\u00b7s/mL",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "firmware.lr_phase@1",
+            "source": "computed",
+            "text": "avg 3.65 (start 1.59, end 2.24, min 1.59, max 5.86)"
+          },
+          {
+            "key": "phase_samples",
+            "group": "Phases",
+            "name": "Phase sample count",
+            "label": "samples",
+            "value": 119,
+            "unit": "",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.sample_count@1",
+            "source": "computed",
+            "text": "119"
+          }
+        ]
+      }
+    ]
+  },
+  "fillEndedSigned": {
+    "shot_id": 1,
+    "checks": {
+      "badge": "Fill: skipped",
+      "entries": [
+        {
+          "phase": "Fill",
+          "fault": "skipped",
+          "severity": "red",
+          "detail": "the Fill begins; it ended on its pressure target before the first sample.",
+          "phase_number": 0,
+          "at_s": 0.0,
+          "tier": "critical",
+          "status": "failed",
+          "expectation_id": 1,
+          "claim_id": null
+        }
+      ],
+      "items": [
+        {
+          "kind": "reached",
+          "status": "failed",
+          "tier": "critical",
+          "color": "red",
+          "phase": "Fill",
+          "phase_number": 0,
+          "fault": "skipped",
+          "sentence": "the Fill begins",
+          "detail": "the Fill begins; it ended on its pressure target before the first sample.",
+          "value": null,
+          "unit": "",
+          "compare": null,
+          "relative_to": null,
+          "limit_text": "",
+          "held": false,
+          "absent": null,
+          "absent_reason": null,
+          "at_s": 0.0,
+          "expectation_id": 1
+        },
+        {
+          "kind": "measure",
+          "status": "unmeasured",
+          "tier": "important",
+          "color": null,
+          "phase": "Fill",
+          "phase_number": 0,
+          "fault": null,
+          "sentence": "highest value of pressure in the Fill, at most 3",
+          "detail": "highest value of pressure in the Fill, at most 3: ended before it was measured (the Fill ended on its pressure target before the first sample).",
+          "value": null,
+          "unit": "bar",
+          "compare": {
+            "op": "<=",
+            "value": 3.0
+          },
+          "relative_to": null,
+          "limit_text": "at most 3 bar",
+          "held": null,
+          "absent": "the Fill ended on its pressure target before the first sample",
+          "absent_reason": "ended_before_sampled",
+          "at_s": 0.0,
+          "expectation_id": 2
+        }
+      ]
+    },
+    "review": {
+      "state": "unreviewed",
+      "badge": null,
+      "entries": [],
+      "verdict": null,
+      "summary": null,
+      "reason": null,
+      "review_id": null,
+      "in_force_id": null
+    },
+    "signature": {
+      "profile_version_id": 1,
+      "confirmed": 2,
+      "text": "in force, 2 expectations"
+    },
+    "target_yield_g": null,
+    "yield_share_pct": null,
+    "shot": [
+      {
+        "key": "shot_time",
+        "group": "Outcome",
+        "name": "Shot time",
+        "label": "Shot time",
+        "value": 33.827,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "header.duration@1",
+        "source": "computed",
+        "text": "33.8 s"
+      },
+      {
+        "key": "yield",
+        "group": "Outcome",
+        "name": "Yield (final weight)",
+        "label": "Yield",
+        "value": 31.9,
+        "unit": "g",
+        "phase": null,
+        "window": null,
+        "method": "header.final_weight@1",
+        "source": "computed",
+        "text": "31.9 g"
+      },
+      {
+        "key": "exit_reason",
+        "group": "Outcome",
+        "name": "Exit reason",
+        "label": "Exit reason",
+        "value": "Volumetric target",
+        "unit": "",
+        "phase": null,
+        "window": null,
+        "method": "header.final_exit_reason@1",
+        "source": "computed",
+        "text": "Volumetric target"
+      },
+      {
+        "key": "cup_first_drip",
+        "group": "Timing",
+        "name": "First drip",
+        "label": "First drip",
+        "value": 4.51,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "samples.cup_first_drip@1",
+        "source": "computed",
+        "text": "4.5 s"
+      },
+      {
+        "key": "preinfusion_time",
+        "group": "Timing",
+        "name": "Pre-infusion time",
+        "label": "Pre-infusion time",
+        "value": 0.0,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "samples.half_peak_pressure_time@1",
+        "source": "computed",
+        "text": "0.0 s"
+      },
+      {
+        "key": "main_extraction_time",
+        "group": "Timing",
+        "name": "Main extraction time",
+        "label": "Main extraction time",
+        "value": 33.8,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "samples.after_half_peak_pressure@1",
+        "source": "computed",
+        "text": "33.8 s"
+      },
+      {
+        "key": "average_temperature",
+        "group": "Temperature",
+        "name": "Average temperature",
+        "label": "Average temperature",
+        "value": 90.6,
+        "unit": "\u00b0C",
+        "phase": null,
+        "window": null,
+        "method": "samples.temperature_mean@1",
+        "source": "computed",
+        "text": "90.6 \u00b0C"
+      },
+      {
+        "key": "target_temperature",
+        "group": "Temperature",
+        "name": "Target temperature (average)",
+        "label": "Target temperature",
+        "value": 92.0,
+        "unit": "\u00b0C",
+        "phase": null,
+        "window": null,
+        "method": "samples.target_temperature_mean@1",
+        "source": "computed",
+        "text": "92.0 \u00b0C"
+      },
+      {
+        "key": "minimum_temperature",
+        "group": "Temperature",
+        "name": "Minimum temperature",
+        "label": "Minimum temperature",
+        "value": 89.5,
+        "unit": "\u00b0C",
+        "phase": null,
+        "window": null,
+        "method": "samples.temperature_min@1",
+        "source": "computed",
+        "text": "89.5 \u00b0C"
+      },
+      {
+        "key": "maximum_temperature",
+        "group": "Temperature",
+        "name": "Maximum temperature",
+        "label": "Maximum temperature",
+        "value": 92.3,
+        "unit": "\u00b0C",
+        "phase": null,
+        "window": null,
+        "method": "samples.temperature_max@1",
+        "source": "computed",
+        "text": "92.3 \u00b0C"
+      },
+      {
+        "key": "peak_pressure",
+        "group": "Pressure",
+        "name": "Peak pressure",
+        "label": "Peak pressure",
+        "value": 8.3,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "samples.pressure_max@1",
+        "source": "computed",
+        "text": "8.30 bar"
+      },
+      {
+        "key": "average_pressure",
+        "group": "Pressure",
+        "name": "Average pressure",
+        "label": "Average pressure",
+        "value": 5.3,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "samples.pressure_mean@1",
+        "source": "computed",
+        "text": "5.3 bar"
+      },
+      {
+        "key": "minimum_pressure",
+        "group": "Pressure",
+        "name": "Minimum pressure",
+        "label": "Minimum pressure",
+        "value": 1.4,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "samples.pressure_min@1",
+        "source": "computed",
+        "text": "1.4 bar"
+      },
+      {
+        "key": "peak_pressure_time",
+        "group": "Pressure",
+        "name": "Time of peak pressure",
+        "label": "Time of peak pressure",
+        "value": 4.5,
+        "unit": "s",
+        "phase": null,
+        "window": null,
+        "method": "samples.pressure_max_time@1",
+        "source": "computed",
+        "text": "4.5 s"
+      },
+      {
+        "key": "brew_cup_flow",
+        "group": "Flow and volume",
+        "name": "Brew cup flow",
+        "label": "Cup flow",
+        "value": 0.94,
+        "unit": "g/s",
+        "phase": null,
+        "window": null,
+        "method": "brew.cup_flow_mean@1",
+        "source": "computed",
+        "text": "0.94 g/s"
+      },
+      {
+        "key": "brew_flow",
+        "group": "Flow and volume",
+        "name": "Average brew puck flow",
+        "label": "Average brew puck flow",
+        "value": 1.05,
+        "unit": "ml/s",
+        "phase": null,
+        "window": null,
+        "method": "brew.puck_flow_mean@1",
+        "source": "computed",
+        "text": "1.05 ml/s"
+      },
+      {
+        "key": "average_flow",
+        "group": "Flow and volume",
+        "name": "Average puck flow (whole shot)",
+        "label": "Average puck flow",
+        "value": 1.0,
+        "unit": "ml/s",
+        "phase": null,
+        "window": null,
+        "method": "samples.puck_flow_mean@1",
+        "source": "computed",
+        "text": "1.0 ml/s"
+      },
+      {
+        "key": "peak_flow",
+        "group": "Flow and volume",
+        "name": "Peak puck flow",
+        "label": "Peak puck flow",
+        "value": 1.7,
+        "unit": "ml/s",
+        "phase": null,
+        "window": null,
+        "method": "samples.puck_flow_max@1",
+        "source": "computed",
+        "text": "1.7 ml/s"
+      },
+      {
+        "key": "total_volume",
+        "group": "Flow and volume",
+        "name": "Total volume pumped (estimated)",
+        "label": "Total volume (estimated)",
+        "value": 35.6,
+        "unit": "ml",
+        "phase": null,
+        "window": null,
+        "method": "samples.puck_flow_integral@1",
+        "source": "computed",
+        "text": "35.6 ml"
+      },
+      {
+        "key": "weight_rate",
+        "group": "Weight",
+        "name": "Average weight rate",
+        "label": "Average weight rate",
+        "value": 0.99,
+        "unit": "g/s",
+        "phase": null,
+        "window": null,
+        "method": "brew.weight_rate_mean@1",
+        "source": "computed",
+        "text": "0.99 g/s"
+      },
+      {
+        "key": "resistance_level",
+        "group": "Puck resistance",
+        "name": "Resistance level (average)",
+        "label": "Resistance level",
+        "value": 2.35,
+        "unit": "",
+        "phase": null,
+        "window": null,
+        "method": "resistance.pr2_brew_mean@1",
+        "source": "computed",
+        "text": "2.35, from the machine"
+      },
+      {
+        "key": "resistance_slope",
+        "group": "Puck resistance",
+        "name": "Resistance slope",
+        "label": "Resistance slope",
+        "value": -0.13,
+        "unit": "1/s",
+        "phase": null,
+        "window": null,
+        "method": "resistance.pr2_brew_slope@1",
+        "source": "computed",
+        "text": "-0.13 /s"
+      },
+      {
+        "key": "machine_puck_resistance",
+        "group": "Puck resistance",
+        "name": "Machine puck resistance (firmware analyzer), whole shot",
+        "label": "Machine puck resistance (s\u00b7\u221abar/mL)",
+        "value": {
+          "avg": 1.345,
+          "start": 0.48,
+          "end": 1.12,
+          "min": 0.14,
+          "max": 2.17
+        },
+        "unit": "s\u00b7\u221abar/mL",
+        "phase": null,
+        "window": null,
+        "method": "firmware.pr_whole@1",
+        "source": "computed",
+        "text": "avg 1.34 (start 0.48, end 1.12, min 0.14, max 2.17)"
+      },
+      {
+        "key": "liquid_resistance",
+        "group": "Puck resistance",
+        "name": "Liquid resistance (firmware analyzer), whole shot",
+        "label": "Liquid resistance (bar\u00b7s/mL)",
+        "value": {
+          "avg": 3.244,
+          "start": 0.831,
+          "end": 2.24,
+          "min": 0.166,
+          "max": 5.863
+        },
+        "unit": "bar\u00b7s/mL",
+        "phase": null,
+        "window": null,
+        "method": "firmware.lr_whole@1",
+        "source": "computed",
+        "text": "avg 3.24 (start 0.83, end 2.24, min 0.17, max 5.86)"
+      },
+      {
+        "key": "pressure_adherence",
+        "group": "Profile compliance",
+        "name": "Pressure adherence (RMSE)",
+        "label": "Pressure adherence",
+        "value": 2.02,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "compliance.pressure_rmse@1",
+        "source": "computed",
+        "text": "2.02 bar"
+      },
+      {
+        "key": "pressure_undershoot_max",
+        "group": "Profile compliance",
+        "name": "Largest pressure undershoot",
+        "label": "Largest pressure undershoot",
+        "value": 7.0,
+        "unit": "bar",
+        "phase": null,
+        "window": null,
+        "method": "compliance.pressure_undershoot@1",
+        "source": "computed",
+        "text": "7.00 bar"
+      }
+    ],
+    "phases": [
+      {
+        "number": 0,
+        "name": "Fill",
+        "start_s": 0.0,
+        "duration_s": 0.0,
+        "sampled": false,
+        "fields": [
+          {
+            "key": "phase_name",
+            "group": "Phases",
+            "name": "Phase name and number",
+            "label": "phase",
+            "value": "0 \u00b7 Fill",
+            "unit": "",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "header.phase_table@1",
+            "source": "computed",
+            "text": "0 \u00b7 Fill"
+          },
+          {
+            "key": "phase_start",
+            "group": "Phases",
+            "name": "Phase start",
+            "label": "start",
+            "value": 0.0,
+            "unit": "s",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "phase.start@1",
+            "source": "computed",
+            "text": "0.0 s"
+          },
+          {
+            "key": "phase_duration",
+            "group": "Phases",
+            "name": "Phase duration",
+            "label": "duration",
+            "value": 0.0,
+            "unit": "s",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "phase.duration@1",
+            "source": "computed",
+            "text": "0.0 s"
+          },
+          {
+            "key": "phase_ended_by",
+            "group": "Phases",
+            "name": "How the phase ended",
+            "label": "ended by",
+            "value": 2,
+            "unit": "",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "phase.ended_by_next_transition_reason@1",
+            "source": "computed",
+            "text": "ended on its pressure target before the first sample"
+          },
+          {
+            "key": "phase_samples",
+            "group": "Phases",
+            "name": "Phase sample count",
+            "label": "samples",
+            "value": 0,
+            "unit": "",
+            "phase": {
+              "number": 0,
+              "name": "Fill"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 0.0
+            },
+            "method": "phase.sample_count@1",
+            "source": "computed",
+            "text": "0"
+          }
+        ]
+      },
+      {
+        "number": 1,
+        "name": "Ramp",
+        "start_s": 0.0,
+        "duration_s": 4.2,
+        "sampled": true,
+        "fields": [
+          {
+            "key": "phase_name",
+            "group": "Phases",
+            "name": "Phase name and number",
+            "label": "phase",
+            "value": "1 \u00b7 Ramp",
+            "unit": "",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "header.phase_table@1",
+            "source": "computed",
+            "text": "1 \u00b7 Ramp"
+          },
+          {
+            "key": "phase_type",
+            "group": "Phases",
+            "name": "Phase type",
+            "label": "type",
+            "value": "brew",
+            "unit": "",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.type_by_name_then_shape@1",
+            "source": "computed",
+            "text": "brew"
+          },
+          {
+            "key": "phase_start",
+            "group": "Phases",
+            "name": "Phase start",
+            "label": "start",
+            "value": 0.0,
+            "unit": "s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.start@1",
+            "source": "computed",
+            "text": "0.0 s"
+          },
+          {
+            "key": "phase_duration",
+            "group": "Phases",
+            "name": "Phase duration",
+            "label": "duration",
+            "value": 4.2,
+            "unit": "s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.duration@1",
+            "source": "computed",
+            "text": "4.2 s"
+          },
+          {
+            "key": "phase_ended_by",
+            "group": "Phases",
+            "name": "How the phase ended",
+            "label": "ended by",
+            "value": 5,
+            "unit": "",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.ended_by_next_transition_reason@1",
+            "source": "computed",
+            "text": "Duration"
+          },
+          {
+            "key": "phase_pressure",
+            "group": "Phases",
+            "name": "Phase average pressure",
+            "label": "pressure",
+            "value": 2.8,
+            "unit": "bar",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.pressure_mean@1",
+            "source": "computed",
+            "text": "2.8 bar"
+          },
+          {
+            "key": "phase_pressure_peak",
+            "group": "Phases",
+            "name": "Phase peak pressure",
+            "label": "peak pressure",
+            "value": 5.9,
+            "unit": "bar",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"pressure\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "5.9 bar"
+          },
+          {
+            "key": "phase_pressure_end",
+            "group": "Phases",
+            "name": "Phase pressure at its end",
+            "label": "pressure at end",
+            "value": 5.9,
+            "unit": "bar",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"pressure\",\"op\":\"at_end\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "5.9 bar"
+          },
+          {
+            "key": "phase_temperature",
+            "group": "Phases",
+            "name": "Phase average temperature",
+            "label": "temperature",
+            "value": 91.6,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.temperature_mean@1",
+            "source": "computed",
+            "text": "91.6 \u00b0C"
+          },
+          {
+            "key": "phase_temperature_min",
+            "group": "Phases",
+            "name": "Phase lowest temperature",
+            "label": "lowest temperature",
+            "value": 91.1,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"temperature\",\"op\":\"min\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "91.1 \u00b0C"
+          },
+          {
+            "key": "phase_temperature_target",
+            "group": "Phases",
+            "name": "Phase target temperature",
+            "label": "target temperature",
+            "value": 92.0,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"target_temperature\",\"op\":\"mean\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "92.0 \u00b0C"
+          },
+          {
+            "key": "phase_volume",
+            "group": "Phases",
+            "name": "Phase puck volume (estimated)",
+            "label": "puck volume (estimated)",
+            "value": 0.0,
+            "unit": "ml",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.puck_flow_integral@1",
+            "source": "computed",
+            "text": "0.0 ml"
+          },
+          {
+            "key": "phase_flow",
+            "group": "Phases",
+            "name": "Phase average puck flow",
+            "label": "puck flow",
+            "value": 0.0,
+            "unit": "ml/s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.puck_flow_mean@1",
+            "source": "computed",
+            "text": "0.00 ml/s"
+          },
+          {
+            "key": "phase_flow_peak",
+            "group": "Phases",
+            "name": "Phase peak puck flow",
+            "label": "peak puck flow",
+            "value": 0.0,
+            "unit": "ml/s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"puck_flow\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.00 ml/s"
+          },
+          {
+            "key": "phase_scale_flow",
+            "group": "Phases",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
+            "value": 0.02,
+            "unit": "g/s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"scale_flow\",\"op\":\"mean\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.02 g/s"
+          },
+          {
+            "key": "phase_scale_flow_peak",
+            "group": "Phases",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
+            "value": 0.2,
+            "unit": "g/s",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"scale_flow\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.20 g/s"
+          },
+          {
+            "key": "phase_cup_end",
+            "group": "Phases",
+            "name": "Cup weight at the phase's end",
+            "label": "cup at end",
+            "value": 0.0,
+            "unit": "g",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"cup_weight\",\"op\":\"at_end\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.0 g"
+          },
+          {
+            "key": "phase_cup_gained",
+            "group": "Phases",
+            "name": "Cup weight gained in the phase",
+            "label": "cup gained",
+            "value": 0.0,
+            "unit": "g",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"cup_weight\",\"op\":\"gained\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "0.0 g"
+          },
+          {
+            "key": "phase_water",
+            "group": "Phases",
+            "name": "Water pumped in the phase",
+            "label": "water pumped",
+            "value": 30.1,
+            "unit": "ml",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "{\"channel\":\"water_pumped\",\"op\":\"gained\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "30.1 ml"
+          },
+          {
+            "key": "phase_pressure_adherence",
+            "group": "Phases",
+            "name": "Phase pressure adherence (RMSE)",
+            "label": "pressure adherence",
+            "value": 5.41,
+            "unit": "bar",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "compliance.phase_pressure_rmse@1",
+            "source": "computed",
+            "text": "5.41 bar"
+          },
+          {
+            "key": "phase_machine_resistance",
+            "group": "Phases",
+            "name": "Phase machine puck resistance (firmware analyzer)",
+            "label": "machine puck resistance (s\u00b7\u221abar/mL)",
+            "value": {
+              "avg": 0.193,
+              "start": 0.48,
+              "end": 0.4,
+              "min": 0.14,
+              "max": 0.48
+            },
+            "unit": "s\u00b7\u221abar/mL",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "firmware.pr_phase@1",
+            "source": "computed",
+            "text": "avg 0.19 (start 0.48, end 0.40, min 0.14, max 0.48)"
+          },
+          {
+            "key": "phase_liquid_resistance",
+            "group": "Phases",
+            "name": "Phase liquid resistance (firmware analyzer)",
+            "label": "liquid resistance (bar\u00b7s/mL)",
+            "value": {
+              "avg": 0.324,
+              "start": 0.831,
+              "end": 0.972,
+              "min": 0.166,
+              "max": 0.972
+            },
+            "unit": "bar\u00b7s/mL",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "firmware.lr_phase@1",
+            "source": "computed",
+            "text": "avg 0.32 (start 0.83, end 0.97, min 0.17, max 0.97)"
+          },
+          {
+            "key": "phase_samples",
+            "group": "Phases",
+            "name": "Phase sample count",
+            "label": "samples",
+            "value": 17,
+            "unit": "",
+            "phase": {
+              "number": 1,
+              "name": "Ramp"
+            },
+            "window": {
+              "from_s": 0.0,
+              "to_s": 4.2
+            },
+            "method": "phase.sample_count@1",
+            "source": "computed",
+            "text": "17"
+          }
+        ]
+      },
+      {
+        "number": 2,
+        "name": "Decline",
+        "start_s": 4.3,
+        "duration_s": 29.8,
+        "sampled": true,
+        "fields": [
+          {
+            "key": "phase_name",
+            "group": "Phases",
+            "name": "Phase name and number",
+            "label": "phase",
+            "value": "2 \u00b7 Decline",
+            "unit": "",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "header.phase_table@1",
+            "source": "computed",
+            "text": "2 \u00b7 Decline"
+          },
+          {
+            "key": "phase_type",
+            "group": "Phases",
+            "name": "Phase type",
+            "label": "type",
+            "value": "decline",
+            "unit": "",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.type_by_name_then_shape@1",
+            "source": "computed",
+            "text": "decline"
+          },
+          {
+            "key": "phase_start",
+            "group": "Phases",
+            "name": "Phase start",
+            "label": "start",
+            "value": 4.3,
+            "unit": "s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.start@1",
+            "source": "computed",
+            "text": "4.3 s"
+          },
+          {
+            "key": "phase_duration",
+            "group": "Phases",
+            "name": "Phase duration",
+            "label": "duration",
+            "value": 29.8,
+            "unit": "s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.duration@1",
+            "source": "computed",
+            "text": "29.8 s"
+          },
+          {
+            "key": "phase_ended_by",
+            "group": "Phases",
+            "name": "How the phase ended",
+            "label": "ended by",
+            "value": 1,
+            "unit": "",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.ended_by_next_transition_reason@1",
+            "source": "computed",
+            "text": "Volumetric target"
+          },
+          {
+            "key": "phase_pressure",
+            "group": "Phases",
+            "name": "Phase average pressure",
+            "label": "pressure",
+            "value": 5.6,
+            "unit": "bar",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.pressure_mean@1",
+            "source": "computed",
+            "text": "5.6 bar"
+          },
+          {
+            "key": "phase_pressure_peak",
+            "group": "Phases",
+            "name": "Phase peak pressure",
+            "label": "peak pressure",
+            "value": 8.3,
+            "unit": "bar",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"pressure\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "8.3 bar"
+          },
+          {
+            "key": "phase_pressure_end",
+            "group": "Phases",
+            "name": "Phase pressure at its end",
+            "label": "pressure at end",
+            "value": 3.9,
+            "unit": "bar",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"pressure\",\"op\":\"at_end\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "3.9 bar"
+          },
+          {
+            "key": "phase_temperature",
+            "group": "Phases",
+            "name": "Phase average temperature",
+            "label": "temperature",
+            "value": 90.5,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.temperature_mean@1",
+            "source": "computed",
+            "text": "90.5 \u00b0C"
+          },
+          {
+            "key": "phase_temperature_min",
+            "group": "Phases",
+            "name": "Phase lowest temperature",
+            "label": "lowest temperature",
+            "value": 89.5,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"temperature\",\"op\":\"min\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "89.5 \u00b0C"
+          },
+          {
+            "key": "phase_temperature_target",
+            "group": "Phases",
+            "name": "Phase target temperature",
+            "label": "target temperature",
+            "value": 92.0,
+            "unit": "\u00b0C",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"target_temperature\",\"op\":\"mean\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "92.0 \u00b0C"
+          },
+          {
+            "key": "phase_volume",
+            "group": "Phases",
+            "name": "Phase puck volume (estimated)",
+            "label": "puck volume (estimated)",
+            "value": 35.6,
+            "unit": "ml",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.puck_flow_integral@1",
+            "source": "computed",
+            "text": "35.6 ml"
+          },
+          {
+            "key": "phase_flow",
+            "group": "Phases",
+            "name": "Phase average puck flow",
+            "label": "puck flow",
+            "value": 1.2,
+            "unit": "ml/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.puck_flow_mean@1",
+            "source": "computed",
+            "text": "1.20 ml/s"
+          },
+          {
+            "key": "phase_flow_peak",
+            "group": "Phases",
+            "name": "Phase peak puck flow",
+            "label": "peak puck flow",
+            "value": 1.72,
+            "unit": "ml/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"puck_flow\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "1.72 ml/s"
+          },
+          {
+            "key": "phase_scale_flow",
+            "group": "Phases",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
+            "value": 1.07,
+            "unit": "g/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"scale_flow\",\"op\":\"mean\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "1.07 g/s"
+          },
+          {
+            "key": "phase_scale_flow_peak",
+            "group": "Phases",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
+            "value": 1.61,
+            "unit": "g/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"scale_flow\",\"op\":\"max\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "1.61 g/s"
+          },
+          {
+            "key": "phase_cup_end",
+            "group": "Phases",
+            "name": "Cup weight at the phase's end",
+            "label": "cup at end",
+            "value": 31.9,
+            "unit": "g",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"cup_weight\",\"op\":\"at_end\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "31.9 g"
+          },
+          {
+            "key": "phase_cup_gained",
+            "group": "Phases",
+            "name": "Cup weight gained in the phase",
+            "label": "cup gained",
+            "value": 31.9,
+            "unit": "g",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"cup_weight\",\"op\":\"gained\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "31.9 g"
+          },
+          {
+            "key": "phase_water",
+            "group": "Phases",
+            "name": "Water pumped in the phase",
+            "label": "water pumped",
+            "value": 42.6,
+            "unit": "ml",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "{\"channel\":\"water_pumped\",\"op\":\"gained\",\"window\":\"each_phase\"}",
+            "source": "computed",
+            "text": "42.6 ml"
+          },
+          {
+            "key": "phase_cup_first_drip",
+            "group": "Phases",
+            "name": "First drip, in the phase that holds it",
+            "label": "first drip",
+            "value": 4.51,
+            "unit": "s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.cup_first_drip@1",
+            "source": "computed",
+            "text": "4.5 s"
+          },
+          {
+            "key": "phase_pressure_adherence",
+            "group": "Phases",
+            "name": "Phase pressure adherence (RMSE)",
+            "label": "pressure adherence",
+            "value": 0.15,
+            "unit": "bar",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "compliance.phase_pressure_rmse@1",
+            "source": "computed",
+            "text": "0.15 bar"
+          },
+          {
+            "key": "phase_taper",
+            "group": "Phases",
+            "name": "Phase taper rate and smoothness (decline)",
+            "label": "taper",
+            "value": -0.15,
+            "unit": "bar/s",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.pressure_taper@1",
+            "source": "computed",
+            "text": "-0.15 bar/s, 0.43 bar/s"
+          },
+          {
+            "key": "phase_machine_resistance",
+            "group": "Phases",
+            "name": "Phase machine puck resistance (firmware analyzer)",
+            "label": "machine puck resistance (s\u00b7\u221abar/mL)",
+            "value": {
+              "avg": 1.505,
+              "start": 0.57,
+              "end": 1.12,
+              "min": 0.57,
+              "max": 2.17
+            },
+            "unit": "s\u00b7\u221abar/mL",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "firmware.pr_phase@1",
+            "source": "computed",
+            "text": "avg 1.50 (start 0.57, end 1.12, min 0.57, max 2.17)"
+          },
+          {
+            "key": "phase_liquid_resistance",
+            "group": "Phases",
+            "name": "Phase liquid resistance (firmware analyzer)",
+            "label": "liquid resistance (bar\u00b7s/mL)",
+            "value": {
+              "avg": 3.646,
+              "start": 1.592,
+              "end": 2.24,
+              "min": 1.592,
+              "max": 5.863
+            },
+            "unit": "bar\u00b7s/mL",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "firmware.lr_phase@1",
+            "source": "computed",
+            "text": "avg 3.65 (start 1.59, end 2.24, min 1.59, max 5.86)"
+          },
+          {
+            "key": "phase_samples",
+            "group": "Phases",
+            "name": "Phase sample count",
+            "label": "samples",
+            "value": 119,
+            "unit": "",
+            "phase": {
+              "number": 2,
+              "name": "Decline"
+            },
+            "window": {
+              "from_s": 4.3,
+              "to_s": 34.1
+            },
+            "method": "phase.sample_count@1",
+            "source": "computed",
+            "text": "119"
           }
         ]
       }

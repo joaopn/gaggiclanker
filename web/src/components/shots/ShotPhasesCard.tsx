@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import type { ShotField, ShotFieldsData, ShotPhaseFields } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { useVisibleWidth } from "@/components/shots/ShotRowPanel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,7 +16,10 @@ import { cn } from "@/lib/utils";
  *
  * A field a machine did not record is **absent from the document**, never a
  * zero, and its line is simply not drawn. A phase the shot never reached is a
- * row of its own, marked "not reached", in the profile's order.
+ * row of its own, marked "not reached", after the phases it ran. A phase that ended before the
+ * machine logged a sample of it (`sampled: false`) is a row of its own too, in the profile's
+ * order, saying why it ended and when: it has no pressure, flow or cup to draw, and a row of
+ * empty cells would read as numbers that went missing.
  */
 
 /** A column: the heading, the field that leads it and the ones listed under that. */
@@ -146,6 +151,46 @@ function Cell({ column, fields }: { column: Column; fields: Map<string, ShotFiel
   );
 }
 
+/**
+ * A phase with no samples: its name, then why it ended and when, in a sentence that takes the
+ * visible width of the table's scroll box. The row spans every column, and the table is wider
+ * than a phone, so the sentence sits in a `sticky` block the width of what is on screen: left
+ * to the row's own width it would run off the edge and need a sideways scroll to be read.
+ */
+function UnsampledRow({
+  phase,
+  span,
+  width,
+}: {
+  phase: ShotPhaseFields;
+  span: number;
+  width: number | null;
+}) {
+  const fields = byKey(phase);
+  const ended = fields.get("phase_ended_by");
+  const start = fields.get("phase_start");
+  return (
+    <tr
+      className="border-border border-b text-muted-foreground align-top last:border-0"
+      data-testid="phase-unsampled"
+    >
+      <td colSpan={span} className="py-2">
+        <div
+          className="sticky left-0 whitespace-normal break-words pr-4"
+          style={{ width: width ?? undefined, maxWidth: "100%" }}
+          data-testid="phase-unsampled-text"
+        >
+          <span className="font-medium text-foreground">{phase.name}</span>{" "}
+          <span className="italic">
+            {ended ? ended.text : "ended before the first sample"}
+            {start ? ` (at ${start.text})` : null}
+          </span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function PhaseRow({ phase, columns }: { phase: ShotPhaseFields; columns: Column[] }) {
   const fields = byKey(phase);
   const type = fields.get("phase_type");
@@ -188,15 +233,19 @@ function PhaseRow({ phase, columns }: { phase: ShotPhaseFields; columns: Column[
 /** The columns the shot has anything for: a machine with no scale has no cup-flow column. */
 function usedColumns(phases: ShotPhaseFields[]): Column[] {
   return COLUMNS.filter((column) =>
-    phases.some((phase) =>
-      phase.fields.some(
-        (field) => column.lead.includes(field.key) || column.more.includes(field.key),
-      ),
+    phases.some(
+      (phase) =>
+        phase.sampled &&
+        phase.fields.some(
+          (field) => column.lead.includes(field.key) || column.more.includes(field.key),
+        ),
     ),
   );
 }
 
 export function ShotPhasesCard({ fields }: { fields: ShotFieldsData }) {
+  const scroll = useRef<HTMLDivElement>(null);
+  const visible = useVisibleWidth(scroll);
   const unreached = notReached(fields);
   const note = fields.shot.find((field) => field.key === "phase_log_note");
   if (fields.phases.length === 0 && unreached.length === 0 && !note) return null;
@@ -206,7 +255,6 @@ export function ShotPhasesCard({ fields }: { fields: ShotFieldsData }) {
     <SectionCard
       title="Phases"
       description="One row per phase of the shot, from the header's own transition table, in order. The cup at the end of each phase is what a lever shot is read by."
-      contentClassName="overflow-x-auto"
     >
       {note ? (
         <p className="mb-2 text-muted-foreground text-sm" data-testid="phase-log-note">
@@ -214,40 +262,51 @@ export function ShotPhasesCard({ fields }: { fields: ShotFieldsData }) {
         </p>
       ) : null}
       {fields.phases.length > 0 || unreached.length > 0 ? (
-        <table className="w-full border-collapse text-left text-sm">
-          <thead className="border-border border-b text-muted-foreground text-xs uppercase tracking-wide">
-            <tr>
-              <th className="py-2 pr-4 font-medium">Phase</th>
-              {columns.map((column) => (
-                <th key={column.id} className="py-2 pr-4 text-right font-medium">
-                  {column.heading}
-                </th>
-              ))}
-              <th className="whitespace-nowrap py-2 pr-4 text-right font-medium">More</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fields.phases.map((phase) => (
-              <PhaseRow key={`${phase.number}-${phase.name}`} phase={phase} columns={columns} />
-            ))}
-            {unreached.map(({ number, name }) => (
-              <tr
-                key={number ?? name}
-                className="border-border border-b text-muted-foreground last:border-0"
-                data-testid="phase-not-reached"
-              >
-                <td className="max-w-24 py-2 pr-3 sm:max-w-40 sm:pr-4">
-                  <span className="block truncate font-medium" title={name}>
-                    {name}
-                  </span>
-                </td>
-                <td className="py-2 pr-4 text-left italic" colSpan={span - 1}>
-                  not reached
-                </td>
+        <div ref={scroll} className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-sm">
+            <thead className="border-border border-b text-muted-foreground text-xs uppercase tracking-wide">
+              <tr>
+                <th className="py-2 pr-4 font-medium">Phase</th>
+                {columns.map((column) => (
+                  <th key={column.id} className="py-2 pr-4 text-right font-medium">
+                    {column.heading}
+                  </th>
+                ))}
+                <th className="whitespace-nowrap py-2 pr-4 text-right font-medium">More</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {fields.phases.map((phase) =>
+                phase.sampled ? (
+                  <PhaseRow key={`${phase.number}-${phase.name}`} phase={phase} columns={columns} />
+                ) : (
+                  <UnsampledRow
+                    key={`${phase.number}-${phase.name}`}
+                    phase={phase}
+                    span={span}
+                    width={visible}
+                  />
+                ),
+              )}
+              {unreached.map(({ number, name }) => (
+                <tr
+                  key={number ?? name}
+                  className="border-border border-b text-muted-foreground last:border-0"
+                  data-testid="phase-not-reached"
+                >
+                  <td className="max-w-24 py-2 pr-3 sm:max-w-40 sm:pr-4">
+                    <span className="block truncate font-medium" title={name}>
+                      {name}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-left italic" colSpan={span - 1}>
+                    not reached
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
     </SectionCard>
   );
