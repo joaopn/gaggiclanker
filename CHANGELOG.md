@@ -33,6 +33,16 @@ database.
   schema in place of the migration number. The restore refusal codes `RESTORE_NEWER_VERSION` and
   `RESTORE_MIGRATION_DIFFERS` are replaced by `RESTORE_SCHEMA_DIFFERS`.
 
+### Sync is in the top bar, on every page
+
+- **Sync moved from the Shots page to the top bar**, first in it, before the machine status. A
+  sync reads the machine's shots, profiles and notes, and with Writes on makes its profile list
+  match the Profiles page, so it is no longer a Shots-page button. It is filled where the rest of
+  the bar is outlined, reads "Sync" ("Syncing…" while one runs), and shows only its icon at phone
+  width. Its toast of what the sync did now arrives on whatever page you are on when it finishes.
+- The Sync page (Machine → Sync) has no button of its own any more: it keeps the run ledger and
+  the archive counts, under the top bar's button.
+
 ### Cup flow
 
 - **The flow the scale sees is drawn and used first wherever there is a scale.** The shot chart
@@ -120,7 +130,6 @@ database.
   A shot you label Discard while it is ticked leaves the list at the next refresh. The API's
   `GET /api/shots` takes `include_discarded=false` for the same thing and still lists every shot by
   default.
-- Sync with machine stands apart from the list's own controls, with a wider gap before Filters.
 
 ### Beans export and import as JSON
 

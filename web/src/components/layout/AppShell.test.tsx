@@ -63,6 +63,23 @@ describe("AppShell", () => {
     );
   });
 
+  it.each(["/shots", "/chat", "/profiles", "/sync", "/settings/system"])(
+    "puts Sync first in the top bar, before the machine status, on %s",
+    (path) => {
+      renderApp(path);
+      const sync = screen.getByRole("button", { name: "Sync with machine" });
+      const header = sync.closest("header") as HTMLElement;
+      expect(header).not.toBeNull();
+      // Exactly one on the page: no page carries a second one.
+      expect(screen.getAllByTestId("pull-button")).toHaveLength(1);
+      const group = screen.getByTestId("device-status-pill").parentElement as HTMLElement;
+      expect(group.firstElementChild).toContainElement(sync);
+      expect(group.firstElementChild?.nextElementSibling).toBe(
+        screen.getByTestId("device-status-pill"),
+      );
+    },
+  );
+
   it("gives the brand text up below sm, so the top bar fits at phone width", () => {
     renderApp();
     const header = screen.getByTestId("device-status-pill").closest("header") as HTMLElement;

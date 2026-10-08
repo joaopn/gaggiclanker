@@ -6,6 +6,7 @@ import { DeviceWritesSwitch } from "@/components/DeviceWritesSwitch";
 import { FlushButton } from "@/components/FlushButton";
 import { LlmActivity } from "@/components/LlmActivity";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
+import { PullButton } from "@/components/PullButton";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -400,6 +401,8 @@ export function AppShell() {
 
           <span className="hidden font-medium text-sm sm:inline md:hidden">gaggiclanker</span>
           <div className="ml-auto flex items-center gap-2">
+            {/* First: a sync is the app's main action and belongs to no one page. */}
+            <PullButton />
             <DeviceStatusPill />
             <DeviceWritesSwitch />
             <FlushButton />

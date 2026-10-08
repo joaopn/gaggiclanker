@@ -24,7 +24,7 @@ npm run gen:api     # regenerate src/api/schema.d.ts from the backend's OpenAPI
 `npm run dev` expects the backend on `http://127.0.0.1:8042`
 (`uv run uvicorn gaggiclanker.main:app --reload --no-access-log` from the repo
 root). For a shots list with anything in it, run the fake machine and sync with
-it — the fake holds the fixture archive, so one press of "Sync with machine"
+it — the fake holds the fixture archive, so one press of Sync in the top bar
 fills the UI with real shots and real curves:
 
 ```bash
@@ -102,7 +102,8 @@ src/
     useVirtualRows.ts the list window with one open row, and "has this row been on screen yet"
   components/
     charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
-    shots/            table, filters, columns, sync button, drop zone, import results, row editor,
+    PullButton.tsx    the top bar's Sync (shots, profiles and notes; the toast of what it did)
+    shots/            table, filters, columns, drop zone, import results, row editor,
                       ShotRowPanel (an open row), ShotCurvesCard (the Curves box, shared with
                       the shot page), DecisionCell, DeviceNotesCard, ReviewBadge (the Review
                       column's badge), ShotWarningsCard / ShotPhasesCard / ShotWideCards (the

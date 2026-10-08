@@ -1,5 +1,4 @@
 import { SectionCard } from "@/components/layout/SectionCard";
-import { PullButton } from "@/components/shots/PullButton";
 import { Badge } from "@/components/ui/badge";
 import { useSyncStatus } from "@/hooks/useArchive";
 import { formatTime } from "@/lib/shots";
@@ -7,8 +6,8 @@ import { formatTime } from "@/lib/shots";
 /**
  * Sync with the machine: the shots, profiles and notes the archive reads from it.
  *
- * The same `PullButton` the shots page carries, so the two cannot disagree about
- * whether a sync can start or what the last one did, with the ledger under it:
+ * The sync itself starts from the Sync button in the top bar, which sits right above
+ * this card on every page, so the card has no button of its own: it is the ledger,
  * the last run of each pass and what the archive now holds.
  */
 export function PullSection() {
@@ -17,13 +16,8 @@ export function PullSection() {
   return (
     <SectionCard
       title="Sync with the machine"
-      description="Read the machine's index, profiles and notes, and archive anything new. Nothing comes off the machine unless somebody asks, here or on the Shots page."
-      actions={
-        <>
-          {sync.data?.running ? <Badge variant="secondary">running</Badge> : null}
-          <PullButton />
-        </>
-      }
+      description="Read the machine's index, profiles and notes, and archive anything new. Nothing comes off the machine unless somebody presses Sync in the top bar."
+      actions={sync.data?.running ? <Badge variant="secondary">running</Badge> : null}
     >
       {sync.data?.last_error ? (
         <p className="mb-3 rounded-md border border-status-bad/40 bg-status-bad/10 p-2 text-sm">

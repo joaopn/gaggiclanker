@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeviceStatusData, SyncStatusData } from "@/api/types";
 import { SyncPage } from "@/pages/SyncPage";
 import { boardView } from "@/test/boardFixtures";
-import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { renderWithQueryClient } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -179,14 +179,10 @@ describe("SyncPage", () => {
     expect(await screen.findByText(/503 during an OTA update/)).toBeInTheDocument();
   });
 
-  it("syncs from the machine with the shots page's own button", async () => {
-    const user = setupUser();
+  it("has no Sync button of its own and points at the top bar's", async () => {
     renderWithQueryClient(<SyncPage />);
-    await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
-
-    await user.click(screen.getByTestId("pull-button"));
-
-    await waitFor(() => expect(runSync).toHaveBeenCalledWith("all"));
+    expect(await screen.findByText(/presses Sync in the top bar/)).toBeInTheDocument();
+    expect(screen.queryByTestId("pull-button")).not.toBeInTheDocument();
   });
 
   it("says what is missing when no machine is configured", async () => {
