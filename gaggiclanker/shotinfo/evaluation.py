@@ -19,6 +19,7 @@ from gaggiclanker.domain.diagnostics import as_sample_dicts
 from gaggiclanker.domain.metric_language import Expression, Result, ShotData, evaluate
 from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.slog import SlogError, parse_slog
+from gaggiclanker.domain.unsampled import stored_unsampled
 from gaggiclanker.shotinfo.render import load_shots
 from gaggiclanker.signatures.checks import stored_shot_data
 
@@ -54,6 +55,7 @@ async def shot_data(db: Database, shot_id: int) -> ShotData | None:
         final_weight_g=final if final is not None and final > 0 else None,
         target_yield_g=facts.target_yield_g,
         dose_g=version.dose_g if version is not None else None,
+        unsampled=stored_unsampled(facts.metrics),
     )
 
 

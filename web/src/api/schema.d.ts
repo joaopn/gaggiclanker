@@ -2906,7 +2906,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
-        AbsentReason: "not_recorded" | "phase_not_reached" | "no_such_phase" | "no_target" | "empty_window" | "never_reached" | "no_phase_table";
+        AbsentReason: "not_recorded" | "phase_not_reached" | "ended_before_sampled" | "no_such_phase" | "no_target" | "empty_window" | "never_reached" | "no_phase_table";
         /** @enum {string} */
         ActionKind: "adopt" | "push" | "remove" | "leave" | "home_screen" | "report";
         /**

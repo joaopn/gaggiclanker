@@ -13,6 +13,10 @@ no signature a reader is told the fact and left to weigh it.
 * **under target** — it is below 90 % of it;
 * **skipped** — the shot stopped on a volumetric or pumped-water target before
   one or more of its profile's phases began;
+* **skipped, at the start** — a phase before the last one the log holds ended before the
+  machine logged its first sample (a fill that exits on a pressure target, on a group that was
+  still pressurised); it is a warning of its own, beside the one above, with the phase's
+  reason and the pressure at the first sample;
 * **fast flow** — the cup flow averaged over 1.0 s was above 3.0 g/s while the
   pressure stayed at 80 % of the shot's peak or more.
 
@@ -38,6 +42,7 @@ from gaggiclanker.domain.phase_metrics import (
     FAST_FLOW_PRESSURE_SHARE,
     FAST_FLOW_SCALE_FLOW_G_S,
 )
+from gaggiclanker.domain.unsampled import PRESSURE_TARGET, ended_before_sampled
 
 __all__ = [
     "FAULTS",
@@ -123,6 +128,10 @@ class ShotWarning:
     #: first skipped phase in ``phase`` and all of them here. Empty for the other warnings,
     #: which are about their one ``phase``.
     phases: tuple[str, ...] = ()
+    #: A ``skipped`` warning about a phase that ended before the first sample, as against one
+    #: about phases the shot stopped before. The fault word is the same; what it means is not,
+    #: so the review's signal and its excerpt search tell them apart.
+    ended_at_start: bool = False
 
     @property
     def badge(self) -> str:
@@ -170,6 +179,41 @@ def _phase_names(phases: Sequence[Mapping[str, Any]]) -> dict[int, str]:
         if isinstance(number, int) and not isinstance(number, bool):
             names.setdefault(number, str(phase.get("name") or "").strip() or f"phase {number}")
     return names
+
+
+def _ended_before_sampled(unsampled: Any) -> list[ShotWarning]:
+    """One ``skipped`` warning per phase that ended before the machine logged a sample of it."""
+    if not isinstance(unsampled, Sequence) or isinstance(unsampled, str):
+        return []
+    found: list[ShotWarning] = []
+    for entry in unsampled:
+        number = entry.get("phase_number") if isinstance(entry, Mapping) else None
+        if not isinstance(entry, Mapping) or not isinstance(number, int):
+            continue
+        name = str(entry.get("name") or "").strip() or f"phase {number}"
+        said = ended_before_sampled(entry)
+        pressure = _number(entry.get("pressure_end_bar"))
+        reason = int(entry.get("ended_by") or 0)
+        detail = said[0].upper() + said[1:]
+        if reason == PRESSURE_TARGET and pressure is not None:
+            # The incident: a group still pressurised from a flush or the last shot meets a
+            # low pressure exit before the pump has run, so the phase is over at once.
+            detail += f": pressure was already {pressure:.1f} bar."
+        else:
+            detail += "."
+        found.append(
+            ShotWarning(
+                phase=name,
+                fault="skipped",
+                severity="amber",
+                detail=detail,
+                phase_number=number,
+                at_s=_number(entry.get("at_s")) or 0.0,
+                phases=(name,),
+                ended_at_start=True,
+            )
+        )
+    return found
 
 
 def shot_warnings(
@@ -255,6 +299,8 @@ def shot_warnings(
                     phases=tuple(name or f"phase {number}" for number, name in left),
                 )
             )
+
+    found.extend(_ended_before_sampled(facts.get("phases_unsampled")))
 
     if scale_connected and final_weight_g is not None and final_weight_g > 0:
         if target_yield_g is not None and target_yield_g > 0:

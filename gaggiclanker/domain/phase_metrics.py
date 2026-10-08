@@ -34,6 +34,11 @@ from typing import Any, NamedTuple, TypedDict
 from gaggiclanker.domain.cup_flow import cup_first_drip_index, cup_flow
 from gaggiclanker.domain.metric_language import Expression, ShotData, evaluate_in_phase
 from gaggiclanker.domain.models import PhaseTransition
+from gaggiclanker.domain.unsampled import (
+    EXIT_REASONS_FROM_VERSION,
+    UnsampledPhase,
+    phases_unsampled,
+)
 
 __all__ = [
     "EXIT_REASONS_FROM_VERSION",
@@ -48,11 +53,6 @@ __all__ = [
     "phases_not_reached",
     "stored_expressions",
 ]
-
-#: The first log version whose transition table says why each phase ended
-#: (``transition_reason``, which was reserved padding in version 5) and whose
-#: header carries the reason the whole shot ended.
-EXIT_REASONS_FROM_VERSION = 6
 
 #: The "fast flow" window, as the maintainer defined it: the cup flow (``vf``, read at zero
 #: when below it), averaged over any window of consecutive samples that spans 1.0 s, is above
@@ -131,6 +131,10 @@ class ShotMetrics(TypedDict):
     profile_phases: list[str] | None
     #: The profile's phases the shot never began, in order.
     phases_not_reached: list[NotReached]
+    #: The profile's phases that ended before the machine logged a sample of them, in order:
+    #: why and when, with the pressure at the first sample after. Not rows of the phase list,
+    #: which every reader divides by a sample count.
+    phases_unsampled: list[UnsampledPhase]
     #: The first window of fast cup flow at high pressure, or ``None``.
     fast_flow: FastFlow | None
 
@@ -155,19 +159,23 @@ def profile_phase_names(profile: Mapping[str, Any] | None) -> list[str] | None:
 def last_phase_reached(samples: Sequence[Mapping[str, float]]) -> int | None:
     """The highest phase number any sample was recorded in, or ``None`` with none recorded.
 
-    The one definition of "a phase began": the machine entered it when a sample carries its
-    number or a later one. The universal ``skipped`` warning and a signature's ``reached``
-    check both read it, so a transition logged with no sample after it is not held on one
-    and skipped on the other.
+    Phases after it never began (:func:`phases_not_reached`). A phase before it that no
+    sample carries ended before it was sampled (``domain.unsampled.phases_unsampled``).
     """
     reached = [int(s["phase"]) for s in samples if "phase" in s]
     return max(reached) if reached else None
 
 
 def phase_began(number: int, samples: Sequence[Mapping[str, float]]) -> bool:
-    """Whether the phase with this number (its index in the profile) began on this shot."""
-    last = last_phase_reached(samples)
-    return last is not None and number <= last
+    """Whether the phase with this number (its index in the profile) began on this shot.
+
+    The one definition of "a phase began", read by the ``skipped`` warnings and a signature's
+    ``reached`` check: the machine logged a sample in it. A phase after the last one sampled
+    never began, and one before it that no sample carries ended before the first sample of it
+    (it did run, for less than one sample interval, but "begins" is a statement about the
+    shot's record: a fill the log cannot show is not a fill the shot had).
+    """
+    return any("phase" in s and int(s["phase"]) == number for s in samples)
 
 
 def phases_not_reached(
@@ -175,8 +183,10 @@ def phases_not_reached(
 ) -> list[NotReached]:
     """The profile's phases after the last one any sample was recorded in.
 
-    "Reached" is :func:`phase_began`: read from the samples' own phase numbers, the highest
-    one being the last phase the machine entered, and every profile phase after it never began.
+    Read from the samples' own phase numbers: the highest one is the last phase the machine
+    entered, and every profile phase after it never began. A phase *before* it that no sample
+    carries is a different fact (it ended before it was sampled, see
+    :func:`~gaggiclanker.domain.unsampled.phases_unsampled`), and is not listed here.
     Nothing is said without a profile, or about a profile with fewer phases than
     the shot ran (that profile is not the one the shot ran).
     """
@@ -289,12 +299,18 @@ def _store(
 def _ended_by(transitions: Sequence[PhaseTransition], index: int, final_exit_reason: int) -> int:
     """Why the phase at ``index`` of the transition table ended.
 
-    A row's reason is why the *previous* phase ended, so a phase's own end is
-    the next row's reason, and the last phase's is the header's.
+    A row's reason is why the phase *before it in the profile* ended, and the firmware keeps
+    only the latest exit reason: when the machine jumps over a phase (it ended before it was
+    sampled) the next row holds the reason of the phase it jumped over, not of the one logged
+    before it. So a phase's own end is the reason on the row whose phase is its number + 1,
+    the last phase's is the header's, and a logged phase whose successor has no row of its own
+    is Unknown.
     """
-    if index + 1 < len(transitions):
-        return transitions[index + 1].transition_reason
-    return final_exit_reason
+    if index + 1 >= len(transitions):
+        return final_exit_reason
+    wanted = transitions[index].phase_number + 1
+    row = next((t for t in transitions[index + 1 :] if t.phase_number == wanted), None)
+    return row.transition_reason if row is not None else 0
 
 
 def compute_phase_metrics(
@@ -316,11 +332,15 @@ def compute_phase_metrics(
     numbers: the shot is one phase of the engine's making, and ``per_phase`` says so.
     """
     names = profile_phase_names(profile)
+    unsampled = phases_unsampled(
+        names, samples, transitions, version=version, has_pressure=has_pressure
+    )
     shot = ShotMetrics(
         per_phase=bool(transitions),
         exit_reasons=version >= EXIT_REASONS_FROM_VERSION,
         profile_phases=names,
         phases_not_reached=phases_not_reached(names, samples),
+        phases_unsampled=unsampled,
         fast_flow=find_fast_flow(
             samples, has_pressure=has_pressure, scale_connected=scale_connected
         ),
@@ -335,6 +355,7 @@ def compute_phase_metrics(
         has_pressure=has_pressure,
         scale_connected=scale_connected,
         final_weight_g=final_weight_g,
+        unsampled=unsampled,
     )
     # No puck flow without a pressure sensor: its zeros are no drip, and no moment of one.
     drip = next((i for i, s in enumerate(samples) if has_pressure and s.get("pf", 0.0) > 0.0), None)

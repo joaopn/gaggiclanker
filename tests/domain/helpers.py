@@ -21,6 +21,9 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 SLOG_FIXTURES = FIXTURES / "slog"
 EXPORT_FIXTURES = FIXTURES / "exports"
 PROFILE_FIXTURES = FIXTURES / "profiles"
+#: Real shots with a shape the three vendored ones lack, and the profiles they were pulled on.
+#: Their own directory, so the tests that cover every vendored shot against a golden do not.
+EDGE_FIXTURES = FIXTURES / "slog_edge"
 CONSTRUCTED_PROFILES = FIXTURES / "constructed_profiles"
 
 
@@ -177,3 +180,38 @@ def standard_board(slog: Slog) -> Slog:
         for s in slog.samples
     ]
     return dataclasses.replace(slog, samples=samples)
+
+
+def fill_ended_shot() -> tuple[Slog, bytes, dict[str, Any]]:
+    """The real shot whose fill ended before its first sample, its bytes and its profile.
+
+    A spring-lever profile whose Fill exits on 2.8 bar met a group still at 4.8 bar: the log
+    opens in the Ramp, with one transition row ``(sample 0, phase 1, reason: pressure target)``.
+    """
+    from gaggiclanker.domain.slog import parse_slog
+
+    raw = (EDGE_FIXTURES / "shot_225_fill_ended_at_start.slog").read_bytes()
+    profile: dict[str, Any] = json.loads((EDGE_FIXTURES / "alma_lever_16_32.json").read_text())
+    return parse_slog(raw, "000225"), raw, profile
+
+
+def with_phase_table(slog: Slog, rows: list[tuple[int, int, int, str]]) -> Slog:
+    """A real shot with its phase table rewritten: ``(first sample, phase number, reason, name)``.
+
+    The samples take the phase of the last row that has started by their index, as the machine
+    writes them, so the table and the samples agree. The rest of the shot is the real one.
+    """
+    transitions = [
+        PhaseTransition(
+            sample_index=start, phase_number=number, transition_reason=reason, phase_name=name
+        )
+        for start, number, reason, name in rows
+    ]
+    samples = []
+    for index, original in enumerate(slog.samples):
+        row = max((t for t in transitions if t.sample_index <= index), key=lambda t: t.sample_index)
+        samples.append(
+            original.model_copy(update={"phase": row.phase_number, "phase_name": row.phase_name})
+        )
+    header = slog.header.model_copy(update={"transitions": transitions})
+    return dataclasses.replace(slog, header=header, samples=samples)

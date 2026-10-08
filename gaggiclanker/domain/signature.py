@@ -61,6 +61,7 @@ from gaggiclanker.domain.metric_language import (
 )
 from gaggiclanker.domain.phase_metrics import phase_began
 from gaggiclanker.domain.phase_names import clashing_names, phase_key, same_phase
+from gaggiclanker.domain.unsampled import ended_clause
 from gaggiclanker.domain.warnings import FAULTS, SHOT, Fault, ShotWarning
 
 __all__ = [
@@ -666,7 +667,10 @@ def _warning_check(warning: ShotWarning, *, expected_by: ExpectationLike | None)
 
 
 def _timing(
-    phase: str | None, phases: Sequence[Mapping[str, Any]], duration_s: float
+    phase: str | None,
+    phases: Sequence[Mapping[str, Any]],
+    duration_s: float,
+    unsampled: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[str, int | None, float, bool]:
     """(the phase's name for the list, its number, where it falls in the shot, shot-wide)."""
     if phase is None:
@@ -682,6 +686,17 @@ def _timing(
                 float(start)
                 if isinstance(start, int | float) and not isinstance(start, bool)
                 else 0.0,
+                False,
+            )
+    # A phase that ended before its first sample counts where it ended, as its warning does.
+    for entry in unsampled:
+        if phase_key(str(entry.get("name") or "")) == wanted:
+            number = entry.get("phase_number")
+            at = entry.get("at_s")
+            return (
+                phase,
+                number if isinstance(number, int) and not isinstance(number, bool) else None,
+                float(at) if isinstance(at, int | float) and not isinstance(at, bool) else 0.0,
                 False,
             )
     # A phase the shot never began counts at the moment the shot stopped, as `skipped` does.
@@ -735,6 +750,7 @@ def _result_check(
     timing: tuple[str, int | None, float, bool],
     held: bool | None,
     fault: str | None,
+    never_began: str = "",
 ) -> Check:
     phase, number, at_s, shot_wide = timing
     unit = result.unit if result is not None else ""
@@ -751,7 +767,9 @@ def _result_check(
         if exp.kind == "reached":
             # A phase either began or it did not: there is no number to serve.
             value = None
-            detail = f"{sentence}; " + ("it did." if held else "it never began.")
+            detail = f"{sentence}; " + (
+                "it did." if held else f"{never_began}." if never_began else "it never began."
+            )
         else:
             assert result is not None and result.value is not None
             value = result.value
@@ -826,7 +844,9 @@ def build_checks(
 
     for exp in expectations:
         if exp.kind == "free_text":
-            phase, number, at_s, shot_wide = _timing(exp.phase, phases, duration_s)
+            phase, number, at_s, shot_wide = _timing(
+                exp.phase, phases, duration_s, data.unsampled if data else ()
+            )
             checks.append(
                 Check(
                     kind="free_text",
@@ -849,7 +869,7 @@ def build_checks(
                 )
             )
             continue
-        timing = _timing(exp.phase, phases, duration_s)
+        timing = _timing(exp.phase, phases, duration_s, data.unsampled if data else ())
         if exp.kind == "expects_warning":
             raised = [
                 w
@@ -896,9 +916,20 @@ def build_checks(
             else:
                 reason = None
             held: bool | None = None
+            ended = ""
             if data is not None and reason is None:
                 number = _profile_number(data, exp.phase or "")
                 held = number is not None and phase_began(number, data.samples)
+                # A phase the log cannot show because it was over before its first sample:
+                # the failure says so rather than that it never began.
+                ended = next(
+                    (
+                        f"it {ended_clause(entry)}"
+                        for entry in data.unsampled
+                        if entry.get("phase_number") == number
+                    ),
+                    "",
+                )
             check = _result_check(
                 exp,
                 None,
@@ -908,6 +939,7 @@ def build_checks(
                 timing=timing,
                 held=held,
                 fault="skipped",
+                never_began=ended,
             )
             checks.append(check)
             if check.status == "failed" and exp.tier != "context":

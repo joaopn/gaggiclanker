@@ -96,7 +96,11 @@ log = structlog.get_logger(__name__)
 #: when the shot's profile is known, then the name, then the curve, and the curve rule counts the
 #: profile's phase number and not the logged order: a ramp that opens a shot whose fill ended
 #: before the first sample is a brew phase, not a pre-infusion.
-DERIVATION_VERSION = 11
+#: 12: a phase of the profile that ended before the machine logged its first sample is a fact
+#: of the shot (``diagnostics_json["metrics"]["phases_unsampled"]``: its number and name, why it
+#: ended, when, and the pressure at the first sample after it), and the shot's phase-began rule
+#: reads the samples that carry a phase's number.
+DERIVATION_VERSION = 12
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these

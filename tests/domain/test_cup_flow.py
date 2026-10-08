@@ -173,7 +173,7 @@ def test_the_puck_flow_numbers_keep_their_meaning(slog: Slog, name: str) -> None
 
 
 def test_the_derivation_version_moved_for_the_cup_flow_fields() -> None:
-    assert DERIVATION_VERSION == 11
+    assert DERIVATION_VERSION == 12
 
 
 # One rule for "has a scale": any brew-phase weight above zero, not the connection flag and

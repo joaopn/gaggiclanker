@@ -295,3 +295,64 @@ def test_a_fast_window_in_a_log_with_no_phase_table_is_about_the_shot() -> None:
     assert found.phase == "Shot"
     assert found.phase_number is None
     assert found.at_s == WINDOW["start_s"]
+
+
+# ── a phase that ended before the machine logged a sample of it ──────────────
+
+UNSAMPLED_FILL = {
+    "phase_number": 0,
+    "name": "Fill",
+    "ended_by": 2,
+    "at_s": 0.0,
+    "pressure_end_bar": 4.8,
+}
+
+
+def test_a_phase_that_ended_before_its_first_sample_is_a_skipped_warning_at_its_time() -> None:
+    [warning] = call(metrics={"phases_unsampled": [UNSAMPLED_FILL]})
+
+    assert (warning.phase, warning.fault, warning.severity, warning.at_s) == (
+        "Fill",
+        "skipped",
+        "amber",
+        0.0,
+    )
+    assert warning.phase_number == 0 and warning.ended_at_start
+    assert warning.badge == "Fill: skipped"
+    assert warning.detail == (
+        "The Fill ended on its pressure target before the first sample: pressure was already "
+        "4.8 bar."
+    )
+
+
+def test_the_pressure_is_said_only_for_a_pressure_target() -> None:
+    [duration] = call(metrics={"phases_unsampled": [{**UNSAMPLED_FILL, "ended_by": 5}]})
+    [unknown] = call(metrics={"phases_unsampled": [{**UNSAMPLED_FILL, "ended_by": 0}]})
+    [no_sensor] = call(
+        metrics={
+            "phases_unsampled": [
+                {k: v for k, v in UNSAMPLED_FILL.items() if k != "pressure_end_bar"}
+            ]
+        }
+    )
+
+    assert duration.detail == "The Fill ended on its duration before the first sample."
+    assert unknown.detail == (
+        "The Fill ended before the first sample; the machine did not log why."
+    )
+    assert no_sensor.detail == "The Fill ended on its pressure target before the first sample."
+
+
+def test_it_is_independent_of_how_the_shot_ended_and_of_the_stop_early_warning() -> None:
+    # The same shot stopped on its weight before a later phase began: both are told, apart.
+    both = call(
+        final_exit_reason=1,
+        metrics={
+            "phases_unsampled": [UNSAMPLED_FILL],
+            "phases_not_reached": [{"phase_number": 3, "name": "decline"}],
+        },
+    )
+
+    assert [(w.phase, w.ended_at_start) for w in both] == [("Fill", True), ("decline", False)]
+    # And without the stop, only the first is there.
+    assert [w.phase for w in call(metrics={"phases_unsampled": [UNSAMPLED_FILL]})] == ["Fill"]

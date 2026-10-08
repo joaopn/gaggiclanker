@@ -701,6 +701,7 @@ def test_every_channel_and_op_the_spec_names_exists() -> None:
     assert set(ABSENT_REASONS) == {
         "not_recorded",
         "phase_not_reached",
+        "ended_before_sampled",
         "no_such_phase",
         "no_target",
         "empty_window",

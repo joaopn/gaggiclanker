@@ -30,9 +30,10 @@ from gaggiclanker.domain.metric_language import (
 )
 from gaggiclanker.domain.phase_metrics import phase_began, profile_phase_names
 from gaggiclanker.domain.slog import Slog, parse_slog
+from gaggiclanker.domain.unsampled import phases_unsampled
 from gaggiclanker.signatures.checks import CheckSubject, stored_shot_data
 from gaggiclanker.sync.derive import derive_shot
-from tests.domain.helpers import SLOG_FIXTURES
+from tests.domain.helpers import SLOG_FIXTURES, fill_ended_shot
 from tests.lever_shot import LEVER_PROFILE, lever_shot, without_pressure, without_scale
 from tests.signatures.helpers import (
     LONG_NAME_SETS,
@@ -48,6 +49,8 @@ Case = tuple[str, Slog, dict[str, Any] | None]
 def _cases() -> Iterator[Case]:
     for path in sorted(SLOG_FIXTURES.glob("*.slog")):
         yield path.stem, parse_slog(path.read_bytes()), None
+    fill_slog, _, fill_profile = fill_ended_shot()
+    yield "shot_225-with-its-profile", fill_slog, fill_profile
     yield "lever", lever_shot(), LEVER_PROFILE
     yield "lever-no-scale", without_scale(lever_shot()), LEVER_PROFILE
     yield "lever-no-pressure", without_pressure(lever_shot()), LEVER_PROFILE
@@ -114,6 +117,7 @@ async def test_every_expression_reads_the_same_on_stored_data_as_on_the_parsed_l
         dose_g=18.0,
         has_pressure=has_pressure,
         per_phase=metrics.get("per_phase") is not False,
+        metrics=metrics,
     )
     names_in_profile = profile_phase_names(profile)
     stored = stored_shot_data(
@@ -132,6 +136,13 @@ async def test_every_expression_reads_the_same_on_stored_data_as_on_the_parsed_l
         final_weight_g=final if final and final > 0 else None,
         target_yield_g=36.0,
         dose_g=18.0,
+        unsampled=phases_unsampled(
+            names_in_profile,
+            as_sample_dicts(slog),
+            slog.transitions,
+            version=slog.version,
+            has_pressure=has_pressure,
+        ),
     )
 
     # The samples are the same numbers, field for field, bar `si` (not read by the language).
@@ -141,6 +152,7 @@ async def test_every_expression_reads_the_same_on_stored_data_as_on_the_parsed_l
     ]
     for number in range(8):
         assert phase_began(number, stored.samples) == phase_began(number, parsed.samples)
+    assert [dict(p) for p in stored.unsampled] == [dict(p) for p in parsed.unsampled]
 
     names = [p.name for p in parsed.phases] or [str(n) for n in (names_in_profile or [])]
     checked = 0

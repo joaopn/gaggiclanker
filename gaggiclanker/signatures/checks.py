@@ -41,6 +41,7 @@ from gaggiclanker.domain.metric_language import Compare, ShotData
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.signature import ShotChecks, SignatureState, build_checks
+from gaggiclanker.domain.unsampled import stored_unsampled
 from gaggiclanker.domain.warnings import ShotWarning
 
 __all__ = [
@@ -146,6 +147,7 @@ def stored_shot_data(
         final_weight_g=final if final is not None and final > 0 else None,
         target_yield_g=subject.target_yield_g,
         dose_g=subject.dose_g,
+        unsampled=stored_unsampled(subject.metrics),
     )
 
 

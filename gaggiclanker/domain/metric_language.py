@@ -42,6 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from gaggiclanker.domain.cup_flow import cup_flow
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_names import phase_key, same_phase
+from gaggiclanker.domain.unsampled import ended_before_sampled
 
 __all__ = [
     "ABSENT_REASONS",
@@ -98,6 +99,7 @@ type Kind = Literal["measured", "estimated", "commanded"]
 type AbsentReason = Literal[
     "not_recorded",
     "phase_not_reached",
+    "ended_before_sampled",
     "no_such_phase",
     "no_target",
     "empty_window",
@@ -137,6 +139,7 @@ OPS: tuple[str, ...] = (
 ABSENT_REASONS: tuple[str, ...] = (
     "not_recorded",
     "phase_not_reached",
+    "ended_before_sampled",
     "no_such_phase",
     "no_target",
     "empty_window",
@@ -472,6 +475,9 @@ class ShotData:
     #: What ``relative_to`` divides by, from the shot's filing. ``None`` when not filed.
     target_yield_g: float | None = None
     dose_g: float | None = None
+    #: The profile's phases that ended before the first sample of them was logged
+    #: (:mod:`gaggiclanker.domain.unsampled`), as the derivation stores them.
+    unsampled: Sequence[Mapping[str, Any]] = ()
     _water: list[float | None] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -489,6 +495,7 @@ class ShotData:
         final_weight_g: float | None = None,
         target_yield_g: float | None = None,
         dose_g: float | None = None,
+        unsampled: Sequence[Mapping[str, Any]] = (),
     ) -> ShotData:
         count = len(samples)
         spans: list[PhaseSpan] = []
@@ -512,6 +519,7 @@ class ShotData:
             final_weight_g=final_weight_g,
             target_yield_g=target_yield_g,
             dose_g=dose_g,
+            unsampled=unsampled,
         )
 
 
@@ -557,6 +565,9 @@ def _find_phase(data: ShotData, name: str | None, number: int | None) -> int:
         for position, span in enumerate(data.phases):
             if span.number == number:
                 return position
+        for entry in data.unsampled:
+            if entry.get("phase_number") == number:
+                raise _Absent("ended_before_sampled", ended_before_sampled(entry))
         profile = data.profile_phases
         if profile is not None and 0 <= number < len(profile):
             raise _Absent(
@@ -569,6 +580,9 @@ def _find_phase(data: ShotData, name: str | None, number: int | None) -> int:
     for position, span in enumerate(data.phases):
         if same_phase(span.name, name):
             return position
+    for entry in data.unsampled:
+        if same_phase(str(entry.get("name") or ""), name):
+            raise _Absent("ended_before_sampled", ended_before_sampled(entry))
     if data.profile_phases is not None and any(same_phase(n, name) for n in data.profile_phases):
         raise _Absent(
             "phase_not_reached", f"the profile has a phase {name!r} the shot did not reach"
