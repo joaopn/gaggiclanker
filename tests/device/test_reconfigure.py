@@ -221,7 +221,7 @@ async def test_services_act_on_the_new_client_after_a_swap(
     assert await new.wait_connected(5.0)
     await wait_for(lambda: new.identity is not None)
 
-    # The status the Sync page reads is the new machine's own identity.
+    # The status the Device page reads is the new machine's own identity.
     status = (await client.get("/api/device/status")).json()["data"]
     assert status["identity"]["spiffsFree"] == 777_000
     # And a pull's read goes to B's HTTP server.

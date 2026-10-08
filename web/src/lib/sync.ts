@@ -104,7 +104,7 @@ function writesPhrase(run: SyncRunRow): string {
     phrases.push(`wrote ${total} (${parts.join(", ")})${failed > 0 ? `, ${failed} failed` : ""}`);
   else if (failed > 0) {
     // "No writes needed" would be wrong: something was needed and did not happen.
-    phrases.push(`nothing written, ${failed} failed \u2014 the Sync page has the details`);
+    phrases.push(`nothing written, ${failed} failed \u2014 the Device page has the details`);
   } else if (board.adopted.length > 0) phrases.push("no writes (took them into the profile list)");
   else if (reused === 0) phrases.push("no writes needed");
   if (reused > 0) phrases.push(`${reused} ${reused === 1 ? "was" : "were"} already on the machine`);
@@ -118,7 +118,7 @@ function writesPhrase(run: SyncRunRow): string {
  *
  * Both numbers come from the run row the server recorded, never from the page's own state:
  * the profiles read from `summary.profiles_read`, the writes from the board's summary of the
- * same run, so what the toast says is what the Sync page shows.
+ * same run, so what the toast says is what the Device page shows.
  */
 export function profilesSentence(run: SyncRunRow | undefined): string | null {
   if (!run?.finished_at) return null;
@@ -165,9 +165,9 @@ export function pullSummary(run: SyncRunRow, profileRun?: SyncRunRow): string {
   // hit three it could not fetch ends `error`, sometimes with no message at
   // all — the per-shot failures are counted, not raised — and "The sync
   // failed" would be telling somebody nothing happened when most of it did.
-  const detail = endSentence(run.error ?? "The Sync page has the details.");
+  const detail = endSentence(run.error ?? "The Device page has the details.");
   if (counts === null) {
-    return `${endSentence(run.error ?? "The sync failed. The Sync page has the details.")}${tail}`;
+    return `${endSentence(run.error ?? "The sync failed. The Device page has the details.")}${tail}`;
   }
   const failed = run.errors > 0 ? `${run.errors} failed` : "some failed";
   return `${counts}, ${failed}. ${detail}${tail}`;

@@ -70,7 +70,7 @@ export function DeviceWritesSwitch() {
     onError: () => setPanel("error"),
     // Every reader of the switch, success or not: the settings pages read the
     // registry, the profile list and its preview carry `writes_enabled` and what the next
-    // sync would do, the Sync page and the write audit read the rest, and after a
+    // sync would do, the Device page and the write audit read the rest, and after a
     // failure the server is the authority on what the switch is.
     onSettled: () => {
       void invalidateSettings(queryClient);

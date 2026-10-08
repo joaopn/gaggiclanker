@@ -1,8 +1,9 @@
 import { screen } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeviceStatusData } from "@/api/types";
-import { DevicePage } from "@/pages/DevicePage";
+import type { DeviceStatusData, SyncStatusData } from "@/api/types";
+import { DevicePage, SyncRedirect } from "@/pages/DevicePage";
+import { boardView } from "@/test/boardFixtures";
 import { renderWithQueryClient } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -10,16 +11,18 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getDeviceStatus, getSyncStatus, getDeviceWrites } = vi.hoisted(() => ({
+const { getDeviceStatus, getSyncStatus, getDeviceWrites, getProfileBoard } = vi.hoisted(() => ({
   getDeviceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   getDeviceWrites: vi.fn(),
+  getProfileBoard: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getDeviceStatus,
   getSyncStatus,
   getDeviceWrites,
+  getProfileBoard,
 }));
 
 function deviceStatus(overrides: Partial<DeviceStatusData> = {}): DeviceStatusData {
@@ -52,8 +55,16 @@ function Landed() {
 function renderAt(path: string) {
   return renderWithQueryClient(
     <Routes>
-      <Route path="/device" element={<DevicePage />} />
-      <Route path="/sync" element={<Landed />} />
+      <Route
+        path="/device"
+        element={
+          <>
+            <Landed />
+            <DevicePage />
+          </>
+        }
+      />
+      <Route path="/sync" element={<SyncRedirect />} />
     </Routes>,
     { initialEntries: [path] },
   );
@@ -62,6 +73,17 @@ function renderAt(path: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   getDeviceStatus.mockResolvedValue(deviceStatus());
+  getSyncStatus.mockResolvedValue({
+    configured: true,
+    connected: true,
+    running: false,
+    last_runs: {},
+    last_error: null,
+    counts: null,
+    recent_events: [],
+  } as unknown as SyncStatusData);
+  getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
+  getProfileBoard.mockResolvedValue(boardView({ writes_enabled: false }));
 });
 
 describe("DevicePage", () => {
@@ -74,21 +96,16 @@ describe("DevicePage", () => {
     expect(screen.getByTestId("device-connection")).toHaveTextContent("connected");
   });
 
-  it("holds no sync or write-audit card: those are on the Sync page", async () => {
-    renderAt("/device");
+  it("holds the sync cards under the facts, and no link to a Sync page", async () => {
+    const { container } = renderAt("/device");
     await screen.findByRole("heading", { name: "GaggiMate Pro" });
 
-    expect(screen.queryByTestId("sync-runs")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("device-writes-empty")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Sync now" })).not.toBeInTheDocument();
-    // Nothing on this page asks for any of it either.
-    expect(getSyncStatus).not.toHaveBeenCalled();
-    expect(getDeviceWrites).not.toHaveBeenCalled();
-
-    expect(screen.getByRole("link", { name: /Sync with the machine/ })).toHaveAttribute(
-      "href",
-      "/sync",
-    );
+    // The Sync button is the top bar's; the cards here are what syncs did.
+    for (const anchor of ["sync", "board", "writes"]) {
+      expect(container.querySelector(`#${anchor}`)).not.toBeNull();
+    }
+    expect(screen.queryByRole("link", { name: /Sync/ })).not.toBeInTheDocument();
+    expect(container.querySelector('a[href="/sync"]')).toBeNull();
   });
 
   it("has no telemetry card, because the machine's own UI has one", async () => {
@@ -100,13 +117,13 @@ describe("DevicePage", () => {
   });
 
   it.each([
-    ["#storage", "/sync#sync"],
-    ["#cleanup", "/sync#sync"],
-    ["#notes", "/sync#sync"],
-    ["#sync", "/sync#sync"],
-    ["#writes", "/sync#writes"],
-  ])("sends an old %s anchor to the section that moved", async (anchor, target) => {
-    renderAt(`/device${anchor}`);
+    ["/sync", "/device"],
+    ["/sync#sync", "/device#sync"],
+    ["/sync#pull", "/device#pull"],
+    ["/sync#board", "/device#board"],
+    ["/sync#writes", "/device#writes"],
+  ])("sends the old Sync page's %s here", async (from, target) => {
+    renderAt(from);
     expect(await screen.findByTestId("landed")).toHaveTextContent(target);
   });
 

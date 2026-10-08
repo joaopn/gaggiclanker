@@ -10,7 +10,7 @@ app connected to the fake machine and every old switch still on in the database:
 * the routes that started the two writes are gone;
 * a settings row or an environment variable from before the removal resurrects
   nothing;
-* audit rows of the two removed kinds are still history the Sync page can list.
+* audit rows of the two removed kinds are still history the Device page can list.
 """
 
 from __future__ import annotations

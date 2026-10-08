@@ -63,7 +63,7 @@ describe("AppShell", () => {
     );
   });
 
-  it.each(["/shots", "/chat", "/profiles", "/sync", "/settings/system"])(
+  it.each(["/shots", "/chat", "/profiles", "/device", "/settings/system"])(
     "puts Sync first in the top bar, before the machine status, on %s",
     (path) => {
       renderApp(path);
@@ -106,41 +106,47 @@ describe("AppShell", () => {
     // of their own under it.
     const rows = Array.from(nav.querySelectorAll(":scope > a, :scope > div > button"));
     const labels = rows.map((row) => row.querySelector("span")?.textContent?.trim());
-    expect(labels).toEqual(["Shots", "Chat", "Brew setup", "Machine", "Settings"]);
+    expect(labels).toEqual(["Chat", "Shots", "Profiles", "Brew setup", "Settings"]);
   });
 
   describe("the groups", () => {
-    function groupList(name: string) {
+    function groupList(name: string | RegExp) {
       const button = within(screen.getByTestId("sidebar")).getByRole("button", { name });
       const list = document.getElementById(String(button.getAttribute("aria-controls")));
       return { button, list: list as HTMLElement };
     }
 
-    it("puts the brew setup and the machine's pages under their groups", async () => {
+    it("puts the brew setup's pages under their group", async () => {
       const user = setupUser();
       renderApp("/shots");
 
       const brew = groupList("Brew setup");
-      const machine = groupList("Machine");
       expect(brew.button).toHaveAttribute("aria-expanded", "false");
-      expect(machine.button).toHaveAttribute("aria-expanded", "false");
-
       await user.click(brew.button);
-      await user.click(machine.button);
 
-      const hrefs = (list: HTMLElement) =>
-        within(list)
-          .getAllByRole("link")
-          .map((link) => link.getAttribute("href"));
-      expect(hrefs(brew.list)).toEqual(["/sets", "/beans", "/hardware", "/taste-wheel"]);
-      // The device page has a row now, beside the other pages about the machine.
-      expect(hrefs(machine.list)).toEqual(["/profiles", "/sync", "/device"]);
+      const hrefs = within(brew.list)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(hrefs).toEqual(["/sets", "/beans", "/hardware", "/taste-wheel"]);
+    });
+
+    it("has no row for the device or the sync: the top bar holds both", () => {
+      renderApp("/shots");
+      const sidebar = screen.getByTestId("sidebar");
+      const hrefs = within(sidebar)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(hrefs).not.toContain("/device");
+      expect(hrefs).not.toContain("/sync");
+      expect(within(sidebar).queryByRole("button", { name: "Machine" })).not.toBeInTheDocument();
+      // The status pill is the way to the device page from every page.
+      expect(screen.getByTestId("device-status-pill")).toHaveAttribute("href", "/device");
     });
 
     it("opens the group holding the current page, and only that one", () => {
       renderApp("/hardware");
       expect(groupList("Brew setup").button).toHaveAttribute("aria-expanded", "true");
-      expect(groupList("Machine").button).toHaveAttribute("aria-expanded", "false");
+      expect(groupList(/^Settings/).button).toHaveAttribute("aria-expanded", "false");
       const current = within(screen.getByTestId("sidebar")).getAllByRole("link", {
         current: "page",
       });
@@ -159,18 +165,18 @@ describe("AppShell", () => {
     it("remembers a group opened by hand, and forgets it when closed", async () => {
       const user = setupUser();
       const { unmount } = renderApp("/shots");
-      await user.click(groupList("Machine").button);
+      await user.click(groupList(/^Settings/).button);
       expect(JSON.parse(window.localStorage.getItem("sidebar.groups.v1") ?? "[]")).toEqual([
-        "machine",
+        "settings",
       ]);
       unmount();
 
       renderApp("/shots");
-      const machine = groupList("Machine").button;
-      expect(machine).toHaveAttribute("aria-expanded", "true");
+      const settings = groupList(/^Settings/).button;
+      expect(settings).toHaveAttribute("aria-expanded", "true");
       expect(groupList("Brew setup").button).toHaveAttribute("aria-expanded", "false");
 
-      await user.click(machine);
+      await user.click(settings);
       expect(JSON.parse(window.localStorage.getItem("sidebar.groups.v1") ?? "[]")).toEqual([]);
     });
 
@@ -182,7 +188,7 @@ describe("AppShell", () => {
     it("renders with closed groups when the stored state is unreadable", () => {
       window.localStorage.setItem("sidebar.groups.v1", "{not json");
       renderApp("/shots");
-      expect(groupList("Machine").button).toHaveAttribute("aria-expanded", "false");
+      expect(groupList(/^Settings/).button).toHaveAttribute("aria-expanded", "false");
     });
 
     it("lists a grouped page's chord in the shortcut sheet", async () => {
@@ -195,10 +201,11 @@ describe("AppShell", () => {
     });
   });
 
-  // The three retired chords. `g i`, `g d` and `g r` used to be Import, Device
-  // and Drafts; the pages they led to are a drop zone, a pill and a section
-  // now, so the letters must be free rather than quietly landing somewhere.
-  it.each(["gi", "gd", "gr"])("does nothing on the retired chord %s", async (chord) => {
+  // The retired chords. `g i`, `g d`, `g r` and `g y` used to be Import, Device,
+  // Drafts and Sync; the pages they led to are a drop zone, a pill, a section
+  // and the device page's cards now, so the letters must be free rather than
+  // quietly landing somewhere.
+  it.each(["gi", "gd", "gr", "gy"])("does nothing on the retired chord %s", async (chord) => {
     const user = setupUser();
     renderApp("/beans");
     await user.keyboard(chord);

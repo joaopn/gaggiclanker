@@ -40,9 +40,9 @@ export type SettingsPageInfo = {
  * is told about each shot); then what most people never change (the safety
  * bounds) or do once (a backup, an import).
  *
- * "Machine access" rather than "Machine": the sidebar has a Machine group of
- * its own, and the page is about how gaggiclanker reaches the machine and what
- * it may do there. The id, and so the URL, stays `machine`.
+ * "Machine access" rather than "Machine": the page is about how gaggiclanker
+ * reaches the machine and what it may do there, not about the machine itself
+ * (that is the Device page). The id, and so the URL, stays `machine`.
  */
 export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
   {

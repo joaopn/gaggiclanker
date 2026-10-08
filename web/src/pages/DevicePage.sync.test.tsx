@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeviceStatusData, SyncStatusData } from "@/api/types";
-import { SyncPage } from "@/pages/SyncPage";
+import { DevicePage } from "@/pages/DevicePage";
 import { boardView } from "@/test/boardFixtures";
 import { renderWithQueryClient } from "@/test/renderWithQueryClient";
 
@@ -95,9 +95,9 @@ beforeEach(() => {
   getProfileBoard.mockResolvedValue(boardView({ writes_enabled: false }));
 });
 
-describe("SyncPage", () => {
+describe("the Device page's sync cards", () => {
   it("holds the sync and the write audit, in order, each with its anchor", async () => {
-    const { container } = renderWithQueryClient(<SyncPage />);
+    const { container } = renderWithQueryClient(<DevicePage />);
 
     await screen.findByText(/120 shots/);
     const headings = screen
@@ -109,23 +109,26 @@ describe("SyncPage", () => {
     }
   });
 
-  it.each(["#sync", "#pull"])("lands on the sync section for the %s anchor", async (hash) => {
-    const scrolled: string[] = [];
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = function (this: Element) {
-      scrolled.push(this.id);
-    };
-    try {
-      renderWithQueryClient(<SyncPage />, { initialEntries: [`/sync${hash}`] });
-      await screen.findByText(/120 shots/);
-      await waitFor(() => expect(scrolled).toContain("sync"));
-    } finally {
-      Element.prototype.scrollIntoView = original;
-    }
-  });
+  it.each(["#sync", "#pull", "#notes", "#storage", "#cleanup"])(
+    "lands on the sync section for the %s anchor",
+    async (hash) => {
+      const scrolled: string[] = [];
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (this: Element) {
+        scrolled.push(this.id);
+      };
+      try {
+        renderWithQueryClient(<DevicePage />, { initialEntries: [`/device${hash}`] });
+        await screen.findByText(/120 shots/);
+        await waitFor(() => expect(scrolled).toContain("sync"));
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    },
+  );
 
   it("offers no way to send notes to the machine or to delete its shots", async () => {
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     await screen.findByText(/120 shots/);
     expect(screen.queryByText(/Send notes/)).not.toBeInTheDocument();
@@ -134,7 +137,7 @@ describe("SyncPage", () => {
   });
 
   it("states the rule: the only thing written to the machine is a profile", async () => {
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
     expect(
       await screen.findByText(/The only thing this box ever writes to it is a profile/),
     ).toBeInTheDocument();
@@ -143,7 +146,7 @@ describe("SyncPage", () => {
   });
 
   it("lists the last run of each pass and the archive counts", async () => {
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     const runs = await screen.findByTestId("sync-runs");
     await waitFor(() => expect(runs).toHaveTextContent("shots"));
@@ -174,24 +177,26 @@ describe("SyncPage", () => {
       }),
     );
 
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     expect(await screen.findByText(/503 during an OTA update/)).toBeInTheDocument();
   });
 
   it("has no Sync button of its own and points at the top bar's", async () => {
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
     expect(await screen.findByText(/presses Sync in the top bar/)).toBeInTheDocument();
     expect(screen.queryByTestId("pull-button")).not.toBeInTheDocument();
   });
 
-  it("says what is missing when no machine is configured", async () => {
+  it("keeps the last sync and the audit readable when no machine is configured", async () => {
     getDeviceStatus.mockResolvedValue(
       deviceStatus({ configured: false, connected: false, host: null, identity: null }),
     );
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
-    expect(await screen.findByText("No machine is configured.")).toBeInTheDocument();
+    expect(await screen.findByText("No machine configured")).toBeInTheDocument();
+    expect(await screen.findByTestId("sync-runs")).toHaveTextContent("shots");
+    expect(screen.getByTestId("device-writes-empty")).toBeInTheDocument();
   });
 
   it("lists every write, refusals included, and says whether writes are on", async () => {
@@ -224,7 +229,7 @@ describe("SyncPage", () => {
         },
       ],
     });
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     const table = await screen.findByTestId("device-writes");
     expect(table).toHaveTextContent("notes_save");
@@ -233,7 +238,7 @@ describe("SyncPage", () => {
   });
 
   it("says plainly when this box has never written to the machine", async () => {
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
     expect(await screen.findByTestId("device-writes-empty")).toBeInTheDocument();
   });
 });

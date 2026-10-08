@@ -1,10 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
-  ArrowLeftRight,
   Bean,
   BookOpen,
-  CircuitBoard,
   Coffee,
   Cpu,
   Donut,
@@ -56,18 +53,20 @@ export function isNavGroup(item: NavItem): item is NavGroup {
  * `g <key>` shortcuts and the shortcut sheet, so adding a page is one entry
  * here plus one `<Route>` in App.tsx.
  *
- * Five rows rather than a dozen. What you open every day — the archive and the
- * chat — is a row of its own. Everything that goes into a shot (a Set, the
- * bean and the hardware it names, and the notes it is tasted with) is under
- * Brew setup; everything about the
- * machine itself (its profiles and the queue that pushes to it, the exchanges
- * with it, what it is) is under Machine; what is set up once and then mostly
- * left alone is under Settings. A page inside a group keeps its own chord, so
- * `g e` is still one step from anywhere.
+ * Five rows rather than a dozen. What you open every day — the chat, the
+ * archive and the profiles the machine brews with — is a row of its own.
+ * Everything that goes into a shot (a Set, the bean and the hardware it names,
+ * and the notes it is tasted with) is under Brew setup; what is set up once and
+ * then mostly left alone is under Settings. A page inside a group keeps its own
+ * chord, so `g e` is still one step from anywhere.
  *
  * Not every route is here. Importing files is the drop zone on the shots
- * page; staging a profile is a section of the profiles page. A destination
- * earns a row by being somewhere you decide to go, not by existing.
+ * page; staging a profile is a section of the profiles page. The machine
+ * itself — what it is, what the last sync did, every write this box made to
+ * it — is the Device page, which the status pill in the top bar opens from
+ * every page, right beside the Sync button; a sidebar row would be a second
+ * door to it. A destination earns a row by being somewhere you decide to go,
+ * not by existing.
  */
 /**
  * The knowledge base, listed under Settings just before Prompts: its rules and
@@ -85,11 +84,21 @@ const KNOWLEDGE: NavPage = {
 };
 
 export const NAV_LINKS: NavItem[] = [
-  { to: "/shots", label: "Shots", icon: Coffee, shortcut: "g s", shortcutLabel: "g s" },
   // Its own entry rather than a panel on a page: a conversation is a place you
   // go back to, and the "Discuss in chat" buttons on a shot and a Set both land
   // here with a thread already scoped.
   { to: "/chat", label: "Chat", icon: MessageSquare, shortcut: "g c", shortcutLabel: "g c" },
+  { to: "/shots", label: "Shots", icon: Coffee, shortcut: "g s", shortcutLabel: "g s" },
+  // Profiles owns the staging queue as well as the mirror: a draft is the step
+  // between a profile version and the machine, so it lives with the versions it
+  // is made from rather than on a page of its own.
+  {
+    to: "/profiles",
+    label: "Profiles",
+    icon: SlidersHorizontal,
+    shortcut: "g p",
+    shortcutLabel: "g p",
+  },
   {
     id: "brew-setup",
     label: "Brew setup",
@@ -108,31 +117,6 @@ export const NAV_LINKS: NavItem[] = [
         shortcut: "g w",
         shortcutLabel: "g w",
       },
-    ],
-  },
-  {
-    id: "machine",
-    label: "Machine",
-    icon: CircuitBoard,
-    children: [
-      // Profiles owns the staging queue as well as the mirror: a draft is the
-      // step between a profile version and the machine, so it lives with the
-      // versions it is made from rather than on a page of its own.
-      {
-        to: "/profiles",
-        label: "Profiles",
-        icon: SlidersHorizontal,
-        shortcut: "g p",
-        shortcutLabel: "g p",
-      },
-      // The sync with the machine, which a person starts, and the record of
-      // every write this box has made to it (only ever profiles). `g y`,
-      // for sYnc: `g s` is Shots.
-      { to: "/sync", label: "Sync", icon: ArrowLeftRight, shortcut: "g y", shortcutLabel: "g y" },
-      // What the machine is: status, firmware, storage. The header's status
-      // pill leads here too. No chord: `g d` was retired when this page left
-      // the sidebar, and a letter that changed meaning twice helps nobody.
-      { to: "/device", label: "Device", icon: Activity },
     ],
   },
   {

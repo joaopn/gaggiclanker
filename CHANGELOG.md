@@ -33,6 +33,19 @@ database.
   schema in place of the migration number. The restore refusal codes `RESTORE_NEWER_VERSION` and
   `RESTORE_MIGRATION_DIFFERS` are replaced by `RESTORE_SCHEMA_DIFFERS`.
 
+### A shorter sidebar, and the Sync page is part of the Device page
+
+- **The sidebar is Chat, Shots, Profiles, Brew setup and Settings.** The Machine group is gone:
+  Profiles is a row of its own (`g p` as before), and Chat now comes first. Shots is still the
+  page the app opens on.
+- **The Sync page's cards are on the Device page**, under the machine's versions and connection:
+  the last run of each sync pass and the archive counts, what the last sync did to the machine's
+  profiles, and every write this box has attempted, refused ones included. The Device page has no
+  sidebar row: the machine status in the top bar opens it from every page, right beside the Sync
+  button. A sync that fails now says "The Device page has the details".
+- `/sync` and its anchors (`#sync`, `#board`, `#writes`) redirect to the same cards on the Device
+  page. The `g y` shortcut is gone with the page.
+
 ### Sync is in the top bar, on every page
 
 - **Sync moved from the Shots page to the top bar**, first in it, before the machine status. A
@@ -40,8 +53,8 @@ database.
   match the Profiles page, so it is no longer a Shots-page button. It is filled where the rest of
   the bar is outlined, reads "Sync" ("Syncing…" while one runs), and shows only its icon at phone
   width. Its toast of what the sync did now arrives on whatever page you are on when it finishes.
-- The Sync page (Machine → Sync) has no button of its own any more: it keeps the run ledger and
-  the archive counts, under the top bar's button.
+- The Sync page has no button of its own any more: it keeps the run ledger and the archive
+  counts, under the top bar's button.
 - **The top bar fits at every width again.** With Writes and sign-in on it used to run off the
   screen at phone width and in the column beside the sidebar. Below the `lg` width (1024 px) the
   machine status is its coloured dot alone and Flush and Sign out are their icons; Shortcuts

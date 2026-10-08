@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SyncRunRow, SyncStatusData } from "@/api/types";
-import { SyncPage } from "@/pages/SyncPage";
+import { DevicePage } from "@/pages/DevicePage";
 import { boardAction, boardView } from "@/test/boardFixtures";
 import { renderWithQueryClient } from "@/test/renderWithQueryClient";
 
@@ -87,7 +87,7 @@ beforeEach(() => {
   getSyncStatus.mockResolvedValue(status(null));
 });
 
-describe("the Sync page's profile board", () => {
+describe("the Device page's profile board", () => {
   it("shows what the last sync pushed, removed, left, moved and failed", async () => {
     getSyncStatus.mockResolvedValue(
       status({
@@ -100,7 +100,7 @@ describe("the Sync page's profile board", () => {
         paused: null,
       }),
     );
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     const summary = await screen.findByTestId("board-summary");
     expect(within(summary).getByTestId("board-summary-pushed")).toHaveTextContent(
@@ -134,7 +134,7 @@ describe("the Sync page's profile board", () => {
         paused: null,
       }),
     );
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     const summary = await screen.findByTestId("board-summary");
     expect(within(summary).getByTestId("board-summary-adopted")).toHaveTextContent(
@@ -168,7 +168,7 @@ describe("the Sync page's profile board", () => {
         ],
       }),
     );
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     expect(await screen.findByTestId("board-reports")).toHaveTextContent(
       "9 Bar Espresso: 9bar was changed on the machine since it was recorded",
@@ -177,7 +177,7 @@ describe("the Sync page's profile board", () => {
 
   it("says a sync that found everything in place changed nothing", async () => {
     getSyncStatus.mockResolvedValue(status({ pushed: [], removed: [], writes: 0 }));
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     expect(await screen.findByTestId("board-summary-nothing")).toHaveTextContent(
       "already matching the profile list",
@@ -186,7 +186,7 @@ describe("the Sync page's profile board", () => {
 
   it("says writes are off when there is no summary to show", async () => {
     getProfileBoard.mockResolvedValue(boardView({ writes_enabled: false }));
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     expect(await screen.findByTestId("board-summary-none")).toHaveTextContent(
       "Writes are off, so a sync does not change the machine's profiles.",
@@ -194,7 +194,7 @@ describe("the Sync page's profile board", () => {
   });
 
   it("shows no pause banner when the board is not paused", async () => {
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
     await screen.findByTestId("board-summary-none");
     expect(screen.queryByTestId("board-paused-banner")).toBeNull();
   });
@@ -208,7 +208,7 @@ describe("a board paused because the machine looks reset", () => {
   });
 
   it("explains why syncs stopped writing and points at the Profiles page, with no Resume of its own", async () => {
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     const banner = await screen.findByTestId("board-paused-banner");
     expect(banner).toHaveTextContent("Syncs are not writing profiles to the machine");
@@ -223,7 +223,7 @@ describe("a board paused because the machine looks reset", () => {
   it("drops the banner once the board says it is no longer paused, although the last run's summary still says paused", async () => {
     getSyncStatus.mockResolvedValue(status({ paused: "the machine looks reset", writes: 0 }));
     getProfileBoard.mockResolvedValue(boardView({ paused: null }));
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     await screen.findByTestId("board-summary-nothing");
     expect(screen.queryByTestId("board-paused-banner")).toBeNull();
@@ -232,7 +232,7 @@ describe("a board paused because the machine looks reset", () => {
   it("shows the banner from the last run too, when the board itself cannot be read", async () => {
     getProfileBoard.mockRejectedValue(new Error("boom"));
     getSyncStatus.mockResolvedValue(status({ paused: "the machine looks reset", writes: 0 }));
-    renderWithQueryClient(<SyncPage />);
+    renderWithQueryClient(<DevicePage />);
 
     expect(await screen.findByTestId("board-paused-banner")).toBeInTheDocument();
     expect(screen.getByTestId("board-summary-nothing")).toHaveTextContent("looked reset");

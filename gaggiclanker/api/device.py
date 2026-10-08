@@ -8,9 +8,9 @@ subscription per open tab and a re-render twice a second — so this application
 answers the question it is better placed to answer, which is what the archive
 holds.
 
-The web UI's Device page reads the status; its Sync page reads everything else
-here. The write audit lists every write this box has ever asked the machine to
-make, which is what answers "what has this thing done to my machine". The only
+The web UI's Device page reads the status and everything else here. The write
+audit lists every write this box has ever asked the machine to make, which is
+what answers "what has this thing done to my machine". The only
 thing this box ever stores on the machine is a profile, so there is no route here
 that deletes a shot or sends a note: what the audit lists is the profile board's
 saves, deletes, selections and stars, and the older rows of the two history

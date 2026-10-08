@@ -4651,7 +4651,7 @@ export interface components {
         };
         /**
          * DeviceWriteRow
-         * @description One audit row, as the Sync page renders it.
+         * @description One audit row, as the Device page renders it.
          */
         DeviceWriteRow: {
             /** Created At */

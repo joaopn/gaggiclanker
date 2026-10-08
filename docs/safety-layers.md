@@ -54,7 +54,7 @@ The gate holds one rule, the switch; the narrower rule for a delete lives in the
 caller recorded for it). A client built
 without a gate (in a test, in a script) gets `DenyAllWrites` and can write
 nothing at all, so read-only is what you get by forgetting. Every attempt,
-authorised or refused, leaves a row in `device_writes`, which the Sync page
+authorised or refused, leaves a row in `device_writes`, which the Device page
 lists; rows of the two removed history kinds (`shot_delete`, `notes_save`) from
 an older archive are still listed as history.
 

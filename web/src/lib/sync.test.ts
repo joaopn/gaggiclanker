@@ -148,7 +148,7 @@ describe("pullSummary", () => {
     // failures are counted rather than raised. "The sync failed" would be
     // telling somebody nothing happened when most of it did.
     expect(pullSummary(run({ status: "error", error: null, shots_inserted: 3, errors: 2 }))).toBe(
-      "3 new shots, 2 failed. The Sync page has the details.",
+      "3 new shots, 2 failed. The Device page has the details.",
     );
   });
 
@@ -226,7 +226,7 @@ describe("pullSummary", () => {
       // refused, a machine that could not be read for the board).
       const refused = profilePass(boardKeys({ pushed: [], failures: [entry("B")] }));
       expect(profilesSentence(refused)).toBe(
-        "Read 9 profiles from the machine; nothing written, 1 failed \u2014 the Sync page has the details.",
+        "Read 9 profiles from the machine; nothing written, 1 failed \u2014 the Device page has the details.",
       );
       const adoptedNone = profilePass(boardKeys({ adopted: [], failures: [entry("board")] }));
       expect(profilesSentence(adoptedNone)).toContain("nothing written, 1 failed");

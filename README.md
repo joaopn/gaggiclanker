@@ -94,25 +94,24 @@ while the app is stopped.
 
 ### The pages
 
-The sidebar has five rows: Shots, Chat, **Brew setup** (Sets, Beans, Hardware, Taste wheel),
-**Machine** (Profiles, Sync, Device) and **Settings** (one page per heading,
-with Knowledge just before Prompts). A group opens when you click it, and on its own
+The sidebar has five rows: Chat, Shots, Profiles, **Brew setup** (Sets, Beans, Hardware,
+Taste wheel) and **Settings** (one page per heading, with Knowledge just before Prompts).
+The Device page has no row: the machine status in the top bar opens it from every page. A group opens when you click it, and on its own
 when you are on one of its pages; one you open by hand stays open next time. The
 pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard, and **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves the Discard ones out of the list; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The import drop zone is here; Sync is in the top bar, on every page. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
 | **Chat** | `g c` | The tool-using conversation, with a badge per Set above it. A badge lists that Set's conversations; New there starts one already pointed at that Set. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard, and **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves the Discard ones out of the list; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The import drop zone is here; Sync is in the top bar, on every page. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
+| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Edit a copy**. A version the agent proposed sits above them, marked **Proposed**, with **Make active** (and the Set it would be recorded on) and **Decline**; a proposed new profile is a row of its own. A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. Each coffee exports as a JSON file, and **Import JSON** reads one back: the file's id updates that coffee with the fields it carries, anything else adds a new one. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
-| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Edit a copy**. A version the agent proposed sits above them, marked **Proposed**, with **Make active** (and the Set it would be recorded on) and **Decline**; a proposed new profile is a row of its own. A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
-| **Sync** | `g y` | The last run of each sync pass and what the archive holds (the sync itself starts from **Sync** in the top bar), what the last sync did to its profiles, and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
-| **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
 | **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
 | **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and your **general** insights: the ones you write by hand, any agent-written one the app could not place on a single Set, and the ones you approve from **Find patterns across Sets**. Insights learned in a Set's conversation live on that Set's page instead. |
+| **Device** | | No sidebar row: the machine status in the top bar opens it from every page. What the machine is (its versions and its connection), then the record of the exchanges with it: the last run of each sync pass and what the archive holds (the sync itself starts from **Sync** in the top bar, beside the status), what the last sync did to its profiles, and every write this box has attempted on it, refused ones included. Nothing but a profile is ever written to the machine. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
 to an icon rail and back; the choice is remembered in the browser. Folded, every
@@ -121,8 +120,8 @@ else — so nothing is lost but the fourteen rems.
 
 The old import page is now the drop zone on the Shots page, and the old drafts
 page is Profiles, where a proposed profile now opens on its own row; `/import` and `/drafts` still resolve,
-by redirecting. The device page's old storage, notes, sync and writes anchors
-redirect to the Sync page.
+by redirecting. The old Sync page's address, `/sync`, and its anchors redirect to the
+same cards on the Device page.
 
 ### The experiment log
 
@@ -316,14 +315,14 @@ button without the Set tries it without touching the Set.
 
 The machine is a buffer, not an archive: when its storage runs low its own
 firmware deletes its oldest shots, whether or not this box has them. That is
-accepted rather than managed from here, so sync from the Sync page often enough
+accepted rather than managed from here, so sync often enough
 that nothing waits on the machine for long. The machine's notes cards are read
 on a sync too, and never written back.
 
 Nothing runs on its own: a sync is something you ask for, and there is no timer. With
 the Writes switch on, the one thing a sync writes is the profile list's write phase at its
 end (see below); nothing else, and no tool a model calls, starts a write. Every write
-attempt, refused ones included, is listed under **Recent writes** on the Sync page; a
+attempt, refused ones included, is listed under **Recent writes** on the Device page; a
 flush, which stores nothing, is not.
 
 ### The profile list

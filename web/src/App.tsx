@@ -10,7 +10,7 @@ import { DEFAULT_ROUTE } from "@/lib/navigation";
 import { DEFAULT_SETTINGS_PAGE, settingsPath } from "@/lib/settingsPages";
 import { BeansPage } from "@/pages/BeansPage";
 import { ChatPage } from "@/pages/ChatPage";
-import { DevicePage } from "@/pages/DevicePage";
+import { DevicePage, SyncRedirect } from "@/pages/DevicePage";
 import { HardwarePage } from "@/pages/HardwarePage";
 import { KnowledgePage } from "@/pages/KnowledgePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -18,7 +18,6 @@ import { ProfilesPage } from "@/pages/ProfilesPage";
 import { SetsPage } from "@/pages/SetsPage";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { SignInPage } from "@/pages/SignInPage";
-import { SyncPage } from "@/pages/SyncPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 import { TasteWheelPage } from "@/pages/TasteWheelPage";
 
@@ -84,7 +83,7 @@ export function App() {
             }
           />
           <Route path="/device" element={<DevicePage />} />
-          <Route path="/sync" element={<SyncPage />} />
+          <Route path="/sync" element={<SyncRedirect />} />
           <Route path="/sets" element={<SetsPage />} />
           <Route
             path="/sets/:setId"

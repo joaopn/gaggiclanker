@@ -18,7 +18,7 @@ line up:
   on the old machine, and the rebuild that followed cancelled it.
 * **The ledger.** A shot pass closes its run in a ``finally``, and a
   cancellation counts no error, so the run cut off after reading nothing was
-  recorded ``status = 'ok'``. The sync page then reports a healthy pull of an
+  recorded ``status = 'ok'``. The Device page then reports a healthy pull of an
   archive that did not fill. Shutdown cancels a pass the same way.
 
 This script does it twice. First it holds the settings write open, asks for a

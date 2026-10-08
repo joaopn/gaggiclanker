@@ -122,7 +122,7 @@ __all__ = [
 
 log = structlog.get_logger(__name__)
 
-#: The sync event kinds this phase writes, one per action, so the Sync page can name each.
+#: The sync event kinds this phase writes, one per action, so the Device page can name each.
 EVENT_ADOPTED = "board_adopted"
 EVENT_JOINED = "board_joined"
 EVENT_RECORDED = "board_recorded"
@@ -157,7 +157,7 @@ class BoardSummaryItem(BaseModel):
 
 
 class BoardRunSummary(BaseModel):
-    """What one write phase did. Stored on the run row and shown on the Sync page."""
+    """What one write phase did. Stored on the run row and shown on the Device page."""
 
     model_config = ConfigDict(extra="forbid")
 

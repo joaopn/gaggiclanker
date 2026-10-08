@@ -281,7 +281,7 @@ describe("PullButton", () => {
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "11 new shots, 3 failed. The Sync page has the details. Read 9 profiles from the machine; no writes (writes are off).",
+        "11 new shots, 3 failed. The Device page has the details. Read 9 profiles from the machine; no writes (writes are off).",
       ),
     );
   });

@@ -159,14 +159,15 @@ The judgement form in the open panel is the exception, as on the shot page: it
 puts back every field it renders when Save is pressed, and it re-seeds from the
 server whenever the verdict changes underneath it.
 
-The Sync page is where a person syncs with the machine and reads what this box has written to it:
+The Device page is where a person reads what the machine is, what syncs did, and what this box has written to it (the sync itself is the top bar's button):
 
 ```
 src/
   pages/
-    SyncPage.tsx          the sections and their anchors (#sync, #board, #writes)
+    DevicePage.tsx        the facts, then the sync cards and their anchors (#sync, #board, #writes);
+                          SyncRedirect keeps the old /sync address
   components/sync/
-    PullSection.tsx       the shots page's PullButton, with the ledger under it
+    PullSection.tsx       the run ledger and the archive counts
     BoardSection.tsx      the last sync's profile summary, what a sync will not touch, Resume
     DeviceWritesSection.tsx  the audit of every write, refusals included
     ConfirmStrip.tsx      the inline "are you sure" (also used by Settings → Shot information)
@@ -525,9 +526,8 @@ opened by hand is remembered in `localStorage` under `sidebar.groups.v1` (group
 ids, read behind `try/catch`); one that opened because its page is showing is
 not recorded. A page inside a group keeps its own chord — `navShortcuts()`
 flattens the table for the bindings and the shortcut sheet — and a group may
-have a chord of its own that goes to its `to`. The rows are Shots, Chat, Brew
-setup (Sets, Beans, Hardware, Taste wheel), Machine (Profiles, Sync, Device) and Settings;
-no group nests another. A group's children need not share its URL prefix:
+have a chord of its own that goes to its `to`. The rows are Chat, Shots, Profiles,
+Brew setup (Sets, Beans, Hardware, Taste wheel) and Settings; no group nests another. A group's children need not share its URL prefix:
 `/knowledge` is listed under Settings just before Prompts and keeps its own address
 and chord, so every citation link into it still resolves.
 
@@ -547,9 +547,11 @@ case in `SettingsPage`, and its path in the deep-link test.
 
 **A route is not a nav entry.** `NAV_LINKS` is the sidebar, and the sidebar is
 places you *decide to go*; a page reached from the one place you are already
-standing does not earn a row. `/device` is under Machine and is also the status
-pill's destination; it has no chord, since `g d` was retired once already. Its old card anchors (`#storage`, `#notes`, `#sync`,
-`#writes`) redirect to the sections of `/sync` that took them over. `/import` and `/drafts` are `<Navigate>` redirects to the
+standing does not earn a row. `/device` has none: the status pill in the top bar
+opens it from every page, beside the Sync button. It has no chord, since `g d` was
+retired once already, and `g y` went with the Sync page. `/sync` redirects to
+`/device`, keeping its anchor; the device page's own old anchors (`#pull`,
+`#storage`, `#notes`, `#cleanup`) land on its sync card. `/import` and `/drafts` are `<Navigate>` redirects to the
 drop zone on the shots page and to `/profiles#staged`: the pages behind them
 became a strip and a section, and the routes stay so old bookmarks and a hard
 refresh still land somewhere. All three are still in the deep-link test, which

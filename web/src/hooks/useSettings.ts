@@ -72,7 +72,7 @@ export function useUpdateSettings(): UseMutationResult<
     onSettled: (_data, _error, patch) => {
       void invalidateSettings(queryClient);
       // The machine's connection settings apply live: the server rebuilds the
-      // client on save, so the header pill and the Sync page must re-read the
+      // client on save, so the header pill and the Device page must re-read the
       // connection now rather than on their next poll. Once straight away (the
       // new host is configured, not yet connected) and once more a moment
       // later, when a reachable machine has usually answered.

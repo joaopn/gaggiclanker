@@ -205,7 +205,7 @@ export function invalidateDeviceWrites(queryClient: QueryClient): Promise<void> 
 
 /**
  * Everything that reports the machine connection: the device status the header
- * pill reads, and the sync status whose `configured`/`connected` the Sync page
+ * pill reads, and the sync status whose `configured`/`connected` the Device page
  * reads. A settings change rebuilds that connection on the server.
  */
 export function invalidateDeviceConnection(queryClient: QueryClient): Promise<void> {
