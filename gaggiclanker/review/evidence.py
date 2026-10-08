@@ -33,6 +33,7 @@ from gaggiclanker.domain.metric_language import (
     canonical_form,
     evaluate,
     render,
+    unsampled_phase_of,
     window_span,
     window_words,
 )
@@ -86,6 +87,9 @@ def _phase_of(window: Window, data: ShotData) -> str | None:
         for span in data.phases:
             if span.number == window.phase_number:
                 return span.name or None
+        entry = unsampled_phase_of(data, window)
+        if entry is not None:
+            return str(entry.get("name") or "").strip() or None
     return None
 
 

@@ -307,9 +307,14 @@ async def build_review_input(
         shot=render_shot(facts, "base", review_tiers(), curve_points=REVIEW_CURVE_POINTS),
         profile_label=profile_label,
         profile=profile,
+        # The phases a reading may name: every one of the profile's the shot began, in order,
+        # including one that ended before the machine logged a sample of it (a claim about the
+        # skipped fill is the point), which the log's own phase list does not hold.
         phases=list(
             dict.fromkeys(
-                name for phase in facts.phases if (name := str(phase.get("name") or "").strip())
+                name
+                for phase in facts.listed_phases
+                if (name := str(phase.get("name") or "").strip())
             )
         ),
         signature_confirmed=confirmed,
@@ -341,17 +346,23 @@ def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
     The grammar is documented in :mod:`gaggiclanker.knowledge.rules`. Only the
     telemetry shapes come from here: a review reads no taste, so the taste,
     aroma and balance tokens are never produced for one (the chat can still
-    pass them to `get_rules`). The faults are the shot's own warnings (``fault:
-    fast_flow``, ``fault:skipped``, and the two yield ones when the shot is filed
-    under a Set version with a target, which a reading is given), and the rest
-    are plain readings of the numbers with no grade in them. The puck-flow readings are left
+    pass them to `get_rules`). The faults are the shot's own warnings (``fault:fast_flow``,
+    ``fault:skipped``, ``fault:skipped_at_start`` for a phase over before the machine logged a
+    sample of it, and the two yield ones when the shot is filed under a Set version with a
+    target, which a reading is given), and the rest are plain readings of the numbers with no
+    grade in them. The puck-flow readings are left
     out for a shot flagged without a pressure sensor (:func:`readable_summary`). Sorted,
     because the list is stored on the review row and a set's iteration order would make two
     identical runs produce different snapshots.
     """
     tokens: set[str] = {f"style:{style.style}"}
-    tokens.update(f"fault:{fault_token(warning.fault)}" for warning in facts.warnings)
-
+    # A phase that ended before it was sampled has a signal of its own: the stop-early
+    # `skipped` token selects what is said about a shot that ended on a target, which is
+    # not what happened here (the profile's own first phase was over before the pump ran).
+    tokens.update(
+        f"fault:{fault_token(warning.fault)}{'_at_start' if warning.ended_at_start else ''}"
+        for warning in facts.warnings
+    )
     if not facts.has_scale:
         tokens.add("scale:absent")
 

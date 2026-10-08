@@ -21,7 +21,8 @@ chat):
 
     ``fault:<name>``       a warning the shot carries, whatever its profile:
                            ``fault:over_target``, ``fault:under_target``,
-                           ``fault:skipped``, ``fault:fast_flow``. The yield
+                           ``fault:skipped``, ``fault:skipped_at_start`` (a phase over before the
+                           first sample), ``fault:fast_flow``. The yield
                            ones need the version the shot is filed under, so a
                            review (which is given none) never produces them
     ``taste:<slug>``       a flavour-wheel taste note the user recorded, and every

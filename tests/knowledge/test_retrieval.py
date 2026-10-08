@@ -73,7 +73,8 @@ async def test_every_fault_has_a_query_and_the_over_and_under_target_ones_follow
     seeded_docs: KnowledgeService,
 ) -> None:
     signals = tuple(
-        f"fault:{name}" for name in ("under_target", "over_target", "skipped", "fast_flow")
+        f"fault:{name}"
+        for name in ("under_target", "over_target", "skipped_at_start", "skipped", "fast_flow")
     )
     queries = seeded_docs.queries_for(RetrievalContext(signals=signals))
     assert queries == list(FAULT_QUERIES.values())

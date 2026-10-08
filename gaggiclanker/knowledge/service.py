@@ -100,6 +100,12 @@ _PER_QUERY = 3
 FAULT_QUERIES: dict[str, str] = {
     "fast_flow": "fast flow rate coarse grind low puck resistance",
     "skipped": "volumetric stop ends the shot before the last phase of the profile",
+    # A phase over before the machine logged a sample of it is not a shot stopped on a
+    # target: it is a stop condition (a pressure exit) met at once. Measured on the real
+    # shot, this finds the "Multiple Stop Conditions" section first, the one that says a phase
+    # exits as soon as any one of its targets is met, and it is short enough to fit the
+    # budget beside the stop-early search's hit (the whole stop-conditions reference does not).
+    "skipped_at_start": "multiple stop conditions phase exits when any condition is met OR logic",
     "over_target": "over target yield overshoot weight stop early",
     "under_target": "under target yield short shot weight stop late",
 }

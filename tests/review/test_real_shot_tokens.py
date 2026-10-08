@@ -27,18 +27,19 @@ from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.domain.warnings import FAULTS, fault_token
 from gaggiclanker.knowledge.rules import load_seed_rules
+from gaggiclanker.knowledge.service import FAULT_QUERIES
 from gaggiclanker.review.context import build_review_input, readable_summary, signal_tokens
 from gaggiclanker.review.style import StyleVerdict, detect_style
 from gaggiclanker.shotinfo import ShotFacts, load_shots
 from gaggiclanker.sync.derive import derive_shot
-from tests.domain.helpers import constructed_profile_for, standard_board
+from tests.domain.helpers import constructed_profile_for, fill_ended_shot, standard_board
 from tests.lever_shot import LEVER_PROFILE, lever_shot, without_scale
 
 SLOGS = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))
 UNKNOWN = StyleVerdict(style="unknown", tier="none", evidence=[])
 
 #: Every shape of token a seed rule may key on, and what each one can be.
-FAULT_TOKENS = {f"fault:{fault_token(fault)}" for fault in FAULTS}
+FAULT_TOKENS = {f"fault:{fault_token(fault)}" for fault in FAULTS} | {"fault:skipped_at_start"}
 KNOWN_PREFIXES = (
     "style:",
     "taste:",
@@ -111,6 +112,7 @@ def test_the_rules_keyed_on_a_fault_are_the_ones_listed() -> None:
     }
     assert {key: tokens for key, tokens in keyed.items() if tokens} == {
         ("profile_design_defaults", "preinfusion"): ["fault:fast_flow"],
+        ("profile_design_defaults", "pressure_exit_on_a_fill"): ["fault:skipped_at_start"],
     }
 
 
@@ -327,3 +329,47 @@ async def test_a_scale_shot_whose_connection_flag_is_cleared_is_not_without_a_sc
 
     assert facts.shot.scale_connected is False
     assert "scale:absent" not in signal_tokens(facts, UNKNOWN)
+
+
+async def _ingest_fill_ended(db: Database) -> int:
+    slog, _, profile = fill_ended_shot()
+    derived = derive_shot(slog, slog_to_raw(slog), device_id="000225", profile=profile)
+    return await ShotsRepository(db).insert(derived.shot, derived.samples)
+
+
+async def test_a_fill_that_ended_before_its_first_sample_has_a_signal_of_its_own(
+    seeded: Database,
+) -> None:
+    """On the real shot's derived facts: the stop-early token is not the one it carries."""
+    review = await build_review_input(seeded, await _ingest_fill_ended(seeded))
+
+    faults = [t for t in review.signals if t.startswith("fault:")]
+    assert faults == ["fault:skipped_at_start"]
+    # The rule written for it is selected, and says what to do about the exit.
+    rule = next(r for r in review.rules if r["key"] == "pressure_exit_on_a_fill")
+    assert rule["category"] == "profile_design_defaults"
+    assert rule["confidence"] == "anecdotal"
+    assert rule["source"] == "observed on a GaggiMate"
+    assert "reached" in rule["text"] and "at or above the exit pressure" in rule["text"]
+
+
+async def test_its_excerpt_search_is_its_own_and_finds_the_stop_conditions(
+    seeded: Database,
+) -> None:
+    """Not the volumetric-stop query, which would hand the model a shot that ended on a target."""
+    review = await build_review_input(seeded, await _ingest_fill_ended(seeded))
+
+    assert review.excerpts[0]["heading_path"] == "STOP_CONDITIONS#multiple-stop-conditions"
+    assert review.excerpts[0]["query"] == FAULT_QUERIES["skipped_at_start"]
+    assert FAULT_QUERIES["skipped"] not in {e["query"] for e in review.excerpts}
+
+
+async def test_the_stop_early_signal_and_rules_never_reach_a_fill_that_ended_at_the_start(
+    seeded: Database,
+) -> None:
+    started = await build_review_input(seeded, await _ingest_fill_ended(seeded))
+    stopped = await build_review_input(seeded, await _ingest_lever(seeded))
+
+    assert "fault:skipped" not in started.signals
+    assert "pressure_exit_on_a_fill" not in stopped.rule_keys
+    assert "fault:skipped_at_start" not in stopped.signals

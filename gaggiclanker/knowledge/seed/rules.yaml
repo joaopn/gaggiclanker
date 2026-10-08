@@ -16,7 +16,7 @@
 #
 # The shot's own signals are few and carry no grade: the faults a shot shows
 # whatever its profile is (`fault:over_target`, `fault:under_target`,
-# `fault:skipped`, `fault:fast_flow`) and a handful of plain readings
+# `fault:skipped`, `fault:skipped_at_start`, `fault:fast_flow`) and a handful of plain readings
 # (`first_drip:fast`, `avg_flow:high`, `temp:cold`, `scale:absent`, `yield:tiny`).
 # A rule with `signal: []` has no signal of its own: nothing selects it, and it is
 # reached by topic only, through the chat's `get_rules`.
@@ -926,6 +926,29 @@ rules:
     confidence: expert
     source: gaggimate-barista
     source_ref: "gaggimate-mcp.md §7 — Profile design"
+
+  - category: profile_design_defaults
+    key: pressure_exit_on_a_fill
+    applies: { signal: ["fault:skipped_at_start"] }
+    value:
+      text: >-
+        A fill or pre-infusion phase that exits on a pressure target is skipped
+        whenever the group starts at or above the exit pressure: residual
+        pressure after a flush or the previous shot can read several bar before
+        the pump runs (4.8 bar was seen against a 2.8 bar exit), the exit is met
+        at once and the phase ends before the machine logs a sample of it. Exit
+        the phase on volume, weight or time instead, or set the pressure exit
+        above what the group holds at rest. When a profile has a phase that is
+        meant to run, its signature says so with a `reached` expectation for
+        each such phase, so a shot that skips one fails the check.
+      residual_bar_seen: 4.8
+      exit_bar_seen: 2.8
+    unit: bar
+    confidence: anecdotal
+    source: observed on a GaggiMate
+    source_ref: >-
+      A spring-lever profile's fill, exiting on 2.8 bar, met a group still at
+      4.8 bar: not from the upstream expert sources.
 
   - category: profile_design_defaults
     key: bloom

@@ -61,6 +61,7 @@ __all__ = [
     "method_id",
     "per_phase_method",
     "render",
+    "unsampled_phase_of",
     "water_by_sample",
     "window_span",
     "window_words",
@@ -983,6 +984,16 @@ def evaluate(expr: Expression, data: ShotData) -> Result:
     return _finish(expr, data, resolved)
 
 
+def unsampled_phase_of(data: ShotData, window: Window) -> Mapping[str, Any] | None:
+    """The phase that ended before it was sampled that a window is, by name or by number."""
+    for entry in data.unsampled:
+        if window.phase is not None and same_phase(str(entry.get("name") or ""), window.phase):
+            return entry
+        if window.phase_number is not None and entry.get("phase_number") == window.phase_number:
+            return entry
+    return None
+
+
 def window_span(data: ShotData, window: Window) -> tuple[float, float] | None:
     """The seconds of the shot a window covers: its first and last timed sample.
 
@@ -993,7 +1004,12 @@ def window_span(data: ShotData, window: Window) -> tuple[float, float] | None:
     """
     try:
         resolved = _resolve(data, window)
-    except _Absent:
+    except _Absent as gone:
+        if gone.reason == "ended_before_sampled":
+            # A phase with no samples has no span: it is the moment it ended.
+            entry = unsampled_phase_of(data, window)
+            at = entry.get("at_s") if entry is not None else None
+            return (float(at), float(at)) if isinstance(at, int | float) else None
         return None
     times = [t for i in resolved.indices if (t := _t(data.samples[i])) is not None]
     if not times:
