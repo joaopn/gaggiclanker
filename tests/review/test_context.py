@@ -225,7 +225,34 @@ async def test_a_prediction_measured_against_nothing_says_so(fixture: Fixture) -
     assert "measured against nothing earlier" in review.render()["prediction"]
 
 
-async def test_the_confirmed_signatures_free_text_expectations_are_listed_with_their_ids(
+async def test_a_proposed_free_text_expectation_is_in_the_review_at_once(
+    fixture: Fixture,
+) -> None:
+    from gaggiclanker.domain.signature import ExpectationInput
+    from gaggiclanker.signatures.service import SignatureService
+
+    (row,) = await SignatureService(fixture.db).propose(
+        fixture.profile_version_id,
+        [
+            ExpectationInput(
+                tier="important",
+                kind="free_text",
+                phase="Pressurise",
+                text=FREE_TEXT,
+                fault="unstable",
+            )
+        ],
+        reason="what it is for",
+    )
+
+    review = await build_review_input(fixture.db, fixture.shots[-1])
+
+    assert review.signature_confirmed == 1
+    assert [e.id for e in review.expectations] == [row.id]
+    assert FREE_TEXT in review.render()["signature"]
+
+
+async def test_the_signature_in_force_lists_its_free_text_expectations_with_their_ids(
     fixture: Fixture,
 ) -> None:
     review = await build_review_input(fixture.db, fixture.shots[-1])

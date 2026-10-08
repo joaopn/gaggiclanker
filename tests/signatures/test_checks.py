@@ -318,6 +318,27 @@ async def test_the_fields_serve_the_ordered_list_with_value_and_state(db: Databa
     ]
 
 
+async def test_a_shot_gets_the_checks_of_a_proposed_signature_with_no_answer_from_anyone(
+    db: Database,
+) -> None:
+    from gaggiclanker.signatures.checks import checks_for_shots
+
+    lever = await _lever(db)
+    [facts] = await load_shots(db, [lever.shot])
+    before = (await checks_for_shots(db, [facts.check_subject]))[lever.shot]
+    assert before.state.confirmed == 0
+
+    rows = await _propose(lever, confirm=True)
+
+    assert {r.answered_at for r in rows} == {None}
+    after = (await checks_for_shots(db, [facts.check_subject]))[lever.shot]
+    assert after.state.confirmed == 4
+    assert [(c.phase, c.fault, c.status) for c in after.checks if c.tier == "critical"] == [
+        ("ramp", "early yield", "failed"),
+        ("decline", "skipped", "failed"),
+    ]
+
+
 # ── what is out of force never teaches ────────────────────────────────────────
 
 
