@@ -554,6 +554,9 @@ class Check:
     relative_to: str | None = None
     #: The limit as a person reads it: ``at most 15 % of target``, ``at most 3 g/s``.
     limit_text: str = ""
+    #: The metric language's code for why a value is absent (``ended_before_sampled``…), when
+    #: it gave one; ``absent`` is the same reason in words.
+    absent_reason: str | None = None
 
     @property
     def color(self) -> CheckColor | None:
@@ -755,10 +758,17 @@ def _result_check(
     phase, number, at_s, shot_wide = timing
     unit = result.unit if result is not None else ""
     sentence = render(expr) if expr is not None else exp.sentence
+    code: str | None = None
     if held is None:
         why = unreadable or (result.why if result is not None else None) or "no value"
         status: CheckStatus = "unmeasured"
-        detail = f"{sentence}: not measured ({why})."
+        code = result.absent if result is not None and unreadable is None else None
+        # A phase that was over before the machine logged a sample of it was not skipped by
+        # the check: it ended before there was anything to measure.
+        verdict = (
+            "ended before it was measured" if code == "ended_before_sampled" else "not measured"
+        )
+        detail = f"{sentence}: {verdict} ({why})."
         rank = 6 if exp.tier == "context" else 4
         value = None
         absent: str | None = why
@@ -803,6 +813,7 @@ def _result_check(
         compare=expr.compare if expr is not None else None,
         relative_to=expr.relative_to if expr is not None else None,
         limit_text=limit_text(expr, unit) if expr is not None else "",
+        absent_reason=code,
     )
 
 

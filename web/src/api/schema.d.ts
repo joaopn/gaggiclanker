@@ -4256,6 +4256,8 @@ export interface components {
         CheckOut: {
             /** Absent */
             absent: string | null;
+            /** Absent Reason */
+            absent_reason: string | null;
             /** At S */
             at_s: number;
             /** Color */

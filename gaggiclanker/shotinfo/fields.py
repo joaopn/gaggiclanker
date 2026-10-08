@@ -115,6 +115,9 @@ class CheckOut(BaseModel):
     #: Why a value is absent, in words: a check that could not be measured is neither held
     #: nor failed.
     absent: str | None
+    #: The metric language's code for why it is absent (``ended_before_sampled`` for a phase
+    #: that was over before its first sample), when it gave one.
+    absent_reason: str | None
     at_s: float
     expectation_id: int | None
 
@@ -218,6 +221,7 @@ def _check_out(check: Check) -> CheckOut:
         limit_text=check.limit_text,
         held=check.held,
         absent=check.absent,
+        absent_reason=check.absent_reason,
         at_s=check.at_s,
         expectation_id=check.expectation_id,
     )

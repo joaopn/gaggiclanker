@@ -112,4 +112,12 @@ async def test_a_measure_on_the_fill_is_not_measured_for_that_reason_at_the_fill
     assert fill.status == "unmeasured"
     assert fill.absent == "the Fill ended on its pressure target before the first sample"
     assert "did not reach" not in fill.detail
+    assert fill.absent_reason == "ended_before_sampled"
+    assert fill.detail.endswith(
+        "ended before it was measured (the Fill ended on its pressure target before the first "
+        "sample)."
+    )
     assert fill.at_s == 0.0
+    # Another absence keeps its own words and its own code.
+    [other] = [c for c in await _checks(db, shot) if c.phase == "Ramp" and c.kind == "measure"]
+    assert other.status == "held" and other.absent_reason is None
