@@ -18,7 +18,6 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
@@ -33,6 +32,7 @@ from gaggiclanker.db.repos.sets import (
     SetVersionWrite,
     SetWrite,
 )
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.drafts.proposals import DraftProposals
@@ -398,7 +398,7 @@ async def empty_archive(tmp_path: Path) -> AsyncIterator[Database]:
     """An archive with a bean and a grinder and no profile at all."""
     db = Database(tmp_path / "empty.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     try:
         yield db
     finally:

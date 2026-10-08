@@ -24,13 +24,13 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw
 from gaggiclanker.domain.models import ShotNotes
 from gaggiclanker.domain.slog import Slog, parse_slog
@@ -106,7 +106,7 @@ async def _insert(
 async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
     db = Database(tmp_path / "shotinfo.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     try:
         bean = await BeansRepository(db).create(
             BeanWrite(name="Amigo Alturas", roast_level="light", process="washed")

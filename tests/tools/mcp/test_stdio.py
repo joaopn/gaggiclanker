@@ -23,12 +23,12 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.shared.exceptions import MCPError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.llm.chat_types import without_field_meanings
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
 from gaggiclanker.shotinfo.catalogue import default_tiers
@@ -51,7 +51,7 @@ async def archive_dir(tmp_path: Path) -> AsyncIterator[tuple[Path, Fixture]]:
     data_dir.mkdir()
     db = Database(data_dir / "gaggiclanker.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     fixture = await build_fixture(db)
     await db.close()
     yield data_dir, fixture

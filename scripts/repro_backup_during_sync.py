@@ -37,7 +37,7 @@ from pathlib import Path
 
 from gaggiclanker.db.backup import create_export
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.schema import create_schema
 
 
 async def main() -> int:
@@ -45,7 +45,7 @@ async def main() -> int:
         root = Path(tmp)
         db = Database(root / "gaggiclanker.db")
         await db.connect()
-        await run_migrations(db)
+        await create_schema(db)
 
         failure: Exception | None = None
         result = None

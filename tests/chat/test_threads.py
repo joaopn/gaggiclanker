@@ -20,9 +20,9 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
 from gaggiclanker.db.repos.sets import RollbackWrite, SetsRepository, SetVersionPatch
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
 from tests.review.conftest import Fixture, build_fixture
@@ -32,7 +32,7 @@ from tests.review.conftest import Fixture, build_fixture
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "threads.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

@@ -26,8 +26,8 @@ from gaggiclanker.chat.runner import (
     prompt_for,
 )
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.llm import PromptsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_prompts
 from gaggiclanker.shotinfo.catalogue import default_tiers
 from gaggiclanker.shotinfo.glossary import render_glossary
@@ -51,7 +51,7 @@ async def prompts(tmp_path: Path) -> AsyncIterator[PromptService]:
     """The shipped prompt files, seeded into a real table and rendered from it."""
     db = Database(tmp_path / "prompts.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     repo = PromptsRepository(db)
     await seed_prompts(repo, DEFAULT_PROMPTS_DIR)
     try:

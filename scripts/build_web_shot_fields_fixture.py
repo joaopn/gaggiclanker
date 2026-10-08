@@ -56,7 +56,6 @@ sys.path.insert(0, str(REPO))
 
 from gaggiclanker.api.signatures import SignatureData, _override_out, _signature  # noqa: E402
 from gaggiclanker.db.connection import Database  # noqa: E402
-from gaggiclanker.db.migrations import run_migrations  # noqa: E402
 from gaggiclanker.db.repos import base as repos_base  # noqa: E402
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite  # noqa: E402
 from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite  # noqa: E402
@@ -65,6 +64,7 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository  # noqa: E402
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite  # noqa: E402
 from gaggiclanker.db.repos.shots import ShotsRepository  # noqa: E402
 from gaggiclanker.db.repos.signatures import SignatureRepository  # noqa: E402
+from gaggiclanker.db.schema import create_schema  # noqa: E402
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw  # noqa: E402
 from gaggiclanker.domain.models import Profile  # noqa: E402
 from gaggiclanker.domain.signature import ExpectationInput  # noqa: E402
@@ -230,7 +230,7 @@ async def _scene(work: Any) -> Any:
         db = Database(Path(tmp) / "fixture.db")
         await db.connect()
         try:
-            await run_migrations(db)
+            await create_schema(db)
             return await work(Scene(db))
         finally:
             await db.close()

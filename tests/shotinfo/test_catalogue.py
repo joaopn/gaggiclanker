@@ -17,8 +17,8 @@ import pytest
 from structlog.testing import capture_logs
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.shotinfo import catalogue
 from gaggiclanker.shotinfo.catalogue import (
     CATALOGUE,
@@ -303,7 +303,7 @@ def test_phase_and_curve_items_live_in_their_own_groups() -> None:
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "tiers.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

@@ -30,7 +30,7 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.fake import FakeDevice, build_fake_device, default_notes
 from gaggiclanker.domain.models import SHOT_FLAG_DELETED
@@ -190,7 +190,7 @@ class Archive:
 async def _open_database(tmp_path: Path) -> Database:
     db = Database(tmp_path / "data" / "gaggiclanker.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     return db
 
 

@@ -34,8 +34,8 @@ from pathlib import Path
 from typing import Any
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings_service import SettingsService
@@ -51,7 +51,7 @@ async def main() -> int:
         db = Database(Path(tmp) / "repro.db")
         await db.connect()
         try:
-            await run_migrations(db)
+            await create_schema(db)
             bean = await BeansRepository(db).create(BeanWrite(name="Mystery"))
 
             starting = (await build_context(db, bean_id=bean.id, as_of="2026-01-01")).render()

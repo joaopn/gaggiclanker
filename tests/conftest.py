@@ -22,7 +22,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.infra.tasks import TaskRegistry
@@ -183,7 +183,7 @@ async def seed_settings(env: EnvSettings, **values: Any) -> None:
     db = Database(env.database_path)
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         await SettingsService(SettingsRepository(db)).apply(dict(values))
     finally:
         await db.close()

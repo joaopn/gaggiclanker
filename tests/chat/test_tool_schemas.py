@@ -24,9 +24,9 @@ import pytest
 
 from gaggiclanker.chat.runner import ChatRunner
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
 from gaggiclanker.db.repos.llm import PromptsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -144,7 +144,7 @@ OPENAI_STREAM = (
 async def archive(tmp_path: Path) -> AsyncIterator[Fixture]:
     db = Database(tmp_path / "schemas.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     await seed_prompts(PromptsRepository(db), DEFAULT_PROMPTS_DIR)
     try:
         yield await build_fixture(db)

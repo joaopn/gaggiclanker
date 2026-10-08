@@ -10,8 +10,8 @@ import pytest
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.shotinfo.catalogue import ITEMS
 
 
@@ -19,7 +19,7 @@ from gaggiclanker.shotinfo.catalogue import ITEMS
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "tiers.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

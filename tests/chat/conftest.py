@@ -16,9 +16,9 @@ import pytest
 
 from gaggiclanker.chat.runner import ChatRunner
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
 from gaggiclanker.db.repos.llm import PromptsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
@@ -37,7 +37,7 @@ from tests.review.conftest import Fixture, build_fixture
 async def chat_db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "chat.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     await seed_prompts(PromptsRepository(database), DEFAULT_PROMPTS_DIR)
     try:
         yield database

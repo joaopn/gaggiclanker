@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.knowledge.service import KnowledgeService
 from tests.knowledge.insight_world import ProvenanceWorld, build_provenance_world
 
@@ -86,7 +86,7 @@ Two aligned indicators mean a channel.
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "knowledge.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

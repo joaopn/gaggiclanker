@@ -33,7 +33,6 @@ from gaggiclanker.chat.context import (
     opening_context,
 )
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
@@ -55,6 +54,7 @@ from gaggiclanker.db.repos.sets import (
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.db.repos.signatures import SignatureRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.domain.spread import CountedShot
@@ -134,7 +134,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
     """
     db = Database(tmp_path / "context.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     try:
         bean = await BeansRepository(db).create(
             BeanWrite(
@@ -1474,7 +1474,7 @@ async def test_a_profile_with_words_beyond_ascii_is_shown_as_stored(tmp_path: Pa
     db = Database(tmp_path / "ascii.db")
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         version_id = await make_profile_version(db, "Café crème 「試」", temperature=92.5)
         stored = await ProfilesRepository(db).get_version(version_id)
         assert stored is not None

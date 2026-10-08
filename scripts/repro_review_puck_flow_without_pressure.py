@@ -44,15 +44,15 @@ BLOB = {
 
 async def main() -> int:
     from gaggiclanker.db.connection import Database
-    from gaggiclanker.db.migrations import run_migrations
     from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+    from gaggiclanker.db.schema import create_schema
     from gaggiclanker.review.context import build_review_input
 
     with tempfile.TemporaryDirectory() as tmp:
         db = Database(Path(tmp) / "repro.db")
         await db.connect()
         try:
-            await run_migrations(db)
+            await create_schema(db)
             shot_id = await ShotsRepository(db).insert(
                 ShotInsert(
                     device_id="000001",

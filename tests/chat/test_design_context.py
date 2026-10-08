@@ -23,7 +23,6 @@ import pytest
 from gaggiclanker.chat.context import opening_context
 from gaggiclanker.chat.design_context import design_context
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
@@ -34,6 +33,7 @@ from gaggiclanker.db.repos.sets import (
     SetVersionWrite,
     SetWrite,
 )
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.tools.scope import ToolScope
 from tests.sets.conftest import make_profile_version
 from tests.starting.conftest import Fixture, build_fixture
@@ -45,7 +45,7 @@ GOLDEN = Path(__file__).resolve().parent / "golden"
 async def kitchen(tmp_path: Path) -> AsyncIterator[Fixture]:
     db = Database(tmp_path / "design.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     try:
         yield await build_fixture(db, seed_knowledge=False)
     finally:

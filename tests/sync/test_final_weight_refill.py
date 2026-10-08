@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.slog import encode_slog, parse_slog
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.sync.derive import derive_shot, refill_final_weights
@@ -53,7 +53,7 @@ async def test_boot_fills_the_weight_before_the_drop(env: EnvSettings) -> None:
     db = Database(env.database_path)
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         dropout = await _store_as_before(db, "000001", DROPOUT)
         long_zeros = await _store_as_before(db, "000002", LONG_ZEROS)
         no_scale = await _store_as_before(db, "000003", NO_SCALE)
@@ -71,7 +71,7 @@ async def test_the_refill_touches_nothing_on_a_second_run(env: EnvSettings) -> N
     db = Database(env.database_path)
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         shots = ShotsRepository(db)
         dropout = await _store_as_before(db, "000001", DROPOUT)
         await _store_as_before(db, "000002", LONG_ZEROS)

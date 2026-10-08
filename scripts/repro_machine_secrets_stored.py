@@ -46,14 +46,14 @@ IDENTITY_SENTINELS = {"apPassword": "fake-identity-ap-password", "authToken": "f
 async def store_machine(env: EnvSettings, address: str) -> None:
     """Write the machine's address into a fresh archive, through the settings service."""
     from gaggiclanker.db.connection import Database
-    from gaggiclanker.db.migrations import run_migrations
+    from gaggiclanker.db.schema import create_schema
     from gaggiclanker.db.settings_repo import SettingsRepository
     from gaggiclanker.settings_service import SettingsService
 
     db = Database(env.database_path)
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         await SettingsService(SettingsRepository(db)).apply(
             {"gaggimateHost": address, "gaggimateTimeoutSeconds": 5}
         )

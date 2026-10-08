@@ -9,19 +9,19 @@ import pytest
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.profile_board import (
     BoardRowPatch,
     BoardRowWrite,
     ProfileBoardRepository,
 )
+from gaggiclanker.db.schema import create_schema
 
 
 @pytest.fixture
 async def repo(data_dir: Path) -> AsyncIterator[ProfileBoardRepository]:
     db = Database(data_dir / "board.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     for version_id in (1, 2):
         await db.execute(
             "INSERT INTO profile_versions (id, content_hash, label, type, json) "

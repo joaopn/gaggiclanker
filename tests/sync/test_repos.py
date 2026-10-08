@@ -14,10 +14,10 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow, ShotsRepository
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.sync.derive import derive_shot
 
@@ -28,7 +28,7 @@ RAW = b"SHOT" + bytes(508) + bytes(30)
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "archive.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

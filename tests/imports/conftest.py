@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.imports.service import ImportService
 
 
@@ -24,7 +24,7 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
     data_dir.mkdir()
     database = Database(data_dir / "gaggiclanker.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

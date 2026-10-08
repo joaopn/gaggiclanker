@@ -16,9 +16,9 @@ import pytest
 
 from gaggiclanker.chat.context import opening_context
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionWrite
 from gaggiclanker.db.repos.knowledge_insights import InsightWrite
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.tools.scope import ToolScope
 from tests.knowledge.insight_world import ProvenanceWorld, build_provenance_world
 
@@ -31,7 +31,7 @@ DELETIONS = "INSIGHT DELETIONS YOU PROPOSED IN THIS CONVERSATION"
 async def provenance(tmp_path: Path) -> AsyncIterator[ProvenanceWorld]:
     db = Database(tmp_path / "records.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     try:
         yield await build_provenance_world(db)
     finally:

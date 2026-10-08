@@ -21,11 +21,11 @@ import structlog
 from structlog.typing import EventDict, WrappedLogger
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw
 from gaggiclanker.domain.slog import Slog, parse_slog
 from gaggiclanker.settings import EnvSettings
@@ -42,7 +42,7 @@ DERIVED = ("phases_json", "diagnostics_json")
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "gaggiclanker.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:
@@ -330,7 +330,7 @@ async def test_the_boot_step_brings_the_archive_along(env: EnvSettings) -> None:
     database = Database(env.database_path)
     await database.connect()
     try:
-        await run_migrations(database)
+        await create_schema(database)
         ids = [
             await _store_stale(database, device_id, slog, raw, source)
             for device_id, (slog, raw, source) in _slogs().items()

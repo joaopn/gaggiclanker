@@ -20,8 +20,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.llm import PromptsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.chat_types import ChatEvent, ChatRequest, ChatTurn, OnChatEvent
@@ -130,7 +130,7 @@ async def db(tmp_path: Any) -> AsyncIterator[Database]:
     """A migrated database on a real file, as the house rules require."""
     database = Database(tmp_path / "llm.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

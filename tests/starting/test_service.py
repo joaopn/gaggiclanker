@@ -15,10 +15,10 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL, ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.sets import grind_value, set_name
 from gaggiclanker.infra.errors import Conflict, Unprocessable
@@ -604,7 +604,7 @@ async def test_an_empty_library_gets_a_synthetic_base_once(tmp_path: Path) -> No
     db = Database(tmp_path / "empty.db")
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         profiles = ProfilesRepository(db)
         first = await profiles.default_draft_base()
         again = await profiles.default_draft_base()

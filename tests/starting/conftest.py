@@ -32,7 +32,6 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
@@ -42,6 +41,7 @@ from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.knowledge.rules import seed_rules
@@ -343,7 +343,7 @@ def _diagnostics(score: float) -> str:
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "starting.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

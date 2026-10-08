@@ -46,9 +46,9 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import DeviceConnection
@@ -433,7 +433,7 @@ async def test_nothing_the_stdio_server_hands_a_tool_reaches_the_machine(
     db = Database(tmp_path / "gaggiclanker.db")
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         settings = SettingsService(SettingsRepository(db))
 
         for label, scope in (("general", ToolScope()), ("set", ToolScope.for_thread(1))):
@@ -611,7 +611,7 @@ async def test_the_stdio_context_proposes_drafts(
     db = Database(tmp_path / "gaggiclanker.db")
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         fixture = await build_fixture(db)
         settings = SettingsService(SettingsRepository(db))
         ctx = stdio_tool_context(db, settings, scope=ToolScope.for_thread(fixture.set_id))

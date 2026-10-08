@@ -24,13 +24,13 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.metric_language import CHANNELS, OPS, per_phase_method
 from gaggiclanker.domain.models import Profile
@@ -65,7 +65,7 @@ async def lever(tmp_path: Path) -> AsyncIterator[tuple[Database, int, int]]:
     """The lever shot filed under a version with a 36 g target: (database, shot id, version id)."""
     db = Database(tmp_path / "lever.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     try:
         profile, _ = await ProfilesRepository(db).ensure_version(
             Profile.model_validate(LEVER_PROFILE)
@@ -470,7 +470,7 @@ async def test_the_phases_not_reached_are_served_in_the_profiles_order(tmp_path:
     db = Database(tmp_path / "unreached.db")
     await db.connect()
     try:
-        await run_migrations(db)
+        await create_schema(db)
         slog = lever_shot()
         derived = derive_shot(
             slog, slog_to_raw(slog), device_id="000900", source="import", profile=profile

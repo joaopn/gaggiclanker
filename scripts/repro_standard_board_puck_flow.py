@@ -62,8 +62,8 @@ CURVE_HEADERS = ("puck flow (ml/s)", "target flow (ml/s)", "pump flow (ml/s)", "
 
 async def main() -> int:
     from gaggiclanker.db.connection import Database
-    from gaggiclanker.db.migrations import run_migrations
     from gaggiclanker.db.repos.shots import ShotsRepository
+    from gaggiclanker.db.schema import create_schema
     from gaggiclanker.domain.exports import slog_to_raw
     from gaggiclanker.shotinfo import default_tiers, load_shots, render_shot, shot_lines
     from gaggiclanker.shotinfo.catalogue import CATALOGUE
@@ -77,7 +77,7 @@ async def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         db = Database(Path(scratch) / "repro.db")
         await db.connect()
-        await run_migrations(db)
+        await create_schema(db)
         try:
             derived = derive_shot(
                 slog, slog_to_raw(slog), device_id="000001", source="import", has_pressure=False

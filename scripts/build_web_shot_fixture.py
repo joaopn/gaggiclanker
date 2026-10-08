@@ -25,9 +25,9 @@ import tempfile
 from pathlib import Path
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.imports.service import ImportFile, ImportService
 
 REPO = Path(__file__).resolve().parent.parent
@@ -47,7 +47,7 @@ async def build() -> None:
         db = Database(Path(tmp) / "fixture.db")
         await db.connect()
         try:
-            await run_migrations(db)
+            await create_schema(db)
             summary = await ImportService(db).import_files(
                 [ImportFile(filename=EXPORT.name, data=EXPORT.read_bytes())]
             )

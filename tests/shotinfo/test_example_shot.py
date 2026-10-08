@@ -8,16 +8,16 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.schema import create_schema
 
 
 @pytest.fixture
 async def shots(tmp_path: Path) -> AsyncIterator[ShotsRepository]:
     db = Database(tmp_path / "example.db")
     await db.connect()
-    await run_migrations(db)
+    await create_schema(db)
     try:
         yield ShotsRepository(db)
     finally:

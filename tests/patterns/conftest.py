@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.llm import PromptsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.modes import ModeMemory
@@ -26,7 +26,7 @@ from tests.patterns.world import PatternWorld, Talking, build_pattern_world, bui
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "patterns.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

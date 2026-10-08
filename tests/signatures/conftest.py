@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.schema import create_schema
 
 
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "signatures.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

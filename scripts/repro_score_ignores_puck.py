@@ -34,12 +34,12 @@ from pathlib import Path
 
 import gaggiclanker
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.shotinfo import default_tiers, load_shots, render_shot
@@ -67,7 +67,7 @@ async def read_base_rendering() -> str:
         db = Database(Path(tmp) / "repro.db")
         await db.connect()
         try:
-            await run_migrations(db)
+            await create_schema(db)
             version, _ = await ProfilesRepository(db).ensure_version(
                 Profile.model_validate(lever.LEVER_PROFILE)
             )

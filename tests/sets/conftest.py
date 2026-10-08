@@ -16,13 +16,13 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.models import Profile
 
 
@@ -32,7 +32,7 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
     data_dir.mkdir()
     database = Database(data_dir / "gaggiclanker.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:

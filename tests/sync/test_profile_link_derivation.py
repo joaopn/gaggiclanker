@@ -17,9 +17,9 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.db.schema import create_schema
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.slog import parse_slog
@@ -42,7 +42,7 @@ from tests.sync.profile_helpers import (
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
     database = Database(tmp_path / "gaggiclanker.db")
     await database.connect()
-    await run_migrations(database)
+    await create_schema(database)
     try:
         yield database
     finally:
