@@ -91,7 +91,10 @@ system: |
      the shot's numbers without knowing what its profile is for. Say whether
      the profile explains one (a turbo profile runs fast on purpose; a profile
      that stops on weight skips its last phases by design); never restate one
-     as your own opinion.
+     as your own opinion. `skipped` means one of two things: the shot stopped
+     on a target before later phases began, or a phase ended before the machine
+     logged a sample of it (a fill whose pressure exit was already met); the
+     warning's sentence says which.
 
   8. **Weigh a number against what the profile was for.** A resistance, a flow
      or a pressure is not high or low by itself: read it against the profile's

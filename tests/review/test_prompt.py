@@ -34,3 +34,18 @@ def test_it_says_exactly_what_the_review_is_and_is_not_given() -> None:
         "anything about any other shot or any earlier review"
     ) in system
     assert "what they were trying" not in system
+
+
+def test_it_says_a_skipped_warning_means_two_things_and_how_to_cite_a_phase_with_no_samples() -> (
+    None
+):
+    system = _system()
+    # A skipped warning is either of two facts, and its own sentence says which.
+    assert (
+        "`skipped` means one of two things: the shot stopped on a target before later phases "
+        "began, or a phase ended before the machine logged a sample of it"
+    ) in system
+    assert "the warning's sentence says which" in system
+    # A claim may name the phase that ended before it was sampled, backed by numbers elsewhere.
+    assert '(the Phases lines say "before the first sample")' in system
+    assert "tie the claim to numbers from the whole shot or the phase after it" in system

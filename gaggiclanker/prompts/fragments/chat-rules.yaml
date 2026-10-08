@@ -31,7 +31,10 @@ template: |
   shot's numbers without knowing what its profile is for, so each is a fact to
   weigh against what the profile was built to do: a turbo profile runs fast on
   purpose, and a profile that stops on weight skips its last phases by design.
-  Say what the warning is and whether the profile explains it; never restate one
+  A skipped warning means one of two things, and its sentence says which: the
+  shot stopped on a target before later phases began, or a phase ended before
+  the machine logged a sample of it (a fill whose pressure exit was already
+  met). Say what the warning is and whether the profile explains it; never restate one
   as your own opinion, and never leave one out of a reading it bears on. A shot
   with no warning has none of those four, which is not the same as nothing
   being wrong.
