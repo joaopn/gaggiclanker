@@ -43,14 +43,14 @@ async def shot_data(db: Database, shot_id: int) -> ShotData | None:
         slog = parse_slog(source.raw_slog, source.device_id)
     except SlogError as exc:
         raise UnreadableShot(str(exc)) from exc
-    final = facts.shot.final_weight_g if facts.shot.scale_connected else None
+    final = facts.shot.final_weight_g if facts.has_scale else None
     version = facts.version
     return ShotData.build(
         as_sample_dicts(slog),
         slog.transitions,
         profile_phases=raw_phase_names(source.profile),
         has_pressure=facts.has_pressure,
-        scale_connected=facts.shot.scale_connected,
+        scale_connected=facts.has_scale,
         final_weight_g=final if final is not None and final > 0 else None,
         target_yield_g=facts.target_yield_g,
         dose_g=version.dose_g if version is not None else None,

@@ -22,14 +22,16 @@ The first line says whether the shot was read against a confirmed signature (`si
 - Exit reason [base]: Why the machine ended the shot's last phase: a volumetric (weight) target, a pressure, flow or pumped-water target, the phase's duration, a safety timeout, the person stopping it (Aborted), or a released hold.
 
 [Timing]
-- First drip [base]: Seconds from the start of the shot to the first sample with any puck flow: when coffee started to reach the cup. Later usually means a finer grind or a longer pre-infusion. The Set page's time to first drip.
+- First drip [base]: Seconds from the start of the shot to the first sample whose weight is at least half a gram above the scale's first reading: when coffee first reached the cup. Later usually means a finer grind or a longer pre-infusion. The Set page's first drip. Needs a scale; without one the shot has the estimate below instead.
+- First drip (estimated) [base]: Seconds from the start of the shot to the first sample with any puck flow. Puck flow is an estimate from the pump model and does not track when coffee reaches the cup: it can come seconds after the cup began to fill, or much earlier (a long pre-infusion). It is only given for a shot with no scale, where there is no cup reading, and then only as a rough guide to the first drip. The Set page's first puck flow.
 
 [Pressure]
 Measured by the pressure sensor: none of these exists on a machine without one.
 - Peak pressure [base]: The highest pressure measured at the puck during the shot, in bar. The Set page's peak pressure.
 
 [Flow and volume]
-- Average brew flow [base]: The mean puck flow over the brew phases, in ml/s. Faster usually means a coarser grind or a lighter puck. The Set page's average brew flow.
+- Cup flow [base]: The mean cup flow over the brew phases, in g/s: how fast coffee reached the cup, as the scale measured it. It usually runs well below the puck flow, which is an estimate from the pump model that stays near the pump's own flow. The Set page's cup flow. Needs a scale.
+- Average brew puck flow [base]: The mean puck flow over the brew phases, in ml/s. Puck flow is the machine's estimate from the pump model, not what reaches the cup. Faster usually means a coarser grind or a lighter puck. The Set page's puck flow.
 
 [Puck resistance]
 Resistance R is the machine's own puck resistance squared (the firmware's pr² = pressure / puck flow²) when the shot recorded it, and pressure / flow² from the logged pressure and flow otherwise; the level says which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a unitless number. None of it exists without a pressure sensor. The machine puck resistance and liquid resistance are the firmware analyzer's, in its own units: not comparable with R.

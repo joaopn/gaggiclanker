@@ -106,6 +106,7 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     index_avg_flow_ml_s: 1.9,
     sample_count: 118,
     scale_connected: true,
+    has_scale: true,
     incomplete: false,
     quarantined: false,
     quarantine_reason: null,

@@ -70,11 +70,11 @@ Machine's shot number: 000007
 Shot time: 12.0 s
 Yield: 9.0 g
 [Timing]
-First drip: 6.0 s
+First drip (estimated): 6.0 s
 [Pressure]
 Peak pressure: 9.00 bar
 [Flow and volume]
-Average brew flow: 2.40 ml/s
+Average brew puck flow: 2.40 ml/s
 [Your judgement]
 Notes: "Knocked the cup."
 Ratio: 1:0.50
@@ -94,11 +94,11 @@ Machine's shot number: 000006
 Shot time: 36.0 s
 Yield: 36.3 g
 [Timing]
-First drip: 8.0 s
+First drip (estimated): 8.0 s
 [Pressure]
 Peak pressure: 9.30 bar
 [Flow and volume]
-Average brew flow: 1.70 ml/s
+Average brew puck flow: 1.70 ml/s
 [Your judgement]
 Rating: 3/5
 Balance: Balanced

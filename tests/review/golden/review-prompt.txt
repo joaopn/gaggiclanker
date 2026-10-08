@@ -325,9 +325,9 @@ shot 6
 [Checks]
 signature: read without a signature
 [Phases]
-phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; ended by Duration; pressure 3.9 bar; temperature 92.8 °C; volume 4.2 ml; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; cup share of target 0.0 %; samples 12
-phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; ended by Duration; pressure 0.6 bar; temperature 93.1 °C; volume 0.4 ml; cup at end 0.4 g, 1.1 % of target; cup gained 0.4 g; cup share of target 1.1 %; samples 28
-phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; ended by Volumetric target; pressure 8.8 bar; temperature 93.4 °C; volume 31.8 ml; cup at end 36.4 g, 101.1 % of target; cup gained 36.0 g; cup share of target 101.1 %; resistance 2.40; samples 72
+phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 3.0 s; ended by Duration; pressure 3.9 bar; temperature 92.8 °C; puck volume (estimated) 4.2 ml; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; cup share of target 0.0 %; samples 12
+phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; ended by Duration; pressure 0.6 bar; temperature 93.1 °C; puck volume (estimated) 0.4 ml; cup at end 0.4 g, 1.1 % of target; cup gained 0.4 g; cup share of target 1.1 %; samples 28
+phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; ended by Volumetric target; pressure 8.8 bar; temperature 93.4 °C; puck volume (estimated) 31.8 ml; cup at end 36.4 g, 101.1 % of target; cup gained 36.0 g; cup share of target 101.1 %; resistance 2.40; samples 72
 [Identity and status]
 Date and time: 2026-03-03 08:25
 Set version: v1 of Set 1
@@ -339,7 +339,7 @@ Yield: 37.5 g
 Yield against target: 104.2 % of the 36 g target yield
 Exit reason: Volumetric target
 [Timing]
-First drip: 8.2 s
+First drip: 3.5 s
 Pre-infusion time: 10.0 s
 Main extraction time: 18.0 s
 [Temperature]
@@ -353,9 +353,9 @@ Average pressure: 7.8 bar
 Minimum pressure: 0.4 bar
 Time of peak pressure: 12.5 s
 [Flow and volume]
-Average flow: 1.9 ml/s
-Peak flow: 3.1 ml/s
-Total volume: 36.4 ml
+Average puck flow: 1.9 ml/s
+Peak puck flow: 3.1 ml/s
+Total volume (estimated): 36.4 ml
 [Puck resistance]
 Resistance level: 2.10
 Resistance slope: -0.04 /s

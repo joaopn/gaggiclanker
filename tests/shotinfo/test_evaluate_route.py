@@ -7,6 +7,7 @@ and a 36 g target, so every expected number is one of the constants of
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from typing import Any
 
@@ -43,7 +44,12 @@ RAMP_CUP_SHARE = {
 
 
 async def file_lever(
-    app: FastAPI, *, device_id: str = "000900", scale: bool = True, has_pressure: bool | None = None
+    app: FastAPI,
+    *,
+    device_id: str = "000900",
+    scale: bool = True,
+    has_pressure: bool | None = None,
+    clear_flag: bool = False,
 ) -> tuple[int, int, int]:
     """The lever shot filed under a version: (shot id, set id, version id)."""
     db: Database = app.state.db
@@ -60,6 +66,11 @@ async def file_lever(
         SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),
     )
     slog = lever_shot() if scale else without_scale(lever_shot())
+    if clear_flag:
+        # A scale shot whose connection bit was never set: the weights are the evidence.
+        slog = dataclasses.replace(
+            slog, samples=[s.model_copy(update={"si": (s.si or 0) & ~0x0004}) for s in slog.samples]
+        )
     derived = derive_shot(
         slog,
         slog_to_raw(slog),
@@ -289,3 +300,62 @@ async def test_the_route_reads_and_writes_nothing(app: FastAPI, client: httpx.As
     await evaluate(client, shot, [RAMP_CUP_SHARE])
     after = [await db.fetch_one(f"SELECT COUNT(*) AS n FROM {t}") for t in tables]  # noqa: S608
     assert [dict(c or {}) for c in counts] == [dict(a or {}) for a in after]
+
+
+async def test_every_consumer_of_the_scale_rule_reads_the_weights_and_not_the_flag(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    """The real-fixture lever shot, flag cleared, filed under a 36 g target and over it.
+
+    Each assertion fails if its consumer goes back to the row's connection flag: the
+    over-target warning, the share of the target, the check subject, the list's check
+    columns and the metric-language evaluation.
+    """
+    from gaggiclanker.shotinfo import load_shots, shot_lines
+
+    shot, _, _ = await file_lever(app, device_id="000950", clear_flag=True)
+    db: Database = app.state.db
+    [facts] = await load_shots(db, [shot])
+
+    assert facts.shot.scale_connected is False  # the firmware's word, not set
+    assert facts.has_scale
+    # warnings (facts.warnings) and the check subject (facts.check_subject)
+    assert "over target" in {w.fault for w in facts.warnings}
+    assert facts.check_subject.scale_connected is True
+    assert "over target" in {w.fault for w in facts.check_subject.warnings}
+    # the yield share
+    shares = [line.value for line in shot_lines(facts, frozenset({"yield_share"}))]
+    assert len(shares) == 1 and float(shares[0].split()[0]) > 110
+    # the list's check columns (the repository's own SQL, not the facts)
+    served = (await ShotsRepository(db).served([shot]))[shot]
+    assert "over target" in {c.fault for c in served.checks.checks}
+    # the metric-language evaluation
+    [cup, share] = await evaluate(
+        client,
+        shot,
+        [
+            {"channel": "cup_weight", "op": "at_end"},
+            {"channel": "cup_weight", "op": "at_end", "relative_to": "final_weight"},
+        ],
+    )
+    assert cup["absent"] is None and cup["value"] is not None and cup["value"] > 36
+    assert share["value"] == 1.0
+
+
+async def test_a_flag_set_shot_with_zero_weights_has_none_of_it(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    from gaggiclanker.shotinfo import load_shots, shot_lines
+
+    shot, _, _ = await file_lever(app, device_id="000951", scale=False)
+    db: Database = app.state.db
+    await db.execute("UPDATE shots SET scale_connected = 1 WHERE id = ?", (shot,))
+    [facts] = await load_shots(db, [shot])
+
+    assert facts.shot.scale_connected is True and not facts.has_scale
+    assert not {w.fault for w in facts.warnings} & {"over target", "under target"}
+    assert not shot_lines(facts, frozenset({"yield_share"}))
+    served = (await ShotsRepository(db).served([shot]))[shot]
+    assert not {c.fault for c in served.checks.checks} & {"over target", "under target"}
+    [cup] = await evaluate(client, shot, [{"channel": "cup_weight", "op": "at_end"}])
+    assert (cup["value"], cup["absent"]) == (None, "not_recorded")

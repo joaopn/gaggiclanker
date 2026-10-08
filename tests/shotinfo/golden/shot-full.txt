@@ -3,10 +3,10 @@ shot 1
 signature: read without a signature
 Shot: under target (amber): The final weight, 31.6 g, is 87.8 % of the 36 g target yield (under 90 % is under target).
 [Phases]
-phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 7.2 s; ended by Unknown; pressure 0.1 bar; peak pressure 0.1 bar; pressure at end 0.1 bar; temperature 94.9 °C; lowest temperature 94.7 °C; target temperature 93.0 °C; volume 0.0 ml; flow 0.00 ml/s; peak flow 0.00 ml/s; scale flow 0.00 g/s; peak scale flow 0.04 g/s; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; ramp 0.02 bar/s; saturation 7.25 s
-phase 1 · Bloom: type preinfusion; start 7.2 s; duration 10.0 s; ended by Unknown; pressure 0.1 bar; peak pressure 0.1 bar; pressure at end 0.0 bar; temperature 93.9 °C; lowest temperature 93.2 °C; target temperature 93.0 °C; volume 0.0 ml; flow 0.00 ml/s; peak flow 0.00 ml/s; scale flow 0.00 g/s; peak scale flow 0.00 g/s; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; ramp -0.01 bar/s; saturation 10.00 s
-phase 2 · Ramp: type brew; start 17.2 s; duration 5.0 s; ended by Unknown; pressure 0.8 bar; peak pressure 2.1 bar; pressure at end 2.1 bar; temperature 93.1 °C; lowest temperature 93.1 °C; target temperature 93.0 °C; volume 0.0 ml; flow 0.00 ml/s; peak flow 0.00 ml/s; scale flow 0.00 g/s; peak scale flow 0.00 g/s; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; pressure adherence 3.61 bar; machine puck resistance (s·√bar/mL) avg 0.20 (start 0.39, end 0.18, min 0.16, max 0.39); liquid resistance (bar·s/mL) avg 0.24 (start 0.30, end 0.26, min 0.21, max 0.30)
-phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; ended by Unknown; pressure 7.5 bar; peak pressure 8.2 bar; pressure at end 7.0 bar; temperature 91.8 °C; lowest temperature 90.5 °C; target temperature 93.0 °C; volume 42.2 ml; flow 1.71 ml/s; peak flow 3.30 ml/s; scale flow 1.27 g/s; peak scale flow 1.96 g/s; cup at end 31.6 g, 87.8 % of target; cup gained 31.6 g; first drip 28.0 s; pressure adherence 1.45 bar; resistance 1.36, from the machine; resistance slope -0.12 /s; machine puck resistance (s·√bar/mL) avg 1.07 (start 0.19, end 0.88, min 0.19, max 1.84); liquid resistance (bar·s/mL) avg 2.99 (start 0.29, end 2.33, min 0.29, max 5.20)
+phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 7.2 s; ended by Unknown; pressure 0.1 bar; peak pressure 0.1 bar; pressure at end 0.1 bar; temperature 94.9 °C; lowest temperature 94.7 °C; target temperature 93.0 °C; puck volume (estimated) 0.0 ml; puck flow 0.00 ml/s; peak puck flow 0.00 ml/s; cup flow 0.00 g/s; peak cup flow 0.04 g/s; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; ramp 0.02 bar/s; saturation 7.25 s
+phase 1 · Bloom: type preinfusion; start 7.2 s; duration 10.0 s; ended by Unknown; pressure 0.1 bar; peak pressure 0.1 bar; pressure at end 0.0 bar; temperature 93.9 °C; lowest temperature 93.2 °C; target temperature 93.0 °C; puck volume (estimated) 0.0 ml; puck flow 0.00 ml/s; peak puck flow 0.00 ml/s; cup flow 0.00 g/s; peak cup flow 0.00 g/s; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; ramp -0.01 bar/s; saturation 10.00 s
+phase 2 · Ramp: type brew; start 17.2 s; duration 5.0 s; ended by Unknown; pressure 0.8 bar; peak pressure 2.1 bar; pressure at end 2.1 bar; temperature 93.1 °C; lowest temperature 93.1 °C; target temperature 93.0 °C; puck volume (estimated) 0.0 ml; puck flow 0.00 ml/s; peak puck flow 0.00 ml/s; cup flow 0.00 g/s; peak cup flow 0.00 g/s; cup at end 0.0 g, 0.0 % of target; cup gained 0.0 g; pressure adherence 3.61 bar; machine puck resistance (s·√bar/mL) avg 0.20 (start 0.39, end 0.18, min 0.16, max 0.39); liquid resistance (bar·s/mL) avg 0.24 (start 0.30, end 0.26, min 0.21, max 0.30)
+phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; ended by Unknown; pressure 7.5 bar; peak pressure 8.2 bar; pressure at end 7.0 bar; temperature 91.8 °C; lowest temperature 90.5 °C; target temperature 93.0 °C; puck volume (estimated) 42.2 ml; puck flow 1.71 ml/s; peak puck flow 3.30 ml/s; cup flow 1.27 g/s; peak cup flow 1.96 g/s; cup at end 31.6 g, 87.8 % of target; cup gained 31.6 g; first drip 24.0 s; pressure adherence 1.45 bar; resistance 1.36, from the machine; resistance slope -0.12 /s; machine puck resistance (s·√bar/mL) avg 1.07 (start 0.19, end 0.88, min 0.19, max 1.84); liquid resistance (bar·s/mL) avg 2.99 (start 0.29, end 2.33, min 0.29, max 5.20)
 [Identity and status]
 Date and time: 2026-04-03 12:06
 Set version: v1 of Set 1
@@ -20,7 +20,7 @@ Yield: 31.6 g
 Yield against target: 87.8 % of the 36 g target yield
 Phase log: firmware log version 5 does not record why a phase ended: every phase reads Unknown
 [Timing]
-First drip: 28.0 s
+First drip: 24.0 s
 Pre-infusion time: 23.8 s
 Main extraction time: 24.1 s
 [Temperature]
@@ -34,10 +34,11 @@ Average pressure: 4.1 bar
 Minimum pressure: 0.0 bar
 Time of peak pressure: 25.5 s
 [Flow and volume]
-Average brew flow: 1.42 ml/s
-Average flow: 0.9 ml/s
-Peak flow: 3.3 ml/s
-Total volume: 42.2 ml
+Cup flow: 1.05 g/s
+Average brew puck flow: 1.42 ml/s
+Average puck flow: 0.9 ml/s
+Peak puck flow: 3.3 ml/s
+Total volume (estimated): 42.2 ml
 [Weight]
 Average weight rate: 1.07 g/s
 [Puck resistance]

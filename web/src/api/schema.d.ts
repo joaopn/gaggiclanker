@@ -7916,6 +7916,11 @@ export interface components {
              * @default false
              */
             has_notes: boolean;
+            /**
+             * Has Scale
+             * @default false
+             */
+            has_scale: boolean;
             /** Id */
             id: number;
             /**
@@ -8159,6 +8164,11 @@ export interface components {
              * @default false
              */
             has_notes: boolean;
+            /**
+             * Has Scale
+             * @default false
+             */
+            has_scale: boolean;
             /** Id */
             id: number;
             /**

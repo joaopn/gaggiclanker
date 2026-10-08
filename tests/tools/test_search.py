@@ -12,8 +12,9 @@ them judged), whose numbers are written out in `tests/review/conftest.py`:
     5     24.0 s    37.5 g  3       sour      2.1         0.44 ml/s       03-03
 
 Every shot's dose in is 18 g and its dose out its weight, so the ratio is the
-weight over 18. First drip is 8.2 s, peak pressure 9.2 bar and pressure
-adherence 0.31 bar on all of them; average brew flow is on none (it lives in the
+weight over 18. Peak pressure 9.2 bar and pressure
+adherence 0.31 bar on all of them; the cup's first drip is 3.5 s (they all have a scale, so
+none has the estimate); average brew flow is on none (it lives in the
 full diagnostics only).
 """
 
@@ -110,11 +111,14 @@ async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_sample
         ({"dose_in": {"min": 18, "max": 18}}, (0, 1, 2, 3, 4, 5)),
         ({"dose_out": {"min": 37.5}}, (0, 5)),
         ({"ratio": {"min": 2.08}}, (0, 5)),
-        ({"first_drip": {"max": 9}}, (0, 1, 2, 3, 4, 5)),
-        ({"first_drip": {"min": 9}}, ()),
+        ({"cup_first_drip": {"max": 4}}, (0, 1, 2, 3, 4, 5)),
+        ({"cup_first_drip": {"min": 4}}, ()),
+        # The fixture's shots all have a scale, so none of them has the estimate.
+        ({"first_drip": {"min": 0}}, ()),
         ({"peak_pressure": {"min": 9.2, "max": 9.2}}, (0, 1, 2, 3, 4, 5)),
         # Recorded on none of them: absent never matches a range, even an open one.
         ({"brew_flow": {"min": 0}}, ()),
+        ({"brew_cup_flow": {"min": 0}}, ()),
         ({"balance": "balanced"}, (3,)),
         ({"label": "improve"}, (5,)),
         ({"resistance_level": {"min": 2.2}}, (0, 1, 2, 3, 4)),
@@ -306,8 +310,10 @@ _FILTERS: tuple[tuple[str, dict[str, Any], str], ...] = (
     ("rating", {"rating": {"min": 1}}, "rating"),
     ("shot_time", {"shot_time": {"min": 1}}, "shot_time"),
     ("yield_g", {"yield_g": {"min": 1}}, "yield"),
+    ("cup_first_drip", {"cup_first_drip": {"min": 1}}, "cup_first_drip"),
     ("first_drip", {"first_drip": {"min": 1}}, "first_drip"),
     ("peak_pressure", {"peak_pressure": {"min": 1}}, "peak_pressure"),
+    ("brew_cup_flow", {"brew_cup_flow": {"min": 0}}, "brew_cup_flow"),
     ("brew_flow", {"brew_flow": {"min": 0}}, "brew_flow"),
     ("dose_in", {"dose_in": {"min": 1}}, "dose_in"),
     ("dose_out", {"dose_out": {"min": 1}}, "dose_out"),
@@ -410,8 +416,10 @@ async def test_no_shot_tool_ever_shows_an_excluded_item(
     _tiers_with(monkeypatch, **{key: "excluded"})
     hidden = await _every_rendering(set_ctx, archive, order_by)
 
-    # The fixture records no average brew flow at all, so that line never shows.
-    assert line in shown or key == "brew_flow", "the item shows while it is not excluded"
+    # The fixture records no average brew flow at all, so those lines never show, and its shots
+    # all have a scale, so the estimated first drip (a no-scale shot's) never shows either.
+    never = {"brew_flow", "brew_cup_flow", "first_drip"}
+    assert line in shown or key in never, "the item shows while it is not excluded"
     assert line not in hidden, key
 
 

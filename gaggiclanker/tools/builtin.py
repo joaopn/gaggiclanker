@@ -524,8 +524,10 @@ _ORDER_KEYS: dict[str, str] = {
     "rating": "rating",
     "shot_time": "shot_time",
     "yield_g": "yield",
+    "cup_first_drip": "cup_first_drip",
     "first_drip": "first_drip",
     "peak_pressure": "peak_pressure",
+    "brew_cup_flow": "brew_cup_flow",
     "brew_flow": "brew_flow",
     "dose_in": "dose_in",
     "dose_out": "dose_out",
@@ -558,9 +560,22 @@ class SearchShotsInput(_Model):
     rating: Range | None = Field(default=None, description="1 to 5 stars.")
     shot_time: Range | None = Field(default=None, description="Seconds.")
     yield_g: Range | None = Field(default=None, description="The scale's final weight, grams.")
-    first_drip: Range | None = Field(default=None, description="Seconds.")
+    cup_first_drip: Range | None = Field(
+        default=None,
+        description="Seconds until coffee first reached the cup (needs a scale).",
+    )
+    first_drip: Range | None = Field(
+        default=None,
+        description=(
+            "Seconds until the first puck flow, an estimate; only shots with no scale have it "
+            "(use cup_first_drip for the others)."
+        ),
+    )
     peak_pressure: Range | None = Field(default=None, description="Bar.")
-    brew_flow: Range | None = Field(default=None, description="Average brew flow, ml/s.")
+    brew_cup_flow: Range | None = Field(
+        default=None, description="Average cup flow over the brew, g/s (needs a scale)."
+    )
+    brew_flow: Range | None = Field(default=None, description="Average brew puck flow, ml/s.")
     dose_in: Range | None = Field(default=None, description="Grams.")
     dose_out: Range | None = Field(default=None, description="Grams.")
     ratio: Range | None = Field(
@@ -581,8 +596,10 @@ class SearchShotsInput(_Model):
         "rating",
         "shot_time",
         "yield_g",
+        "cup_first_drip",
         "first_drip",
         "peak_pressure",
+        "brew_cup_flow",
         "brew_flow",
         "dose_in",
         "dose_out",
@@ -691,8 +708,10 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
             "rating",
             "shot_time",
             "yield_g",
+            "cup_first_drip",
             "first_drip",
             "peak_pressure",
+            "brew_cup_flow",
             "brew_flow",
             "dose_in",
             "dose_out",

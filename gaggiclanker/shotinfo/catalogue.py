@@ -323,16 +323,36 @@ def yield_g(f: ShotFacts) -> float | None:
     return _positive(f.shot.final_weight_g)
 
 
-def first_drip(f: ShotFacts) -> float | None:
-    """Already nullable in the engine, so a ``0.0`` here is a real reading.
+def cup_first_drip(f: ShotFacts) -> float | None:
+    """When coffee first reached the cup, from the scale; absent without one.
 
-    Needs a puck flow to see it in: a board with no pressure sensor has none.
+    Already nullable in the engine (a cup that never gained half a gram), so a ``0.0``
+    would be a real reading.
     """
+    return f.summary_value("flow", "cup_first_drip_s") if f.has_scale else None
+
+
+def first_drip(f: ShotFacts) -> float | None:
+    """The first puck flow: the pump model's estimate of the first drip.
+
+    Already nullable in the engine, so a ``0.0`` here is a real reading. Needs a puck flow
+    to see it in (a board with no pressure sensor has none), and is shown only where the
+    shot has no scale: with one, the cup's own first drip is the figure, and the estimate does
+    not track when coffee reaches the cup (usually seconds later, but much earlier on a long
+    pre-infusion).
+    """
+    if f.has_scale:
+        return None
     return f.summary_value("flow", "time_to_first_drip_s") if f.puck_flow_recorded else None
 
 
 def peak_pressure(f: ShotFacts) -> float | None:
     return _positive(f.summary_value("pressure", "max_bar")) if f.has_pressure else None
+
+
+def brew_cup_flow(f: ShotFacts) -> float | None:
+    """The mean cup flow over the brew, g/s; absent without a scale."""
+    return f.section_value("extraction", "cup_flow_avg_brew_g_s") if f.has_scale else None
 
 
 def brew_flow(f: ShotFacts) -> float | None:
@@ -638,7 +658,7 @@ def _checks_more_value(f: ShotFacts) -> list[Any] | None:
 
 
 def _yield_share(f: ShotFacts) -> float | None:
-    return f.share_of_target(yield_g(f)) if f.shot.scale_connected else None
+    return f.share_of_target(yield_g(f)) if f.has_scale else None
 
 
 def _yield_share_text(f: ShotFacts) -> str | None:
@@ -717,7 +737,7 @@ def _phase_qty(key: str, decimals: int, unit: str, *, needs: str | None = None) 
     """
 
     def render(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
-        if needs == "scale" and not f.shot.scale_connected:
+        if needs == "scale" and not f.has_scale:
             return None
         if needs == "pressure" and not f.has_pressure:
             return None
@@ -730,7 +750,7 @@ def _phase_qty(key: str, decimals: int, unit: str, *, needs: str | None = None) 
 
 def _phase_number_of(key: str, *, needs: str | None = None) -> PhaseValue:
     def value(f: ShotFacts, phase: Mapping[str, Any]) -> float | None:
-        if needs == "scale" and not f.shot.scale_connected:
+        if needs == "scale" and not f.has_scale:
             return None
         if needs == "pressure" and not f.has_pressure:
             return None
@@ -741,8 +761,24 @@ def _phase_number_of(key: str, *, needs: str | None = None) -> PhaseValue:
     return value
 
 
+def _phase_cup_first_drip(f: ShotFacts, phase: Mapping[str, Any]) -> float | None:
+    """The cup's first drip on the phase holding its sample; absent without a scale.
+
+    Stored with the phase by the derivation, which places it by sample: a phase's start time
+    is rounded for display and cannot say which side of a boundary a drip fell.
+    """
+    return _phase_metric(phase, "cup_first_drip_s") if f.has_scale else None
+
+
+def _phase_puck_first_drip(f: ShotFacts, phase: Mapping[str, Any]) -> float | None:
+    """The first puck flow's phase value, where the shot has no scale to see the cup by."""
+    if f.has_scale or not f.puck_flow_recorded:
+        return None
+    return _phase_metric(phase, "first_drip_s")
+
+
 def _phase_cup_share(f: ShotFacts, phase: Mapping[str, Any]) -> float | None:
-    if not f.shot.scale_connected:
+    if not f.has_scale:
         return None
     return f.share_of_target(_phase_metric(phase, "cup_weight_end_g"))
 
@@ -753,9 +789,7 @@ def _phase_cup_with_share(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
     One item for the chat (``42.2 g, 117.2 % of target``); the fields route serves the cup
     and its share apart, since a page lays them out as two numbers.
     """
-    text = (
-        _qty(_phase_metric(phase, "cup_weight_end_g"), 1, "g") if f.shot.scale_connected else None
-    )
+    text = _qty(_phase_metric(phase, "cup_weight_end_g"), 1, "g") if f.has_scale else None
     share = _phase_cup_share(f, phase)
     return text if text is None or share is None else f"{text}, {_fixed(share, 1)} % of target"
 
@@ -1125,14 +1159,31 @@ def _items() -> tuple[Item, ...]:
         ),
         # ── timing ───────────────────────────────────────────────────
         Item(
-            key="first_drip",
+            key="cup_first_drip",
             group=timing,
             name="First drip",
             label="First drip",
             meaning=(
-                "Seconds from the start of the shot to the first sample with any puck flow: when "
-                "coffee started to reach the cup. Later usually means a finer grind or a longer "
-                "pre-infusion. The Set page's time to first drip."
+                "Seconds from the start of the shot to the first sample whose weight is at least "
+                "half a gram above the scale's first reading: when coffee first reached the cup. "
+                "Later usually means a finer grind or a longer pre-infusion. The Set page's first "
+                "drip. Needs a scale; without one the shot has the estimate below instead."
+            ),
+            default_tier="base",
+            shot=lambda f: _measure("cup_first_drip_s", cup_first_drip(f)),
+        ),
+        Item(
+            key="first_drip",
+            group=timing,
+            name="First drip (estimated)",
+            label="First drip (estimated)",
+            meaning=(
+                "Seconds from the start of the shot to the first sample with any puck flow. Puck "
+                "flow is an estimate from the pump model and does not track when coffee reaches "
+                "the cup: it can come seconds after the cup began to fill, or much earlier (a "
+                "long pre-infusion). It is only given for a shot with no scale, where there is no "
+                "cup reading, and then only as a rough guide to the first drip. The Set page's "
+                "first puck flow."
             ),
             default_tier="base",
             shot=lambda f: _measure("first_drip_s", first_drip(f)),
@@ -1252,13 +1303,28 @@ def _items() -> tuple[Item, ...]:
         ),
         # ── flow and volume ──────────────────────────────────────────
         Item(
+            key="brew_cup_flow",
+            group=flow,
+            name="Brew cup flow",
+            label="Cup flow",
+            meaning=(
+                f"The mean cup flow {_BREW}, in g/s: how fast coffee reached the cup, as the "
+                "scale measured it. It usually runs well below the puck flow, which is an estimate "
+                "from the pump model that stays near the pump's own flow. The Set page's cup "
+                "flow. Needs a scale."
+            ),
+            default_tier="base",
+            shot=lambda f: _measure("cup_flow_g_s", brew_cup_flow(f)),
+        ),
+        Item(
             key="brew_flow",
             group=flow,
-            name="Average brew flow",
-            label="Average brew flow",
+            name="Average brew puck flow",
+            label="Average brew puck flow",
             meaning=(
-                f"The mean puck flow {_BREW}, in ml/s. Faster usually means a coarser grind or a "
-                "lighter puck. The Set page's average brew flow."
+                f"The mean puck flow {_BREW}, in ml/s. Puck flow is the machine's estimate from "
+                "the pump model, not what reaches the cup. Faster usually means a coarser grind "
+                "or a lighter puck. The Set page's puck flow."
             ),
             default_tier="base",
             shot=lambda f: _measure("brew_flow_ml_s", brew_flow(f)),
@@ -1266,8 +1332,8 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="average_flow",
             group=flow,
-            name="Average flow (whole shot)",
-            label="Average flow",
+            name="Average puck flow (whole shot)",
+            label="Average puck flow",
             meaning=(
                 "The mean puck flow over the whole shot, pre-infusion included, in ml/s. Puck "
                 "flow is the machine's estimate of the water passing through the coffee."
@@ -1278,8 +1344,8 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="peak_flow",
             group=flow,
-            name="Peak flow",
-            label="Peak flow",
+            name="Peak puck flow",
+            label="Peak puck flow",
             meaning="The highest puck flow during the shot, in ml/s.",
             default_tier="extended",
             shot=lambda f: _qty(_flow_summary(f, "peak_flow_ml_s"), 1, "ml/s"),
@@ -1287,11 +1353,13 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="total_volume",
             group=flow,
-            name="Total volume pumped",
-            label="Total volume",
+            name="Total volume pumped (estimated)",
+            label="Total volume (estimated)",
             meaning=(
                 "Puck flow integrated over the shot, in ml: the water that passed through the "
-                "puck. More than the yield, because the puck keeps some."
+                "puck, estimated from the pump model. More than the yield, because the puck "
+                "keeps some, and it can miss the cup weight either way; with a scale the yield "
+                "is the cup's weight."
             ),
             default_tier="extended",
             shot=lambda f: _qty(_flow_summary(f, "total_volume_ml"), 1, "ml"),
@@ -1544,9 +1612,9 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="phase_volume",
             group=phases,
-            name="Phase volume",
-            label="volume",
-            meaning="Puck flow integrated over the phase, in ml.",
+            name="Phase puck volume (estimated)",
+            label="puck volume (estimated)",
+            meaning="Puck flow integrated over the phase, in ml: an estimate from the pump model.",
             default_tier="extended",
             phase=lambda f, p: (
                 _qty(_phase_number(p, "total_flow_ml"), 1, "ml") if f.puck_flow_recorded else None
@@ -1555,8 +1623,8 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="phase_flow",
             group=phases,
-            name="Phase average flow",
-            label="flow",
+            name="Phase average puck flow",
+            label="puck flow",
             meaning="The mean puck flow during the phase, in ml/s.",
             default_tier="extended",
             phase=lambda f, p: (
@@ -1569,7 +1637,7 @@ def _items() -> tuple[Item, ...]:
             key="phase_flow_peak",
             group=phases,
             name="Phase peak puck flow",
-            label="peak flow",
+            label="peak puck flow",
             meaning="The highest puck flow during the phase, in ml/s.",
             default_tier="extended",
             phase=_phase_qty("puck_flow_peak_ml_s", 2, "ml/s", needs="puck_flow"),
@@ -1577,11 +1645,11 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="phase_scale_flow",
             group=phases,
-            name="Phase average scale flow",
-            label="scale flow",
+            name="Phase average cup flow",
+            label="cup flow",
             meaning=(
-                "The mean of the scale's flow readings during the phase, in g/s: how fast the "
-                "cup filled. Needs a scale."
+                "The mean cup flow during the phase, in g/s: how fast the cup filled, as the "
+                "scale measured it. Needs a scale."
             ),
             default_tier="extended",
             phase=_phase_qty("scale_flow_mean_g_s", 2, "g/s", needs="scale"),
@@ -1589,9 +1657,9 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="phase_scale_flow_peak",
             group=phases,
-            name="Phase peak scale flow",
-            label="peak scale flow",
-            meaning="The highest scale flow reading during the phase, in g/s. Needs a scale.",
+            name="Phase peak cup flow",
+            label="peak cup flow",
+            meaning="The highest cup flow during the phase, in g/s. Needs a scale.",
             default_tier="extended",
             phase=_phase_qty("scale_flow_peak_g_s", 2, "g/s", needs="scale"),
         ),
@@ -1650,18 +1718,29 @@ def _items() -> tuple[Item, ...]:
             phase=_phase_qty("water_pumped_ml", 1, "ml"),
         ),
         Item(
-            key="phase_first_drip",
+            key="phase_cup_first_drip",
             group=phases,
             name="First drip, in the phase that holds it",
             label="first drip",
             meaning=(
-                "Seconds into the shot of the first sample with any puck flow, on the phase it "
-                "fell in."
+                "Seconds into the shot when coffee first reached the cup, on the phase it fell "
+                "in. Needs a scale."
             ),
             default_tier="extended",
-            phase=lambda f, p: (
-                _qty(_phase_metric(p, "first_drip_s"), 1, "s") if f.puck_flow_recorded else None
+            phase=lambda f, p: _qty(_phase_cup_first_drip(f, p), 1, "s"),
+        ),
+        Item(
+            key="phase_first_drip",
+            group=phases,
+            name="First drip (estimated), in the phase that holds it",
+            label="first drip (estimated)",
+            meaning=(
+                "Seconds into the shot of the first sample with any puck flow, on the phase it "
+                "fell in; given only for a shot with no scale, where the cup's own first drip "
+                "does not exist."
             ),
+            default_tier="extended",
+            phase=lambda f, p: _qty(_phase_puck_first_drip(f, p), 1, "s"),
         ),
         Item(
             key="phase_pressure_adherence",
@@ -2240,7 +2319,7 @@ def _channels(group: str) -> tuple[Item, ...]:
         (
             "curve_scale_flow",
             "Scale flow",
-            Channel("vf", "scale flow (g/s)", flow, "scale"),
+            Channel("vf", "cup flow (g/s)", flow, "scale"),
             "excluded",
             "How fast the scale's weight rose, in g/s. Absent without a scale.",
         ),
@@ -2295,6 +2374,7 @@ _UNITS: Mapping[str, str] = MappingProxyType(
         "shot_time": "s",
         "yield": "g",
         "yield_share": "%",
+        "cup_first_drip": "s",
         "first_drip": "s",
         "preinfusion_time": "s",
         "main_extraction_time": "s",
@@ -2306,6 +2386,7 @@ _UNITS: Mapping[str, str] = MappingProxyType(
         "average_pressure": "bar",
         "minimum_pressure": "bar",
         "peak_pressure_time": "s",
+        "brew_cup_flow": "g/s",
         "brew_flow": "ml/s",
         "average_flow": "ml/s",
         "peak_flow": "ml/s",
@@ -2339,6 +2420,7 @@ _UNITS: Mapping[str, str] = MappingProxyType(
         "phase_cup_gained": "g",
         "phase_cup_share": "%",
         "phase_water": "ml",
+        "phase_cup_first_drip": "s",
         "phase_first_drip": "s",
         "phase_pressure_adherence": "bar",
         "phase_flow_error": "ml/s",
@@ -2358,6 +2440,7 @@ _SHOT_VALUES: Mapping[str, ShotValue] = MappingProxyType(
     {
         "shot_time": shot_time,
         "yield": yield_g,
+        "cup_first_drip": cup_first_drip,
         "first_drip": first_drip,
         "preinfusion_time": lambda f: (
             f.summary_value("extraction", "preinfusion_time_s") if f.has_pressure else None
@@ -2373,6 +2456,7 @@ _SHOT_VALUES: Mapping[str, ShotValue] = MappingProxyType(
         "average_pressure": lambda f: _pressure_summary(f, "avg_bar"),
         "minimum_pressure": lambda f: _pressure_summary(f, "min_bar"),
         "peak_pressure_time": lambda f: _pressure_summary(f, "peak_time_s"),
+        "brew_cup_flow": brew_cup_flow,
         "brew_flow": brew_flow,
         "average_flow": lambda f: _flow_summary(f, "avg_flow_ml_s"),
         "peak_flow": lambda f: _flow_summary(f, "peak_flow_ml_s"),
@@ -2425,7 +2509,8 @@ _PHASE_VALUES: Mapping[str, PhaseValue] = MappingProxyType(
         "phase_samples": lambda _, p: (
             int(count) if (count := _phase_number(p, "sample_count")) is not None else None
         ),
-        "phase_first_drip": lambda _, p: _phase_metric(p, "first_drip_s"),
+        "phase_cup_first_drip": _phase_cup_first_drip,
+        "phase_first_drip": _phase_puck_first_drip,
         "phase_resistance": lambda _, p: _phase_resistance_level(p),
         "phase_resistance_slope": lambda _, p: (
             _phase_diag_number(p, "resistance_slope")

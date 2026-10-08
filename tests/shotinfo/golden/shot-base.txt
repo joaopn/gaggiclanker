@@ -18,11 +18,12 @@ Machine's shot number: 000204
 Shot time: 47.8 s
 Yield: 31.6 g
 [Timing]
-First drip: 28.0 s
+First drip: 24.0 s
 [Pressure]
 Peak pressure: 8.20 bar
 [Flow and volume]
-Average brew flow: 1.42 ml/s
+Cup flow: 1.05 g/s
+Average brew puck flow: 1.42 ml/s
 [Puck resistance]
 Resistance level: 1.36, from the machine
 [Profile compliance]

@@ -99,7 +99,7 @@ async def test_the_water_counters_zeros_are_not_a_column_either(archive: Archive
     layout = {item.key: "base" for item in CATALOGUE}
     text = render_shot(facts, "base", layout, curve_points=20)  # type: ignore[arg-type]
     assert "water pumped (ml)" not in text
-    assert "scale flow (g/s)" in text  # the scale's own column is still there
+    assert "cup flow (g/s)" in text  # the scale's own column is still there
 
 
 async def test_a_shot_flagged_with_no_pressure_sensor_has_no_first_drip_though_its_log_has_flow(
@@ -108,7 +108,7 @@ async def test_a_shot_flagged_with_no_pressure_sensor_has_no_first_drip_though_i
     # The lever shot's log carries a real puck flow from its fast part on. Flagged as a
     # board with no pressure sensor, that flow is not read: no drip, stored, rendered, served
     # or summed into a Set's trends.
-    shot, set_id, _ = await file_lever(app, device_id="000907", has_pressure=False)
+    shot, set_id, _ = await file_lever(app, device_id="000907", has_pressure=False, scale=False)
     db = app.state.db
     row = await ShotsRepository(db).get(shot)
     assert row is not None and row.phases
@@ -122,7 +122,7 @@ async def test_a_shot_flagged_with_no_pressure_sensor_has_no_first_drip_though_i
     assert [c.brew_flow_ml_s for c in counted] == [None]
 
     # The same bytes read as a machine that has a pressure sensor keep all of them.
-    sensor, other_set, _ = await file_lever(app, device_id="000908")
+    sensor, other_set, _ = await file_lever(app, device_id="000908", scale=False)
     [facts] = await load_shots(db, [sensor], samples=True)
     assert {
         line.key for line in shot_lines(facts, frozenset({"first_drip", "phase_first_drip"}))
@@ -135,12 +135,30 @@ async def test_a_shot_flagged_with_no_pressure_sensor_has_no_first_drip_though_i
     ]
 
 
+async def test_a_standard_board_with_a_scale_has_the_cups_first_drip_and_no_puck_one(
+    app: FastAPI,
+) -> None:
+    # No pressure sensor means no puck flow, so the estimate is absent; the scale still saw
+    # the cup fill, so the first drip and the cup flow exist there for the first time.
+    shot, set_id, _ = await file_lever(app, device_id="000911", has_pressure=False)
+    db = app.state.db
+    [facts] = await load_shots(db, [shot], samples=True)
+    assert facts.has_scale
+    keys = frozenset({"cup_first_drip", "brew_cup_flow", "first_drip", "brew_flow"})
+    assert {line.key for line in shot_lines(facts, keys)} == {"cup_first_drip", "brew_cup_flow"}
+    [counted] = await SetsRepository(db).counted_shots(set_id)
+    assert counted.cup_first_drip_s is not None
+    assert counted.cup_flow_g_s is not None
+    assert counted.first_drip_s is None
+    assert counted.brew_flow_ml_s is None
+
+
 async def test_a_first_drip_stored_before_the_gate_is_not_read_for_a_shot_flagged_without_sensor(
     app: FastAPI,
 ) -> None:
     # A shot derived at an earlier version still holds its stored per-phase first drip until
     # the boot re-derive reaches it; what is read of it must already leave it out.
-    shot, _, _ = await file_lever(app, device_id="000910")
+    shot, _, _ = await file_lever(app, device_id="000910", scale=False)
     db = app.state.db
     [before] = await load_shots(db, [shot])
     assert shot_lines(before, frozenset({"phase_first_drip"}))

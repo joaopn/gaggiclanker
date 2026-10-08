@@ -278,6 +278,7 @@ describe("VersionTimeline", () => {
         index_avg_flow_ml_s: null,
         sample_count: 118,
         scale_connected: true,
+        has_scale: true,
         incomplete: false,
         quarantined: false,
         quarantine_reason: null,

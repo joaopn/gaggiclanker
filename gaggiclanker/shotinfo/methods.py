@@ -47,6 +47,7 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "phases_not_reached": "profile.phases_after_last_sample@1",
         "phase_log_note": "header.version_and_phase_table@1",
         # ── timing, temperature, pressure, flow, weight ──────────────
+        "cup_first_drip": "samples.cup_first_drip@1",
         "first_drip": "samples.first_puck_flow@1",
         "preinfusion_time": "samples.half_peak_pressure_time@1",
         "main_extraction_time": "samples.after_half_peak_pressure@1",
@@ -58,6 +59,7 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "average_pressure": "samples.pressure_mean@1",
         "minimum_pressure": "samples.pressure_min@1",
         "peak_pressure_time": "samples.pressure_max_time@1",
+        "brew_cup_flow": "brew.cup_flow_mean@1",
         "brew_flow": "brew.puck_flow_mean@1",
         "average_flow": "samples.puck_flow_mean@1",
         "peak_flow": "samples.puck_flow_max@1",
@@ -95,6 +97,7 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "phase_cup_gained": per_phase_method("cup_weight", "gained"),
         "phase_cup_share": "readtime.cup_share_of_target@1",
         "phase_water": per_phase_method("water_pumped", "gained"),
+        "phase_cup_first_drip": "phase.cup_first_drip@1",
         "phase_first_drip": "phase.first_puck_flow@1",
         "phase_pressure_adherence": "compliance.phase_pressure_rmse@1",
         "phase_flow_error": "compliance.phase_flow_rmse@1",

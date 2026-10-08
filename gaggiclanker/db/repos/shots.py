@@ -216,7 +216,11 @@ class ShotListRow(BaseModel):
     index_max_pressure_bar: float | None = None
     index_avg_flow_ml_s: float | None = None
     sample_count: int = 0
+    #: The connection flag the firmware wrote.
     scale_connected: bool = False
+    #: Whether the shot had a scale (see :data:`HAS_SCALE_SQL`): what every cup number and the
+    #: page's "Scale" line follow, and what the web reads instead of working it out.
+    has_scale: bool = False
     incomplete: bool = False
     quarantined: bool = False
     quarantine_reason: str | None = None
@@ -376,6 +380,22 @@ class ShotPage(BaseModel):
     next_cursor: str | None = None
 
 
+#: Whether the shot had a scale, as its stored diagnostics say it: any weight above zero in the
+#: brew phase (:func:`~gaggiclanker.domain.diagnostics.brew_has_scale`). The connection flag is
+#: the firmware's word and is not the answer, since a board without a scale can leave it set
+#: while it logs zeros. A shot with no stored diagnostics falls back to the flag. The same
+#: reading as :attr:`~gaggiclanker.shotinfo.facts.ShotFacts.has_scale`.
+HAS_SCALE_SQL = """
+    CASE WHEN s.diagnostics_json IS NOT NULL AND json_valid(s.diagnostics_json)
+         THEN COALESCE(
+             CASE json_type(s.diagnostics_json, '$.diagnostics.weight.scale_connected')
+                  WHEN 'true' THEN 1 WHEN 'false' THEN 0 END,
+             CASE json_type(s.diagnostics_json, '$.diagnostics.scale_connected')
+                  WHEN 'true' THEN 1 WHEN 'false' THEN 0 END,
+             s.scale_connected)
+         ELSE s.scale_connected END
+"""
+
 # The list projection. Written once because the list route, the detail route and
 # the tests must all agree on what "volume" means: the scale's final weight when
 # there was a scale, and the device index's figure otherwise.
@@ -386,7 +406,7 @@ _LIST_COLUMNS = f"""
     s.final_weight_g,
     COALESCE(s.final_weight_g, s.index_volume_g) AS volume_g,
     s.index_rating, s.index_avg_temp_c, s.index_max_pressure_bar, s.index_avg_flow_ml_s,
-    s.sample_count, s.scale_connected, s.incomplete,
+    s.sample_count, s.scale_connected, ({HAS_SCALE_SQL}) AS has_scale, s.incomplete,
     s.quarantined, s.quarantine_reason, s.deleted_on_device,
     n.rating AS rating,
     n.shot_id IS NOT NULL AS has_notes,
@@ -455,8 +475,9 @@ REVIEW_SORT = "review"
 #: target yield and dose of the version the shot is filed under, and which profile version and
 #: Set version decide its signature and its override. The diagnostics blob is large, so only
 #: its `metrics` block and the pressure flag are pulled out of it.
-_REVIEW_COLUMNS = """
-    s.id, s.final_weight_g, s.scale_connected, s.final_exit_reason, s.duration_ms,
+_REVIEW_COLUMNS = f"""
+    s.id, s.final_weight_g, ({HAS_SCALE_SQL}) AS scale_connected, s.final_exit_reason,
+    s.duration_ms,
     s.phases_json, s.profile_version_id, s.set_version_id, s.quarantined, s.updated_at,
     CASE WHEN s.diagnostics_json IS NOT NULL AND json_valid(s.diagnostics_json)
          THEN json_extract(s.diagnostics_json, '$.metrics') END AS metrics_json,

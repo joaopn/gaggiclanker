@@ -488,7 +488,7 @@ async def test_a_choked_puck_shows_its_zero_brew_flow(archive: Archive) -> None:
     rendered = render_shot(choked, "full", default_tiers(), curve_points=CURVE_POINTS)
 
     assert choked.puck_flow_recorded
-    assert "Average brew flow: 0.00 ml/s" in rendered
+    assert "Average brew puck flow: 0.00 ml/s" in rendered
 
 
 async def test_no_flow_item_is_shown_when_puck_flow_was_not_recorded(archive: Archive) -> None:
@@ -550,10 +550,18 @@ async def test_an_example_is_absent_wherever_the_rendering_leaves_the_line_out(
     assert item_example(unsampled, "curve_pressure", curve_points=CURVE_POINTS) is None
     # A phase item is one line per phase that has it, and no line for one that
     # does not: only the phase holding the first drip has its time.
-    drips = item_example(full, "phase_first_drip", curve_points=CURVE_POINTS)
+    drips = item_example(full, "phase_cup_first_drip", curve_points=CURVE_POINTS)
     assert drips is not None
     assert all(": first drip " in line for line in drips.splitlines())
     assert len(drips.splitlines()) == 1 < len(full.phases)
+    # The estimate is the figure of a shot with no scale: this one has a scale.
+    assert item_example(full, "phase_first_drip", curve_points=CURVE_POINTS) is None
+    assert item_example(full, "first_drip", curve_points=CURVE_POINTS) is None
+    assert item_example(full, "cup_first_drip", curve_points=CURVE_POINTS) is not None
+    bare_drips = item_example(no_scale, "phase_first_drip", curve_points=CURVE_POINTS)
+    assert bare_drips is not None and "first drip (estimated)" in bare_drips
+    assert item_example(no_scale, "cup_first_drip", curve_points=CURVE_POINTS) is None
+    assert item_example(no_scale, "first_drip", curve_points=CURVE_POINTS) is not None
     assert len(
         (item_example(full, "phase_name", curve_points=CURVE_POINTS) or "").splitlines()
     ) == len(full.phases)

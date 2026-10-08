@@ -52,6 +52,7 @@ from tests.lever_shot import (
     SOAK_END_G,
     TARGET_YIELD_G,
     lever_shot,
+    without_scale,
 )
 from tests.sets.conftest import make_shot
 from tests.sets.test_api import data
@@ -256,12 +257,17 @@ async def test_every_base_item_origin_dev_showed_is_still_rendered(
         profile=constructed_profile("shot_204", "flow-first"),
     )
     flow_led_id = await ShotsRepository(archive.db).insert(flow_led.shot, flow_led.samples)
+    # The estimated first drip is the one a shot with no scale has, so one of them is read too.
+    bare_slog = without_scale(parse_slog(SLOG.read_bytes()))
+    bare = derive_shot(bare_slog, slog_to_raw(bare_slog), device_id="000812")
+    bare_id = await ShotsRepository(archive.db).insert(bare.shot, bare.samples)
 
     rendered: set[str] = set()
     lever_db, lever_shot_id, _ = lever
     for db, shot_id in (
         (archive.db, archive.shot),
         (archive.db, flow_led_id),
+        (archive.db, bare_id),
         (lever_db, lever_shot_id),
     ):
         [facts] = await load_shots(db, [shot_id])

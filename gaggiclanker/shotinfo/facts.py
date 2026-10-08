@@ -109,6 +109,21 @@ class ShotFacts:
         return self.has_pressure and (mask is None or bool(mask & (1 << _PUCK_FLOW_BIT)))
 
     @property
+    def has_scale(self) -> bool:
+        """Whether the shot had a scale: a weight above zero in its brew phase.
+
+        Read from the stored diagnostics, which apply that rule to the weights. A board
+        with no scale logs ``v`` and ``vf`` as zeros while the connection flag may still
+        read as set, so the flag alone is not the answer; a shot derived before the
+        diagnostics carried it falls back to the flag.
+        """
+        weight = self.section("weight")
+        flag = weight.get("scale_connected") if weight is not None else None
+        if flag is None:
+            flag = self.diagnostics.get("scale_connected")
+        return bool(flag) if flag is not None else bool(self.shot.scale_connected)
+
+    @property
     def blob(self) -> Mapping[str, Any]:
         """The stored diagnostics document, or an empty one."""
         return self.shot.diagnostics or {}
@@ -164,7 +179,7 @@ class ShotFacts:
             warnings=self.warnings,
             phases=self.phases,
             duration_s=shot.duration_ms / 1000,
-            scale_connected=shot.scale_connected,
+            scale_connected=self.has_scale,
             final_weight_g=shot.final_weight_g,
             target_yield_g=self.target_yield_g,
             dose_g=version.dose_g if version is not None else None,
@@ -190,7 +205,7 @@ class ShotFacts:
         """What is plainly wrong with the shot, from its stored numbers and where it is filed."""
         return shot_warnings(
             final_weight_g=self.shot.final_weight_g,
-            scale_connected=self.shot.scale_connected,
+            scale_connected=self.has_scale,
             final_exit_reason=self.shot.final_exit_reason or 0,
             duration_s=self.shot.duration_ms / 1000,
             target_yield_g=self.target_yield_g,

@@ -25,9 +25,9 @@ The meanings of the extended fields, sent once in the conversation, with a shot 
 - Time of peak pressure [extended]: Seconds into the shot when the peak pressure was reached.
 
 [Flow and volume]
-- Average flow [extended]: The mean puck flow over the whole shot, pre-infusion included, in ml/s. Puck flow is the machine's estimate of the water passing through the coffee.
-- Peak flow [extended]: The highest puck flow during the shot, in ml/s.
-- Total volume [extended]: Puck flow integrated over the shot, in ml: the water that passed through the puck. More than the yield, because the puck keeps some.
+- Average puck flow [extended]: The mean puck flow over the whole shot, pre-infusion included, in ml/s. Puck flow is the machine's estimate of the water passing through the coffee.
+- Peak puck flow [extended]: The highest puck flow during the shot, in ml/s.
+- Total volume (estimated) [extended]: Puck flow integrated over the shot, in ml: the water that passed through the puck, estimated from the pump model. More than the yield, because the puck keeps some, and it can miss the cup weight either way; with a scale the yield is the cup's weight.
 - Water pumped [extended]: The water the pump moved, in ml, from the machine's own count; only for machines whose pump counts it.
 
 [Weight]
@@ -52,14 +52,15 @@ From the scale's readings: none of these exists without a scale.
 - temperature [extended]: The mean measured temperature during the phase, in °C.
 - lowest temperature [extended]: The lowest measured temperature during the phase, in °C.
 - target temperature [extended]: The mean temperature the profile asked for during the phase, in °C.
-- volume [extended]: Puck flow integrated over the phase, in ml.
-- flow [extended]: The mean puck flow during the phase, in ml/s.
-- peak flow [extended]: The highest puck flow during the phase, in ml/s.
-- scale flow [extended]: The mean of the scale's flow readings during the phase, in g/s: how fast the cup filled. Needs a scale.
-- peak scale flow [extended]: The highest scale flow reading during the phase, in g/s. Needs a scale.
+- puck volume (estimated) [extended]: Puck flow integrated over the phase, in ml: an estimate from the pump model.
+- puck flow [extended]: The mean puck flow during the phase, in ml/s.
+- peak puck flow [extended]: The highest puck flow during the phase, in ml/s.
+- cup flow [extended]: The mean cup flow during the phase, in g/s: how fast the cup filled, as the scale measured it. Needs a scale.
+- peak cup flow [extended]: The highest cup flow during the phase, in g/s. Needs a scale.
 - cup gained [extended]: How much the cup gained during the phase, in g: its weight at the phase's end less its weight at the previous phase's end (0 g before the first). Needs a scale.
 - water pumped [extended]: How much the pump's own water counter rose during the phase, in ml. Samples after the counter is reset (it is zeroed when a weight stop ends the shot) are not read. Absent where the counter was not recorded.
-- first drip [extended]: Seconds into the shot of the first sample with any puck flow, on the phase it fell in.
+- first drip [extended]: Seconds into the shot when coffee first reached the cup, on the phase it fell in. Needs a scale.
+- first drip (estimated) [extended]: Seconds into the shot of the first sample with any puck flow, on the phase it fell in; given only for a shot with no scale, where the cup's own first drip does not exist.
 - pressure adherence [extended]: Pressure adherence (as above) within a pressure-steered phase, in bar. Needs a pressure sensor and the shot's profile.
 - flow error [extended]: Flow-steered phases only: the root-mean-square difference between pump flow and the flow target within the phase, in ml/s.
 - ramp [extended]: Pre-infusion phases only: how fast pressure rose over the phase (its least-squares slope), in bar/s.

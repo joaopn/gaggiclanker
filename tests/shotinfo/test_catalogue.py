@@ -35,14 +35,14 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Checks", 2),
     ("Identity and status", 7),
     ("Outcome", 6),
-    ("Timing", 3),
+    ("Timing", 4),
     ("Temperature", 4),
     ("Pressure", 4),
-    ("Flow and volume", 5),
+    ("Flow and volume", 6),
     ("Weight", 2),
     ("Puck resistance", 4),
     ("Profile compliance", 3),
-    ("Phases", 31),
+    ("Phases", 32),
     ("Curve", 13),
     ("Your judgement", 8),
     ("The version's recipe", 5),
@@ -68,6 +68,7 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "exit_reason",
     "phases_not_reached",
     "phase_log_note",
+    "cup_first_drip",
     "first_drip",
     "preinfusion_time",
     "main_extraction_time",
@@ -79,6 +80,7 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "average_pressure",
     "minimum_pressure",
     "peak_pressure_time",
+    "brew_cup_flow",
     "brew_flow",
     "average_flow",
     "peak_flow",
@@ -113,6 +115,7 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "phase_cup_gained",
     "phase_cup_share",
     "phase_water",
+    "phase_cup_first_drip",
     "phase_first_drip",
     "phase_pressure_adherence",
     "phase_flow_error",
@@ -183,8 +186,10 @@ EXPECTED_BASE: frozenset[str] = frozenset(
         "shot_time",
         "yield",
         "exit_reason",
+        "cup_first_drip",
         "first_drip",
         "peak_pressure",
+        "brew_cup_flow",
         "brew_flow",
         "resistance_level",
         "pressure_adherence",
@@ -425,7 +430,7 @@ def test_nothing_a_chat_saw_without_asking_is_gone_but_the_score_and_the_channel
     assert (ORIGIN_DEV_BASE - now) == RETIRED_FROM_BASE
     # What base gained is the checks, one line per phase and what a person confirmed of a
     # reading (it was extended before: the claims are short and are the chat's to weigh), and
-    # nothing else.
+    # the two cup numbers (first drip and brew flow as the scale measured them), and nothing else.
     assert (
         now - ORIGIN_DEV_BASE
         == {
@@ -433,6 +438,8 @@ def test_nothing_a_chat_saw_without_asking_is_gone_but_the_score_and_the_channel
             "review_state",
             "review_claims",
             "review_prediction",
+            "cup_first_drip",
+            "brew_cup_flow",
         }
         | PHASE_LINE_ITEMS
     )

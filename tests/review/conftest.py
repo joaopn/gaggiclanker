@@ -152,6 +152,7 @@ def _diagnostics(*, resistance: float, flow_rmse: float) -> str:
                     "avg_flow_ml_s": 1.9,
                     "peak_flow_ml_s": 3.1,
                     "time_to_first_drip_s": 8.2,
+                    "cup_first_drip_s": 3.5,
                 },
                 "extraction": {
                     "preinfusion_time_s": 10.0,
