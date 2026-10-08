@@ -11,8 +11,9 @@ import dataclasses
 
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.shotinfo import default_tiers, load_shots, shot_lines
-from gaggiclanker.shotinfo.catalogue import ITEMS
+from gaggiclanker.shotinfo.catalogue import CATALOGUE, ITEMS
 from gaggiclanker.shotinfo.fields import shot_fields_of
+from gaggiclanker.shotinfo.render import render_shot
 from tests.shotinfo.conftest import Archive
 
 DRIP = frozenset({"cup_first_drip", "first_drip"})
@@ -114,3 +115,49 @@ async def test_the_phase_holding_the_cup_first_drip_is_the_one_whose_samples_hol
     assert len(drips) == 1
     assert drips[0].value == "24.0 s"
     assert facts.phases[drips[0].phase or 0]["name"] == "Extraction"
+
+
+async def test_the_curve_column_reads_cup_flow_at_zero_where_the_log_is_below(
+    archive: Archive,
+) -> None:
+    """Shot 204 logs -20 g/s on its first sample (the old tare glitch); the model reads 0.00."""
+    [facts] = await load_shots(archive.db, [archive.shot], samples=True)
+    assert facts.samples is not None and (facts.samples[0].vf or 0.0) < -10
+    layout = {item.key: "base" for item in CATALOGUE}
+
+    text = render_shot(facts, "full", layout, curve_points=40)  # type: ignore[arg-type]
+
+    header = next(line for line in text.splitlines() if line.startswith("t (s),"))
+    column = header.split(",").index("cup flow (g/s)")
+    rows = [line.split(",") for line in text.splitlines()[text.splitlines().index(header) + 1 :]]
+    values = [float(row[column]) for row in rows if len(row) > column and row[column]]
+    assert values and min(values) >= 0.0
+    assert rows[0][column] == "0.00"
+
+
+def _columns(text: str) -> list[str]:
+    return next(line for line in text.splitlines() if line.startswith("t (s),")).split(",")
+
+
+async def test_a_board_that_logged_zeros_with_the_flag_set_has_no_weight_or_cup_flow_column(
+    archive: Archive,
+) -> None:
+    shot = await _stored_variant(archive, "zeroed, flag kept", "000303")
+    [facts] = await load_shots(archive.db, [shot], samples=True)
+    layout = {item.key: "base" for item in CATALOGUE}
+
+    columns = _columns(render_shot(facts, "full", layout, curve_points=40))  # type: ignore[arg-type]
+
+    assert "weight (g)" not in columns and "cup flow (g/s)" not in columns
+
+
+async def test_a_scale_shot_with_the_flag_cleared_has_its_weight_and_cup_flow_columns(
+    archive: Archive,
+) -> None:
+    shot = await _stored_variant(archive, "flag cleared", "000304")
+    [facts] = await load_shots(archive.db, [shot], samples=True)
+    layout = {item.key: "base" for item in CATALOGUE}
+
+    columns = _columns(render_shot(facts, "full", layout, curve_points=40))  # type: ignore[arg-type]
+
+    assert "weight (g)" in columns and "cup flow (g/s)" in columns

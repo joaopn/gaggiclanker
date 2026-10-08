@@ -448,3 +448,71 @@ def test_lttb_at_or_above_the_length_is_every_point() -> None:
     assert lttb(xs, xs, 3) == [0, 1, 2]
     assert lttb(xs, xs, 10) == [0, 1, 2]
     assert lttb([float(i) for i in range(6)], [0.0] * 6, 2) == [0, 5]
+
+
+# -- cup flow ---------------------------------------------------------------
+
+
+def _real(name: str) -> tuple[list[ShotSampleRow], list[dict[str, Any]], int]:
+    from tests.domain.helpers import SLOG_FIXTURES
+
+    return _stored(parse_slog((SLOG_FIXTURES / f"{name}.slog").read_bytes()))
+
+
+def _cup_peak(samples: list[ShotSampleRow]) -> int:
+    flows = [max(s.vf or 0.0, 0.0) for s in samples]
+    return flows.index(max(flows))
+
+
+@pytest.mark.parametrize("target", [24, 26, 28, 30, 32])
+def test_a_cup_flow_peak_survives_when_the_shot_had_a_scale(target: int) -> None:
+    samples, phases, interval = _real("shot_204_ramping_flow")
+    peak = _cup_peak(samples)
+
+    def rows(cup_flow: bool) -> list[int]:
+        events = find_events(
+            samples,
+            phases,
+            pressure=True,
+            puck_flow=True,
+            sample_interval_ms=interval,
+            cup_flow=cup_flow,
+        )
+        return select_rows(
+            samples, events, target, pressure=True, puck_flow=True, cup_flow=cup_flow
+        )
+
+    assert peak in rows(True)
+    # On this shot the pressure and puck-flow budget alone steps over it, so the test bites.
+    assert peak not in rows(False)
+
+
+def test_the_first_drip_kept_is_the_cups_when_there_is_a_scale() -> None:
+    samples, phases, interval = _real("shot_196_baseline_high")
+    kwargs: dict[str, Any] = {"pressure": True, "puck_flow": True, "sample_interval_ms": interval}
+
+    cup = find_events(samples, phases, cup_flow=True, **kwargs)
+    puck = find_events(samples, phases, **kwargs)
+
+    assert cup.first_drip is not None and samples[cup.first_drip].t_ms == 12_000
+    assert puck.first_drip is not None and samples[puck.first_drip].t_ms > 12_000
+
+
+@pytest.mark.parametrize("target", [26, 29, 32])
+def test_a_negative_cup_flow_is_not_the_shape_the_budget_follows(target: int) -> None:
+    """Shot 204 logs -20 g/s decaying over its first seconds; read at zero it is flat.
+
+    Followed raw, the budget would be spent on the decay of a glitch instead of the shot.
+    """
+    samples, phases, interval = _real("shot_204_ramping_flow")
+    glitch = {i for i, s in enumerate(samples) if i > 1 and (s.vf or 0.0) < -1.0}
+    assert len(glitch) > 6
+    events = find_events(
+        samples, phases, pressure=False, puck_flow=False, sample_interval_ms=interval, cup_flow=True
+    )
+
+    chosen = select_rows(samples, events, target, pressure=False, puck_flow=False, cup_flow=True)
+
+    assert not set(chosen) & glitch
+    assert _cup_peak(samples) in chosen
+    assert len(chosen) <= target

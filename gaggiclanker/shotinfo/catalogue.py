@@ -897,9 +897,10 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "One table: a line saying how many of the shot's samples it holds, a header naming "
             "each column and its unit, then one comma-separated row per sample in time order. A "
             "long shot is cut to a few dozen rows chosen to keep the curve's shape (peaks, dips "
-            "and turns of pressure and puck flow), and the line says which moments are always "
-            "kept: the first and last sample, each phase's first and last, peak pressure, first "
-            "drip and both ends of the largest pressure drop. A short shot is whole. Every column "
+            "and turns of pressure and puck flow, and of cup flow when the shot had a scale), and "
+            "the line says which moments are always kept: the first and last sample, each phase's "
+            "first and last, peak pressure, first drip (the cup's own when the shot had a scale) "
+            "and both ends of the largest pressure drop. A short shot is whole. Every column "
             "is cut at the same rows. An empty cell was not recorded; a channel the machine did "
             "not record is left out."
         ),

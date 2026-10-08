@@ -214,8 +214,11 @@ async def test_a_machine_without_a_pressure_sensor_keeps_no_pressure_moment(
 
     table = _curve(render_shot(facts, "extended", default_tiers(), curve_points=CURVE_POINTS))
 
-    # No pressure moment, and no first drip either: there is no puck flow to see it in.
-    assert table[0].endswith("always kept: the first and last, each phase's first and last")
+    # No pressure moment, and no puck flow to see a first drip in; the scale still saw the cup
+    # fill, so the first drip is kept.
+    assert table[0].endswith(
+        "always kept: the first and last, each phase's first and last, first drip"
+    )
     assert "pressure (bar)" not in table[1].split(",")
     assert "puck flow (ml/s)" not in table[1].split(",")
 

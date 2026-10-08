@@ -12,12 +12,15 @@ table is cut to a target number of rows, and cut on purpose:
 * **Events are always kept**: the first and last sample, the first and last
   sample of every phase, peak pressure, first drip, and both samples of the
   largest pressure drop. Each is found by the diagnostics engine's own rule
-  (:func:`~gaggiclanker.domain.diagnostics.first_drip_index` and its
-  siblings), so the row the model reads is the sample the engine read the
+  (:func:`~gaggiclanker.domain.cup_flow.cup_first_drip_index` for a shot with a
+  scale, :func:`~gaggiclanker.domain.diagnostics.first_drip_index` for one
+  without, and their siblings), so the row the model reads is the sample the engine read the
   number from. A channel the shot did not record contributes no event.
 * **The rest of the budget keeps the shape**, by largest-triangle-three-buckets
-  on pressure and on puck flow, half each; all of it on the one of the two a
-  shot recorded; evenly in time when it recorded neither.
+  on pressure, on puck flow and, when the shot had a scale, on cup flow, split
+  evenly among the ones the shot has (the earlier of them takes an odd one);
+  evenly in time when it has none. The cup flow's shape is read at zero where
+  the log has it below zero, as everywhere.
 
 A fixed stride would keep the general shape and step over a half-second
 pressure drop, a channel opening; that is what this replaces.
@@ -35,6 +38,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from gaggiclanker.db.repos.shots import ShotSampleRow
+from gaggiclanker.domain.cup_flow import cup_first_drip_index
+from gaggiclanker.domain.cup_flow import cup_flow as read_cup_flow
 from gaggiclanker.domain.diagnostics import (
     SAMPLE_FIELDS,
     SampleDict,
@@ -91,13 +96,16 @@ def find_events(
     pressure: bool,
     puck_flow: bool,
     sample_interval_ms: int | None,
+    cup_flow: bool = False,
 ) -> CurveEvents:
     """The shot's moments, found by the engine's own rules on the stored samples.
 
     ``pressure`` and ``puck_flow`` say whether the shot recorded the channel at
     all (a pressure channel on a machine without a sensor is not recorded); an
-    unrecorded channel contributes no event. ``phases`` is the stored phase
-    list, read for the phase names the engine's brew window is chosen by.
+    unrecorded channel contributes no event. With a scale (``cup_flow``) the first
+    drip is the cup's own, the moment coffee reached it, otherwise the puck flow's.
+    ``phases`` is the stored phase list, read for the phase names the engine's brew
+    window is chosen by.
     """
     engine = _engine_samples(samples)
     transitions = _transitions(samples, phases)
@@ -110,7 +118,13 @@ def find_events(
             index for span in _phase_spans(transitions, len(samples)) for index in span
         ),
         peak_pressure=peak_pressure_index(engine) if pressure else None,
-        first_drip=first_drip_index(engine) if puck_flow else None,
+        first_drip=(
+            cup_first_drip_index(engine)
+            if cup_flow
+            else first_drip_index(engine)
+            if puck_flow
+            else None
+        ),
         pressure_drop=largest_pressure_drop(engine, transitions, dt) if pressure else None,
     )
 
@@ -122,14 +136,15 @@ def select_rows(
     *,
     pressure: bool,
     puck_flow: bool,
+    cup_flow: bool = False,
 ) -> list[int]:
     """The positions of the rows to write, ascending: every event, then the shape.
 
     A shot with no more samples than ``target`` is written whole. Otherwise the
     first and last sample and every event are kept, and what is left of
-    ``target`` is spent by :func:`lttb` on pressure and on puck flow, half each
-    (pressure takes an odd one), on the one of them the shot recorded, or
-    evenly in time when it recorded neither. The result is never more than
+    ``target`` is spent by :func:`lttb` on pressure, puck flow and cup flow, split
+    evenly among the ones the shot recorded (pressure, then puck flow, then cup flow
+    take the odd ones), or evenly in time when it recorded none. The result is never more than
     ``target`` rows unless the events alone are more.
     """
     count = len(samples)
@@ -138,16 +153,17 @@ def select_rows(
     kept = {0, count - 1, *events.positions()}
     left = max(target - len(kept), 0)
     times = [float(sample.t_ms) for sample in samples]
-    series: list[tuple[str, int]]
-    if pressure and puck_flow:
-        series = [("cp", (left + 1) // 2), ("pf", left // 2)]
-    elif pressure:
-        series = [("cp", left)]
-    elif puck_flow:
-        series = [("pf", left)]
-    else:
+    fields = [
+        field
+        for field, recorded in (("cp", pressure), ("pf", puck_flow), ("vf", cup_flow))
+        if recorded
+    ]
+    if not fields:
         kept.update(_even_in_time(times, left))
-        series = []
+    series = [
+        (field, left // len(fields) + (1 if place < left % len(fields) else 0))
+        for place, field in enumerate(fields)
+    ]
     for field, share in series:
         # The first and last sample are kept already, so LTTB's two fixed
         # points are free: `share` is what it adds in between.
@@ -208,9 +224,17 @@ def _lttb_channel(
 ) -> list[int]:
     """LTTB on one channel, over the samples that carry a value for it."""
     carried = [index for index, sample in enumerate(samples) if getattr(sample, field) is not None]
-    values = [float(getattr(samples[index], field)) for index in carried]
+    values = [_series_value(samples[index], field) for index in carried]
     chosen = lttb([times[index] for index in carried], values, threshold)
     return [carried[position] for position in chosen]
+
+
+def _series_value(sample: ShotSampleRow, field: str) -> float:
+    """A sample's value on a channel; the cup flow is read at zero where it is below."""
+    value = float(getattr(sample, field))
+    if field == "vf":
+        return read_cup_flow({"vf": value}) or 0.0
+    return value
 
 
 def _even_in_time(times: list[float], count: int) -> list[int]:

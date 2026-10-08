@@ -232,7 +232,7 @@ async def test_the_estimates_and_the_curve_examples_follow_the_curve_points_sett
     assert estimates["base_per_shot"] == before["estimates"]["base_per_shot"], "no curve in base"
     example = items_of(after)["curve_pressure"]["example"]
     assert example is not None and example.startswith("12 of 188 samples, ")
-    assert items_of(before)["curve_pressure"]["example"].startswith("47 of 188 samples, ")
+    assert items_of(before)["curve_pressure"]["example"].startswith("49 of 188 samples, ")
 
 
 async def test_the_autoload_follows_the_recent_shots_setting(

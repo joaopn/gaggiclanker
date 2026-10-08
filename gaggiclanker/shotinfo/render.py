@@ -31,6 +31,7 @@ from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotSampleRow, ShotsRepository
+from gaggiclanker.domain.cup_flow import cup_flow
 from gaggiclanker.shotinfo.catalogue import (
     CATALOGUE,
     CHECKS_GROUP,
@@ -305,7 +306,7 @@ def _curve_table(facts: ShotFacts, items: list[Item], curve_points: int) -> list
         ",".join(
             [
                 f"{samples[index].t_ms / 1000:.2f}",
-                *(_cell(getattr(samples[index], channel.field), channel) for channel in channels),
+                *(_cell(_reading(samples[index], channel), channel) for channel in channels),
             ]
         )
         for index in positions
@@ -317,20 +318,24 @@ def _selection(facts: ShotFacts, curve_points: int) -> tuple[list[int], CurveEve
     """Which samples the curve writes, and the moments among them that were guaranteed.
 
     One selection per shot, whatever channels the tiers show: it reads
-    pressure and puck flow only as far as the shot recorded them, so moving a
-    channel between tiers never moves a timestamp.
+    pressure, puck flow and cup flow only as far as the shot recorded them, so
+    moving a channel between tiers never moves a timestamp.
     """
     samples = facts.samples or ()
     pressure = _recorded(facts, _PRESSURE)
     puck_flow = _recorded(facts, _PUCK_FLOW)
+    scale_flow = _recorded(facts, _CUP_FLOW)
     events = find_events(
         samples,
         facts.phases,
         pressure=pressure,
         puck_flow=puck_flow,
         sample_interval_ms=facts.shot.sample_interval_ms,
+        cup_flow=scale_flow,
     )
-    positions = select_rows(samples, events, curve_points, pressure=pressure, puck_flow=puck_flow)
+    positions = select_rows(
+        samples, events, curve_points, pressure=pressure, puck_flow=puck_flow, cup_flow=scale_flow
+    )
     return positions, events
 
 
@@ -362,7 +367,7 @@ def _channel_summary(facts: ShotFacts, channel: Channel, curve_points: int) -> s
     values = [
         value
         for index in positions
-        if (value := getattr(facts.samples[index], channel.field)) is not None
+        if (value := _reading(facts.samples[index], channel)) is not None
     ]
     if not values:
         return None
@@ -383,6 +388,7 @@ def _channel_of(key: str) -> Channel:
 #: The two channels the curve's rows are chosen on.
 _PRESSURE = _channel_of("curve_pressure")
 _PUCK_FLOW = _channel_of("curve_puck_flow")
+_CUP_FLOW = _channel_of("curve_scale_flow")
 
 
 def _recorded(facts: ShotFacts, channel: Channel) -> bool:
@@ -393,10 +399,19 @@ def _recorded(facts: ShotFacts, channel: Channel) -> bool:
     if channel.needs == "pressure" and not facts.has_pressure:
         return False
     if channel.needs == "scale":
-        # The shot's own flag, or a reading that proves a scale was there: an
-        # older file may not carry the flag, and a weight never rises without one.
-        return facts.shot.scale_connected or any((sample.v or 0) > 0 for sample in samples)
+        # The one rule (a weight above zero in the brew phase): neither the connection flag,
+        # which a board without a scale can leave set while it logs zeros, nor a weight
+        # anywhere else in the shot.
+        return facts.has_scale
     return True
+
+
+def _reading(sample: Any, channel: Channel) -> float | int | None:
+    """A sample's value in a channel's column; cup flow is read at zero where the log is below."""
+    value: float | int | None = getattr(sample, channel.field)
+    if value is not None and channel.field == "vf":
+        return cup_flow({"vf": float(value)})
+    return value
 
 
 def _cell(value: float | int | None, channel: Channel) -> str:
