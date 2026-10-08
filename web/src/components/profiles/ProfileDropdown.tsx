@@ -6,6 +6,7 @@ import { ProfileDiff } from "@/components/drafts/ProfileDiff";
 import { ProfileJsonEditor } from "@/components/drafts/ProfileJsonEditor";
 import { ProfileSummary } from "@/components/drafts/ProfileSummary";
 import { ConflictPanel } from "@/components/profiles/ConflictPanel";
+import { ProfileCurve } from "@/components/profiles/ProfileCurve";
 import { ProposalPanel } from "@/components/profiles/ProposalPanel";
 import { SignatureCard } from "@/components/profiles/SignatureCard";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
@@ -15,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useBoardVersions, useSetActiveVersion } from "@/hooks/useBoard";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { sourceWords } from "@/lib/board";
+import { hasCurve } from "@/lib/profileCurve";
 import { formatTime } from "@/lib/shots";
 
 type Json = Record<string, unknown>;
@@ -58,12 +60,19 @@ export function ProfileDropdown({
   }
   const view = versions.data;
   const landingOf = (draftId: number) => proposals.find((p) => p.draft.id === draftId)?.landing;
+  const activeProfile = entry.active_version.profile as Json;
   const documentOf = (versionId: number): Json | null =>
     (view.versions.find((v) => v.version_id === versionId)?.profile as Json | undefined) ?? null;
 
   return (
     <div className="min-w-0 space-y-3 border-border border-t p-3" data-testid="profile-dropdown">
       {entry.in_conflict ? <ConflictPanel rowId={rowId} /> : null}
+
+      {hasCurve(activeProfile) ? (
+        <div data-testid="active-curve">
+          <ProfileCurve profile={activeProfile} title="Active version" />
+        </div>
+      ) : null}
 
       {(view.proposed ?? []).map((proposed) => (
         <ProposalPanel
@@ -210,6 +219,9 @@ function VersionItem({
           {sets.length === 1 ? "it brews" : "they brew"} from then on.
         </ConfirmStrip>
       ) : null}
+
+      {/* The active version's curve opens the row; drawing it again here would be the same picture twice. */}
+      {version.is_active ? null : <ProfileCurve profile={version.profile as Json} />}
 
       <div data-testid="version-information">
         {first || previous === null ? (

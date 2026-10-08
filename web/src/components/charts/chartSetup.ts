@@ -56,6 +56,7 @@ const FALLBACK = {
     grid: "#00000014",
     text: "#5c5147",
     band: "#33291f14",
+    label: "#fffdf9bf",
     span: "#1f8a8a2e",
     spanEdge: "#1f8a8a",
   },
@@ -64,6 +65,7 @@ const FALLBACK = {
     grid: "#ffffff1f",
     text: "#a79c91",
     band: "#ece5db12",
+    label: "#201b16bf",
     span: "#5fd0c92e",
     spanEdge: "#5fd0c9",
   },
@@ -80,6 +82,8 @@ export type ChartPalette = {
   grid: string;
   text: string;
   band: string;
+  /** Behind a name drawn over the curves: the card colour, mostly opaque. */
+  label: string;
   /** The span of the claim being looked at: a tint the phase bands never use. */
   span: string;
   /** The same hue at full strength, for the span's edges: its own token, no series' colour. */
@@ -95,6 +99,7 @@ export function chartPalette(isDark = false): ChartPalette {
     // Its own token rather than --muted: --muted is an opaque surface colour,
     // and the band is painted over the plot area, so it has to be see-through.
     band: cssVar("--chart-band", fallback.band),
+    label: cssVar("--chart-label", fallback.label),
     // The span a review's claim points at: its own translucent token and its own edge colour,
     // distinct from the neutral phase bands it sits over and from every series it is drawn
     // behind (a teal no series uses), so a box edge is never read as a curve.

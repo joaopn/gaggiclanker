@@ -15,10 +15,21 @@ import {
 import { draft, draftDetail, draftProfile, yieldChange } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { signatureConfirmed, signatureNone } from "@/test/signatureFixtures";
+import lmleva from "../../../tests/fixtures/profiles/firmware-lmleva.json";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
   Toaster: () => null,
+}));
+
+// The canvas is opaque to jsdom; what the curves are handed is what the page decides.
+const drawn = vi.hoisted(() => ({ data: new Set<object>(), calls: 0 }));
+vi.mock("react-chartjs-2", () => ({
+  Line: (props: { data: object }) => {
+    drawn.data.add(props.data);
+    drawn.calls += 1;
+    return <canvas />;
+  },
 }));
 
 const api = vi.hoisted(() => ({
@@ -65,6 +76,8 @@ function rowNamed(name: string): HTMLElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  drawn.data.clear();
+  drawn.calls = 0;
   window.localStorage.clear();
   api.getProfileBoard.mockResolvedValue(boardView());
   api.getBoardVersions.mockResolvedValue(
@@ -1609,5 +1622,150 @@ describe("the header", () => {
       expect(screen.queryByText(gone)).not.toBeInTheDocument();
     }
     expect(screen.queryByRole("button", { name: /delete/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("the curve in the dropdown", () => {
+  const pro = lmleva as Record<string, unknown>;
+  const changed = (version: number) => ({
+    ...pro,
+    phases: (pro.phases as Record<string, unknown>[]).map((phase, index) =>
+      index === 0 ? { ...phase, duration: 3 + version } : phase,
+    ),
+  });
+  const withActive = (profile: Record<string, unknown>, label = "Lever") =>
+    boardView({
+      rows: [
+        row({
+          row: { label },
+          type: profile.type as string,
+          active_version: {
+            ...boardRowView().active_version,
+            label,
+            type: profile.type as string,
+            profile,
+          },
+        }),
+      ],
+    });
+
+  async function open(user: ReturnType<typeof setupUser>) {
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+    return screen.findAllByTestId("version");
+  }
+
+  it("starts the open row with the active version's curve, and gives every other version its own", async () => {
+    const user = setupUser();
+    api.getProfileBoard.mockResolvedValue(withActive(changed(2)));
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([
+        listedVersion({
+          version_id: 9,
+          label: "v1.1",
+          type: "pro",
+          is_active: true,
+          previous_version_id: 7,
+          profile: changed(2),
+        }),
+        listedVersion({ version_id: 7, label: "v1.0", type: "pro", profile: changed(0) }),
+      ]),
+    );
+    const versions = await open(user);
+
+    const top = await screen.findByTestId("active-curve");
+    expect(await within(top).findByTestId("profile-curve-title")).toHaveTextContent(
+      "Active version",
+    );
+    // The active version (v1.1) is the top curve, not drawn a second time in its own entry.
+    expect(within(versions[0]).queryByTestId("profile-curve")).not.toBeInTheDocument();
+    const curve = await within(versions[1]).findByTestId("profile-curve");
+    // Above the summary or the diff, not below it.
+    const information = within(versions[1]).getByTestId("version-information");
+    expect(
+      curve.compareDocumentPosition(information) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The curve is each version's own: the active one's first phase runs two seconds longer.
+    const lengths = screen
+      .getAllByTestId("profile-curve-summary")
+      .map((el) => Number(/over (\d+(?:\.\d)?) s/.exec(el.textContent ?? "")?.[1]));
+    expect(lengths).toHaveLength(2);
+    expect(lengths[0] - lengths[1]).toBe(2);
+  });
+
+  it("takes the top curve from the active version, wherever the list puts it", async () => {
+    const user = setupUser();
+    api.getProfileBoard.mockResolvedValue(withActive(changed(5)));
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([
+        listedVersion({
+          version_id: 9,
+          label: "newest",
+          type: "pro",
+          previous_version_id: 8,
+          profile: changed(0),
+        }),
+        listedVersion({
+          version_id: 8,
+          label: "chosen",
+          type: "pro",
+          is_active: true,
+          profile: changed(5),
+        }),
+      ]),
+    );
+    await open(user);
+
+    const top = await screen.findByTestId("active-curve");
+    const lengthOf = (el: HTMLElement) =>
+      Number(/over (\d+(?:\.\d)?) s/.exec(el.textContent ?? "")?.[1]);
+    const topLength = lengthOf(await within(top).findByTestId("profile-curve-summary"));
+    const [newest, chosen] = await screen.findAllByTestId("version");
+    const first = lengthOf(within(newest).getByTestId("profile-curve-summary"));
+    // The active (second) entry draws no curve of its own; the top curve is its, five seconds
+    // longer than the first listed version's, never that one's.
+    expect(within(chosen).queryByTestId("profile-curve")).not.toBeInTheDocument();
+    expect(topLength - first).toBe(5);
+  });
+
+  it("draws nothing for a profile that is not pro, and leaves its summary", async () => {
+    const user = setupUser();
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([listedVersion({ version_id: 7, is_active: true })]),
+    );
+    const versions = await open(user);
+
+    expect(within(versions[0]).getByTestId("profile-summary")).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-curve")).not.toBeInTheDocument();
+    // Not even an empty wrapper that would take the dropdown's spacing.
+    expect(screen.queryByTestId("active-curve")).not.toBeInTheDocument();
+    expect(drawn.calls).toBe(0);
+  });
+
+  it("does not draw the curves again for a click that changes none of them", async () => {
+    const user = setupUser();
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const list = ids.map((id) =>
+      listedVersion({
+        version_id: id,
+        label: `v1.${id}`,
+        type: "pro",
+        is_active: id === 10,
+        previous_version_id: id === 1 ? null : id - 1,
+        profile: changed(id),
+      }),
+    );
+    api.getProfileBoard.mockResolvedValue(withActive(changed(10)));
+    api.getBoardVersions.mockResolvedValue(versionsView(list.reverse()));
+    const versions = await open(user);
+    // The top curve and the nine versions that are not active.
+    await waitFor(() => expect(screen.getAllByTestId("profile-curve")).toHaveLength(10));
+    const before = { charts: drawn.data.size, calls: drawn.calls };
+
+    // Opens a whole profile under a later version: the dropdown renders again.
+    await user.click(within(versions[0]).getByTestId("show-whole-profile"));
+
+    expect(drawn.data.size).toBe(before.charts);
+    expect(drawn.calls).toBe(before.calls);
   });
 });

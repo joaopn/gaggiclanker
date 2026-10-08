@@ -112,6 +112,10 @@
      line it covers. The foreground at a few percent reads as a faint wash on
      the card, roughly the step from --card to --muted, without erasing it. */
   --chart-band: #33291f14;
+  /* A phase name drawn over the curves: the card colour at 75 %, as the firmware's page does,
+     so a line behind a name does not strike through it. Translucent for the same reason as
+     the band. */
+  --chart-label: #fffdf9bf;
   /* The span of the claim a reader is looking at, over the phase bands: a teal no series uses,
      at 18 % for the fill and whole for the edge. */
   --chart-span: #1f8a8a2e;
@@ -164,6 +168,7 @@
   --chart-5: #b7a3dd;
   --chart-6: #a06604;
   --chart-band: #ece5db12;
+  --chart-label: #201b16bf;
   --chart-span: #5fd0c92e;
   --chart-span-edge: #5fd0c9;
 

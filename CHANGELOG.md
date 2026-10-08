@@ -46,6 +46,10 @@ database.
 - `/sync` and its anchors (`#sync`, `#board`, `#writes`) redirect to the same cards on the Device
   page. The `g y` shortcut is gone with the page.
 
+### The profile curve
+
+- The Profiles page shows each pro profile's curve, the pressure and flow it aims for over time, as the machine's own web page draws it. An open row starts with the active version's curve, and every other version in the list shows its own above its summary or what changed. A solid line is what the pump aims for in a phase and a dashed line is only a limit; each phase starts at a line with its name, which is left out when the chart is narrow. Profiles that are not "pro" get no curve, as on the machine, and keep their summary. The curve is a port of the GaggiMate firmware's (v1.9.0) own drawing code, checked point by point against it.
+
 ### Sync is in the top bar, on every page
 
 - **Sync moved from the Shots page to the top bar**, first in it, before the machine status. A
