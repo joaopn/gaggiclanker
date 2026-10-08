@@ -46,7 +46,7 @@ How closely the machine followed the target each phase steered by, read from the
 One line per phase, headed by the phase: `phase 2 · ramp: duration 5.0 s; ended by Duration; …`, with only the values that phase has. The pressure lines need a pressure sensor; the scale lines (cup weight, cup flow) need a scale.
 - phase [base]: The phase's number in the profile (from 0) and its name, heading the phase's line (`phase 3 · decline 9-4`).
 - duration [base]: How long the phase ran, in seconds.
-- ended by [base]: Why the phase ended: its duration, a target, a safety timeout or the person stopping the shot (Aborted). Unknown on a log that records none (firmware log version 5).
+- ended by [base]: Why the phase ended: its duration, a target, a safety timeout or the person stopping the shot (Aborted). Unknown on a log that records none (firmware log version 5). A phase with no samples says it ended before the first sample ("ended on its pressure target before the first sample"): it was over before the machine logged one.
 - cup at end [base]: The weight in the cup at the phase's last sample, in g, with its share of the filed version's target yield in % when there is one (over 100 % before the last phase means the cup was full before the profile was done). Needs a scale.
 
 [Your judgement]

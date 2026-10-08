@@ -19,7 +19,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.domain.signature import Check
 from gaggiclanker.review.reading import ChecksBlock, ReviewBlock, serve_review
 from gaggiclanker.shotinfo.catalogue import ALSO_SERVED, CATALOGUE, MEASURED_GROUPS, FieldValue
-from gaggiclanker.shotinfo.facts import ShotFacts
+from gaggiclanker.shotinfo.facts import UNSAMPLED_KEY, ShotFacts
 from gaggiclanker.shotinfo.render import load_shots
 
 __all__ = [
@@ -150,6 +150,10 @@ class PhaseFields(BaseModel):
     name: str
     start_s: float | None
     duration_s: float | None
+    #: False for a phase that ended before the machine logged a sample of it: a row with a
+    #: reason and a time and nothing measured, which the page draws as that and not as a
+    #: row of empty cells.
+    sampled: bool
     fields: list[FieldOut]
 
 
@@ -230,7 +234,7 @@ def shot_fields_of(facts: ShotFacts) -> ShotFields:
             shot_wide.append(_out(item.group, item.name, item.label, found))
 
     phases: list[PhaseFields] = []
-    for phase in facts.phases:
+    for phase in facts.listed_phases:
         fields: list[FieldOut] = []
         for item in CATALOGUE:
             if item.group not in MEASURED_GROUPS or item.phase is None:
@@ -247,6 +251,7 @@ def shot_fields_of(facts: ShotFacts) -> ShotFields:
                 name=str(phase.get("name") or "").strip(),
                 start_s=float(start) if isinstance(start, int | float) else None,
                 duration_s=float(length) if isinstance(length, int | float) else None,
+                sampled=not phase.get(UNSAMPLED_KEY),
                 fields=fields,
             )
         )

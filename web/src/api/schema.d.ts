@@ -6224,6 +6224,8 @@ export interface components {
             name: string;
             /** Number */
             number: number | null;
+            /** Sampled */
+            sampled: boolean;
             /** Start S */
             start_s: number | null;
         };

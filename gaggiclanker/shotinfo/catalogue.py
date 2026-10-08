@@ -74,7 +74,7 @@ from gaggiclanker.domain.warnings import (
     OVER_TARGET_SHARE,
     UNDER_TARGET_SHARE,
 )
-from gaggiclanker.shotinfo.facts import ShotFacts, number
+from gaggiclanker.shotinfo.facts import UNSAMPLED_KEY, ShotFacts, number
 from gaggiclanker.shotinfo.methods import METHODS
 
 if TYPE_CHECKING:
@@ -719,9 +719,22 @@ def _phase_metric(phase: Mapping[str, Any], key: str) -> float | None:
     return number(block.get(key)) if isinstance(block, dict) else None
 
 
+#: What a phase with no samples and no recorded reason says of its end.
+UNSAMPLED_NO_REASON = "ended before the first sample; the machine did not log why"
+
+
 def _phase_ended_by(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
     code = _phase_metric(phase, "ended_by")
-    return None if code is None else PHASE_EXIT_REASONS.get(int(code), "Unknown")
+    if code is None:
+        return None
+    reason = PHASE_EXIT_REASONS.get(int(code), "Unknown")
+    if phase.get(UNSAMPLED_KEY):
+        # Over before the machine logged a sample of it: the reason is the only thing it has,
+        # said as a clause of its own (the warning says it the same way).
+        if code == 0:
+            return UNSAMPLED_NO_REASON
+        return f"ended on its {reason.lower()} before the first sample"
+    return reason
 
 
 def _phase_ended_by_value(_: ShotFacts, phase: Mapping[str, Any]) -> int | None:
@@ -1551,7 +1564,9 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 "Why the phase ended: its duration, a target, a safety timeout or the person "
                 "stopping the shot (Aborted). Unknown on a log that records none (firmware log "
-                "version 5)."
+                "version 5). A phase with no samples says it ended before the first sample "
+                '("ended on its pressure target before the first sample"): it was over '
+                "before the machine logged one."
             ),
             default_tier="base",
             phase=_phase_ended_by,

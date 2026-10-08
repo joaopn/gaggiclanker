@@ -141,7 +141,7 @@ def shot_lines(facts: ShotFacts, keys: frozenset[str]) -> list[Line]:
         value = item.shot(facts)
         if value:
             lines.append(Line(item.key, value))
-    for index, phase in enumerate(facts.phases):
+    for index, phase in enumerate(facts.listed_phases):
         for item in CATALOGUE:
             if item.key not in keys or item.phase is None:
                 continue
@@ -212,7 +212,7 @@ def item_example(facts: ShotFacts, key: str, *, curve_points: int) -> str | None
         return next((line.value for line in shot_lines(facts, frozenset({key}))), None)
     lines = shot_lines(facts, frozenset({key, "phase_name"}))
     out: list[str] = []
-    for index, phase in enumerate(facts.phases):
+    for index, phase in enumerate(facts.listed_phases):
         mine = {line.key: line for line in lines if line.phase == index}
         own = mine.get(key)
         if own is None:
@@ -255,7 +255,7 @@ def _phase_lines(facts: ShotFacts, lines: list[Line]) -> list[str]:
     A log with no phase table has no named phase, and its line is headed by the number.
     """
     out: list[str] = []
-    for index, phase in enumerate(facts.phases):
+    for index, phase in enumerate(facts.listed_phases):
         mine = [line for line in lines if line.phase == index]
         named = next((line.value for line in mine if line.key == "phase_name"), None)
         values = [_phase_value(line) for line in mine if line.key != "phase_name"]
@@ -276,6 +276,10 @@ def _phase_head(phase: Mapping[str, Any], named: str | None) -> str:
 
 
 def _phase_value(line: Line) -> str:
+    # A phase with no samples says how it ended as a clause of its own ("ended on its pressure
+    # target before the first sample"); the label would say "ended by ended on".
+    if line.key == "phase_ended_by" and line.value.startswith("ended "):
+        return line.value
     return f"{ITEMS[line.key].label} {line.value}"
 
 

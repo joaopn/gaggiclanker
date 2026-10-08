@@ -29,10 +29,11 @@ from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotSampleRow
 from gaggiclanker.domain.signature import ShotChecks
 from gaggiclanker.domain.slog import FIELD_DEFS
+from gaggiclanker.domain.unsampled import stored_unsampled
 from gaggiclanker.domain.warnings import ShotWarning, percent_of_target, shot_warnings
 from gaggiclanker.signatures.checks import CheckSubject
 
-__all__ = ["ShotFacts", "number"]
+__all__ = ["UNSAMPLED_KEY", "ShotFacts", "number"]
 
 #: The `fieldsMask` bit puck flow (`pf`) is recorded under.
 _PUCK_FLOW_BIT = next(field.bit for field in FIELD_DEFS if field.name == "pf")
@@ -49,6 +50,15 @@ def number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     return float(value)
+
+
+#: The key that marks a row of :attr:`ShotFacts.listed_phases` as a phase with no sample.
+UNSAMPLED_KEY = "unsampled"
+
+
+def _by_number(phase: Mapping[str, Any]) -> int:
+    number = phase.get("phase_number")
+    return number if isinstance(number, int) and not isinstance(number, bool) else 1 << 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,3 +266,33 @@ class ShotFacts:
     @property
     def phases(self) -> Sequence[Mapping[str, Any]]:
         return [phase for phase in self.shot.phases or [] if isinstance(phase, dict)]
+
+    @property
+    def listed_phases(self) -> Sequence[Mapping[str, Any]]:
+        """The phases a person or a model reads, in the profile's order.
+
+        The stored phases, each with samples, plus a row for every phase that ended before the
+        machine logged a sample of it: its name, number, when it ended, a duration of 0 and no
+        samples, and nothing measured (the items that read a number it does not have leave the
+        line out, as for any absent value). Those rows are made here, for reading, and are never
+        stored among the phases: everything that works over the stored list divides by a
+        sample count, draws a span or averages over one.
+        """
+        stored = self.phases
+        unsampled = stored_unsampled(self.metrics)
+        if not unsampled:
+            return stored
+        rows: list[Mapping[str, Any]] = list(stored)
+        for entry in unsampled:
+            rows.append(
+                {
+                    "name": entry.get("name"),
+                    "phase_number": entry.get("phase_number"),
+                    "start_time_seconds": entry.get("at_s"),
+                    "duration_seconds": 0.0,
+                    "sample_count": 0,
+                    "metrics": {"ended_by": entry.get("ended_by", 0)},
+                    UNSAMPLED_KEY: True,
+                }
+            )
+        return sorted(rows, key=_by_number)
