@@ -223,8 +223,12 @@ not incomplete and not labelled Discard. Shots you have not labelled count too �
 they are plain data, and leaving them out would make the number depend on how
 diligent you have been with the buttons.
 
-**Six measures**, each used only where the archive already holds it: shot time,
-time to first drip, yield, peak pressure, average brew flow and your rating. The
+**Eight measures**, each used only where the archive already holds it: shot time,
+first drip (when coffee first reached the cup, from the scale), first puck flow
+(the pump model's estimate, which every shot with a pressure sensor has), yield,
+peak pressure, cup flow (what reached the cup, from the scale), puck flow and your
+rating. A shot with no scale has no cup measures, and a cup measure is never pooled
+with a puck one. The
 yield is the one you typed into the judgement if you did, then the machine's
 final weight, then the volume its own index recorded — the same order the
 starting-point wizard scores a recipe by, because a machine with no scale
@@ -237,8 +241,9 @@ zero to mean "there was nothing to average".
 with one recipe, or two recipes with three shots and two, since each recipe
 spends one degree on its own average — before the figure is worth trusting. Until then the
 line says "not measured yet" and names a conservative floor instead: 2 s for the
-shot time, 1 s for the first drip, 1 g for the yield, 0.3 bar for the peak
-pressure, 0.2 ml/s for the brew flow and half a star for the rating. These are
+shot time, 1 s for either first drip, 1 g for the yield, 0.3 bar for the peak
+pressure, 0.2 g/s for the cup flow, 0.2 ml/s for the puck flow and half a star
+for the rating. These are
 first numbers, to be tuned with use.
 
 **The evidence behind a prediction.** Every version that predicted something
@@ -999,7 +1004,7 @@ The base information starts with the shot's **checks**: the **warnings**, the fe
 are plainly wrong with a shot without knowing what its profile is for: over
 target (the final weight above 110 % of the target yield of the version it is
 filed under), under target (below 90 %), a phase of its profile skipped because
-the shot stopped on weight, and fast flow (the scale flow over 3 g/s for a
+the shot stopped on weight, and fast flow (the cup flow over 3 g/s for a
 second at 80 % of the peak pressure; a turbo profile does it on purpose). They
 are worked out when a shot is read, so refiling a shot changes them, and each is
 a fact to weigh against what the profile is for, never a verdict, unless the
@@ -1212,8 +1217,15 @@ finish and sync again.
 **Shots appear with no pressure and no flow.**
 Those are zero on **Standard** boards — the sensor is a Pro part. Every
 pressure-derived diagnostic is gated on the board's capability flag, so the
-curves are honest rather than flat lines pretending to be data. Weight needs a
-BLE scale paired with the machine; without one there is no `final_weight_g`.
+curves are honest rather than flat lines pretending to be data. Weight and the
+**cup flow** (the flow the scale sees, which is what reaches the cup) need a BLE
+scale paired with the machine; without one there is no `final_weight_g`, and the
+first drip is the **puck flow's estimate** (labelled so). Puck flow is an estimate
+from the pump model: it runs at about the pump flow, well above the cup flow, and
+does not track when coffee reaches the cup (on most shots it starts seconds later,
+on a long pre-infusion much earlier). A shot counts as having a scale when it logged
+a weight above zero during the brew, whatever the connection flag says. On a board with a scale
+the shot page opens on pressure, target pressure, cup flow, weight and temperature.
 
 **A shot is listed as quarantined.**
 Its `.slog` did not parse. The raw bytes are stored anyway — that is the whole

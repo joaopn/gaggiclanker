@@ -33,6 +33,42 @@ database.
   schema in place of the migration number. The restore refusal codes `RESTORE_NEWER_VERSION` and
   `RESTORE_MIGRATION_DIFFERS` are replaced by `RESTORE_SCHEMA_DIFFERS`.
 
+### Cup flow
+
+- **The flow the scale sees is drawn and used first wherever there is a scale.** The shot chart
+  has a **Cup flow** series (g/s, the scale's flow, never below zero) on the flows' axis in a
+  colour of its own, and the old *Flow* toggle is now **Pump flow**. A shot with a scale opens
+  on pressure, target pressure, cup flow, weight and temperature; one without opens as before.
+  The phase rows call the group Cup flow. The shots table's Curve column has a Cup flow choice
+  of its own, in the new colour, and opens on pressure and cup flow (a row with no scale draws
+  its pressure alone); Puck flow there always draws puck flow, and a choice you had saved gets
+  Cup flow added once, only if it named Puck flow. The compare overlay draws cup flow when every
+  shot in it had a scale. Everything on screen that said "scale flow" says "cup flow".
+- **First drip is now when coffee first reached the cup, whenever there is a scale.** It is
+  the first moment the cup's weight is half a gram above its first reading. On the real shots
+  measured this is 4-5 s earlier than the figure shown before, which was the first puck flow
+  (an estimate from the pump model, which does not track the cup); on a long pre-infusion it
+  can come later than the estimate, which was the wrong thing to call a first drip there.
+  A shot counts as having a scale when it logged a weight above zero during the brew, whatever
+  the connection flag says. A shot **without a scale** keeps the estimate, labelled **First
+  drip (estimated)**, and a Standard board with a scale gets a first drip for the first time.
+  The total puck volume is labelled an estimate.
+- **New numbers beside the puck ones, which are unchanged:** the cup first drip and the brew's
+  mean cup flow are stored with each shot (the archive re-derives at the next start, no wipe
+  needed), are catalogue items the chat and the review read, can be filtered and sorted on in
+  the shot search, and are two more measures of a Set's spread (**First drip**, **Cup flow**; the
+  puck ones are now **First puck flow** and **Puck flow**). A shot with no scale adds nothing
+  to the cup measures, so cup and puck values are never pooled.
+- **What the model reads:** the glossary and the review prompt say what cup flow is and that
+  puck flow is an estimate from the pump model that stays near the pump flow and does not track
+  when coffee reaches the cup (seconds later on most shots, much earlier on a long
+  pre-infusion); the curve the model reads has a cup-flow column read at zero, and the curve cut
+  spends part of its shape budget on the cup flow so a peak survives. The first drip anchor of
+  the metric language is still the first puck flow, and is now worded so.
+- Shots recorded with an old tare glitch (cup flow of -20 g/s at the start, logged by firmware
+  before it skipped such steps) no longer show it: a scale cannot lose coffee into the machine,
+  so a negative flow reads as zero everywhere.
+
 ### Backup and restore
 
 - **Settings → System → Backup & restore** downloads the whole app as one file

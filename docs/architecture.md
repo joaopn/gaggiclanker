@@ -466,8 +466,12 @@ shot in a Set conversation's opening context (the version's newest
 `get_shot_full` and `compare_shots` are both). A curve is written as one table
 of about `chatCurvePoints` rows (`shotinfo/downsample.py`): every sample the
 diagnostics are about, found by the engine's own rules, then
-largest-triangle-three-buckets on pressure and puck flow for the shape, the
-same timestamps for every channel. One renderer writes all of them,
+largest-triangle-three-buckets on pressure, puck flow and (when the shot had a
+scale) cup flow for the shape, the same timestamps for every channel. Cup flow is
+the scale's `vf` read at zero where it is below (`domain/cup_flow.py`, the one place
+an analysis reads it); a shot has a scale when any brew-phase weight is above zero,
+and without one no cup number exists. The cup first drip is the first sample whose
+weight is half a gram above the first reading, and it is the first drip the curve keeps. One renderer writes all of them,
 so a number the model quotes from the search is the number `get_shot` gives,
 and a value the machine did not record is left out rather than written as
 zero. The tiers are the catalogue's defaults with the person's choices laid
