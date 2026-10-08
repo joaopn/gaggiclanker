@@ -56,7 +56,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository
-from gaggiclanker.db.repos.profile_list import stripped_label
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.drafts.machine import NO_SUCCESSOR, MachineState
@@ -407,7 +406,7 @@ class PlanBuilder:
                         )
                     )
                 continue
-            key = stripped_label(profile.label)
+            key = profile.label
             if key in joining:
                 computed.extras.append(_extra(device_id, profile.label, joining[key]))
                 continue
@@ -674,9 +673,9 @@ def _match_row(
 ) -> BoardRow | None:
     """The live profile a file the app has never seen belongs to: its content, else its name.
 
-    By content first (the file is a version the profile has had), then by exact label, then by
-    label without the app suffix; the lowest row id when several fit, so the same inputs always
-    choose the same profile.
+    By content first (the file is a version the profile has had), then by exact label; the
+    lowest row id when several fit, so the same inputs always choose the same profile. "Bloom"
+    and "Bloom [AI]" are two names: nothing here treats a trailing marker as noise.
     """
     ids = set(listed.get(content_hash, []))
     for row in live:
@@ -684,10 +683,6 @@ def _match_row(
             return row
     for row in live:
         if row.label == label:
-            return row
-    base = stripped_label(label)
-    for row in live:
-        if stripped_label(row.label) == base:
             return row
     return None
 
