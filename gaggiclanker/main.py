@@ -5,10 +5,10 @@ imports (``uvicorn gaggiclanker.main:app``). Tests call the factory directly
 with their own ``EnvSettings`` so each one gets a fresh data directory in the
 same process — which is why nothing here is a module-level singleton.
 
-Startup order matters and is fixed: configure logging, open the database, run
-migrations, build the services, then start background tasks. Shutdown is the
-reverse, and it waits for the background tasks before closing the connection so
-nothing is mid-write when the file is released.
+Startup order matters and is fixed: configure logging, check the database file against
+the schema, open it (creating the schema when it is new), build the services, then start
+background tasks. Shutdown is the reverse, and it waits for the background tasks before
+closing the connection so nothing is mid-write when the file is released.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -30,7 +31,6 @@ from gaggiclanker.auth.service import AuthService
 from gaggiclanker.chat.runner import ChatRunner
 from gaggiclanker.db.backup import clean_stale_exports
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.insight_placement import InsightPlacementBuilder
@@ -51,6 +51,7 @@ from gaggiclanker.db.restore import (
     consume_restore_marker,
     swap_in,
 )
+from gaggiclanker.db.schema import SchemaMismatch, check_database_file, ensure_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import (
@@ -271,7 +272,7 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Open the database, migrate, wire the services, and tear it all down."""
+    """Open the database, create its schema if new, wire the services, and tear it all down."""
     env: EnvSettings = app.state.env
 
     # Before anything is opened: see check_configuration for why the order is
@@ -286,6 +287,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # An upload that never finished, or a restore nobody applied, left a staging
     # file: gone before anything opens, so it cannot be mistaken for data.
     clean_stale_staging(env.data_dir)
+
+    # A database made by a different version is refused before anything opens it, and left
+    # exactly as it is.
+    try:
+        check_database_file(env.database_path)
+    except SchemaMismatch as exc:
+        print(exc, file=sys.stderr)
+        raise
 
     db = Database(env.database_path)
     await db.connect()
@@ -345,9 +354,9 @@ async def _swap_in_restore(app: FastAPI, db: Database) -> None:
 
 
 async def _start(app: FastAPI, db: Database) -> None:
-    """Migrate, wire every service onto ``app.state``, and start the loops."""
+    """Make the schema ready, wire every service onto ``app.state``, and start the loops."""
     env: EnvSettings = app.state.env
-    await run_migrations(db)
+    await ensure_schema(db)
     # The profile list is filled once from everything the archive stores (see
     # `db/repos/profile_list.py`); a step rather than SQL, run before anything reads the board.
     await ProfileListBuilder(db).build()

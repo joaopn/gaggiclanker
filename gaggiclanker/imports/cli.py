@@ -7,7 +7,7 @@ database with one command:
 
     uv run gaggiclanker import tests/fixtures/exports
 
-It opens the database and runs migrations itself rather than talking to a
+It opens the database and creates it when it is new itself rather than talking to a
 running server: importing a few hundred files through HTTP means holding them
 all in one request body, and the point of the command line is that the files are
 already on this disk.
@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.schema import SchemaMismatch, check_database_file, ensure_schema
 from gaggiclanker.settings import EnvSettings
 
 if TYPE_CHECKING:
@@ -113,10 +113,12 @@ async def run_import(
                 ImportResult(filename=str(path), status="failed", message=f"unreadable: {exc}")
             )
 
+    # A database made by a different version is refused before anything opens it.
+    check_database_file(env.database_path)
     db = Database(env.database_path)
     await db.connect()
     try:
-        await run_migrations(db)
+        await ensure_schema(db)
         service = ImportService(db)
         summary = await service.import_files(payloads, replace=replace)
     finally:
@@ -137,7 +139,11 @@ def import_command(args: argparse.Namespace) -> int:
     if reset_is_waiting(EnvSettings().data_dir):
         print(RESET_WAITING_MESSAGE, file=sys.stderr)
         return 1
-    summary = asyncio.run(run_import(args.paths, replace=args.replace))
+    try:
+        summary = asyncio.run(run_import(args.paths, replace=args.replace))
+    except SchemaMismatch as exc:
+        print(exc, file=sys.stderr)
+        return 1
     for item in summary.items:
         subject = item.device_id or item.label or item.kind
         detail = f" — {item.message}" if item.message else ""

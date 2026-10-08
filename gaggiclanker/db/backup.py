@@ -55,6 +55,7 @@ from pydantic import BaseModel, ConfigDict
 from gaggiclanker import __version__
 from gaggiclanker.auth.service import JWT_SECRET_KEY
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.schema import schema_fingerprint
 from gaggiclanker.infra.errors import AppError, InternalError
 from gaggiclanker.settings import SETTINGS_REGISTRY
 
@@ -122,6 +123,9 @@ class BackupManifest(BaseModel):
 
     format_version: int
     app_version: str
+    #: A short fingerprint of the schema the file was made with (``schema_fingerprint``),
+    #: so a person can tell two backups' databases apart; the restore decides by comparing
+    #: the structure itself, never by this value.
     schema_version: str
     created_at: str
     keys_included: bool
@@ -182,11 +186,10 @@ def _prepare_copy(path: Path, *, include_keys: bool, now: datetime) -> None:
         # Overwrite deleted content with zeros too: the vacuum below makes it moot,
         # and a step that is only safe because of the next one is one edit from not being.
         conn.execute("PRAGMA secure_delete = ON")
-        schema_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
         manifest = BackupManifest(
             format_version=MANIFEST_FORMAT_VERSION,
             app_version=__version__,
-            schema_version=str(schema_version or ""),
+            schema_version=schema_fingerprint(),
             created_at=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             keys_included=include_keys,
         )

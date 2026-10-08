@@ -11,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.backup import KEY_SETTING_KEYS, SIGNING_KEY_ROW, create_export
+from gaggiclanker.db.schema import schema_fingerprint
 from gaggiclanker.infra.envelope import file_download
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
@@ -89,7 +90,7 @@ async def test_download_is_a_readable_database_with_a_manifest(
     )
     assert fmt == 1 and keys == 0
     assert version
-    assert schema == _rows(path, "SELECT MAX(version) FROM schema_migrations")[0][0]
+    assert schema == schema_fingerprint()
     assert str(created).endswith("Z")
 
 

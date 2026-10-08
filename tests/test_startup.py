@@ -173,17 +173,17 @@ def test_the_thread_probe_actually_sees_them(env: EnvSettings) -> None:
 async def test_a_failure_after_connect_closes_the_database_and_propagates(
     env: EnvSettings, monkeypatch: pytest.MonkeyPatch, no_stray_threads: None
 ) -> None:
-    """The migration runner is the realistic one: a bad file, a checksum mismatch."""
+    """Building the schema is the realistic one: the first thing that touches the new file."""
     from gaggiclanker import main as main_module
 
-    boom = RuntimeError("migration 0007_auth failed: no such column")
+    boom = RuntimeError("schema creation failed: no such column")
 
     async def explode(*_args: Any, **_kwargs: Any) -> None:
         raise boom
 
-    monkeypatch.setattr(main_module, "run_migrations", explode)
+    monkeypatch.setattr(main_module, "ensure_schema", explode)
 
-    with pytest.raises(RuntimeError, match="migration 0007_auth failed"):
+    with pytest.raises(RuntimeError, match="schema creation failed"):
         async with running_app(env):
             pass
 
@@ -217,7 +217,7 @@ async def test_a_startup_failure_is_logged_with_its_cause(
     async def explode(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("something specific went wrong")
 
-    monkeypatch.setattr(main_module, "run_migrations", explode)
+    monkeypatch.setattr(main_module, "ensure_schema", explode)
     configure_logging("info", json_output=True)
     try:
         with pytest.raises(RuntimeError):

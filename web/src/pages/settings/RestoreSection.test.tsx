@@ -32,7 +32,7 @@ const CHECK: RestoreCheckData = {
   manifest: {
     format_version: 1,
     app_version: "0.1.0",
-    schema_version: "0050",
+    schema_version: "3f9a1c2b7d40",
     created_at: "2026-10-01T10:15:00Z",
     keys_included: false,
   },
@@ -136,8 +136,7 @@ describe("RestoreSection", () => {
   it.each([
     ["RESTORE_NOT_A_DATABASE", /not a gaggiclanker database/],
     ["RESTORE_DAMAGED", /damaged/],
-    ["RESTORE_NEWER_VERSION", /newer version.*Update the app, then restore it/],
-    ["RESTORE_MIGRATION_DIFFERS", /migration in it differs/],
+    ["RESTORE_SCHEMA_DIFFERS", /different version of gaggiclanker.*Restore it with the version/],
     ["PAYLOAD_TOO_LARGE", /larger than the 1 GB limit/],
     ["INSUFFICIENT_STORAGE", /not enough free disk space/],
   ])("refuses %s in plain words and offers another file", async (code, words) => {

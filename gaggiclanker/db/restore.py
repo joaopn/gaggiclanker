@@ -10,11 +10,11 @@ What "a file we can restore" means (every one is a refusal with its own code):
 
 * it starts with the SQLite header;
 * it opens read-only and passes ``PRAGMA integrity_check``;
-* it has the ledger and the core tables;
-* every migration in its ledger is one this build knows, with the checksum this
-  build computes (:func:`~gaggiclanker.db.migrations.classify_ledger`, the
-  boot's own rule: what a boot would refuse, a restore refuses before touching
-  anything). An *older* file is fine: the next boot migrates it;
+* it has the core tables;
+* its schema is this build's: the same structural comparison the boot makes
+  (:func:`~gaggiclanker.db.schema.schema_differences`), so what a boot would refuse, a
+  restore refuses before touching anything. A backup restores only into the version
+  that made it, or one with the same database;
 * ``PRAGMA foreign_key_check`` is empty.
 
 **Applying** is three steps in three places. :func:`prepare_staged` makes the staged
@@ -46,12 +46,7 @@ from pydantic import BaseModel, ValidationError
 from starlette.requests import ClientDisconnect
 
 from gaggiclanker.db.backup import KEY_SETTING_KEYS, BackupManifest, ensure_free_space
-from gaggiclanker.db.migrations import (
-    ChangedMigration,
-    NewerDatabase,
-    classify_ledger,
-    load_migrations,
-)
+from gaggiclanker.db.schema import schema_differences, schema_fingerprint
 from gaggiclanker.infra.errors import AppError, BadRequest, PayloadTooLarge
 from gaggiclanker.settings import SETTINGS_REGISTRY
 
@@ -83,7 +78,7 @@ STAGING_GLOB = f"{STAGING_PREFIX}*"
 
 _TOKEN = re.compile(r"^[0-9a-f]{32}$")
 _SQLITE_HEADER = b"SQLite format 3\x00"
-_CORE_TABLES = ("schema_migrations", "settings", "shots", "sets", "beans")
+_CORE_TABLES = ("settings", "shots", "sets", "beans")
 _CHUNK = 1024 * 1024
 
 
@@ -256,24 +251,14 @@ def _validate_open(path: Path, token: str) -> StagedRestore:
             raise RestoreRefused(
                 "RESTORE_DAMAGED", "This file is damaged: its integrity check failed."
             )
-        ledger = {
-            str(v): str(c)
-            for v, c in conn.execute("SELECT version, checksum FROM schema_migrations")
-        }
-        try:
-            classify_ledger(ledger, load_migrations())
-        except NewerDatabase as exc:
+        found = schema_differences(conn)
+        if found:
+            log.info("restore_schema_differs", count=len(found), differences=found[:5])
             raise RestoreRefused(
-                "RESTORE_NEWER_VERSION",
-                "This file was written by a newer version of gaggiclanker. "
-                "Update the app, then restore it.",
-            ) from exc
-        except ChangedMigration as exc:
-            raise RestoreRefused(
-                "RESTORE_MIGRATION_DIFFERS",
-                "A migration in this file differs from this version's, so this app cannot "
-                "open it safely.",
-            ) from exc
+                "RESTORE_SCHEMA_DIFFERS",
+                "This backup was made by a different version of gaggiclanker, with a different "
+                "database. Restore it with the version that made it.",
+            )
         if conn.execute("PRAGMA foreign_key_check").fetchall():
             raise RestoreRefused(
                 "RESTORE_DAMAGED", "This file is damaged: its references do not hold together."
@@ -298,7 +283,7 @@ def _validate_open(path: Path, token: str) -> StagedRestore:
 
 
 def prepare_staged(path: Path, live_settings: Mapping[str, str]) -> str:
-    """Make the staged file what the app starts with after the restore; returns its schema version.
+    """Make the staged file what the app starts with after the restore; returns its fingerprint.
 
     On the staged copy only. Drops the manifest; deletes every session (a token belongs
     to the app that issued it); switches the Writes switch off, because a restored
@@ -312,12 +297,7 @@ def prepare_staged(path: Path, live_settings: Mapping[str, str]) -> str:
         conn.execute("PRAGMA journal_mode = DELETE")
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("DROP TABLE IF EXISTS backup_manifest")
-        # A file from before sign-in existed has no session table, and is still a file the
-        # check accepted: the preparation must work on every one of those.
-        if conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'auth_sessions'"
-        ).fetchone():
-            conn.execute("DELETE FROM auth_sessions")
+        conn.execute("DELETE FROM auth_sessions")
         # `updated_at` moves as it does in the settings repository.
         upsert = (
             "INSERT INTO settings (key, value) VALUES (?, ?) "
@@ -333,8 +313,8 @@ def prepare_staged(path: Path, live_settings: Mapping[str, str]) -> str:
             if (held is None or held[0] == "") and live_settings.get(key):
                 conn.execute(upsert, (key, live_settings[key]))
         conn.execute("COMMIT")
-        row = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
-        return str(row[0] or "")
+        # The check accepted the file only because its schema is this build's.
+        return schema_fingerprint()
     finally:
         conn.close()
         for sidecar in _sidecars(path):

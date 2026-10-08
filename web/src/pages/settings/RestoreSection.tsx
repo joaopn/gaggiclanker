@@ -16,10 +16,8 @@ export function refusalText(error: unknown): string {
       return "This file can't be restored: it is not a gaggiclanker database.";
     case "RESTORE_DAMAGED":
       return "This file can't be restored: it is damaged (its integrity check failed).";
-    case "RESTORE_NEWER_VERSION":
-      return "This file can't be restored: it was written by a newer version of gaggiclanker. Update the app, then restore it.";
-    case "RESTORE_MIGRATION_DIFFERS":
-      return "This file can't be restored: a migration in it differs from this version's.";
+    case "RESTORE_SCHEMA_DIFFERS":
+      return "This backup was made by a different version of gaggiclanker, with a different database. Restore it with the version that made it.";
     case "PAYLOAD_TOO_LARGE":
       return "This file can't be restored: it is larger than the 1 GB limit.";
     case "INSUFFICIENT_STORAGE":

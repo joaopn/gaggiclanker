@@ -180,15 +180,16 @@ def _only_other_tables(tmp_path: Path) -> Callable[[Path], Path]:
     return build
 
 
-def _newer(good: Path) -> Path:
-    return edit(
-        good,
-        "INSERT INTO schema_migrations (version, name, checksum) VALUES ('9999', 'future', 'x');",
-    )
+def _extra_column(good: Path) -> Path:
+    return edit(good, "ALTER TABLE sets ADD COLUMN surprise TEXT;")
 
 
-def _changed(good: Path) -> Path:
-    return edit(good, "UPDATE schema_migrations SET checksum = 'deadbeef' WHERE version = '0003';")
+def _changed_view(good: Path) -> Path:
+    return edit(good, "DROP VIEW v_judgements; CREATE VIEW v_judgements AS SELECT 1 AS shot_id;")
+
+
+def _missing_table(good: Path) -> Path:
+    return edit(good, "DROP TABLE signature_expectations;", foreign_keys=False)
 
 
 def _damaged(good: Path) -> Path:
@@ -229,8 +230,9 @@ def _dangling(good: Path) -> Path:
     [
         (_not_sqlite, 422, "RESTORE_NOT_A_DATABASE"),
         ("other_tables", 422, "RESTORE_NOT_A_DATABASE"),
-        (_newer, 422, "RESTORE_NEWER_VERSION"),
-        (_changed, 422, "RESTORE_MIGRATION_DIFFERS"),
+        (_extra_column, 422, "RESTORE_SCHEMA_DIFFERS"),
+        (_changed_view, 422, "RESTORE_SCHEMA_DIFFERS"),
+        (_missing_table, 422, "RESTORE_SCHEMA_DIFFERS"),
         (_damaged, 422, "RESTORE_DAMAGED"),
         (_index_out_of_step, 422, "RESTORE_DAMAGED"),
         (_dangling, 422, "RESTORE_DAMAGED"),
@@ -238,8 +240,9 @@ def _dangling(good: Path) -> Path:
     ids=[
         "not-sqlite",
         "missing-tables",
-        "newer",
-        "changed-checksum",
+        "extra-column",
+        "changed-view",
+        "missing-table",
         "damaged",
         "integrity-only",
         "foreign-key",
@@ -275,17 +278,37 @@ async def test_every_refusal_changes_nothing(
     assert digest(live) == before
 
 
-async def test_an_older_file_is_accepted(
+async def test_a_different_schema_is_refused_with_the_plain_reason(
     app: FastAPI, client: httpx.AsyncClient, tmp_path: Path
 ) -> None:
-    """Fewer migrations in the ledger is fine: the next boot applies the rest."""
-    good = await make_file(app, tmp_path)
-    older = edit(
-        good,
-        "DELETE FROM schema_migrations WHERE version = '0050';",
+    different = _extra_column(await make_file(app, tmp_path))
+
+    response = await upload(client, different)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == (
+        "This backup was made by a different version of gaggiclanker, with a different "
+        "database. Restore it with the version that made it."
     )
 
-    assert (await upload(client, older)).status_code == 200
+
+async def test_a_file_from_the_previous_version_with_the_same_database_is_accepted(
+    app: FastAPI, client: httpx.AsyncClient, tmp_path: Path
+) -> None:
+    """The ledger table the previous version kept is not part of the schema."""
+    good = await make_file(app, tmp_path)
+    previous = edit(
+        good,
+        """
+        CREATE TABLE schema_migrations (
+            version TEXT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL,
+            applied_at TEXT NOT NULL
+        ) STRICT;
+        INSERT INTO schema_migrations VALUES ('0050', 'drop_judgement_grind', 'x', 'then');
+        """,
+    )
+
+    assert (await upload(client, previous)).status_code == 200
 
 
 async def test_a_declared_size_over_the_limit_is_413_and_stages_nothing(

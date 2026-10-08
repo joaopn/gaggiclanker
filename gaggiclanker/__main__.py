@@ -50,6 +50,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _refuse_foreign_database(env: EnvSettings) -> None:
+    """Exit with one plain line, no traceback, when the database is another version's.
+
+    The application checks again as it starts; this is the same check made early enough
+    that the person reads a sentence instead of a lifespan failure. A reset that is
+    waiting deletes the database first, so it is not refused.
+    """
+    from gaggiclanker.db.reset import reset_is_waiting
+    from gaggiclanker.db.schema import SchemaMismatch, check_database_file
+
+    if reset_is_waiting(env.data_dir):
+        return
+    try:
+        check_database_file(env.database_path)
+    except SchemaMismatch as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def serve() -> None:
     """Run the API and the SPA on the configured host and port."""
     # Not at module scope: this module is the entry point for `mcp` as well, and
@@ -59,6 +78,7 @@ def serve() -> None:
 
     env = EnvSettings()
     configure_logging(env.log_level, json_output=env.log_json)
+    _refuse_foreign_database(env)
     uvicorn.run(
         "gaggiclanker.main:app",
         host=env.host,

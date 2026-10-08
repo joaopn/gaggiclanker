@@ -21,10 +21,11 @@ machine connection, and nothing that could reach one. Proposing a profile draft
 needs only the database and the safety bounds, so ``draft_profile`` works here
 exactly as it does in the app.
 
-**No migrations are run here.** A second process migrating a database the
-application is also using is a race with a schema at the end of it; instead the
-schema is probed and a missing one is an error telling the user to start
-gaggiclanker once. The server is a client of the archive, not an owner of it.
+**The schema is never created here.** A second process creating the schema of a
+database the application is also using is a race; instead the database is
+checked (one made by a different version is refused) and a missing schema is an
+error telling the user to start gaggiclanker once. The server is a client of the
+archive, not an owner of it.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ import structlog
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.schema import SchemaMismatch, check_database_file
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -245,6 +247,10 @@ async def serve_stdio(
             f"No archive at {path}. Start gaggiclanker once (or point --data-dir at the "
             "directory the server uses) so the database exists."
         )
+    try:
+        check_database_file(path)
+    except SchemaMismatch as exc:
+        raise SystemExit(str(exc)) from exc
     db = Database(path)
     await db.connect()
     try:
@@ -253,8 +259,8 @@ async def serve_stdio(
         )
         if not applied:
             raise SystemExit(
-                f"The archive at {path} predates the chat tools. Start gaggiclanker once to "
-                "apply its migrations, then try again."
+                f"The archive at {path} has no tables yet. Start gaggiclanker once to "
+                "set it up, then try again."
             )
         settings = SettingsService(SettingsRepository(db))
         requested = scope or ToolScope()

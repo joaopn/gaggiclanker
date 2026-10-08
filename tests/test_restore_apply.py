@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import shutil
 import sqlite3
 from collections.abc import Callable, MutableMapping
 from pathlib import Path
@@ -22,7 +21,6 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.backup import KEY_SETTING_KEYS, create_export
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import MIGRATIONS_DIR, run_migrations
 from gaggiclanker.db.restore import RESTORE_MARKER, STAGING_GLOB, swap_in
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
@@ -228,33 +226,39 @@ async def test_without_keys_the_apps_own_keys_are_kept_and_signin_stays_on(tmp_p
         assert (await client.get("/api/auth/status")).json()["data"]["auth_required"] is True
 
 
-async def test_an_older_backup_is_restored_and_migrated_at_the_next_boot(tmp_path: Path) -> None:
-    """A database made by an older release: its migrations are this tree's earlier files."""
-    older = tmp_path / "older-migrations"
-    older.mkdir()
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        if path.name < "0041":
-            shutil.copy(path, older / path.name)
-    source = tmp_path / "older.db"
-    db = Database(source)
-    await db.connect()
-    await run_migrations(db, older)
-    await db.execute("INSERT INTO beans (name) VALUES ('From long ago')")
-    await db.close()
+async def test_a_backup_from_the_previous_version_is_restored_and_its_ledger_dropped(
+    tmp_path: Path,
+) -> None:
+    """The same database, still carrying the ledger table the previous version kept."""
+    source_env = env_in(tmp_path / "source")
+    async with running_app(source_env) as (app, client):
+        await app.state.db.execute("INSERT INTO beans (name) VALUES ('From long ago')")
+        content = await download(app, client, include_keys=False)
+    previous = tmp_path / "previous.db"
+    previous.write_bytes(content)
+    conn = sqlite3.connect(previous)
+    conn.executescript(
+        """
+        CREATE TABLE schema_migrations (
+            version TEXT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL,
+            applied_at TEXT NOT NULL
+        ) STRICT;
+        INSERT INTO schema_migrations VALUES ('0050', 'drop_judgement_grind', 'x', 'then');
+        """
+    )
+    conn.close()
 
     target_env = env_in(tmp_path / "target")
-    await restore_into(target_env, source.read_bytes())
+    await restore_into(target_env, previous.read_bytes())
 
-    conn = sqlite3.connect(target_env.database_path)
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone() == ("0040",)
-    conn.close()
     async with running_app(target_env) as (booted, _client):
-        latest = max(p.name[:4] for p in MIGRATIONS_DIR.glob("*.sql"))
-        assert (
-            await booted.state.db.fetch_value("SELECT MAX(version) FROM schema_migrations")
-            == latest
-        )
         assert await booted.state.db.fetch_value("SELECT name FROM beans") == "From long ago"
+        assert (
+            await booted.state.db.fetch_value(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'schema_migrations'"
+            )
+            == 0
+        )
 
 
 async def test_a_task_in_flight_refuses_the_apply_and_changes_nothing(tmp_path: Path) -> None:
@@ -605,33 +609,6 @@ async def test_cancel_and_a_new_upload_are_refused_once_the_apply_is_accepted(
             assert refused.status_code == 409
             assert refused.json()["error"]["code"] == "RESTORE_PENDING"
         assert staged_files(target_env.data_dir) == prepared
-
-
-async def test_a_database_from_before_sign_in_existed_can_be_restored(tmp_path: Path) -> None:
-    """The check accepts older files, so preparing one with no session table must work too."""
-    older = tmp_path / "older-migrations"
-    older.mkdir()
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        if path.name < "0007":
-            shutil.copy(path, older / path.name)
-    source = tmp_path / "ancient.db"
-    db = Database(source)
-    await db.connect()
-    await run_migrations(db, older)
-    await db.execute("INSERT INTO beans (name) VALUES ('From before sign-in')")
-    await db.close()
-    conn = sqlite3.connect(source)
-    assert (
-        conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'auth_sessions'").fetchone() is None
-    )
-    conn.close()
-
-    target_env = env_in(tmp_path / "target")
-    await restore_into(target_env, source.read_bytes())
-
-    async with running_app(target_env) as (booted, _client):
-        assert await booted.state.db.fetch_value("SELECT name FROM beans") == "From before sign-in"
-        assert await booted.state.db.fetch_value("SELECT COUNT(*) FROM auth_sessions") == 0
 
 
 async def test_the_switch_row_moves_its_updated_at_like_the_repository_does(
