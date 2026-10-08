@@ -1,7 +1,7 @@
 """`/api/device/*` and the lifespan wiring behind it.
 
-The app is built the way every other test builds it — real SQLite file, real
-migrations, ASGI in-process — with the device host pointed at the fake machine.
+The app is built the way every other test builds it — real SQLite file, the real
+schema, ASGI in-process — with the device host pointed at the fake machine.
 """
 
 from __future__ import annotations

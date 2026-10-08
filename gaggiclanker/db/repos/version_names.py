@@ -49,7 +49,7 @@ def label_sql(alias: str) -> str:
     `domain/sets.py::version_label` in SQL: 'v' and the major, plus '.' and the
     minor when the minor is above 0. NULL when the row is NULL (a LEFT JOIN
     that found nothing), because 'v' || NULL is NULL — "compared to nothing"
-    stays nothing. The views in migration 0027 repeat this text, and a test
+    stays nothing. The views in `db/schema.sql` repeat this text, and a test
     pins both to the Python rule.
     """
     return (

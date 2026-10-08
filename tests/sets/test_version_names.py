@@ -327,15 +327,11 @@ async def test_the_sql_label_is_the_python_label(wired: Fixtures) -> None:
 
 def test_every_view_spells_the_label_as_the_repository_does() -> None:
     """The views repeat `label_sql` because a view cannot call Python; same text."""
-    migration = (
-        Path(__file__).resolve().parents[2]
-        / "gaggiclanker"
-        / "db"
-        / "migrations"
-        / "0027_minor_set_versions.sql"
+    schema = (
+        Path(__file__).resolve().parents[2] / "gaggiclanker" / "db" / "schema.sql"
     ).read_text()
     pattern = re.compile(r"'v' \|\| (\w+)\.version_major.*?ELSE '' END", re.DOTALL)
-    copies = [(m.group(1), " ".join(m.group(0).split())) for m in pattern.finditer(migration)]
-    assert len(copies) == 4, copies
+    copies = [(m.group(1), " ".join(m.group(0).split())) for m in pattern.finditer(schema)]
+    assert len(copies) == 6, copies
     for alias, text in copies:
         assert f"({text})" == " ".join(label_sql(alias).split())

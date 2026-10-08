@@ -5,7 +5,7 @@ that also appears as a SQL CHECK constraint and as an OpenAPI enum. This file is
 what makes that claim checkable: it reads the database's own schema back out of
 `sqlite_master` and compares it with the module.
 
-Without it, adding a value to the module and forgetting the migration produces a
+Without it, adding a value to the module and forgetting the schema file produces a
 422 the API accepts and an IntegrityError the repository does not, which is a
 confusing afternoon.
 """

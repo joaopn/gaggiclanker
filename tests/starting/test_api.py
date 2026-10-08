@@ -1,7 +1,7 @@
 """The routes, over the real app, with the LLM service wired to the scripted fake.
 
-The app is built the way the rest of the suite builds it — a real file, real
-migrations, `httpx.ASGITransport` in process — with one substitution: the
+The app is built the way the rest of the suite builds it — a real file, the real
+schema, `httpx.ASGITransport` in process — with one substitution: the
 provider factory hands back the fake, so a route test spends nothing and the
 thing under test is the route.
 """

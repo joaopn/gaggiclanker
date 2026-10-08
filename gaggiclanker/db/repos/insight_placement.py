@@ -5,12 +5,12 @@ conversation reached every Set that shared them. From now on an insight written
 in a Set's conversation belongs to that Set. The agent-written insights that
 already exist are placed where they can be, and left alone where they cannot.
 
-This is a step the application runs at boot, after the migrations, and not SQL in
-the migration: "fits" is the **live matching rule** — the same
+This is a step the application runs at boot, after the schema is ready, and not SQL:
+"fits" is the **live matching rule** — the same
 :func:`~gaggiclanker.db.repos.knowledge_insights.scope_matches` over the same
 Set attributes the selection uses — and a copy of its logic in SQL would be a
 second rule that can disagree with the first. It is idempotent by a marker row
-(``insight_placement_build``, migration 0039): it does nothing once it has run, so
+(``insight_placement_build``): it does nothing once it has run, so
 an insight a person has since moved, added or dismissed is never redone.
 
 **Fits a Set**, stated as a test: the insight is *about the coffee* — its stored scope

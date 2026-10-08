@@ -139,7 +139,7 @@ class MachineRepository(Repository):
     """Reads and writes the one row of `machines`."""
 
     async def get(self) -> MachineRow | None:
-        """The machine. ``None`` only on a database older than 0016 ran on."""
+        """The machine. ``None`` only if the row was deleted by hand."""
         row = await self.db.fetch_one("SELECT * FROM machines WHERE id = ?", (MACHINE_ID,))
         return self.to_model(MachineRow, row)
 
@@ -156,7 +156,7 @@ class MachineRepository(Repository):
         frame must not blank the board's capabilities.
 
         The INSERT half only fires on a database whose singleton row somehow went
-        missing; 0016 guarantees one exists on every install, fresh or upgraded.
+        missing; the schema file seeds one in every new database.
         """
         values: dict[str, Any] = {"id": MACHINE_ID, "host": machine.host, "now": utc_now()}
         for column in _UPDATABLE:

@@ -183,21 +183,19 @@ async def test_a_profile_that_states_no_temperature_is_not_a_zero_degree_shot(
 
 
 def test_every_sql_copy_of_the_rule_is_the_same_sentence() -> None:
-    """The copies a fresh database never runs still have to agree.
+    """Every copy of the rule in SQL is the same sentence.
 
-    `0013` and `0014` create the two views and `0016` re-creates them, so on a
-    fresh archive only the last copy is ever executed and a mistake in the
-    earlier two is invisible at runtime — until somebody rebuilds a view from
-    the migration that defines it, or reads one to learn what a column means.
+    A view cannot call Python, so the two views that serve the column repeat the
+    expression, as do the repository's version select and the similar-Sets query.
     The text is API (`describe_schema` reads these names out), so it is checked
-    as text: every copy of the expression, in the migrations and in the two
-    queries beside them, is one sentence.
+    as text: every copy, in the schema file and in the two queries beside it, is
+    one sentence.
     """
     source = Path(__file__).resolve().parents[2] / "gaggiclanker"
     roots = [
         source / "db" / "repos" / "sets.py",
         source / "starting" / "similar.py",
-        *sorted((source / "db" / "migrations").glob("*.sql")),
+        source / "db" / "schema.sql",
     ]
     # Anchored on `pv.json`, which every copy of *this* rule reads: the same
     # files hold other guarded `json_extract`s now (the spread's measures), and
@@ -226,9 +224,6 @@ def test_every_sql_copy_of_the_rule_is_the_same_sentence() -> None:
     expression = everywhere.pop()
     assert "json_type" in expression and "'integer', 'real'" in expression
     assert "> 0" in expression and ">= 0" not in expression
-    # Both views in each of the six migrations that define them (0013, 0014,
-    # 0016, 0027, which added the version's name, 0029, which re-created the
-    # views around the rebuild of `shots`, and 0042, which dropped the ordinal
-    # from them), the shots view again in 0045, which dropped the score columns
-    # it named, plus the repository's version select and the similar-Sets query.
-    assert sum(len(copies) for copies in found.values()) == 15, found
+    # The Set versions view and the shots view in the schema, plus the repository's
+    # version select and the similar-Sets query.
+    assert sum(len(copies) for copies in found.values()) == 4, found

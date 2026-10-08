@@ -3,7 +3,7 @@
 The mirror (`device_profiles`) records what the machine *is*; this table records what the
 app *wants*. One row per profile rather than per version, so a new version of a profile
 replaces the row's current version in place and the row keeps its home-screen choice and its
-identity. See migration 0033 for what each column means.
+identity. See `db/schema.sql` for what each column means.
 
 Every write goes through a model here: :class:`BoardRowWrite` to insert,
 :class:`BoardRowPatch` to change. A patch carries only the fields it names, so ``None`` can

@@ -44,7 +44,7 @@ class LlmCallRow(BaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     #: The cached part of `input_tokens`, and the last request's whole input.
-    #: NULL is "the provider did not say" (and every row before migration 0043).
+    #: NULL is "the provider did not say" (and every row written before the column existed).
     cache_read_tokens: int | None = None
     cache_write_tokens: int | None = None
     context_tokens: int | None = None
@@ -52,7 +52,7 @@ class LlmCallRow(BaseModel):
     status: str
     error: str | None = None
     #: The rendered messages and the raw reply, when `llmStoreCallText` is on.
-    #: See migration 0004: this is what makes a stored review explainable
+    #: See `llm_calls.input_text` in `db/schema.sql`: this is what makes a stored review explainable
     #: after the prompt that produced it has been edited.
     input_text: str | None = None
     output_text: str | None = None

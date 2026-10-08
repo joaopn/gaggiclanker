@@ -76,7 +76,7 @@ def version_label(major: int, minor: int) -> str:
     Minor 0 is left off: every version that existed before minor versions did
     is N.0 and keeps reading "vN", which is what every chat and prediction
     written until then calls it. The views repeat this rule in SQL
-    (migration 0027), pinned to this function by a test.
+    (`db/schema.sql`), pinned to this function by a test.
     """
     return f"v{major}" if minor == 0 else f"v{major}.{minor}"
 
@@ -144,7 +144,7 @@ def grind_value(setting: str, *, absolute: bool) -> float | None:
 
     **The first number wins**, which is a deliberate choice rather than an
     oversight. `set_versions` keeps the reading as text *and* as a number for
-    exactly this reason (migration 0005): a Mazzer's "between 3 and 4" is what
+    exactly this reason: a Mazzer's "between 3 and 4" is what
     the user reads back, and 3 is what a chart plots. Taking the first number
     puts the point at the bottom of the stated range every time, which is at
     least consistent; averaging to 3.5 would invent a precision the dial does

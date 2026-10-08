@@ -59,7 +59,7 @@ __all__ = [
 
 log = structlog.get_logger(__name__)
 
-#: Shipped inside the package, next to the migrations, because the wheel and
+#: Shipped inside the package, next to the schema file, because the wheel and
 #: the container image carry ``gaggiclanker/`` and nothing else — a top-level
 #: ``prompts/`` directory would exist in a checkout and be missing in the image.
 DEFAULT_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"

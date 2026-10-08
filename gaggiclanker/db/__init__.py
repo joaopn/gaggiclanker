@@ -1,1 +1,1 @@
-"""SQLite: connection, migrations with a ledger, repository base, backup."""
+"""SQLite: connection, the schema file, repository base, backup, restore, reset."""

@@ -116,7 +116,7 @@ class Database:
         await self.connection.executemany(sql, params)
 
     async def execute_script(self, sql: str) -> None:
-        """Run a multi-statement script (a migration file)."""
+        """Run a multi-statement script (the schema file)."""
         await self.connection.executescript(sql)
 
     async def fetch_one(self, sql: str, params: SqlParams = ()) -> aiosqlite.Row | None:

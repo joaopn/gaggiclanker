@@ -11,7 +11,6 @@ import pytest
 
 from gaggiclanker.db import schema
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.migrations import run_migrations
 
 
 @pytest.fixture
@@ -37,33 +36,6 @@ def _tables(conn: sqlite3.Connection) -> list[str]:
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name <> 'schema_migrations'"
         )
     )
-
-
-# ── the schema file against the chain it replaces ───────────────────────
-
-
-async def test_chain_and_schema_build_the_same_database(db: Database, data_dir: Path) -> None:
-    """Same structure by the boot's own comparison, and the same rows in every table."""
-    await run_migrations(db)
-    await db.close()
-    chain = sqlite3.connect(data_dir / "test.db")
-    built = _memory_database()
-    try:
-        assert schema.schema_differences(chain) == []
-        assert _tables(chain) == _tables(built)
-        for table in _tables(chain):
-            query = f'SELECT * FROM "{table}"'  # noqa: S608
-            rows = sorted(chain.execute(query).fetchall(), key=repr)
-            fresh = sorted(built.execute(query).fetchall(), key=repr)
-            if table == "machines":
-                # The three clock columns hold the moment the row was made.
-                assert [r[:16] for r in rows] == [r[:16] for r in fresh]
-                assert all(re.match(r"\d{4}-\d\d-\d\dT", str(v)) for v in rows[0][16:])
-            else:
-                assert rows == fresh, table
-    finally:
-        chain.close()
-        built.close()
 
 
 # ── the comparison ──────────────────────────────────────────────────────

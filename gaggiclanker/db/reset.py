@@ -11,7 +11,7 @@ goes last, so a crash in the middle of the deletion finishes it at the following
 Doing it at boot rather than in the shutdown is what makes it crash-safe, and deleting the
 database together with its sidecars before anything opens it means an old write-ahead log
 can never be replayed onto the new database. The fresh database is the ordinary first
-boot's: migrations and seeds.
+boot's: the schema and seeds.
 
 Not deleted: the data directory itself and the ``.write-test`` probe the boot makes.
 Everything else the app writes under ``DATA_DIR`` is in the list below; an audit of the

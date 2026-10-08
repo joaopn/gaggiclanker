@@ -127,7 +127,7 @@ class FakeProvider:
 
 @pytest.fixture
 async def db(tmp_path: Any) -> AsyncIterator[Database]:
-    """A migrated database on a real file, as the house rules require."""
+    """A database with its schema on a real file, as the house rules require."""
     database = Database(tmp_path / "llm.db")
     await database.connect()
     await create_schema(database)

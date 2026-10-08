@@ -58,8 +58,8 @@ MAX_WORDS = 600
 
 #: Words to tokens. English prose through a BPE tokeniser runs about 1.3
 #: tokens per word; the extra is punctuation and the numbers these documents are
-#: full of. An estimate is all the budget needs — see the column comment in
-#: migration 0011 for why there is no real tokeniser here.
+#: full of. An estimate is all the budget needs — see the column comment
+#: in `db/schema.sql` for why there is no real tokeniser here.
 _TOKENS_PER_WORD = 1.35
 
 _H1 = re.compile(r"^#\s+(.*\S)\s*$")

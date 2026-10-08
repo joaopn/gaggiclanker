@@ -417,7 +417,7 @@ NEEDS_SET_SQL = """(
 )"""
 
 # The Set joins are LEFT for the obvious reason and one less obvious one:
-# `shots.set_version_id` carries no foreign key (migration 0005 explains why),
+# `shots.set_version_id` carries no foreign key (`db/schema.sql` explains why),
 # so a row pointing at a version that no longer exists must list as unassigned
 # rather than disappear from the archive.
 _LIST_FROM = """
@@ -850,7 +850,7 @@ class ShotsRepository(Repository):
 
         The only lookup that names one shot from what the machine or an export
         says about it: the number alone is reused after the machine's counter
-        restarts. Unique since 0029.
+        restarts. Unique in the schema.
         """
         row = await self.id_by_identity(device_id, start_epoch)
         return None if row is None else await self.get(row)

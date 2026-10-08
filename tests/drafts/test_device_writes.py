@@ -296,7 +296,7 @@ async def test_a_write_the_machine_refuses_is_audited_as_failed(
 
 
 def test_the_write_kinds_are_spelled_the_same_in_every_layer() -> None:
-    """`WriteKind`, the repository's Literal and migration 0010's CHECK agree.
+    """`WriteKind`, the repository's Literal and the schema's CHECK agree.
 
     Three copies, on purpose. The device layer imports nothing from the database
     layer (`gaggiclanker/device/writes.py` says why), and a CHECK constraint
@@ -316,19 +316,15 @@ def test_the_write_kinds_are_spelled_the_same_in_every_layer() -> None:
     repo_kinds = set(typing.get_args(DeviceWriteWrite.model_fields["kind"].annotation))
     assert client_kinds == repo_kinds
 
-    migration = (
-        Path(__file__).resolve().parents[2]
-        / "gaggiclanker"
-        / "db"
-        / "migrations"
-        / "0010_device_cleanup.sql"
+    schema = (
+        Path(__file__).resolve().parents[2] / "gaggiclanker" / "db" / "schema.sql"
     ).read_text()
-    check = re.search(r"kind\s+TEXT\s+NOT NULL CHECK \(kind IN\s*\(([^)]*)\)", migration)
-    assert check is not None, "migration 0010 no longer declares the kind CHECK"
+    check = re.search(r"kind\s+TEXT\s+NOT NULL CHECK \(kind IN\s*\(([^)]*)\)", schema)
+    assert check is not None, "the schema no longer declares the kind CHECK"
     # The CHECK still admits the two kinds this box used to write (a shot delete
-    # and a notes save): a shipped migration is never edited, and rows of those
-    # kinds in an existing archive stay in the audit as history. No client sends
-    # them any more, so they are in the CHECK and in neither list above.
+    # and a notes save): rows of those kinds in an existing archive stay in the
+    # audit as history. No client sends them any more, so they are in the CHECK
+    # and in neither list above.
     assert set(re.findall(r"'([a-z_]+)'", check.group(1))) == client_kinds | {
         "shot_delete",
         "notes_save",

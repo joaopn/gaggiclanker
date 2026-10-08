@@ -2037,8 +2037,8 @@ class SetsRepository(Repository):
         Unlike :meth:`profile_match` this overwrites whatever was there: it is
         the correction path, and the whole point of it is to fix a wrong guess.
         Returns False when the shot or the version does not exist — `shots`
-        carries no foreign key on this column (see migration 0005), so this
-        method is where the reference is checked.
+        carries no foreign key on this column (`db/schema.sql` says why), so this method is
+        where the reference is checked.
         """
         if version_id is not None:
             # Not merely "does the version exist": a version of an *archived*

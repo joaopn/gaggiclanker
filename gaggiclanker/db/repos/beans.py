@@ -219,7 +219,7 @@ class BeansRepository(Repository):
         serialises writers, so a Set created between the check and the delete
         cannot be orphaned. `sets.bean_id` has no `ON DELETE`, so the foreign key
         would refuse anyway; the check is what turns that into a reason a person
-        can act on. Starting-point runs about the bean cascade with it (0014).
+        can act on. Starting-point runs about the bean cascade with it.
         """
         async with self.db.transaction():
             if await self.db.fetch_value("SELECT 1 FROM beans WHERE id = ?", (bean_id,)) is None:

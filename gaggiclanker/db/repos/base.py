@@ -6,8 +6,8 @@ one of those models needs are here: the timestamp format the schema's defaults
 emit, and a JSON-text type that is validated on the way in *and* on the way out.
 
 Validating on read as well as on write is not belt-and-braces. The file is a
-backup somebody restores, a `sqlite3` prompt somebody pokes, and a column six
-migrations from now; "it was valid when we wrote it" stops being true, and a
+backup somebody restores, a `sqlite3` prompt somebody pokes, and a column some
+future version has changed; "it was valid when we wrote it" stops being true, and a
 diagnostics blob that has become the string ``None`` should fail loudly at the
 repository rather than three layers up in a chart component.
 """

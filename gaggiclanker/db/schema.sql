@@ -79,6 +79,8 @@ CREATE TABLE sync_runs (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     kind              TEXT    NOT NULL
                       CHECK (kind IN ('backfill', 'live', 'profiles', 'notes', 'identity')),
+    -- A run cut off by a restart lands as `error` with a message, not as a status of its own:
+    -- widening this CHECK would mean rebuilding a table `sync_events` cascades from.
     status            TEXT    NOT NULL DEFAULT 'running'
                       CHECK (status IN ('running', 'ok', 'error')),
     trigger           TEXT    NOT NULL DEFAULT '',
@@ -140,8 +142,12 @@ CREATE TABLE llm_calls (
     status         TEXT    NOT NULL CHECK (status IN ('succeeded', 'failed')),
     error          TEXT,
     created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    -- The rendered messages and the raw reply, when `llmStoreCallText` is on: what makes a stored
+    -- review explainable after the prompt that produced it has been edited.
     input_text TEXT,
     output_text TEXT,
+    -- The cached part of `input_tokens`, and the last request's whole input. NULL is "the
+    -- provider did not say".
     cache_read_tokens INTEGER,
     cache_write_tokens INTEGER,
     context_tokens INTEGER
@@ -188,6 +194,10 @@ CREATE TABLE sets (
     name       TEXT    NOT NULL,
     bean_id    INTEGER NOT NULL REFERENCES beans(id),
     grinder_id INTEGER REFERENCES grinders(id),
+    -- Two flags, because they mean two things. `automatch`: this Set is a candidate when a shot
+    -- is filed by profile; any number of Sets may be (a kitchen with several grinders has several
+    -- coffees loaded at once, so "the current Set" has no answer). `archived`: the lifecycle, the
+    -- bag is finished with and the Set receives no shots. Neither is "active".
     automatch     INTEGER NOT NULL DEFAULT 0,
     created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     archived INTEGER NOT NULL DEFAULT 0,
@@ -253,6 +263,9 @@ CREATE TABLE auth_sessions (
     id         TEXT PRIMARY KEY,
     subject    TEXT    NOT NULL,
     created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    -- Epoch seconds, matching the token's `exp` claim it mirrors, so the two cannot drift apart
+    -- through a formatting difference. Everything else here is ISO-8601 text; this column is the
+    -- deliberate exception.
     expires_at INTEGER NOT NULL,
     revoked_at TEXT,
     -- Purely so the maintainer can tell one signed-in browser from another when
@@ -301,6 +314,8 @@ CREATE TABLE profile_drafts (
     replaced_by_draft_id INTEGER,
     outcome_json TEXT,
     is_new INTEGER NOT NULL DEFAULT 0 CHECK (is_new IN (0, 1)),
+    -- `edit` for a document a person typed into the editor, `agent` for everything a model or a
+    -- tool proposed. It becomes the source of the version a proposal makes. NULL for old drafts.
     made_by TEXT CHECK (made_by IN ('agent', 'edit'))
 ) STRICT;
 CREATE INDEX idx_profile_drafts_status ON profile_drafts(status, id DESC);
@@ -564,6 +579,8 @@ CREATE TABLE set_version_proposals (
     resulting_version_id   INTEGER REFERENCES set_versions(id) ON DELETE SET NULL,
     created_at             TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     decided_at             TEXT,
+    -- `change` or `design`; checked by the model rather than a CHECK. A design is the whole first
+    -- recipe of a Set being designed (a draft of its own) and owes no prediction.
     kind TEXT NOT NULL DEFAULT 'change',
     draft_id INTEGER REFERENCES profile_drafts(id) ON DELETE SET NULL,
     suggest_major INTEGER NOT NULL DEFAULT 0 CHECK (suggest_major IN (0, 1)),
@@ -612,6 +629,9 @@ CREATE INDEX idx_knowledge_insights_replaces ON knowledge_insights(replaces_id);
 CREATE TABLE shots (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id               TEXT    NOT NULL,
+    -- No foreign key, on purpose. The reference is enforced in `SetsRepository` (the only code
+    -- that writes the column) and a Set version is never deleted: a Set is archived and its
+    -- versions stay. A row pointing at nothing lists as unassigned rather than disappearing.
     set_version_id          INTEGER,
 
     started_at              TEXT,
@@ -665,6 +685,27 @@ CREATE INDEX idx_shots_quarantined     ON shots(quarantined);
 CREATE INDEX idx_shots_started         ON shots(started_at DESC);
 CREATE INDEX idx_shots_set_version     ON shots(set_version_id);
 
+-- The profiles the app means the machine to hold: one row per profile, not per version. A row
+-- names the version that is current, whether the profile belongs on the machine's home screen,
+-- and which file on the machine holds it right now. A pull with the writes switch on makes the
+-- machine's profiles match this table; with the switch off it is only read and edited.
+--
+--   * current_version_id: what the profile is meant to be. A new version (an approved draft in
+--     the same lineage) replaces it in place, so the row keeps its identity and its star.
+--   * device_profile_id / device_version_id: the file on the machine this row last found or put
+--     there, and the stored version its content was then. NULL when the machine holds nothing
+--     for the row yet, or when the app let go of the file. No foreign key on the device id,
+--     like every device id, since it names a file that can be gone.
+--   * on_home_screen: the machine's favourite star; a profile off it stays on the machine and
+--     leaves the carousel.
+--   * origin: `adopted` is a profile the person made, taken from the machine as it was (a pull
+--     never pushes one); `draft` is the app's own, and only these are pushed, replaced and
+--     removed by a pull.
+--   * failed_version_id: a version whose copy did not read back as sent and could not be taken
+--     off the machine again. Not tried again until the row's version changes.
+--   * pending_draft_id / pending_set_id / pending_major: what the person asked for when they put
+--     the draft on the board, kept until the pull that puts it on the machine records it.
+--   * deleted_at: a tombstone; the machine's copy is removed by the next pull.
 CREATE TABLE profile_board (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     label              TEXT    NOT NULL,

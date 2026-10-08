@@ -529,8 +529,8 @@ def _summary(row: dict[str, object]) -> ProfileVersionSummary:
     """A list row, with the recipe numbers read out of its document.
 
     Derived on read rather than stored: the rule is a few lines of Python over a
-    document the row already holds, and a stored copy would need a migration
-    every time the rule learned something. The document itself stays off the
+    document the row already holds, and a stored copy would have to be
+    rewritten every time the rule learned something. The document itself stays off the
     row (see :class:`ProfileVersionSummary`).
     """
     raw = row.pop("document", None)

@@ -1,9 +1,9 @@
 """Test harness: a real app, on a real SQLite file, in a temp DATA_DIR.
 
 No in-memory database and no mocked repositories. A test exercises the same
-connection pragmas, the same migration runner and the same file layout as the
+connection pragmas, the same schema file and the same file layout as the
 container, because the things most likely to break here (WAL, foreign keys,
-``VACUUM INTO``, the migration ledger) only exist on a real file.
+``VACUUM INTO``) only exist on a real file.
 
 Isolation comes from ``DATA_DIR``: each test gets its own ``tmp_path`` and its
 own app object, so nothing is shared between tests but the process.
@@ -176,8 +176,8 @@ async def seed_settings(env: EnvSettings, **values: Any) -> None:
     Values go through :class:`SettingsService` rather than into the table by
     hand, so a test cannot seed something the Settings page would refuse. The
     keys are registry keys, so they read as keyword arguments:
-    ``seed_settings(env, gaggimateHost=device.address)``. Migrations run first,
-    exactly as they do at boot, so a never-used data directory works.
+    ``seed_settings(env, gaggimateHost=device.address)``. The schema is made first,
+    exactly as at boot, so a never-used data directory works.
     """
     env.data_dir.mkdir(parents=True, exist_ok=True)
     db = Database(env.database_path)

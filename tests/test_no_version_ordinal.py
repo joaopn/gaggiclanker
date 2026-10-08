@@ -64,7 +64,7 @@ def test_the_rows_the_mcp_resource_serves_have_no_ordinal() -> None:
 
 
 def test_no_python_file_names_an_ordinal() -> None:
-    """Only the migrations that created and dropped it still say `version_no`."""
+    """No Python file says `version_no`."""
     hits = [
         str(path.relative_to(ROOT))
         for path in ROOT.rglob("*.py")

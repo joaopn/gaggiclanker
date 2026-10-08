@@ -6,12 +6,12 @@ old developing profiles that no board row names (a pushed draft that was replace
 row, an imported file, a version the machine held before the board) come back as profiles of
 their own, **off**, and a person switches on the ones they want.
 
-This is a step the application runs at boot, after the migrations, and not SQL in the
-migration: versions are grouped by the files and drafts that link them first and by label
+This is a step the application runs at boot, after the schema is ready, and not SQL:
+versions are grouped by the files and drafts that link them first and by label
 second, and expressing that fixed point in one SQL statement would be less readable and less
-testable than twenty lines of Python. It is idempotent by a marker row (``profile_list_build``,
-migration 0036): it does nothing once it has run, so a person's later choices (a profile they
-switched on) are never redone.
+testable than twenty lines of Python. It is idempotent by a marker row
+(``profile_list_build``): it does nothing once it has run, so a person's later choices (a
+profile they switched on) are never redone.
 
 The grouping, in order:
 

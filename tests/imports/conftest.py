@@ -1,6 +1,6 @@
 """A real database and an import service over it.
 
-Same rule as the rest of the suite: a real SQLite file, real migrations, no
+Same rule as the rest of the suite: a real SQLite file, the real schema, no
 mocked repositories. The importer's whole job is writing rows that the sync
 engine's own constraints accept — `UNIQUE (device_id)`, the `source` CHECK, the
 foreign key to `profile_versions` — and none of those exist in a mock.

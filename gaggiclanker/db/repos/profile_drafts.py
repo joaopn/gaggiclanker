@@ -78,7 +78,7 @@ class ProfileDraftWrite(BaseModel):
     #: Which file on the display the base version was mirrored under when this
     #: draft was made. NULL when it was not on the machine at all.
     base_device_profile_id: str | None = None
-    #: Who made the draft (migration 0037).
+    #: Who made the draft.
     made_by: Literal["agent", "edit"] | None = None
     #: The Set this was proposed for, when it was proposed inside one Set's
     #: conversation. It is what makes the prediction below mean something: a

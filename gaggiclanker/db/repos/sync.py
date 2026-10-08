@@ -30,7 +30,7 @@ __all__ = [
 
 type SyncKind = Literal["backfill", "live", "profiles", "notes", "identity"]
 
-#: Every kind the ledger accepts, matching the CHECK constraint in 0002.
+#: Every kind the ledger accepts, matching the CHECK constraint in `db/schema.sql`.
 SYNC_KINDS: tuple[str, ...] = ("backfill", "live", "profiles", "notes", "identity")
 
 #: How many event rows to keep. Roughly a week of a busy household's shots plus
@@ -149,7 +149,7 @@ class SyncRepository(Repository):
         "running" since Tuesday is worse than reporting that it was interrupted.
 
         It lands as `error`, not as a status of its own. The `sync_runs.status`
-        CHECK in migration 0002 allows exactly `running`, `ok` and `error`, and
+        CHECK in `db/schema.sql` allows exactly `running`, `ok` and `error`, and
         widening it would mean rebuilding the table — which, with `sync_events`
         holding an `ON DELETE CASCADE` reference to it and foreign keys on,
         would take the event feed with it. `error` with an explicit message says

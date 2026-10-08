@@ -193,7 +193,7 @@ async def test_a_gigabyte_allocation_fails_fast(archive: Fixture) -> None:
 
 
 async def test_every_allowed_view_actually_exists(archive: Fixture) -> None:
-    """The allow-list and migration 0013 have to name the same things."""
+    """The allow-list and the schema file have to name the same things."""
     for view in sorted(ALLOWED_VIEWS):
         result = await run_query(archive.db.path, f"SELECT * FROM {view} LIMIT 1")  # noqa: S608
         assert result.columns

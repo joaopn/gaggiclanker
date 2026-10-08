@@ -1,6 +1,6 @@
 """The HTTP surface for beans, grinders, the machine, Sets, judgement and vocab.
 
-Against the real app: its lifespan opens the database and migrates it, and no
+Against the real app: its lifespan opens the database and makes its schema, and no
 machine is configured, which is the configuration most of these routes are used
 in — a Set is bookkeeping and works with the espresso machine unplugged.
 """
@@ -381,7 +381,7 @@ class TestMachine:
     ) -> None:
         """Unreachable through the app, and answered anyway.
 
-        The migration guarantees the row and the schema's `CHECK (id = 1)`
+        The schema file guarantees the row and the schema's `CHECK (id = 1)`
         refuses a second, so nothing here can delete it. A database somebody has
         been editing by hand can, and "the machine row is missing" in the
         envelope is a better answer than a 500 from an attribute on ``None``.

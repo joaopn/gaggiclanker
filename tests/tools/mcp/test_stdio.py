@@ -46,7 +46,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.fixture
 async def archive_dir(tmp_path: Path) -> AsyncIterator[tuple[Path, Fixture]]:
-    """A DATA_DIR holding a migrated, seeded archive — as the server leaves one."""
+    """A DATA_DIR holding a seeded archive — as the server leaves one."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     db = Database(data_dir / "gaggiclanker.db")
@@ -924,10 +924,10 @@ async def test_the_claude_code_provider_s_generated_config_starts_this_server(
     assert result.structured_content["set"]["id"] == fixture.set_id
 
 
-async def test_an_archive_that_has_never_been_migrated_is_refused_with_the_fix(
+async def test_an_archive_without_a_schema_is_refused_with_the_fix(
     tmp_path: Path,
 ) -> None:
-    """Not migrated here: a second process migrating a live database is a race."""
+    """Not created here: a second process creating the schema of a live database is a race."""
     from gaggiclanker.tools.mcp.stdio import serve_stdio
 
     empty = tmp_path / "empty"

@@ -102,7 +102,7 @@ PROPOSAL_STATUSES: tuple[str, ...] = ("proposed", "accepted", "declined", "stale
 #: and owes a prediction. A **design** is the whole first recipe of a Set being
 #: designed — a profile draft of its own plus grind, dose and yield — and owes
 #: none, because a version 1 is a baseline and not a change to anything. Checked
-#: here rather than by a CHECK on the column: see migration 0023.
+#: here rather than by a CHECK on the column: see `set_version_proposals.kind` in `db/schema.sql`.
 type ProposalKind = Literal["change", "design"]
 
 #: What counts as **one change**, by the group a recipe field belongs to. The

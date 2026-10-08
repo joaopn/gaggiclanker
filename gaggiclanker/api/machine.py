@@ -60,7 +60,7 @@ class MachinePatch(BaseModel):
 @router.get("", response_model=ApiResponse[MachineData], summary="The machine")
 async def get_machine(machines: MachineRepoDep, shots: ShotsRepoDep) -> JSONResponse:
     row = await machines.get()
-    # Unreachable through the app: 0016 guarantees the row and `CHECK (id = 1)`
+    # Unreachable through the app: the schema file seeds the row and `CHECK (id = 1)`
     # refuses a second. Answered anyway rather than asserted, because a database
     # somebody has been editing by hand is a thing that happens, and saying the
     # row is missing beats a 500 from an attribute on `None`. A comment rather

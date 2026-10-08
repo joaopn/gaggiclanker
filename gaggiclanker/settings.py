@@ -485,8 +485,7 @@ SETTING_PAIRS: tuple[SettingPair, ...] = (
 #: Registry keys that were removed, with the environment variable each one read
 #: while both existed. The key half is what a ``PATCH`` naming one is refused
 #: with; the variable half joins :data:`FORMER_SETTING_ENV_KEYS` in the boot
-#: report. Their stored rows are deleted by a migration; nothing here resolves
-#: them.
+#: report. A stored row for one is ignored; nothing here resolves them.
 REMOVED_SETTINGS: dict[str, str] = {
     # MCP device-write tools: MCP and the chat now read and propose, nothing more.
     "mcpDeviceWrites": "GAGGICLANKER_MCP_DEVICE_WRITES",

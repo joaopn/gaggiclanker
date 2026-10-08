@@ -28,8 +28,8 @@ class AuthSessionRow(BaseModel):
     id: str
     subject: str
     created_at: str
-    #: Epoch seconds, mirroring the token's ``exp``. See migration 0007 for why
-    #: this one column is not ISO text.
+    #: Epoch seconds, mirroring the token's ``exp``. See `db/schema.sql` for why this
+    #: one column is not ISO text.
     expires_at: int
     revoked_at: str | None = None
     user_agent: str = ""

@@ -1,7 +1,7 @@
 """The archive's HTTP surface, against a real app wired to the fake machine.
 
 Everything here goes through the app the container runs: its lifespan opens the
-database, migrates it, starts the device client and starts the sync engine's
+database (creating the schema), starts the device client and starts the sync engine's
 loops. The tests wait for the boot-time backfill to land and then read the
 archive the way the front end will.
 """

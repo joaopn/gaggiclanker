@@ -18,7 +18,7 @@ re-chunk of unchanged text.
 
 **The FTS index is maintained by triggers, not here.** `content=` external
 content means the index holds tokens and this table holds text; the three
-triggers in migration 0011 keep them level. That is why `replace_chunks` can
+triggers in `db/schema.sql` keep them level. That is why `replace_chunks` can
 delete and insert freely and why nothing in this file mentions
 `knowledge_chunks_fts` except to read it.
 """

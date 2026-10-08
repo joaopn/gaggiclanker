@@ -63,7 +63,7 @@ __all__ = [
 log = structlog.get_logger(__name__)
 
 #: Shipped inside the package, next to the prompts, the rule seed and the
-#: migrations, for the same reason: the wheel and the container image carry
+#: schema file, for the same reason: the wheel and the container image carry
 #: ``gaggiclanker/`` and nothing else.
 DEFAULT_DOCS_DIR = Path(__file__).resolve().parent / "seed" / "docs"
 

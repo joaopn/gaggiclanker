@@ -1,7 +1,7 @@
 """`gaggiclanker import` — the same importer without a browser.
 
 What matters here is the wiring, not the importing: the command opens the
-configured database, runs migrations itself, walks directories, and comes back
+configured database, creates the schema itself, walks directories, and comes back
 with an exit status a seeding script can branch on. The import behaviour itself
 is `test_service.py`'s subject and is not repeated.
 """

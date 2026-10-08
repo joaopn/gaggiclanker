@@ -7,7 +7,7 @@ from the third. This module is the third.
 
 ``GET /api/vocab`` serves the whole of it, so the UI renders a flavour note, a
 roast-level select or a decision button from data rather than from a list typed
-into a component; the migration's CHECK constraints are written against the same
+into a component; the schema's CHECK constraints are written against the same
 tuples and there is a test that walks the database's own schema to prove they
 still agree.
 

@@ -1,6 +1,6 @@
 """The flavour-wheel notes the shot panel offers: `/api/flavor-picks`.
 
-Against the real app on a fresh database, so the defaults the migration seeds
+Against the real app on a fresh database, so the defaults the schema file seeds
 are the ones read back.
 """
 

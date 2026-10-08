@@ -55,7 +55,7 @@ __all__ = [
 
 log = structlog.get_logger(__name__)
 
-#: The only relations a generated query may read. Created by migration 0013.
+#: The only relations a generated query may read. Created in `db/schema.sql`.
 #: Adding one here without adding the view is a refusal; adding the view without
 #: adding it here makes it invisible, which is the safe direction.
 ALLOWED_VIEWS: frozenset[str] = frozenset(
