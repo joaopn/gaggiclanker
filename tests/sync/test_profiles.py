@@ -139,10 +139,10 @@ async def test_an_edited_phase_is_a_new_version(small_archive: Archive) -> None:
     assert await _versions(small_archive) == before + 1
 
 
-async def test_an_edit_on_the_machine_is_proposed_the_confirmed_signature_of_the_version_it_edits(
+async def test_an_edit_on_the_machine_carries_the_signature_of_the_version_it_edits_in_force(
     small_archive: Archive,
 ) -> None:
-    """The mirror carries a signature to the new version of the file's profile, as proposals."""
+    """The mirror carries a signature to the new version of the file's profile, in force."""
     from gaggiclanker.db.repos.signatures import SignatureRepository
     from gaggiclanker.domain.signature import ExpectationInput
     from gaggiclanker.signatures.service import SignatureService
@@ -158,7 +158,6 @@ async def test_an_edit_on_the_machine_is_proposed_the_confirmed_signature_of_the
         reason="r",
     )
     repo = SignatureRepository(small_archive.db)
-    await repo.answer(row.id, confirm=True)
 
     target["phases"][0]["duration"] = float(target["phases"][0]["duration"]) + 3
     await small_archive.engine.sync_profiles(trigger="test")
@@ -166,7 +165,7 @@ async def test_an_edit_on_the_machine_is_proposed_the_confirmed_signature_of_the
     after = await small_archive.engine.profiles.get_device_profile(target["id"])
     assert after is not None and after.current_version_id != before.current_version_id
     (carried,) = await repo.for_version(after.current_version_id)
-    assert (carried.status, carried.carried_from_id) == ("proposed", row.id)
+    assert (carried.status, carried.carried_from_id) == ("confirmed", row.id)
     assert carried.needs_phase is False
 
 

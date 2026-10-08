@@ -17,7 +17,7 @@ What goes in, and nothing else:
    come first (the renderer's order), the Set version's recipe is in, since the
    checks' shares of the target need it, and the tiers a person set on Settings
    → Shot information govern what a chat is handed, never what a review reads;
-2. **the free-text expectations of the confirmed signature**, each with its id, tier, phase,
+2. **the free-text expectations of the signature in force**, each with its id, tier, phase,
    sentence and fault word: the review must answer every one;
 3. **the Set version's prediction** and which version it is measured against, or the plain
    statement that there is none (the shot is not filed, or its version has no prediction);
@@ -122,7 +122,7 @@ def review_tiers() -> Mapping[str, Tier]:
 
 
 class ExpectationAsked(BaseModel):
-    """One free-text expectation of the confirmed signature, as the review is asked about it."""
+    """One free-text expectation of the signature in force, as the review is asked about it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -154,10 +154,10 @@ class ReviewInput(BaseModel):
     profile: dict[str, Any] | None = None
     #: The phases the shot logged, in order: the only names a window may use.
     phases: list[str] = Field(default_factory=list)
-    #: How many expectations the confirmed signature of the profile version has (0: the shot is
+    #: How many expectations the signature in force of the profile version has (0: the shot is
     #: read without a signature).
     signature_confirmed: int = 0
-    #: The confirmed signature's free-text expectations, in written order: each one is answered.
+    #: The signature in force's free-text expectations, in written order: each one is answered.
     expectations: list[ExpectationAsked] = Field(default_factory=list)
     #: The name of the Set version the shot is filed under ("" when it is not filed), the
     #: prediction that version was filed with (the text the review is shown, "" for none) and
@@ -429,12 +429,12 @@ def _render_expectations(review: ReviewInput) -> str:
     """The free-text expectations to answer, one line each, or why there are none."""
     if review.signature_confirmed == 0:
         return (
-            "This shot's profile version has no confirmed signature, so there is nothing to "
+            "This shot's profile version has no signature in force, so there is nothing to "
             "answer: `free_text_results` is an empty list."
         )
     if not review.expectations:
         return (
-            f"The confirmed signature has {review.signature_confirmed} expectations and none is "
+            f"The signature in force has {review.signature_confirmed} expectations and none is "
             "free text, so there is nothing to answer: `free_text_results` is an empty list."
         )
     lines = [

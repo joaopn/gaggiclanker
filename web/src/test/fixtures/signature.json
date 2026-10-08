@@ -4,7 +4,7 @@
     "profile_label": "Constructed lever decline",
     "phases": ["preinfusion", "soak", "ramp", "decline"],
     "confirmed": 0,
-    "proposed": 0,
+    "not_in_force": 0,
     "rejected": 0,
     "expectations": [],
     "sets": [
@@ -18,12 +18,12 @@
       }
     ]
   },
-  "proposed": {
+  "inForce": {
     "profile_version_id": 1,
     "profile_label": "Constructed lever decline",
     "phases": ["preinfusion", "soak", "ramp", "decline"],
-    "confirmed": 0,
-    "proposed": 6,
+    "confirmed": 6,
+    "not_in_force": 0,
     "rejected": 0,
     "expectations": [
       {
@@ -40,14 +40,14 @@
         "fault": "skipped",
         "faults": ["skipped"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": 1,
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
+        "proposed_at": "2026-03-02T09:00:45.000Z",
         "answered_at": null
       },
       {
@@ -75,14 +75,14 @@
         "fault": "early yield",
         "faults": ["early yield"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": 1,
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
+        "proposed_at": "2026-03-02T09:00:45.000Z",
         "answered_at": null
       },
       {
@@ -110,14 +110,14 @@
         "fault": "early yield",
         "faults": ["early yield"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": 1,
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
+        "proposed_at": "2026-03-02T09:00:45.000Z",
         "answered_at": null
       },
       {
@@ -145,14 +145,14 @@
         "fault": "early yield",
         "faults": ["early yield"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": 1,
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
+        "proposed_at": "2026-03-02T09:00:45.000Z",
         "answered_at": null
       },
       {
@@ -169,14 +169,14 @@
         "fault": "fast flow",
         "faults": ["fast flow"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": 1,
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
+        "proposed_at": "2026-03-02T09:00:45.000Z",
         "answered_at": null
       },
       {
@@ -193,14 +193,14 @@
         "fault": "unstable",
         "faults": ["unstable"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": 1,
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
+        "proposed_at": "2026-03-02T09:00:45.000Z",
         "answered_at": null
       }
     ],
@@ -220,8 +220,8 @@
     "profile_version_id": 1,
     "profile_label": "Constructed lever decline",
     "phases": ["preinfusion", "soak", "ramp", "decline"],
-    "confirmed": 1,
-    "proposed": 4,
+    "confirmed": 5,
+    "not_in_force": 0,
     "rejected": 1,
     "expectations": [
       {
@@ -245,8 +245,8 @@
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": "2026-03-02T09:00:49.000Z"
+        "proposed_at": "2026-03-02T09:00:45.000Z",
+        "answered_at": null
       },
       {
         "id": 2,
@@ -280,205 +280,8 @@
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": "2026-03-02T09:00:50.000Z"
-      },
-      {
-        "id": 3,
-        "profile_version_id": 1,
-        "position": 2,
-        "tier": "important",
-        "phase": "soak",
-        "kind": "measure",
-        "expression": {
-          "channel": "cup_weight",
-          "op": "at_end",
-          "window": {
-            "phase": "soak"
-          },
-          "relative_to": "target_yield",
-          "compare": {
-            "op": "<=",
-            "value": 0.05
-          }
-        },
-        "readable": true,
-        "warning": null,
-        "sentence": "cup weight at the end of the soak, as a share of the target yield, at most 0.05",
-        "fault": "early yield",
-        "faults": ["early yield"],
-        "reason": "what the lever is for",
-        "status": "proposed",
-        "reject_reason": "",
-        "needs_a_new_phase": false,
-        "proposed_by_thread_id": 1,
-        "proposed_by_draft_id": null,
-        "carried_from_id": null,
-        "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": null
-      },
-      {
-        "id": 4,
-        "profile_version_id": 1,
-        "position": 3,
-        "tier": "important",
-        "phase": "preinfusion",
-        "kind": "measure",
-        "expression": {
-          "channel": "cup_weight",
-          "op": "at_end",
-          "window": {
-            "phase": "preinfusion"
-          },
-          "relative_to": "target_yield",
-          "compare": {
-            "op": "<=",
-            "value": 0.05
-          }
-        },
-        "readable": true,
-        "warning": null,
-        "sentence": "cup weight at the end of the preinfusion, as a share of the target yield, at most 0.05",
-        "fault": "early yield",
-        "faults": ["early yield"],
-        "reason": "what the lever is for",
-        "status": "proposed",
-        "reject_reason": "",
-        "needs_a_new_phase": false,
-        "proposed_by_thread_id": 1,
-        "proposed_by_draft_id": null,
-        "carried_from_id": null,
-        "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": null
-      },
-      {
-        "id": 5,
-        "profile_version_id": 1,
-        "position": 4,
-        "tier": "important",
-        "phase": "ramp",
-        "kind": "expects_warning",
-        "expression": null,
-        "readable": true,
-        "warning": "fast flow",
-        "sentence": "fast flow is expected in the ramp: it is part of the design",
-        "fault": "fast flow",
-        "faults": ["fast flow"],
-        "reason": "what the lever is for",
-        "status": "proposed",
-        "reject_reason": "",
-        "needs_a_new_phase": false,
-        "proposed_by_thread_id": 1,
-        "proposed_by_draft_id": null,
-        "carried_from_id": null,
-        "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": null
-      },
-      {
-        "id": 6,
-        "profile_version_id": 1,
-        "position": 5,
-        "tier": "context",
-        "phase": null,
-        "kind": "free_text",
-        "expression": null,
-        "readable": true,
-        "warning": null,
-        "sentence": "pressure and flow fall together through the decline",
-        "fault": "unstable",
-        "faults": ["unstable"],
-        "reason": "what the lever is for",
-        "status": "proposed",
-        "reject_reason": "",
-        "needs_a_new_phase": false,
-        "proposed_by_thread_id": 1,
-        "proposed_by_draft_id": null,
-        "carried_from_id": null,
-        "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": null
-      }
-    ],
-    "sets": [
-      {
-        "set_id": 1,
-        "set_name": "Constructed lever",
-        "archived": false,
-        "version_id": 1,
-        "version_label": "v1",
-        "is_current": true
-      }
-    ]
-  },
-  "confirmed": {
-    "profile_version_id": 1,
-    "profile_label": "Constructed lever decline",
-    "phases": ["preinfusion", "soak", "ramp", "decline"],
-    "confirmed": 6,
-    "proposed": 0,
-    "rejected": 0,
-    "expectations": [
-      {
-        "id": 1,
-        "profile_version_id": 1,
-        "position": 0,
-        "tier": "critical",
-        "phase": "decline",
-        "kind": "reached",
-        "expression": null,
-        "readable": true,
-        "warning": null,
-        "sentence": "the decline begins",
-        "fault": "skipped",
-        "faults": ["skipped"],
-        "reason": "what the lever is for",
-        "status": "confirmed",
-        "reject_reason": "",
-        "needs_a_new_phase": false,
-        "proposed_by_thread_id": 1,
-        "proposed_by_draft_id": null,
-        "carried_from_id": null,
-        "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": "2026-03-02T09:00:51.000Z"
-      },
-      {
-        "id": 2,
-        "profile_version_id": 1,
-        "position": 1,
-        "tier": "critical",
-        "phase": "ramp",
-        "kind": "measure",
-        "expression": {
-          "channel": "cup_weight",
-          "op": "at_end",
-          "window": {
-            "phase": "ramp"
-          },
-          "relative_to": "target_yield",
-          "compare": {
-            "op": "<=",
-            "value": 0.15
-          }
-        },
-        "readable": true,
-        "warning": null,
-        "sentence": "cup weight at the end of the ramp, as a share of the target yield, at most 0.15",
-        "fault": "early yield",
-        "faults": ["early yield"],
-        "reason": "what the lever is for",
-        "status": "confirmed",
-        "reject_reason": "",
-        "needs_a_new_phase": false,
-        "proposed_by_thread_id": 1,
-        "proposed_by_draft_id": null,
-        "carried_from_id": null,
-        "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": "2026-03-02T09:00:51.000Z"
+        "proposed_at": "2026-03-02T09:00:45.000Z",
+        "answered_at": "2026-03-02T09:00:46.000Z"
       },
       {
         "id": 3,
@@ -512,8 +315,8 @@
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": "2026-03-02T09:00:51.000Z"
+        "proposed_at": "2026-03-02T09:00:45.000Z",
+        "answered_at": null
       },
       {
         "id": 4,
@@ -547,8 +350,8 @@
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": "2026-03-02T09:00:51.000Z"
+        "proposed_at": "2026-03-02T09:00:45.000Z",
+        "answered_at": null
       },
       {
         "id": 5,
@@ -571,8 +374,8 @@
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": "2026-03-02T09:00:51.000Z"
+        "proposed_at": "2026-03-02T09:00:45.000Z",
+        "answered_at": null
       },
       {
         "id": 6,
@@ -595,8 +398,8 @@
         "proposed_by_draft_id": null,
         "carried_from_id": null,
         "carried_from_version_id": null,
-        "proposed_at": "2026-03-02T09:00:48.000Z",
-        "answered_at": "2026-03-02T09:00:51.000Z"
+        "proposed_at": "2026-03-02T09:00:45.000Z",
+        "answered_at": null
       }
     ],
     "sets": [
@@ -614,8 +417,8 @@
     "profile_version_id": 2,
     "profile_label": "Constructed lever, renamed soak",
     "phases": ["preinfusion", "bloom", "ramp", "decline"],
-    "confirmed": 0,
-    "proposed": 6,
+    "confirmed": 5,
+    "not_in_force": 1,
     "rejected": 0,
     "expectations": [
       {
@@ -632,14 +435,14 @@
         "fault": "skipped",
         "faults": ["skipped"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": null,
         "proposed_by_draft_id": null,
         "carried_from_id": 1,
         "carried_from_version_id": 1,
-        "proposed_at": "2026-03-02T09:00:53.000Z",
+        "proposed_at": "2026-03-02T09:00:50.000Z",
         "answered_at": null
       },
       {
@@ -667,14 +470,14 @@
         "fault": "early yield",
         "faults": ["early yield"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": null,
         "proposed_by_draft_id": null,
         "carried_from_id": 2,
         "carried_from_version_id": 1,
-        "proposed_at": "2026-03-02T09:00:53.000Z",
+        "proposed_at": "2026-03-02T09:00:50.000Z",
         "answered_at": null
       },
       {
@@ -709,7 +512,7 @@
         "proposed_by_draft_id": null,
         "carried_from_id": 3,
         "carried_from_version_id": 1,
-        "proposed_at": "2026-03-02T09:00:53.000Z",
+        "proposed_at": "2026-03-02T09:00:50.000Z",
         "answered_at": null
       },
       {
@@ -737,14 +540,14 @@
         "fault": "early yield",
         "faults": ["early yield"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": null,
         "proposed_by_draft_id": null,
         "carried_from_id": 4,
         "carried_from_version_id": 1,
-        "proposed_at": "2026-03-02T09:00:53.000Z",
+        "proposed_at": "2026-03-02T09:00:50.000Z",
         "answered_at": null
       },
       {
@@ -761,14 +564,14 @@
         "fault": "fast flow",
         "faults": ["fast flow"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": null,
         "proposed_by_draft_id": null,
         "carried_from_id": 5,
         "carried_from_version_id": 1,
-        "proposed_at": "2026-03-02T09:00:53.000Z",
+        "proposed_at": "2026-03-02T09:00:50.000Z",
         "answered_at": null
       },
       {
@@ -785,28 +588,28 @@
         "fault": "unstable",
         "faults": ["unstable"],
         "reason": "what the lever is for",
-        "status": "proposed",
+        "status": "confirmed",
         "reject_reason": "",
         "needs_a_new_phase": false,
         "proposed_by_thread_id": null,
         "proposed_by_draft_id": null,
         "carried_from_id": 6,
         "carried_from_version_id": 1,
-        "proposed_at": "2026-03-02T09:00:53.000Z",
+        "proposed_at": "2026-03-02T09:00:50.000Z",
         "answered_at": null
       }
     ],
     "sets": []
   },
-  "overrideWaiting": {
+  "overrideInForce": {
     "id": 1,
     "set_version_id": 1,
     "expectation_id": 2,
-    "status": "proposed",
+    "status": "confirmed",
     "reason": "a coarser bean",
     "reject_reason": "",
     "proposed_by_thread_id": 1,
-    "proposed_at": "2026-03-02T09:00:54.000Z",
+    "proposed_at": "2026-03-02T09:00:51.000Z",
     "answered_at": null,
     "compare": {
       "op": "<=",
@@ -825,16 +628,16 @@
     "sentence": "cup weight at the end of the ramp, as a share of the target yield, at most 0.15",
     "expectation_status": "confirmed"
   },
-  "overrideConfirmed": {
+  "overrideRejected": {
     "id": 1,
     "set_version_id": 1,
     "expectation_id": 2,
-    "status": "confirmed",
+    "status": "rejected",
     "reason": "a coarser bean",
-    "reject_reason": "",
+    "reject_reason": "too loose",
     "proposed_by_thread_id": 1,
-    "proposed_at": "2026-03-02T09:00:54.000Z",
-    "answered_at": "2026-03-02T09:00:55.000Z",
+    "proposed_at": "2026-03-02T09:00:51.000Z",
+    "answered_at": "2026-03-02T09:00:52.000Z",
     "compare": {
       "op": "<=",
       "value": 0.2

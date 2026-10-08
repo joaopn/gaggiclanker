@@ -14,7 +14,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.shots import CHECK_SORT, ShotListItem, ShotsRepository
-from gaggiclanker.db.repos.signatures import ExpectationRow, SignatureRepository
+from gaggiclanker.db.repos.signatures import ExpectationRow, ExpectationWrite, SignatureRepository
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.shotinfo import load_shots
 from gaggiclanker.shotinfo.catalogue import default_tiers
@@ -72,11 +72,15 @@ async def _lever(db: Database) -> Lever:
 async def _propose(
     lever: Lever, *, confirm: bool, items: list[ExpectationInput] | None = None
 ) -> list[ExpectationRow]:
+    """Propose the lever's signature: in force at once, or (``confirm=False``) rejected by the
+    person straight away, which is the only way a row of it is out of force."""
     rows = await SignatureService(lever.db).propose(
         lever.version, items or _lever_signature(), reason="what the lever is for"
     )
-    if confirm:
-        await SignatureRepository(lever.db).confirm_all(lever.version)
+    if not confirm:
+        repo = SignatureRepository(lever.db)
+        for row in rows:
+            await repo.reject(row.id, reason="no")
     return rows
 
 
@@ -103,7 +107,7 @@ async def test_a_confirmed_lever_signature_makes_the_badge_red_and_names_the_fau
     ]
 
 
-async def test_the_same_shot_with_no_confirmed_signature_reads_as_it_always_did(
+async def test_the_same_shot_with_no_signature_in_force_reads_as_it_always_did(
     db: Database,
 ) -> None:
     lever = await _lever(db)
@@ -111,18 +115,29 @@ async def test_the_same_shot_with_no_confirmed_signature_reads_as_it_always_did(
     assert before.checks.badge == "ramp: fast flow +2"
     assert {w.severity for w in before.checks.entries} == {"amber"}
 
-    # Proposed is not confirmed: the row, the badge and the order are what they were.
+    # A rejected one is no check: the row, the badge and the order are what they were.
     await _propose(lever, confirm=False)
-    proposed = await _row(db, lever.shot)
-    assert proposed.model_dump() == before.model_dump()
+    assert (await _row(db, lever.shot)).model_dump() == before.model_dump()
 
-    # A rejected one is no more a check than a proposed one.
-    for row in await SignatureRepository(db).for_version(lever.version):
-        await SignatureRepository(db).answer(row.id, confirm=False, reject_reason="no")
+    # A carried one that needs a phase is shown and never a check either.
+    await SignatureRepository(db).add(
+        lever.version,
+        [
+            ExpectationWrite(
+                status="proposed",
+                tier="critical",
+                phase="gone",
+                kind="reached",
+                fault="skipped",
+                sentence="the gone begins",
+                needs_phase=True,
+            )
+        ],
+    )
     assert (await _row(db, lever.shot)).model_dump() == before.model_dump()
 
 
-async def test_confirming_changes_every_shot_at_once_and_stores_nothing_on_a_shot(
+async def test_proposing_changes_every_shot_at_once_and_stores_nothing_on_a_shot(
     db: Database,
 ) -> None:
     lever = await _lever(db)
@@ -171,19 +186,17 @@ async def test_an_override_changes_only_its_own_set_versions_shots(db: Database)
         reason="a coarser bean",
         thread_id=None,
     )
-    # Proposed: nothing moves.
-    assert (await _row(db, lever.shot)).checks.badge == "ramp: early yield +4"
-    await SignatureRepository(db).answer_override(override.id, confirm=True)
-
+    # In force at once, for this Set version's shots only.
     mine, theirs = await _row(db, lever.shot), await _row(db, other_shot)
     assert mine.checks.badge == "decline: skipped +3"  # the ramp now holds at 1.3
     assert (
         theirs.checks.badge == "ramp: early yield +4"
     )  # the other version still reads the profile's
-    # A rejected override changes nothing either.
-    await SignatureRepository(db).answer_override(
-        override.id, confirm=False
-    )  # already answered: refused
+    # A rejected override is gone again, and a restored one is back.
+    repo = SignatureRepository(db)
+    await repo.reject_override(override.id, reason="no")
+    assert (await _row(db, lever.shot)).checks.badge == "ramp: early yield +4"
+    await repo.restore_override(override.id)
     assert (await _row(db, lever.shot)).checks.badge == "decline: skipped +3"
 
 
@@ -217,7 +230,6 @@ async def test_the_curve_check_sort_follows_the_badge_red_amber_grey_then_none(
         ],
         reason="a turbo is fast on purpose",
     )
-    await SignatureRepository(db).confirm_all(turbo_version)
     repo = ShotsRepository(db)
 
     before = await repo.list_shots(limit=10, sort=CHECK_SORT, descending=True)
@@ -258,7 +270,6 @@ async def test_a_turbo_with_its_fast_flow_expected_shows_no_amber(db: Database) 
         ],
         reason="r",
     )
-    await SignatureRepository(db).confirm_all(version)
 
     row = await _row(db, shot)
     assert (row.checks.badge, [w.severity for w in row.checks.entries]) == (
@@ -280,7 +291,7 @@ async def test_the_fields_serve_the_ordered_list_with_value_and_state(db: Databa
 
     document = await shot_fields(db, lever.shot)
     assert document is not None
-    assert document.signature.text == "confirmed, 4 expectations"
+    assert document.signature.text == "in force, 4 expectations"
     first = document.checks.items[0]
     assert (first.kind, first.tier, first.status, first.color, first.fault) == (
         "measure",
@@ -307,11 +318,11 @@ async def test_the_fields_serve_the_ordered_list_with_value_and_state(db: Databa
     ]
 
 
-# ── unconfirmed never teaches ────────────────────────────────────────
+# ── what is out of force never teaches ────────────────────────────────────────
 
 
-async def test_nothing_proposed_reaches_a_check_a_render_or_a_field(db: Database) -> None:
-    """A proposed (and a rejected) expectation is in no place a confirmed one would be."""
+async def test_nothing_rejected_reaches_a_check_a_render_or_a_field(db: Database) -> None:
+    """A rejected expectation is in no place one in force would be."""
     lever = await _lever(db)
     [plain_facts] = await load_shots(db, [lever.shot])
     plain = {
@@ -320,8 +331,7 @@ async def test_nothing_proposed_reaches_a_check_a_render_or_a_field(db: Database
     }
     plain_fields = (await shot_fields(db, lever.shot)).model_dump()  # type: ignore[union-attr]
 
-    rows = await _propose(lever, confirm=False)
-    await SignatureRepository(db).answer(rows[0].id, confirm=False, reject_reason="no")
+    await _propose(lever, confirm=False)
 
     [facts] = await load_shots(db, [lever.shot])
     assert facts.signature_checks.state.confirmed == 0
@@ -337,13 +347,13 @@ async def test_nothing_proposed_reaches_a_check_a_render_or_a_field(db: Database
     assert (await _row(db, lever.shot)).checks.badge == "ramp: fast flow +2"
 
 
-async def test_a_signature_shows_in_every_rendering_once_confirmed(db: Database) -> None:
+async def test_a_signature_shows_in_every_rendering_once_proposed(db: Database) -> None:
     lever = await _lever(db)
     await _propose(lever, confirm=True)
     [facts] = await load_shots(db, [lever.shot])
     tiers = default_tiers()
     base = render_shot(facts, "base", tiers, curve_points=60).splitlines()
-    assert base[1:3] == ["[Checks]", "signature: confirmed, 4 expectations"]
+    assert base[1:3] == ["[Checks]", "signature: in force, 4 expectations"]
     assert base[3].startswith(
         "ramp: early yield (red, critical): cup weight at the end of the ramp"
     )
@@ -420,7 +430,6 @@ async def test_a_shot_with_no_pressure_sensor_cannot_fail_a_flow_or_pressure_exp
         ],
         reason="r",
     )
-    await SignatureRepository(db).confirm_all(version)
 
     document = await shot_fields(db, shot)
     assert document is not None
@@ -447,7 +456,7 @@ async def test_the_shot_routes_serve_the_same_checks(
     assert fields["signature"] == {
         "profile_version_id": lever.version,
         "confirmed": 4,
-        "text": "confirmed, 4 expectations",
+        "text": "in force, 4 expectations",
     }
     first = fields["checks"]["items"][0]
     assert first["fault"] == "early yield" and first["color"] == "red"

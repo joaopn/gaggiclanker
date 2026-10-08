@@ -150,7 +150,7 @@ describe("ShotChecksCard", () => {
 
     const line = screen.getByTestId("signature-state");
     expect(line).toHaveTextContent(
-      "Read against the profile's signature: confirmed, 6 expectations",
+      "Read against the profile's signature: in force, 6 expectations",
     );
     expect(screen.getByTestId("signature-link")).toHaveAttribute("href", "/profiles#version-1");
   });

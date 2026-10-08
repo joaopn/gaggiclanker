@@ -23,26 +23,15 @@ export const KIND_LABEL: Record<SignatureExpectation["kind"], string> = {
   free_text: "checked by the review",
 };
 
-export const STATUS_LABEL: Record<SignatureExpectation["status"], string> = {
-  proposed: "Proposed",
-  confirmed: "Confirmed",
-  rejected: "Rejected",
-};
-
-/** The expectations still waiting for an answer that can be given (not one that needs a phase). */
-export function confirmable(expectations: SignatureExpectation[]): SignatureExpectation[] {
-  return expectations.filter((e) => e.status === "proposed" && !e.needs_a_new_phase);
-}
-
-/** "3 confirmed · 2 waiting", or what there is to say when there is nothing yet. */
+/** "3 in force · 1 not in force · 1 rejected", or what there is to say when there is nothing. */
 export function signatureSummary(counts: {
   confirmed: number;
-  proposed: number;
+  not_in_force: number;
   rejected: number;
 }): string {
   const parts: string[] = [];
-  if (counts.confirmed > 0) parts.push(`${counts.confirmed} confirmed`);
-  if (counts.proposed > 0) parts.push(`${counts.proposed} waiting`);
+  if (counts.confirmed > 0) parts.push(`${counts.confirmed} in force`);
+  if (counts.not_in_force > 0) parts.push(`${counts.not_in_force} not in force`);
   if (counts.rejected > 0) parts.push(`${counts.rejected} rejected`);
   return parts.length > 0 ? parts.join(" · ") : "none yet";
 }

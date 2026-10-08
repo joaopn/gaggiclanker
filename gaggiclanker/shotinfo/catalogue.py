@@ -851,10 +851,11 @@ REVIEW_GROUP = "Review"
 GROUP_NOTES: Mapping[str, str] = MappingProxyType(
     {
         CHECKS_GROUP: (
-            "The first line says whether the shot was read against a confirmed signature "
-            "(`signature: confirmed, 6 expectations` or `read without a signature`); only "
-            "expectations a person confirmed count. Then one check per line, `phase: fault "
-            "(colour, tier): the sentence with the numbers`, `Shot` for the whole shot, in this "
+            "The first line says whether the shot was read against a signature in force "
+            "(`signature: in force, 6 expectations` or `read without a signature`); only "
+            "expectations in force count, which is every one the person has not rejected. Then "
+            "one check per line, `phase: fault (colour, tier): the sentence with the numbers`, "
+            "`Shot` for the whole shot, in this "
             "order: failed critical expectations (red), failed important ones (amber), warnings "
             "nothing marks as expected (amber), expected warnings (grey), what could not be "
             "measured (with its reason; neither held nor failed). Extended adds what held, "
@@ -946,7 +947,7 @@ def _items() -> tuple[Item, ...]:
             name="Checks",
             label="Checks",
             meaning=(
-                "What failed against the signature, the profile's confirmed intent: "
+                "What failed against the signature, what the profile is for as it stands in force: "
                 "expectations per phase with a tier (critical, important, context) and a kind "
                 "(a measure held against a limit, a phase that must begin, a warning that is "
                 "part of the design, free text only the review answers). A failure is named "
@@ -972,7 +973,7 @@ def _items() -> tuple[Item, ...]:
             name="Checks that held, and the rest",
             label="Held checks",
             meaning=(
-                "The expectations of the confirmed signature that held on this shot, the "
+                "The expectations of the signature in force that held on this shot, the "
                 "context expectations whatever they came to (they inform and never raise "
                 "the badge), and the free-text ones, which only the review answers (see the "
                 "Review group) and are never decided by a number. Said only when there is "

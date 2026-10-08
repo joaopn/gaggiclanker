@@ -4,26 +4,31 @@ A signature is what one profile version is for, as a list of expectations a pers
 has answered. This module is the only SQL for it, and each method keeps one of
 these properties true.
 
-* **Only a confirmed expectation is ever read as a check.** A proposed one is a
-  row a person answers, a rejected one is kept with its reason so the
-  conversation that proposed it can be told. :meth:`confirmed_for_versions` is
-  the one reader of "what counts"; nothing else filters on the status.
+* **Only a confirmed expectation is ever read as a check, and an agent's expectation is
+  written confirmed**: it is in force until a person rejects it. A rejected one is kept with
+  its reason so the conversation that proposed it can be told, and a person can restore it.
+  The one `proposed` row left is a carried expectation whose phase is gone (`needs_phase`):
+  shown, rejectable, never in force. :meth:`confirmed_for_versions` is the one reader of
+  "what counts"; nothing else filters on the status.
 
-* **Every answer is check-then-write in one transaction**, the check being the
-  `WHERE status = 'proposed'` of the one `UPDATE` that writes it: two browser
-  tabs pressing Confirm on the same card get one answer and one refusal, never
-  two writes. A shipped unique index on (signature, position) is the guard for
-  a second process (the stdio child), which the retry in :meth:`add` rides out.
+* **Every answer is check-then-write in one transaction**, the check being the status
+  condition of the one `UPDATE` that writes it: two browser tabs pressing Reject on the same
+  row get one answer and one refusal, never two writes. A shipped unique index on
+  (signature, position) is the guard for a second process (the stdio child), which the retry
+  in :meth:`add` rides out.
 
 * **Positions are never reused**, so an expectation keeps its place in the list
   for good and the index is the writers' guard.
 
 * **An override is one live row per Set version** (a partial unique index) and
-  changes nothing but a confirmed measure's `compare`. It is found by Set
-  version, never by expectation alone, so it cannot reach another version's shots.
+  changes nothing but a confirmed measure's `compare`. A newer override for the same
+  expectation replaces the one in force; the replaced row is marked `withdrawn`, which is
+  never the person's rejection (only `rejected` carries a person's reason to the agent). It is
+  found by Set version, never by expectation alone, so it cannot reach another version's shots.
 
 Nothing here is reachable from a tool except the two writes that *propose*
-(:meth:`add`, :meth:`add_override`); answering is a route a person presses.
+(:meth:`add`, :meth:`add_override`), which put what they write in force; rejecting and
+restoring are routes a person presses.
 """
 
 from __future__ import annotations
@@ -49,6 +54,7 @@ __all__ = [
     "EXPECTATION_KINDS",
     "EXPECTATION_STATUSES",
     "TIERS",
+    "AnotherOverrideInForce",
     "AnswerResult",
     "ExpectationKind",
     "ExpectationRow",
@@ -65,7 +71,8 @@ __all__ = [
 type Tier = Literal["critical", "important", "context"]
 type ExpectationKind = Literal["measure", "reached", "expects_warning", "free_text"]
 type ExpectationStatus = Literal["proposed", "confirmed", "rejected"]
-#: An override can also be withdrawn: a person took back one they had confirmed.
+#: `withdrawn` is an override a newer one for the same expectation replaced: out of force, and
+#: not a person's rejection. `proposed` is no longer written (an override is in force at once).
 type OverrideStatus = Literal["proposed", "confirmed", "rejected", "withdrawn"]
 
 TIERS: tuple[str, ...] = ("critical", "important", "context")
@@ -77,6 +84,14 @@ _SAMPLE_COLUMNS = ("tt", "ct", "tp", "cp", "fl", "tf", "pf", "vf", "v", "ev", "p
 
 #: How many times a write that lost a race on (signature, position) is tried again.
 _POSITION_RETRIES = 4
+
+
+class AnotherOverrideInForce(Exception):
+    """A Set version has one override in force at a time, and it is for another expectation."""
+
+    def __init__(self, expectation_id: int) -> None:
+        super().__init__(expectation_id)
+        self.expectation_id = expectation_id
 
 
 class ExpectationWrite(BaseModel):
@@ -97,6 +112,9 @@ class ExpectationWrite(BaseModel):
     fault: str | None = None
     sentence: str = Field(min_length=1)
     reason: str = ""
+    #: Written explicitly by the service, never left to the schema's default: ``confirmed`` is
+    #: in force, ``proposed`` is only for a carried expectation that needs a phase.
+    status: Literal["proposed", "confirmed"]
     needs_phase: bool = False
     carried_from_id: int | None = None
     proposed_by_thread_id: int | None = None
@@ -104,6 +122,8 @@ class ExpectationWrite(BaseModel):
 
     @model_validator(mode="after")
     def _shape(self) -> ExpectationWrite:
+        if self.needs_phase and self.status == "confirmed":
+            raise ValueError("an expectation that needs a new phase is never in force")
         if (self.kind == "measure") != (self.expression is not None):
             raise ValueError("exactly a measure carries an expression")
         if (self.kind == "expects_warning") != (self.warning_fault is not None):
@@ -213,16 +233,30 @@ class AnswerResult:
     """A guarded answer: the row it produced, or why there is none."""
 
     row: ExpectationRow | None = None
-    #: ``no_expectation`` (it is not there), ``not_waiting`` (already answered), or
-    #: ``needs_phase`` (a carried one whose phase is gone cannot be confirmed).
-    refused: Literal["no_expectation", "not_waiting", "needs_phase"] | None = None
+    #: ``no_expectation`` (it is not there), ``already_rejected`` (rejecting what is rejected),
+    #: ``not_rejected`` (restoring what is not rejected), or ``needs_phase`` (a carried one
+    #: whose phase is gone cannot be put in force).
+    refused: (
+        Literal["no_expectation", "already_rejected", "not_rejected", "needs_phase", "not_in_force"]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True, slots=True)
 class OverrideAnswer:
     row: OverrideRow | None = None
+    #: ``no_override``; ``already_rejected`` / ``not_rejected`` (nothing to reject / restore);
+    #: ``expectation_not_confirmed`` (an override of an expectation out of force cannot be put in
+    #: force); ``another_in_force`` (the Set version has a live override already).
     refused: (
-        Literal["no_override", "not_waiting", "expectation_not_confirmed", "not_confirmed"] | None
+        Literal[
+            "no_override",
+            "already_rejected",
+            "not_rejected",
+            "expectation_not_confirmed",
+            "another_in_force",
+        ]
+        | None
     ) = None
 
 
@@ -325,7 +359,7 @@ class SignatureRepository(Repository):
     async def add(
         self, profile_version_id: int, writes: Sequence[ExpectationWrite]
     ) -> list[ExpectationRow]:
-        """Append expectations (as proposed) to a profile version's signature, in one transaction.
+        """Append expectations (each with its status) to a profile version's signature, atomically.
 
         Creates the signature on first use. The positions are the next free ones; a writer
         that lost a race on the unique index (a second process) reads again and retries.
@@ -372,9 +406,9 @@ class SignatureRepository(Repository):
                 """
                 INSERT INTO signature_expectations
                     (signature_id, position, tier, phase, kind, expression_json, warning_fault,
-                     text, fault, sentence, reason, needs_phase, proposed_by_thread_id,
-                     proposed_by_draft_id, carried_from_id, proposed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     text, fault, sentence, reason, status, needs_phase, proposed_by_thread_id,
+                     proposed_by_draft_id, carried_from_id, proposed_at, answered_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 """,
                 (
                     signature_id,
@@ -388,6 +422,7 @@ class SignatureRepository(Repository):
                     write.fault,
                     write.sentence,
                     write.reason,
+                    write.status,
                     int(write.needs_phase),
                     write.proposed_by_thread_id,
                     write.proposed_by_draft_id,
@@ -411,67 +446,67 @@ class SignatureRepository(Repository):
 
     # ── answering (a person's press) ─────────────────────────────────
 
-    async def answer(
-        self, expectation_id: int, *, confirm: bool, reject_reason: str = ""
-    ) -> AnswerResult:
-        """Confirm or reject one proposed expectation. Check and write in one statement.
+    async def reject(self, expectation_id: int, *, reason: str = "") -> AnswerResult:
+        """Reject one expectation that is in force (or a carried one that needs a phase).
 
-        The `WHERE status = 'proposed'` is the guard: whoever answers first wins, and the
-        second finds it answered.
+        Check and write in one statement: whoever presses first wins, the second finds it
+        rejected.
         """
         async with self._transaction():
             row = await self.get(expectation_id)
             if row is None:
                 return AnswerResult(refused="no_expectation")
-            if row.status != "proposed":
-                return AnswerResult(refused="not_waiting")
-            if confirm and row.needs_phase:
-                return AnswerResult(refused="needs_phase")
             cursor = await self.db.execute(
-                "UPDATE signature_expectations SET status = ?, reject_reason = ?, answered_at = ? "
-                "WHERE id = ? AND status = 'proposed'",
-                (
-                    "confirmed" if confirm else "rejected",
-                    "" if confirm else reject_reason.strip(),
-                    utc_now(),
-                    expectation_id,
-                ),
+                "UPDATE signature_expectations SET status = 'rejected', reject_reason = ?, "
+                "answered_at = ? WHERE id = ? AND status IN ('confirmed', 'proposed')",
+                (reason.strip(), utc_now(), expectation_id),
             )
             if cursor.rowcount != 1:
-                return AnswerResult(refused="not_waiting")
+                return AnswerResult(refused="already_rejected")
+            # An override is a limit of this expectation: with it out of force the override
+            # goes too, in the same transaction. Restoring the expectation does not bring it
+            # back (it is the person's call, or the agent's next proposal).
+            await self.db.execute(
+                "UPDATE set_version_signature_overrides SET status = 'withdrawn', answered_at = ? "
+                "WHERE expectation_id = ? AND status IN ('proposed', 'confirmed')",
+                (utc_now(), expectation_id),
+            )
             return AnswerResult(row=await self.get(expectation_id))
 
-    async def confirm_all(self, profile_version_id: int) -> list[ExpectationRow]:
-        """Confirm every proposed expectation of one profile version that can be confirmed.
-
-        One statement, so it is all or nothing; the ones that *need a phase* stay proposed.
-        """
+    async def restore(self, expectation_id: int) -> AnswerResult:
+        """Put a rejected expectation back in force. One that needs a new phase cannot return."""
         async with self._transaction():
-            before = await self.for_version(profile_version_id, statuses=["proposed"])
-            wanted = [row.id for row in before if not row.needs_phase]
-            if not wanted:
-                return []
-            await self.db.execute(
-                "UPDATE signature_expectations SET status = 'confirmed', answered_at = ? "  # noqa: S608
-                f"WHERE status = 'proposed' AND needs_phase = 0 "
-                f"AND id IN ({', '.join('?' * len(wanted))})",
-                (utc_now(), *wanted),
+            row = await self.get(expectation_id)
+            if row is None:
+                return AnswerResult(refused="no_expectation")
+            if row.status != "rejected":
+                return AnswerResult(refused="not_rejected")
+            if row.needs_phase:
+                return AnswerResult(refused="needs_phase")
+            cursor = await self.db.execute(
+                "UPDATE signature_expectations SET status = 'confirmed', reject_reason = '', "
+                "answered_at = ? WHERE id = ? AND status = 'rejected'",
+                (utc_now(), expectation_id),
             )
-            rows = [await self.get(expectation_id) for expectation_id in wanted]
-            return [row for row in rows if row is not None and row.status == "confirmed"]
+            if cursor.rowcount != 1:
+                return AnswerResult(refused="not_rejected")
+            return AnswerResult(row=await self.get(expectation_id))
 
     async def set_tier(self, expectation_id: int, tier: Tier) -> AnswerResult:
-        """Move one proposed expectation to another tier. Only while it is waiting."""
+        """Move one expectation in force to another tier: a rejected one is restored first, and
+        one that is not in force (needs a phase, or from before) has no tier to move."""
         async with self._transaction():
             row = await self.get(expectation_id)
             if row is None:
                 return AnswerResult(refused="no_expectation")
             cursor = await self.db.execute(
-                "UPDATE signature_expectations SET tier = ? WHERE id = ? AND status = 'proposed'",
+                "UPDATE signature_expectations SET tier = ? WHERE id = ? AND status = 'confirmed'",
                 (tier, expectation_id),
             )
             if cursor.rowcount != 1:
-                return AnswerResult(refused="not_waiting")
+                return AnswerResult(
+                    refused="already_rejected" if row.status == "rejected" else "not_in_force"
+                )
             return AnswerResult(row=await self.get(expectation_id))
 
     # ── overrides ────────────────────────────────────────────────────
@@ -499,7 +534,7 @@ class SignatureRepository(Repository):
         return self.to_models(OverrideRow, rows)
 
     async def confirmed_overrides(self, set_version_ids: Iterable[int]) -> dict[int, OverrideRow]:
-        """The confirmed override of each Set version, by Set version: the only way one is found."""
+        """The override in force of each Set version, by Set version: the only way one is found."""
         ids = sorted(set(set_version_ids))
         if not ids:
             return {}
@@ -518,32 +553,32 @@ class SignatureRepository(Repository):
         )
         return self.to_models(OverrideRow, rows)
 
-    async def add_override(self, write: OverrideWrite) -> OverrideRow | None:
-        """Propose an override, replacing the Set version's waiting one (a newer proposal wins).
+    async def add_override(self, write: OverrideWrite) -> OverrideRow:
+        """Put an override in force, replacing the one the Set version has in force.
 
-        ``None`` when the version already has a **confirmed** one: that one is the person's
-        answer and a proposal does not push it aside. The check and the write share one
-        transaction behind the partial unique index.
+        The replaced row is marked ``withdrawn``: out of force, and not the person's rejection
+        (a rejection and its reason are what the agent learns from). Check and write share one
+        transaction behind the partial unique index. An override in force for another expectation
+        is not pushed aside: :class:`AnotherOverrideInForce`, decided inside this transaction.
         """
         async with self._transaction():
-            live = await self.overrides_for_set_version(
-                write.set_version_id, statuses=["proposed", "confirmed"]
+            now = utc_now()
+            for live in await self.overrides_for_set_version(
+                write.set_version_id, statuses=["confirmed"]
+            ):
+                if live.expectation_id != write.expectation_id:
+                    raise AnotherOverrideInForce(live.expectation_id)
+            await self.db.execute(
+                "UPDATE set_version_signature_overrides SET status = 'withdrawn', answered_at = ? "
+                "WHERE set_version_id = ? AND status IN ('proposed', 'confirmed')",
+                (now, write.set_version_id),
             )
-            if any(item.status == "confirmed" for item in live):
-                return None
-            for item in live:
-                await self.db.execute(
-                    "UPDATE set_version_signature_overrides SET status = 'rejected', "
-                    "reject_reason = 'replaced by a newer proposal', answered_at = ? "
-                    "WHERE id = ? AND status = 'proposed'",
-                    (utc_now(), item.id),
-                )
             cursor = await self.db.execute(
                 """
                 INSERT INTO set_version_signature_overrides
-                    (set_version_id, expectation_id, compare_json, reason, proposed_by_thread_id,
-                     proposed_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (set_version_id, expectation_id, compare_json, reason, status,
+                     proposed_by_thread_id, proposed_at)
+                VALUES (?, ?, ?, ?, 'confirmed', ?, ?)
                 """,
                 (
                     write.set_version_id,
@@ -551,37 +586,52 @@ class SignatureRepository(Repository):
                     write.compare.model_dump_json(exclude_none=True),
                     write.reason,
                     write.proposed_by_thread_id,
-                    utc_now(),
+                    now,
                 ),
             )
-            return await self.get_override(int(cursor.lastrowid or 0))
+            row = await self.get_override(int(cursor.lastrowid or 0))
+            assert row is not None
+            return row
 
-    async def answer_override(
-        self, override_id: int, *, confirm: bool, reject_reason: str = ""
-    ) -> OverrideAnswer:
-        """Confirm or reject a proposed override: the first answer wins."""
+    async def reject_override(self, override_id: int, *, reason: str = "") -> OverrideAnswer:
+        """Reject an override that is in force: the Set version reads the profile's limit again."""
         async with self._transaction():
             row = await self.get_override(override_id)
             if row is None:
                 return OverrideAnswer(refused="no_override")
-            if row.status != "proposed":
-                return OverrideAnswer(refused="not_waiting")
-            if confirm:
-                target = await self.get(row.expectation_id)
-                if target is None or target.status != "confirmed":
-                    return OverrideAnswer(refused="expectation_not_confirmed")
             cursor = await self.db.execute(
-                "UPDATE set_version_signature_overrides SET status = ?, reject_reason = ?, "
-                "answered_at = ? WHERE id = ? AND status = 'proposed'",
-                (
-                    "confirmed" if confirm else "rejected",
-                    "" if confirm else reject_reason.strip(),
-                    utc_now(),
-                    override_id,
-                ),
+                "UPDATE set_version_signature_overrides SET status = 'rejected', "
+                "reject_reason = ?, answered_at = ? "
+                "WHERE id = ? AND status IN ('confirmed', 'proposed')",
+                (reason.strip(), utc_now(), override_id),
             )
             if cursor.rowcount != 1:
-                return OverrideAnswer(refused="not_waiting")
+                return OverrideAnswer(refused="already_rejected")
+            return OverrideAnswer(row=await self.get_override(override_id))
+
+    async def restore_override(self, override_id: int) -> OverrideAnswer:
+        """Put a rejected override back in force, unless its expectation is out of force or the
+        Set version has another override in force now."""
+        async with self._transaction():
+            row = await self.get_override(override_id)
+            if row is None:
+                return OverrideAnswer(refused="no_override")
+            if row.status != "rejected":
+                return OverrideAnswer(refused="not_rejected")
+            target = await self.get(row.expectation_id)
+            if target is None or target.status != "confirmed":
+                return OverrideAnswer(refused="expectation_not_confirmed")
+            if await self.overrides_for_set_version(
+                row.set_version_id, statuses=["proposed", "confirmed"]
+            ):
+                return OverrideAnswer(refused="another_in_force")
+            cursor = await self.db.execute(
+                "UPDATE set_version_signature_overrides SET status = 'confirmed', "
+                "reject_reason = '', answered_at = ? WHERE id = ? AND status = 'rejected'",
+                (utc_now(), override_id),
+            )
+            if cursor.rowcount != 1:
+                return OverrideAnswer(refused="not_rejected")
             return OverrideAnswer(row=await self.get_override(override_id))
 
     async def sets_using(self, profile_version_id: int) -> list[dict[str, Any]]:
@@ -608,22 +658,6 @@ class SignatureRepository(Repository):
             "SELECT set_id FROM set_versions WHERE id = ?", (set_version_id,)
         )
         return None if value is None else int(value)
-
-    async def withdraw_override(self, override_id: int) -> OverrideAnswer:
-        """Take back a confirmed override: the Set version reads the profile's own limit again,
-        and a new override can be proposed for it. Only a confirmed one can be withdrawn."""
-        async with self._transaction():
-            row = await self.get_override(override_id)
-            if row is None:
-                return OverrideAnswer(refused="no_override")
-            cursor = await self.db.execute(
-                "UPDATE set_version_signature_overrides SET status = 'withdrawn', answered_at = ? "
-                "WHERE id = ? AND status = 'confirmed'",
-                (utc_now(), override_id),
-            )
-            if cursor.rowcount != 1:
-                return OverrideAnswer(refused="not_confirmed")
-            return OverrideAnswer(row=await self.get_override(override_id))
 
     # ── raw material for evaluation ──────────────────────────────────
 

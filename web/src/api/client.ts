@@ -667,19 +667,13 @@ export async function setBoardOnMachine(rowId: number, on: boolean): Promise<Boa
 }
 
 // ---------------------------------------------------------------------------
-// Signatures: what a profile version is for. Every call here is a person's press;
-// nothing in this client can propose an expectation.
+// Signatures: what a profile version is for. An agent's expectations are in force at once;
+// every call here is a person's press (reject, restore, move a tier).
 // ---------------------------------------------------------------------------
 
-/** Every expectation of a profile version, proposed, confirmed and rejected. */
+/** Every expectation of a profile version: in force, rejected, or waiting on a phase. */
 export async function getSignature(versionId: number): Promise<SignatureData> {
   return fetchApi<SignatureData>(`/profile-versions/${versionId}/signature`);
-}
-
-export async function confirmExpectation(expectationId: number): Promise<SignatureAnswer> {
-  return fetchApi<SignatureAnswer>(`/signature-expectations/${expectationId}/confirm`, {
-    method: "POST",
-  });
 }
 
 export async function rejectExpectation(
@@ -689,6 +683,13 @@ export async function rejectExpectation(
   return fetchApi<SignatureAnswer>(`/signature-expectations/${expectationId}/reject`, {
     method: "POST",
     body: JSON.stringify({ reason }),
+  });
+}
+
+/** Put a rejected expectation back in force. Only a person can: no tool can. */
+export async function restoreExpectation(expectationId: number): Promise<SignatureAnswer> {
+  return fetchApi<SignatureAnswer>(`/signature-expectations/${expectationId}/restore`, {
+    method: "POST",
   });
 }
 
@@ -702,30 +703,13 @@ export async function setExpectationTier(
   });
 }
 
-/** Every proposed expectation of a version in one call: all or nothing, one that needs a phase stays. */
-export async function confirmAllExpectations(versionId: number): Promise<SignatureAnswer> {
-  return fetchApi<SignatureAnswer>(`/profile-versions/${versionId}/signature/confirm-all`, {
-    method: "POST",
-  });
-}
-
-/** The overrides proposed, confirmed or answered for one Set version's signature limits. */
+/** The overrides in force, rejected or replaced for one Set version's signature limits. */
 export async function getSignatureOverrides(
   setId: number,
   versionId: number,
 ): Promise<SignatureOverrideList> {
   return fetchApi<SignatureOverrideList>(
     `/sets/${setId}/versions/${versionId}/signature-overrides`,
-  );
-}
-
-export async function confirmSignatureOverride(
-  setId: number,
-  overrideId: number,
-): Promise<SignatureOverrideAnswer> {
-  return fetchApi<SignatureOverrideAnswer>(
-    `/sets/${setId}/signature-overrides/${overrideId}/confirm`,
-    { method: "POST" },
   );
 }
 
@@ -740,12 +724,12 @@ export async function rejectSignatureOverride(
   );
 }
 
-export async function withdrawSignatureOverride(
+export async function restoreSignatureOverride(
   setId: number,
   overrideId: number,
 ): Promise<SignatureOverrideAnswer> {
   return fetchApi<SignatureOverrideAnswer>(
-    `/sets/${setId}/signature-overrides/${overrideId}/withdraw`,
+    `/sets/${setId}/signature-overrides/${overrideId}/restore`,
     { method: "POST" },
   );
 }

@@ -8,15 +8,13 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  confirmAllExpectations,
-  confirmExpectation,
-  confirmSignatureOverride,
   getSignature,
   getSignatureOverrides,
   rejectExpectation,
   rejectSignatureOverride,
+  restoreExpectation,
+  restoreSignatureOverride,
   setExpectationTier,
-  withdrawSignatureOverride,
 } from "@/api/client";
 import type {
   SignatureAnswer,
@@ -29,7 +27,7 @@ import { invalidateSignatureAnswers } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
- * What a profile version is for, and the person's answers to what an agent proposed.
+ * What a profile version is for (in force until a person rejects it), and the person's answers.
  *
  * Every mutation here settles with `invalidateSignatureAnswers`, on failure as well as on
  * success: an answer moves every shot's checks and every Set that brews the profile, and a
@@ -87,11 +85,6 @@ function rememberSignature(answer: SignatureAnswer, queryClient: QueryClient): v
   );
 }
 
-export const useConfirmExpectation = answerMutation<{ expectationId: number }, SignatureAnswer>(
-  ({ expectationId }) => confirmExpectation(expectationId),
-  rememberSignature,
-);
-
 export const useRejectExpectation = answerMutation<
   { expectationId: number; reason: string },
   SignatureAnswer
@@ -102,23 +95,17 @@ export const useSetExpectationTier = answerMutation<
   SignatureAnswer
 >(({ expectationId, tier }) => setExpectationTier(expectationId, tier), rememberSignature);
 
-/** One call for the whole version: not one per expectation, so it is all or nothing. */
-export const useConfirmAllExpectations = answerMutation<{ versionId: number }, SignatureAnswer>(
-  ({ versionId }) => confirmAllExpectations(versionId),
+export const useRestoreExpectation = answerMutation<{ expectationId: number }, SignatureAnswer>(
+  ({ expectationId }) => restoreExpectation(expectationId),
   rememberSignature,
 );
-
-export const useConfirmOverride = answerMutation<
-  { setId: number; overrideId: number },
-  SignatureOverrideAnswer
->(({ setId, overrideId }) => confirmSignatureOverride(setId, overrideId));
 
 export const useRejectOverride = answerMutation<
   { setId: number; overrideId: number; reason: string },
   SignatureOverrideAnswer
 >(({ setId, overrideId, reason }) => rejectSignatureOverride(setId, overrideId, reason));
 
-export const useWithdrawOverride = answerMutation<
+export const useRestoreOverride = answerMutation<
   { setId: number; overrideId: number },
   SignatureOverrideAnswer
->(({ setId, overrideId }) => withdrawSignatureOverride(setId, overrideId));
+>(({ setId, overrideId }) => restoreSignatureOverride(setId, overrideId));

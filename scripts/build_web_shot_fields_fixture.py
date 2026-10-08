@@ -29,10 +29,11 @@ Shot-fields documents:
   warning is grey, nothing is amber;
 * ``real``: the exported shot, in no Set, with no warning and no target.
 
-Signature documents: ``none`` (a version nobody proposed anything for), ``proposed``,
-``confirmed``, ``mixed`` (one confirmed, one rejected with a reason, the rest proposed by a
-conversation), ``carried`` (a next version whose soak phase was renamed: the carried ones wait,
-one needs a new phase) and ``overrides`` (a Set version's waiting and confirmed overrides).
+Signature documents: ``none`` (a version nobody proposed anything for), ``inForce`` (what a
+conversation proposed: every expectation in force, none answered), ``mixed`` (one rejected with
+a reason, the rest in force), ``carried`` (a next version whose soak phase was renamed: the
+carried ones are in force, one needs a new phase and is not) and the Set version's overrides
+(``overrideInForce``, ``overrideRejected``).
 
 Re-run it whenever the catalogue, the metrics, the signature routes or the fields route change:
 
@@ -250,7 +251,6 @@ async def _lever(
     )
     if signed:
         await scene.service.propose(version, lever_signature(), reason="what the lever is for")
-        await scene.signatures.confirm_all(version)
     return await scene.fields(shot)
 
 
@@ -270,7 +270,6 @@ async def _turbo(scene: Scene) -> Any:
         ],
         reason="a turbo runs fast on purpose",
     )
-    await scene.signatures.confirm_all(version)
     return await scene.fields(shot)
 
 
@@ -292,24 +291,14 @@ async def _signatures(scene: Scene) -> dict[str, Any]:
     await scene.service.propose(
         version, lever_signature(), reason="what the lever is for", thread_id=thread.thread.id
     )
-    documents["proposed"] = await scene.signature(version)
+    documents["inForce"] = await scene.signature(version)
     documents["threadId"] = thread.thread.id
 
-    # One of each answer: the first confirmed, the second rejected with a reason, the rest wait.
+    # One rejected with a reason, the rest still in force.
     rows = await scene.signatures.for_version(version)
-    await scene.signatures.answer(rows[0].id, confirm=True)
-    await scene.signatures.answer(
-        rows[1].id, confirm=False, reject_reason="too tight for this lever"
-    )
+    await scene.signatures.reject(rows[1].id, reason="too tight for this lever")
     documents["mixed"] = await scene.signature(version)
-
-    # Back to all proposed, then confirmed in one go.
-    await scene.db.execute(
-        "UPDATE signature_expectations SET status = 'proposed', reject_reason = '', "
-        "answered_at = NULL"
-    )
-    await scene.signatures.confirm_all(version)
-    documents["confirmed"] = await scene.signature(version)
+    await scene.signatures.restore(rows[1].id)
 
     # A next version whose soak phase was renamed: what can be carried is, one cannot.
     renamed = copy.deepcopy(LEVER_PROFILE)
@@ -324,7 +313,7 @@ async def _signatures(scene: Scene) -> dict[str, Any]:
         for r in await scene.signatures.for_version(version)
         if r.phase == "ramp" and r.kind == "measure"
     )
-    waiting = await scene.service.propose_override(
+    in_force = await scene.service.propose_override(
         set_version_id=set_version,
         profile_version_id=version,
         expectation_id=ramp.id,
@@ -332,14 +321,14 @@ async def _signatures(scene: Scene) -> dict[str, Any]:
         reason="a coarser bean",
         thread_id=thread.thread.id,
     )
-    documents["overrideWaiting"] = _plain(
-        (await _override_out(waiting, scene.signatures)).model_dump(mode="json")
+    documents["overrideInForce"] = _plain(
+        (await _override_out(in_force, scene.signatures)).model_dump(mode="json")
     )
-    await scene.signatures.answer_override(waiting.id, confirm=True)
-    confirmed = await scene.signatures.get_override(waiting.id)
-    assert confirmed is not None
-    documents["overrideConfirmed"] = _plain(
-        (await _override_out(confirmed, scene.signatures)).model_dump(mode="json")
+    await scene.signatures.reject_override(in_force.id, reason="too loose")
+    rejected = await scene.signatures.get_override(in_force.id)
+    assert rejected is not None
+    documents["overrideRejected"] = _plain(
+        (await _override_out(rejected, scene.signatures)).model_dump(mode="json")
     )
     documents["setId"] = scene.set_id
     documents["setVersionId"] = set_version

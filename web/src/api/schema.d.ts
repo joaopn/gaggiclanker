@@ -1552,27 +1552,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/profile-versions/{version_id}/signature/confirm-all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm every proposed expectation of a profile version in one go
-         * @description All or nothing. One that needs a new phase stays proposed. Nothing waiting is a 200 with
-         *     nothing changed, so a second press is harmless.
-         */
-        post: operations["confirm_all_api_profile_versions__version_id__signature_confirm_all_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/profiles": {
         parameters: {
             query?: never;
@@ -2110,26 +2089,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sets/{set_id}/signature-overrides/{override_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm a proposed override: this version's shots read the new limit
-         * @description A person's press. It applies to this Set version's shots and to no other.
-         */
-        post: operations["confirm_override_api_sets__set_id__signature_overrides__override_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/sets/{set_id}/signature-overrides/{override_id}/reject": {
         parameters: {
             query?: never;
@@ -2139,7 +2098,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reject a proposed override, optionally saying why */
+        /** Reject an override: this version reads the profile's own limit again */
         post: operations["reject_override_api_sets__set_id__signature_overrides__override_id__reject_post"];
         delete?: never;
         options?: never;
@@ -2147,7 +2106,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sets/{set_id}/signature-overrides/{override_id}/withdraw": {
+    "/api/sets/{set_id}/signature-overrides/{override_id}/restore": {
         parameters: {
             query?: never;
             header?: never;
@@ -2157,10 +2116,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Withdraw a confirmed override: this version reads the profile's limit again
-         * @description A person's press. After it a new override can be proposed for the version.
+         * Restore a rejected override: this version's shots read its limit again
+         * @description A person's press. It applies to this Set version's shots and to no other.
          */
-        post: operations["withdraw_override_api_sets__set_id__signature_overrides__override_id__withdraw_post"];
+        post: operations["restore_override_api_sets__set_id__signature_overrides__override_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2275,7 +2234,7 @@ export interface paths {
         };
         /**
          * The overrides proposed for one Set version's signature limits
-         * @description Waiting, confirmed and rejected, newest first, so a card read later tells the truth.
+         * @description In force, rejected and replaced, newest first, so a card read later tells the truth.
          */
         get: operations["list_overrides_api_sets__set_id__versions__version_id__signature_overrides_get"];
         put?: never;
@@ -2697,26 +2656,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/signature-expectations/{expectation_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm one proposed expectation: from now on every shot is checked against it
-         * @description A person's press, and the only way an expectation starts to count (409 once answered).
-         */
-        post: operations["confirm_expectation_api_signature_expectations__expectation_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/signature-expectations/{expectation_id}/reject": {
         parameters: {
             query?: never;
@@ -2727,10 +2666,33 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Reject one proposed expectation, optionally saying why
-         * @description Nothing is checked. The reason is what the proposing conversation is told.
+         * Reject one expectation: it stops being checked, with the reason the agent is told
+         * @description Nothing is checked against it any more. The reason is what the proposing conversation
+         *     is told. Works on one in force and on a carried one that needs a new phase; 409 when it is
+         *     already rejected.
          */
         post: operations["reject_expectation_api_signature_expectations__expectation_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/signature-expectations/{expectation_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a rejected expectation: it is in force again
+         * @description A person's press, and the only way a rejected expectation returns (an agent cannot put
+         *     it back). 409 when it is not rejected, or names a phase the profile no longer has.
+         */
+        post: operations["restore_expectation_api_signature_expectations__expectation_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2747,8 +2709,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Move a proposed expectation to another tier
-         * @description Only while it waits: a confirmed expectation's tier is what the person confirmed.
+         * Move an expectation to another tier
+         * @description An expectation in force; a rejected one is restored first, and one that is not in force
+         *     (it needs a phase, or is from before) cannot be moved: 409.
          */
         post: operations["set_expectation_tier_api_signature_expectations__expectation_id__tier_post"];
         delete?: never;
@@ -8427,7 +8390,7 @@ export interface components {
         };
         /**
          * SignatureAnswer
-         * @description What answering one expectation, or all that wait, did, and the signature as it now stands.
+         * @description What answering one expectation did, and the signature as it now stands.
          */
         SignatureAnswer: {
             /** Changed */
@@ -8443,14 +8406,14 @@ export interface components {
             confirmed: number;
             /** Expectations */
             expectations: components["schemas"]["ExpectationOut"][];
+            /** Not In Force */
+            not_in_force: number;
             /** Phases */
             phases: string[];
             /** Profile Label */
             profile_label: string;
             /** Profile Version Id */
             profile_version_id: number;
-            /** Proposed */
-            proposed: number;
             /** Rejected */
             rejected: number;
             /** Sets */
@@ -11821,37 +11784,6 @@ export interface operations {
             };
         };
     };
-    confirm_all_api_profile_versions__version_id__signature_confirm_all_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SignatureAnswer_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_profiles_api_profiles_get: {
         parameters: {
             query?: {
@@ -12714,38 +12646,6 @@ export interface operations {
             };
         };
     };
-    confirm_override_api_sets__set_id__signature_overrides__override_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                override_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_OverrideAnswer_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     reject_override_api_sets__set_id__signature_overrides__override_id__reject_post: {
         parameters: {
             query?: never;
@@ -12782,7 +12682,7 @@ export interface operations {
             };
         };
     };
-    withdraw_override_api_sets__set_id__signature_overrides__override_id__withdraw_post: {
+    restore_override_api_sets__set_id__signature_overrides__override_id__restore_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13617,7 +13517,7 @@ export interface operations {
             };
         };
     };
-    confirm_expectation_api_signature_expectations__expectation_id__confirm_post: {
+    reject_expectation_api_signature_expectations__expectation_id__reject_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13626,7 +13526,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -13648,7 +13552,7 @@ export interface operations {
             };
         };
     };
-    reject_expectation_api_signature_expectations__expectation_id__reject_post: {
+    restore_expectation_api_signature_expectations__expectation_id__restore_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13657,11 +13561,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RejectBody"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

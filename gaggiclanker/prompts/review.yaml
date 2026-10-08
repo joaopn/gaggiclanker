@@ -2,7 +2,7 @@ name: review
 description: |
   Review: one review of one shot. One structured call: the shot's own
   information (its checks first), the free-text expectations of its profile's
-  confirmed signature, the prediction its Set version was filed with, the
+  signature in force, the prediction its Set version was filed with, the
   profile it brewed, its detected style and the matching knowledge rules and
   excerpts go in; a one-sentence summary, claims tied to windows of the shot,
   an answer to each free-text expectation and, when there is a prediction, how

@@ -20,7 +20,7 @@ variables:
   - name: shot_information
     description: The shot's own information, every line a review reads, in the shot renderer's layout, checks first.
   - name: signature
-    description: The free-text expectations of the profile's confirmed signature, each with its id, or why there are none.
+    description: The free-text expectations of the profile's signature in force, each with its id, or why there are none.
   - name: prediction
     description: The prediction the Set version was filed with and what it is measured against, or why there is none.
   - name: phases
@@ -40,7 +40,7 @@ user: |
 
   {{shot_information}}
 
-  FREE-TEXT EXPECTATIONS OF THE PROFILE'S CONFIRMED SIGNATURE — answer each by id in `free_text_results`
+  FREE-TEXT EXPECTATIONS OF THE PROFILE'S SIGNATURE IN FORCE — answer each by id in `free_text_results`
 
   {{signature}}
 

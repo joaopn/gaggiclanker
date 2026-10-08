@@ -257,7 +257,7 @@ async def test_the_design_is_told_what_the_forked_profile_is_for_and_what_it_pro
     thread = created.thread.id
     profile_id = kitchen.profile_version_id
     plain = await design_context(kitchen.db, designed.id, thread_id=thread)
-    assert "This profile version has no confirmed signature" in plain
+    assert "This profile version has no signature in force" in plain
     assert f"propose_signature (profile version {profile_id})" in plain
 
     first, second = await SignatureService(kitchen.db).propose(
@@ -274,14 +274,13 @@ async def test_the_design_is_told_what_the_forked_profile_is_for_and_what_it_pro
         thread_id=thread,
     )
     repo = SignatureRepository(kitchen.db)
-    waiting = await design_context(kitchen.db, designed.id, thread_id=thread)
-    # Proposed, not confirmed: told to the proposing conversation only.
-    assert "the bloom holds (proposed, not confirmed" in waiting
-    assert "the bloom holds" not in await design_context(kitchen.db, designed.id)
-    assert "This profile version has no confirmed signature" in waiting
+    # In force at once: told to every reader of the design, and to the proposer as its own.
+    told = await design_context(kitchen.db, designed.id, thread_id=thread)
+    assert "the bloom holds (in force unless the person rejects it" in told
+    assert "This profile version has no signature in force" not in told
+    assert "the bloom holds" in await design_context(kitchen.db, designed.id)
 
-    await repo.answer(first.id, confirm=True)
-    await repo.answer(second.id, confirm=False, reject_reason="not for a fork")
+    await repo.reject(second.id, reason="not for a fork")
     answered = await design_context(kitchen.db, designed.id, thread_id=thread)
     assert f"What profile version {profile_id} is FOR" in answered
     assert (
@@ -289,6 +288,6 @@ async def test_the_design_is_told_what_the_forked_profile_is_for_and_what_it_pro
         "(checked by the review, fails as unstable): the bloom holds" in answered
     )
     assert 'the finish tapers (rejected by the person. They said: "not for a fork"' in answered
-    # The confirmed signature is told to every reader of the design, the rejection to nobody else.
+    # The signature in force is told to every reader of the design, the rejection to nobody else.
     other = await design_context(kitchen.db, designed.id)
     assert "the bloom holds" in other and "the finish tapers" not in other

@@ -1,14 +1,14 @@
-"""`/api/profile-versions/{id}/signature` and the answers a person gives to proposed expectations.
+"""`/api/profile-versions/{id}/signature` and the answers a person gives to expectations.
 
 A signature is what one profile version is for. An agent **proposes** expectations
-(`propose_signature`, a draft that carries some, or the carrying of a confirmed signature to a
-new version); everything here is a person's press: read the signature, confirm or reject one
-expectation, move it to another tier, confirm all that are waiting, and answer a Set version's
-proposed override. There is no tool for any of it, in the chat or over MCP.
+(`propose_signature`, a draft that carries some, or the carrying of a signature to a new
+version) and they are in force at once; everything here is a person's press: read the
+signature, reject an expectation, restore a rejected one, move one to another tier, and reject
+or restore a Set version's override. There is no tool for any of it, in the chat or over MCP.
 
 Every answer is one guarded write (`SignatureRepository`): the first press wins, a second tab
 finds the expectation answered and gets a 409, never a second write. Only a **confirmed**
-expectation is ever checked, shown as a verdict or told to an agent.
+(in force) expectation is ever checked, shown as a verdict or told to an agent.
 """
 
 from __future__ import annotations
@@ -75,7 +75,8 @@ class ExpectationOut(BaseModel):
     status: Literal["proposed", "confirmed", "rejected"]
     #: Why a person rejected it, when they said.
     reject_reason: str
-    #: A carried expectation whose phase no longer exists: it cannot be confirmed.
+    #: A carried expectation whose phase no longer exists: shown, rejectable, never in force.
+    #: (A ``proposed`` row without this flag is one from before expectations were in force at once.)
     needs_a_new_phase: bool
     #: The conversation that proposed it, when a chat did.
     proposed_by_thread_id: int | None
@@ -109,8 +110,11 @@ class SignatureData(BaseModel):
     profile_label: str
     #: The profile's phase names, in order: what an expectation's phase is one of.
     phases: list[str]
+    #: How many expectations are in force, and how many the person rejected.
     confirmed: int
-    proposed: int
+    #: Rows shown and checked on no shot: a carried one whose phase is gone, or one proposed
+    #: before expectations were in force at once. They can be rejected, never restored.
+    not_in_force: int
     rejected: int
     #: Tier order (critical, important, context), then in the order they were written.
     expectations: list[ExpectationOut]
@@ -119,7 +123,7 @@ class SignatureData(BaseModel):
 
 
 class SignatureAnswer(BaseModel):
-    """What answering one expectation, or all that wait, did, and the signature as it now stands."""
+    """What answering one expectation did, and the signature as it now stands."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -201,7 +205,7 @@ async def _signature(
         profile_label=version.label,
         phases=profile_phase_names(version.profile) or [],
         confirmed=sum(1 for r in rows if r.status == "confirmed"),
-        proposed=sum(1 for r in rows if r.status == "proposed"),
+        not_in_force=sum(1 for r in rows if r.status == "proposed"),
         rejected=sum(1 for r in rows if r.status == "rejected"),
         expectations=[expectation_out(r) for r in rows],
         sets=[SetUsingOut.model_validate(item) for item in await signatures.sets_using(version_id)],
@@ -243,11 +247,23 @@ async def _answered(
 
 
 def _refusal(refused: str, expectation_id: int) -> Exception:
-    if refused == "not_waiting":
+    if refused == "already_rejected":
         return Conflict(
-            f"Expectation {expectation_id} has already been answered",
-            code="EXPECTATION_ANSWERED",
-            details={"field": "status", "message": "it is no longer waiting for an answer"},
+            f"Expectation {expectation_id} has already been rejected",
+            code="EXPECTATION_REJECTED",
+            details={"field": "status", "message": "it is rejected"},
+        )
+    if refused == "not_in_force":
+        return Conflict(
+            f"Expectation {expectation_id} is not in force, so it has no tier to move",
+            code="EXPECTATION_NOT_IN_FORCE",
+            details={"field": "status", "message": "only an expectation in force has a tier"},
+        )
+    if refused == "not_rejected":
+        return Conflict(
+            f"Expectation {expectation_id} is not rejected, so there is nothing to restore",
+            code="EXPECTATION_NOT_REJECTED",
+            details={"field": "status", "message": "only a rejected expectation can be restored"},
         )
     if refused == "needs_phase":
         return Conflict(
@@ -262,32 +278,33 @@ def _refusal(refused: str, expectation_id: int) -> Exception:
 
 
 @router.post(
-    "/signature-expectations/{expectation_id}/confirm",
+    "/signature-expectations/{expectation_id}/reject",
     response_model=ApiResponse[SignatureAnswer],
-    summary="Confirm one proposed expectation: from now on every shot is checked against it",
+    summary="Reject one expectation: it stops being checked, with the reason the agent is told",
 )
-async def confirm_expectation(
-    expectation_id: int, signatures: SignatureRepoDep, profiles: ProfilesRepoDep
+async def reject_expectation(
+    expectation_id: int, body: RejectBody, signatures: SignatureRepoDep, profiles: ProfilesRepoDep
 ) -> JSONResponse:
-    """A person's press, and the only way an expectation starts to count (409 once answered)."""
-    result = await signatures.answer(expectation_id, confirm=True)
+    """Nothing is checked against it any more. The reason is what the proposing conversation
+    is told. Works on one in force and on a carried one that needs a new phase; 409 when it is
+    already rejected."""
+    result = await signatures.reject(expectation_id, reason=" ".join(body.reason.split()))
     if result.row is None:
         raise _refusal(result.refused or "no_expectation", expectation_id)
     return await _answered(expectation_id, [result.row], signatures, profiles)
 
 
 @router.post(
-    "/signature-expectations/{expectation_id}/reject",
+    "/signature-expectations/{expectation_id}/restore",
     response_model=ApiResponse[SignatureAnswer],
-    summary="Reject one proposed expectation, optionally saying why",
+    summary="Restore a rejected expectation: it is in force again",
 )
-async def reject_expectation(
-    expectation_id: int, body: RejectBody, signatures: SignatureRepoDep, profiles: ProfilesRepoDep
+async def restore_expectation(
+    expectation_id: int, signatures: SignatureRepoDep, profiles: ProfilesRepoDep
 ) -> JSONResponse:
-    """Nothing is checked. The reason is what the proposing conversation is told."""
-    result = await signatures.answer(
-        expectation_id, confirm=False, reject_reason=" ".join(body.reason.split())
-    )
+    """A person's press, and the only way a rejected expectation returns (an agent cannot put
+    it back). 409 when it is not rejected, or names a phase the profile no longer has."""
+    result = await signatures.restore(expectation_id)
     if result.row is None:
         raise _refusal(result.refused or "no_expectation", expectation_id)
     return await _answered(expectation_id, [result.row], signatures, profiles)
@@ -296,37 +313,17 @@ async def reject_expectation(
 @router.post(
     "/signature-expectations/{expectation_id}/tier",
     response_model=ApiResponse[SignatureAnswer],
-    summary="Move a proposed expectation to another tier",
+    summary="Move an expectation to another tier",
 )
 async def set_expectation_tier(
     expectation_id: int, body: TierBody, signatures: SignatureRepoDep, profiles: ProfilesRepoDep
 ) -> JSONResponse:
-    """Only while it waits: a confirmed expectation's tier is what the person confirmed."""
+    """An expectation in force; a rejected one is restored first, and one that is not in force
+    (it needs a phase, or is from before) cannot be moved: 409."""
     result = await signatures.set_tier(expectation_id, body.tier)
     if result.row is None:
         raise _refusal(result.refused or "no_expectation", expectation_id)
     return await _answered(expectation_id, [result.row], signatures, profiles)
-
-
-@router.post(
-    "/profile-versions/{version_id}/signature/confirm-all",
-    response_model=ApiResponse[SignatureAnswer],
-    summary="Confirm every proposed expectation of a profile version in one go",
-)
-async def confirm_all(
-    version_id: int, signatures: SignatureRepoDep, profiles: ProfilesRepoDep
-) -> JSONResponse:
-    """All or nothing. One that needs a new phase stays proposed. Nothing waiting is a 200 with
-    nothing changed, so a second press is harmless."""
-    if await profiles.get_version(version_id) is None:
-        raise NotFound(f"No profile version {version_id}")
-    changed = await signatures.confirm_all(version_id)
-    return envelope_response(
-        SignatureAnswer(
-            changed=[expectation_out(row) for row in changed],
-            signature=await _signature(version_id, signatures, profiles),
-        ).model_dump(mode="json")
-    )
 
 
 # ── a Set version's override ────────────────────────────────────────
@@ -340,7 +337,7 @@ class OverrideOut(BaseModel):
     id: int
     set_version_id: int
     expectation_id: int
-    #: ``withdrawn``: a person took back a confirmed override.
+    #: ``withdrawn``: a newer override for the same expectation replaced it (not a rejection).
     status: Literal["proposed", "confirmed", "rejected", "withdrawn"]
     reason: str
     reject_reason: str
@@ -361,7 +358,7 @@ class OverrideOut(BaseModel):
     phase: str | None
     tier: str
     sentence: str
-    #: Whether the expectation is confirmed: an override of one that is not cannot be confirmed.
+    #: Whether the expectation is in force: an override of one that is not cannot be restored.
     expectation_status: Literal["proposed", "confirmed", "rejected"]
 
 
@@ -419,7 +416,7 @@ async def _override_out(row: OverrideRow, signatures: SignatureRepository) -> Ov
 async def list_overrides(
     set_id: int, version_id: int, signatures: SignatureRepoDep, sets: SetsRepoDep
 ) -> JSONResponse:
-    """Waiting, confirmed and rejected, newest first, so a card read later tells the truth."""
+    """In force, rejected and replaced, newest first, so a card read later tells the truth."""
     if await sets.version_of_set(set_id, version_id) is None:
         raise NotFound(f"No version {version_id} in Set {set_id}")
     rows = await signatures.overrides_for_set_version(version_id)
@@ -427,77 +424,74 @@ async def list_overrides(
     return envelope_response(OverrideListData(items=items).model_dump(mode="json"))
 
 
-async def _answer_override(
-    signatures: SignatureRepository, set_id: int, override_id: int, *, confirm: bool, reason: str
-) -> JSONResponse:
-    row = await signatures.get_override(override_id)
-    if row is None or await signatures.set_of_version(row.set_version_id) != set_id:
-        raise NotFound(f"No signature override {override_id} in Set {set_id}")
-    result = await signatures.answer_override(override_id, confirm=confirm, reject_reason=reason)
-    if result.row is None:
-        if result.refused == "not_waiting":
-            raise Conflict(
-                f"Override {override_id} has already been answered",
-                code="OVERRIDE_ANSWERED",
-                details={"field": "status", "message": "it is no longer waiting for an answer"},
-            )
-        raise Conflict(
-            f"Override {override_id} is for an expectation that is not confirmed",
-            code="EXPECTATION_NOT_CONFIRMED",
+def _override_refusal(refused: str, override_id: int) -> Exception:
+    if refused == "already_rejected":
+        return Conflict(
+            f"Override {override_id} has already been rejected",
+            code="OVERRIDE_REJECTED",
+            details={"field": "status", "message": "it is rejected"},
+        )
+    if refused == "not_rejected":
+        return Conflict(
+            f"Override {override_id} is not rejected, so there is nothing to restore",
+            code="OVERRIDE_NOT_REJECTED",
+            details={"field": "status", "message": "only a rejected override can be restored"},
+        )
+    if refused == "another_in_force":
+        return Conflict(
+            f"Override {override_id} cannot be restored: this version has another in force",
+            code="OVERRIDE_ANOTHER_IN_FORCE",
             details={
-                "field": "expectation_id",
-                "message": "confirm the profile's expectation first",
+                "field": "status",
+                "message": "a version has one override at a time: reject the other first",
             },
         )
-    return envelope_response(
-        OverrideAnswer(override=await _override_out(result.row, signatures)).model_dump(mode="json")
+    return Conflict(
+        f"Override {override_id} is for an expectation that is not in force",
+        code="EXPECTATION_NOT_CONFIRMED",
+        details={
+            "field": "expectation_id",
+            "message": "restore the profile's expectation first",
+        },
     )
 
 
-@router.post(
-    "/sets/{set_id}/signature-overrides/{override_id}/confirm",
-    response_model=ApiResponse[OverrideAnswer],
-    summary="Confirm a proposed override: this version's shots read the new limit",
-)
-async def confirm_override(
-    set_id: int, override_id: int, signatures: SignatureRepoDep
-) -> JSONResponse:
-    """A person's press. It applies to this Set version's shots and to no other."""
-    return await _answer_override(signatures, set_id, override_id, confirm=True, reason="")
-
-
-@router.post(
-    "/sets/{set_id}/signature-overrides/{override_id}/withdraw",
-    response_model=ApiResponse[OverrideAnswer],
-    summary="Withdraw a confirmed override: this version reads the profile's limit again",
-)
-async def withdraw_override(
-    set_id: int, override_id: int, signatures: SignatureRepoDep
-) -> JSONResponse:
-    """A person's press. After it a new override can be proposed for the version."""
+async def _owned_override(signatures: SignatureRepository, set_id: int, override_id: int) -> None:
     row = await signatures.get_override(override_id)
     if row is None or await signatures.set_of_version(row.set_version_id) != set_id:
         raise NotFound(f"No signature override {override_id} in Set {set_id}")
-    result = await signatures.withdraw_override(override_id)
-    if result.row is None:
-        raise Conflict(
-            f"Override {override_id} is not confirmed, so there is nothing to withdraw",
-            code="OVERRIDE_NOT_CONFIRMED",
-            details={"field": "status", "message": "only a confirmed override can be withdrawn"},
-        )
-    return envelope_response(
-        OverrideAnswer(override=await _override_out(result.row, signatures)).model_dump(mode="json")
-    )
 
 
 @router.post(
     "/sets/{set_id}/signature-overrides/{override_id}/reject",
     response_model=ApiResponse[OverrideAnswer],
-    summary="Reject a proposed override, optionally saying why",
+    summary="Reject an override: this version reads the profile's own limit again",
 )
 async def reject_override(
     set_id: int, override_id: int, body: RejectBody, signatures: SignatureRepoDep
 ) -> JSONResponse:
-    return await _answer_override(
-        signatures, set_id, override_id, confirm=False, reason=" ".join(body.reason.split())
+    await _owned_override(signatures, set_id, override_id)
+    result = await signatures.reject_override(override_id, reason=" ".join(body.reason.split()))
+    if result.row is None:
+        raise _override_refusal(result.refused or "no_override", override_id)
+    return envelope_response(
+        OverrideAnswer(override=await _override_out(result.row, signatures)).model_dump(mode="json")
+    )
+
+
+@router.post(
+    "/sets/{set_id}/signature-overrides/{override_id}/restore",
+    response_model=ApiResponse[OverrideAnswer],
+    summary="Restore a rejected override: this version's shots read its limit again",
+)
+async def restore_override(
+    set_id: int, override_id: int, signatures: SignatureRepoDep
+) -> JSONResponse:
+    """A person's press. It applies to this Set version's shots and to no other."""
+    await _owned_override(signatures, set_id, override_id)
+    result = await signatures.restore_override(override_id)
+    if result.row is None:
+        raise _override_refusal(result.refused or "no_override", override_id)
+    return envelope_response(
+        OverrideAnswer(override=await _override_out(result.row, signatures)).model_dump(mode="json")
     )

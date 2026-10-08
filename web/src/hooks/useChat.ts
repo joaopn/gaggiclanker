@@ -332,8 +332,10 @@ export function useChatRun(runId: number | null, threadId: number | null): LiveR
           void queryClient.invalidateQueries({ queryKey: queryKeys.sets.all });
           void queryClient.invalidateQueries({ queryKey: queryKeys.knowledge.all });
           void queryClient.invalidateQueries({ queryKey: queryKeys.drafts.all });
-          // ...or proposed a signature, which waits on the Profiles card and the Set line.
+          // ...or proposed a signature, which is in force at once: the Profiles card, the Set
+          // line and every shot's checks (the shot page and the list's badge) change with it.
           void queryClient.invalidateQueries({ queryKey: queryKeys.signatures.all });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.shots.all });
           break;
       }
     },

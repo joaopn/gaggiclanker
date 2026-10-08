@@ -141,9 +141,9 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
     lines += ["", *_brief(row, grinder)]
     lines += ["", *_fork_block(fork)]
     if fork is not None and fork.profile:
-        # What the profile to fork is for, as the person confirmed it: the new profile is
+        # What the profile to fork is for, as it stands in force: the new profile is
         # derived from it, so its intent is the strongest statement of what to keep.
-        lines += await signature_block(db, fork.id, None, thread_id)
+        lines += await signature_block(db, fork.id, None)
     lines += ["", *await _card_block(db, row)]
     signed = await signature_answers_block(db, thread_id)
     if signed:

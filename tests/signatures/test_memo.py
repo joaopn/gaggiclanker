@@ -32,7 +32,6 @@ async def _signed(db: Database) -> tuple[int, int, int, int]:
         ],
         reason="r",
     )
-    await SignatureRepository(db).confirm_all(version)
     assert len(rows) == 2
     return version, set_version, other, shot
 
@@ -81,13 +80,13 @@ async def test_whatever_a_result_depends_on_changing_is_a_different_answer(db: D
     service = SignatureService(db)
     assert await _badge(db, shot) == "ramp: early yield +3"
 
-    # Another expectation confirmed is another fingerprint of the signature.
+    # Another expectation in force is another fingerprint of the signature.
     (extra,) = await service.propose(
         version,
         [ExpectationInput(tier="critical", kind="reached", phase="soak")],
         reason="r",
     )
-    await repo.answer(extra.id, confirm=True)
+    assert extra.status == "confirmed"
     assert await _badge(db, shot) == "ramp: early yield +3"  # held: nothing new on the badge
     ramp = next(r for r in await repo.for_version(version) if r.kind == "measure")
     override = await service.propose_override(
@@ -98,22 +97,20 @@ async def test_whatever_a_result_depends_on_changing_is_a_different_answer(db: D
         reason="r",
         thread_id=None,
     )
-    assert await _badge(db, shot) == "ramp: early yield +3"  # proposed: no change
-    await repo.answer_override(override.id, confirm=True)
-    assert await _badge(db, shot) == "decline: skipped +2"
-    await repo.withdraw_override(override.id)
+    assert await _badge(db, shot) == "decline: skipped +2"  # in force at once
+    await repo.reject_override(override.id, reason="no")
     assert await _badge(db, shot) == "ramp: early yield +3"
 
-    # A confirmed override again, and then a refiling under a version with another target.
+    # An override again, and then a refiling under a version with another target.
     again = await service.propose_override(
         set_version_id=set_version,
         profile_version_id=version,
         expectation_id=ramp.id,
-        compare={"op": "<=", "value": 1.3},
+        compare={"op": "<=", "value": 1.4},
         reason="r",
         thread_id=None,
     )
-    await repo.answer_override(again.id, confirm=True)
+    assert again.status == "confirmed"
     assert await _badge(db, shot) == "decline: skipped +2"
     sets = SetsRepository(db)
     longer = await sets.add_version(
@@ -203,7 +200,6 @@ async def test_a_replaced_copy_of_a_shot_is_not_served_from_the_memory(db: Datab
         ],
         reason="r",
     )
-    await SignatureRepository(db).confirm_all(version)
     before = await _badge(db, shot)
     assert (
         before is not None and "fast flow" in before and "ramp: fast flow" == before.split(" +")[0]
@@ -264,7 +260,6 @@ async def test_a_refiling_that_changes_only_the_dose_is_a_different_answer(db: D
         ],
         reason="r",
     )
-    await SignatureRepository(db).confirm_all(version)
     sets = SetsRepository(db)
     set_id = (await SignatureRepository(db).set_of_version(set_version)) or 0
     # The same Set version's recipe but for the dose (a version with the same target and profile).
@@ -340,7 +335,7 @@ def test_a_lever_shot_is_the_one_these_tests_stand_on() -> None:
     assert lever_shot().header.final_weight_g == 42.2
 
 
-async def test_confirming_another_expectation_is_not_served_the_old_answer(db: Database) -> None:
+async def test_a_restored_expectation_is_not_served_the_old_answer(db: Database) -> None:
     version, _, _, shot = await _signed(db)
     assert await _badge(db, shot) == "ramp: early yield +3"
     (soak,) = await SignatureService(db).propose(
@@ -360,9 +355,13 @@ async def test_confirming_another_expectation_is_not_served_the_old_answer(db: D
         ],
         reason="r",
     )
-    assert await _badge(db, shot) == "ramp: early yield +3"  # proposed: nothing moves
-    await SignatureRepository(db).answer(soak.id, confirm=True)
-    assert await _badge(db, shot) == "soak: early yield +4"  # the soak's cup is over its limit
+    # In force at once: the soak's cup is over its limit.
+    assert await _badge(db, shot) == "soak: early yield +4"
+    repo = SignatureRepository(db)
+    await repo.reject(soak.id, reason="no")
+    assert await _badge(db, shot) == "ramp: early yield +3"
+    await repo.restore(soak.id)
+    assert await _badge(db, shot) == "soak: early yield +4"
 
 
 async def test_what_the_shot_is_filed_under_is_part_of_the_key_even_when_the_shot_row_is_untouched(
@@ -374,7 +373,6 @@ async def test_what_the_shot_is_filed_under_is_part_of_the_key_even_when_the_sho
     first, second = await make_set_versions(db, version)
     shot = await add_shot(db, set_version_id=first, profile_version_id=version)
     service = SignatureService(db)
-    repo = SignatureRepository(db)
     ramp_expression = {
         "channel": "cup_weight",
         "op": "at_end",
@@ -401,7 +399,6 @@ async def test_what_the_shot_is_filed_under_is_part_of_the_key_even_when_the_sho
         ],
         reason="r",
     )
-    await repo.confirm_all(version)
 
     async def statuses() -> dict[int, str]:
         document = await shot_fields(db, shot)

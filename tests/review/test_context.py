@@ -230,17 +230,19 @@ async def test_the_confirmed_signatures_free_text_expectations_are_listed_with_t
 ) -> None:
     review = await build_review_input(fixture.db, fixture.shots[-1])
     assert review.expectations == [] and review.signature_confirmed == 0
-    assert "no confirmed signature" in review.render()["signature"]
+    assert "no signature in force" in review.render()["signature"]
 
     first = await confirm_free_text(fixture, fault="unstable")
     second = await confirm_free_text(
         fixture, tier="important", phase=None, fault="slow flow", text="It took its time"
     )
-    # A proposed one is not the signature, and neither is a measure.
-    await SignatureRepository(fixture.db).add(
+    # A rejected one is not the signature in force, and neither is a measure.
+    repo = SignatureRepository(fixture.db)
+    (gone,) = await repo.add(
         fixture.profile_version_id,
         [
             ExpectationWrite(
+                status="confirmed",
                 tier="context",
                 kind="free_text",
                 text="Not confirmed",
@@ -249,6 +251,7 @@ async def test_the_confirmed_signatures_free_text_expectations_are_listed_with_t
             )
         ],
     )
+    await repo.reject(gone.id, reason="no")
 
     review = await build_review_input(fixture.db, fixture.shots[-1])
 

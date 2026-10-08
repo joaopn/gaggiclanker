@@ -1109,7 +1109,6 @@ async def test_adoption_takes_two_profiles_with_one_label_and_reports_the_pair(
 
 async def _confirmed_signature(app: FastAPI, version_id: int) -> int:
     """One confirmed expectation on a profile version: its first phase must begin."""
-    from gaggiclanker.db.repos.signatures import SignatureRepository
     from gaggiclanker.domain.signature import ExpectationInput
     from gaggiclanker.signatures.service import SignatureService
 
@@ -1120,7 +1119,7 @@ async def _confirmed_signature(app: FastAPI, version_id: int) -> int:
     (row,) = await service.propose(
         version_id, [ExpectationInput(tier="critical", kind="reached", phase=first)], reason="r"
     )
-    assert (await SignatureRepository(app.state.db).answer(row.id, confirm=True)).row is not None
+    assert row.status == "confirmed"
     return row.id
 
 
@@ -1128,11 +1127,11 @@ async def _carried_from(app: FastAPI, version_id: int) -> list[int | None]:
     from gaggiclanker.db.repos.signatures import SignatureRepository
 
     rows = await SignatureRepository(app.state.db).for_version(version_id)
-    assert {r.status for r in rows} <= {"proposed"}
+    assert {r.status for r in rows} <= {"confirmed"}
     return [r.carried_from_id for r in rows]
 
 
-async def test_the_content_kept_from_a_conflict_is_proposed_the_files_signature(
+async def test_the_content_kept_from_a_conflict_carries_the_files_signature_in_force(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
@@ -1148,7 +1147,7 @@ async def test_the_content_kept_from_a_conflict_is_proposed_the_files_signature(
     assert await _carried_from(app, listed[0].version_id) == [expectation]
 
 
-async def test_a_file_new_to_the_machine_under_a_profiles_label_is_proposed_its_signature(
+async def test_a_file_new_to_the_machine_under_a_profiles_label_carries_its_signature_in_force(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     app, client, fake = adopted
@@ -1193,7 +1192,7 @@ async def test_a_profile_made_on_the_display_carries_nothing(
 async def test_a_file_attached_with_an_older_versions_content_is_not_carried_onto_it(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    """The signature runs forwards: it is never proposed again on a version the profile had."""
+    """The signature runs forwards: it is never carried again onto a version the profile had."""
     app, client, fake = adopted
     await app_row(app, client, fake, provider, bar=8)
     first = row_for(await get_board(client), APP_LABEL)

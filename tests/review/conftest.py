@@ -538,6 +538,7 @@ async def confirm_free_text(
         fixture.profile_version_id,
         [
             ExpectationWrite(
+                status="confirmed",
                 tier=tier,  # type: ignore[arg-type]
                 phase=phase,
                 kind="free_text",
@@ -547,8 +548,7 @@ async def confirm_free_text(
             )
         ],
     )
-    answered = await repo.answer(row.id, confirm=True)
-    assert answered.row is not None
+    assert row.status == "confirmed"
     return row.id
 
 

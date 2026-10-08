@@ -2,13 +2,13 @@
 
 Nothing about a signature's results is stored on a shot: the checks are a function of the
 shot's stored facts, where it is filed (its target yield, its dose, its Set version's
-override) and the **confirmed** expectations of its profile version. Confirming an
-expectation or changing an override therefore changes every shot's checks at once, with no
-re-derivation, and ``DERIVATION_VERSION`` does not move.
+override) and the expectations in force (``confirmed``) of its profile version. Proposing,
+rejecting or restoring an expectation, or changing an override, therefore changes every
+shot's checks at once, with no re-derivation, and ``DERIVATION_VERSION`` does not move.
 
 This module is the one place that gathers what the pure evaluation
 (:func:`gaggiclanker.domain.signature.build_checks`) needs, in a fixed number of queries for
-any number of shots: the confirmed expectations of every profile version involved, the
+any number of shots: the expectations in force of every profile version involved, the
 overrides of every Set version involved, and, only for a shot a confirmed measure or phase
 check applies to **and** whose result is not already remembered, its stored samples.
 

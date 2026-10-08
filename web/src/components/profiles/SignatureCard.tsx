@@ -1,5 +1,5 @@
-import { Check, ChevronRight, X } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
+import { ChevronRight, Undo2, X } from "lucide-react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type {
   ListedVersion,
@@ -12,40 +12,33 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  useConfirmAllExpectations,
-  useConfirmExpectation,
   useRejectExpectation,
+  useRestoreExpectation,
   useSetExpectationTier,
   useSignature,
 } from "@/hooks/useSignatures";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { formatTime } from "@/lib/shots";
-import {
-  confirmable,
-  KIND_LABEL,
-  STATUS_LABEL,
-  signatureSummary,
-  TIER_HINT,
-  TIER_LABEL,
-  TIERS,
-} from "@/lib/signatures";
+import { KIND_LABEL, signatureSummary, TIER_HINT, TIER_LABEL, TIERS } from "@/lib/signatures";
 import { cn } from "@/lib/utils";
 
 /**
- * What one profile version is for, and the answers a person gives to what an agent proposed.
+ * What one profile version is for: the expectations in force, and the person's answers.
  *
- * The expectations come in tier order. A proposed one can be confirmed, rejected (with a reason
- * the proposing conversation is told) or moved to another tier; "Confirm all" answers every
- * waiting one in one call. Nothing is checked, shown as a verdict or told to an agent until it
- * is confirmed, and an expression cannot be edited here: ask the agent to propose it again, so
- * every expression is one the language validated.
+ * An expectation an agent proposes is in force at once: it is a check on every shot of the
+ * profile until a person rejects it, and the header counts what is in force. Each row in force
+ * has its tier (a native select) and Reject, which takes a reason the proposing conversation is
+ * told. "Rejected (n)" is a disclosure under the rows, and each rejected row there can be
+ * Restored. An expression cannot be edited here: ask the agent to propose it again, so every
+ * expression is one the language validated.
  *
- * One carried to this version from an earlier one says which, and one whose phase this version
- * no longer has says "needs a new phase" and has no Confirm: it is never matched to another
- * phase by guess. A version nobody proposed anything for says so, and links to the Set chats
- * that brew it, where the agent is asked for a signature.
+ * One carried to this version from an earlier one says which. One whose phase this version no
+ * longer has says "needs a new phase": it is shown and can be rejected, but it is never in force
+ * and cannot be restored into force; it is never matched to another phase by guess. A version
+ * nobody proposed anything for says so, and links to the Set chats that brew it, where the agent
+ * is asked for a signature.
  *
- * It is open when something waits for an answer, or when a link names the version
+ * It is open when something needs a new phase, or when a link names the version
  * (`#version-N`, from a shot read without a signature).
  */
 export function SignatureCard({
@@ -65,6 +58,8 @@ export function SignatureCard({
   // focus. The row asks to be focused where it lands, once its new tier is what is drawn.
   const landing = useRef<{ id: number; tier: SignatureTier } | null>(null);
   const settled = signature.data;
+  const [showRejected, setShowRejected] = useState(false);
+  const rejectedId = useId();
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the drawn data changes
   useEffect(() => {
     const wanted = landing.current;
@@ -87,8 +82,9 @@ export function SignatureCard({
     );
   }
   const data = signature.data;
-  const waiting = confirmable(data.expectations);
-  const open = toggled ?? (data.proposed > 0 || hash === `#version-${versionId}`);
+  const live = data.expectations.filter((e) => e.status !== "rejected");
+  const rejected = data.expectations.filter((e) => e.status === "rejected");
+  const open = toggled ?? (data.not_in_force > 0 || hash === `#version-${versionId}`);
 
   return (
     <section
@@ -125,14 +121,11 @@ export function SignatureCard({
         ) : (
           <>
             <p className="text-muted-foreground text-xs">
-              What this version is for. Only a confirmed expectation is checked on a shot; to change
-              what one says, ask the agent to propose it again.
+              What this version is for. Every expectation in force is checked on each shot until you
+              reject it; to change what one says, ask the agent to propose it again.
             </p>
-            {waiting.length > 0 ? (
-              <ConfirmAll versionId={versionId} count={waiting.length} focusAfter={toggleRef} />
-            ) : null}
             {TIERS.map((tier) => {
-              const inTier = data.expectations.filter((e) => e.tier === tier);
+              const inTier = live.filter((e) => e.tier === tier);
               return inTier.length === 0 ? null : (
                 <TierGroup
                   key={tier}
@@ -143,6 +136,38 @@ export function SignatureCard({
                 />
               );
             })}
+            {
+              <div className="min-w-0 space-y-1.5" data-testid="signature-rejected">
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-left text-xs"
+                  aria-expanded={showRejected}
+                  aria-controls={rejectedId}
+                  data-testid="signature-rejected-toggle"
+                  onClick={() => setShowRejected(!showRejected)}
+                >
+                  <ChevronRight
+                    className={cn(
+                      "size-3.5 shrink-0 transition-transform",
+                      showRejected && "rotate-90",
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span className="font-medium">Rejected ({rejected.length})</span>
+                  <span className="text-muted-foreground">each can be restored</span>
+                </button>
+                <ul id={rejectedId} hidden={!showRejected} className="space-y-1.5">
+                  {rejected.map((expectation) => (
+                    <ExpectationItem
+                      key={expectation.id}
+                      expectation={expectation}
+                      versions={versions}
+                      landing={landing}
+                    />
+                  ))}
+                </ul>
+              </div>
+            }
           </>
         )}
       </div>
@@ -151,45 +176,6 @@ export function SignatureCard({
 }
 
 type LandingRef = { current: { id: number; tier: SignatureTier } | null };
-
-/**
- * Confirm all goes away with the last waiting expectation, so focus moves to the card's heading
- * button first: a keyboard user would otherwise land on the page.
- */
-function ConfirmAll({
-  versionId,
-  count,
-  focusAfter,
-}: {
-  versionId: number;
-  count: number;
-  focusAfter: RefObject<HTMLButtonElement | null>;
-}) {
-  const confirmAll = useConfirmAllExpectations();
-  const once = useSingleFlight();
-  return (
-    <Button
-      type="button"
-      size="sm"
-      // Not `disabled`: a second press of a mouse double click would land on a disabled button
-      // and drop focus to the page. The single-flight guard already sends one call, and a
-      // press that does not take focus leaves it where the first answer put it.
-      aria-disabled={confirmAll.isPending}
-      className="aria-disabled:opacity-50"
-      data-testid="confirm-all"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() =>
-        once((release) => {
-          focusAfter.current?.focus();
-          confirmAll.mutate({ versionId }, { onSettled: release });
-        })
-      }
-    >
-      <Check className="size-3.5" aria-hidden="true" />
-      Confirm all ({count})
-    </Button>
-  );
-}
 
 /** No expectation at all: what that means for a shot, and where to ask for one. */
 function NoSignature({ data }: { data: SignatureData }) {
@@ -270,13 +256,6 @@ function TierGroup({
   );
 }
 
-function statusClass(status: SignatureExpectation["status"]): string {
-  if (status === "confirmed")
-    return "border-status-good/40 bg-status-good/10 text-status-good-text";
-  if (status === "rejected") return "border-border text-muted-foreground line-through";
-  return "border-status-warn/40 bg-status-warn/10 text-status-warn-text";
-}
-
 function ExpectationItem({
   expectation,
   versions,
@@ -286,19 +265,22 @@ function ExpectationItem({
   versions: ListedVersion[];
   landing: LandingRef;
 }) {
-  const confirm = useConfirmExpectation();
   const reject = useRejectExpectation();
+  const restore = useRestoreExpectation();
   const setTier = useSetExpectationTier();
   const once = useSingleFlight();
   const [rejecting, setRejecting] = useState(false);
   const tierId = useId();
   const itemRef = useRef<HTMLLIElement>(null);
-  // Each answer removes or disables the control that was pressed (Confirm and Reject go with
-  // the status, the form closes, the tier select is disabled while the call is out), so focus
-  // moves to the row first: a keyboard user lands on the expectation they answered, not on the page.
+  // Each answer removes or disables the control that was pressed (Reject and Restore move the
+  // row to the other list, the form closes, the tier select is disabled while the call is out),
+  // so focus moves to the row first: a keyboard user lands on the expectation they answered.
   const keepFocus = () => itemRef.current?.focus();
-  const waiting = expectation.status === "proposed";
-  const busy = confirm.isPending || reject.isPending || setTier.isPending;
+  const rejected = expectation.status === "rejected";
+  // In force is `confirmed`; a `proposed` row (a carried one that needs a phase, or one from
+  // before expectations were in force at once) is shown, checked on no shot, and can be rejected.
+  const notInForce = expectation.status === "proposed";
+  const busy = restore.isPending || reject.isPending || setTier.isPending;
   const phase = expectation.phase ?? "Whole shot";
   const fault = expectation.faults.length > 0 ? expectation.faults.join(" / ") : null;
   const carriedFrom = carriedFromWords(expectation, versions);
@@ -330,13 +312,6 @@ function ExpectationItem({
         <Badge variant="outline" className="text-muted-foreground" data-testid="expectation-kind">
           {KIND_LABEL[expectation.kind]}
         </Badge>
-        <Badge
-          variant="outline"
-          className={statusClass(expectation.status)}
-          data-testid="expectation-status"
-        >
-          {STATUS_LABEL[expectation.status]}
-        </Badge>
         {carriedFrom ? (
           <span className="text-muted-foreground text-xs" data-testid="expectation-carried">
             carried from {carriedFrom}
@@ -348,7 +323,15 @@ function ExpectationItem({
             className="border-status-bad/40 bg-status-bad/10 text-status-bad-text"
             data-testid="expectation-needs-phase"
           >
-            needs a new phase
+            needs a new phase, not in force
+          </Badge>
+        ) : notInForce ? (
+          <Badge
+            variant="outline"
+            className="border-status-bad/40 bg-status-bad/10 text-status-bad-text"
+            data-testid="expectation-not-in-force"
+          >
+            not in force
           </Badge>
         ) : null}
       </div>
@@ -367,91 +350,110 @@ function ExpectationItem({
           Rejected: {expectation.reject_reason}
         </p>
       ) : null}
+      {notInForce && !expectation.needs_a_new_phase ? (
+        <p className="text-muted-foreground text-xs" data-testid="expectation-legacy">
+          From before signatures were in force at once, so it is checked on no shot. Reject it, then
+          Restore it to put it in force.
+        </p>
+      ) : null}
       {!expectation.readable ? (
         <p className="text-status-warn-text text-xs">
           This expression can no longer be read, so it is shown and not checked.
         </p>
       ) : null}
-      {expectation.needs_a_new_phase && waiting ? (
+      {expectation.needs_a_new_phase ? (
         <p className="text-muted-foreground text-xs">
-          Its phase is not in this version. Ask the agent to propose it again with a phase this
-          profile has; it cannot be confirmed as it is.
+          Its phase is not in this version, so it is checked on no shot. Ask the agent to propose it
+          again with a phase this profile has; it cannot be put in force as it is.
         </p>
       ) : null}
 
       <Provenance expectation={expectation} />
 
-      {waiting ? (
-        rejecting ? (
-          <ReasonForm
-            testId="reject-form"
-            label={`Why reject the ${phase} expectation`}
-            busy={busy}
-            onCancel={() => {
-              keepFocus();
-              setRejecting(false);
-            }}
-            onSubmit={(reason) =>
+      {rejected ? (
+        expectation.needs_a_new_phase ? null : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            // Not `disabled`: the second press of a double click would land on a disabled button
+            // and drop focus to the page; the single-flight guard sends one call either way.
+            aria-disabled={busy}
+            className="aria-disabled:opacity-50"
+            data-testid="restore-expectation"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() =>
               once((release) => {
                 keepFocus();
-                reject.mutate(
-                  { expectationId: expectation.id, reason },
-                  {
-                    onSettled: release,
-                    onSuccess: () => setRejecting(false),
-                  },
-                );
+                restore.mutate({ expectationId: expectation.id }, { onSettled: release });
               })
             }
-          />
-        ) : (
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {expectation.needs_a_new_phase ? null : (
-              <Button
-                type="button"
-                size="sm"
+          >
+            <Undo2 className="size-3.5" aria-hidden="true" />
+            Restore
+          </Button>
+        )
+      ) : rejecting ? (
+        <ReasonForm
+          testId="reject-form"
+          label={`Why reject the ${phase} expectation`}
+          busy={busy}
+          onCancel={() => {
+            keepFocus();
+            setRejecting(false);
+          }}
+          onSubmit={(reason) =>
+            once((release) => {
+              keepFocus();
+              reject.mutate(
+                { expectationId: expectation.id, reason },
+                {
+                  onSettled: release,
+                  onSuccess: () => setRejecting(false),
+                },
+              );
+            })
+          }
+        />
+      ) : (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {notInForce ? null : (
+            <>
+              <label htmlFor={tierId} className="sr-only">
+                Tier of the {phase} expectation
+              </label>
+              <TierSelect
+                id={tierId}
+                value={expectation.tier}
                 disabled={busy}
-                data-testid="confirm-expectation"
-                onClick={() =>
+                onChange={(tier) =>
                   once((release) => {
                     keepFocus();
-                    confirm.mutate({ expectationId: expectation.id }, { onSettled: release });
+                    landing.current = { id: expectation.id, tier };
+                    setTier.mutate({ expectationId: expectation.id, tier }, { onSettled: release });
                   })
                 }
-              >
-                <Check className="size-3.5" aria-hidden="true" />
-                Confirm
-              </Button>
-            )}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              data-testid="reject-expectation"
-              onClick={() => setRejecting(true)}
-            >
-              <X className="size-3.5" aria-hidden="true" />
-              Reject
-            </Button>
-            <label htmlFor={tierId} className="sr-only">
-              Tier of the {phase} expectation
-            </label>
-            <TierSelect
-              id={tierId}
-              value={expectation.tier}
-              disabled={busy}
-              onChange={(tier) =>
-                once((release) => {
-                  keepFocus();
-                  landing.current = { id: expectation.id, tier };
-                  setTier.mutate({ expectationId: expectation.id, tier }, { onSettled: release });
-                })
-              }
-            />
-          </div>
-        )
-      ) : null}
+              />
+            </>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            // Not `disabled`, for the reason above; the form it opens is the real guard.
+            aria-disabled={busy}
+            className="aria-disabled:opacity-50"
+            data-testid="reject-expectation"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (!busy) setRejecting(true);
+            }}
+          >
+            <X className="size-3.5" aria-hidden="true" />
+            Reject
+          </Button>
+        </div>
+      )}
     </li>
   );
 }

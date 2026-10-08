@@ -1,4 +1,4 @@
-import { Check, X } from "lucide-react";
+import { Undo2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SignatureOverride } from "@/api/types";
@@ -6,10 +6,9 @@ import { ReasonForm } from "@/components/signatures/ReasonForm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  useConfirmOverride,
   useRejectOverride,
+  useRestoreOverride,
   useSignatureOverrides,
-  useWithdrawOverride,
 } from "@/hooks/useSignatures";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { signatureHref } from "@/lib/signatures";
@@ -21,9 +20,11 @@ import { cn } from "@/lib/utils";
  * An override changes one expectation's numbers on one Set version and nothing else: the
  * expression, the tier and the phase are the profile's, and the version's shots are the only
  * ones that read it ("ramp: at most 20 % of target here (profile: at most 15 % of target)").
- * A proposed one is answered here, and a confirmed one can be withdrawn, after which the version
- * reads the profile's limit again. One of an expectation the person has not confirmed yet
- * cannot be confirmed: the profile's Signature card is where that is done, and it is linked.
+ * One the agent proposed is in force at once and can be Rejected, after which the version reads
+ * the profile's limit again; a rejected one can be Restored. One replaced by a newer limit is
+ * shown as no longer in force and has no button; one proposed before overrides were in force
+ * at once is shown as not in force and can be rejected. A rejected one of an expectation that is itself out of
+ * force cannot be restored: the profile's Signature card is where that is done, and it is linked.
  *
  * Nothing at all is drawn for a version with no override, so a Set with no signature looks as
  * it always did.
@@ -55,10 +56,11 @@ export function VersionOverrides({
 }
 
 const STATUS_WORDS: Record<SignatureOverride["status"], string> = {
-  proposed: "Proposed",
-  confirmed: "Confirmed",
+  // `proposed`: one made before overrides were in force at once, which nothing reads.
+  proposed: "Not in force",
+  confirmed: "In force",
   rejected: "Rejected",
-  withdrawn: "Withdrawn",
+  withdrawn: "No longer in force",
 };
 
 function OverrideItem({
@@ -70,18 +72,19 @@ function OverrideItem({
   override: SignatureOverride;
   profileVersionId: number | null;
 }) {
-  const confirm = useConfirmOverride();
   const reject = useRejectOverride();
-  const withdraw = useWithdrawOverride();
+  const restore = useRestoreOverride();
   const once = useSingleFlight();
   const [rejecting, setRejecting] = useState(false);
-  const busy = confirm.isPending || reject.isPending || withdraw.isPending;
+  const busy = reject.isPending || restore.isPending;
+  const inForce = override.status === "confirmed";
   const waiting = override.status === "proposed";
-  const blocked = waiting && override.expectation_status !== "confirmed";
-  const finished = override.status === "rejected" || override.status === "withdrawn";
+  const rejected = override.status === "rejected";
+  const blocked = rejected && override.expectation_status !== "confirmed";
+  const finished = !inForce;
   const itemRef = useRef<HTMLLIElement>(null);
-  // An answer removes the button that was pressed (Confirm and Reject go with the status, the
-  // form closes, Withdraw goes once withdrawn): focus moves to the override first.
+  // An answer removes the button that was pressed (Reject and Restore go with the status, the
+  // form closes): focus moves to the override first.
   const keepFocus = () => itemRef.current?.focus();
   return (
     <li
@@ -104,7 +107,7 @@ function OverrideItem({
         </Badge>
         <span className="min-w-0 break-words" data-testid="override-limit">
           {/* "here" is what is true of a version that reads the limit: one that was turned
-              down or taken back is only what was proposed. */}
+              down or replaced is only what was proposed. */}
           {finished ? `Proposed ${override.limit_text}` : `${override.limit_text} here`}{" "}
           <span className="text-muted-foreground" data-testid="override-profile-limit">
             (profile: {override.profile_limit_text})
@@ -134,20 +137,20 @@ function OverrideItem({
       ) : null}
       {blocked ? (
         <p className="text-muted-foreground text-xs" data-testid="override-blocked">
-          The profile's own expectation is not confirmed yet, so this cannot be.{" "}
+          The profile's own expectation is not in force, so this cannot be restored.{" "}
           {profileVersionId !== null ? (
             <Link
               className="underline underline-offset-2"
               data-testid="override-profile-link"
               to={signatureHref(profileVersionId)}
             >
-              Confirm it on the profile
+              Open the profile's signature
             </Link>
           ) : null}
         </p>
       ) : null}
 
-      {waiting ? (
+      {inForce || waiting ? (
         rejecting ? (
           <ReasonForm
             testId="override-reject-form"
@@ -168,55 +171,45 @@ function OverrideItem({
             }
           />
         ) : (
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              disabled={busy || blocked}
-              data-testid="override-confirm"
-              onClick={() =>
-                once((release) => {
-                  keepFocus();
-                  confirm.mutate({ setId, overrideId: override.id }, { onSettled: release });
-                })
-              }
-            >
-              <Check className="size-3.5" aria-hidden="true" />
-              Confirm
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              data-testid="override-reject"
-              onClick={() => setRejecting(true)}
-            >
-              <X className="size-3.5" aria-hidden="true" />
-              Reject
-            </Button>
-          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            // Not `disabled`: a second press must not drop focus to the page.
+            aria-disabled={busy}
+            className="aria-disabled:opacity-50"
+            data-testid="override-reject"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (!busy) setRejecting(true);
+            }}
+          >
+            <X className="size-3.5" aria-hidden="true" />
+            Reject
+          </Button>
         )
       ) : null}
-      {override.status === "confirmed" ? (
+      {rejected ? (
         <Button
           type="button"
           size="sm"
           variant="outline"
           // Not `disabled`: the second press of a double click would land on a disabled button
           // and drop focus to the page; the single-flight guard sends one call either way.
-          aria-disabled={busy}
+          aria-disabled={busy || blocked}
           className="aria-disabled:opacity-50"
-          data-testid="override-withdraw"
+          data-testid="override-restore"
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() =>
+          onClick={() => {
+            if (blocked) return;
             once((release) => {
               keepFocus();
-              withdraw.mutate({ setId, overrideId: override.id }, { onSettled: release });
-            })
-          }
+              restore.mutate({ setId, overrideId: override.id }, { onSettled: release });
+            });
+          }}
         >
-          Withdraw
+          <Undo2 className="size-3.5" aria-hidden="true" />
+          Restore
         </Button>
       ) : null}
     </li>

@@ -587,7 +587,7 @@ class Check:
 
 @dataclass(frozen=True, slots=True)
 class SignatureState:
-    """Whether the shot was read against a confirmed signature, and how big it is."""
+    """Whether the shot was read against a signature in force, and how big it is."""
 
     profile_version_id: int | None = None
     confirmed: int = 0
@@ -601,7 +601,7 @@ class SignatureState:
         if self.confirmed == 0:
             return "read without a signature"
         noun = "expectation" if self.confirmed == 1 else "expectations"
-        return f"confirmed, {self.confirmed} {noun}"
+        return f"in force, {self.confirmed} {noun}"
 
 
 @dataclass(frozen=True, slots=True)

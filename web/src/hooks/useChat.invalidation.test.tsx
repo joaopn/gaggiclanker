@@ -25,15 +25,17 @@ function spyOn(queryClient: QueryClient): unknown[][] {
 
 describe("a finished chat run refreshes what an agent may have written", () => {
   it.each(["completed", "cancelled", "error"] as const)(
-    "%s reaches the Sets, the knowledge, the drafts and the signatures",
+    "%s reaches the Sets, the knowledge, the drafts, the signatures and the shots' checks",
     (kind) => {
       const { queryClient } = renderHookWithQueryClient(() => useChatRun(5, 9));
       const keys = spyOn(queryClient);
 
       act(() => emit({ data: { seq: 1, kind } as ChatStreamEvent }));
 
-      // A proposed signature shows on the Profiles card and the Set page's line at once.
+      // A proposed signature is in force at once: the Profiles card, the Set page's line and
+      // every shot's checks change with it.
       expect(keys).toContainEqual(queryKeys.signatures.all);
+      expect(keys).toContainEqual(queryKeys.shots.all);
       expect(keys).toContainEqual(queryKeys.sets.all);
       expect(keys).toContainEqual(queryKeys.knowledge.all);
       expect(keys).toContainEqual(queryKeys.drafts.all);

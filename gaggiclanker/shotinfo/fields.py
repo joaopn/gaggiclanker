@@ -139,7 +139,7 @@ class SignatureStateOut(BaseModel):
     profile_version_id: int | None
     #: How many confirmed expectations that signature has; 0 reads as "without a signature".
     confirmed: int
-    #: ``confirmed, 6 expectations`` or ``read without a signature``.
+    #: ``in force, 6 expectations`` or ``read without a signature``.
     text: str
 
 

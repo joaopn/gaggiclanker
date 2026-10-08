@@ -465,7 +465,7 @@ def test_the_lever_shot_reads_red_with_the_early_yield_first() -> None:
     first = result.checks[0]
     assert first.value == pytest.approx(RAMP_END_G / TARGET_YIELD_G, abs=1e-3)
     assert first.tier == "critical"
-    assert result.state.text == "confirmed, 5 expectations"
+    assert result.state.text == "in force, 5 expectations"
 
 
 def test_the_merged_order_is_red_amber_expected_held_context_free_text() -> None:

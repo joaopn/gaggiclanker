@@ -1,4 +1,4 @@
-"""The routes a person presses: read a signature, answer an expectation, answer an override."""
+"""The routes a person presses: read a signature, reject or restore what is in force."""
 
 from __future__ import annotations
 
@@ -6,11 +6,10 @@ import asyncio
 from typing import Any
 
 import httpx
-import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.signatures import SignatureRepository
-from gaggiclanker.domain.signature import ExpectationInput, SignatureRefused
+from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.signatures.service import SignatureService
 from tests.lever_shot import LEVER_PROFILE
 from tests.signatures.helpers import make_set_versions
@@ -29,7 +28,7 @@ def _error(response: httpx.Response) -> dict[str, Any]:
     return dict(body["error"])
 
 
-async def _proposed(app: FastAPI) -> tuple[int, list[int]]:
+async def _in_force(app: FastAPI) -> tuple[int, list[int]]:
     version = await _version(app.state.db, LEVER_PROFILE)
     rows = await SignatureService(app.state.db).propose(
         version,
@@ -48,14 +47,15 @@ async def _proposed(app: FastAPI) -> tuple[int, list[int]]:
 async def test_the_signature_is_served_with_each_expectation_and_the_sets_that_use_it(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
-    version, ids = await _proposed(app)
+    version, ids = await _in_force(app)
     await make_set_versions(app.state.db, version)
 
     body = _ok(await client.get(f"/api/profile-versions/{version}/signature"))
 
     assert body["profile_version_id"] == version
     assert body["phases"] == ["preinfusion", "soak", "ramp", "decline"]
-    assert (body["confirmed"], body["proposed"], body["rejected"]) == (0, 3, 0)
+    assert (body["confirmed"], body["rejected"]) == (3, 0)
+    assert "proposed" not in body
     first = body["expectations"][0]
     assert (first["tier"], first["phase"], first["kind"], first["fault"]) == (
         "critical",
@@ -66,7 +66,8 @@ async def test_the_signature_is_served_with_each_expectation_and_the_sets_that_u
     assert first["faults"] == ["early yield"]
     assert first["sentence"].startswith("cup weight at the end of the ramp")
     assert first["expression"]["compare"] == {"op": "<=", "value": 0.15}
-    assert first["status"] == "proposed" and first["needs_a_new_phase"] is False
+    assert first["status"] == "confirmed" and first["needs_a_new_phase"] is False
+    assert first["answered_at"] is None
     assert [e["tier"] for e in body["expectations"]] == ["critical", "important", "context"]
     assert [s["set_name"] for s in body["sets"]] == ["Alturas"]
     assert sorted(e["id"] for e in body["expectations"]) == sorted(ids)
@@ -82,62 +83,72 @@ async def test_a_profile_with_no_signature_answers_empty_and_a_missing_one_is_a_
     assert missing.status_code == 404
 
 
-async def test_confirm_reject_tier_and_confirm_all(app: FastAPI, client: httpx.AsyncClient) -> None:
-    version, (measure, reached, free) = await _proposed(app)
+async def test_reject_restore_and_tier(app: FastAPI, client: httpx.AsyncClient) -> None:
+    _, (measure, reached, free) = await _in_force(app)
 
     moved = _ok(
         await client.post(f"/api/signature-expectations/{free}/tier", json={"tier": "important"})
     )
     assert moved["changed"][0]["tier"] == "important"
-    confirmed = _ok(await client.post(f"/api/signature-expectations/{measure}/confirm"))
-    assert confirmed["changed"][0]["status"] == "confirmed"
-    assert confirmed["signature"]["confirmed"] == 1
     rejected = _ok(
         await client.post(
             f"/api/signature-expectations/{reached}/reject", json={"reason": "  the cup says it \n"}
         )
     )
     assert rejected["changed"][0]["reject_reason"] == "the cup says it"
-    assert rejected["signature"]["rejected"] == 1
+    assert (rejected["signature"]["confirmed"], rejected["signature"]["rejected"]) == (2, 1)
+    # A rejected expectation keeps its tier until it is restored.
+    assert (
+        await client.post(f"/api/signature-expectations/{reached}/tier", json={"tier": "context"})
+    ).status_code == 409
 
-    all_ = _ok(await client.post(f"/api/profile-versions/{version}/signature/confirm-all"))
-    assert [c["id"] for c in all_["changed"]] == [free]
-    assert all_["signature"]["confirmed"] == 2
-    # A second press has nothing left to do, and is not an error.
-    again = _ok(await client.post(f"/api/profile-versions/{version}/signature/confirm-all"))
-    assert again["changed"] == []
+    restored = _ok(await client.post(f"/api/signature-expectations/{reached}/restore"))
+    assert restored["changed"][0]["status"] == "confirmed"
+    assert restored["changed"][0]["reject_reason"] == ""
+    assert (restored["signature"]["confirmed"], restored["signature"]["rejected"]) == (3, 0)
+    # The measure was never touched.
+    assert restored["signature"]["expectations"][0]["id"] == measure
 
 
-async def test_an_answered_expectation_is_a_409_not_a_second_write(
+async def test_the_retired_confirm_routes_are_gone(app: FastAPI, client: httpx.AsyncClient) -> None:
+    version, (measure, *_) = await _in_force(app)
+    assert (await client.post(f"/api/signature-expectations/{measure}/confirm")).status_code in (
+        404,
+        405,
+    )
+    assert (
+        await client.post(f"/api/profile-versions/{version}/signature/confirm-all")
+    ).status_code in (404, 405)
+
+
+async def test_a_second_answer_is_a_409_not_a_second_write(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
-    _, (measure, *_) = await _proposed(app)
+    _, (measure, *_) = await _in_force(app)
     first, second = await asyncio.gather(
-        client.post(f"/api/signature-expectations/{measure}/confirm"),
-        client.post(f"/api/signature-expectations/{measure}/confirm"),
+        client.post(f"/api/signature-expectations/{measure}/reject", json={"reason": "a"}),
+        client.post(f"/api/signature-expectations/{measure}/reject", json={"reason": "b"}),
     )
     assert sorted([first.status_code, second.status_code]) == [200, 409]
     loser = first if first.status_code == 409 else second
-    assert _error(loser)["code"] == "EXPECTATION_ANSWERED"
-    # Neither a reject nor a tier change moves a confirmed one.
+    assert _error(loser)["code"] == "EXPECTATION_REJECTED"
+    # Restoring what is in force is refused; so is a second restore of what is restored.
+    assert (await client.post(f"/api/signature-expectations/{measure}/restore")).status_code == 200
+    again = await client.post(f"/api/signature-expectations/{measure}/restore")
+    assert again.status_code == 409 and _error(again)["code"] == "EXPECTATION_NOT_REJECTED"
     assert (
-        await client.post(f"/api/signature-expectations/{measure}/reject", json={})
-    ).status_code == 409
-    assert (
-        await client.post(f"/api/signature-expectations/{measure}/tier", json={"tier": "context"})
-    ).status_code == 409
-    assert (await client.post("/api/signature-expectations/9999/confirm")).status_code == 404
+        await client.post("/api/signature-expectations/9999/reject", json={})
+    ).status_code == 404
+    assert (await client.post("/api/signature-expectations/9999/restore")).status_code == 404
 
 
-async def test_an_expectation_that_needs_a_phase_cannot_be_confirmed_over_http(
+async def test_an_expectation_that_needs_a_phase_can_be_rejected_and_never_restored_over_http(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     import copy
 
-    old, rows = await _proposed(app)
-    repo = SignatureRepository(app.state.db)
-    for row_id in rows:
-        await repo.answer(row_id, confirm=True)
+    old, rows = await _in_force(app)
+    assert rows
     renamed = copy.deepcopy(LEVER_PROFILE)
     renamed["phases"][2]["name"] = "rise"
     new = await _version(app.state.db, renamed)
@@ -145,20 +156,23 @@ async def test_an_expectation_that_needs_a_phase_cannot_be_confirmed_over_http(
 
     body = _ok(await client.get(f"/api/profile-versions/{new}/signature"))
     stuck = next(e for e in body["expectations"] if e["needs_a_new_phase"])
-    refused = await client.post(f"/api/signature-expectations/{stuck['id']}/confirm")
+    assert stuck["status"] == "proposed"
+    assert body["confirmed"] == len(body["expectations"]) - 1
+    assert body["expectations"][0]["carried_from_version_id"] == old
+    rejected = _ok(await client.post(f"/api/signature-expectations/{stuck['id']}/reject", json={}))
+    assert rejected["changed"][0]["status"] == "rejected"
+    refused = await client.post(f"/api/signature-expectations/{stuck['id']}/restore")
     assert refused.status_code == 409
     assert _error(refused)["code"] == "NEEDS_A_NEW_PHASE"
-    assert body["expectations"][0]["carried_from_version_id"] == old
 
 
-async def test_an_override_is_answered_by_the_set_it_belongs_to(
+async def test_an_override_is_rejected_and_restored_by_the_set_it_belongs_to(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
-    version, (measure, *_) = await _proposed(app)
+    version, (measure, *_) = await _in_force(app)
     first, _ = await make_set_versions(app.state.db, version)
     set_id = await SignatureRepository(app.state.db).set_of_version(first)
     assert set_id is not None
-    await client.post(f"/api/signature-expectations/{measure}/confirm")
     proposed = await SignatureService(app.state.db).propose_override(
         set_version_id=first,
         profile_version_id=version,
@@ -176,17 +190,29 @@ async def test_an_override_is_answered_by_the_set_it_belongs_to(
         "at most 20 % of target",
         "at most 15 % of target",
     )
-    assert (item["phase"], item["tier"], item["status"]) == ("ramp", "critical", "proposed")
+    assert (item["phase"], item["tier"], item["status"]) == ("ramp", "critical", "confirmed")
+    assert item["expectation_status"] == "confirmed"
     assert (
-        await client.post(f"/api/sets/{set_id + 1}/signature-overrides/{proposed.id}/confirm")
+        await client.post(
+            f"/api/sets/{set_id + 1}/signature-overrides/{proposed.id}/reject", json={}
+        )
     ).status_code == 404
 
-    done = _ok(await client.post(f"/api/sets/{set_id}/signature-overrides/{proposed.id}/confirm"))
-    assert done["override"]["status"] == "confirmed"
+    done = _ok(
+        await client.post(
+            f"/api/sets/{set_id}/signature-overrides/{proposed.id}/reject", json={"reason": "x"}
+        )
+    )
+    assert done["override"]["status"] == "rejected"
     again = await client.post(
         f"/api/sets/{set_id}/signature-overrides/{proposed.id}/reject", json={}
     )
-    assert again.status_code == 409 and _error(again)["code"] == "OVERRIDE_ANSWERED"
+    assert again.status_code == 409 and _error(again)["code"] == "OVERRIDE_REJECTED"
+    assert await SignatureRepository(app.state.db).confirmed_overrides([first]) == {}
+    back = _ok(await client.post(f"/api/sets/{set_id}/signature-overrides/{proposed.id}/restore"))
+    assert back["override"]["status"] == "confirmed"
+    twice = await client.post(f"/api/sets/{set_id}/signature-overrides/{proposed.id}/restore")
+    assert twice.status_code == 409 and _error(twice)["code"] == "OVERRIDE_NOT_REJECTED"
     assert (
         await client.get(f"/api/sets/{set_id}/versions/9999/signature-overrides")
     ).status_code == 404
@@ -195,10 +221,9 @@ async def test_an_override_is_answered_by_the_set_it_belongs_to(
 async def test_a_rejected_override_keeps_its_reason(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
-    version, (measure, *_) = await _proposed(app)
+    version, (measure, *_) = await _in_force(app)
     first, _ = await make_set_versions(app.state.db, version)
     set_id = await SignatureRepository(app.state.db).set_of_version(first)
-    await client.post(f"/api/signature-expectations/{measure}/confirm")
     proposed = await SignatureService(app.state.db).propose_override(
         set_version_id=first,
         profile_version_id=version,
@@ -219,14 +244,13 @@ async def test_a_rejected_override_keeps_its_reason(
     )
 
 
-async def test_a_confirmed_override_can_be_withdrawn_and_a_new_one_proposed(
+async def test_a_restore_is_refused_while_another_override_is_in_force_or_its_expectation_is_out(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
-    version, (measure, *_) = await _proposed(app)
+    version, (measure, *_) = await _in_force(app)
     first, _ = await make_set_versions(app.state.db, version)
     set_id = await SignatureRepository(app.state.db).set_of_version(first)
     assert set_id is not None
-    await client.post(f"/api/signature-expectations/{measure}/confirm")
     service = SignatureService(app.state.db)
 
     async def propose(value: float) -> Any:
@@ -239,29 +263,48 @@ async def test_a_confirmed_override_can_be_withdrawn_and_a_new_one_proposed(
             thread_id=None,
         )
 
-    waiting = await propose(0.2)
-    # Only a confirmed one can be withdrawn.
-    refused = await client.post(f"/api/sets/{set_id}/signature-overrides/{waiting.id}/withdraw")
-    assert refused.status_code == 409 and _error(refused)["code"] == "OVERRIDE_NOT_CONFIRMED"
-    await client.post(f"/api/sets/{set_id}/signature-overrides/{waiting.id}/confirm")
-    # A confirmed one stands against a proposal ...
-    with pytest.raises(SignatureRefused, match="withdraw"):
-        await propose(0.3)
-
-    done = _ok(await client.post(f"/api/sets/{set_id}/signature-overrides/{waiting.id}/withdraw"))
-    assert done["override"]["status"] == "withdrawn"
-    assert (
-        await client.post(f"/api/sets/{set_id}/signature-overrides/{waiting.id}/withdraw")
-    ).status_code == 409
-    assert (
-        await client.post(f"/api/sets/{set_id + 1}/signature-overrides/{waiting.id}/withdraw")
-    ).status_code == 404
-    # ... and once withdrawn, the version reads the profile's limit and a new one can be proposed.
-    assert await SignatureRepository(app.state.db).confirmed_overrides([first]) == {}
-    again = await propose(0.3)
-    assert again.status == "proposed" and again.id != waiting.id
+    one = await propose(0.2)
+    reject = f"/api/sets/{set_id}/signature-overrides/{one.id}/reject"
+    restore = f"/api/sets/{set_id}/signature-overrides/{one.id}/restore"
+    await client.post(reject, json={})
+    two = await propose(0.3)
+    refused = await client.post(restore)
+    assert refused.status_code == 409 and _error(refused)["code"] == "OVERRIDE_ANOTHER_IN_FORCE"
+    await client.post(f"/api/sets/{set_id}/signature-overrides/{two.id}/reject", json={})
+    await client.post(f"/api/signature-expectations/{measure}/reject", json={})
+    out = await client.post(restore)
+    assert out.status_code == 409 and _error(out)["code"] == "EXPECTATION_NOT_CONFIRMED"
+    # A replaced override is "withdrawn", listed after the one that replaced it.
     listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
-    assert [i["status"] for i in listed["items"]] == ["proposed", "withdrawn"]
+    assert [i["status"] for i in listed["items"]] == ["rejected", "rejected"]
+
+
+async def test_a_replaced_override_reads_as_withdrawn_and_is_not_a_rejection(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    version, (measure, *_) = await _in_force(app)
+    first, _ = await make_set_versions(app.state.db, version)
+    set_id = await SignatureRepository(app.state.db).set_of_version(first)
+    service = SignatureService(app.state.db)
+    for value in (0.2, 0.3):
+        await service.propose_override(
+            set_version_id=first,
+            profile_version_id=version,
+            expectation_id=measure,
+            compare={"op": "<=", "value": value},
+            reason="r",
+            thread_id=None,
+        )
+    listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
+    assert [(i["status"], i["reject_reason"]) for i in listed["items"]] == [
+        ("confirmed", ""),
+        ("withdrawn", ""),
+    ]
+    withdrawn = listed["items"][1]["id"]
+    # Nothing to reject or restore on a replaced one.
+    assert (
+        await client.post(f"/api/sets/{set_id}/signature-overrides/{withdrawn}/restore")
+    ).status_code == 409
 
 
 async def test_an_override_of_a_limit_in_a_unit_words_both_limits_in_it(
@@ -281,7 +324,6 @@ async def test_an_override_of_a_limit_in_a_unit_words_both_limits_in_it(
     )
     first, _ = await make_set_versions(app.state.db, version)
     set_id = await SignatureRepository(app.state.db).set_of_version(first)
-    await client.post(f"/api/signature-expectations/{row.id}/confirm")
     await SignatureService(app.state.db).propose_override(
         set_version_id=first,
         profile_version_id=version,
@@ -295,3 +337,30 @@ async def test_an_override_of_a_limit_in_a_unit_words_both_limits_in_it(
 
     (item,) = listed["items"]
     assert (item["limit_text"], item["profile_limit_text"]) == ("at most 4 g/s", "at most 3 g/s")
+
+
+async def test_a_row_from_before_signatures_were_in_force_is_counted_as_not_in_force(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    version, (measure, reached, _) = await _in_force(app)
+    await app.state.db.execute(
+        "UPDATE signature_expectations SET status = 'proposed' WHERE id = ?", (reached,)
+    )
+
+    body = _ok(await client.get(f"/api/profile-versions/{version}/signature"))
+
+    assert (body["confirmed"], body["not_in_force"], body["rejected"]) == (2, 1, 0)
+    old = next(e for e in body["expectations"] if e["id"] == reached)
+    assert old["status"] == "proposed" and old["needs_a_new_phase"] is False
+    # It can be rejected, never restored into force, has no tier to move, and is no check.
+    assert (await client.post(f"/api/signature-expectations/{reached}/restore")).status_code == 409
+    moved = await client.post(
+        f"/api/signature-expectations/{reached}/tier", json={"tier": "context"}
+    )
+    assert moved.status_code == 409 and _error(moved)["code"] == "EXPECTATION_NOT_IN_FORCE"
+    done = _ok(await client.post(f"/api/signature-expectations/{reached}/reject", json={}))
+    assert (done["signature"]["not_in_force"], done["signature"]["rejected"]) == (0, 1)
+    # Reject, then Restore, is how an old row is put in force.
+    back = _ok(await client.post(f"/api/signature-expectations/{reached}/restore"))
+    assert (back["signature"]["confirmed"], back["signature"]["not_in_force"]) == (3, 0)
+    assert measure

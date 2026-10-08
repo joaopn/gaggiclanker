@@ -19,10 +19,10 @@ import {
   vocabulary,
 } from "@/test/setsFixtures";
 import {
-  overrideConfirmed,
-  signatureConfirmed,
+  overrideInForce,
+  signatureInForce,
+  signatureMixed,
   signatureNone,
-  signatureProposed,
 } from "@/test/signatureFixtures";
 
 vi.mock("sonner", () => ({
@@ -1051,34 +1051,57 @@ describe("SetDetailPage, a Set being designed", () => {
 });
 
 describe("SetDetailPage signature", () => {
-  it("says whether the profile the Set brews has a signature, and links to its card", async () => {
-    getSignature.mockResolvedValue(signatureConfirmed);
+  it("says what is in force on the profile the Set brews, and links to its card", async () => {
+    getSignature.mockResolvedValue(signatureInForce);
     renderWithQueryClient(<SetDetailPage />);
 
-    expect(await screen.findByTestId("set-signature-state")).toHaveTextContent(
-      "confirmed, 6 expectations",
-    );
+    expect(await screen.findByTestId("set-signature-state")).toHaveTextContent("6 in force");
     // The current version's profile, not another: version 22 is v2 and brews profile version 7.
     expect(getSignature).toHaveBeenCalledWith(7);
     expect(screen.getByTestId("set-signature-link")).toHaveAttribute("href", "/profiles#version-7");
     expect(screen.getByTestId("set-signature-link")).toHaveTextContent("Open it on Profiles");
   });
 
-  it("says a proposed signature is not confirmed, and none says so", async () => {
-    getSignature.mockResolvedValue(signatureProposed);
+  it("counts what the person rejected, and says when none is in force or there is none", async () => {
+    getSignature.mockResolvedValue(signatureMixed);
     const first = renderWithQueryClient(<SetDetailPage />);
     expect(await screen.findByTestId("set-signature-state")).toHaveTextContent(
-      "6 proposed, none confirmed",
+      "5 in force · 1 rejected",
     );
-    expect(screen.getByTestId("set-signature-link")).toHaveTextContent("Answer it on Profiles");
     first.unmount();
+
+    getSignature.mockResolvedValue({ ...signatureMixed, confirmed: 0, rejected: 6 });
+    const second = renderWithQueryClient(<SetDetailPage />);
+    expect(await screen.findByTestId("set-signature-state")).toHaveTextContent(
+      "6 rejected, so shots are read without one",
+    );
+    expect(screen.getByTestId("set-signature-link")).toHaveTextContent("Open it on Profiles");
+    second.unmount();
+
+    // Rows that are not in force (carried without their phase, or from before) are counted apart.
+    getSignature.mockResolvedValue({ ...signatureMixed, confirmed: 4, not_in_force: 1 });
+    const third = renderWithQueryClient(<SetDetailPage />);
+    expect(await screen.findByTestId("set-signature-state")).toHaveTextContent(
+      "4 in force · 1 not in force · 1 rejected",
+    );
+    third.unmount();
+    getSignature.mockResolvedValue({
+      ...signatureMixed,
+      confirmed: 0,
+      rejected: 0,
+      not_in_force: 2,
+    });
+    const fourth = renderWithQueryClient(<SetDetailPage />);
+    expect(await screen.findByTestId("set-signature-state")).toHaveTextContent(
+      "2 not in force, so shots are read without one",
+    );
+    fourth.unmount();
 
     getSignature.mockResolvedValue(signatureNone);
     renderWithQueryClient(<SetDetailPage />);
     expect(await screen.findByTestId("set-signature-state")).toHaveTextContent("none yet");
-    // Nothing waits on the Profiles card, so it is not offered: the Set's chat is.
+    // Nothing on the Profiles card yet, so it is not offered: the Set's chat is.
     expect(screen.queryByTestId("set-signature-link")).toBeNull();
-    expect(screen.queryByText(/Answer it on Profiles/)).toBeNull();
     const chat = screen.getByTestId("set-signature-chat").getAttribute("href") ?? "";
     expect(chat).toContain("set=3");
     expect(chat).toContain("version=22");
@@ -1086,7 +1109,7 @@ describe("SetDetailPage signature", () => {
 
   it("shows an override on the version it belongs to and on no other", async () => {
     getSignatureOverrides.mockImplementation(async (_set: number, versionId: number) => ({
-      items: versionId === 22 ? [{ ...overrideConfirmed, set_version_id: 22 }] : [],
+      items: versionId === 22 ? [{ ...overrideInForce, set_version_id: 22 }] : [],
     }));
     renderWithQueryClient(<SetDetailPage />);
 

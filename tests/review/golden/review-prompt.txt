@@ -420,4 +420,4 @@ t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),w
 bloom (detected from profile: phase 'Bloom' runs the pump at zero — a bloom, not a closed valve)
 
 === signature ===
-This shot's profile version has no confirmed signature, so there is nothing to answer: `free_text_results` is an empty list.
+This shot's profile version has no signature in force, so there is nothing to answer: `free_text_results` is an empty list.

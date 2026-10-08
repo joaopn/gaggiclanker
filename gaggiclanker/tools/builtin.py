@@ -355,7 +355,7 @@ async def get_shot(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
     description=(
         "One shot's extended information, without its base lines: temperature, pressure and "
         "flow statistics, profile compliance, the checks that held (and the context and "
-        "free-text expectations) of a confirmed signature, one line per phase (the pressure, "
+        "free-text expectations) of a signature in force, one line per phase (the pressure, "
         "the flows, the water, the temperature, the adherence and the resistance; each "
         "phase's name, "
         "duration, how it ended and its cup at the end are in base) and the "
@@ -901,9 +901,8 @@ class GetProfileOutput(_Model):
     #: The version's stored canonical document, whole.
     document: dict[str, Any]
     recipe: ProfileRecipeFacts
-    #: What the profile is for: the lines of its **confirmed** signature, tier first, each with
-    #: the expectation's id. Empty when it has none; a proposed or rejected expectation is
-    #: never here.
+    #: What the profile is for: the lines of its signature in force, tier first, each with
+    #: the expectation's id. Empty when it has none; a rejected expectation is never here.
     signature: list[str] = Field(default_factory=list)
     #: How many of the archive's shots were pulled with it. Only in a general
     #: conversation: see :func:`list_profiles` for why a Set's does not get it.
@@ -1743,9 +1742,9 @@ class ProposeSignatureOutput(_Model):
     profile_version_id: int
     profile_label: str
     proposed: list[ProposedExpectation]
-    #: How many confirmed expectations this profile version already has.
+    #: How many expectations were in force on this profile version before this call.
     already_confirmed: int
-    status: str = "proposed"
+    status: str = "in force"
     note: str = ""
 
 
@@ -1773,15 +1772,15 @@ async def _signature_profile_versions(ctx: ToolContext, set_id: int) -> set[int]
     "propose_signature",
     permission="propose",
     description=(
-        "Propose what a profile version is FOR, as expectations a person confirms once: each "
-        "has a tier (critical, important, context), a phase the profile names and a kind "
-        "(measure, reached, expects_warning, free_text). Once confirmed, every shot on that "
-        "profile is checked against them at no cost and the Curve check column shows 'ramp: early "
-        "yield' in red when one fails. It writes only PROPOSED rows: nothing is checked, "
-        "shown as a result or told to any agent until the person confirms it on the Profiles "
-        "page. A measure must parse, carry a compare and name phases the profile has; a "
+        "Propose what a profile version is FOR, as expectations: each has a tier (critical, "
+        "important, context), a phase the profile names and a kind (measure, reached, "
+        "expects_warning, free_text). What you propose is IN FORCE at once, unless the person "
+        "rejects it on the Profiles page: every shot on that profile is checked against it at "
+        "no cost and the Curve check column shows 'ramp: early yield' in red when one fails. "
+        "An expectation already in force, or one the person rejected, is refused (only they can "
+        "restore it). A measure must parse, carry a compare and name phases the profile has; a "
         "refusal names every problem so you can call again. Use it when the conversation turns "
-        "to how the shots behave and the profile has no confirmed signature, not at every "
+        "to how the shots behave and the profile has no signature in force, not at every "
         "message; write what the profile is built to do, not what one shot did."
     ),
 )
@@ -1813,9 +1812,7 @@ async def propose_signature(
     except SignatureRefused as refused:
         raise ValueError(str(refused)) from None
     version = await ProfilesRepository(ctx.db).get_version(args.profile_version_id)
-    confirmed = (await service.repo.confirmed_for_versions([args.profile_version_id])).get(
-        args.profile_version_id, []
-    )
+    in_force = await service.count_in_force(args.profile_version_id)
     return ProposeSignatureOutput(
         profile_version_id=args.profile_version_id,
         profile_label=version.label if version is not None else "",
@@ -1830,13 +1827,13 @@ async def propose_signature(
             )
             for row in rows
         ],
-        already_confirmed=len(confirmed),
+        already_confirmed=in_force,
         note=(
-            f"{len(rows)} expectation{'' if len(rows) == 1 else 's'} stored as proposed. "
-            "Nothing is checked against them until the person confirms each one (or all of "
-            "them) on the Profiles page, under this profile version's Signature card: say "
-            "that, and do not describe a shot as passing or failing one. If they reject one "
-            "they may say why, and you are told at your next message."
+            f"{len(rows)} expectation{'' if len(rows) == 1 else 's'} now in force: every shot on "
+            "this profile version is checked against "
+            f"{'it' if len(rows) == 1 else 'them'}. Say that the person can reject any of them "
+            "on the Profiles page, under this profile version's Signature card. If they reject "
+            "one they may say why, and you are told at your next message."
         ),
     )
 
@@ -1859,7 +1856,7 @@ class ProposeOverrideOutput(_Model):
     override_id: int
     version: str
     expectation_id: int
-    status: str = "proposed"
+    status: str = "in force"
     note: str = ""
 
 
@@ -1867,12 +1864,12 @@ class ProposeOverrideOutput(_Model):
     "propose_signature_override",
     permission="propose",
     description=(
-        "Propose a different limit for ONE confirmed measure of the profile's signature, for "
+        "Put a different limit in force for ONE measure of the profile's signature, for "
         "THIS conversation's version only (a coarser bean, say: 'at most 0.20 here'). Only "
         "the numbers of the compare change: never the expression, the tier or the phase. It "
-        "writes a proposed row; the person confirms it on the Set page, and it applies to "
-        "this version's shots alone. One live override per version; a newer proposal "
-        "replaces a waiting one."
+        "is in force at once, unless the person rejects it on the Set page, and it applies to "
+        "this version's shots alone. A version has one override at a time; a newer one for the "
+        "same expectation replaces it."
     ),
 )
 async def propose_signature_override(
@@ -1906,9 +1903,8 @@ async def propose_signature_override(
         version=version.version_label,
         expectation_id=row.expectation_id,
         note=(
-            f"Stored as proposed for {version.version_label}. It changes nothing until the "
-            "person confirms it on the Set page, and then only this version's shots read the "
-            "new limit."
+            f"In force for {version.version_label}: only this version's shots read the new "
+            "limit. The person can reject it on the Set page."
         ),
     )
 
@@ -1960,8 +1956,8 @@ class DraftProfileInput(_Model):
         description=(
             "Optional: what this profile is for, written down with the change, as expectations "
             "(see propose_signature for their shape). They are validated against the phases of "
-            "the profile as it will be after your patch, stored as PROPOSED on the draft's "
-            "version, and used by nothing until the person confirms them on the Profiles page."
+            "the profile as it will be after your patch and stored IN FORCE on the draft's "
+            "version, unless the person rejects them on the Profiles page."
         ),
     )
 
@@ -1980,7 +1976,7 @@ class DraftProfileOutput(_Model):
     #: Whether the agent suggested a major version when it is made active for the Set; the
     #: person decides.
     suggest_major: bool = False
-    #: How many expectations were stored, as proposed, with the draft.
+    #: How many expectations were stored, in force, with the draft.
     signature_proposed: int = 0
     #: What the model should tell the person. A draft is further from the
     #: machine than a proposal is from the Set: somebody has to make it active
@@ -2083,8 +2079,9 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         )
         note += (
             f" {len(valid)} expectation{'' if len(valid) == 1 else 's'} of what this profile is "
-            "for were stored as proposed with the draft: nothing is checked against them until "
-            "the person confirms them on the Profiles page."
+            "for were stored with the draft, in force on its profile version: shots on that "
+            "version are checked against them unless the person rejects them on the Profiles "
+            "page."
         )
     draft = await ctx.drafts.create_manual(
         base_version_id=args.base_version_id,
@@ -2113,7 +2110,8 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         note=note
         + (
             f" {len(carried.skipped)} of the expectations were not stored again: the draft's "
-            "version already has them (carried over from its base, or sent twice)."
+            "version already has them (in force, carried over from its base, rejected by the "
+            "person, or sent twice)."
             if carried is not None and carried.skipped
             else ""
         ),

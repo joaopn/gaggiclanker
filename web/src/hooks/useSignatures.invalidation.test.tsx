@@ -2,17 +2,15 @@ import type { QueryClient } from "@tanstack/react-query";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  useConfirmAllExpectations,
-  useConfirmExpectation,
-  useConfirmOverride,
   useRejectExpectation,
   useRejectOverride,
+  useRestoreExpectation,
+  useRestoreOverride,
   useSetExpectationTier,
-  useWithdrawOverride,
 } from "@/hooks/useSignatures";
 import { queryKeys } from "@/lib/queryKeys";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
-import { overrideConfirmed, signatureConfirmed } from "@/test/signatureFixtures";
+import { overrideInForce, signatureInForce } from "@/test/signatureFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -20,45 +18,37 @@ vi.mock("sonner", () => ({
 }));
 
 const {
-  confirmExpectation,
   rejectExpectation,
+  restoreExpectation,
   setExpectationTier,
-  confirmAllExpectations,
-  confirmSignatureOverride,
   rejectSignatureOverride,
-  withdrawSignatureOverride,
+  restoreSignatureOverride,
 } = vi.hoisted(() => ({
-  confirmExpectation: vi.fn(),
   rejectExpectation: vi.fn(),
+  restoreExpectation: vi.fn(),
   setExpectationTier: vi.fn(),
-  confirmAllExpectations: vi.fn(),
-  confirmSignatureOverride: vi.fn(),
   rejectSignatureOverride: vi.fn(),
-  withdrawSignatureOverride: vi.fn(),
+  restoreSignatureOverride: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
-  confirmExpectation,
   rejectExpectation,
+  restoreExpectation,
   setExpectationTier,
-  confirmAllExpectations,
-  confirmSignatureOverride,
   rejectSignatureOverride,
-  withdrawSignatureOverride,
+  restoreSignatureOverride,
 }));
 
-const answer = { changed: [], signature: signatureConfirmed };
-const overrideAnswer = { override: overrideConfirmed };
+const answer = { changed: [], signature: signatureInForce };
+const overrideAnswer = { override: overrideInForce };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  confirmExpectation.mockResolvedValue(answer);
   rejectExpectation.mockResolvedValue(answer);
+  restoreExpectation.mockResolvedValue(answer);
   setExpectationTier.mockResolvedValue(answer);
-  confirmAllExpectations.mockResolvedValue(answer);
-  confirmSignatureOverride.mockResolvedValue(overrideAnswer);
   rejectSignatureOverride.mockResolvedValue(overrideAnswer);
-  withdrawSignatureOverride.mockResolvedValue(overrideAnswer);
+  restoreSignatureOverride.mockResolvedValue(overrideAnswer);
 });
 
 function spyOn(queryClient: QueryClient): unknown[][] {
@@ -78,22 +68,20 @@ function spyOn(queryClient: QueryClient): unknown[][] {
  * signature was just confirmed, and nothing else in a render test shows it.
  */
 const ANSWERS = [
-  ["confirming one expectation", () => useConfirmExpectation(), { expectationId: 3 }],
   ["rejecting one with a reason", () => useRejectExpectation(), { expectationId: 3, reason: "no" }],
+  ["restoring a rejected one", () => useRestoreExpectation(), { expectationId: 3 }],
   [
     "moving one to another tier",
     () => useSetExpectationTier(),
     { expectationId: 3, tier: "context" },
   ],
-  ["confirming every waiting one", () => useConfirmAllExpectations(), { versionId: 1 }],
-  ["confirming a Set version's override", () => useConfirmOverride(), { setId: 1, overrideId: 2 }],
   ["rejecting an override", () => useRejectOverride(), { setId: 1, overrideId: 2, reason: "" }],
-  ["withdrawing an override", () => useWithdrawOverride(), { setId: 1, overrideId: 2 }],
+  ["restoring an override", () => useRestoreOverride(), { setId: 1, overrideId: 2 }],
 ] as const;
 
 describe("every answer about a signature invalidates what it touches", () => {
   it.each(ANSWERS)("%s", async (_name, hook, variables) => {
-    // biome-ignore lint/suspicious/noExplicitAny: one table for seven hooks with different variables.
+    // biome-ignore lint/suspicious/noExplicitAny: one table for five hooks with different variables.
     const { result, queryClient } = renderHookWithQueryClient(hook as () => any);
     const keys = spyOn(queryClient);
 
@@ -106,29 +94,31 @@ describe("every answer about a signature invalidates what it touches", () => {
   });
 
   it("also when the answer is refused, so the card shows the answer that won", async () => {
-    confirmExpectation.mockRejectedValue(new Error("already answered"));
-    const { result, queryClient } = renderHookWithQueryClient(() => useConfirmExpectation());
+    rejectExpectation.mockRejectedValue(new Error("already rejected"));
+    const { result, queryClient } = renderHookWithQueryClient(() => useRejectExpectation());
     const keys = spyOn(queryClient);
 
-    await expect(result.current.mutateAsync({ expectationId: 3 })).rejects.toThrow();
+    await expect(result.current.mutateAsync({ expectationId: 3, reason: "" })).rejects.toThrow();
 
     await waitFor(() => expect(keys.length).toBe(3));
     expect(keys).toContainEqual(queryKeys.signatures.all);
   });
 
-  it("sends each answer to its own route, and Confirm all as one call for the version", async () => {
-    const all = renderHookWithQueryClient(() => useConfirmAllExpectations());
-    await all.result.current.mutateAsync({ versionId: 7 });
-    expect(confirmAllExpectations).toHaveBeenCalledTimes(1);
-    expect(confirmAllExpectations).toHaveBeenCalledWith(7);
-    expect(confirmExpectation).not.toHaveBeenCalled();
-
+  it("sends each answer to its own route", async () => {
     const reject = renderHookWithQueryClient(() => useRejectExpectation());
     await reject.result.current.mutateAsync({ expectationId: 4, reason: "too tight" });
     expect(rejectExpectation).toHaveBeenCalledWith(4, "too tight");
 
+    const restore = renderHookWithQueryClient(() => useRestoreExpectation());
+    await restore.result.current.mutateAsync({ expectationId: 4 });
+    expect(restoreExpectation).toHaveBeenCalledWith(4);
+
     const tier = renderHookWithQueryClient(() => useSetExpectationTier());
     await tier.result.current.mutateAsync({ expectationId: 4, tier: "important" });
     expect(setExpectationTier).toHaveBeenCalledWith(4, "important");
+
+    const restoreOverride = renderHookWithQueryClient(() => useRestoreOverride());
+    await restoreOverride.result.current.mutateAsync({ setId: 1, overrideId: 2 });
+    expect(restoreSignatureOverride).toHaveBeenCalledWith(1, 2);
   });
 });

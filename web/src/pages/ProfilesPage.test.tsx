@@ -14,7 +14,7 @@ import {
 } from "@/test/boardFixtures";
 import { draft, draftDetail, draftProfile, yieldChange } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { signatureConfirmed, signatureNone } from "@/test/signatureFixtures";
+import { signatureInForce, signatureNone } from "@/test/signatureFixtures";
 import lmleva from "../../../tests/fixtures/profiles/firmware-lmleva.json";
 
 vi.mock("sonner", () => ({
@@ -1303,7 +1303,7 @@ describe("links into the page", () => {
     api.getBoardVersions.mockResolvedValue(
       versionsView([listedVersion({ version_id: 99, is_active: true })]),
     );
-    api.getSignature.mockResolvedValue({ ...signatureConfirmed, profile_version_id: 99 });
+    api.getSignature.mockResolvedValue({ ...signatureInForce, profile_version_id: 99 });
     renderWithQueryClient(<ProfilesPage />, { initialEntries: ["/profiles#version-99"] });
 
     const card = await screen.findByTestId("signature-card");
@@ -1311,15 +1311,15 @@ describe("links into the page", () => {
     expect(card).toHaveAttribute("data-open", "yes");
   });
 
-  it("shows each version's Signature card in its dropdown, closed when nothing waits", async () => {
+  it("shows each version's Signature card in its dropdown, closed when nothing needs a phase", async () => {
     const user = setupUser();
-    api.getSignature.mockResolvedValue(signatureConfirmed);
+    api.getSignature.mockResolvedValue(signatureInForce);
     renderWithQueryClient(<ProfilesPage />);
     await user.click(await screen.findByTestId("profile-toggle"));
 
     const card = await screen.findByTestId("signature-card");
     expect(card).toHaveAttribute("data-open", "no");
-    expect(within(card).getByTestId("signature-summary")).toHaveTextContent("6 confirmed");
+    expect(within(card).getByTestId("signature-summary")).toHaveTextContent("6 in force");
   });
 });
 

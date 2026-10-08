@@ -4666,7 +4666,7 @@
     "signature": {
       "profile_version_id": 1,
       "confirmed": 6,
-      "text": "confirmed, 6 expectations"
+      "text": "in force, 6 expectations"
     },
     "target_yield_g": 36.0,
     "yield_share_pct": 117.2,
@@ -6597,7 +6597,7 @@
     "signature": {
       "profile_version_id": 1,
       "confirmed": 6,
-      "text": "confirmed, 6 expectations"
+      "text": "in force, 6 expectations"
     },
     "target_yield_g": 36.0,
     "yield_share_pct": null,
@@ -8082,7 +8082,7 @@
     "signature": {
       "profile_version_id": 1,
       "confirmed": 1,
-      "text": "confirmed, 1 expectation"
+      "text": "in force, 1 expectation"
     },
     "target_yield_g": 42.0,
     "yield_share_pct": 100.5,

@@ -1,4 +1,4 @@
-"""`propose_signature` and the signature a draft carries: rows a person answers, never checks.
+"""`propose_signature` and the signature a draft carries: in force at once, unless a person rejects.
 
 The profile is the review fixture's (phases Pre-infusion, Bloom, Pressurise, Ramp down,
 Hammer), and the Set is the fixture's one Set.
@@ -41,23 +41,27 @@ def _propose(archive: Fixture, **extra: Any) -> dict[str, Any]:
     }
 
 
-async def test_a_set_chat_proposes_a_signature_as_rows_a_person_answers(
+async def test_a_set_chat_proposes_a_signature_that_is_in_force_at_once(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
     set_ctx.thread_id = None
     data = await call(set_ctx, "propose_signature", **_propose(archive))
 
-    assert data["status"] == "proposed"
+    assert data["status"] == "in force"
+    assert data["already_confirmed"] == 2
     assert [(p["tier"], p["kind"], p["phase"]) for p in data["proposed"]] == [
         ("critical", "measure", "Ramp down"),
         ("important", "reached", "Hammer"),
     ]
     assert data["proposed"][0]["fault"] == "early yield"
-    assert "Nothing is checked" in data["note"]
+    assert "now in force" in data["note"] and "can reject" in data["note"]
     repo = SignatureRepository(archive.db)
     rows = await repo.for_version(archive.profile_version_id)
-    assert {r.status for r in rows} == {"proposed"}
-    assert await repo.confirmed_for_versions([archive.profile_version_id]) == {}
+    assert {(r.status, r.answered_at) for r in rows} == {("confirmed", None)}
+    in_force = (await repo.confirmed_for_versions([archive.profile_version_id]))[
+        archive.profile_version_id
+    ]
+    assert len(in_force) == 2
 
 
 async def test_the_proposer_is_recorded_as_the_thread(
@@ -133,7 +137,7 @@ async def test_a_conversation_designing_a_set_proposes_for_the_profile_it_forks(
     ctx.scope = ToolScope.for_thread(designed.id, designing=True)
 
     data = await call(ctx, "propose_signature", **_propose(archive))
-    assert data["status"] == "proposed"
+    assert data["status"] == "in force"
     # ... and for no other profile.
     other = await refuse(ctx, "propose_signature", **_propose(archive, profile_version_id=99999))
     assert "forks" in other["detail"]
@@ -147,7 +151,7 @@ def _with_drafts(ctx: ToolContext) -> ToolContext:
     return ctx
 
 
-async def test_a_draft_carries_the_agents_signature_as_proposed_on_its_own_version(
+async def test_a_draft_carries_the_agents_signature_in_force_on_its_own_version(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await call(
@@ -166,8 +170,8 @@ async def test_a_draft_carries_the_agents_signature_as_proposed_on_its_own_versi
     draft = await ProfileDraftsRepository(archive.db).get(data["draft_id"])
     assert draft is not None and draft.draft_version_id is not None
     rows = await SignatureRepository(archive.db).for_version(draft.draft_version_id)
-    assert {(r.status, r.proposed_by_draft_id) for r in rows} == {("proposed", draft.id)}
-    assert "Profiles page" in data["note"]
+    assert {(r.status, r.proposed_by_draft_id) for r in rows} == {("confirmed", draft.id)}
+    assert "in force" in data["note"] and "Profiles page" in data["note"]
 
 
 async def test_a_signature_naming_a_phase_the_patch_removes_is_refused_before_a_draft_exists(
@@ -230,14 +234,24 @@ async def test_a_draft_and_its_signature_are_one_write(
     assert await archive.db.fetch_value("SELECT COUNT(*) FROM signature_expectations") == 0
 
 
-async def test_the_same_expectation_is_refused_by_the_tool_as_already_there(
+async def test_the_same_expectation_is_refused_by_the_tool_saying_in_force_or_rejected(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
     await call(set_ctx, "propose_signature", **_propose(archive))
     again = await refuse(set_ctx, "propose_signature", **_propose(archive))
-    assert "expectation 1 is already proposed and waiting for the person" in again["detail"]
-    rows = await SignatureRepository(archive.db).for_version(archive.profile_version_id)
+    assert "expectation 1 is already in force" in again["detail"]
+    repo = SignatureRepository(archive.db)
+    rows = await repo.for_version(archive.profile_version_id)
     assert len(rows) == 2
+    # What the person rejected stays out: the tool says so, and only a Restore returns it.
+    await repo.reject(rows[0].id, reason="no")
+    rejected = await refuse(set_ctx, "propose_signature", **_propose(archive))
+    assert "expectation 1 is one the person rejected" in rejected["detail"]
+    assert "expectation 2 is already in force" in rejected["detail"]
+    assert [r.status for r in await repo.for_version(archive.profile_version_id)] == [
+        "rejected",
+        "confirmed",
+    ]
 
 
 async def test_a_draft_does_not_store_an_expectation_its_version_already_carries(
@@ -249,7 +263,6 @@ async def test_a_draft_does_not_store_an_expectation_its_version_already_carries
         [ExpectationInput(tier="critical", kind="reached", phase="Hammer")],
         reason="r",
     )
-    await SignatureRepository(archive.db).answer(hammer.id, confirm=True)
 
     data = await call(
         _with_drafts(ctx),
@@ -275,12 +288,14 @@ async def test_a_draft_does_not_store_an_expectation_its_version_already_carries
         ("free_text", None),
         ("reached", hammer.id),
     ]
-    # "Confirm all" confirms each once.
-    confirmed = await SignatureRepository(archive.db).confirm_all(draft.draft_version_id)
-    assert len(confirmed) == 2
+    # Each is in force once.
+    in_force = await SignatureRepository(archive.db).confirmed_for_versions(
+        [draft.draft_version_id]
+    )
+    assert len(in_force[draft.draft_version_id]) == 2
 
 
-# ── unconfirmed never teaches ────────────────────────────────────────
+# ── what is rejected never teaches ───────────────────────────────────
 
 
 async def _shot_texts(ctx: ToolContext, archive: Fixture) -> dict[str, str]:
@@ -294,38 +309,35 @@ async def _shot_texts(ctx: ToolContext, archive: Fixture) -> dict[str, str]:
     return texts
 
 
-async def test_no_shot_tool_tells_an_agent_an_expectation_nobody_confirmed(
+async def test_a_proposed_signature_is_a_check_at_once_and_a_rejected_one_is_told_to_no_shot_tool(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
-    waiting = "pressure falls together with flow through the ramp down"
+    shot_only = "pressure falls together with flow through the ramp down"
     service = SignatureService(archive.db)
-    proposed, rejected, confirmed = await service.propose(
+    before = await _shot_texts(set_ctx, archive)
+    for name, text in before.items():
+        assert "read without a signature" in text or name == "get_shot_extended", name
+
+    kept, rejected = await service.propose(
         archive.profile_version_id,
         [
-            ExpectationInput(tier="context", kind="free_text", text=waiting, fault="unstable"),
+            ExpectationInput(tier="context", kind="free_text", text=shot_only, fault="unstable"),
             ExpectationInput(
                 tier="context", kind="free_text", text="the rejected one", fault="unstable"
-            ),
-            ExpectationInput(
-                tier="context", kind="free_text", text="the confirmed one", fault="unstable"
             ),
         ],
         reason="r",
     )
-    repo = SignatureRepository(archive.db)
-    await repo.answer(rejected.id, confirm=False, reject_reason="no")
-    texts = await _shot_texts(set_ctx, archive)
-
-    assert proposed.status == "proposed"
-    for name, text in texts.items():
-        assert waiting not in text, name
-        assert "the rejected one" not in text, name
-        assert "read without a signature" in text or name == "get_shot_extended", name
-
-    await repo.answer(confirmed.id, confirm=True)
+    assert (kept.status, rejected.status) == ("confirmed", "confirmed")
     after = await _shot_texts(set_ctx, archive)
-    assert "signature: confirmed, 1 expectation" in after["get_shot"]
-    assert "the confirmed one" in after["get_shot_extended"]
-    assert "the confirmed one" not in after["get_shot"], "free text is extended, not base"
-    for text in after.values():
-        assert waiting not in text and "the rejected one" not in text
+    assert "signature: in force, 2 expectations" in after["get_shot"]
+    assert shot_only in after["get_shot_extended"]
+    assert "the rejected one" in after["get_shot_extended"]
+    assert shot_only not in after["get_shot"], "free text is extended, not base"
+
+    await SignatureRepository(archive.db).reject(rejected.id, reason="no")
+    last = await _shot_texts(set_ctx, archive)
+    assert "signature: in force, 1 expectation" in last["get_shot"]
+    for text in last.values():
+        assert "the rejected one" not in text
+    assert shot_only in last["get_shot_extended"]

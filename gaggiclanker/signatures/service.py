@@ -1,8 +1,9 @@
 """Proposing signatures, carrying them to new profile versions, and overriding a limit.
 
-The repository stores rows; this is where meaning is checked. Nothing here confirms
-anything: a proposal, a carried expectation and an override are all rows a person
-answers on the Profiles and Set pages.
+The repository stores rows; this is where meaning is checked. What an agent proposes, what is
+carried to a new profile version and an override are all written in force (``confirmed``):
+they stay so unless a person rejects them on the Profiles and Set pages. The one exception is
+a carried expectation whose phase is gone, which is shown and never in force.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import structlog
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.signatures import (
+    AnotherOverrideInForce,
     ExpectationRow,
     ExpectationWrite,
     OverrideRow,
@@ -46,7 +48,7 @@ __all__ = ["DraftSignature", "SignatureService", "split_duplicates", "validate_a
 @dataclass(frozen=True, slots=True)
 class DraftSignature:
     """Expectations an agent proposes with a draft, already validated against the draft's own
-    phases: they are stored as **proposed** on the draft's profile version, never confirmed."""
+    phases: they are stored in force (``confirmed``) on the draft's profile version."""
 
     expectations: tuple[ValidExpectation, ...]
     reason: str
@@ -97,17 +99,31 @@ def split_duplicates(
 ) -> tuple[list[ValidExpectation], list[tuple[int, ValidExpectation, str]]]:
     """Split an expectation list into what is new and what is already there.
 
-    "There" is proposed and waiting or confirmed on the profile version, or repeated earlier in
-    the same list. Each duplicate comes back as (its 1-based number, it, why).
+    "There" is in force, rejected by the person, or carried and waiting on a phase, on the
+    profile version, or repeated earlier in the same list. A rejected expectation is a
+    duplicate too: an agent must not put back in force what the person took out (only their
+    Restore does). Each duplicate comes back as (its 1-based number, it, why).
     """
+    why_there = {
+        "confirmed": "already in force",
+        "rejected": "one the person rejected (only they can restore it)",
+    }
+    needs_phase = (
+        "already there, carried from the previous version, but it names a phase this profile "
+        "version no longer has"
+    )
+    from_before = (
+        "there from before signatures were in force at once, so it is not in force: the person "
+        "can reject it and then restore it to put it in force"
+    )
+
+    def why(row: ExpectationRow) -> str:
+        if row.status == "proposed":
+            return needs_phase if row.needs_phase else from_before
+        return why_there[row.status]
+
     seen: dict[tuple[str, str, str], str] = {
-        _identity(r.kind, r.phase, r.expression, r.text, r.warning_fault): (
-            "already confirmed"
-            if r.status == "confirmed"
-            else "already proposed and waiting for the person"
-        )
-        for r in existing
-        if r.status in ("proposed", "confirmed")
+        _identity(r.kind, r.phase, r.expression, r.text, r.warning_fault): why(r) for r in existing
     }
     fresh: list[ValidExpectation] = []
     duplicates: list[tuple[int, ValidExpectation, str]] = []
@@ -124,11 +140,8 @@ def split_duplicates(
 def refuse_duplicates(
     valid: Sequence[ValidExpectation], existing: Sequence[ExpectationRow]
 ) -> None:
-    """Refuse an expectation already there (waiting or confirmed) or repeated in the batch.
-
-    Saying "it is already there" is not teaching: the proposer learns that the person has it or
-    will see it, never what a person did not confirm.
-    """
+    """Refuse an expectation already there (in force, rejected, carried) or repeated in the
+    batch, saying which."""
     _, duplicates = split_duplicates(valid, existing)
     if duplicates:
         raise SignatureRefused(
@@ -148,6 +161,7 @@ def _writes(
 ) -> list[ExpectationWrite]:
     return [
         ExpectationWrite(
+            status="confirmed",
             tier=v.tier,  # type: ignore[arg-type]
             phase=v.phase,
             kind=v.kind,  # type: ignore[arg-type]
@@ -205,7 +219,7 @@ class SignatureService:
         draft_id: int | None = None,
         phases: Sequence[str] | None = None,
     ) -> list[ExpectationRow]:
-        """Validate and store proposed expectations on a profile version.
+        """Validate and store expectations an agent proposes on a profile version, in force.
 
         ``phases`` are the phase names to validate against when they are not the stored
         version's (a draft's, before it is stored). Raises :class:`SignatureRefused` naming
@@ -239,12 +253,13 @@ class SignatureService:
         )
 
     async def carry(self, from_version_id: int, to_version_id: int) -> list[ExpectationRow]:
-        """Carry the previous version's **confirmed** expectations to a new version, as proposals.
+        """Carry the previous version's **confirmed** expectations to a new version.
 
-        One whose phases (its own and every one its window names) all still exist by name
-        becomes *proposed (carried)*: one click to confirm. One whose phase is gone becomes
-        *needs a new phase* and cannot be confirmed; it is never matched to another phase by
-        guess, whatever its position. Carrying twice adds nothing.
+        One whose phases (its own and every one its window names) all still exist by name is
+        written confirmed: in force on the new version unless the person rejects it. One whose
+        phase is gone becomes *needs a new phase*: still ``proposed``, shown and rejectable,
+        never in force and never matched to another phase by guess, whatever its position.
+        Carrying twice adds nothing.
         """
         if from_version_id == to_version_id:
             return []
@@ -265,6 +280,7 @@ class SignatureService:
             gone = any(phase_key(n) not in have for n in _named_phases(row))
             writes.append(
                 ExpectationWrite(
+                    status="proposed" if gone else "confirmed",
                     tier=row.tier,
                     phase=row.phase,
                     kind=row.kind,
@@ -280,11 +296,16 @@ class SignatureService:
             )
         return await self.repo.add(to_version_id, writes)
 
+    async def count_in_force(self, profile_version_id: int) -> int:
+        """How many expectations are in force on a profile version (a read, for the tools)."""
+        found = await self.repo.confirmed_for_versions([profile_version_id])
+        return len(found.get(profile_version_id, []))
+
     async def carry_quietly(self, from_version_id: int | None, to_version_id: int) -> None:
         """:meth:`carry`, for the paths that store a profile version (the mirror, a draft).
 
         A failure here must never stop a profile from being stored or a sync from finishing:
-        the carried proposals are a convenience for the person, and a missing one is a
+        the carried expectations are a convenience for the person, and a missing one is a
         signature to propose again, so the failure is logged and the caller goes on.
         """
         if from_version_id is None:
@@ -310,10 +331,11 @@ class SignatureService:
         reason: str,
         thread_id: int | None,
     ) -> OverrideRow:
-        """Propose a different limit for one confirmed measure on one Set version.
+        """Put a different limit for one confirmed measure in force on one Set version.
 
         Changes the compare values only: the same comparison and the same kind of bound, so
-        the expression, the tier and the phase are the profile's. Raises
+        the expression, the tier and the phase are the profile's. A newer override for the same
+        expectation replaces the one in force (recorded as withdrawn, not as a rejection). Raises
         :class:`SignatureRefused` with what was wrong.
         """
         target = await self.repo.get(expectation_id)
@@ -327,8 +349,8 @@ class SignatureService:
             )
         if target.status != "confirmed":
             raise SignatureRefused(
-                "Only a confirmed expectation can be overridden: the person has not confirmed "
-                "this one."
+                "Only an expectation in force can be overridden: the person rejected this one, "
+                "or it is waiting on a phase the profile no longer has."
             )
         if (
             target.kind != "measure"
@@ -343,19 +365,32 @@ class SignatureService:
                 f"An override changes the limit's numbers, not its comparison: this one is "
                 f"{old.op!r}, so use {old.op!r} with other values."
             )
-        stored = await self.repo.add_override(
-            OverrideWrite(
-                set_version_id=set_version_id,
-                expectation_id=expectation_id,
-                compare=new,
-                reason=reason,
-                proposed_by_thread_id=thread_id,
+        for item in await self.repo.overrides_for_set_version(
+            set_version_id, statuses=["rejected"]
+        ):
+            if item.expectation_id == expectation_id and item.compare == new:
+                raise SignatureRefused(
+                    "The person rejected exactly this limit for this version (only they can "
+                    "restore it): propose a different one, or say what you would change."
+                )
+        # One override is in force per Set version (the schema's partial unique index): a newer
+        # one for the same expectation takes its place; one for another expectation would
+        # silently drop that other limit, so the repository refuses it inside the same
+        # transaction that withdraws and inserts, and it is said here.
+        try:
+            return await self.repo.add_override(
+                OverrideWrite(
+                    set_version_id=set_version_id,
+                    expectation_id=expectation_id,
+                    compare=new,
+                    reason=reason,
+                    proposed_by_thread_id=thread_id,
+                )
             )
-        )
-        if stored is None:
+        except AnotherOverrideInForce as other:
             raise SignatureRefused(
-                "This version already has a confirmed override, which is the person's answer: they "
-                "can withdraw it, and then you can propose another. Say what you would change "
-                "instead of proposing one now."
-            )
-        return stored
+                f"This version already has an override in force for expectation "
+                f"#{other.expectation_id}, and a version has one at a time. The person can "
+                "reject it on the Set page, and then you can put another in force. Say what "
+                "you would change instead of proposing one now."
+            ) from None

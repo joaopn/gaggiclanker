@@ -29,6 +29,7 @@ RAMP_CUP = Expression.model_validate(
 def _measure(**extra: object) -> ExpectationWrite:
     return ExpectationWrite.model_validate(
         {
+            "status": "confirmed",
             "tier": "critical",
             "phase": "ramp",
             "kind": "measure",
@@ -40,120 +41,138 @@ def _measure(**extra: object) -> ExpectationWrite:
     )
 
 
-def _reached(phase: str = "decline") -> ExpectationWrite:
-    return ExpectationWrite(
-        tier="critical",
-        phase=phase,
-        kind="reached",
-        fault="skipped",
-        sentence=f"the {phase} begins",
+def _reached(phase: str = "decline", **extra: object) -> ExpectationWrite:
+    return ExpectationWrite.model_validate(
+        {
+            "status": "confirmed",
+            "tier": "critical",
+            "phase": phase,
+            "kind": "reached",
+            "fault": "skipped",
+            "sentence": f"the {phase} begins",
+            **extra,
+        }
     )
 
 
-async def test_a_proposed_expectation_is_stored_and_is_not_confirmed(db: Database) -> None:
+async def test_an_expectation_is_stored_with_the_status_it_is_given(db: Database) -> None:
     version = await make_profile_version(db, "Lever")
     repo = SignatureRepository(db)
-    rows = await repo.add(version, [_measure(), _reached()])
+    rows = await repo.add(
+        version, [_measure(), _reached(), _reached("gone", status="proposed", needs_phase=True)]
+    )
 
-    assert [r.position for r in rows] == [0, 1]
-    assert {r.status for r in rows} == {"proposed"}
+    assert [r.position for r in rows] == [0, 1, 2]
+    assert [r.status for r in rows] == ["confirmed", "confirmed", "proposed"]
     assert rows[0].expression == RAMP_CUP
-    # Nothing counts until a person confirmed it.
-    assert await repo.confirmed_for_versions([version]) == {}
-    assert (await repo.counts([version]))[version] == {"proposed": 2}
+    # In force at once, with no answer from anyone; a needs-phase row never counts.
+    assert rows[0].answered_at is None
+    found = (await repo.confirmed_for_versions([version]))[version]
+    assert [r.id for r in found] == [rows[0].id, rows[1].id]
+    assert (await repo.counts([version]))[version] == {"confirmed": 2, "proposed": 1}
+
+
+def test_a_write_names_its_status_and_a_needs_phase_one_is_never_in_force() -> None:
+    with pytest.raises(ValueError, match="status"):
+        ExpectationWrite.model_validate(
+            {"tier": "critical", "kind": "reached", "fault": "skipped", "sentence": "x"}
+        )
+    with pytest.raises(ValueError, match="never in force"):
+        _reached("gone", needs_phase=True)
 
 
 async def test_positions_are_never_reused(db: Database) -> None:
     version = await make_profile_version(db, "Lever")
     repo = SignatureRepository(db)
     first = await repo.add(version, [_measure(), _reached()])
-    assert (await repo.answer(first[1].id, confirm=False, reject_reason="no")).row is not None
+    assert (await repo.reject(first[1].id, reason="no")).row is not None
     more = await repo.add(version, [_reached("soak")])
     assert more[0].position == 2
 
 
-async def test_confirm_reject_and_the_reason_are_kept(db: Database) -> None:
+async def test_reject_restore_and_the_reason_are_kept(db: Database) -> None:
     version = await make_profile_version(db, "Lever")
     repo = SignatureRepository(db)
     first, second = await repo.add(version, [_measure(), _reached()])
 
-    confirmed = await repo.answer(first.id, confirm=True)
-    assert confirmed.row is not None
-    assert confirmed.row.status == "confirmed"
-    assert confirmed.row.answered_at is not None
-    rejected = await repo.answer(second.id, confirm=False, reject_reason="  the cup is enough ")
+    rejected = await repo.reject(second.id, reason="  the cup is enough ")
     assert rejected.row is not None
     assert (rejected.row.status, rejected.row.reject_reason) == ("rejected", "the cup is enough")
-
+    assert rejected.row.answered_at is not None
     assert [r.id for r in (await repo.confirmed_for_versions([version]))[version]] == [first.id]
 
+    restored = await repo.restore(second.id)
+    assert restored.row is not None
+    assert (restored.row.status, restored.row.reject_reason) == ("confirmed", "")
+    found = (await repo.confirmed_for_versions([version]))[version]
+    assert [r.id for r in found] == [first.id, second.id]
 
-async def test_two_confirmations_at_once_give_one_answer(db: Database) -> None:
+
+async def test_restore_needs_a_rejected_row_and_reject_needs_one_not_rejected(
+    db: Database,
+) -> None:
     version = await make_profile_version(db, "Lever")
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
 
-    results = await asyncio.gather(
-        repo.answer(row.id, confirm=True), repo.answer(row.id, confirm=True)
-    )
+    assert (await repo.restore(row.id)).refused == "not_rejected"
+    assert (await repo.reject(row.id)).row is not None
+    assert (await repo.reject(row.id)).refused == "already_rejected"
+    assert (await repo.reject(9999)).refused == "no_expectation"
+    assert (await repo.restore(9999)).refused == "no_expectation"
 
-    assert sorted(r.refused or "ok" for r in results) == ["not_waiting", "ok"]
+
+async def test_two_rejections_at_once_give_one_answer(db: Database) -> None:
+    version = await make_profile_version(db, "Lever")
+    repo = SignatureRepository(db)
+    (row,) = await repo.add(version, [_measure()])
+
+    results = await asyncio.gather(repo.reject(row.id), repo.reject(row.id))
+
+    assert sorted(r.refused or "ok" for r in results) == ["already_rejected", "ok"]
+    stored = await repo.get(row.id)
+    assert stored is not None and stored.status == "rejected"
+
+
+async def test_a_restore_does_not_overwrite_a_rejection_made_a_moment_earlier(
+    db: Database,
+) -> None:
+    version = await make_profile_version(db, "Lever")
+    repo = SignatureRepository(db)
+    (row,) = await repo.add(version, [_measure()])
+    await repo.reject(row.id)
+
+    results = await asyncio.gather(repo.restore(row.id), repo.restore(row.id))
+
+    assert sorted(r.refused or "ok" for r in results) == ["not_rejected", "ok"]
     stored = await repo.get(row.id)
     assert stored is not None and stored.status == "confirmed"
 
 
-async def test_a_confirmation_does_not_overwrite_a_rejection_made_a_moment_earlier(
+async def test_an_expectation_that_needs_a_phase_can_be_rejected_and_never_restored(
     db: Database,
 ) -> None:
     version = await make_profile_version(db, "Lever")
     repo = SignatureRepository(db)
-    (row,) = await repo.add(version, [_measure()])
-
-    results = await asyncio.gather(
-        repo.answer(row.id, confirm=False, reject_reason="no"),
-        repo.answer(row.id, confirm=True),
-    )
-
-    assert sorted(r.refused or "ok" for r in results) == ["not_waiting", "ok"]
-    stored = await repo.get(row.id)
-    assert stored is not None
-    assert stored.status == next(r.row.status for r in results if r.row is not None)
+    (row,) = await repo.add(version, [_reached("gone", status="proposed", needs_phase=True)])
+    assert (await repo.restore(row.id)).refused == "not_rejected"
+    rejected = await repo.reject(row.id, reason="not needed")
+    assert rejected.row is not None and rejected.row.status == "rejected"
+    assert (await repo.restore(row.id)).refused == "needs_phase"
+    assert await repo.confirmed_for_versions([version]) == {}
 
 
-async def test_confirm_all_confirms_the_waiting_ones_and_leaves_one_that_needs_a_phase(
-    db: Database,
-) -> None:
-    version = await make_profile_version(db, "Lever")
-    repo = SignatureRepository(db)
-    waiting = await repo.add(version, [_measure(), _reached(), _reached("soak")])
-    (stuck,) = await repo.add(version, [_reached("gone").model_copy(update={"needs_phase": True})])
-    await repo.answer(waiting[2].id, confirm=False)
-
-    done = await repo.confirm_all(version)
-
-    assert sorted(r.id for r in done) == sorted([waiting[0].id, waiting[1].id])
-    assert (await repo.get(stuck.id)).status == "proposed"  # type: ignore[union-attr]
-    assert (await repo.get(waiting[2].id)).status == "rejected"  # type: ignore[union-attr]
-    assert await repo.confirm_all(version) == []
-
-
-async def test_an_expectation_that_needs_a_phase_cannot_be_confirmed(db: Database) -> None:
-    version = await make_profile_version(db, "Lever")
-    repo = SignatureRepository(db)
-    (row,) = await repo.add(version, [_reached("gone").model_copy(update={"needs_phase": True})])
-    assert (await repo.answer(row.id, confirm=True)).refused == "needs_phase"
-    # It can still be rejected.
-    assert (await repo.answer(row.id, confirm=False)).row is not None
-
-
-async def test_the_tier_changes_only_while_the_expectation_waits(db: Database) -> None:
+async def test_the_tier_changes_only_while_the_expectation_is_in_force(db: Database) -> None:
     version = await make_profile_version(db, "Lever")
     repo = SignatureRepository(db)
     first, second = await repo.add(version, [_measure(), _reached()])
     moved = await repo.set_tier(first.id, "important")
     assert moved.row is not None and moved.row.tier == "important"
-    await repo.answer(second.id, confirm=True)
-    assert (await repo.set_tier(second.id, "context")).refused == "not_waiting"
+    (stuck,) = await repo.add(version, [_reached("gone", status="proposed", needs_phase=True)])
+    # A row that is not in force has no tier to move.
+    assert (await repo.set_tier(stuck.id, "context")).refused == "not_in_force"
+    await repo.reject(second.id)
+    assert (await repo.set_tier(second.id, "context")).refused == "already_rejected"
     assert (await repo.set_tier(9999, "context")).refused == "no_expectation"
 
 
@@ -169,21 +188,23 @@ async def test_a_damaged_expression_is_read_as_unreadable_not_as_an_error(db: Da
     assert stored.expression is None and stored.readable is False
 
 
-async def test_an_override_is_one_per_set_version_and_a_confirmed_one_stands(db: Database) -> None:
+async def test_a_newer_override_replaces_the_one_in_force_without_being_a_rejection(
+    db: Database,
+) -> None:
     from tests.signatures.helpers import make_set_versions
 
     version = await make_profile_version(db, "Lever")
     first_version, second_version = await make_set_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
-    await repo.answer(row.id, confirm=True)
 
-    loose = Compare(op="<=", value=0.2)
     one = await repo.add_override(
-        OverrideWrite(set_version_id=first_version, expectation_id=row.id, compare=loose)
+        OverrideWrite(
+            set_version_id=first_version, expectation_id=row.id, compare=Compare(op="<=", value=0.2)
+        )
     )
-    assert one is not None and one.status == "proposed"
-    # A newer proposal replaces the waiting one.
+    # In force at once, with no answer from anyone.
+    assert one.status == "confirmed" and one.answered_at is None
     two = await repo.add_override(
         OverrideWrite(
             set_version_id=first_version,
@@ -191,46 +212,158 @@ async def test_an_override_is_one_per_set_version_and_a_confirmed_one_stands(db:
             compare=Compare(op="<=", value=0.25),
         )
     )
-    assert two is not None
-    assert (await repo.get_override(one.id)).status == "rejected"  # type: ignore[union-attr]
-    answered = await repo.answer_override(two.id, confirm=True)
-    assert answered.row is not None and answered.row.status == "confirmed"
-    # It stands against a later proposal for the same version, and it is that version's alone.
-    assert (
-        await repo.add_override(
-            OverrideWrite(set_version_id=first_version, expectation_id=row.id, compare=loose)
-        )
-        is None
-    )
+    replaced = await repo.get_override(one.id)
+    assert replaced is not None
+    # Withdrawn is not the person's rejection: it carries no reason and is not "rejected".
+    assert (replaced.status, replaced.reject_reason) == ("withdrawn", "")
     found = await repo.confirmed_overrides([first_version, second_version])
     assert list(found) == [first_version]
+    assert found[first_version].id == two.id
     assert found[first_version].compare == Compare(op="<=", value=0.25)
 
 
-async def test_an_override_cannot_be_confirmed_when_its_expectation_is_not(db: Database) -> None:
+async def test_an_override_is_rejected_and_restored_by_the_person(db: Database) -> None:
     from tests.signatures.helpers import make_set_versions
 
     version = await make_profile_version(db, "Lever")
     (set_version, _) = await make_set_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
-    proposed = await repo.add_override(
+    first = await repo.add_override(
         OverrideWrite(
             set_version_id=set_version, expectation_id=row.id, compare=Compare(op="<=", value=0.2)
         )
     )
-    assert proposed is not None
-    assert (await repo.answer_override(proposed.id, confirm=True)).refused == (
-        "expectation_not_confirmed"
+
+    assert (await repo.restore_override(first.id)).refused == "not_rejected"
+    rejected = await repo.reject_override(first.id, reason="too loose")
+    assert rejected.row is not None
+    assert (rejected.row.status, rejected.row.reject_reason) == ("rejected", "too loose")
+    assert await repo.confirmed_overrides([set_version]) == {}
+    assert (await repo.reject_override(first.id)).refused == "already_rejected"
+
+    restored = await repo.restore_override(first.id)
+    assert restored.row is not None and restored.row.status == "confirmed"
+    assert list(await repo.confirmed_overrides([set_version])) == [set_version]
+
+
+async def test_a_rejected_override_is_not_restored_over_another_in_force_or_without_its_expectation(
+    db: Database,
+) -> None:
+    from tests.signatures.helpers import make_set_versions
+
+    version = await make_profile_version(db, "Lever")
+    (set_version, _) = await make_set_versions(db, version)
+    repo = SignatureRepository(db)
+    (row,) = await repo.add(version, [_measure()])
+    first = await repo.add_override(
+        OverrideWrite(
+            set_version_id=set_version, expectation_id=row.id, compare=Compare(op="<=", value=0.2)
+        )
     )
-    # Rejecting is always possible, once.
-    assert (await repo.answer_override(proposed.id, confirm=False, reject_reason="x")).row
-    assert (await repo.answer_override(proposed.id, confirm=False)).refused == "not_waiting"
+    await repo.reject_override(first.id)
+    second = await repo.add_override(
+        OverrideWrite(
+            set_version_id=set_version, expectation_id=row.id, compare=Compare(op="<=", value=0.3)
+        )
+    )
+    assert (await repo.restore_override(first.id)).refused == "another_in_force"
+    await repo.reject_override(second.id)
+    await repo.reject(row.id)
+    assert (await repo.restore_override(first.id)).refused == "expectation_not_confirmed"
+    assert (await repo.restore_override(9999)).refused == "no_override"
 
 
 @pytest.mark.parametrize("bad", [{"kind": "reached", "expression": RAMP_CUP}, {"kind": "measure"}])
 def test_the_shape_of_a_write_is_checked(bad: dict[str, object]) -> None:
     with pytest.raises(ValueError, match=r"expression|warning"):
         ExpectationWrite.model_validate(
-            {"tier": "critical", "sentence": "x", "phase": "ramp", **bad}
+            {"status": "confirmed", "tier": "critical", "sentence": "x", "phase": "ramp", **bad}
         )
+
+
+async def test_rejecting_an_expectation_withdraws_its_override_and_restoring_leaves_it_out(
+    db: Database,
+) -> None:
+    from tests.signatures.helpers import make_set_versions
+
+    version = await make_profile_version(db, "Lever")
+    (set_version, _) = await make_set_versions(db, version)
+    repo = SignatureRepository(db)
+    (row,) = await repo.add(version, [_measure()])
+    override = await repo.add_override(
+        OverrideWrite(
+            set_version_id=set_version, expectation_id=row.id, compare=Compare(op="<=", value=0.2)
+        )
+    )
+
+    await repo.reject(row.id, reason="no")
+
+    withdrawn = await repo.get_override(override.id)
+    assert withdrawn is not None
+    # Out of force with the expectation, and not the person's rejection of the override.
+    assert (withdrawn.status, withdrawn.reject_reason) == ("withdrawn", "")
+    assert await repo.confirmed_overrides([set_version]) == {}
+
+    await repo.restore(row.id)
+    assert (await repo.get_override(override.id)).status == "withdrawn"  # type: ignore[union-attr]
+    assert await repo.confirmed_overrides([set_version]) == {}
+
+
+async def test_an_override_for_another_expectation_is_refused_inside_the_transaction(
+    db: Database,
+) -> None:
+    from gaggiclanker.db.repos.signatures import AnotherOverrideInForce
+    from tests.signatures.helpers import make_set_versions
+
+    version = await make_profile_version(db, "Lever")
+    (set_version, _) = await make_set_versions(db, version)
+    repo = SignatureRepository(db)
+    first, second = await repo.add(version, [_measure(), _measure(phase="soak")])
+
+    def write(expectation: int, value: float) -> OverrideWrite:
+        return OverrideWrite(
+            set_version_id=set_version,
+            expectation_id=expectation,
+            compare=Compare(op="<=", value=value),
+        )
+
+    # Two at once for two expectations: one is in force, the other is refused, never both.
+    results = await asyncio.gather(
+        repo.add_override(write(first.id, 0.2)),
+        repo.add_override(write(second.id, 0.3)),
+        return_exceptions=True,
+    )
+    assert sorted(type(r).__name__ for r in results) == ["AnotherOverrideInForce", "OverrideRow"]
+    live = await repo.overrides_for_set_version(set_version, statuses=["confirmed"])
+    assert len(live) == 1
+    with pytest.raises(AnotherOverrideInForce):
+        await repo.add_override(
+            write(second.id if live[0].expectation_id == first.id else first.id, 0.4)
+        )
+
+
+async def test_a_row_proposed_before_in_force_signatures_is_no_check_and_can_be_rejected(
+    db: Database,
+) -> None:
+    from tests.signatures.helpers import make_set_versions
+
+    version = await make_profile_version(db, "Lever")
+    (set_version, _) = await make_set_versions(db, version)
+    repo = SignatureRepository(db)
+    (old,) = await repo.add(version, [_reached(status="proposed")])
+    assert old.needs_phase is False and old.status == "proposed"
+    assert await repo.confirmed_for_versions([version]) == {}
+    assert (await repo.counts([version]))[version] == {"proposed": 1}
+    # An override proposed in the old way is not in force either.
+    (measure,) = await repo.add(version, [_measure()])
+    await db.execute(
+        "INSERT INTO set_version_signature_overrides (set_version_id, expectation_id, "
+        'compare_json, status) VALUES (?, ?, \'{"op": "<=", "value": 0.2}\', \'proposed\')',
+        (set_version, measure.id),
+    )
+    assert await repo.confirmed_overrides([set_version]) == {}
+
+    assert (await repo.restore(old.id)).refused == "not_rejected"
+    assert (await repo.set_tier(old.id, "context")).refused == "not_in_force"
+    assert (await repo.reject(old.id, reason="old")).row is not None

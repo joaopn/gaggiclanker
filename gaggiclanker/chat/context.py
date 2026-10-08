@@ -364,9 +364,9 @@ async def _profile_block(
     own = await _profile_text(db, version.profile_version_id, version.profile_label)
     lines = [f"THE PROFILE {version.version_label} BREWS", *own]
     if version.profile_version_id is not None:
-        # What it is for, right under the document: the confirmed signature, or the sentence
-        # saying there is none. Changes only when a person confirms something.
-        lines += await signature_block(db, version.profile_version_id, version.id, thread_id)
+        # What it is for, right under the document: the signature in force, or the sentence
+        # saying there is none. Moves when a signature is proposed, rejected or restored.
+        lines += await signature_block(db, version.profile_version_id, version.id)
     if (
         compared is not None
         and compared.profile_version_id is not None
