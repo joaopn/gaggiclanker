@@ -65,6 +65,45 @@ database.
   shows from `lg`, and the controls sit closer together at phone width. Everything keeps its
   name for a screen reader, and the status pill's tooltip still names the machine.
 
+### Signatures the agent proposes are in force at once; reject what you disagree with
+
+- **Nothing waits for a Confirm any more.** A signature the Set or design chat proposes, one a
+  draft carries, one carried to a new version of the profile, and a Set version's override are
+  in force the moment they are written: every shot on the profile is checked against them, the
+  Curve check shows them, and every conversation is told them. Before this, a freshly designed
+  profile had no checks until you pressed Confirm on each expectation. **Reject** takes one out
+  (with the reason the proposing chat is told), **Restore** puts a rejected one back, and the
+  tier can be moved on anything not rejected. A carried expectation whose phase the new version
+  no longer has is still shown, can be rejected, and is never in force. The agent cannot put
+  back what you rejected: `propose_signature` refuses an expectation you rejected, and one
+  already in force, saying which. The Confirm and Confirm all buttons and the routes behind them
+  are gone, and so is Withdraw (Reject is how an override leaves); a newer override for the same
+  expectation replaces the one in force and is shown as no longer in force, which is not a rejection,
+  and a version has one override at a time. Rejecting an expectation takes its override out of
+  force with it; restoring the expectation does not bring the override back. New routes: `POST /api/signature-expectations/{id}/restore`
+  and `POST /api/sets/{id}/signature-overrides/{id}/restore`.
+- **The Signature card** lists what is in force, each row with its tier and Reject, and keeps
+  the rejected ones under **Rejected (n)**, each with Restore; its header counts what is in
+  force. The Set page's signature line counts what is in force too. A shot's signature state now
+  reads `in force, 6 expectations` where it read `confirmed, 6 expectations`.
+- **Signatures that were waiting before this update are shown as not in force.** An expectation
+  or override that was proposed and never answered is no longer a check: the card lists it as
+  "not in force" (from before signatures were in force at once) with Reject only, the header
+  counts it apart from what is in force, and a conversation that proposed it is told it is not
+  in force. To put the old ones in force instead, stop the app and run, in this order,
+  `UPDATE signature_expectations SET status = 'confirmed' WHERE status = 'proposed' AND
+  needs_phase = 0;` then `UPDATE set_version_signature_overrides SET status = 'confirmed' WHERE
+  status = 'proposed' AND expectation_id IN (SELECT id FROM signature_expectations WHERE status =
+  'confirmed');` (a row that needs a new phase stays out of force either way). Or, per row, press
+  Reject on the card and then Restore: that puts an old expectation in force. The agent cannot do
+  it for you, since `propose_signature` refuses an expectation that is already there.
+- **Reset the chat prompts if you edited them.** The chat's rules about a shot's Checks now say
+  that an expectation is in force at once and checks every shot until the person rejects it. A
+  prompt you edited keeps your text on boot and so keeps the old wording ("the person
+  confirmed it"): reset `chat-set`, `chat-general`, `chat-design` and `review` on the Prompts
+  page (Settings → Prompts) to read the new rule, or change that paragraph yourself. The
+  signature itself reaches an edited prompt either way, since it travels in the opening context.
+
 ### Cup flow
 
 - **The flow the scale sees is drawn and used first wherever there is a scale.** The shot chart
@@ -202,7 +241,7 @@ database.
   percentage), and whether the expression's own comparison held: no number beside a claim was
   typed by the model, and the summary carries none either. A claim whose comparison fails, or
   whose evidence could not be measured at all, is kept and marked as not borne out by the
-  numbers. It also answers each free-text expectation of the confirmed signature (held or not,
+  numbers. It also answers each free-text expectation of the signature in force (held or not,
   where, in a sentence), and, when the Set version was filed with a prediction, says how the shot
   moved against it (as predicted, partly, against, not shown). It predicts no taste, advises
   nothing and proposes nothing: the output has no field for any of them. Its input is the shot
@@ -238,13 +277,13 @@ database.
   `entries`, `verdict`, `summary`, `reason`, `review_id` and `in_force_id`, the id claims are
   answered through: the newest finished review, which `review_id`, the newest attempt, differs
   from while one runs). **The Curve check is only the deterministic checks and warnings**
-  (`ramp: early yield +1`): the confirmed signature's failed critical and important expectations
+  (`ramp: early yield +1`): the signature in force's failed critical and important expectations
   and the universal warnings, worked out whenever the shot is read, on every shot and with no
   click. A review never changes it, and a free-text expectation is not part of it: it reads
   "checked by the review". **The review is only what the model wrote**: its faults in the same
   `phase: fault +N` form, built by code from claims you did not reject (a failed free-text
   expectation, red for critical and amber for important, and a claim that carries a fault word,
-  amber), `As intended` (a confirmed signature and no fault), `No faults`, `Reviewing…` or
+  amber), `As intended` (a signature in force and no fault), `No faults`, `Reviewing…` or
   `Failed to run`. A claim the numbers do not bear out is **not a fault**: it is left out of the
   badge, its "+N" and the sort, stays in the Review box marked as before, and still reaches the
   chat unless you reject it. The shots list sorts by either: `?sort=check` (failures by severity and where
@@ -264,8 +303,8 @@ database.
   and the open row draw the **same boxes in the same order**: Your judgement (open), the
   version's prediction (it does not fold), Curves, Review and Curve check (folded), and each box's
   state is remembered in your browser. The Curve check box is always there: with nothing to list
-  it says one plain line ("Nothing to check: no confirmed signature and no warnings", or "No
-  check failed" when a confirmed signature held). Folding Curves draws no chart and asks for no curve. The **Review
+  it says one plain line ("Nothing to check: no signature in force and no warnings", or "No
+  check failed" when a signature in force held). Folding Curves draws no chart and asks for no curve. The **Review
   box** opens on the verdict, built by code in the badge's words and colour, then the model's
   summary, labelled as its words, the free-text expectations it answered, the stance on the
   prediction, and the claims each with its numbers and **Reject**; "N rejected · show" brings the
@@ -293,55 +332,50 @@ database.
   `little yield`; scale or puck flow over is `fast flow`, under `slow flow`; pressure `high
   pressure` or `low pressure`; `temperature`; `unstable`; `cut short`; a whole-shot yield `over
   target` or `under target`); a measure whose failing side has no word is refused when proposed.
-- **An agent proposes, a person confirms, once per profile version.** The Set chat and the
+- **An agent proposes, and it is in force until a person rejects it.** The Set chat and the
   design chat get `propose_signature`, the Set chat also `propose_signature_override` (a
-  different limit for one confirmed measure on this version, for example "at most 0.20" on a
-  coarser bean), and `draft_profile` can carry expectations with the draft. All of them write
-  **proposed** rows only. Nothing proposed or rejected is ever a check, in a badge, in the shots
-  list's order or in what any agent reads: only a conversation's own proposals are shown to it,
-  marked proposed, not confirmed, and a rejection reaches the conversation that proposed it with
-  the reason the person gave. `propose_signature` refuses an expectation already proposed or
-  confirmed on the profile version, and a profile whose different phase names are the same in
-  their first 24 bytes. A new profile version is proposed the previous version's confirmed
-  expectations (one click to confirm each, or all at once); one whose phase no longer exists is
-  marked as needing a new phase and cannot be confirmed, and nothing is matched by position or
-  by guess. New routes: `GET /api/profile-versions/{id}/signature`, `POST
-  /api/signature-expectations/{id}/confirm`, `/reject` (with an optional reason) and `/tier`,
-  `POST /api/profile-versions/{id}/signature/confirm-all`, and, for a Set version's override,
-  `GET /api/sets/{id}/versions/{id}/signature-overrides` with `POST
-  /api/sets/{id}/signature-overrides/{id}/confirm`, `/reject` and `/withdraw` (a person can take
-  back a confirmed override, after which a new one can be proposed). An override's limits are
+  different limit for one measure on this version, for example "at most 0.20" on a coarser
+  bean), and `draft_profile` can carry expectations with the draft. Nothing rejected is ever a
+  check, in a badge, in the shots list's order or in what any agent reads, and a rejection
+  reaches the conversation that proposed it with the reason the person gave.
+  `propose_signature` refuses an expectation already in force or rejected on the profile
+  version, and a profile whose different phase names are the same in their first 24 bytes. A new
+  profile version carries the previous version's expectations in force; one whose phase no
+  longer exists is marked as needing a new phase and is never in force, and nothing is matched
+  by position or by guess. Routes: `GET /api/profile-versions/{id}/signature`, `POST
+  /api/signature-expectations/{id}/reject` (with an optional reason) and `/tier`, and, for a Set
+  version's override, `GET /api/sets/{id}/versions/{id}/signature-overrides` with `POST
+  /api/sets/{id}/signature-overrides/{id}/reject`. An override's limits are
   also served as a person reads them (`limit_text`, `profile_limit_text`: "at most 20 % of
   target").
-- **Confirm a signature on the Profiles page.** Every profile version has a **Signature** card,
-  open when something waits for an answer. It lists the expectations in tier order with their
-  phase, sentence, fault word, kind (computed, phase reached, warning expected, checked by the
-  review) and status. A proposed one can be **confirmed**, **rejected** (with an optional
-  reason, which the proposing conversation is told) or moved to another tier, and **Confirm all**
-  answers every waiting one with one call. One carried from an earlier version says which, one
-  whose phase the version no longer has says **needs a new phase** and cannot be confirmed, and
-  who proposed one links to the conversation or the draft. A version nobody proposed anything
+- **The signature on the Profiles page.** Every profile version has a **Signature** card. It
+  lists the expectations in tier order with their phase, sentence, fault word and kind
+  (computed, phase reached, warning expected, checked by the review). One in force can be
+  **rejected** (with an optional reason, which the proposing conversation is told) or moved to
+  another tier. One carried from an earlier version says which, one whose phase the version no
+  longer has says **needs a new phase** and is not in force, and who proposed one links to the
+  conversation or the draft. A version nobody proposed anything
   for says so and links to the chats of the Sets that brew it. An expression cannot be edited
   by hand: ask the agent to propose it again.
 - **The shot page shows Checks, and the Review badge is coloured by them.** The Warnings card is
   now **Curve check**, a box below the review: red, amber and grey lines as the
   server orders them, each with its value against its limit ("117.2 % of target, at most 15 % of
   target"), with the held ones and the ones only a review can check folded away under their
-  count. A shot read without a confirmed signature says so and links to the version's Signature
+  count. A shot read without a signature in force says so and links to the version's Signature
   card. The Curve check badge takes its colour from its first entry: red, amber, or grey for a
   warning the signature expects (a turbo's fast flow). The shot page and the shots list's open
   row show them all.
 - **The Set page shows its profile's signature.** The Now brewing card says whether the current
-  version's profile has a signature (confirmed with N expectations, proposed, or none) and links
-  to it. A Set version's overrides show on that version ("ramp: at most 20 % of target here
-  (profile: at most 15 % of target)"), where a proposed one is confirmed or rejected and a
-  confirmed one withdrawn.
+  version's profile has a signature in force (N expectations, with how many were rejected, or
+  none) and links to it. A Set version's overrides show on that version ("ramp: at most 20 % of
+  target here (profile: at most 15 % of target)"), where one in force can be rejected and a
+  rejected one restored.
 - **The Warnings group is now Checks.** A shot's checks are one ordered list: failed critical
   expectations (red), failed important ones (amber), the universal warnings nothing marks as
   expected (amber), expected warnings (grey), what could not be measured (with its reason:
   neither held nor failed), then what held, the context expectations and the free text. A failed
   expectation supersedes the universal warning that says the same thing about the same phase. The
-  catalogue's base item carries the signature's state (`signature: confirmed, 6 expectations` or
+  catalogue's base item carries the signature's state (`signature: in force, 6 expectations` or
   `signature: read without a signature`), what failed and what could not be measured; the new
   extended item carries the rest. `GET /api/shots/{id}/fields` serves the ordered list
   (`checks`, with each check's tier, phase, fault word, sentence, value and unit, the effective
@@ -349,22 +383,23 @@ database.
   target"), whether it held and why it is absent; a share is served as a percentage, and a phase
   that must begin has no number) and the signature's state, and its `warnings` and `badge`, like the shots
   list's, now come from the same list, so the Review column reads `ramp: early yield +3` in red
-  for the constructed lever shot once its signature is confirmed, and as before (amber) without
+  for the constructed lever shot once its signature is proposed, and as before (amber) without
   one. A shot's checks are worked out whenever it is read and nothing about them is stored, so
-  confirming an expectation or an override changes every shot at once with no re-derivation. They
+  proposing, rejecting or restoring an expectation or an override changes every shot at once with
+  no re-derivation. They
   are worked out from the samples and phases already stored (a log is never parsed on a read) and
   remembered per process until something they depend on changes, so the shots list sorted by
   Review stays fast with hundreds of signed shots. A
   tier you set on the Warnings item follows it to Checks.
-- **The Set chat is told what its profile is for.** The confirmed signature is in the profile block
+- **The Set chat is told what its profile is for.** The signature in force is in the profile block
   at the very top of the opening context, one line per expectation with the tier first, and the
-  Set version's own confirmed limit beside the profile's; a profile version with none says so and
+  Set version's own limit in force beside the profile's; a profile version with none says so and
   asks the chat to propose one when the conversation turns to how its shots behave. Each shot
   in the opening context costs about 10 tokens more (the signature's state line), the base
   glossary about 130 more and the new rules paragraph about 130 more per request, and the extended
   meanings about 80 more once per answer that reads one; a six-expectation signature is 150 to
   300 tokens in the profile block. `get_profile` serves the
-  confirmed signature. A prompt you edited keeps your text on boot and so keeps the old wording
+  signature in force. A prompt you edited keeps your text on boot and so keeps the old wording
   about warnings: reset `chat-set`, `chat-general`, `chat-design` and `review` on the Prompts page
   to read "the warnings among the Checks lines" and the new paragraph about checks against a
   signature, or add them yourself. The signature reaches an edited prompt either way, since it

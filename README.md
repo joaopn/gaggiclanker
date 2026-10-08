@@ -731,8 +731,8 @@ page): no chat tool, batch, timer or sync step starts one, and a shot you labell
 that never parsed is never reviewed. The model is handed the shot's own information with its
 checks first (every line the shot tools can show, whatever you set under Settings → Shot
 information, except your judgement, the note typed on the machine and your label), the Set
-version's recipe and its prediction, the free-text expectations of the profile's confirmed
-signature, the profile the shot brewed, the detected shot style, and the knowledge rules and
+version's recipe and its prediction, the free-text expectations of the profile's signature in
+force, the profile the shot brewed, the detected shot style, and the knowledge rules and
 reference excerpts its telemetry selects. It is never shown your judgement, another shot, an
 earlier review or a conversation.
 
@@ -745,7 +745,7 @@ the kind of channel and whether the expression's own comparison held, so a figur
 is one the same expression gives on `POST /api/shots/{id}/evaluate`, never one the model typed.
 A claim whose comparison fails, or whose evidence could not be measured at all, is kept and
 marked as not borne out by the numbers. The review also answers each free-text expectation of
-the confirmed signature (held or not, and where), and, when the Set version was filed with a
+the signature in force (held or not, and where), and, when the Set version was filed with a
 prediction, says how the shot moved against it (as predicted, partly, against, not shown) plus
 a one-sentence summary for you.
 
@@ -759,14 +759,14 @@ current one.
 
 **Two columns, two jobs.** The shots table's **Curve check** column is only the deterministic
 checks and warnings (`ramp: early yield +1`), worked out whenever the shot is read from its
-stored numbers, its filing and its profile version's confirmed signature, on every shot and with
+stored numbers, its filing and its profile version's signature in force, on every shot and with
 no click; a review never changes it, and a free-text expectation is not part of it ("checked by
 the review"). Its colour is the first entry's severity and it sorts by it. The **Review** column
 is only what the model wrote: a Review button, `Reviewing…`, a grey `Failed to run` with Retry, or
 the model's faults in the same `phase: fault +N` form, built by code from claims you did not
 reject and whose numbers bear them out (a failed free-text expectation, red for critical and amber
 for important, and a claim that carries a fault word, amber; a claim the numbers do not bear out
-stays in the Review box, marked, and in what the chat is told, but not in the badge or its "+N"), or a green `As intended` (a confirmed signature and no fault)
+stays in the Review box, marked, and in what the chat is told, but not in the badge or its "+N"), or a green `As intended` (a signature in force and no fault)
 or a grey `No faults`; nothing for a shot nobody can review. It sorts faults first, then
 `Failed to run`, `Reviewing…`, `No faults`, shots not reviewed yet, `As intended`, and last the
 shots nobody can review. Pressing a reviewed badge opens the row with its Review box expanded.
@@ -1008,10 +1008,11 @@ second at 80 % of the peak pressure; a turbo profile does it on purpose). They
 are worked out when a shot is read, so refiling a shot changes them, and each is
 a fact to weigh against what the profile is for, never a verdict, unless the
 profile says what it is for: an agent proposes a **signature** for a profile
-version (expectations per phase, critical, important or context), you confirm it
-once, and from then on every shot is checked against it, so the cup being full
+version (expectations per phase, critical, important or context); it is in force at
+once, unless you reject it, and every shot is checked against it from then on, so the cup being full
 before the decline reads `ramp: early yield` in red and a turbo's fast flow reads
-grey, as expected. Nothing proposed counts until you confirm it. There is no
+grey, as expected. You can reject any expectation (and restore it later), and a
+signature carried to a new version of the profile stays in force. There is no
 score and no grade on any number. The curve comes as about sixty rows
 (`chatCurvePoints`) chosen to keep its shape, and it always keeps the moments
 the diagnostics are about: each phase's start and end, peak pressure, first
@@ -1175,7 +1176,8 @@ starts `gaggiclanker mcp` as a child process over stdio, pointed at the same
 the tools the chat has with any other provider — the Set's tools inside a Set's
 folder, the archive's in General. That server is internal to the chat: it opens the database and nothing
 else — no network endpoint, no machine connection, no setting — and like every
-tool it only reads the archive or proposes something a person confirms. The API
+tool it only reads the archive or proposes something a person answers (a signature is in
+force until they reject it). The API
 providers call the same tools directly and never start it.
 
 The command stays available so the provider can spawn it, and it deliberately

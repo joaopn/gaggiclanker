@@ -93,7 +93,9 @@ SET_INSTRUCTIONS = (
     "get_set gives the experiment so far, and list_set_shots searches the shots "
     "outside that context on their base information; get_shot_full reads one shot in full. "
     "Cite shots by id and knowledge passages by their heading_path. Tools whose names begin "
-    "with propose_, draft_ or record_ create something the user must confirm; "
+    "with propose_, draft_ or record_ create something the user answers: most wait for "
+    "the user's confirmation, while a signature you propose with propose_signature is in "
+    "force at once until the user rejects it; "
     "nothing here writes to the espresso machine."
 )
 

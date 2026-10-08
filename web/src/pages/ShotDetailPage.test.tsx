@@ -354,7 +354,7 @@ describe("ShotDetailPage by phase", () => {
     ]);
   });
 
-  it("shows the Curve check of a shot read against a confirmed signature, red first, below the review", async () => {
+  it("shows the Curve check of a shot read against a signature in force, red first, below the review", async () => {
     getShotFields.mockResolvedValue(leverSignedFields);
     renderShot();
 
@@ -385,7 +385,7 @@ describe("ShotDetailPage by phase", () => {
     await screen.findAllByTestId("phase-row");
     expect(screen.getByText("Curve check")).toBeInTheDocument();
     expect(screen.getByTestId("check-none")).toHaveTextContent(
-      "Nothing to check: no confirmed signature and no warnings.",
+      "Nothing to check: no signature in force and no warnings.",
     );
     expect(screen.queryByText(/all clear|no problems/i)).not.toBeInTheDocument();
   });

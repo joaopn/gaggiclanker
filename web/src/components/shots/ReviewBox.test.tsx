@@ -684,7 +684,7 @@ describe("the verdict line, the box's first", () => {
     const reviewed = screen.getByTestId("review-reviewed");
     expect(reviewed.firstElementChild).toBe(screen.getByTestId("review-verdict"));
     expect(screen.getByTestId("review-verdict-why")).toHaveTextContent(
-      "the model found no fault; the profile has no confirmed signature to hold the shot to",
+      "the model found no fault; the profile has no signature in force to hold the shot to",
     );
     const summary = screen.getByTestId("review-summary-block");
     expect(summary).toHaveTextContent("The model's summary: A clean lever shot.");
@@ -714,7 +714,7 @@ describe("the verdict line, the box's first", () => {
       <ReviewBox shotId={129} reviews={[review({ id: 1 })]} review={cases[1][1]} span={NO_SPAN} />,
     );
     expect(screen.getByTestId("review-verdict-badge")).toHaveTextContent("As intended");
-    expect(screen.getByTestId("review-verdict-why")).toHaveTextContent("confirmed signature");
+    expect(screen.getByTestId("review-verdict-why")).toHaveTextContent("signature in force");
   });
 });
 

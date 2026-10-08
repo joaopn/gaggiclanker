@@ -42,13 +42,13 @@ describe("ShotChecksCard", () => {
     );
     expect(screen.getByText("Curve check")).toBeInTheDocument();
     expect(screen.getByTestId("check-none")).toHaveTextContent(
-      "Nothing to check: no confirmed signature and no warnings.",
+      "Nothing to check: no signature in force and no warnings.",
     );
     expect(screen.queryByTestId("check-list")).toBeNull();
     expect(screen.queryByText(/all clear|no problems|passed/i)).toBeNull();
   });
 
-  it("says no check failed when a confirmed signature held, and waits for the checks to be known", () => {
+  it("says no check failed when a signature in force held, and waits for the checks to be known", () => {
     const held = leverSignedFields.checks.items.filter((check) => check.status === "held");
     const { container, rerender } = renderWithQueryClient(
       <ShotChecksCard checks={held} signature={leverSignedFields.signature} />,

@@ -441,8 +441,8 @@ function FailedReview({ review }: { review: ShotReview }) {
 
 /** What a verdict means, in a sentence: why the badge says what it says. */
 const VERDICT_WORDS = {
-  no_faults: "the model found no fault; the profile has no confirmed signature to hold the shot to",
-  as_intended: "the model found no fault against the profile's confirmed signature",
+  no_faults: "the model found no fault; the profile has no signature in force to hold the shot to",
+  as_intended: "the model found no fault against the profile's signature in force",
 } as const;
 
 /**

@@ -74,7 +74,7 @@ will be written.)
 **The chat adds a caller, not writes, and its tools cannot reach the machine.**
 Every tool declares a permission class, and there are exactly two: `read`, and
 `propose`, which writes to gaggiclanker — a Set version, a profile draft, an
-unconfirmed insight, a proposed grade — and to nothing else. The registry refuses to register a
+unconfirmed insight, a proposed grade, and a profile's signature (in force until a person rejects it) — and to nothing else. The registry refuses to register a
 tool declaring anything else, so the chat is handed the same set whichever
 provider runs it — including `claude_code`, whose tool loop reaches the registry
 through the stdio MCP server it spawns — and no setting widens it. Nor does a

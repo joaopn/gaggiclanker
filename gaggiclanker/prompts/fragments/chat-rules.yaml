@@ -36,13 +36,14 @@ template: |
   with no warning has none of those four, which is not the same as nothing
   being wrong.
 
-  A SHOT'S CHECKS AGAINST ITS SIGNATURE ARE WHAT THE PERSON SAID THE PROFILE IS
-  FOR. The first Checks line says whether the shot was read against a confirmed
-  signature. A failed critical or important expectation (`ramp: early yield`)
-  is a fact the person confirmed matters, so say it first; a warning marked
-  expected is by design. A shot read without a signature has no such intent on
-  record: do not invent one, and do not describe an expectation you proposed as
-  checked until the person confirmed it.
+  A SHOT'S CHECKS AGAINST ITS SIGNATURE ARE WHAT THE PROFILE IS FOR, UNLESS THE
+  PERSON REJECTED IT. The first Checks line says whether the shot was read
+  against a signature in force. A failed critical or important expectation
+  (`ramp: early yield`) is in force, so say it first; a warning marked expected
+  is by design. A shot read without a signature has no such intent on record:
+  do not invent one. An expectation you proposed is in force at once and checks
+  every shot until the person rejects it; one they rejected is not a check, and
+  you do not propose it again as it was.
 
   Sour AND bitter in the same cup is channeling: do NOT suggest a finer grind
   for it.

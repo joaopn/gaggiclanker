@@ -20,11 +20,11 @@ import { cn } from "@/lib/utils";
  * the model's answer to it.
  *
  * A check that could not be measured (no scale) is listed with its reason and counts neither
- * way. A shot read without a confirmed signature says so, and the line links to the profile
- * version's Signature card, where it is confirmed. The box is always there once the shot's
+ * way. A shot read without a signature in force says so, and the line links to the profile
+ * version's Signature card, where what is in force (and what was rejected) is. The box is always there once the shot's
  * checks are known (it is one of the five); with nothing to list it says one plain line and no
- * more: "Nothing to check: no confirmed signature and no warnings", or "No check failed" when a
- * confirmed signature is held against it. A missing warning is not a verdict.
+ * more: "Nothing to check: no signature in force and no warnings", or "No check failed" when a
+ * signature in force is held against it. A missing warning is not a verdict.
  */
 
 type Color = "red" | "amber" | "grey" | null;
@@ -235,14 +235,14 @@ export function ShotChecksCard({
       collapsible={onOpenChange !== undefined}
       open={open}
       onOpenChange={onOpenChange}
-      description="What this shot was held against, by numbers alone. A warning is checked without knowing what the profile is for; a confirmed signature can mark one as expected (grey), and a failed expectation is red (critical) or amber (important)."
+      description="What this shot was held against, by numbers alone. A warning is checked without knowing what the profile is for; a signature in force can mark one as expected (grey), and a failed expectation is red (critical) or amber (important)."
     >
       <div className="space-y-3" data-testid="shot-checks">
         <SignatureLine signature={signature} />
         {shown.length === 0 ? (
           <p className="text-muted-foreground text-sm" data-testid="check-none">
             {signature.confirmed === 0
-              ? "Nothing to check: no confirmed signature and no warnings."
+              ? "Nothing to check: no signature in force and no warnings."
               : "No check failed."}
           </p>
         ) : null}
@@ -291,7 +291,7 @@ export function ShotChecksCard({
   );
 }
 
-/** Whether a confirmed signature was read, and where to confirm one when none was. */
+/** Whether a signature in force was read, and where to see the profile's when none was. */
 function SignatureLine({ signature }: { signature: ShotSignatureState }) {
   const link = signature.profile_version_id;
   if (link === null) return null;
@@ -304,7 +304,7 @@ function SignatureLine({ signature }: { signature: ShotSignatureState }) {
         data-testid="signature-link"
         to={signatureHref(link)}
       >
-        {unsigned ? "Confirm one on the profile" : signature.text}
+        {unsigned ? "See the profile's signature" : signature.text}
       </Link>
       .
     </p>
