@@ -29,7 +29,7 @@ has forgotten how it works.
          │                                   │
          ▼                                   ▼
   ┌──────────────────────────────────────────────────────────┐
-  │ db/  repositories, migrations, backup, restore, reset    │
+  │ db/  repositories, schema, backup, restore, reset        │
   │      one SQLite file under DATA_DIR                      │
   └──────────────────────────────────────────────────────────┘
 ```
@@ -82,7 +82,7 @@ the archive tells them apart by the profile a shot was brewed with.
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, the diagnostics (numbers only: resistance, adherence, the summary statistics), the per-phase metrics and the shot's facts (`phase_metrics.py`: what ended each phase, the cup at its end, the flows, the water, the profile's phases never begun, the first fast-flow window) the warnings (`warnings.py`: one pure function from a shot's stored numbers, its filed version's target yield and its profile's phase names) and the signature (`signature.py`: the fault-word table, the validation a proposal passes and the one function that merges a shot's warnings with the results of its profile version's confirmed expectations into an ordered list of checks, red, amber, grey, held, context, free text). Pure functions over bytes and numbers. There is no score and no band anywhere: a number carries no grade. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and six gated write methods: five profile operations and `start_flush` — nothing else. Only profiles are ever stored on the machine; `start_flush` (`POST /api/device/flush`, the top bar's Flush button, shown only with the switch on) runs the machine's own flush once, in brew mode with nothing running, and is not audited. `save_profile`, `delete_profile`, `select_profile`, `favorite_profile` and `unfavorite_profile` are reached only by the board's write phase, inside a sync (switch on): the save of a profile version the machine does not hold, the removal of a superseded profile or one that is switched off (guarded by a fresh load), the select and favourite that move the star and the selection to the profile that replaces another, and the favourite flag that matches a profile's home-screen setting; a standalone select has no route (only `scripts/profile_gate.py` selects). `drafts/machine.py` holds the re-read, the no-duplicate save and the guarded removal. Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
-| `db/` | Repositories — the only code that writes SQL — plus migrations, the backup download and the restore (stage, check, swap at shutdown) and the reset (a marker, finished at the next boot before the database opens). |
+| `db/` | Repositories — the only code that writes SQL — plus the schema file, the backup download and the restore (stage, check, swap at shutdown) and the reset (a marker, finished at the next boot before the database opens). |
 | `infra/` | Request ids, the error envelope, the SSE bus, the task registry, the auth guard's neighbours. |
 | `auth/` | Optional single-user auth: the policy, the password hashing, the ASGI guard. |
 
@@ -122,7 +122,7 @@ means drafting or editing the profile.
 so four queries repeat that one sentence: the version select in
 `db/repos/sets.py`, the similar-Sets query in `starting/similar.py`, and the
 `profile_temperature_c` column of `v_set_versions` and `v_shots` (defined in
-`0013`, rebuilt in `0014`, `0016` and `0027`). Repetition of a rule is drift waiting to
+`db/schema.sql`). Repetition of a rule is drift waiting to
 happen, so `tests/sets/test_profile_temperature.py` pins every copy to the
 Python one: it stores a table of profile documents — the field missing, null,
 0, negative, an integer, a float, and shapes only a hand-edited row could hold
@@ -132,21 +132,20 @@ only while the version has no shots and no grade, because one typed afterwards
 would grade itself. The outcome, somebody's grade of that prediction, needs a
 prediction and a shot labelled Keep or Improve before it can be recorded, and
 can be changed or cleared for ever after. `set_versions` carries all three and
-the comment on it in `0005_sets.sql` says which is which. **A version has a
-name and nothing else of the kind**: `version_major`.`version_minor` (migration
-0027) is what every screen, prompt and tool shows ("v1.1"), an identifier like a
+the comment on it in `db/schema.sql` says which is which. **A version has a
+name and nothing else of the kind**: `version_major`.`version_minor` is what every screen, prompt and tool shows ("v1.1"), an identifier like a
 tag, numbered by `_insert_version` in the insert's own transaction from one rule,
 `domain/sets.py::change_is_major` — the person's answer if given, else a
 different profile (another entry of the profile list, `db/repos/profile_identity.py`;
 not a newer version of the same profile) is major and a pushed draft is minor —
 with `db/repos/version_names.py` serving the next names a button promises from
-the same arithmetic. There is no ordinal (migration 0042 dropped it): the order
+the same arithmetic. There is no ordinal: the order
 versions were made in is `created_at` (the row id only breaks a tie), and the
 version the Set is on is `sets.current_version_id`, written by every append and
 by a revert. A minor is numbered from the current version's major, so after going
 back to v1.2 it is v1.3 (or the next free minor).
 
-A Set itself carries two booleans, and `0022_set_automatch_and_archived.sql`
+A Set itself carries two booleans, and the comment beside them in `db/schema.sql`
 says why they are two: `archived` is the lifecycle — the bag is finished with,
 and an archived Set receives no shots — while `automatch` is whether the
 matcher may file a shot under this Set. Any number of Sets carry it. A shot is
@@ -275,17 +274,18 @@ or by shutdown — is recorded as an error saying it was stopped, never as `ok`,
 and a rebuild that fails part-way leaves no connection at all, so the next save
 tries again.
 
-**Migrations are forward-only and immutable once shipped.** Each file is applied
-inside a transaction that also carries its `schema_migrations` row and its
-sha256, so a failure half-way leaves nothing behind. Changing the SQL a shipped
-migration runs is a hard error at boot, because otherwise two installs quietly
-end up with different schemas and nobody finds out until a query returns the
-wrong answer. The sha256 is of the statements, not the bytes: comments and
-whitespace are left out, so documenting a shipped file never stops an archive
-from starting. And the refusal is never meant to be met: a test pins every
-shipped file's statement checksum, so a real edit fails the test suite instead
-of somebody's boot. An archive is only ever lost to a migration that needs to
-drop data, and that migration says so.
+**The schema is one file, and a database made by another version is refused.**
+`db/schema.sql` builds the whole database and the few rows a new one starts with (the one
+machine, the flavour picks); a database that does not exist yet gets it in one transaction.
+There is no migration chain. An existing database is compared with what the file builds before
+anything opens it: tables with their columns and definitions, indexes, foreign keys, views and
+triggers, by structure rather than text, so editing a comment or the layout of the file never
+refuses a database. A difference stops the app with one plain line and a log event naming what
+differs, and the file is never altered or deleted. Changing the schema is an edit to the file with
+a breaking note in the changelog: the person deletes their database (Settings → System → Reset
+does it), and a backup restores only into a version with the same database, by the same
+comparison. Data that has to move without a wipe is derived data, rebuilt at boot from what is
+stored (`DERIVATION_VERSION`), not a schema step.
 
 **The LLM call does not run inside the HTTP request.** The route opens a
 `running` row, hands the work to the app's `TaskRegistry` and answers 202; the
@@ -343,14 +343,14 @@ confirmed general ones whose scope `scope_matches` its attributes) behind the
 opening context, `get_insights` and the Set page's `?set_id=` list, and another
 Set's insights are never in it. Add is the confirm switch, Dismiss its own route,
 and neither is a tool. The agent-written insights that existed were placed once at
-boot by `InsightPlacementBuilder` (marker table from migration 0039), which asks
+boot by `InsightPlacementBuilder` (marker table `insight_placement_build`), which asks
 the live `scope_matches` and the Set's filed shots rather than repeating the rule
 in SQL.
 
-**An insight rests on versions, and an agent's removal is a proposal.** Migration
-0040 adds `rests_on_json` (each version the insight rests on with the outcome it
-had when written, never rewritten), `replaces_id`, `replaces_text` and `replaced` to
-`knowledge_insights`, and a table `set_insight_deletions` shaped like the outcome
+**An insight rests on versions, and an agent's removal is a proposal.** The
+`knowledge_insights` carries `rests_on_json` (each version the insight rests on with the
+outcome it had when written, never rewritten), `replaces_id`, `replaces_text` and `replaced`,
+and a table `set_insight_deletions` shaped like the outcome
 proposals (one waiting row per insight by a partial unique index; a newer one marks
 the waiting one `superseded`; `thread_id` cascades, so the card lives and dies with
 its conversation; `insight_text` keeps the words the card showed). `InsightRow`
@@ -379,7 +379,7 @@ button; a registry task named `patterns`, a 202 with the `running` row, boot mar
 `running` row `interrupted`, a provider failure is a stored `failed` run). Its input
 (`build_patterns_input`) is the confirmed insights of every Set that is not being designed,
 ordered by Set then insight id, the confirmed general insights and the dismissed proposals, and is
-stored verbatim on the run (`pattern_runs`, migration 0041). `filter_proposals` drops, before
+stored verbatim on the run (`pattern_runs`). `filter_proposals` drops, before
 storage and counting each reason on the run, a proposal that rests on fewer than two Sets, names
 an insight (or a replaced general insight) it was not given, uses `profile_style`, or has a
 scope that fails the live `scope_matches` over `set_attributes` for any source Set. A run writes
@@ -560,7 +560,7 @@ and no tool a model calls starts a write). See [`safety-layers.md`](safety-layer
 ## What runs where
 
 * **In the lifespan, before any request**: the configuration check (which
-  refuses to start while a retired credential variable is set), migrations, prompt
+  refuses to start while a retired credential variable is set), the schema check, prompt
   and rule seeding, boot reconciliation, then the services, then the background
   tasks. Shutdown is the reverse, and it cancels the task registry
   before closing the database so nothing is mid-write when the file is released.
@@ -573,7 +573,7 @@ and no tool a model calls starts a write). See [`safety-layers.md`](safety-layer
 
 A real app, a real SQLite file, a temp `DATA_DIR` per test, `httpx.ASGITransport`
 in process. No in-memory database and no mocked repositories, because WAL,
-foreign keys, `VACUUM INTO` and the migration ledger only exist on a real file.
+foreign keys and `VACUUM INTO` only exist on a real file.
 The device layer runs against `gaggiclanker/device/fake.py`, a real server that
 reproduces the firmware's quirks; the opt-in `-m simulator` suite then runs the
 same code against the actual firmware compiled natively.

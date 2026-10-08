@@ -4,11 +4,34 @@ Notable changes per release. Dates are the day the release was cut.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the versions are [semantic](https://semver.org/). Until 1.0 the database schema
-may change between releases; migrations are forward-only and run at boot, so an
-upgrade is `docker compose pull && docker compose up -d` — but take a backup
-first (Settings → System → Backup & restore), because there is no down-migration.
+may change between releases. There are no migrations: the schema is one file, an app started
+on a database made by a different version refuses to start (it never changes or deletes the
+database), and a release that changes the database says so here and needs the database deleted
+(Settings → System → Reset, or delete the file). Take a backup first (Settings → System →
+Backup & restore); a backup restores only into the version that made it, or one with the same
+database.
 
 ## [Unreleased]
+
+### Breaking: the schema is one file, and the migration chain is gone
+
+- The database is built from a single file, `gaggiclanker/db/schema.sql`. **A database made by
+  the previous version keeps working unchanged**: the same structure is recognised, and the
+  old `schema_migrations` table is dropped at the first start. Start the previous version once
+  before updating, so its last migrations have run: a database that never got the last one
+  (0050, which drops the judgement's grind) has a different structure and is refused.
+- From now on an update that changes the database says so in this changelog and needs the
+  database deleted (Settings → System → Reset, or delete the file). An app started on a database
+  with a different structure stops with one line, "The database at … was made by a different
+  version of gaggiclanker. Delete it to start fresh", and does not write to the database or
+  delete it (SQLite's read-only open may rebuild the `-shm` index beside a database a crash
+  left a log for). `gaggiclanker import` and `gaggiclanker mcp` refuse the same way.
+- A backup restores only into the version that made it, or one with the same database. Restore
+  refuses any other file ("This backup was made by a different version of gaggiclanker, with a
+  different database. Restore it with the version that made it."); files from older versions
+  are no longer migrated at the next start. The backup's manifest records a fingerprint of the
+  schema in place of the migration number. The restore refusal codes `RESTORE_NEWER_VERSION` and
+  `RESTORE_MIGRATION_DIFFERS` are replaced by `RESTORE_SCHEMA_DIFFERS`.
 
 ### Backup and restore
 
@@ -17,8 +40,8 @@ first (Settings → System → Backup & restore), because there is no down-migra
   restores from one you upload. *Include API keys and tokens* (off by default) puts the LLM
   API key, the Anthropic key, the Claude Code token and the session signing key in the file in
   plain text; the sign-in user and password hash are always in it, and sessions never are.
-- **Restore** checks the file first and changes nothing (SQLite, integrity, tables, a migration
-  history this version knows; newer or altered is refused, older is migrated at the next start),
+- **Restore** checks the file first and changes nothing (SQLite, integrity, tables, the same
+  database structure as this version),
   shows what the file holds beside what is there now, and on confirm replaces everything,
   switches Writes to the machine off, signs everyone out, keeps this app's own keys where the file
   has none, and restarts the app (Docker's `restart: unless-stopped` brings it back; under

@@ -633,9 +633,9 @@ from `POST /api/auth/login`).
 **Restore from file.** *Restore from file…* takes a file you uploaded, never one kept on the
 server: a gaggiclanker download, or a plain copy of a gaggiclanker database. The server checks
 it first and changes nothing: it must be a SQLite file that passes its integrity check, hold
-the app's tables, have a migration history this version knows (a file from a newer version,
-or with an altered migration, is refused; an older one is accepted and migrated at the next
-start), and be under 1 GB. The page then shows what the file holds beside what the app holds
+the app's tables, have the same database structure as this version (a backup restores only
+into the version that made it, or one with the same database; any other file is refused), and
+be under 1 GB. The page then shows what the file holds beside what the app holds
 now. Confirming:
 
 - **replaces everything** in the app with the file;
@@ -1175,7 +1175,7 @@ tool it only reads the archive or proposes something a person confirms. The API
 providers call the same tools directly and never start it.
 
 The command stays available so the provider can spawn it, and it deliberately
-runs no migrations, because a second process migrating a database the
+never creates the database, because a second process creating the schema of a database the
 application is also using is a race: start the server once first. There are no
 device-write tools and no switch that adds any: the machine is written only by
 gaggiclanker's own HTTP API, behind buttons a person presses.
@@ -1292,6 +1292,6 @@ set it again, so do that first if the box is reachable from outside.
 
 [`docs/architecture.md`](docs/architecture.md) holds the conventions — the
 response envelope, pydantic on every database write, repro-first bug fixing,
-the migration rules and the list of device gotchas worth knowing before
+the schema rule and the list of device gotchas worth knowing before
 touching the sync code. [`CHANGELOG.md`](CHANGELOG.md) has what landed in each
 release.

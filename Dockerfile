@@ -162,7 +162,7 @@ VOLUME ["/app/data"]
 
 # Python rather than curl, so the image needs no extra package. It reads PORT
 # from the environment so overriding the port does not break the check.
-# start-period covers the first-boot migrations; three retries at 30 s means a
+# start-period covers the first boot (the schema is created and the prompts seeded); three retries at 30 s means a
 # wedged process is reported unhealthy inside two minutes.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8042'), timeout=4).status == 200 else 1)"
