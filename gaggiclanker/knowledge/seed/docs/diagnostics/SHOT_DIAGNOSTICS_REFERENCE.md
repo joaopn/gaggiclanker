@@ -87,7 +87,17 @@ Brew quality indicators.
 | `pressure_auc_bar_s` | bar·s | Area under pressure curve (total energy delivered) |
 | `pressure_slope_brew_bar_s` | bar/s | Pressure trend during brew |
 | `flow_slope_brew_ml_s2` | ml/s² | Flow trend during brew |
-| `flow_avg_brew_ml_s` | ml/s | Average flow during brew |
+| `flow_avg_brew_ml_s` | ml/s | Average puck flow during brew (the pump model's estimate) |
+| `cup_flow_avg_brew_g_s` | g/s | Average cup flow during brew, as the scale measured it (null without a scale) |
+
+**Cup flow and puck flow are different signals.** Cup flow is what reached the cup, worked
+out from the scale's weight; it integrates back to the cup weight. Puck flow is an estimate
+from the pump model: in steady extraction it runs at about the pump flow, well above the cup
+flow, and it does not track when coffee reaches the cup (on most shots it starts seconds
+after the cup has begun to fill, on a long pre-infusion much earlier). The
+summary's `cup_first_drip_s` is when the cup's weight first rose half a gram above its first
+reading (null without a scale); `time_to_first_drip_s` is the first puck flow. A shot with a
+scale is read by its cup numbers; one without has only the puck estimates.
 
 ### Weight / Yield Diagnostics
 

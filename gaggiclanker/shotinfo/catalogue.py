@@ -883,7 +883,7 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
         "Phases": (
             "One line per phase, headed by the phase: `phase 2 · ramp: duration 5.0 s; ended by "
             "Duration; …`, with only the values that phase has. The pressure lines need a "
-            "pressure sensor; the scale lines (cup, scale flow) need a scale."
+            "pressure sensor; the scale lines (cup weight, cup flow) need a scale."
         ),
         REVIEW_GROUP: (
             "What the newest finished review of the shot said: a model's claims about this one "
@@ -957,7 +957,7 @@ def _items() -> tuple[Item, ...]:
                 f"filed version's target yield), under target (below "
                 f"{UNDER_TARGET_SHARE * 100:.0f} %), both needing a scale; skipped (the shot "
                 "stopped on its weight or pumped-water target before a phase began); fast flow "
-                f"(scale flow averaged over {FAST_FLOW_WINDOW_MS / 1000:.1f} s above "
+                f"(cup flow averaged over {FAST_FLOW_WINDOW_MS / 1000:.1f} s above "
                 f"{FAST_FLOW_SCALE_FLOW_G_S:.1f} g/s at {FAST_FLOW_PRESSURE_SHARE * 100:.0f} % "
                 "of peak pressure or more; needs a scale and a pressure sensor). One the "
                 "signature expects is grey; otherwise it is a fact to weigh, not a verdict."
@@ -2319,10 +2319,11 @@ def _channels(group: str) -> tuple[Item, ...]:
         ),
         (
             "curve_scale_flow",
-            "Scale flow",
+            "Cup flow",
             Channel("vf", "cup flow (g/s)", flow, "scale"),
             "excluded",
-            "How fast the scale's weight rose, in g/s. Absent without a scale.",
+            "How fast coffee reached the cup, in g/s, from the scale's weight (read at zero "
+            "where the log has it below). Absent without a scale.",
         ),
         (
             "curve_estimated_weight",

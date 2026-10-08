@@ -900,7 +900,7 @@ RENDERED = [
     ({"channel": "pressure", "op": "integral"}, "integral of pressure over the whole shot"),
     (
         {"channel": "scale_flow", "op": "jitter", "window": {"phase_number": 2}},
-        "jitter of scale flow (the spread of its sample-to-sample changes) over phase 2",
+        "jitter of cup flow (the spread of its sample-to-sample changes) over phase 2",
     ),
     ({"channel": "pressure", "op": "duration"}, "duration of the whole shot"),
     (
@@ -926,7 +926,7 @@ RENDERED = [
             "window": {"from": {"anchor": "first_drip", "offset_s": 2}, "to": "shot_end"},
         },
         "highest value of the machine's estimate of puck flow in the span from 2 s after the "
-        "first drip to the end of the shot",
+        "first puck flow to the end of the shot",
     ),
     (
         {

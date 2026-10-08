@@ -15,6 +15,7 @@ target gets them, from the same function.
 from __future__ import annotations
 
 import dataclasses
+import json
 from pathlib import Path
 
 import pytest
@@ -222,7 +223,12 @@ async def _facts_with_summary(
 ) -> ShotFacts:
     shot_id = shot_id if shot_id is not None else await _ingest_lever(seeded)
     (facts,) = await load_shots(seeded, [shot_id])
-    blob = {"summary": _FLOWING_SUMMARY, "has_pressure": has_pressure}
+    # No scale, so the first drip read is the puck flow's (with one it is the cup's).
+    blob = {
+        "summary": _FLOWING_SUMMARY,
+        "diagnostics": {"scale_connected": False},
+        "has_pressure": has_pressure,
+    }
     return dataclasses.replace(
         facts,
         shot=facts.shot.model_copy(
@@ -257,3 +263,67 @@ async def test_style_detection_does_not_call_a_shot_turbo_from_puck_flow_it_neve
     assert verdict.style == "unknown"
     assert "flow" not in readable_summary(blind)
     assert "pressure" not in readable_summary(blind)
+
+
+async def _ingest_slog(db: Database, slog: object, device_id: str) -> int:
+    derived = derive_shot(
+        slog,  # type: ignore[arg-type]
+        slog_to_raw(slog),  # type: ignore[arg-type]
+        device_id=device_id,
+    )
+    return await ShotsRepository(db).insert(derived.shot, derived.samples)
+
+
+async def test_shot_129_is_a_slow_first_drip_by_the_cup_the_model_is_shown(
+    seeded: Database,
+) -> None:
+    """Puck flow starts at 6.8 s (neither fast nor slow); the cup is first filled at 19.25 s."""
+    from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog
+    from tests.shotinfo.conftest import SHOT_129
+
+    slog = shot_export_to_slog(ShotExport.model_validate(json.loads(SHOT_129.read_text())))
+    shot_id = await _ingest_slog(seeded, slog, "000129")
+    (facts,) = await load_shots(seeded, [shot_id])
+
+    assert facts.summary_value("flow", "time_to_first_drip_s") == 6.8
+    assert facts.summary_value("flow", "cup_first_drip_s") == 19.25
+    tokens = signal_tokens(facts, UNKNOWN)
+    assert "first_drip:slow" in tokens
+    assert "first_drip:fast" not in tokens
+
+
+async def test_shot_196_reads_its_first_drip_from_the_cup_with_a_scale_and_the_puck_without(
+    seeded: Database,
+) -> None:
+    slog = parse_slog((SLOGS[0]).read_bytes())
+    assert SLOGS[0].stem.startswith("shot_196")
+    with_scale = await _ingest_slog(seeded, slog, "000196")
+    # Weights and cup flow zeroed, the connection flag left set.
+    bare = dataclasses.replace(
+        slog, samples=[s.model_copy(update={"v": 0.0, "vf": 0.0}) for s in slog.samples]
+    )
+    without = await _ingest_slog(seeded, bare, "000197")
+    (scale_facts, bare_facts) = await load_shots(seeded, [with_scale, without])
+
+    assert "first_drip:slow" in signal_tokens(scale_facts, UNKNOWN)  # the cup's 12.0 s
+    assert "scale:absent" not in signal_tokens(scale_facts, UNKNOWN)
+    # Without a scale it is the puck estimate (16.25 s) and the shot is said to have no scale,
+    # though the firmware's connection flag was set.
+    assert bare_facts.shot.scale_connected is True
+    tokens = signal_tokens(bare_facts, UNKNOWN)
+    assert "scale:absent" in tokens
+    assert "first_drip:slow" in tokens
+
+
+async def test_a_scale_shot_whose_connection_flag_is_cleared_is_not_without_a_scale(
+    seeded: Database,
+) -> None:
+    slog = parse_slog(SLOGS[0].read_bytes())
+    cleared = dataclasses.replace(
+        slog, samples=[s.model_copy(update={"si": (s.si or 0) & ~0x0004}) for s in slog.samples]
+    )
+    shot_id = await _ingest_slog(seeded, cleared, "000198")
+    (facts,) = await load_shots(seeded, [shot_id])
+
+    assert facts.shot.scale_connected is False
+    assert "scale:absent" not in signal_tokens(facts, UNKNOWN)

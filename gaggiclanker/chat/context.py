@@ -872,7 +872,7 @@ def _averages(version: SetVersionRow, trend: SetTrendVersion | None) -> list[str
             None if trend.avg_rating is None else f"{trend.avg_rating:.1f}",
         ),
         (
-            "first drip",
+            "first puck flow",
             over.first_drip_s,
             None if trend.avg_first_drip_s is None else f"{trend.avg_first_drip_s:.1f} s",
         ),

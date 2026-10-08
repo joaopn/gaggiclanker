@@ -970,7 +970,7 @@ def _averages_of(line: str) -> dict[str, float]:
     """The numbers in a line's "averages over …" part, by label."""
     part = line.split("averages over ", 1)[1].split(" · ")[0].split(": ", 1)[1]
     found: dict[str, float] = {}
-    for label in ("shot time", "yield", "rating", "first drip"):
+    for label in ("shot time", "yield", "rating", "first puck flow"):
         match = re.search(rf"{label} (-?\d+\.\d)", part)
         if match is not None:
             found[label] = float(match.group(1))
@@ -996,7 +996,7 @@ async def test_each_ledger_line_carries_the_means_get_set_serves(experiment: Exp
             "yield": round(version.avg_yield_g or 0, 1),
             "ratio": round(version.avg_ratio or 0, 2),
             "rating": round(version.avg_rating or 0, 1),
-            "first drip": round(version.avg_first_drip_s or 0, 1),
+            "first puck flow": round(version.avg_first_drip_s or 0, 1),
         }, line
 
 
@@ -1009,7 +1009,7 @@ async def test_the_ledger_averages_count_only_the_shots_that_count(experiment: E
 
     assert "2 shots (0 Keep, 1 Improve, 1 Discard)" in line
     assert _averages_of(line)["shot time"] == 36.0
-    assert _averages_of(line)["first drip"] == 8.0
+    assert _averages_of(line)["first puck flow"] == 8.0
     assert "averages over 1 counted shot:" in line
 
 
@@ -1127,7 +1127,7 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_sa
     assert "10 shots" in line
     assert "shot time 31.5 s (over 7)" in line
     assert "rating 4.0 (over 5)" in line
-    assert "first drip 7.0 s (over 7)" in line
+    assert "first puck flow 7.0 s (over 7)" in line
     assert "averages over counted shots:" in line
 
 
@@ -1645,14 +1645,14 @@ async def test_the_proposing_conversation_sees_its_proposals_as_proposed_and_is_
     waiting = await opening_context(db, scope, thread_id=mine)
     assert "SIGNATURE EXPECTATIONS YOU PROPOSED IN THIS CONVERSATION" in waiting
     assert "the Hammer begins (proposed, not confirmed: the person has not answered" in waiting
-    assert "highest value of scale flow" not in waiting, "another conversation's is not told"
+    assert "highest value of cup flow" not in waiting, "another conversation's is not told"
     # It is not asked to propose one while its own proposals wait: it is told they wait.
     assert "You proposed 2 expectations for it: waiting for the person" in waiting
     assert "propose one with propose_signature" not in waiting
     # Nobody else is told: another thread sees only its own, a context with no thread nothing.
     elsewhere = await opening_context(db, scope, thread_id=other)
     assert "the Hammer begins" not in elsewhere
-    assert "highest value of scale flow in the Pressurise" in elsewhere
+    assert "highest value of cup flow in the Pressurise" in elsewhere
     assert "You proposed 1 expectation for it: waiting for the person" in elsewhere
     assert "YOU PROPOSED IN THIS CONVERSATION" not in await opening_context(db, scope)
 

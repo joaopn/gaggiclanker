@@ -352,11 +352,17 @@ def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
     tokens: set[str] = {f"style:{style.style}"}
     tokens.update(f"fault:{fault_token(warning.fault)}" for warning in facts.warnings)
 
-    if not facts.shot.scale_connected:
+    if not facts.has_scale:
         tokens.add("scale:absent")
 
     flow = readable_summary(facts).get("flow") or {}
-    first_drip = flow.get("time_to_first_drip_s")
+    # The first drip the model is shown: the cup's when the shot had a scale, the puck flow's
+    # estimate otherwise, so the rule picked and the number read are one figure.
+    first_drip = (
+        facts.summary_value("flow", "cup_first_drip_s")
+        if facts.has_scale
+        else flow.get("time_to_first_drip_s")
+    )
     if isinstance(first_drip, int | float):
         if first_drip < 3:
             tokens.add("first_drip:fast")
@@ -465,16 +471,19 @@ def _render_language() -> str:
             "You attach expressions; the server works out the numbers on this shot. An expression "
             "is a JSON object with `channel`, `op` and `window`, and optionally `relative_to`, "
             "`compare`, and for the time operations `threshold` (and `direction` for `time_to`).",
-            f"channels: {', '.join(CHANNELS)}. The cup weight and the scale flow come from the "
-            "scale alone; the puck flow, pump flow, water pumped and resistance are the "
-            "machine's estimates; the target channels are what the profile commanded. A channel "
-            "the shot did not record is reported as not measured, never as zero.",
+            f"channels: {', '.join(CHANNELS)}. The cup weight and the cup flow (`scale_flow`: "
+            "what reached the cup, measured by the scale) come from the scale alone; the puck "
+            "flow, pump flow, water pumped and resistance are the machine's estimates. Puck flow "
+            "is an estimate from the pump model that stays near the pump flow; it does not track "
+            "when coffee reaches the cup and can be seconds later or, on a long pre-infusion, "
+            "much earlier. The target channels are what the profile commanded. A channel the shot "
+            "did not record is reported as not measured, never as zero.",
             f"operations: {', '.join(OPS)}. `gained` reads the cup weight or the water pumped "
             "over one phase. `slope` is per second. `time_to`, `time_above` and `time_below` "
             "need a `threshold`.",
             'window: `{}` for the whole shot, `{"phase": "<a phase this shot logged>"}`, or a '
             'span `{"from": <anchor>, "to": <anchor>}`. An anchor is "shot_start", "shot_end", '
-            '"first_drip", "peak_pressure", `{"phase_start": "<phase>"}`, '
+            '"first_drip" (the first puck flow), "peak_pressure", `{"phase_start": "<phase>"}`, '
             '`{"phase_end": "<phase>"}` or `{"at_s": <seconds>}`, each optionally with '
             '"offset_s".',
             '`relative_to`: "target_yield", "dose" or "final_weight" turns the value into a '

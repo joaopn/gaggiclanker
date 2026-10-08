@@ -1009,7 +1009,7 @@ def evaluate_in_phase(expr: Expression, data: ShotData, position: int) -> Result
 
 _CHANNEL_WORDS: Mapping[str, str] = {
     "cup_weight": "cup weight",
-    "scale_flow": "scale flow",
+    "scale_flow": "cup flow",
     "puck_flow": "the machine's estimate of puck flow",
     "pump_flow": "the machine's estimate of pump flow",
     "target_flow": "the flow the profile commanded",
@@ -1055,7 +1055,7 @@ def _anchor_words(anchor: Anchor) -> str:
     words = {
         "shot_start": "the start of the shot",
         "shot_end": "the end of the shot",
-        "first_drip": "the first drip",
+        "first_drip": "the first puck flow",
         "peak_pressure": "the moment of peak pressure",
     }.get(base)
     if words is None:

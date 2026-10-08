@@ -29,6 +29,18 @@ The BT scale communicates via BLE, and the connection can produce spurious data 
 
 ---
 
+## Cup Flow vs Puck Flow
+
+With a scale there are two flows. **Cup flow** is what reached the cup, measured by the
+scale. **Puck flow** is the pump model's estimate of water through the puck: it runs at about
+the pump flow in steady extraction (well above the cup flow), and it does not track when
+coffee reaches the cup: on most shots it starts seconds after the cup has begun to fill, on
+a long pre-infusion it starts much earlier. The first drip of a shot with a scale is the
+cup's; the first puck flow is only a rough guide to it, and the only one a shot with no scale
+has.
+
+---
+
 ## Flow Meter vs Cup Weight During Bloom
 
 The flow meter measures water **entering the group head**, not **exiting the basket**. During bloom, these diverge significantly.
