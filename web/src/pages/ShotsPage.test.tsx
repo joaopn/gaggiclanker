@@ -16,6 +16,7 @@ import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { BOXES_KEY } from "@/lib/shotBoxes";
 import { SHOT_SERIES } from "@/lib/shotChart";
+import { LEGACY_SHOT_CURVES_KEY, SHOT_CURVES_KEY } from "@/lib/shotCurves";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { openAllBoxes, openBoxes } from "@/test/boxFixtures";
 import { checksBlock, claim, reviewBlock } from "@/test/claimFixtures";
@@ -493,10 +494,28 @@ describe("ShotsPage curve chooser", () => {
     return screen.findByTestId("curves-menu");
   }
 
-  async function setup() {
+  // Most of these tests are about the chooser, not the default: they start from a stored choice
+  // of pressure and puck flow, which the column drew before the cup flow could be chosen.
+  const PUCK_CHOICE = JSON.stringify({ shown: ["pressure", "puckFlow"], colors: {} });
+  // A shot that logged zeros for its scale, as a board with no scale does.
+  const withoutScale: ShotSamplesData = {
+    ...samplesData,
+    samples: samplesData.samples.map((row) => ({ ...row, v: 0, vf: 0 })),
+  };
+
+  async function setup(
+    samples: ShotSamplesData = samplesData,
+    stored: string | null = PUCK_CHOICE,
+    hasScale = true,
+  ) {
     const user = setupUser();
+    if (stored !== null) window.localStorage.setItem(SHOT_CURVES_KEY, stored);
+    getShotSamples.mockResolvedValue(samples);
     getShots.mockResolvedValue(
-      listData([shot(), shot({ id: 2, device_id: "000102" })], { total: 2 }),
+      listData(
+        [shot({ has_scale: hasScale }), shot({ id: 2, device_id: "000102", has_scale: hasScale })],
+        { total: 2 },
+      ),
     );
     const view = renderWithQueryClient(<ShotsPage />);
     await listed();
@@ -504,30 +523,77 @@ describe("ShotsPage curve chooser", () => {
     return { user, view };
   }
 
-  it("draws pressure and puck flow in chart-1 and chart-2 until told otherwise", async () => {
-    await setup();
+  it("draws pressure and cup flow until told otherwise, the cup flow in its own colour", async () => {
+    await setup(samplesData, null);
+
+    expect(await drawn()).toEqual([
+      ["pressure", "cupFlow"],
+      ["pressure", "cupFlow"],
+    ]);
+    for (const row of screen.getAllByTestId("shot-sparkline")) {
+      expect(row.querySelector('path[data-series="cupFlow"]')).toHaveAttribute(
+        "stroke",
+        "var(--chart-6)",
+      );
+    }
+  });
+
+  it("draws a shot with no scale by its pressure alone, with no cup flow and no placeholder", async () => {
+    await setup(withoutScale, null, false);
+
+    expect(await drawn()).toEqual([["pressure"], ["pressure"]]);
+    expect(screen.queryByTestId("sparkline-placeholder")).not.toBeInTheDocument();
+  });
+
+  it("takes the server's word that a shot had no scale, not the columns it logged", async () => {
+    // The columns hold a cup flow, but the row says the shot had no scale: none is drawn.
+    await setup(samplesData, null, false);
+
+    expect(await drawn()).toEqual([["pressure"], ["pressure"]]);
+  });
+
+  it("draws puck flow as puck flow on a shot that had a scale, whatever else is chosen", async () => {
+    await setup(samplesData);
 
     expect(await drawn()).toEqual([
       ["pressure", "puckFlow"],
       ["pressure", "puckFlow"],
     ]);
-    for (const row of screen.getAllByTestId("shot-sparkline")) {
-      expect(row.querySelector('path[data-series="pressure"]')).toHaveAttribute(
-        "stroke",
-        "var(--chart-1)",
-      );
-      expect(row.querySelector('path[data-series="puckFlow"]')).toHaveAttribute(
-        "stroke",
-        "var(--chart-2)",
-      );
-    }
   });
 
-  it("lists the nine series, the puck flow one by its label", async () => {
+  it("adds the cup flow once to a choice remembered from before, and lets it be removed", async () => {
+    window.localStorage.setItem(
+      LEGACY_SHOT_CURVES_KEY,
+      JSON.stringify({ shown: ["pressure", "puckFlow"], colors: {} }),
+    );
+    const { user, view } = await setup(samplesData, null);
+
+    expect(await drawn()).toEqual([
+      ["pressure", "cupFlow", "puckFlow"],
+      ["pressure", "cupFlow", "puckFlow"],
+    ]);
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByRole("checkbox", { name: "Cup flow" }));
+    expect(await drawn()).toEqual([
+      ["pressure", "puckFlow"],
+      ["pressure", "puckFlow"],
+    ]);
+
+    view.unmount();
+    cleanup();
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    expect(await drawn()).toEqual([
+      ["pressure", "puckFlow"],
+      ["pressure", "puckFlow"],
+    ]);
+  });
+
+  it("lists the ten series, the puck flow one by its label", async () => {
     const { user } = await setup();
     const menu = await openMenu(user);
 
-    expect(within(menu).getAllByRole("checkbox")).toHaveLength(9);
+    expect(within(menu).getAllByRole("checkbox")).toHaveLength(10);
     expect(within(menu).getByRole("checkbox", { name: "Puck flow" })).toBeChecked();
     expect(within(menu).getByRole("checkbox", { name: "Weight" })).not.toBeChecked();
   });
@@ -642,7 +708,7 @@ describe("ShotsPage curve chooser", () => {
   });
 
   it("will not hide the last shown curve, and Reset puts the default back", async () => {
-    const { user } = await setup();
+    const { user } = await setup(samplesData, null);
     await drawn();
     const menu = await openMenu(user);
     const reset = within(menu).getByTestId("reset-curves");
@@ -654,7 +720,7 @@ describe("ShotsPage curve chooser", () => {
 
     await user.click(within(menu).getByRole("checkbox", { name: "Weight" }));
     await user.click(within(menu).getByRole("checkbox", { name: "Pressure" }));
-    await user.click(within(menu).getByRole("checkbox", { name: "Puck flow" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Cup flow" }));
     // Weight alone is left, and its box is the one that cannot be unticked.
     expect(within(menu).getByRole("checkbox", { name: "Weight" })).toBeDisabled();
     expect(await drawn()).toEqual([["weight"], ["weight"]]);
@@ -662,8 +728,8 @@ describe("ShotsPage curve chooser", () => {
     expect(reset).toBeEnabled();
     await user.click(reset);
     expect(await drawn()).toEqual([
-      ["pressure", "puckFlow"],
-      ["pressure", "puckFlow"],
+      ["pressure", "cupFlow"],
+      ["pressure", "cupFlow"],
     ]);
     expect(within(menu).getByRole("checkbox", { name: "Weight" })).not.toBeDisabled();
     // The recolour went too: back to the series' own colour.
@@ -674,7 +740,7 @@ describe("ShotsPage curve chooser", () => {
   });
 
   it("treats a colour picked and equal to the default as the default", async () => {
-    const { user } = await setup();
+    const { user } = await setup(samplesData, null);
     const menu = await openMenu(user);
 
     await user.click(within(menu).getByRole("button", { name: "Colour of Pressure" }));
@@ -686,7 +752,7 @@ describe("ShotsPage curve chooser", () => {
     const { user } = await setup();
     const menu = await openMenu(user);
     await user.click(within(menu).getByRole("checkbox", { name: "Temperature" }));
-    await user.click(within(menu).getByRole("checkbox", { name: "Flow" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Pump flow" }));
 
     const labels = within(menu)
       .getAllByRole("checkbox")
@@ -708,7 +774,7 @@ describe("ShotsPage curve chooser", () => {
     await user.click(swatch);
     expect(palette).not.toHaveAttribute("hidden");
     expect(swatch).toHaveAttribute("aria-expanded", "true");
-    expect(within(menu).getAllByRole("button", { name: /for Weight$/ })).toHaveLength(7);
+    expect(within(menu).getAllByRole("button", { name: /for Weight$/ })).toHaveLength(8);
   });
 
   it("closes the palette on a pick and puts focus back on the row's swatch, by keyboard", async () => {
@@ -801,7 +867,7 @@ describe("ShotsPage curve chooser", () => {
     const { user } = await setup();
     await drawn();
     const menu = await openMenu(user);
-    await user.click(within(menu).getByRole("checkbox", { name: "Flow" }));
+    await user.click(within(menu).getByRole("checkbox", { name: "Pump flow" }));
     await user.click(within(menu).getByRole("checkbox", { name: "Target flow" }));
     await drawn();
 
@@ -829,7 +895,7 @@ describe("ShotsPage curve chooser", () => {
     };
 
     async function renderChosen(shown: string[]) {
-      window.localStorage.setItem("shots.curves.v1", JSON.stringify({ shown, colors: {} }));
+      window.localStorage.setItem(SHOT_CURVES_KEY, JSON.stringify({ shown, colors: {} }));
       getShotSamples.mockResolvedValue(noScale);
       getShots.mockResolvedValue(listData([shot()]));
       renderWithQueryClient(<ShotsPage />);

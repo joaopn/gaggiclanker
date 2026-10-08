@@ -3,13 +3,18 @@ import { useMemo } from "react";
 import { Line } from "react-chartjs-2";
 import type { ShotListRow, ShotSampleRow } from "@/api/types";
 import { chartPalette, crosshairPlugin } from "@/components/charts/chartSetup";
+import { compareFlow, reading } from "@/lib/shotChart";
 import { profileName } from "@/lib/shots";
 import { useTheme } from "@/lib/theme";
 
 export type CompareSeries = { shot: ShotListRow; samples: ShotSampleRow[] };
 
 /**
- * Pressure and puck flow for up to three shots on one time axis.
+ * Pressure and flow for up to three shots on one time axis.
+ *
+ * The flow is the cup flow when every shot drawn had a scale, so the shots are compared on
+ * what reached the cup; otherwise the puck flow, which every shot with a pressure sensor has.
+ * Mixing the two in one picture would compare different things.
  *
  * One colour per *shot*, not per signal: the question is "how do these two
  * differ", so the eye has to group by shot first. Pressure is solid and flow
@@ -26,12 +31,15 @@ export function CompareChart({
 
   const { data, options } = useMemo(() => {
     const palette = chartPalette(isDark);
+    const flow = compareFlow(series.map(({ shot }) => shot.has_scale));
+    const flowField = flow === "cup" ? "vf" : "pf";
     const datasets = series.flatMap(({ shot, samples }, index) => {
       const color = palette.series[index % palette.series.length];
-      const points = (field: "cp" | "pf") =>
-        samples
-          .filter((sample) => typeof sample[field] === "number")
-          .map((sample) => ({ x: sample.t_ms / 1000, y: sample[field] as number }));
+      const points = (field: "cp" | "pf" | "vf") =>
+        samples.flatMap((sample) => {
+          const y = reading(sample, field);
+          return y === null ? [] : [{ x: sample.t_ms / 1000, y }];
+        });
       return [
         {
           label: `${profileName(shot)} — pressure`,
@@ -42,8 +50,8 @@ export function CompareChart({
           tension: 0,
         },
         {
-          label: `${profileName(shot)} — puck flow`,
-          data: points("pf"),
+          label: `${profileName(shot)} — ${flow} flow`,
+          data: points(flowField),
           borderColor: color,
           borderWidth: 1,
           borderDash: [4, 3],
@@ -72,7 +80,11 @@ export function CompareChart({
           },
           y: {
             beginAtZero: true,
-            title: { display: true, text: "bar · ml/s", color: palette.text },
+            title: {
+              display: true,
+              text: flow === "cup" ? "bar · g/s" : "bar · ml/s",
+              color: palette.text,
+            },
             ticks: { color: palette.text },
             grid: { color: palette.grid },
           },

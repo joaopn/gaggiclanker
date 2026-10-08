@@ -697,7 +697,9 @@ function Cell({
     case "profile":
       return <span className="block truncate text-sm">{profileName(shot)}</span>;
     case "curve":
-      return shot.quarantined ? null : <ShotSparkline shotId={shot.id} curves={curves} />;
+      return shot.quarantined ? null : (
+        <ShotSparkline shotId={shot.id} curves={curves} hasScale={shot.has_scale} />
+      );
     case "duration":
       return <span className="text-sm tabular-nums">{formatSeconds(shot.duration_ms)}</span>;
     case "yield":

@@ -29,7 +29,7 @@ describe("CheckBadge", () => {
 
     const lines = (screen.getByTestId("check-badge-wrap").getAttribute("title") ?? "").split("\n");
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toMatch(/^ramp: fast flow — The scale flow averaged 4\.00 g\/s/);
+    expect(lines[0]).toMatch(/^ramp: fast flow — The cup flow averaged 4\.00 g\/s/);
     expect(lines[1]).toMatch(/^decline: skipped — The shot stopped on its volumetric target/);
     expect(lines[2]).toMatch(/^Shot: over target — The final weight, 42\.2 g/);
     // Read once: the badge is described by the hidden sentence, and carries no

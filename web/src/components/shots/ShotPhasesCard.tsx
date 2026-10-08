@@ -47,9 +47,11 @@ const COLUMNS: Column[] = [
     lead: ["phase_start"],
     more: ["phase_duration"],
   },
+  // What reached the cup comes before everything the machine only estimates or measures
+  // at the pump: it is the flow the shot is about. Absent without a scale, as before.
   {
-    id: "scale-flow",
-    heading: "Scale flow",
+    id: "cup-flow",
+    heading: "Cup flow",
     lead: ["phase_scale_flow"],
     more: ["phase_scale_flow_peak"],
   },
@@ -183,7 +185,7 @@ function PhaseRow({ phase, columns }: { phase: ShotPhaseFields; columns: Column[
   );
 }
 
-/** The columns the shot has anything for: a machine with no scale has no scale-flow column. */
+/** The columns the shot has anything for: a machine with no scale has no cup-flow column. */
 function usedColumns(phases: ShotPhaseFields[]): Column[] {
   return COLUMNS.filter((column) =>
     phases.some((phase) =>

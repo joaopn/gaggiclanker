@@ -21,7 +21,7 @@ export type SeriesSpec = {
   unit: string;
   /** Targets are drawn dashed: what was commanded, against what happened. */
   dashed?: boolean;
-  /** Which of the chart palette's five slots this takes. */
+  /** Which of the chart palette's six slots this takes. */
   color: number;
   /** Only meaningful on a machine with a pressure sensor (Pro boards). */
   needsPressure?: boolean;
@@ -30,11 +30,12 @@ export type SeriesSpec = {
 };
 
 /**
- * The nine series a shot page can draw, in the order the toggles list them.
+ * The ten series a shot page can draw, in the order the toggles list them.
  *
- * Four pairs of actual-against-target plus puck flow, which is the one signal
- * with no target: it is *estimated* from the pump, not measured, and reading it
- * against the commanded flow is how a channel shows up.
+ * Four pairs of actual-against-target plus two flows with no target. Cup flow is
+ * what reached the cup, measured by the scale. Puck flow is *estimated* from the
+ * pump model, runs at about the pump flow and starts seconds after coffee is in
+ * the cup; reading it against the commanded flow is how a channel shows up.
  */
 export const SHOT_SERIES: SeriesSpec[] = [
   {
@@ -57,8 +58,17 @@ export const SHOT_SERIES: SeriesSpec[] = [
     needsPressure: true,
   },
   {
+    key: "cupFlow",
+    label: "Cup flow",
+    field: "vf",
+    axis: "y",
+    unit: "g/s",
+    color: 5,
+    needsScale: true,
+  },
+  {
     key: "flow",
-    label: "Flow",
+    label: "Pump flow",
     field: "fl",
     axis: "y",
     unit: "ml/s",
@@ -114,7 +124,7 @@ export const SHOT_SERIES: SeriesSpec[] = [
   },
 ];
 
-/** What a fresh shot page shows: enough to read the shot, not all nine lines. */
+/** What a fresh page shows for a shot without a scale: enough to read it, not every line. */
 export const DEFAULT_SERIES: string[] = [
   "pressure",
   "targetPressure",
@@ -123,6 +133,45 @@ export const DEFAULT_SERIES: string[] = [
   "weight",
   "temperature",
 ];
+
+/** What a fresh page shows for a shot with a scale: the cup is the flow that matters. */
+export const SCALE_DEFAULT_SERIES: string[] = [
+  "pressure",
+  "targetPressure",
+  "cupFlow",
+  "weight",
+  "temperature",
+];
+
+/**
+ * Which flow an overlay of several shots draws: the cup's only where every shot had a scale,
+ * since mixing the two in one picture would compare different things.
+ */
+export function compareFlow(hasScale: boolean[]): "cup" | "puck" {
+  return hasScale.length > 0 && hasScale.every(Boolean) ? "cup" : "puck";
+}
+
+/**
+ * The series a fresh page draws for a shot: the scale default when it had a scale, else the
+ * other, and never a series the shot has no data for (a disabled toggle is never on).
+ *
+ * Whether the shot had a scale is the server's answer (`has_scale` on the shot); it is not
+ * worked out here from the samples, which for a board without a scale are zeros.
+ */
+export function defaultSeries(hasScale: boolean, present: Set<string>): string[] {
+  return (hasScale ? SCALE_DEFAULT_SERIES : DEFAULT_SERIES).filter((key) => present.has(key));
+}
+
+/**
+ * A sample's reading of a field. Cup flow is read at zero where the log has it
+ * below: a scale cannot lose coffee into the machine, and the old tare glitch
+ * logged -20 g/s on the first samples of some shots.
+ */
+export function reading(sample: ShotSampleRow, field: keyof ShotSampleRow): number | null {
+  const value = sample[field];
+  if (typeof value !== "number") return null;
+  return field === "vf" ? Math.max(value, 0) : value;
+}
 
 export type SeriesPoint = { x: number; y: number };
 
@@ -148,17 +197,19 @@ export function buildShotSeries(
   for (const sample of samples) {
     const x = sample.t_ms / 1000;
     for (const series of built) {
-      const value = sample[series.spec.field];
-      if (typeof value === "number") series.points.push({ x, y: value });
+      const value = reading(sample, series.spec.field);
+      if (value !== null) series.points.push({ x, y: value });
     }
   }
   return built;
 }
 
 /** Whether a signal is present at all, so a toggle for it can be disabled. */
-export function availableSeries(samples: ShotSampleRow[]): Set<string> {
+export function availableSeries(samples: ShotSampleRow[], hasScale: boolean): Set<string> {
   const present = new Set<string>();
   for (const spec of SHOT_SERIES) {
+    // A board with no scale records weight and cup flow as zeros: they are not signals there.
+    if (spec.needsScale && !hasScale) continue;
     if (samples.some((sample) => typeof sample[spec.field] === "number")) present.add(spec.key);
   }
   return present;
@@ -196,8 +247,8 @@ type TimedPoint = [t: number, value: number];
 function fieldPoints(samples: ShotSampleRow[], field: keyof ShotSampleRow): TimedPoint[] {
   const points: TimedPoint[] = [];
   for (const sample of samples) {
-    const value = sample[field];
-    if (typeof value === "number") points.push([sample.t_ms, value]);
+    const value = reading(sample, field);
+    if (value !== null) points.push([sample.t_ms, value]);
   }
   return points;
 }
@@ -270,17 +321,23 @@ export function sparklineCurves(
   keys: readonly string[],
   width: number,
   height: number,
+  hasScale = true,
 ): SparklineCurve[] {
-  const drawn = SHOT_SERIES.filter((spec) => keys.includes(spec.key)).flatMap((spec) => {
+  const drawn = SHOT_SERIES.filter(
+    (spec) => keys.includes(spec.key) && (hasScale || !spec.needsScale),
+  ).flatMap((spec) => {
     const points = fieldPoints(samples, spec.field);
     const peak = points.reduce((most, [, value]) => Math.max(most, value), 0);
     return points.length >= 2 && peak > 0 ? [{ spec, points }] : [];
   });
 
+  // Cup flow (g/s) shares the flows' scale (ml/s): espresso is close enough to 1 g/ml that
+  // drawing them together reads honestly, and the unit stays in the tooltip.
+  const scaleOf = (unit: string) => (unit === "g/s" ? "ml/s" : unit);
   const scales = new Map<string, { low: number; high: number }>();
   for (const { spec, points } of drawn) {
     const celsius = spec.unit === "°C";
-    const scale = scales.get(spec.unit) ?? {
+    const scale = scales.get(scaleOf(spec.unit)) ?? {
       low: celsius ? Number.POSITIVE_INFINITY : 0,
       high: Number.NEGATIVE_INFINITY,
     };
@@ -288,11 +345,11 @@ export function sparklineCurves(
       scale.high = Math.max(scale.high, value);
       if (celsius) scale.low = Math.min(scale.low, value);
     }
-    scales.set(spec.unit, scale);
+    scales.set(scaleOf(spec.unit), scale);
   }
 
   return drawn.flatMap(({ spec, points }) => {
-    const scale = scales.get(spec.unit);
+    const scale = scales.get(scaleOf(spec.unit));
     if (!scale) return [];
     return [{ spec, d: polyline(points, scale.low, scale.high, width, height) }];
   });

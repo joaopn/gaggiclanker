@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { Link, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShotDetailData, ShotSamplesData } from "@/api/types";
@@ -224,17 +224,8 @@ describe("ShotDetailPage chart", () => {
     const drawn = within(series)
       .getAllByRole("listitem")
       .map((item) => item.getAttribute("data-series"));
-    // The four the chunk asks for, plus the targets that make them readable.
-    expect(drawn).toEqual(
-      expect.arrayContaining([
-        "pressure",
-        "targetPressure",
-        "flow",
-        "puckFlow",
-        "weight",
-        "temperature",
-      ]),
-    );
+    // The shot had a scale, so the cup flow is drawn and the pump and puck flows wait to be ticked.
+    expect(drawn).toEqual(["pressure", "targetPressure", "cupFlow", "weight", "temperature"]);
     expect(series).toHaveTextContent(`Pressure: ${SHOT_129_SAMPLE_COUNT} points`);
 
     const phases = screen.getByTestId("chart-phases");
@@ -267,6 +258,32 @@ describe("ShotDetailPage chart", () => {
 
     await screen.findByTestId("chart-series");
     expect(screen.getByRole("button", { name: /^Weight$/ })).toBeDisabled();
+  });
+
+  it("opens a shot without a scale on no weight and no cup flow, none of them on and disabled", async () => {
+    // The real shot with its scale columns zeroed, as a board without a scale logs them, and
+    // the server's answer that it had none; the connection flag is left set on purpose.
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, scale_connected: true, has_scale: false },
+    });
+    getShotSamples.mockResolvedValue(
+      samples(shot129Samples.samples.map((row) => ({ ...row, v: 0, vf: 0 }))),
+    );
+    renderShot();
+
+    const series = await screen.findByTestId("chart-series");
+    const drawn = within(series)
+      .getAllByRole("listitem")
+      .map((item) => item.getAttribute("data-series"));
+    expect(drawn).toEqual(["pressure", "targetPressure", "flow", "puckFlow", "temperature"]);
+    for (const name of ["Weight", "Cup flow"]) {
+      const toggle = screen.getByRole("button", { name: new RegExp(`^${name}$`) });
+      expect(toggle).toBeDisabled();
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+    }
+    // The page's own line says so too.
+    expect(screen.getByText("not connected")).toBeInTheDocument();
   });
 
   it("says so on a machine with no pressure sensor", async () => {
@@ -917,7 +934,7 @@ describe("ShotDetailPage judgement prefills", () => {
   it("leaves dose out empty without a scale, and dose in empty when the shot is unfiled", async () => {
     getShot.mockResolvedValue({
       ...shot129,
-      shot: { ...shot129.shot, scale_connected: false, volume_g: 36.4 },
+      shot: { ...shot129.shot, scale_connected: false, has_scale: false, volume_g: 36.4 },
       judgement: null,
       set_version: null,
     });
@@ -925,6 +942,31 @@ describe("ShotDetailPage judgement prefills", () => {
     const [doseIn, doseOut] = await doses();
     expect(doseIn).toHaveValue("");
     expect(doseOut).toHaveValue("");
+  });
+
+  it("prefills dose out by the server's has_scale, not the connection flag", async () => {
+    // The firmware sets the flag with no scale (a volumetric override) and a scale shot can lack it.
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, scale_connected: true, has_scale: false, volume_g: 36.4 },
+      judgement: null,
+      set_version: null,
+    });
+    const first = renderShot();
+    const [, flagOnly] = await doses();
+    expect(flagOnly).toHaveValue("");
+    first.unmount();
+    cleanup();
+
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, scale_connected: false, has_scale: true, volume_g: 36.4 },
+      judgement: null,
+      set_version: null,
+    });
+    renderShot();
+    const [, weighed] = await doses();
+    expect(weighed).toHaveValue("36.4");
   });
 
   it("lets what the person saved win over both", async () => {

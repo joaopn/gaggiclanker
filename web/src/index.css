@@ -35,6 +35,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
@@ -90,12 +91,22 @@
   --ring: #8a4b1f;
 
   /* Shot curves: pressure, flow, temperature, weight, target. Ordered so the
-     first three are the signals a Pro board actually measures. */
+     first three are the signals a Pro board actually measures. The sixth is the
+     cup flow's own, a gold checked against the other five in each theme with the
+     palette validator (OKLab delta E x 100; normal vision must be at least 15, colour
+     blindness at least 8; contrast 3:1 on the surface):
+       light #b08c0a  least normal 17.6 (Weight), least colour-blind 12.4 (Weight, protan),
+                      lightness, chroma and contrast PASS (3:1 on #fcfcfb)
+       dark  #a06604  least normal 17.3 (Pressure), least colour-blind 16.4 (Temperature,
+                      protan), lightness, chroma and contrast PASS (3:1 on the card #201b16).
+     The dark gold is darker than the other dark series on purpose: the lighter golds
+     (#d9b93a) sat within 10 of Pressure and Weight. */
   --chart-1: #8a4b1f;
   --chart-2: #3a6786;
   --chart-3: #a33526;
   --chart-4: #4a7239;
   --chart-5: #7a5ea8;
+  --chart-6: #b08c0a;
   /* Phase shading behind the shot curves. Translucent on purpose, and not
      --muted: that is an opaque surface colour, and a band in it hides every
      line it covers. The foreground at a few percent reads as a faint wash on
@@ -151,6 +162,7 @@
   --chart-3: #e08a7c;
   --chart-4: #92c081;
   --chart-5: #b7a3dd;
+  --chart-6: #a06604;
   --chart-band: #ece5db12;
   --chart-span: #5fd0c92e;
   --chart-span-edge: #5fd0c9;

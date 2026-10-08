@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   curveColour,
   DEFAULT_CURVES,
+  LEGACY_SHOT_CURVES_KEY,
   loadShotCurves,
   SHOT_CURVES_KEY,
   saveShotCurves,
@@ -28,10 +29,11 @@ const throwing = {
 const stored = (value: unknown) => storageWith(JSON.stringify(value));
 
 describe("loadShotCurves", () => {
-  it("is pressure and puck flow in chart-1 and chart-2 when nothing is stored", () => {
+  it("is pressure and cup flow in chart-1 and chart-6 when nothing is stored", () => {
     const choice = loadShotCurves(storageWith(null));
-    expect(choice.shown).toEqual(["pressure", "puckFlow"]);
+    expect(choice.shown).toEqual(["pressure", "cupFlow"]);
     expect(curveColour(choice, "pressure")).toBe("--chart-1");
+    expect(curveColour(choice, "cupFlow")).toBe("--chart-6");
     expect(curveColour(choice, "puckFlow")).toBe("--chart-2");
   });
 
@@ -108,5 +110,53 @@ describe("saveShotCurves", () => {
   it("never throws, whatever storage does", () => {
     expect(() => saveShotCurves(DEFAULT_CURVES, throwing)).not.toThrow();
     expect(() => saveShotCurves(DEFAULT_CURVES, undefined)).not.toThrow();
+  });
+});
+
+describe("a choice kept under the old key", () => {
+  function legacy(value: unknown) {
+    const store = new Map<string, string>([[LEGACY_SHOT_CURVES_KEY, JSON.stringify(value)]]);
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, v: string) => void store.set(key, v),
+    } as unknown as Storage;
+    return { store, storage };
+  }
+
+  it("gets the cup flow added once when it names puck flow, and keeps the puck flow", () => {
+    const { store, storage } = legacy({
+      shown: ["pressure", "puckFlow"],
+      colors: { pressure: "--foreground" },
+    });
+
+    const choice = loadShotCurves(storage);
+
+    expect(choice.shown).toEqual(["pressure", "puckFlow", "cupFlow"]);
+    expect(choice.colors).toEqual({ pressure: "--foreground" });
+    expect(JSON.parse(store.get(SHOT_CURVES_KEY) ?? "null")).toEqual(choice);
+  });
+
+  it("is not given the cup flow again once the person has removed it", () => {
+    const { storage } = legacy({ shown: ["pressure", "puckFlow"], colors: {} });
+    const first = loadShotCurves(storage);
+    saveShotCurves({ ...first, shown: ["pressure", "puckFlow"] }, storage);
+
+    expect(loadShotCurves(storage).shown).toEqual(["pressure", "puckFlow"]);
+  });
+
+  it("is left as it is when it does not name puck flow, or already names the cup flow", () => {
+    expect(
+      loadShotCurves(legacy({ shown: ["pressure", "weight"], colors: {} }).storage).shown,
+    ).toEqual(["pressure", "weight"]);
+    expect(
+      loadShotCurves(legacy({ shown: ["cupFlow", "puckFlow"], colors: {} }).storage).shown,
+    ).toEqual(["cupFlow", "puckFlow"]);
+  });
+
+  it("is ignored once a choice exists under the current key", () => {
+    const { store, storage } = legacy({ shown: ["pressure", "puckFlow"], colors: {} });
+    store.set(SHOT_CURVES_KEY, JSON.stringify({ shown: ["temperature"], colors: {} }));
+
+    expect(loadShotCurves(storage).shown).toEqual(["temperature"]);
   });
 });

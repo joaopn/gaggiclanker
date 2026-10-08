@@ -142,7 +142,7 @@ export function ShotDetailPage() {
           ["Yield", served("yield")],
           ["Ratio", served("ratio")],
           ["Exit reason", served("exit_reason")],
-          ["Scale", row.scale_connected ? "connected" : "not connected"],
+          ["Scale", row.has_scale ? "connected" : "not connected"],
           [
             "Brew delay",
             row.brew_delay_ms == null ? "—" : `${(row.brew_delay_ms / 1000).toFixed(2)} s`,

@@ -105,7 +105,7 @@ export function ShotBoxes({
         // the shot is filed) and the scale's yield (when it has a scale).
         prefill={{
           doseIn: detail.set_version?.dose_g ?? null,
-          doseOut: row.scale_connected ? (row.volume_g ?? null) : null,
+          doseOut: row.has_scale ? (row.volume_g ?? null) : null,
         }}
         open={judgementOpen}
         onOpenChange={setJudgement}
@@ -131,6 +131,7 @@ export function ShotBoxes({
           pending={samples.isPending}
           phases={(row.phases ?? []) as ShotPhase[]}
           hasPressure={diagnostics.has_pressure !== false}
+          hasScale={row.has_scale}
           finalExitReason={row.final_exit_reason}
           durationMs={row.duration_ms}
           highlight={claimSpan.shown}

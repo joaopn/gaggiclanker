@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShotSamples } from "@/hooks/useArchive";
 import { WIDE_MAX_WIDTH } from "@/lib/navigation";
+import { compareFlow } from "@/lib/shotChart";
 import { formatGrams, formatSeconds, formatTime, profileName } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils";
  * "what changed between yesterday's and today's" is the question the archive
  * exists to answer, and it is not answerable from two tabs.
  *
- * Pressure and puck flow only. Adding temperature and weight would put four
+ * Pressure and flow only (the cup flow when every shot had a scale, else the puck flow). Adding temperature and weight would put four
  * signals times three shots on one axis, and an overlay that shows everything
  * shows nothing.
  */
@@ -49,6 +50,7 @@ export function CompareDrawer({
     shot,
     samples: queries[index]?.data?.samples ?? [],
   }));
+  const flow = compareFlow(shots.map((shot) => shot.has_scale));
   const loading = shots.some((_, index) => queries[index]?.isPending);
 
   return (
@@ -63,7 +65,7 @@ export function CompareDrawer({
           <div className="min-w-0">
             <h2 className="font-medium text-sm">Comparing {shots.length} shots</h2>
             <p className="text-muted-foreground text-xs">
-              Pressure solid, puck flow dashed, on a shared elapsed-time axis.
+              Pressure solid, {flow} flow dashed, on a shared elapsed-time axis.
             </p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close compare">

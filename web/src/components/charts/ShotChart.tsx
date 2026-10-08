@@ -167,7 +167,7 @@ export function ShotChart({
           },
           y: {
             position: "left" as const,
-            title: { display: true, text: "bar · ml/s", color: palette.text },
+            title: { display: true, text: "bar · ml/s · g/s", color: palette.text },
             ticks: { color: palette.text },
             grid: { color: palette.grid },
             beginAtZero: true,

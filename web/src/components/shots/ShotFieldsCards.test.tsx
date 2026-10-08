@@ -188,13 +188,23 @@ describe("ShotPhasesCard", () => {
     expect(ended.every((cell) => cell.textContent === "Unknown")).toBe(true);
   });
 
+  it("heads the cup flow before the pressure and the puck flow", () => {
+    render(<ShotPhasesCard fields={realFields} />);
+
+    const headings = screen.getAllByRole("columnheader").map((heading) => heading.textContent);
+    expect(headings).toContain("Cup flow");
+    expect(headings.indexOf("Cup flow")).toBeLessThan(headings.indexOf("Pressure"));
+    expect(headings.indexOf("Pressure")).toBeLessThan(headings.indexOf("Puck flow"));
+    expect(headings).not.toContain("Scale flow");
+  });
+
   it("has no scale columns for a machine with no scale, and no zero in their place", () => {
     render(<ShotPhasesCard fields={leverNoScaleFields} />);
 
     expect(screen.queryByText("Cup at end")).not.toBeInTheDocument();
-    expect(screen.queryByText("Scale flow")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cup flow")).not.toBeInTheDocument();
     expect(screen.queryByTestId("phase-cell-cup")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("phase-cell-scale-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("phase-cell-cup-flow")).not.toBeInTheDocument();
     expect(screen.queryByTestId("phase-phase_cup_end")).not.toBeInTheDocument();
     // The rest of the row is still there.
     expect(screen.getAllByTestId("phase-row")).toHaveLength(3);

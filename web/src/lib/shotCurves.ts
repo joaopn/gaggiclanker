@@ -20,6 +20,7 @@ export const CURVE_COLOURS: readonly CurveColour[] = [
   { token: "--chart-3", label: "Chart 3" },
   { token: "--chart-4", label: "Chart 4" },
   { token: "--chart-5", label: "Chart 5" },
+  { token: "--chart-6", label: "Chart 6" },
   { token: "--foreground", label: "Foreground" },
   { token: "--muted-foreground", label: "Muted" },
 ];
@@ -33,13 +34,18 @@ export const CURVE_COLOURS: readonly CurveColour[] = [
  */
 export type CurveChoice = { shown: string[]; colors: Record<string, string> };
 
-/** Pressure and puck flow, as the column always drew them before it could be chosen. */
+/**
+ * Pressure and cup flow. A row whose shot had no scale has no cup flow to draw and shows its
+ * pressure alone, as it shows no weight.
+ */
 export const DEFAULT_CURVES: CurveChoice = {
-  shown: ["pressure", "puckFlow"],
+  shown: ["pressure", "cupFlow"],
   colors: {},
 };
 
-export const SHOT_CURVES_KEY = "shots.curves.v1";
+export const SHOT_CURVES_KEY = "shots.curves.v2";
+/** Where the choice was kept before the cup flow could be chosen: read once, see below. */
+export const LEGACY_SHOT_CURVES_KEY = "shots.curves.v1";
 
 const KNOWN_SERIES = new Set(SHOT_SERIES.map((spec) => spec.key));
 const KNOWN_TOKENS = new Set(CURVE_COLOURS.map((colour) => colour.token));
@@ -68,11 +74,34 @@ export function curveColour(choice: CurveChoice, key: string): string {
   return choice.colors[key] ?? defaultCurveColour(key);
 }
 
-/** The stored choice, or the default. */
+/**
+ * The stored choice, or the default.
+ *
+ * A choice kept under the old key that names puck flow and not cup flow gets the cup flow
+ * added, once, and is written under the current key: the person then owns the choice, and a
+ * cup flow they remove stays removed. Puck flow is never taken away.
+ */
 export function loadShotCurves(storage: Storage | undefined = safeStorage()): CurveChoice {
   try {
-    const raw = storage?.getItem(SHOT_CURVES_KEY);
-    if (!raw) return DEFAULT_CURVES;
+    const current = storage?.getItem(SHOT_CURVES_KEY);
+    if (current) return parseChoice(current);
+    const legacy = storage?.getItem(LEGACY_SHOT_CURVES_KEY);
+    if (!legacy) return DEFAULT_CURVES;
+    const choice = parseChoice(legacy);
+    if (choice === DEFAULT_CURVES) return DEFAULT_CURVES;
+    const migrated =
+      choice.shown.includes("puckFlow") && !choice.shown.includes("cupFlow")
+        ? { ...choice, shown: [...choice.shown, "cupFlow"] }
+        : choice;
+    saveShotCurves(migrated, storage);
+    return migrated;
+  } catch {
+    return DEFAULT_CURVES;
+  }
+}
+
+function parseChoice(raw: string): CurveChoice {
+  try {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return DEFAULT_CURVES;

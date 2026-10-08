@@ -5,7 +5,7 @@ import type { ShotPhase, ShotSamplesData } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { availableSeries, DEFAULT_SERIES, SHOT_SERIES } from "@/lib/shotChart";
+import { availableSeries, defaultSeries, SHOT_SERIES } from "@/lib/shotChart";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,6 +32,7 @@ export function ShotCurvesCard({
   pending,
   phases,
   hasPressure,
+  hasScale,
   finalExitReason,
   durationMs,
   highlight,
@@ -45,6 +46,8 @@ export function ShotCurvesCard({
   pending: boolean;
   phases: ShotPhase[];
   hasPressure: boolean;
+  /** The server's answer to whether the shot had a scale (`has_scale` on the shot). */
+  hasScale: boolean;
   finalExitReason?: number | null;
   durationMs?: number | null;
   /** The span of the review's claim being looked at, in seconds, drawn behind the curves. */
@@ -56,9 +59,14 @@ export function ShotCurvesCard({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const [visible, setVisible] = useState<string[]>(DEFAULT_SERIES);
+  // Nothing is remembered between visits: until the person toggles a line, the page shows the
+  // default for this shot (the cup flow when it had a scale), which is only known once its
+  // samples have arrived.
+  const [chosen, setVisible] = useState<string[] | null>(null);
   const rows = samples?.samples ?? [];
-  const present = availableSeries(rows);
+  const present = availableSeries(rows, hasScale);
+  // A toggle that is disabled is never on, whatever was chosen or defaulted before.
+  const visible = (chosen ?? defaultSeries(hasScale, present)).filter((key) => present.has(key));
 
   return (
     <SectionCard

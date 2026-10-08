@@ -52,7 +52,7 @@ registerChartJs();
  */
 const FALLBACK = {
   light: {
-    series: ["#8a4b1f", "#3a6786", "#a33526", "#4a7239", "#7a5ea8"],
+    series: ["#8a4b1f", "#3a6786", "#a33526", "#4a7239", "#7a5ea8", "#b08c0a"],
     grid: "#00000014",
     text: "#5c5147",
     band: "#33291f14",
@@ -60,7 +60,7 @@ const FALLBACK = {
     spanEdge: "#1f8a8a",
   },
   dark: {
-    series: ["#d59a63", "#8fb4d0", "#e08a7c", "#92c081", "#b7a3dd"],
+    series: ["#d59a63", "#8fb4d0", "#e08a7c", "#92c081", "#b7a3dd", "#a06604"],
     grid: "#ffffff1f",
     text: "#a79c91",
     band: "#ece5db12",

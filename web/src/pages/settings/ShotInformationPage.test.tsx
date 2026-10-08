@@ -58,7 +58,7 @@ function documentWith(
       key: "warnings",
       name: "Warnings",
       example:
-        "ramp: fast flow (amber): The scale flow averaged 4.00 g/s.\ndecline: skipped (amber): The shot stopped on its volumetric target.",
+        "ramp: fast flow (amber): The cup flow averaged 4.00 g/s.\ndecline: skipped (amber): The shot stopped on its volumetric target.",
     }),
   ].map((entry) => ({ ...entry, tier: tiers[entry.key] ?? entry.default_tier }));
   const byKey = Object.fromEntries(items.map((entry) => [entry.key, entry]));

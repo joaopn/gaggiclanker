@@ -17,19 +17,31 @@ const HEIGHT = 20;
  * The chosen curves for one row, drawn small (pressure and puck flow unless
  * the reader chose otherwise).
  *
+ * Each chosen signal is drawn as itself. A signal the shot has no data for (the cup flow of a
+ * shot with no scale, like its weight) is left out of that row.
+ *
  * The fetch waits until the row has been scrolled to (`useHasBeenVisible`) and
  * the result is cached for ever (`useShotSamples` sets an infinite staleTime,
  * because samples never change once a shot is ingested). Scrolling a thousand
  * shots therefore costs one small request per row actually looked at, and
  * scrolling back up costs nothing.
  */
-export function ShotSparkline({ shotId, curves }: { shotId: number; curves: CurveChoice }) {
+export function ShotSparkline({
+  shotId,
+  curves,
+  hasScale,
+}: {
+  shotId: number;
+  curves: CurveChoice;
+  /** The server's answer (`has_scale` on the row): a shot without one has no cup flow or weight. */
+  hasScale: boolean;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
   const visible = useHasBeenVisible(ref);
   const samples = useShotSamples(shotId, { downsample: SPARKLINE_POINTS, enabled: visible });
 
   const rows = samples.data?.samples ?? [];
-  const drawn = sparklineCurves(rows, curves.shown, WIDTH, HEIGHT);
+  const drawn = sparklineCurves(rows, curves.shown, WIDTH, HEIGHT, hasScale);
   const names = drawn.map((curve) => curve.spec.label).join(", ");
 
   return (

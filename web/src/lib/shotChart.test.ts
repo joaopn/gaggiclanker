@@ -3,8 +3,11 @@ import type { ShotPhase } from "@/api/types";
 import {
   availableSeries,
   buildShotSeries,
+  compareFlow,
   DEFAULT_SERIES,
+  defaultSeries,
   phaseBands,
+  SCALE_DEFAULT_SERIES,
   SHOT_SERIES,
   sparklineCurves,
   sparklinePath,
@@ -64,7 +67,10 @@ describe("buildShotSeries", () => {
 
 describe("availableSeries", () => {
   it("names only the signals present in the file", () => {
-    const present = availableSeries(syntheticSamples(10, { hasPressure: false, hasScale: false }));
+    const present = availableSeries(
+      syntheticSamples(10, { hasPressure: false, hasScale: false }),
+      false,
+    );
 
     expect(present.has("pressure")).toBe(false);
     expect(present.has("weight")).toBe(false);
@@ -191,5 +197,78 @@ describe("sparklineCurves", () => {
     const curves = sparklineCurves(standard, ["weight", "temperature", "pressure"], 96, 20);
 
     expect(curves.map((curve) => curve.spec.key)).toEqual(["temperature"]);
+  });
+});
+
+// The real shot with its scale columns zeroed, the way a board with no scale logs them.
+const noScale = samples.map((row) => ({ ...row, v: 0, vf: 0 }));
+// The old tare glitch: the first sample of some shots logs the clamp, -20 g/s.
+const glitched = samples.map((row, index) => (index === 0 ? { ...row, vf: -20 } : row));
+
+describe("cup flow", () => {
+  it("is a series of its own on the flows' axis, with a colour no other series has", () => {
+    const spec = SHOT_SERIES.find((candidate) => candidate.key === "cupFlow");
+
+    expect(spec).toMatchObject({ label: "Cup flow", field: "vf", axis: "y", unit: "g/s" });
+    expect(spec?.needsScale).toBe(true);
+    expect(spec?.dashed).toBeUndefined();
+    const colours = SHOT_SERIES.filter((other) => other.key !== "cupFlow").map((o) => o.color);
+    expect(colours).not.toContain(spec?.color);
+    expect(SHOT_SERIES.find((candidate) => candidate.key === "flow")?.label).toBe("Pump flow");
+  });
+
+  it("is read at zero where the log has it below", () => {
+    const [built] = buildShotSeries(glitched, ["cupFlow"]);
+
+    expect(built.points[0].y).toBe(0);
+    expect(Math.min(...built.points.map((point) => point.y))).toBeGreaterThanOrEqual(0);
+  });
+
+  it("is a toggle that exists only for a shot that had a scale", () => {
+    expect(availableSeries(samples, true).has("cupFlow")).toBe(true);
+    // The zeros a board without a scale logs are numbers, but they are not a signal: the
+    // server says the shot had no scale, and the web does not decide that from the zeros.
+    const bare = availableSeries(noScale, false);
+    expect(bare.has("cupFlow")).toBe(false);
+    expect(bare.has("weight")).toBe(false);
+    expect(bare.has("puckFlow")).toBe(true);
+  });
+
+  it("leads the default series of a shot with a scale, and not those of one without", () => {
+    expect(defaultSeries(true, availableSeries(samples, true))).toEqual(SCALE_DEFAULT_SERIES);
+    expect(SCALE_DEFAULT_SERIES).toEqual([
+      "pressure",
+      "targetPressure",
+      "cupFlow",
+      "weight",
+      "temperature",
+    ]);
+    // Without a scale, today's default minus what the shot does not have: no weight.
+    const bare = defaultSeries(false, availableSeries(noScale, false));
+    expect(bare).toEqual(DEFAULT_SERIES.filter((key) => key !== "weight"));
+    expect(DEFAULT_SERIES).not.toContain("cupFlow");
+  });
+
+  it("shares the sparkline scale of the other flows", () => {
+    const rows = samples.map((row) => ({ ...row, vf: 0.5, pf: 4 }));
+    const curves = sparklineCurves(rows, ["puckFlow", "cupFlow"], 96, 20);
+    // A shot the server says had no scale draws no cup flow, whatever its columns hold.
+    expect(
+      sparklineCurves(rows, ["puckFlow", "cupFlow"], 96, 20, false).map((c) => c.spec.key),
+    ).toEqual(["puckFlow"]);
+
+    expect(curves.map((curve) => curve.spec.key)).toEqual(["cupFlow", "puckFlow"]);
+    // Both are flat lines on one scale from zero to 4: the cup flow sits at an eighth.
+    const y = (d: string) => Number(d.split(" ")[0].split(",")[1]);
+    expect(y(curves[0].d)).toBeGreaterThan(y(curves[1].d));
+  });
+});
+
+describe("compareFlow", () => {
+  it("is the cup flow only when every shot drawn had a scale", () => {
+    expect(compareFlow([true, true])).toBe("cup");
+    expect(compareFlow([true, false])).toBe("puck");
+    expect(compareFlow([false])).toBe("puck");
+    expect(compareFlow([])).toBe("puck");
   });
 });

@@ -8,7 +8,7 @@
           "phase": "ramp",
           "fault": "fast flow",
           "severity": "amber",
-          "detail": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
+          "detail": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
           "phase_number": 2,
           "at_s": 24.75,
           "tier": null,
@@ -50,8 +50,8 @@
           "phase": "ramp",
           "phase_number": 2,
           "fault": "fast flow",
-          "sentence": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
-          "detail": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
+          "sentence": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
+          "detail": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
           "value": null,
           "unit": "",
           "compare": null,
@@ -754,8 +754,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.0,
             "unit": "g/s",
             "phase": {
@@ -773,8 +773,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.0,
             "unit": "g/s",
             "phase": {
@@ -1199,8 +1199,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.4,
             "unit": "g/s",
             "phase": {
@@ -1218,8 +1218,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.4,
             "unit": "g/s",
             "phase": {
@@ -1644,8 +1644,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 2.45,
             "unit": "g/s",
             "phase": {
@@ -1663,8 +1663,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 4.0,
             "unit": "g/s",
             "phase": {
@@ -3772,8 +3772,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.0,
             "unit": "g/s",
             "phase": {
@@ -3791,8 +3791,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.0,
             "unit": "g/s",
             "phase": {
@@ -4046,8 +4046,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.4,
             "unit": "g/s",
             "phase": {
@@ -4065,8 +4065,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.4,
             "unit": "g/s",
             "phase": {
@@ -4320,8 +4320,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 2.45,
             "unit": "g/s",
             "phase": {
@@ -4339,8 +4339,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 4.0,
             "unit": "g/s",
             "phase": {
@@ -4492,7 +4492,7 @@
           "phase": "ramp",
           "fault": "fast flow",
           "severity": "grey",
-          "detail": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose. This is expected: fast flow is expected in the ramp: it is part of the design.",
+          "detail": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose. This is expected: fast flow is expected in the ramp: it is part of the design.",
           "phase_number": 2,
           "at_s": 24.75,
           "tier": "important",
@@ -4596,8 +4596,8 @@
           "phase": "ramp",
           "phase_number": 2,
           "fault": "fast flow",
-          "sentence": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
-          "detail": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose. This is expected: fast flow is expected in the ramp: it is part of the design.",
+          "sentence": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
+          "detail": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose. This is expected: fast flow is expected in the ramp: it is part of the design.",
           "value": null,
           "unit": "",
           "compare": null,
@@ -5303,8 +5303,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.0,
             "unit": "g/s",
             "phase": {
@@ -5322,8 +5322,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.0,
             "unit": "g/s",
             "phase": {
@@ -5748,8 +5748,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.4,
             "unit": "g/s",
             "phase": {
@@ -5767,8 +5767,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.4,
             "unit": "g/s",
             "phase": {
@@ -6193,8 +6193,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 2.45,
             "unit": "g/s",
             "phase": {
@@ -6212,8 +6212,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 4.0,
             "unit": "g/s",
             "phase": {
@@ -8037,7 +8037,7 @@
           "phase": "main",
           "fault": "fast flow",
           "severity": "grey",
-          "detail": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose. This is expected: fast flow is expected in the main: it is part of the design.",
+          "detail": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose. This is expected: fast flow is expected in the main: it is part of the design.",
           "phase_number": 2,
           "at_s": 24.75,
           "tier": "important",
@@ -8055,8 +8055,8 @@
           "phase": "main",
           "phase_number": 2,
           "fault": "fast flow",
-          "sentence": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
-          "detail": "The scale flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose. This is expected: fast flow is expected in the main: it is part of the design.",
+          "sentence": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose.",
+          "detail": "The cup flow averaged 4.00 g/s from 24.75 s to 25.75 s while the pressure stayed at or above 7.2 bar (80 % of the 8.2 bar peak or more); above 3.0 g/s over a second is fast flow, which a profile built for it (a turbo shot) does on purpose. This is expected: fast flow is expected in the main: it is part of the design.",
           "value": null,
           "unit": "",
           "compare": null,
@@ -8701,8 +8701,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.0,
             "unit": "g/s",
             "phase": {
@@ -8720,8 +8720,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.0,
             "unit": "g/s",
             "phase": {
@@ -9146,8 +9146,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.4,
             "unit": "g/s",
             "phase": {
@@ -9165,8 +9165,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.4,
             "unit": "g/s",
             "phase": {
@@ -9553,8 +9553,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 2.45,
             "unit": "g/s",
             "phase": {
@@ -9572,8 +9572,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 4.0,
             "unit": "g/s",
             "phase": {
@@ -10407,8 +10407,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": -6.53,
             "unit": "g/s",
             "phase": {
@@ -10426,8 +10426,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": -0.32,
             "unit": "g/s",
             "phase": {
@@ -10864,8 +10864,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": -0.02,
             "unit": "g/s",
             "phase": {
@@ -10883,8 +10883,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.1,
             "unit": "g/s",
             "phase": {
@@ -11340,8 +11340,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.06,
             "unit": "g/s",
             "phase": {
@@ -11359,8 +11359,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 0.44,
             "unit": "g/s",
             "phase": {
@@ -11797,8 +11797,8 @@
           {
             "key": "phase_scale_flow",
             "group": "Phases",
-            "name": "Phase average scale flow",
-            "label": "scale flow",
+            "name": "Phase average cup flow",
+            "label": "cup flow",
             "value": 0.94,
             "unit": "g/s",
             "phase": {
@@ -11816,8 +11816,8 @@
           {
             "key": "phase_scale_flow_peak",
             "group": "Phases",
-            "name": "Phase peak scale flow",
-            "label": "peak scale flow",
+            "name": "Phase peak cup flow",
+            "label": "peak cup flow",
             "value": 1.29,
             "unit": "g/s",
             "phase": {
