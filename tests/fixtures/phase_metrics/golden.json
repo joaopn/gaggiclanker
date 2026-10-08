@@ -13,7 +13,7 @@
      "pressure_end_bar": 0.3,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.05
     }
    },
@@ -42,6 +42,7 @@
      "temperature_min_c": 89.5,
      "temperature_target_c": 93.0,
      "first_drip_s": 16.2,
+     "cup_first_drip_s": 12.0,
      "pressure_peak_bar": 9.1,
      "pressure_end_bar": 7.1,
      "cup_weight_end_g": 31.5,
@@ -69,7 +70,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.05
     }
    },
@@ -91,6 +92,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 12.0,
      "cup_weight_end_g": 31.5,
      "cup_weight_gained_g": 31.3,
      "scale_flow_mean_g_s": 1.76,
@@ -120,7 +122,7 @@
      "pressure_end_bar": 0.3,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.05
     }
    },
@@ -149,6 +151,7 @@
      "temperature_min_c": 89.5,
      "temperature_target_c": 93.0,
      "first_drip_s": 16.2,
+     "cup_first_drip_s": 12.0,
      "pressure_peak_bar": 9.1,
      "pressure_end_bar": 7.1,
      "cup_weight_end_g": 31.5,
@@ -180,7 +183,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.05
     }
    },
@@ -202,6 +205,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 12.0,
      "cup_weight_end_g": 31.5,
      "cup_weight_gained_g": 31.3,
      "scale_flow_mean_g_s": 1.76,
@@ -235,7 +239,7 @@
      "pressure_end_bar": 0.3,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.05
     }
    },
@@ -264,6 +268,7 @@
      "temperature_min_c": 89.5,
      "temperature_target_c": 93.0,
      "first_drip_s": 16.2,
+     "cup_first_drip_s": 12.0,
      "pressure_peak_bar": 9.1,
      "pressure_end_bar": 7.1,
      "cup_weight_end_g": 31.5,
@@ -295,7 +300,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.05
     }
    },
@@ -317,6 +322,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 12.0,
      "cup_weight_end_g": 31.5,
      "cup_weight_gained_g": 31.3,
      "scale_flow_mean_g_s": 1.76,
@@ -429,7 +435,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.05
     }
    },
@@ -451,6 +457,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 12.0,
      "cup_weight_end_g": 31.5,
      "cup_weight_gained_g": 31.3,
      "scale_flow_mean_g_s": 1.76,
@@ -476,7 +483,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.05
     }
    },
@@ -498,6 +505,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 12.0,
      "cup_weight_end_g": 31.5,
      "cup_weight_gained_g": 31.3,
      "scale_flow_mean_g_s": 1.76,
@@ -527,7 +535,7 @@
      "pressure_end_bar": 0.1,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.04
     }
    },
@@ -543,7 +551,7 @@
      "pressure_end_bar": 0.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.0
     }
    },
@@ -572,6 +580,7 @@
      "temperature_min_c": 90.5,
      "temperature_target_c": 93.0,
      "first_drip_s": 28.0,
+     "cup_first_drip_s": 24.0,
      "pressure_peak_bar": 8.2,
      "pressure_end_bar": 7.0,
      "cup_weight_end_g": 31.6,
@@ -599,7 +608,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.04
     }
    },
@@ -611,7 +620,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.0
     }
    },
@@ -633,6 +642,7 @@
      "ended_by": 0,
      "temperature_min_c": 90.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 24.0,
      "cup_weight_end_g": 31.6,
      "cup_weight_gained_g": 31.6,
      "scale_flow_mean_g_s": 1.27,
@@ -662,7 +672,7 @@
      "pressure_end_bar": 0.1,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.04
     }
    },
@@ -678,7 +688,7 @@
      "pressure_end_bar": 0.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.0
     }
    },
@@ -707,6 +717,7 @@
      "temperature_min_c": 90.5,
      "temperature_target_c": 93.0,
      "first_drip_s": 28.0,
+     "cup_first_drip_s": 24.0,
      "pressure_peak_bar": 8.2,
      "pressure_end_bar": 7.0,
      "cup_weight_end_g": 31.6,
@@ -739,7 +750,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.04
     }
    },
@@ -751,7 +762,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.0
     }
    },
@@ -773,6 +784,7 @@
      "ended_by": 0,
      "temperature_min_c": 90.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 24.0,
      "cup_weight_end_g": 31.6,
      "cup_weight_gained_g": 31.6,
      "scale_flow_mean_g_s": 1.27,
@@ -807,7 +819,7 @@
      "pressure_end_bar": 0.1,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.04
     }
    },
@@ -823,7 +835,7 @@
      "pressure_end_bar": 0.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.0
     }
    },
@@ -852,6 +864,7 @@
      "temperature_min_c": 90.5,
      "temperature_target_c": 93.0,
      "first_drip_s": 28.0,
+     "cup_first_drip_s": 24.0,
      "pressure_peak_bar": 8.2,
      "pressure_end_bar": 7.0,
      "cup_weight_end_g": 31.6,
@@ -884,7 +897,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.04
     }
    },
@@ -896,7 +909,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.0
     }
    },
@@ -918,6 +931,7 @@
      "ended_by": 0,
      "temperature_min_c": 90.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 24.0,
      "cup_weight_end_g": 31.6,
      "cup_weight_gained_g": 31.6,
      "scale_flow_mean_g_s": 1.27,
@@ -1051,7 +1065,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.04
     }
    },
@@ -1063,7 +1077,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.0
     }
    },
@@ -1085,6 +1099,7 @@
      "ended_by": 0,
      "temperature_min_c": 90.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 24.0,
      "cup_weight_end_g": 31.6,
      "cup_weight_gained_g": 31.6,
      "scale_flow_mean_g_s": 1.27,
@@ -1110,7 +1125,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -3.84,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.04
     }
    },
@@ -1122,7 +1137,7 @@
      "temperature_target_c": 93.0,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.0,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.0
     }
    },
@@ -1144,6 +1159,7 @@
      "ended_by": 0,
      "temperature_min_c": 90.5,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 24.0,
      "cup_weight_end_g": 31.6,
      "cup_weight_gained_g": 31.6,
      "scale_flow_mean_g_s": 1.27,
@@ -1218,6 +1234,7 @@
      "temperature_min_c": 89.4,
      "temperature_target_c": 93.0,
      "first_drip_s": 23.2,
+     "cup_first_drip_s": 18.25,
      "pressure_peak_bar": 9.0,
      "pressure_end_bar": 7.2,
      "cup_weight_end_g": 31.8,
@@ -1279,6 +1296,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.4,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 18.25,
      "cup_weight_end_g": 31.8,
      "cup_weight_gained_g": 31.8,
      "scale_flow_mean_g_s": 2.0,
@@ -1353,6 +1371,7 @@
      "temperature_min_c": 89.4,
      "temperature_target_c": 93.0,
      "first_drip_s": 23.2,
+     "cup_first_drip_s": 18.25,
      "pressure_peak_bar": 9.0,
      "pressure_end_bar": 7.2,
      "cup_weight_end_g": 31.8,
@@ -1419,6 +1438,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.4,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 18.25,
      "cup_weight_end_g": 31.8,
      "cup_weight_gained_g": 31.8,
      "scale_flow_mean_g_s": 2.0,
@@ -1498,6 +1518,7 @@
      "temperature_min_c": 89.4,
      "temperature_target_c": 93.0,
      "first_drip_s": 23.2,
+     "cup_first_drip_s": 18.25,
      "pressure_peak_bar": 9.0,
      "pressure_end_bar": 7.2,
      "cup_weight_end_g": 31.8,
@@ -1564,6 +1585,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.4,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 18.25,
      "cup_weight_end_g": 31.8,
      "cup_weight_gained_g": 31.8,
      "scale_flow_mean_g_s": 2.0,
@@ -1731,6 +1753,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.4,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 18.25,
      "cup_weight_end_g": 31.8,
      "cup_weight_gained_g": 31.8,
      "scale_flow_mean_g_s": 2.0,
@@ -1790,6 +1813,7 @@
      "ended_by": 0,
      "temperature_min_c": 89.4,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 18.25,
      "cup_weight_end_g": 31.8,
      "cup_weight_gained_g": 31.8,
      "scale_flow_mean_g_s": 2.0,
@@ -1819,8 +1843,8 @@
      "pressure_end_bar": 0.3,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -6.53,
-     "scale_flow_peak_g_s": -0.32
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
     }
    },
    {
@@ -1836,7 +1860,7 @@
      "pressure_end_bar": 1.1,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.1
     }
    },
@@ -1848,11 +1872,12 @@
      "puck_flow_peak_ml_s": 1.55,
      "temperature_min_c": 85.3,
      "temperature_target_c": 86.5,
+     "cup_first_drip_s": 19.25,
      "pressure_peak_bar": 7.9,
      "pressure_end_bar": 7.9,
      "cup_weight_end_g": 0.7,
      "cup_weight_gained_g": 0.7,
-     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_mean_g_s": 0.07,
      "scale_flow_peak_g_s": 0.44
     }
    },
@@ -1891,8 +1916,8 @@
      "temperature_target_c": 86.5,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -6.53,
-     "scale_flow_peak_g_s": -0.32
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
     }
    },
    {
@@ -1903,7 +1928,7 @@
      "temperature_target_c": 86.5,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.1
     }
    },
@@ -1913,9 +1938,10 @@
      "ended_by": 0,
      "temperature_min_c": 85.3,
      "temperature_target_c": 86.5,
+     "cup_first_drip_s": 19.25,
      "cup_weight_end_g": 0.7,
      "cup_weight_gained_g": 0.7,
-     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_mean_g_s": 0.07,
      "scale_flow_peak_g_s": 0.44
     }
    },
@@ -1954,8 +1980,8 @@
      "pressure_end_bar": 0.3,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -6.53,
-     "scale_flow_peak_g_s": -0.32
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
     }
    },
    {
@@ -1971,7 +1997,7 @@
      "pressure_end_bar": 1.1,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.1
     }
    },
@@ -1983,11 +2009,12 @@
      "puck_flow_peak_ml_s": 1.55,
      "temperature_min_c": 85.3,
      "temperature_target_c": 86.5,
+     "cup_first_drip_s": 19.25,
      "pressure_peak_bar": 7.9,
      "pressure_end_bar": 7.9,
      "cup_weight_end_g": 0.7,
      "cup_weight_gained_g": 0.7,
-     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_mean_g_s": 0.07,
      "scale_flow_peak_g_s": 0.44
     }
    },
@@ -2031,8 +2058,8 @@
      "temperature_target_c": 86.5,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -6.53,
-     "scale_flow_peak_g_s": -0.32
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
     }
    },
    {
@@ -2043,7 +2070,7 @@
      "temperature_target_c": 86.5,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.1
     }
    },
@@ -2053,9 +2080,10 @@
      "ended_by": 0,
      "temperature_min_c": 85.3,
      "temperature_target_c": 86.5,
+     "cup_first_drip_s": 19.25,
      "cup_weight_end_g": 0.7,
      "cup_weight_gained_g": 0.7,
-     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_mean_g_s": 0.07,
      "scale_flow_peak_g_s": 0.44
     }
    },
@@ -2099,8 +2127,8 @@
      "pressure_end_bar": 0.3,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -6.53,
-     "scale_flow_peak_g_s": -0.32
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
     }
    },
    {
@@ -2116,7 +2144,7 @@
      "pressure_end_bar": 1.1,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.1
     }
    },
@@ -2128,11 +2156,12 @@
      "puck_flow_peak_ml_s": 1.55,
      "temperature_min_c": 85.3,
      "temperature_target_c": 86.5,
+     "cup_first_drip_s": 19.25,
      "pressure_peak_bar": 7.9,
      "pressure_end_bar": 7.9,
      "cup_weight_end_g": 0.7,
      "cup_weight_gained_g": 0.7,
-     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_mean_g_s": 0.07,
      "scale_flow_peak_g_s": 0.44
     }
    },
@@ -2176,8 +2205,8 @@
      "temperature_target_c": 86.5,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -6.53,
-     "scale_flow_peak_g_s": -0.32
+     "scale_flow_mean_g_s": 0.0,
+     "scale_flow_peak_g_s": 0.0
     }
    },
    {
@@ -2188,7 +2217,7 @@
      "temperature_target_c": 86.5,
      "cup_weight_end_g": 0.0,
      "cup_weight_gained_g": 0.0,
-     "scale_flow_mean_g_s": -0.02,
+     "scale_flow_mean_g_s": 0.0,
      "scale_flow_peak_g_s": 0.1
     }
    },
@@ -2198,9 +2227,10 @@
      "ended_by": 0,
      "temperature_min_c": 85.3,
      "temperature_target_c": 86.5,
+     "cup_first_drip_s": 19.25,
      "cup_weight_end_g": 0.7,
      "cup_weight_gained_g": 0.7,
-     "scale_flow_mean_g_s": 0.06,
+     "scale_flow_mean_g_s": 0.07,
      "scale_flow_peak_g_s": 0.44
     }
    },
@@ -2292,6 +2322,7 @@
      "puck_flow_peak_ml_s": 1.18,
      "temperature_min_c": 92.0,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 4.25,
      "pressure_peak_bar": 9.0,
      "pressure_end_bar": 9.0,
      "cup_weight_end_g": 2.1,
@@ -2357,6 +2388,7 @@
      "ended_by": 1,
      "temperature_min_c": 92.0,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 4.25,
      "cup_weight_end_g": 2.1,
      "cup_weight_gained_g": 2.1,
      "scale_flow_mean_g_s": 0.78,
@@ -2400,6 +2432,7 @@
      "puck_flow_peak_ml_s": 0.0,
      "temperature_min_c": 93.2,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 8.25,
      "pressure_peak_bar": 0.1,
      "pressure_end_bar": 0.0,
      "cup_weight_end_g": 4.0,
@@ -2464,6 +2497,7 @@
      "ended_by": 5,
      "temperature_min_c": 93.2,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 8.25,
      "cup_weight_end_g": 4.0,
      "cup_weight_gained_g": 4.0,
      "scale_flow_mean_g_s": 0.4,
@@ -2520,6 +2554,7 @@
      "puck_flow_peak_ml_s": 0.0,
      "temperature_min_c": 93.2,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 8.25,
      "pressure_peak_bar": 0.1,
      "pressure_end_bar": 0.0,
      "cup_weight_end_g": 4.0,
@@ -2594,6 +2629,7 @@
      "ended_by": 5,
      "temperature_min_c": 93.2,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 8.25,
      "cup_weight_end_g": 4.0,
      "cup_weight_gained_g": 4.0,
      "scale_flow_mean_g_s": 0.4,
@@ -2851,6 +2887,7 @@
      "ended_by": 5,
      "temperature_min_c": 93.2,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 8.25,
      "cup_weight_end_g": 4.0,
      "cup_weight_gained_g": 4.0,
      "scale_flow_mean_g_s": 0.4,
@@ -2898,6 +2935,7 @@
      "ended_by": 5,
      "temperature_min_c": 93.2,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 8.25,
      "cup_weight_end_g": 4.0,
      "cup_weight_gained_g": 4.0,
      "scale_flow_mean_g_s": 0.4,
@@ -2945,6 +2983,7 @@
      "ended_by": 5,
      "temperature_min_c": 93.2,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 8.25,
      "cup_weight_end_g": 4.0,
      "cup_weight_gained_g": 4.0,
      "scale_flow_mean_g_s": 0.4,
@@ -3002,6 +3041,7 @@
      "ended_by": 5,
      "temperature_min_c": 93.2,
      "temperature_target_c": 93.0,
+     "cup_first_drip_s": 8.25,
      "cup_weight_end_g": 4.0,
      "cup_weight_gained_g": 4.0,
      "scale_flow_mean_g_s": 0.4,

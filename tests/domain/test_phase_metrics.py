@@ -130,7 +130,7 @@ def test_every_phase_has_its_numbers_as_the_samples_give_them(name: str, slog: S
             assert got["cup_weight_end_g"] == pytest.approx(end, abs=0.06)
             assert got["cup_weight_gained_g"] == pytest.approx(end - previous_weight, abs=0.06)
             previous_weight = end
-            vf = [s.vf or 0.0 for s in rows]
+            vf = [max(s.vf or 0.0, 0.0) for s in rows]
             assert got["scale_flow_mean_g_s"] == pytest.approx(sum(vf) / len(vf), abs=TOLERANCE)
             assert got["scale_flow_peak_g_s"] == pytest.approx(max(vf), abs=TOLERANCE)
         in_phase = drip is not None and any(s is drip for s in rows)

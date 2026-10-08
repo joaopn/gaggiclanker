@@ -467,7 +467,8 @@ class TestShotDiagnostics:
         assert "temperature" not in diag
 
         # Extraction metrics should be present
-        assert diag["extraction"] == {"flow_avg_brew_ml_s": 2.0}
+        # No `vf` was recorded, so there is no cup flow to average.
+        assert diag["extraction"] == {"flow_avg_brew_ml_s": 2.0, "cup_flow_avg_brew_g_s": None}
 
         # Weight should detect scale
         assert diag["weight"]["scale_connected"] is True

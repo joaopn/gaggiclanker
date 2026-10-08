@@ -31,6 +31,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple, TypedDict
 
+from gaggiclanker.domain.cup_flow import cup_first_drip_index, cup_flow
 from gaggiclanker.domain.metric_language import Expression, ShotData, evaluate_in_phase
 from gaggiclanker.domain.models import PhaseTransition
 
@@ -53,8 +54,8 @@ __all__ = [
 #: header carries the reason the whole shot ended.
 EXIT_REASONS_FROM_VERSION = 6
 
-#: The "fast flow" window, as the maintainer defined it: the scale flow ``vf``,
-#: averaged over any window of consecutive samples that spans 1.0 s, is above
+#: The "fast flow" window, as the maintainer defined it: the cup flow (``vf``, read at zero
+#: when below it), averaged over any window of consecutive samples that spans 1.0 s, is above
 #: 3.0 g/s while every sample in the window has a pressure of at least 80 % of
 #: the shot's peak. A window is the run of samples from one to the first whose
 #: time is 1.0 s or more after it, both ends included, and its mean is the plain
@@ -69,14 +70,14 @@ _EDGE_EPSILON = 1e-9
 
 
 class FastFlow(TypedDict):
-    """The first window of fast scale flow at high pressure."""
+    """The first window of fast cup flow at high pressure."""
 
     #: The phase holding the window's first sample, or ``None`` when the shot
     #: has no phase numbers.
     phase_number: int | None
     start_s: float
     end_s: float
-    #: The mean scale flow over the window, g/s.
+    #: The mean cup flow over the window, g/s.
     mean_g_s: float
     #: The lowest pressure in the window, and the shot's peak it is judged against.
     pressure_min_bar: float
@@ -107,8 +108,10 @@ class PhaseMetrics(TypedDict, total=False):
     pressure_end_bar: float
     temperature_min_c: float
     temperature_target_c: float
-    #: Set only on the phase that holds the shot's first drip.
+    #: Set only on the phase that holds the shot's first puck flow.
     first_drip_s: float
+    #: Set only on the phase that holds the moment coffee first reached the cup; needs a scale.
+    cup_first_drip_s: float
 
 
 class NotReached(TypedDict):
@@ -128,7 +131,7 @@ class ShotMetrics(TypedDict):
     profile_phases: list[str] | None
     #: The profile's phases the shot never began, in order.
     phases_not_reached: list[NotReached]
-    #: The first window of fast scale flow at high pressure, or ``None``.
+    #: The first window of fast cup flow at high pressure, or ``None``.
     fast_flow: FastFlow | None
 
 
@@ -213,11 +216,11 @@ def find_fast_flow(
         if last >= len(rows):
             return None
         window = rows[first : last + 1]
-        if any("vf" not in s or "cp" not in s for s in window):
+        if any(cup_flow(s) is None or "cp" not in s for s in window):
             continue
         if any(s["cp"] < floor for s in window):
             continue
-        mean = _mean([s["vf"] for s in window])
+        mean = _mean([flow for s in window if (flow := cup_flow(s)) is not None])
         if mean > FAST_FLOW_SCALE_FLOW_G_S + _EDGE_EPSILON:
             phase = rows[first].get("phase")
             return FastFlow(
@@ -335,6 +338,7 @@ def compute_phase_metrics(
     )
     # No puck flow without a pressure sensor: its zeros are no drip, and no moment of one.
     drip = next((i for i, s in enumerate(samples) if has_pressure and s.get("pf", 0.0) > 0.0), None)
+    cup_drip = cup_first_drip_index(samples) if scale_connected else None
     metrics: dict[int, PhaseMetrics] = {}
     for index, transition in enumerate(transitions):
         span = data.phases[index]
@@ -348,6 +352,10 @@ def compute_phase_metrics(
         _store(entry, _STORED_BEFORE_DRIP, data, index)
         if drip is not None and span.start <= drip < span.end and "t" in samples[drip]:
             entry["first_drip_s"] = round(samples[drip]["t"] / 1000.0, 1)
+        # Placed by sample, like the puck drip: a rounded phase start would put a drip that
+        # is the first sample of a phase into the phase before it.
+        if cup_drip is not None and span.start <= cup_drip < span.end and "t" in samples[cup_drip]:
+            entry["cup_first_drip_s"] = round(samples[cup_drip]["t"] / 1000.0, 2)
         _store(entry, _STORED_AFTER_DRIP, data, index)
         metrics[transition.phase_number] = entry
     return shot, metrics

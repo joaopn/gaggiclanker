@@ -40,6 +40,7 @@ import math
 from collections.abc import Sequence
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
+from gaggiclanker.domain.cup_flow import cup_first_drip_index, mean_cup_flow, shot_has_scale
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_control import PhaseControl
 from gaggiclanker.domain.phase_metrics import PhaseMetrics
@@ -80,6 +81,10 @@ class FlowSummary(TypedDict):
     avg_flow_ml_s: float
     peak_flow_ml_s: float
     time_to_first_drip_s: float | None
+    #: When coffee first reached the cup, from the scale's weight. ``None`` without a scale
+    #: (never a zero) and for a cup that never gained half a gram. Beside the puck-flow number
+    #: above, which keeps meaning the pump model's first flow.
+    cup_first_drip_s: float | None
 
 
 class ExtractionSummary(TypedDict):
@@ -162,6 +167,8 @@ class ResistanceDiagnostics(TypedDict):
 
 class ExtractionMetrics(TypedDict):
     flow_avg_brew_ml_s: float
+    #: The mean cup flow (g/s) over the same brew samples; ``None`` without a scale.
+    cup_flow_avg_brew_g_s: float | None
 
 
 class WeightDiagnostics(TypedDict):
@@ -621,6 +628,18 @@ def largest_pressure_drop(
     return positions[step], positions[step + 1]
 
 
+def brew_has_scale(samples: list[SampleDict], transitions: list[PhaseTransition]) -> bool:
+    """Whether the shot had a scale: any brew-phase weight above zero.
+
+    The firmware writes ``v`` and ``vf`` as zeros, never nulls, when no scale is
+    connected, so the weights themselves are the evidence. Every cup-flow number
+    is gated on this one rule.
+    """
+    return shot_has_scale(
+        samples[i].get("v", 0.0) for i in _brew_phase_positions(samples, transitions)
+    )
+
+
 def calculate_summary(slog: Slog, *, has_pressure: bool | None = None) -> ShotSummary:
     """Headline statistics for a shot."""
     samples = as_sample_dicts(slog)
@@ -656,11 +675,18 @@ def calculate_summary(slog: Slog, *, has_pressure: bool | None = None) -> ShotSu
     drip = first_drip_index(samples)
     time_to_first_drip = _round1(times[drip]) if drip is not None else None
 
+    cup_drip: float | None = None
+    if brew_has_scale(samples, slog.transitions):
+        cup_drip_at = cup_first_drip_index(samples)
+        if cup_drip_at is not None:
+            cup_drip = _round2(times[cup_drip_at])
+
     flow_summary = FlowSummary(
         total_volume_ml=calculate_total_volume(samples, slog.sample_interval),
         avg_flow_ml_s=_round1(_safe_mean(flows)),
         peak_flow_ml_s=_round1(max(flows)) if flows else 0.0,
         time_to_first_drip_s=time_to_first_drip,
+        cup_first_drip_s=cup_drip,
     )
 
     # Pre-infusion is read off the pressure trace: the moment pressure first
@@ -724,7 +750,7 @@ def compute_shot_diagnostics(
     steering = _steering(samples, phase_controls)
     brew_flows = [s.get("pf", 0.0) for s in brew_samples]
     brew_weights = [s.get("v", 0.0) for s in brew_samples]
-    has_scale = any(w > 0 for w in brew_weights)
+    has_scale = shot_has_scale(brew_weights)
 
     resistance: ResistanceDiagnostics | None = None
     profile_compliance: ProfileComplianceMetrics | None = None
@@ -733,7 +759,11 @@ def compute_shot_diagnostics(
         resistance = _build_resistance(brew_samples, dt)
         profile_compliance = _compute_profile_compliance(samples, steering)
 
-    extraction = ExtractionMetrics(flow_avg_brew_ml_s=_round2(_safe_mean(brew_flows)))
+    brew_cup_flow = mean_cup_flow(brew_samples) if has_scale else None
+    extraction = ExtractionMetrics(
+        flow_avg_brew_ml_s=_round2(_safe_mean(brew_flows)),
+        cup_flow_avg_brew_g_s=_round2(brew_cup_flow) if brew_cup_flow is not None else None,
+    )
 
     w_rate_avg: float | None = None
     if has_scale:
@@ -1119,7 +1149,7 @@ def compute_summary_diagnostics(
         max_flow_overshoot_ml_s=max_flow_overshoot,
         pressure_grading=pressure_grading,
         flow_grading=flow_grading,
-        scale_connected=any(w > 0 for w in brew_weights),
+        scale_connected=shot_has_scale(brew_weights),
     )
 
 

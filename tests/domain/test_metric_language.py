@@ -91,7 +91,9 @@ def window_rows(data: ShotData, lo: float | None, hi: float | None) -> list[Mapp
 
 
 def pairs(rows: list[Mapping[str, float]], column: str) -> list[tuple[float, float]]:
-    return [(r["t"] / 1000.0, r[column]) for r in rows if column in r]
+    # The scale's flow is read at zero where the log has it below zero (cup flow).
+    floor = 0.0 if column == "vf" else float("-inf")
+    return [(r["t"] / 1000.0, max(r[column], floor)) for r in rows if column in r]
 
 
 # ── every operation, on windows of real shots, against a hand computation ──

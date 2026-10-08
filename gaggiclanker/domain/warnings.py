@@ -13,7 +13,7 @@ no signature a reader is told the fact and left to weigh it.
 * **under target** — it is below 90 % of it;
 * **skipped** — the shot stopped on a volumetric or pumped-water target before
   one or more of its profile's phases began;
-* **fast flow** — the scale flow averaged over 1.0 s was above 3.0 g/s while the
+* **fast flow** — the cup flow averaged over 1.0 s was above 3.0 g/s while the
   pressure stayed at 80 % of the shot's peak or more.
 
 :func:`shot_warnings` is one pure function from what is stored about the shot
@@ -186,7 +186,7 @@ def shot_warnings(
 
     ``phases`` are the shot's stored phases (name and number), ``metrics`` its
     stored shot-wide facts (``diagnostics["metrics"]``): the profile's phases it
-    never began and the first window of fast scale flow. ``target_yield_g`` is
+    never began and the first window of fast cup flow. ``target_yield_g`` is
     the filed version's target, ``None`` for a shot in no Set or a version that
     has none. A phase's warning is ordered by where it falls in the shot, a
     skipped phase at the moment the shot stopped, and the shot-wide warnings come
@@ -215,7 +215,7 @@ def shot_warnings(
                 fault="fast flow",
                 severity="amber",
                 detail=(
-                    f"The scale flow averaged {mean:.2f} g/s from {start:.2f} s to {end:.2f} s "
+                    f"The cup flow averaged {mean:.2f} g/s from {start:.2f} s to {end:.2f} s "
                     f"while the pressure stayed at or above {lowest:.1f} bar "
                     f"({FAST_FLOW_PRESSURE_SHARE * 100:.0f} % of the {peak:.1f} bar peak or "
                     f"more); above {FAST_FLOW_SCALE_FLOW_G_S:.1f} g/s over a second is fast flow, "

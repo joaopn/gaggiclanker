@@ -6,6 +6,8 @@ The golden was generated from the tree from before the per-phase metrics were
 computed through the metric language, by this script, and
 ``tests/domain/test_phase_metrics_language.py`` derives the same shots now and
 requires every stored number, and the order it is stored in, to be identical.
+The one deliberate change since: the scale's flow is read at zero where the log has it
+below zero (cup flow), so the scale-flow numbers of a shot with the old tare glitch moved.
 The shots are the real fixtures with and without each constructed profile, as a
 machine with no scale and as one with no pressure sensor, and the constructed
 lever shot in the same variants.

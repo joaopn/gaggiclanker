@@ -39,6 +39,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from gaggiclanker.domain.cup_flow import cup_flow
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_names import phase_key, same_phase
 
@@ -696,6 +697,9 @@ def _value(data: ShotData, channel: str, index: int) -> float | None:
         if "cp" not in sample:
             return None
         return sample["cp"] / (flow * flow)
+    if channel == "scale_flow":
+        # Cup flow, floored at zero: the one rule every reader of the scale's flow shares.
+        return cup_flow(sample)
     column = _CHANNEL_SPEC[channel][0]
     assert column is not None
     value = sample.get(column)

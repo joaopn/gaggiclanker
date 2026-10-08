@@ -30,7 +30,7 @@ from gaggiclanker.db.repos.shots import (
     ShotSampleRow,
     ShotsRepository,
 )
-from gaggiclanker.domain.diagnostics import as_sample_dicts, transform_shot
+from gaggiclanker.domain.diagnostics import as_sample_dicts, brew_has_scale, transform_shot
 from gaggiclanker.domain.firmware_values import compute_firmware_values
 from gaggiclanker.domain.models import IndexEntry
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
@@ -87,7 +87,12 @@ log = structlog.get_logger(__name__)
 #: carries the field as zeros, and the per-phase puck-flow numbers were stored as 0.00
 #: there. They are absent now, as every number built on a sensor the shot lacks is,
 #: so a shot derived at 8 is derived again to lose them.
-DERIVATION_VERSION = 9
+#: 10: cup flow. The scale's flow is read at zero where the log has it below zero (the old
+#: tare glitch), a shot with a scale stores when coffee first reached the cup
+#: (``summary.flow.cup_first_drip_s``) and the mean cup flow of the brew
+#: (``diagnostics.extraction.cup_flow_avg_brew_g_s``), and the per-phase scale flow and
+#: the fast-flow window read the floored value. The puck-flow numbers are unchanged.
+DERIVATION_VERSION = 10
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these
@@ -214,13 +219,17 @@ def _attach_diagnostics(
         transformed = transform_shot(
             slog, "per_phase", has_pressure=has_pressure, phase_controls=controls
         )
+        samples = as_sample_dicts(slog)
         shot_metrics, phase_metrics = compute_phase_metrics(
-            as_sample_dicts(slog),
+            samples,
             slog.transitions,
             version=slog.version,
             final_exit_reason=slog.header.final_exit_reason,
             has_pressure=transformed["has_pressure"],
-            scale_connected=shot.scale_connected,
+            # One rule for "has a scale": a weight above zero in the brew phase. The row's flag
+            # is the firmware's word for the connection, and a board without a scale can
+            # leave it set while it logs zeros (or a scale shot can lack it).
+            scale_connected=brew_has_scale(samples, slog.transitions),
             profile=profile,
             final_weight_g=slog.volume_g,
         )

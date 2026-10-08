@@ -147,3 +147,12 @@ def test_a_window_straddling_a_phase_boundary_names_the_phase_of_its_first_sampl
     boundary_s = (slog.samples[110].t or 0) / 1000.0
     assert window["start_s"] < boundary_s < window["end_s"]
     assert window["phase_number"] == 2
+
+
+def test_a_flow_below_zero_is_read_at_zero_in_the_window() -> None:
+    # Raw, the five average -0.8 g/s; read at zero (a scale cannot lose coffee into the
+    # machine) they average 3.2 and the window fires.
+    slog = with_flow(flat(lever_shot(), 0.5), FIRST, [4.0, 4.0, 4.0, 4.0, -20.0])
+    window = fast(slog)
+    assert window is not None
+    assert window["mean_g_s"] == 3.2
