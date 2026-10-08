@@ -400,7 +400,10 @@ export function AppShell() {
           </Sheet>
 
           <span className="hidden font-medium text-sm sm:inline md:hidden">gaggiclanker</span>
-          <div className="ml-auto flex items-center gap-2">
+          {/* Tighter below sm, and below lg most controls are their icon alone: with
+              Writes and sign-in on, the bar must still fit at 360 px and in the
+              narrow column beside the sidebar from md. */}
+          <div className="ml-auto flex items-center gap-1 sm:gap-2">
             {/* First: a sync is the app's main action and belongs to no one page. */}
             <PullButton />
             <DeviceStatusPill />
@@ -410,7 +413,7 @@ export function AppShell() {
             <Button
               variant="ghost"
               size="sm"
-              className="hidden sm:inline-flex"
+              className="hidden lg:inline-flex"
               onClick={() => setShortcutsOpen(true)}
             >
               Shortcuts

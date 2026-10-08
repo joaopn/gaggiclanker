@@ -15,7 +15,7 @@ import { useSettings } from "@/hooks/useSettings";
  * server checks the switch again, along with brew mode and nothing running, before
  * anything is sent; its refusal comes back as the toast.
  *
- * Icon-only below `sm`, like the switch, so the header still fits at phone width.
+ * Icon-only below `lg`, so the header still fits at phone width and beside the sidebar.
  */
 export function FlushButton() {
   const settings = useSettings();
@@ -58,7 +58,7 @@ export function FlushButton() {
       className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-1 font-medium text-xs hover:bg-accent disabled:opacity-60"
     >
       <Droplet className="size-3.5" aria-hidden="true" />
-      <span aria-hidden="true" className="max-sm:sr-only">
+      <span aria-hidden="true" className="max-lg:sr-only">
         Flush
       </span>
     </button>

@@ -80,6 +80,16 @@ describe("AppShell", () => {
     },
   );
 
+  it("keeps the top bar's controls tight, and Shortcuts only from lg, so it fits beside the sidebar", () => {
+    renderApp();
+    const group = screen.getByTestId("device-status-pill").parentElement as HTMLElement;
+    expect(group).toHaveClass("gap-1", "sm:gap-2");
+    expect(within(group).getByRole("button", { name: "Shortcuts" })).toHaveClass(
+      "hidden",
+      "lg:inline-flex",
+    );
+  });
+
   it("gives the brand text up below sm, so the top bar fits at phone width", () => {
     renderApp();
     const header = screen.getByTestId("device-status-pill").closest("header") as HTMLElement;

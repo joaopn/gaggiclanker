@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DeviceStatusPill } from "@/components/DeviceStatusPill";
@@ -50,6 +50,13 @@ describe("DeviceStatusPill", () => {
     renderPill();
     await waitFor(() => expect(pill()).toHaveAttribute("data-state", "bad"));
     expect(pill()).toHaveTextContent("Offline");
+  });
+
+  it("is its dot alone below lg, with the words kept for a screen reader", async () => {
+    renderPill();
+    await waitFor(() => expect(pill()).toHaveAttribute("data-state", "good"));
+    // The header has to fit at 360 px with Sync, Writes, Flush and Sign out beside it.
+    expect(within(pill()).getByText("Online")).toHaveClass("max-lg:sr-only");
   });
 
   it("is not a fault when no machine is configured", async () => {

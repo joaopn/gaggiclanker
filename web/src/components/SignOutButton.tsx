@@ -29,7 +29,7 @@ export function SignOutButton() {
           onClick={() => signOut.mutate()}
         >
           <LogOut className="size-4" aria-hidden="true" />
-          <span className="hidden sm:inline">Sign out</span>
+          <span className="hidden lg:inline">Sign out</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent>Signed in as {status.data.user}</TooltipContent>

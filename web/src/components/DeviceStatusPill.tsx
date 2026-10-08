@@ -80,7 +80,8 @@ export function DeviceStatusPill() {
               state === "pending" && "animate-pulse bg-muted-foreground",
             )}
           />
-          {label}
+          {/* The dot alone below lg; the words stay in the link's name and tooltip. */}
+          <span className="max-lg:sr-only">{label}</span>
           {/* The pill's text is the machine's state, not a destination, so the
               link says where it goes out loud as well as in the tooltip. */}
           <span className="sr-only">Open the device page</span>

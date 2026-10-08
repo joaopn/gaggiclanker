@@ -47,7 +47,10 @@ describe("SignOutButton", () => {
     const clear = vi.spyOn(queryClient, "clear");
     const { findByRole } = renderWithQueryClient(<SignOutButton />, { queryClient });
 
-    await user.click(await findByRole("button", { name: "Sign out" }));
+    const button = await findByRole("button", { name: "Sign out" });
+    // Its icon alone below lg, so the top bar fits beside the sidebar and at phone width.
+    expect(button.querySelector("span")).toHaveClass("hidden", "lg:inline");
+    await user.click(button);
 
     await waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("/sign-in", { replace: true }));

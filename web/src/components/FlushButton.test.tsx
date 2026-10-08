@@ -116,10 +116,10 @@ describe("FlushButton", () => {
     expect(button()).toBeDisabled();
   });
 
-  it("is icon-only below sm, so the header fits at phone width", async () => {
+  it("is icon-only below lg, so the header fits at phone width and beside the sidebar", async () => {
     getSettings.mockResolvedValue(settings(true));
     renderWithQueryClient(<FlushButton />);
     await waitFor(() => expect(button()).toBeInTheDocument());
-    expect(button()?.querySelector("span")).toHaveClass("max-sm:sr-only");
+    expect(button()?.querySelector("span")).toHaveClass("max-lg:sr-only");
   });
 });

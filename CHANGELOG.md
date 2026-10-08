@@ -42,6 +42,11 @@ database.
   width. Its toast of what the sync did now arrives on whatever page you are on when it finishes.
 - The Sync page (Machine → Sync) has no button of its own any more: it keeps the run ledger and
   the archive counts, under the top bar's button.
+- **The top bar fits at every width again.** With Writes and sign-in on it used to run off the
+  screen at phone width and in the column beside the sidebar. Below the `lg` width (1024 px) the
+  machine status is its coloured dot alone and Flush and Sign out are their icons; Shortcuts
+  shows from `lg`, and the controls sit closer together at phone width. Everything keeps its
+  name for a screen reader, and the status pill's tooltip still names the machine.
 
 ### Cup flow
 
