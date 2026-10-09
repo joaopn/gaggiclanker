@@ -56,6 +56,9 @@ class BoardPut(BaseModel):
     #: Whether that version is a major one; ``None`` leaves the default for a pushed draft.
     #: Strict: "yes" is not an answer to a question that decides a version's name.
     major: StrictBool | None = None
+    #: The name for a new profile, stored with the approval. Refused for a change to an existing
+    #: profile (a name never changes through a version), when empty, and when taken.
+    label: str | None = Field(default=None, max_length=200)
 
 
 class ResumeData(BaseModel):
@@ -161,6 +164,7 @@ async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep
         body.draft_id,
         set_id=body.set_id,
         major=body.major,
+        label=body.label,
     )
     return envelope_response(row.model_dump(mode="json"), status_code=201)
 

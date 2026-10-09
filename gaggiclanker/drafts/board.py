@@ -105,7 +105,12 @@ from gaggiclanker.drafts.machine import (
     read_machine,
     remove_profile,
 )
-from gaggiclanker.drafts.proposals import DraftProposals, TakenName, profile_from_version
+from gaggiclanker.drafts.proposals import (
+    DraftProposals,
+    TakenName,
+    profile_from_version,
+    schema_errors,
+)
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import SignatureService
@@ -798,90 +803,164 @@ class BoardService:
         *,
         set_id: int | None = None,
         major: bool | None = None,
+        label: str | None = None,
     ) -> BoardRow:
         """Make a draft the profile's next current version, or a new profile. One action.
 
         Approving a proposal and putting it on the board are the same click: a drafted draft
-        is approved here, in the same transaction as the row it makes. A draft that moves a
-        stop condition is put like any other: the card shows the change, and the agent is
-        told never to make one unprompted, but nothing here refuses it.
+        is approved here, in the same transaction as the row it makes, and the profile is
+        switched on (approving means "I want this on the machine"; a sync still decides when).
+        A draft that moves a stop condition is put like any other: the card shows the change,
+        and the agent is told never to make one unprompted, but nothing here refuses it.
 
         Where it lands is decided by ``place_draft``, the same function the draft constructor and
         the page's landing ask: a draft continues its base's live profile when its label is that
         profile's name (a Set's profile first, when its name is the draft's); a new or renamed
         draft whose name is already a live profile (it became one after the draft was made) is
         refused with the same sentence, and the draft stays as it was.
+
+        ``label`` is the name the person typed for a new profile. See :meth:`put_in_transaction`.
         """
         # Every check and the write in one transaction: two puts of the same draft (a
         # double click) are serialised, and the second finds the first's row.
         async with self.db.transaction():
-            draft = await self.drafts.get(draft_id)
-            if draft is None:
-                raise NotFound(f"No profile draft {draft_id}")
-            if draft.status not in ("draft", "approved"):
-                raise Conflict(f"A {draft.status} proposal cannot be made active.")
-            if draft.draft_version_id is None:
-                raise Conflict("That proposal has no document to make active")
-            version = await self.profiles.get_version(draft.draft_version_id)
-            if version is None:  # pragma: no cover - a foreign key guarantees it
-                raise NotFound(f"No profile version {draft.draft_version_id}")
+            return await self.put_in_transaction(draft_id, set_id=set_id, major=major, label=label)
+
+    async def put_in_transaction(
+        self,
+        draft_id: int,
+        *,
+        set_id: int | None = None,
+        major: bool | None = None,
+        label: str | None = None,
+    ) -> BoardRow:
+        """:meth:`put_draft` inside a transaction the caller already holds.
+
+        The database allows one transaction at a time and refuses to nest, so a write that must
+        be one with a put (a first recipe's accept) opens the transaction itself and calls this.
+
+        A ``label`` is allowed only for a draft that would be a new profile (``place_draft`` finds
+        no profile it continues): the stored document is rebuilt under that name through the
+        constructor every draft document goes through, and the draft follows it to the new
+        version. The refusals are the constructor's: an empty name, a taken name.
+        """
+        draft = await self.drafts.get(draft_id)
+        if draft is None:
+            raise NotFound(f"No profile draft {draft_id}")
+        if draft.status not in ("draft", "approved"):
+            raise Conflict(f"A {draft.status} proposal cannot be made active.")
+        if draft.draft_version_id is None:
+            raise Conflict("That proposal has no document to make active")
+        version = await self.profiles.get_version(draft.draft_version_id)
+        if version is None:  # pragma: no cover - a foreign key guarantees it
+            raise NotFound(f"No profile version {draft.draft_version_id}")
+        if await self.board.find_live_by_version(version.id) is not None:
+            raise Conflict("That profile version is already in the list.")
+
+        if label is not None:
+            draft, version = await self._rename(draft, version, label, set_id)
             if await self.board.find_live_by_version(version.id) is not None:
                 raise Conflict("That profile version is already in the list.")
 
-            dest = await self._destination(draft, version, set_id)
-            if dest.refused is not None:
-                raise TakenName(version.label.strip())
-            row = dest.row
-            if draft.status == "draft":
-                await self.drafts.set_status(draft.id, "approved")
-            pending = BoardRowPatch(
-                pending_draft_id=draft.id, pending_set_id=set_id, pending_major=major
-            )
-            source = version_source_for_draft(draft.model_dump())
-            if row is None:
-                revived = dest.revived
-                if revived is not None:
-                    # The same profile put back while its old file still waits to be dealt
-                    # with (a Set may be brewing it): the row is the same profile again, not
-                    # a second row that would push a second identical copy.
-                    back = await self.board.update(
-                        revived.id,
-                        BoardRowPatch(
-                            deleted_at=None,
-                            failed_version_id=None,
-                            **pending.model_dump(exclude_unset=True),
-                        ),
-                    )
-                    assert back is not None
-                    await self.board.add_version(back.id, version.id, source)
-                    return back
-                return await self.board.insert(
-                    BoardRowWrite(
-                        label=version.label,
-                        current_version_id=version.id,
-                        origin="draft",
-                        pending_draft_id=draft.id,
-                        pending_set_id=set_id,
-                        pending_major=major,
-                        version_source=source,
-                    )
+        dest = await self._destination(draft, version, set_id)
+        if dest.refused is not None:
+            raise TakenName(version.label.strip())
+        row = dest.row
+        if draft.status == "draft":
+            await self.drafts.set_status(draft.id, "approved")
+        pending = BoardRowPatch(
+            pending_draft_id=draft.id, pending_set_id=set_id, pending_major=major
+        )
+        source = version_source_for_draft(draft.model_dump())
+        if row is None:
+            revived = dest.revived
+            if revived is not None:
+                # The same profile put back while its old file still waits to be dealt
+                # with (a Set may be brewing it): the row is the same profile again, not
+                # a second row that would push a second identical copy.
+                back = await self.board.update(
+                    revived.id,
+                    BoardRowPatch(
+                        deleted_at=None,
+                        failed_version_id=None,
+                        on_machine=True,
+                        **pending.model_dump(exclude_unset=True),
+                    ),
                 )
-            updated = await self.board.update(
-                row.id,
-                BoardRowPatch(
+                assert back is not None
+                await self.board.add_version(back.id, version.id, source)
+                return back
+            return await self.board.insert(
+                BoardRowWrite(
                     label=version.label,
                     current_version_id=version.id,
-                    # What the row was, so a person can go back to it.
-                    previous_version_id=row.current_version_id,
-                    back_from_version_id=None,
-                    back_from_set_version_id=None,
-                    failed_version_id=None,
-                    **pending.model_dump(exclude_unset=True),
-                ),
+                    origin="draft",
+                    pending_draft_id=draft.id,
+                    pending_set_id=set_id,
+                    pending_major=major,
+                    version_source=source,
+                )
             )
-            assert updated is not None  # the row was read in this transaction
-            await self.board.add_version(updated.id, version.id, source)
-            return updated
+        updated = await self.board.update(
+            row.id,
+            BoardRowPatch(
+                label=version.label,
+                current_version_id=version.id,
+                # Approving is "I want this on the machine": a profile switched off is
+                # switched on. Its star is left as it was.
+                on_machine=True,
+                # What the row was, so a person can go back to it.
+                previous_version_id=row.current_version_id,
+                back_from_version_id=None,
+                back_from_set_version_id=None,
+                failed_version_id=None,
+                **pending.model_dump(exclude_unset=True),
+            ),
+        )
+        assert updated is not None  # the row was read in this transaction
+        await self.board.add_version(updated.id, version.id, source)
+        return updated
+
+    async def _rename(
+        self, draft: ProfileDraftRow, version: ProfileVersionRow, label: str, set_id: int | None
+    ) -> tuple[ProfileDraftRow, ProfileVersionRow]:
+        """The draft under the name a person typed for a new profile.
+
+        Allowed only when ``place_draft`` (through ``_destination``) says the draft continues no
+        profile; and the new name must itself place the draft nowhere (a name that is another
+        profile's, or that would continue one, is refused as taken, by the same function). The
+        document is rebuilt by :meth:`DraftProposals.prepare`, the constructor of every draft
+        document, so the schema, the clamp and the check apply as they did at drafting; the
+        draft then names the new version. All inside the caller's transaction.
+        """
+        if (await self._destination(draft, version, set_id)).row is not None:
+            raise Unprocessable("A change to an existing profile keeps its name")
+        name = label.strip()
+        if not name:
+            raise Unprocessable("A profile needs a name")
+        try:
+            candidate = Profile.model_validate({**(version.profile or {}), "label": name})
+        except ValidationError as exc:
+            raise Unprocessable(
+                "That is not a valid profile name", details={"schema_errors": schema_errors(exc)}
+            ) from None
+        base = await self.proposals.base_profile(draft.base_version_id)
+        prepared = await self.proposals.prepare(
+            draft.base_version_id, base, candidate, is_new=draft.is_new
+        )
+        renamed, _ = await self.profiles.ensure_version(prepared.profile, source="draft")
+        if renamed.id != version.id:
+            # The expectations in force on the proposed version follow the rename, whether the
+            # renamed version is new or another draft made it first (carrying twice adds nothing).
+            await self.signatures.carry_quietly(version.id, renamed.id)
+        if (await self._destination(draft, renamed, set_id)).row is not None:
+            # A rename that lands on a profile would silently become a version of it.
+            raise TakenName(renamed.label.strip())
+        if renamed.id != version.id:
+            await self.drafts.set_draft_version(draft.id, renamed.id)
+        current = await self.drafts.get(draft.id)
+        assert current is not None
+        return current, renamed
 
     async def resume(self) -> None:
         """Let the next sync write again after it paused for a suspected machine reset.

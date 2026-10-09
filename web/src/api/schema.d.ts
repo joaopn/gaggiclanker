@@ -3962,6 +3962,8 @@ export interface components {
         BoardPut: {
             /** Draft Id */
             draft_id: number;
+            /** Label */
+            label?: string | null;
             /** Major */
             major?: boolean | null;
             /** Set Id */

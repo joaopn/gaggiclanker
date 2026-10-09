@@ -409,6 +409,13 @@ class ProfileDraftsRepository(Repository):
             "UPDATE profile_drafts SET recorded_version_id = ? WHERE id = ?", (version_id, draft_id)
         )
 
+    async def set_draft_version(self, draft_id: int, version_id: int) -> None:
+        """Point a draft at the version of its document under a new name (a rename on approval)."""
+        await self.db.execute(
+            "UPDATE profile_drafts SET draft_version_id = ?, updated_at = ? WHERE id = ?",
+            (version_id, utc_now(), draft_id),
+        )
+
     async def supersede_pushed(self, device_id: str, *, by_draft_id: int) -> int:
         """Mark every pushed draft of this device profile as replaced by a later push.
 
