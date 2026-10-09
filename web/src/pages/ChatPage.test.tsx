@@ -1,4 +1,12 @@
-import { act, getDefaultNormalizer, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  getDefaultNormalizer,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "@/pages/ChatPage";
@@ -1077,5 +1085,116 @@ describe("ChatPage, accepting a card in the conversation", () => {
       ),
     );
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ChatPage, coming back to it", () => {
+  /** The URL the page left behind, read where a person would read it. */
+  function Location() {
+    const location = useLocation();
+    return <output data-testid="location">{location.pathname + location.search}</output>;
+  }
+
+  /** The conversation card's title: the open conversation's, or "New conversation". */
+  function conversationTitle() {
+    const titles = document.querySelectorAll('[data-slot="card-title"]');
+    return titles[titles.length - 1]?.textContent;
+  }
+
+  /** The chat and one other page, with the sidebar's own link back: a bare `/chat`. */
+  function app(initial: string) {
+    return renderWithQueryClient(
+      <>
+        <Link to="/chat">Chat</Link>
+        <Link to="/shots">Shots</Link>
+        <Routes>
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/shots" element={<p>The shots</p>} />
+        </Routes>
+        <Location />
+      </>,
+      { initialEntries: [initial] },
+    );
+  }
+
+  it("reopens the conversation that was open when the person clicked away", async () => {
+    const user = setupUser();
+    app("/chat");
+    await user.click(await screen.findByText("Why is Guji sour?"));
+    expect(await screen.findByTestId("chat-transcript")).toHaveTextContent(
+      "Grind two clicks finer.",
+    );
+
+    await user.click(screen.getByRole("link", { name: "Shots" }));
+    await screen.findByText("The shots");
+    await user.click(screen.getByRole("link", { name: "Chat" }));
+
+    expect(await screen.findByTestId("chat-transcript")).toHaveTextContent(
+      "Grind two clicks finer.",
+    );
+    expect(conversationTitle()).toBe("Why is Guji sour?");
+    // The URL says so too, so a reload or a copied link opens the same one.
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/chat?thread=1"));
+  });
+
+  it("reopens the badge the person opened when no conversation was", async () => {
+    const user = setupUser();
+    app("/chat");
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    await opened(user, "Guji on the Niche");
+
+    await user.click(screen.getByRole("link", { name: "Shots" }));
+    await screen.findByText("The shots");
+    await user.click(screen.getByRole("link", { name: "Chat" }));
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "true");
+    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "false");
+    expect(conversationTitle()).toBe("New conversation");
+  });
+
+  it("forgets a conversation that is gone, and opens as if nothing was remembered", async () => {
+    const user = setupUser();
+    app("/chat?thread=1");
+    expect(await screen.findByTestId("chat-transcript")).toHaveTextContent(
+      "Grind two clicks finer.",
+    );
+    await user.click(screen.getByRole("link", { name: "Shots" }));
+    await screen.findByText("The shots");
+
+    // Deleted meanwhile, in another tab.
+    getChatThreads.mockResolvedValue([]);
+    getChatThread.mockRejectedValue(new Error("No such conversation"));
+    await user.click(screen.getByRole("link", { name: "Chat" }));
+
+    await waitFor(() => expect(conversationTitle()).toBe("New conversation"));
+    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/chat$/);
+
+    // And it stays forgotten: the next visit does not ask for it again.
+    getChatThread.mockClear();
+    await user.click(screen.getByRole("link", { name: "Shots" }));
+    await screen.findByText("The shots");
+    await user.click(screen.getByRole("link", { name: "Chat" }));
+    await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
+    expect(getChatThread).not.toHaveBeenCalled();
+  });
+
+  it("lets a link say where to go over what was remembered", async () => {
+    const user = setupUser();
+    app("/chat?thread=1");
+    expect(await screen.findByTestId("chat-transcript")).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "Shots" }));
+    await screen.findByText("The shots");
+    getChatThread.mockClear();
+
+    // A "Chat about" link from somewhere else, in a fresh tab.
+    cleanup();
+    app("/chat?set=4");
+
+    await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
+    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
+    expect(conversationTitle()).toBe("New conversation");
+    expect(getChatThread).not.toHaveBeenCalled();
   });
 });

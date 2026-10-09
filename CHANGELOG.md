@@ -33,6 +33,14 @@ database.
   schema in place of the migration number. The restore refusal codes `RESTORE_NEWER_VERSION` and
   `RESTORE_MIGRATION_DIFFERS` are replaced by `RESTORE_SCHEMA_DIFFERS`.
 
+### The Chat page reopens where you were
+
+- **Clicking away from the Chat page and back keeps the conversation you had open.** The sidebar's
+  Chat link (and `g c`) used to land on the newest Set with nothing open. The page now remembers,
+  in this browser, the conversation that was open and the badge you picked, and reopens them when
+  `/chat` comes with no link of its own; a Discuss button or a copied link still opens what it
+  names. A conversation deleted since is forgotten and the page opens as before.
+
 ### A proposed profile is answered on its card, in the chat and on the Profiles page
 
 - **The chat's link to the Profiles page is gone.** A profile the agent drafts is a card in the

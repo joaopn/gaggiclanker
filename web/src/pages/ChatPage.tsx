@@ -29,6 +29,7 @@ import {
 } from "@/hooks/useChat";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useSets } from "@/hooks/useSets";
+import { loadChatPosition, saveChatPosition } from "@/lib/chatPosition";
 import { contextFooter, latestUsage } from "@/lib/chatUsage";
 import { attempt } from "@/lib/mutations";
 
@@ -42,6 +43,11 @@ import { attempt } from "@/lib/mutations";
  * already pointed at the right experiment with the question typed, because the
  * alternative is the person retyping "how is Set 3 going" into a box that has
  * no idea what Set 3 is.
+ *
+ * With none of them — the sidebar's link, the `g c` chord — the page goes back
+ * to where the person was in this browser: the conversation that was open and
+ * the badge they picked (`lib/chatPosition.ts`). Without that, clicking away
+ * and back always landed on the newest Set with nothing open.
  *
  * `?set=` alone creates nothing: it says where a first question would land, and
  * a mis-click leaves no empty conversation behind. `?set=&version=` is the
@@ -74,13 +80,19 @@ export function ChatPage() {
   const sets = useSets();
   useQueryErrorToast(threads.error, "conversations");
 
-  const [selected, setSelected] = useState<number | null>(threadParam ? Number(threadParam) : null);
+  // Read once, at mount, and only when no link says where to go.
+  const [remembered] = useState(() =>
+    threadParam || setParam || versionParam || askParam ? null : loadChatPosition(),
+  );
+  const [selected, setSelected] = useState<number | null>(
+    threadParam ? Number(threadParam) : (remembered?.thread ?? null),
+  );
   const [draft, setDraft] = useState(askParam ?? "");
   const [runId, setRunId] = useState<number | null>(null);
   // The badge the person opened, over the page's own choice (`defaultFolderKey`).
   // Seeded by a `?set=` link, which is somebody else's page picking for them.
   const [pickedFolder, setPickedFolder] = useState<string | null>(
-    setParam ? folderKey(Number(setParam)) : null,
+    setParam ? folderKey(Number(setParam)) : (remembered?.folder ?? null),
   );
 
   const thread = useChatThread(selected);
@@ -90,6 +102,30 @@ export function ChatPage() {
   const send = useSendChatMessage();
   const cancel = useCancelChatRun();
   const live = useChatRun(runId, selected);
+
+  // A remembered conversation may have been deleted since (another tab, the
+  // Set page). Fetching it is the check, since the page fetches it anyway: a
+  // failure forgets it and opens as if nothing was remembered, and only once
+  // it has loaded does the URL name it, so a reload never asks for a missing
+  // one by link.
+  const [checking, setChecking] = useState<number | null>(remembered?.thread ?? null);
+  useEffect(() => {
+    if (checking === null) return;
+    if (selected !== checking) {
+      setChecking(null);
+    } else if (thread.isSuccess) {
+      setChecking(null);
+      const next = new URLSearchParams(params);
+      next.set("thread", String(checking));
+      setParams(next, { replace: true });
+    } else if (thread.isError) {
+      setChecking(null);
+      setSelected(null);
+    }
+  }, [checking, selected, thread.isSuccess, thread.isError, params, setParams]);
+  useEffect(() => {
+    saveChatPosition({ thread: selected, folder: pickedFolder });
+  }, [selected, pickedFolder]);
 
   const setRows = sets.data?.items;
   const folders = useMemo(
