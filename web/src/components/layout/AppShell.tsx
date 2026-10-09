@@ -8,6 +8,7 @@ import { LlmActivity } from "@/components/LlmActivity";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { PullButton } from "@/components/PullButton";
 import { SignOutButton } from "@/components/SignOutButton";
+import { SyncOwnerProvider } from "@/components/sync/SyncOwner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -331,111 +332,115 @@ export function AppShell() {
   useHotkeys(bindings);
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <aside
-        data-testid="sidebar"
-        data-collapsed={collapsed ? "true" : "false"}
-        className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-border border-r bg-sidebar py-4 md:flex",
-          // A width that animates is pleasant; a width that animates for
-          // somebody who has asked their system to stop moving things is not.
-          "transition-[width] duration-200 motion-reduce:transition-none",
-          collapsed ? "w-14 px-2" : "w-56 px-3",
-        )}
-      >
-        <div className={cn("pb-4", collapsed ? "px-0 text-center" : "px-2.5")}>
-          {collapsed ? (
-            <span className="font-semibold text-sidebar-foreground tracking-tight">gc</span>
-          ) : (
-            <>
-              <span className="font-semibold text-sidebar-foreground tracking-tight">
-                gaggiclanker
-              </span>
-              <p className="text-muted-foreground text-xs">the shot archive</p>
-            </>
+    // The sync's waiting state lives here, above every page: the top bar's button and the
+    // proposal cards ask through it, and its one notification arrives wherever the person is.
+    <SyncOwnerProvider>
+      <div className="flex min-h-screen bg-background">
+        <aside
+          data-testid="sidebar"
+          data-collapsed={collapsed ? "true" : "false"}
+          className={cn(
+            "sticky top-0 hidden h-screen shrink-0 flex-col border-border border-r bg-sidebar py-4 md:flex",
+            // A width that animates is pleasant; a width that animates for
+            // somebody who has asked their system to stop moving things is not.
+            "transition-[width] duration-200 motion-reduce:transition-none",
+            collapsed ? "w-14 px-2" : "w-56 px-3",
           )}
-        </div>
-        <NavItems id={NAV_ID} collapsed={collapsed} />
-
-        {/* At the foot of the rail rather than in the header: it belongs to the
-            thing it changes, and the header is already the busiest row. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn("mt-auto justify-center gap-2", collapsed && "px-0")}
-          aria-expanded={!collapsed}
-          aria-controls={NAV_ID}
-          onClick={toggleSidebar}
         >
-          {collapsed ? (
-            <PanelLeftOpen className="size-4" aria-hidden="true" />
-          ) : (
-            <PanelLeftClose className="size-4" aria-hidden="true" />
-          )}
-          <span className={collapsed ? "sr-only" : undefined}>
-            {collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          </span>
-        </Button>
-      </aside>
+          <div className={cn("pb-4", collapsed ? "px-0 text-center" : "px-2.5")}>
+            {collapsed ? (
+              <span className="font-semibold text-sidebar-foreground tracking-tight">gc</span>
+            ) : (
+              <>
+                <span className="font-semibold text-sidebar-foreground tracking-tight">
+                  gaggiclanker
+                </span>
+                <p className="text-muted-foreground text-xs">the shot archive</p>
+              </>
+            )}
+          </div>
+          <NavItems id={NAV_ID} collapsed={collapsed} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center gap-2 border-border border-b bg-background/95 px-4 py-2.5 backdrop-blur">
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="md:hidden"
-                aria-label="Open navigation"
-              >
-                <Menu className="size-4" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-4">
-              <SheetHeader className="p-0 pb-4">
-                <SheetTitle>gaggiclanker</SheetTitle>
-              </SheetHeader>
-              <NavItems onNavigate={() => setMobileOpen(false)} />
-            </SheetContent>
-          </Sheet>
+          {/* At the foot of the rail rather than in the header: it belongs to the
+            thing it changes, and the header is already the busiest row. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("mt-auto justify-center gap-2", collapsed && "px-0")}
+            aria-expanded={!collapsed}
+            aria-controls={NAV_ID}
+            onClick={toggleSidebar}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="size-4" aria-hidden="true" />
+            ) : (
+              <PanelLeftClose className="size-4" aria-hidden="true" />
+            )}
+            <span className={collapsed ? "sr-only" : undefined}>
+              {collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            </span>
+          </Button>
+        </aside>
 
-          <span className="hidden font-medium text-sm sm:inline md:hidden">gaggiclanker</span>
-          {/* Tighter below sm, and below lg most controls are their icon alone: with
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-20 flex items-center gap-2 border-border border-b bg-background/95 px-4 py-2.5 backdrop-blur">
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden"
+                  aria-label="Open navigation"
+                >
+                  <Menu className="size-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64 p-4">
+                <SheetHeader className="p-0 pb-4">
+                  <SheetTitle>gaggiclanker</SheetTitle>
+                </SheetHeader>
+                <NavItems onNavigate={() => setMobileOpen(false)} />
+              </SheetContent>
+            </Sheet>
+
+            <span className="hidden font-medium text-sm sm:inline md:hidden">gaggiclanker</span>
+            {/* Tighter below sm, and below lg most controls are their icon alone: with
               Writes and sign-in on, the bar must still fit at 360 px and in the
               narrow column beside the sidebar from md. */}
-          <div className="ml-auto flex items-center gap-1 sm:gap-2">
-            {/* First: a sync is the app's main action and belongs to no one page. */}
-            <PullButton />
-            <DeviceStatusPill />
-            <DeviceWritesSwitch />
-            <FlushButton />
-            <LlmActivity />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="hidden lg:inline-flex"
-              onClick={() => setShortcutsOpen(true)}
-            >
-              Shortcuts
-            </Button>
-            <ThemeToggle />
-            {/* Last, and absent entirely when auth is off — see SignOutButton. */}
-            <SignOutButton />
-          </div>
-        </header>
+            <div className="ml-auto flex items-center gap-1 sm:gap-2">
+              {/* First: a sync is the app's main action and belongs to no one page. */}
+              <PullButton />
+              <DeviceStatusPill />
+              <DeviceWritesSwitch />
+              <FlushButton />
+              <LlmActivity />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden lg:inline-flex"
+                onClick={() => setShortcutsOpen(true)}
+              >
+                Shortcuts
+              </Button>
+              <ThemeToggle />
+              {/* Last, and absent entirely when auth is off — see SignOutButton. */}
+              <SignOutButton />
+            </div>
+          </header>
 
-        {/* Centred, collapsed or not: the rail's 10.5rem goes to the margins
+          {/* Centred, collapsed or not: the rail's 10.5rem goes to the margins
             until the content can use it, and a column that changes width when
             you fold a sidebar is worse than a wide margin. How wide the column
             is allowed to get depends on the route — a reading measure for the
             pages that are prose, the window for the ones that are a dataset
             (`contentMaxWidth`). */}
-        <main className={cn("mx-auto w-full flex-1 px-4 py-6", contentMaxWidth(pathname))}>
-          <Outlet />
-        </main>
-      </div>
+          <main className={cn("mx-auto w-full flex-1 px-4 py-6", contentMaxWidth(pathname))}>
+            <Outlet />
+          </main>
+        </div>
 
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-    </div>
+        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      </div>
+    </SyncOwnerProvider>
   );
 }

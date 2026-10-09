@@ -1,21 +1,10 @@
-import { useMutation } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { runSync } from "@/api/client";
+import { useSyncOwner } from "@/components/sync/SyncOwner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSyncStatus } from "@/hooks/useArchive";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { attempt } from "@/lib/mutations";
-import { isPulling, latestProfileRun, latestShotRun, pullSummary, syncSucceeded } from "@/lib/sync";
-
-/**
- * How long a finished shot pass waits for its profile pass before the toast goes without it.
- * The two passes are separate runs that take the engine's lock in turn, so the second can be
- * a while behind (a large archive, a slow machine); a profile pass that never appears must not
- * leave the person with no answer at all.
- */
-export const PROFILE_PASS_GRACE_MS = 15_000;
+import { isPulling } from "@/lib/sync";
 
 /**
  * The top-bar Sync button: the one control that reads the machine.
@@ -29,113 +18,19 @@ export const PROFILE_PASS_GRACE_MS = 15_000;
  * `/api/device/status` and the sync ledger; the third is a toast, because a
  * sync is something you ask for and then look away from.
  *
- * "What did this click do" is tracked by run id rather than by waiting on the
- * mutation: `POST /api/sync/run` answers 202 the moment the loops are woken,
- * and the run that follows is watched through the ledger, which the
- * `sync.progress` events keep fresh. A sync started in another tab therefore
- * shows the spinner here too, and only the tab that asked gets the toast. Being in
- * the top bar, it stays mounted while the person moves between pages, so the toast
- * arrives wherever they are when the sync finishes.
- *
- * The id to wait past is captured when the button is *pressed*, not when the
- * 202 comes back. The first `sync.progress` event lands well inside that
- * window and refetches the ledger, so by `onSuccess` the newest run is already
- * the one this click started — and waiting for a run newer than itself is a
- * toast that never arrives.
+ * Asking for the sync, watching it and the toast are the app's `SyncOwner`, shared with the
+ * proposal cards whose Approve and sync begins the same sync. A sync started in another tab
+ * shows the spinner here too, from the ledger.
  */
-export function PullButton({
-  profileGraceMs = PROFILE_PASS_GRACE_MS,
-}: {
-  profileGraceMs?: number;
-}) {
+export function PullButton() {
   const device = useDeviceStatus();
   const sync = useSyncStatus();
-  const run = latestShotRun(sync.data);
+  const owner = useSyncOwner();
   const running = isPulling(sync.data);
-  // Read inside `onMutate`, which runs synchronously on the click. A piece of
-  // state would be a render behind by then.
-  const runAtClick = useRef<number | undefined>(undefined);
-  runAtClick.current = run?.id;
-  const profileRun = latestProfileRun(sync.data);
-  const profileRunAtClick = useRef<number | undefined>(undefined);
-  profileRunAtClick.current = profileRun?.id;
-  // Whether the request this click made queued a profile pass, so the toast knows to wait
-  // for it. Read from the 202, which says what was queued.
-  const expectProfiles = useRef(false);
-  const [profilesAfter, setProfilesAfter] = useState(0);
-  const [gaveUp, setGaveUp] = useState(false);
-
-  // The newest run id this tab has already accounted for. `null` means "not
-  // waiting for anything", which is the state every tab starts in — including
-  // one opened while a sync it did not start is under way.
-  const [waitingAfter, setWaitingAfter] = useState<number | null>(null);
-  const waiting = useRef(false);
-
-  const pull = useMutation({
-    mutationFn: () => runSync("all"),
-    onMutate: () => {
-      waiting.current = true;
-      expectProfiles.current = false;
-      setGaveUp(false);
-      setWaitingAfter(runAtClick.current ?? 0);
-      setProfilesAfter(profileRunAtClick.current ?? 0);
-    },
-    onSuccess: (queued) => {
-      expectProfiles.current = queued?.queued?.includes("profiles") ?? false;
-      void sync.refetch();
-    },
-    onError: (error: Error) => {
-      waiting.current = false;
-      setWaitingAfter(null);
-      toast.error(error.message);
-    },
-  });
-
-  // The profile pass of *this* click: newer than the one on the ledger when it was pressed,
-  // and finished. Its numbers go in the toast.
-  const profilesDone =
-    profileRun && profileRun.id > profilesAfter && profileRun.finished_at ? profileRun : undefined;
-  // Whether this click's profile pass is on the ledger yet, finished or not. Once it is, it is
-  // waited for however long it takes: a slow pass must not be given up on and reported as a
-  // success without its numbers (it may yet fail). The grace below covers only a pass that
-  // never appears.
-  const profilesStarted = !!profileRun && profileRun.id > profilesAfter;
-  const shotsDone = run && waitingAfter !== null && run.id > waitingAfter && run.finished_at;
-
-  useEffect(() => {
-    if (!waiting.current || waitingAfter === null || pull.isPending) return;
-    if (!run || !shotsDone) return;
-    const wanted = expectProfiles.current;
-    if (wanted && !profilesDone) {
-      if (profilesStarted) return;
-      if (!gaveUp) {
-        const timer = setTimeout(() => setGaveUp(true), profileGraceMs);
-        return () => clearTimeout(timer);
-      }
-    }
-    waiting.current = false;
-    setWaitingAfter(null);
-    const profiles = wanted ? profilesDone : undefined;
-    const message = pullSummary(run, profiles);
-    if (syncSucceeded(run, profiles)) {
-      toast.success(message);
-    } else {
-      toast.error(message);
-    }
-  }, [
-    run,
-    shotsDone,
-    profilesDone,
-    profilesStarted,
-    waitingAfter,
-    gaveUp,
-    pull.isPending,
-    profileGraceMs,
-  ]);
 
   const configured = device.data?.configured ?? false;
   const connected = device.data?.connected ?? false;
-  const disabled = !configured || !connected || running || pull.isPending;
+  const disabled = !configured || !connected || running || owner.starting;
 
   const why = !configured
     ? "No machine is configured. Set its address in Settings."
@@ -153,7 +48,7 @@ export function PullButton({
       type="button"
       data-testid="pull-button"
       disabled={disabled}
-      onClick={() => void attempt(() => pull.mutateAsync())}
+      onClick={() => void attempt(() => owner.startSync())}
       className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-primary bg-primary px-2.5 py-1 font-medium text-primary-foreground text-xs hover:bg-primary/90 disabled:opacity-60"
     >
       {running ? (

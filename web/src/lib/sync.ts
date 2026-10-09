@@ -19,6 +19,11 @@ import { boardSummaryOf } from "@/lib/board";
  */
 const SHOT_RUN_KINDS = ["backfill", "live", "shots"];
 
+/** Whether a run of this kind is a shot pass: the one list the top bar and the toast both read. */
+export function isShotRunKind(kind: string): boolean {
+  return SHOT_RUN_KINDS.includes(kind);
+}
+
 /** The newest shot pass of any kind, running or finished. */
 export function latestShotRun(status: SyncStatusData | undefined): SyncRunRow | undefined {
   if (!status) return undefined;
@@ -176,6 +181,82 @@ export function pullSummary(run: SyncRunRow, profileRun?: SyncRunRow): string {
 /** Whether a sync, shots and profiles together, ended well enough to say "Synced". */
 export function syncSucceeded(run: SyncRunRow, profileRun?: SyncRunRow): boolean {
   return run.status === "ok" && (profileRun === undefined || profileRun.status === "ok");
+}
+
+const SUMMARY_LISTS = [
+  "adopted",
+  "conflicts",
+  "recorded",
+  "pushed",
+  "removed",
+  "left",
+  "home_screen",
+  "failures",
+];
+
+/** The first run that did not end well, else the newest: what the merged run says of itself. */
+function worstOf(sorted: SyncRunRow[]): SyncRunRow {
+  return sorted.find((run) => run.status !== "ok") ?? (sorted[sorted.length - 1] as SyncRunRow);
+}
+
+/**
+ * The shot passes of one wait as a single run, for one sentence: what each brought in, added up.
+ * One pass is itself.
+ */
+export function mergeShotRuns(runs: SyncRunRow[]): SyncRunRow {
+  const sorted = [...new Map(runs.map((run) => [run.id, run])).values()].sort(
+    (left, right) => left.id - right.id,
+  );
+  const last = sorted[sorted.length - 1] as SyncRunRow;
+  if (sorted.length === 1) return last;
+  const sum = (field: "shots_inserted" | "shots_updated" | "shots_quarantined" | "errors") =>
+    sorted.reduce((total, run) => total + run[field], 0);
+  const worst = worstOf(sorted);
+  return {
+    ...last,
+    status: worst.status,
+    error: worst.error,
+    shots_inserted: sum("shots_inserted"),
+    shots_updated: sum("shots_updated"),
+    shots_quarantined: sum("shots_quarantined"),
+    errors: sum("errors"),
+  };
+}
+
+/**
+ * The profile passes of one wait as a single run: the write phase's lists joined and its writes
+ * added up, the profiles read and the pause as the newest pass says them. One pass is itself.
+ */
+export function mergeProfileRuns(runs: SyncRunRow[]): SyncRunRow | undefined {
+  const sorted = [...new Map(runs.map((run) => [run.id, run])).values()].sort(
+    (left, right) => left.id - right.id,
+  );
+  if (sorted.length === 0) return undefined;
+  const last = sorted[sorted.length - 1] as SyncRunRow;
+  if (sorted.length === 1) return last;
+  const summaries = sorted.map((run) =>
+    typeof run.summary === "object" && run.summary !== null && !Array.isArray(run.summary)
+      ? (run.summary as Record<string, unknown>)
+      : {},
+  );
+  const merged: Record<string, unknown> = { ...(summaries[summaries.length - 1] ?? {}) };
+  let wrote = false;
+  for (const summary of summaries) if (typeof summary.writes === "number") wrote = true;
+  if (wrote) {
+    for (const list of SUMMARY_LISTS) {
+      merged[list] = summaries.flatMap((summary) =>
+        Array.isArray(summary[list]) ? (summary[list] as unknown[]) : [],
+      );
+    }
+    merged.writes = summaries.reduce(
+      (total, summary) => total + (typeof summary.writes === "number" ? summary.writes : 0),
+      0,
+    );
+    merged.paused =
+      [...summaries].reverse().find((s) => typeof s.paused === "string")?.paused ?? null;
+  }
+  const worst = worstOf(sorted);
+  return { ...last, status: worst.status, error: worst.error, summary: merged };
 }
 
 /**

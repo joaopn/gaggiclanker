@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SyncStatusData } from "@/api/types";
 import { PullButton } from "@/components/PullButton";
+import { SyncOwnerProvider } from "@/components/sync/SyncOwner";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
@@ -11,8 +12,9 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getSyncStatus, getDeviceStatus, runSync } = vi.hoisted(() => ({
+const { getSyncStatus, getDeviceStatus, runSync, getSyncRunsAfter } = vi.hoisted(() => ({
   getSyncStatus: vi.fn(),
+  getSyncRunsAfter: vi.fn(),
   getDeviceStatus: vi.fn(),
   runSync: vi.fn(),
 }));
@@ -21,6 +23,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSyncStatus,
   getDeviceStatus,
   runSync,
+  getSyncRunsAfter,
 }));
 
 function statusData(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
@@ -98,6 +101,15 @@ function boardSummary(overrides: Record<string, unknown> = {}) {
 
 const item = (label: string) => ({ label, reason: "", detail: "" });
 
+/** The top-bar button under the owner AppShell mounts above it. */
+function Bar({ graceMs }: { graceMs?: number }) {
+  return (
+    <SyncOwnerProvider profileGraceMs={graceMs}>
+      <PullButton />
+    </SyncOwnerProvider>
+  );
+}
+
 /** The button once the machine's status has loaded and says it can sync. */
 async function ready(): Promise<void> {
   await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
@@ -114,6 +126,12 @@ beforeEach(() => {
     last_status: null,
   });
   runSync.mockResolvedValue({ queued: ["shots", "profiles", "identity"] });
+  // The server's list of runs, as a ledger with every pass kept would give it.
+  getSyncRunsAfter.mockImplementation(async (after: number) => {
+    const status = (await getSyncStatus()) as SyncStatusData;
+    const runs = Object.values(status.last_runs ?? {}).filter((entry) => entry.id > after);
+    return { runs: runs.sort((left, right) => left.id - right.id), truncated: false };
+  });
 });
 
 describe("PullButton", () => {
@@ -125,7 +143,7 @@ describe("PullButton", () => {
         last_runs: { backfill: shotRun({ id: 6 }), profiles: profileRun(null, { id: 5 }) },
       }),
     );
-    const { queryClient } = renderWithQueryClient(<PullButton />);
+    const { queryClient } = renderWithQueryClient(<Bar />);
     await ready();
     await user.click(screen.getByTestId("pull-button"));
     await waitFor(() => expect(runSync).toHaveBeenCalledWith("all"));
@@ -139,7 +157,7 @@ describe("PullButton", () => {
   }
 
   it("reads Sync on screen and Sync with machine to a screen reader, and Syncing… while it runs", async () => {
-    renderWithQueryClient(<PullButton />);
+    renderWithQueryClient(<Bar />);
     await ready();
     const button = screen.getByRole("button", { name: "Sync with machine" });
     expect(button).toBe(screen.getByTestId("pull-button"));
@@ -303,7 +321,7 @@ describe("PullButton", () => {
         }),
     );
 
-    const { queryClient } = renderWithQueryClient(<PullButton />);
+    const { queryClient } = renderWithQueryClient(<Bar />);
     await ready();
     await user.click(screen.getByTestId("pull-button"));
 
@@ -340,7 +358,7 @@ describe("PullButton", () => {
         last_runs: { backfill: shotRun({ id: 6 }), profiles: profileRun(null, { id: 5 }) },
       }),
     );
-    const { queryClient } = renderWithQueryClient(<PullButton profileGraceMs={profileGraceMs} />);
+    const { queryClient } = renderWithQueryClient(<Bar graceMs={profileGraceMs} />);
     await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
     await user.click(screen.getByTestId("pull-button"));
     await waitFor(() => expect(runSync).toHaveBeenCalled());
@@ -454,6 +472,7 @@ describe("PullButton", () => {
       });
       await waitFor(() =>
         expect(toast.success).toHaveBeenCalledWith(
+          // The server's list (here: what the ledger holds) is what the sentence counts.
           "Synced: 2 new shots. Read 3 profiles from the machine; no writes (writes are off).",
         ),
       );
@@ -476,7 +495,7 @@ describe("PullButton", () => {
           accept = resolve;
         }),
     );
-    const { queryClient } = renderWithQueryClient(<PullButton profileGraceMs={5000} />);
+    const { queryClient } = renderWithQueryClient(<Bar graceMs={5000} />);
     await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
     await user.click(screen.getByTestId("pull-button"));
 
@@ -503,7 +522,7 @@ describe("PullButton", () => {
     );
   });
 
-  it("does not toast after the button is gone", async () => {
+  it("does not toast once the whole app, button and owner, is gone", async () => {
     const { ledger } = await pressAndLedger(30);
     const view = screen.getByTestId("pull-button");
     expect(view).toBeInTheDocument();
@@ -516,7 +535,7 @@ describe("PullButton", () => {
   it("speaks without the profile pass when it never shows up", async () => {
     const user = setupUser();
     getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
-    const { queryClient } = renderWithQueryClient(<PullButton profileGraceMs={40} />);
+    const { queryClient } = renderWithQueryClient(<Bar graceMs={40} />);
     await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
 
     await user.click(screen.getByTestId("pull-button"));
@@ -548,7 +567,7 @@ describe("PullButton", () => {
       }),
     );
 
-    renderWithQueryClient(<PullButton />);
+    renderWithQueryClient(<Bar />);
     await ready();
 
     expect(screen.queryByText("Syncing…")).not.toBeInTheDocument();
@@ -564,7 +583,7 @@ describe("PullButton", () => {
       last_status: null,
     });
 
-    renderWithQueryClient(<PullButton />);
+    renderWithQueryClient(<Bar />);
 
     await waitFor(() => expect(screen.getByTestId("pull-button")).toBeDisabled());
   });
@@ -578,7 +597,7 @@ describe("PullButton", () => {
       last_status: null,
     });
 
-    renderWithQueryClient(<PullButton />);
+    renderWithQueryClient(<Bar />);
 
     await waitFor(() => expect(screen.getByTestId("pull-button")).toBeDisabled());
   });
@@ -588,7 +607,7 @@ describe("PullButton", () => {
       statusData({ running: true, last_runs: { backfill: shotRun({ finished_at: null }) } }),
     );
 
-    renderWithQueryClient(<PullButton />);
+    renderWithQueryClient(<Bar />);
 
     expect(await screen.findByText("Syncing…")).toBeInTheDocument();
     expect(screen.getByTestId("pull-button")).toBeDisabled();

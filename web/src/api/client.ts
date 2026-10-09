@@ -116,6 +116,7 @@ import type {
   StartingPointAccepted,
   StartingPointRequest,
   StartingPointRun,
+  SyncRunsData,
   SyncStatusData,
   VersionOutcome,
   VersionOutcomeWrite,
@@ -799,6 +800,11 @@ export async function getDeviceWrites(limit = 100): Promise<DeviceWritesData> {
 
 export async function getSyncStatus(): Promise<SyncStatusData> {
   return fetchApi<SyncStatusData>("/sync/status");
+}
+
+/** Every sync run after one the caller knows (oldest first, at most 50), read-only. */
+export async function getSyncRunsAfter(after: number): Promise<SyncRunsData> {
+  return fetchApi<SyncRunsData>(`/sync/runs${queryString({ after })}`);
 }
 
 /**

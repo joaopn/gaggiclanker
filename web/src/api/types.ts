@@ -51,6 +51,7 @@ export type ProfileVersionRow = components["schemas"]["ProfileVersionRow"];
 export type DeviceProfileSummary = components["schemas"]["DeviceProfileSummary"];
 export type SyncStatusData = components["schemas"]["SyncStatusData"];
 export type SyncRunRow = components["schemas"]["SyncRunRow"];
+export type SyncRunsData = components["schemas"]["SyncRunsData"];
 export type ImportSummary = components["schemas"]["ImportSummary"];
 export type ImportResult = components["schemas"]["ImportResult"];
 export type ApiErrorBody = components["schemas"]["ApiError"];
