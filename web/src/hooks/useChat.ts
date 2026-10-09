@@ -101,6 +101,22 @@ export function proposedSetId(content: string | undefined): number | null {
   }
 }
 
+/**
+ * The profile draft a tool result made, or `null`: a drafted profile version, or a first recipe
+ * (which carries its draft beside its proposal). Read from the output for the same reason.
+ */
+export function draftedId(content: string | undefined): number | null {
+  if (!content) return null;
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object") return null;
+    const id = Number((parsed as Record<string, unknown>).draft_id);
+    return Number.isInteger(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export type TraceEntry = {
   id: string;
   name: string;
@@ -309,6 +325,13 @@ export function useChatRun(runId: number | null, threadId: number | null): LiveR
               void queryClient.invalidateQueries({
                 queryKey: queryKeys.sets.proposals(String(setId)),
               });
+            }
+            // A proposed profile version appears the same way: its card reads where it
+            // stands, and where a put would land comes from the board.
+            const draftId = draftedId(event.content);
+            if (draftId !== null) {
+              void queryClient.invalidateQueries({ queryKey: queryKeys.drafts.standing(draftId) });
+              void queryClient.invalidateQueries({ queryKey: queryKeys.board.all });
             }
           }
           break;

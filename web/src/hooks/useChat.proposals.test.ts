@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { proposedSetId } from "@/hooks/useChat";
+import { draftedId, proposedSetId } from "@/hooks/useChat";
 
 /**
  * Which tool results make a proposal card's buttons appear mid-answer.
@@ -36,5 +36,21 @@ describe("proposedSetId", () => {
     expect(proposedSetId("[1, 2, 3]")).toBeNull();
     expect(proposedSetId(JSON.stringify({ proposal_id: 5 }))).toBeNull();
     expect(proposedSetId(JSON.stringify({ proposal_id: 5, set_id: "three" }))).toBeNull();
+  });
+});
+
+describe("draftedId", () => {
+  it("finds the draft a drafted profile version or a first recipe made", () => {
+    expect(draftedId(JSON.stringify({ draft_id: 12, status: "draft" }))).toBe(12);
+    expect(draftedId(JSON.stringify({ proposal_id: 5, set_id: 3, draft_id: 14 }))).toBe(14);
+  });
+
+  it("ignores a result with no draft, and anything it cannot read", () => {
+    expect(draftedId(JSON.stringify({ proposal_id: 5, set_id: 3 }))).toBeNull();
+    expect(draftedId(JSON.stringify({ draft_id: "twelve" }))).toBeNull();
+    expect(draftedId(JSON.stringify({ draft_id: 0 }))).toBeNull();
+    expect(draftedId(undefined)).toBeNull();
+    expect(draftedId("not json")).toBeNull();
+    expect(draftedId("[1]")).toBeNull();
   });
 });

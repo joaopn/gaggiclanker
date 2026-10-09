@@ -7,8 +7,10 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  checkDraftName,
   createProfileDraft,
   discardProfileDraft,
+  getDraftStanding,
   getProfileDraft,
   getProfileDrafts,
   previewProfileDraft,
@@ -17,6 +19,8 @@ import {
 import type {
   DraftCreateBody,
   DraftPreview,
+  DraftStanding,
+  NameCheck,
   ProfileDraft,
   ProfileDraftDetail,
   ProfileDraftListData,
@@ -116,5 +120,44 @@ export function usePreviewDraft(): UseMutationResult<
 > {
   return useMutation({
     mutationFn: ({ baseVersionId, profile }) => previewProfileDraft(baseVersionId, profile),
+  });
+}
+
+/**
+ * Where one proposed profile version stands: waiting, approved, on the machine, not on the
+ * machine, declined or replaced, with the server's words for it. The one read the proposal card
+ * draws from, in the chat and on the Profiles page. It sits under the `drafts` prefix, so every
+ * draft write, board write and sync event that refreshes the drafts refreshes it too.
+ */
+export function useDraftStanding(
+  draftId: number | undefined,
+): UseQueryResult<DraftStanding, Error> {
+  return useQuery({
+    queryKey: queryKeys.drafts.standing(draftId as number),
+    queryFn: () => getDraftStanding(draftId as number),
+    enabled: draftId !== undefined && Number.isFinite(draftId),
+  });
+}
+
+/**
+ * Would approving this proposal under the typed name be refused? A query on the debounced name,
+ * never stored: the answer is the server's own placement rule (the one the put asks), and it is
+ * kept apart from the drafts' keys, so a refresh of them is not a request. Nothing is asked for an empty name (the card says so itself) or while `enabled` is false.
+ */
+export function useNameCheck(
+  draftId: number,
+  label: string,
+  enabled: boolean,
+): UseQueryResult<NameCheck, Error> {
+  return useQuery({
+    queryKey: queryKeys.nameChecks.one(draftId, label),
+    queryFn: () => checkDraftName(draftId, label),
+    enabled: enabled && label.trim() !== "",
+    // One answer per typed value, asked once: it is not refreshed with the drafts (the list gaining
+    // that name meanwhile is refused by the put in the same words), and a stale answer for an old
+    // keystroke is never shown, since the key carries the name.
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+    gcTime: 0,
   });
 }

@@ -304,3 +304,15 @@ export function relativeTime(value: string | null | undefined, now = Date.now())
   }
   return format.format(Math.round(seconds), "second");
 }
+
+/**
+ * Why a sync cannot be asked for, in the words the top bar's button gives, or `null` when it can.
+ * One place, so the button and a card's line under Approve say the same thing.
+ */
+export function syncUnavailableWhy(configured: boolean, connected: boolean): string | null {
+  if (!configured) return "No machine is configured. Set its address in Settings.";
+  if (!connected) {
+    return "The machine is not reachable. The archive still works; a sync cannot.";
+  }
+  return null;
+}

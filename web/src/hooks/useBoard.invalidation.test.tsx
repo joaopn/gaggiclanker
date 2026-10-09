@@ -166,3 +166,30 @@ describe("every board mutation refreshes everything it changes", () => {
     for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
   });
 });
+
+describe("a put refreshes where each proposal stands", () => {
+  it("marks a cached standing read stale, whether or not the put carried a name or a Set", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => usePutOnBoard());
+    // The test client collects a query nobody observes at once; these are kept to be inspected.
+    queryClient.setQueryDefaults(queryKeys.drafts.all, { gcTime: Number.POSITIVE_INFINITY });
+    queryClient.setQueryData(queryKeys.drafts.standing(7), { state: "waiting" });
+    queryClient.setQueryData(queryKeys.drafts.standing(8), { state: "waiting" });
+    expect(queryClient.getQueryState(queryKeys.drafts.standing(7))?.isInvalidated).toBe(false);
+
+    await result.current.mutateAsync({ draftId: 7, setId: 3, major: false, label: "Gentle Bloom" });
+
+    await waitFor(() =>
+      expect(queryClient.getQueryState(queryKeys.drafts.standing(7))?.isInvalidated).toBe(true),
+    );
+    // Every proposal's card is refreshed: the put changes what another one would land on.
+    expect(queryClient.getQueryState(queryKeys.drafts.standing(8))?.isInvalidated).toBe(true);
+  });
+
+  it("sends the name the person typed, and the Set only when it records one", async () => {
+    const { result } = renderHookWithQueryClient(() => usePutOnBoard());
+
+    await result.current.mutateAsync({ draftId: 7, label: "Gentle Bloom" });
+
+    expect(putOnBoard).toHaveBeenCalledWith({ draftId: 7, label: "Gentle Bloom" });
+  });
+});

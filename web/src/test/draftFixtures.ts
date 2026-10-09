@@ -1,4 +1,4 @@
-import type { ProfileDraft, ProfileDraftDetail } from "@/api/types";
+import type { DraftStanding, ProfileDraft, ProfileDraftDetail } from "@/api/types";
 
 /**
  * Factories for the draft queue's tests.
@@ -108,4 +108,65 @@ export function yieldChange() {
     before: { type: "volumetric", operator: "gte", value: 36 },
     after: { type: "volumetric", operator: "gte", value: 44 },
   };
+}
+
+/** A "pro" profile: the only kind the machine, and so the card, draws a curve for. */
+export function proProfile(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    label: "Adaptive Bloom",
+    type: "pro",
+    description: "",
+    temperature: 93,
+    utility: false,
+    phases: [
+      {
+        name: "Fill",
+        phase: "preinfusion",
+        valve: 1,
+        duration: 6,
+        temperature: 0,
+        pump: { target: "flow", pressure: 0, flow: 4 },
+        transition: { type: "instant", duration: 0, adaptive: true },
+        targets: [],
+      },
+      {
+        name: "Hold",
+        phase: "brew",
+        valve: 1,
+        duration: 24,
+        temperature: 0,
+        pump: { target: "pressure", pressure: 9, flow: 0 },
+        transition: { type: "linear", duration: 4, adaptive: true },
+        targets: [{ type: "volumetric", operator: "gte", value: 36 }],
+      },
+    ],
+    ...overrides,
+  };
+}
+
+/**
+ * `GET /api/profile-drafts/{id}/standing` for a proposal that is waiting: a change to the
+ * profile it continues, with nothing in the way. Override `state` and `reason` for the answered
+ * states, which carry neither the active document nor a landing.
+ */
+export function standing(overrides: Record<string, unknown> = {}): DraftStanding {
+  return {
+    draft: draft(),
+    profile: draftProfile(),
+    active_profile: baseProfile(),
+    landing: {
+      draft_id: 1,
+      already_on_board_label: null,
+      plain: { row_id: 4, row_label: "9 Bar Espresso" },
+      for_set: null,
+    },
+    state: "waiting",
+    reason: null,
+    row_id: 4,
+    row_label: "9 Bar Espresso",
+    selected: null,
+    set_version_label: null,
+    writes_enabled: true,
+    ...overrides,
+  } as DraftStanding;
 }

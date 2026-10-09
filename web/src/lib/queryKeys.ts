@@ -155,6 +155,12 @@ export const queryKeys = {
     all: ["drafts"] as const,
     list: (filters?: Record<string, unknown>) => ["drafts", "list", filters ?? {}] as const,
     detail: (id: string) => ["drafts", "detail", id] as const,
+    /** Where one proposal stands; under `drafts`, so every draft or board write refreshes it. */
+    standing: (id: number) => ["drafts", "standing", id] as const,
+  },
+  /** A typed name asked of the server's placement rule; outside `drafts` on purpose. */
+  nameChecks: {
+    one: (draftId: number, label: string) => ["name-check", draftId, label] as const,
   },
   knowledge: {
     all: ["knowledge"] as const,

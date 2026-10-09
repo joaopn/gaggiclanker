@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSyncStatus } from "@/hooks/useArchive";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { attempt } from "@/lib/mutations";
-import { isPulling } from "@/lib/sync";
+import { isPulling, syncUnavailableWhy } from "@/lib/sync";
 
 /**
  * The top-bar Sync button: the one control that reads the machine.
@@ -32,13 +32,11 @@ export function PullButton() {
   const connected = device.data?.connected ?? false;
   const disabled = !configured || !connected || running || owner.starting;
 
-  const why = !configured
-    ? "No machine is configured. Set its address in Settings."
-    : !connected
-      ? "The machine is not reachable. The archive still works; a sync cannot."
-      : running
-        ? "A sync is already running."
-        : "Read the machine's shots, profiles and notes, and archive anything new. With Writes on, also make its profile list match the Profiles page.";
+  const why =
+    syncUnavailableWhy(configured, connected) ??
+    (running
+      ? "A sync is already running."
+      : "Read the machine's shots, profiles and notes, and archive anything new. With Writes on, also make its profile list match the Profiles page.");
 
   // "Sync" on screen and "Sync with machine" to a screen reader, which is the action's
   // name everywhere else; icon-only below `sm`, like the switch and Flush beside it, so

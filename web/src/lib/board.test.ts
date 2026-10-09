@@ -306,6 +306,17 @@ describe("the event a sync's write phase sends", () => {
     }
     expect(keys).toHaveLength(6);
   });
+
+  it("reaches every proposal's standing, which is read under the drafts prefix", async () => {
+    const { EVENT_INVALIDATIONS } = await import("@/lib/invalidate");
+    const { queryKeys } = await import("@/lib/queryKeys");
+    const keys = EVENT_INVALIDATIONS["profile.updated"] ?? [];
+    const standing = queryKeys.drafts.standing(12);
+    const reached = keys.some((key) =>
+      key.every((part, index) => (standing as readonly unknown[])[index] === part),
+    );
+    expect(reached).toBe(true);
+  });
 });
 
 describe("summaryLine reads a reason by the section it is listed under", () => {

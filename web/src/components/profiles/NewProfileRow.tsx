@@ -1,11 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import type { BoardProposal } from "@/api/types";
-import { ProposalPanel } from "@/components/profiles/ProposalPanel";
+import { ProfileProposalCard } from "@/components/profiles/ProfileProposalCard";
 import { Badge } from "@/components/ui/badge";
-import { useProfileDraft } from "@/hooks/useDrafts";
 import { cn } from "@/lib/utils";
-
-type Json = Record<string, unknown>;
 
 /**
  * A proposal that lands on no profile: a proposed new profile. It is a row at the top of the
@@ -62,16 +59,9 @@ export function NewProfileRow({
 }
 
 function NewProfileBody({ proposal }: { proposal: BoardProposal }) {
-  const detail = useProfileDraft(proposal.draft.id);
   return (
     <div className="border-border border-t p-3" data-testid="profile-dropdown">
-      <ProposalPanel
-        isNew
-        draft={proposal.draft}
-        profile={(detail.data?.draft_profile as Json | null | undefined) ?? null}
-        base={null}
-        landing={proposal.landing}
-      />
+      <ProfileProposalCard draftId={proposal.draft.id} place="profiles" />
     </div>
   );
 }

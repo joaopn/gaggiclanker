@@ -30,6 +30,7 @@ import type {
   DeviceWritesData,
   DraftCreateBody,
   DraftPreview,
+  DraftStanding,
   FlavorPicks,
   FlushData,
   GrinderRow,
@@ -61,6 +62,7 @@ import type {
   MachineData,
   MachinePatch,
   MachineRow,
+  NameCheck,
   OutcomeProposalDecision,
   OutcomeProposalListData,
   PasswordData,
@@ -647,6 +649,8 @@ export async function putOnBoard(body: {
   draftId: number;
   setId?: number;
   major?: boolean;
+  /** A new profile's name as the person typed it; absent keeps the proposed one. */
+  label?: string;
 }): Promise<BoardRow> {
   return fetchApi<BoardRow>("/profile-board", {
     method: "POST",
@@ -655,7 +659,21 @@ export async function putOnBoard(body: {
       set_id: body.setId ?? null,
       // Only with a Set: a profile that records nothing names no version.
       ...(body.setId !== undefined && body.major !== undefined ? { major: body.major } : {}),
+      ...(body.label !== undefined ? { label: body.label } : {}),
     }),
+  });
+}
+
+/** Where one proposal stands, in the server's words: waiting, approved, on the machine, answered. */
+export async function getDraftStanding(id: number): Promise<DraftStanding> {
+  return fetchApi<DraftStanding>(`/profile-drafts/${id}/standing`);
+}
+
+/** Would approving this proposal under that name be refused, and with which sentence. */
+export async function checkDraftName(id: number, label: string): Promise<NameCheck> {
+  return fetchApi<NameCheck>(`/profile-drafts/${id}/name-check`, {
+    method: "POST",
+    body: JSON.stringify({ label }),
   });
 }
 
@@ -1142,11 +1160,14 @@ export async function getSetProposals(id: number): Promise<SetProposalListData> 
 export async function acceptSetProposal(
   id: number,
   proposalId: number,
-  options: { major?: boolean } = {},
+  options: { major?: boolean; profileLabel?: string } = {},
 ): Promise<SetProposalDecision> {
   return fetchApi<SetProposalDecision>(`/sets/${id}/proposals/${proposalId}/accept`, {
     method: "POST",
-    body: JSON.stringify(options.major === undefined ? {} : { major: options.major }),
+    body: JSON.stringify({
+      ...(options.major === undefined ? {} : { major: options.major }),
+      ...(options.profileLabel === undefined ? {} : { profile_label: options.profileLabel }),
+    }),
   });
 }
 

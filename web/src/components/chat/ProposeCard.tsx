@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { ChatInsightCard } from "@/components/chat/ChatInsightCard";
 import { InsightDeletionCard } from "@/components/chat/InsightDeletionCard";
 import { OutcomeCard } from "@/components/chat/OutcomeCard";
+import { ProfileProposalCard } from "@/components/profiles/ProfileProposalCard";
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
 import { useSetProposals } from "@/hooks/useSets";
@@ -36,6 +37,9 @@ export type Proposal = {
   deletion?: { insightId: number; text: string };
   /** A proposed grade: what the tool said, shown until the live row is read. */
   grade?: { version: string; outcome: string; countedShots: number };
+  /** A proposed profile version: which draft, and the name the call gave it, if it gave one. */
+  draftId?: number;
+  proposedAs?: string | null;
 };
 
 function parse(content: string | undefined): Record<string, unknown> | null {
@@ -123,15 +127,19 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
   if (entry.name === "draft_profile") {
     const draftId = output.draft_id;
     if (draftId === undefined) return null;
-    const prediction = String(output.prediction ?? "");
+    const patch = entry.arguments.patch;
+    const named =
+      patch && typeof patch === "object" ? (patch as Record<string, unknown>).label : undefined;
     return {
       kind: "draft",
       label: "Proposed profile change",
-      detail: prediction
-        ? `${String(output.change_summary ?? "")} — predicts: ${prediction}`
-        : String(output.change_summary ?? "waiting for you to make it active"),
+      // Shown only until the card's own read lands.
+      detail: String(output.change_summary ?? ""),
       href: "/profiles#staged",
       icon: FilePen,
+      draftId: Number(draftId),
+      // The tool's output does not carry the name, but the call that made a new profile does.
+      proposedAs: typeof named === "string" && named.trim() !== "" ? named.trim() : null,
     };
   }
 
@@ -212,6 +220,18 @@ function ProposedChange({ proposal }: { proposal: Proposal }) {
 
 export function ProposeCard({ proposal }: { proposal: Proposal }) {
   const Icon = proposal.icon;
+  if (proposal.kind === "draft" && proposal.draftId !== undefined) {
+    return (
+      <div className="m-2 mt-0" data-testid={`propose-card-${proposal.kind}`}>
+        <ProfileProposalCard
+          draftId={proposal.draftId}
+          place="chat"
+          summary={proposal.detail}
+          proposedAs={proposal.proposedAs ?? null}
+        />
+      </div>
+    );
+  }
   if (proposal.kind === "insight" && proposal.insightId !== undefined) {
     return <ChatInsightCard insightId={proposal.insightId} text={proposal.insightText ?? ""} />;
   }

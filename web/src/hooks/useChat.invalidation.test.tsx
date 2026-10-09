@@ -42,3 +42,66 @@ describe("a finished chat run refreshes what an agent may have written", () => {
     },
   );
 });
+
+describe("a drafted profile version appears mid-answer with its buttons", () => {
+  it("refreshes the board and that draft's standing when its tool result arrives", () => {
+    const { queryClient } = renderHookWithQueryClient(() => useChatRun(5, 9));
+    const keys = spyOn(queryClient);
+
+    act(() =>
+      emit({
+        data: {
+          seq: 1,
+          kind: "tool_call",
+          id: "c1",
+          name: "draft_profile",
+          arguments: {},
+        } as ChatStreamEvent,
+      }),
+    );
+    act(() =>
+      emit({
+        data: {
+          seq: 2,
+          kind: "tool_result",
+          id: "c1",
+          ok: true,
+          content: JSON.stringify({ draft_id: 12, status: "draft" }),
+        } as ChatStreamEvent,
+      }),
+    );
+
+    expect(keys).toContainEqual(queryKeys.drafts.standing(12));
+    expect(keys).toContainEqual(queryKeys.board.all);
+  });
+
+  it("refreshes nothing for a failed call, or a result that made no draft", () => {
+    const { queryClient } = renderHookWithQueryClient(() => useChatRun(5, 9));
+    const keys = spyOn(queryClient);
+
+    act(() =>
+      emit({
+        data: {
+          seq: 1,
+          kind: "tool_result",
+          id: "c1",
+          ok: false,
+          content: JSON.stringify({ draft_id: 12 }),
+        } as ChatStreamEvent,
+      }),
+    );
+    act(() =>
+      emit({
+        data: {
+          seq: 2,
+          kind: "tool_result",
+          id: "c2",
+          ok: true,
+          content: JSON.stringify({ shot: { shot_id: 1 } }),
+        } as ChatStreamEvent,
+      }),
+    );
+
+    expect(keys).toEqual([]);
+  });
+});

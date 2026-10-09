@@ -166,7 +166,7 @@ export function ProfileRow({
         </div>
       ) : null}
 
-      {open ? <ProfileDropdown entry={entry} proposals={proposals} /> : null}
+      {open ? <ProfileDropdown entry={entry} /> : null}
     </li>
   );
 }

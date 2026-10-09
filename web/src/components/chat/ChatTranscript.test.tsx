@@ -2,23 +2,31 @@ import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ChatRun } from "@/api/types";
 import { ChatTranscript, toTurns } from "@/components/chat/ChatTranscript";
+import { draft, standing } from "@/test/draftFixtures";
 import { insightDeletion, knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { designProposal, outcomeProposal, proposal } from "@/test/setsFixtures";
 
-const { getSetProposals, getOutcomeProposals, getKnowledgeInsight, getInsightDeletions } =
-  vi.hoisted(() => ({
-    getSetProposals: vi.fn(),
-    getOutcomeProposals: vi.fn(),
-    getKnowledgeInsight: vi.fn(),
-    getInsightDeletions: vi.fn(),
-  }));
+const {
+  getSetProposals,
+  getOutcomeProposals,
+  getKnowledgeInsight,
+  getInsightDeletions,
+  getDraftStanding,
+} = vi.hoisted(() => ({
+  getSetProposals: vi.fn(),
+  getOutcomeProposals: vi.fn(),
+  getKnowledgeInsight: vi.fn(),
+  getInsightDeletions: vi.fn(),
+  getDraftStanding: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getSetProposals,
   getOutcomeProposals,
   getKnowledgeInsight,
   getInsightDeletions,
+  getDraftStanding,
 }));
 
 beforeEach(() => {
@@ -494,10 +502,8 @@ describe("ChatTranscript", () => {
     });
   });
 
-  it("points a proposed profile change at the profiles page", () => {
-    // The queue is a section rather than a page, so the link carries the
-    // anchor: landing at the top of the profiles page and leaving the reader
-    // to find the draft they were just told about is half a link.
+  it("draws a proposed profile change as the live card, answerable in place", async () => {
+    getDraftStanding.mockResolvedValue(standing({ draft: draft({ id: 12 }) }));
     const messages: ChatMessage[] = [
       message({ id: 1, role: "user", content: "draft me a softer ramp" }),
       message({
@@ -524,9 +530,56 @@ describe("ChatTranscript", () => {
     );
 
     const card = screen.getByTestId("propose-card-draft");
-    expect(within(card).getByRole("link", { name: /Proposed profile change/ })).toHaveAttribute(
-      "href",
-      "/profiles#staged",
+    // The tool's summary shows until the standing is read; no link to the Profiles page leads
+    // the person away from the conversation.
+    expect(within(card).getByText("Softer ramp.")).toBeInTheDocument();
+    expect(await within(card).findByTestId("approve-proposal")).toBeInTheDocument();
+    expect(getDraftStanding).toHaveBeenCalledWith(12);
+    expect(within(card).queryByRole("link", { name: /Proposed profile change/ })).toBeNull();
+  });
+
+  it("reads a new profile's proposed name off the call that made it", async () => {
+    getDraftStanding.mockResolvedValue(
+      standing({
+        draft: draft({ id: 12, status: "approved", draft_label: "Gentle Bloom" }),
+        active_profile: null,
+        landing: null,
+        state: "approved",
+        reason: "It goes to the machine at the next sync.",
+      }),
+    );
+    const messages: ChatMessage[] = [
+      message({
+        id: 2,
+        role: "assistant",
+        tool_calls: [
+          {
+            id: "c1",
+            name: "draft_profile",
+            arguments: { patch: { label: "Soft Bloom" } },
+          },
+        ],
+      }),
+      message({
+        id: 3,
+        role: "tool",
+        tool_results: [
+          {
+            id: "c1",
+            name: "draft_profile",
+            ok: true,
+            content: JSON.stringify({ draft_id: 12, change_summary: "A gentle bloom." }),
+          },
+        ],
+      }),
+    ];
+
+    renderWithQueryClient(
+      <ChatTranscript messages={messages} runs={[]} permissions={PERMISSIONS} />,
+    );
+
+    expect(await screen.findByTestId("proposal-title")).toHaveTextContent(
+      "✓ Approved as Gentle Bloom (proposed as Soft Bloom)",
     );
   });
 

@@ -12,7 +12,7 @@ import {
   profileWith,
   versionsView,
 } from "@/test/boardFixtures";
-import { draft, draftDetail, draftProfile, yieldChange } from "@/test/draftFixtures";
+import { draft, draftDetail, draftProfile, standing, yieldChange } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { signatureInForce, signatureNone } from "@/test/signatureFixtures";
 import lmleva from "../../../tests/fixtures/profiles/firmware-lmleva.json";
@@ -44,6 +44,8 @@ const api = vi.hoisted(() => ({
   putOnBoard: vi.fn(),
   discardProfileDraft: vi.fn(),
   getProfileDraft: vi.fn(),
+  getDraftStanding: vi.fn(),
+  checkDraftName: vi.fn(),
   importFiles: vi.fn(),
   previewProfileDraft: vi.fn(),
   createProfileDraft: vi.fn(),
@@ -78,6 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   drawn.data.clear();
   drawn.calls = 0;
+  proposalsOnPage.clear();
   window.localStorage.clear();
   api.getProfileBoard.mockResolvedValue(boardView());
   api.getBoardVersions.mockResolvedValue(
@@ -97,7 +100,25 @@ beforeEach(() => {
   api.resumeBoard.mockResolvedValue({ resumed: true });
   api.putOnBoard.mockResolvedValue(row().row);
   api.discardProfileDraft.mockResolvedValue(draft());
+  // The card reads where each proposal stands: by default the one the board lists, waiting.
+  api.getDraftStanding.mockImplementation(async (id: number) => waitingStanding(id));
+  api.checkDraftName.mockImplementation(async (_id: number, label: string) => ({
+    label: label.trim(),
+    refused: null,
+  }));
 });
+
+/** What the board's proposals are, as the standing read serves them, keyed by draft id. */
+const proposalsOnPage = new Map<number, ReturnType<typeof standing>>();
+function waitingStanding(id: number) {
+  return (
+    proposalsOnPage.get(id) ??
+    standing({
+      draft: draft({ id, draft_version_id: 40 + id }),
+      landing: landing({ draft_id: id }),
+    })
+  );
+}
 
 describe("the list", () => {
   it("shows a profile with what it brews and where it stands on the machine", async () => {
@@ -776,7 +797,12 @@ describe("the dropdown", () => {
 });
 
 describe("proposed versions", () => {
-  const withProposal = (draftOverrides = {}, landingOverrides = {}) => {
+  /** A proposal on the board, and the standing read that serves its card. */
+  const withProposal = (
+    draftOverrides: Parameters<typeof draft>[0] = {},
+    landingOverrides: Parameters<typeof landing>[0] = {},
+    standingOverrides: Record<string, unknown> = {},
+  ) => {
     const p = proposal();
     p.draft = draft({
       id: 11,
@@ -785,6 +811,15 @@ describe("proposed versions", () => {
       ...draftOverrides,
     });
     p.landing = landing({ draft_id: 11, ...landingOverrides });
+    proposalsOnPage.set(
+      11,
+      standing({
+        draft: p.draft,
+        landing: p.landing,
+        profile: draftProfile(),
+        ...standingOverrides,
+      }),
+    );
     api.getProfileBoard.mockResolvedValue(
       boardView({ rows: [row({ proposed_versions: 1 })], proposals: [p] }),
     );
@@ -799,15 +834,15 @@ describe("proposed versions", () => {
   async function open(user: ReturnType<typeof setupUser>) {
     renderWithQueryClient(<ProfilesPage />);
     await user.click(await screen.findByTestId("profile-toggle"));
-    return screen.findByTestId("proposal");
+    return screen.findByTestId("profile-proposal");
   }
 
-  it("sits above the versions, marked Proposed, with what it changes against the active version", async () => {
+  it("sits above the versions, with what it changes against the active version", async () => {
     const user = setupUser();
     withProposal();
     const panel = await open(user);
 
-    expect(within(panel).getByText("Proposed")).toBeInTheDocument();
+    expect(within(panel).getByText("Proposed change · 9 Bar Espresso [AI]")).toBeInTheDocument();
     expect(within(panel).getByTestId("profile-diff")).toHaveTextContent("pressure 9 bar");
     expect(within(panel).getByTestId("profile-diff")).toHaveTextContent("pressure 8 bar");
     const dropdown = screen.getByTestId("profile-dropdown");
@@ -817,17 +852,17 @@ describe("proposed versions", () => {
     ).toBeTruthy();
   });
 
-  it("Make active puts it on the board, with no Set when it has none", async () => {
+  it("Approve puts it on the board, with no Set when it has none", async () => {
     const user = setupUser();
     withProposal();
     const panel = await open(user);
 
-    await user.click(within(panel).getByTestId("make-proposal-active"));
+    await user.click(within(panel).getByTestId("approve-proposal"));
 
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
   });
 
-  it("says a proposal moves a stop condition and makes it active in one click, asking for nothing", async () => {
+  it("says a proposal moves a stop condition and approves it in one click, asking for nothing", async () => {
     const user = setupUser();
     withProposal({ stop_condition_changes: [yieldChange()] });
     const panel = await open(user);
@@ -836,14 +871,12 @@ describe("proposed versions", () => {
     expect(warning).toHaveTextContent("phase 1 · Pump");
     expect(warning).toHaveTextContent("changed volumetric gte 36 → gte 44");
     expect(within(panel).queryByRole("checkbox")).not.toBeInTheDocument();
-    const button = within(panel).getByTestId("make-proposal-active");
-    expect(button).toBeEnabled();
-    await user.click(button);
+    await user.click(within(panel).getByTestId("approve-proposal"));
 
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
   });
 
-  it("records the Set's next version only through the button that says so, with the major choice", async () => {
+  it("records the Set's next version through the primary button, with the major choice", async () => {
     const user = setupUser();
     withProposal(
       {
@@ -858,10 +891,10 @@ describe("proposed versions", () => {
     const panel = await open(user);
 
     expect(within(panel).getByTestId("proposal-prediction")).toHaveTextContent("Less bitter");
-    const forSet = within(panel).getByTestId("make-proposal-active-for-set");
-    expect(forSet).toHaveTextContent("Make active and record it as v1.2 of Ethiopia washed");
+    const forSet = within(panel).getByTestId("approve-proposal");
+    expect(forSet).toHaveTextContent("Approve as v1.2 of Ethiopia washed");
     await user.click(within(panel).getByRole("checkbox", { name: /major/i }));
-    expect(forSet).toHaveTextContent("record it as v2 of Ethiopia washed");
+    expect(forSet).toHaveTextContent("Approve as v2 of Ethiopia washed");
     await user.click(forSet);
 
     await waitFor(() =>
@@ -882,71 +915,38 @@ describe("proposed versions", () => {
     );
     const panel = await open(user);
 
-    await user.click(within(panel).getByTestId("make-proposal-active"));
+    await user.click(within(panel).getByTestId("approve-proposal-without-set"));
 
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
   });
 
-  it("says that a profile that is off records the Set's version only after a sync", async () => {
+  it("holds Approve under the Name field when the server says the name is already a profile", async () => {
     const user = setupUser();
-    window.localStorage.setItem("gaggiclanker.profiles.showOff", "1");
-    withProposal(
-      {
-        set_id: 3,
-        set_name: "Ethiopia washed",
-        set_next_minor_label: "v1.2",
-        set_next_major_label: "v2",
-      },
-      { for_set: { row_id: 1, row_label: "9 Bar Espresso" } },
+    const sentence = "There is already a profile called Soft Bloom. Choose another name.";
+    const fresh = proposal({ id: 31, row_id: null });
+    fresh.draft = draft({ id: 31, is_new: true, base_label: null, draft_label: "Soft Bloom" });
+    fresh.landing = landing({
+      draft_id: 31,
+      plain: { row_id: null, row_label: null, refused: sentence },
+    });
+    proposalsOnPage.set(
+      31,
+      standing({ draft: fresh.draft, landing: fresh.landing, active_profile: null }),
     );
-    api.getProfileBoard.mockResolvedValue(
-      boardView({
-        rows: [row({ row: { on_machine: false }, proposed_versions: 1 })],
-        proposals: [
-          proposal({
-            draft: draft({
-              id: 11,
-              set_id: 3,
-              set_name: "Ethiopia washed",
-              set_next_minor_label: "v1.2",
-              set_next_major_label: "v2",
-            }),
-            landing: landing({
-              draft_id: 11,
-              for_set: { row_id: 1, row_label: "x" },
-            }),
-          }),
-        ],
-      }),
+    api.checkDraftName.mockResolvedValue({ label: "Soft Bloom", refused: sentence });
+    api.getProfileBoard.mockResolvedValue(boardView({ rows: [], proposals: [fresh] }));
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    const panel = await screen.findByTestId("profile-proposal");
+    await waitFor(() =>
+      expect(within(panel).getByTestId("proposal-name-problem")).toHaveTextContent(sentence),
     );
-    const panel = await open(user);
-
-    expect(within(panel).getByTestId("proposal-set-off")).toHaveTextContent("only after a sync");
-  });
-
-  it("offers no Make active for a profile that is already in the list, only Decline", async () => {
-    const user = setupUser();
-    withProposal({}, { already_on_board_label: "9 Bar Espresso" });
-    const panel = await open(user);
-
-    expect(within(panel).getByTestId("proposal-already-there")).toBeInTheDocument();
-    expect(within(panel).queryByTestId("make-proposal-active")).not.toBeInTheDocument();
+    expect(within(panel).getByTestId("approve-proposal")).toHaveAttribute("aria-disabled", "true");
     expect(within(panel).getByTestId("decline-proposal")).toBeInTheDocument();
   });
 
-  it("offers no Make active when the server says the name is already a profile", async () => {
-    const user = setupUser();
-    const sentence =
-      "Bloom is already a profile: draft a change from it, or choose another name for a new one.";
-    withProposal({}, { plain: { row_id: null, row_label: null, refused: sentence } });
-    const panel = await open(user);
-
-    expect(within(panel).getByTestId("proposal-name-taken")).toHaveTextContent(sentence);
-    expect(within(panel).queryByTestId("make-proposal-active")).not.toBeInTheDocument();
-    expect(within(panel).getByTestId("decline-proposal")).toBeInTheDocument();
-  });
-
-  it("sends one put when Make active is clicked twice at once", async () => {
+  it("sends one put when Approve is clicked twice at once", async () => {
     const user = setupUser();
     withProposal();
     let release: (value: unknown) => void = () => {};
@@ -958,14 +958,13 @@ describe("proposed versions", () => {
     );
     const panel = await open(user);
 
-    const button = within(panel).getByTestId("make-proposal-active");
-    await user.dblClick(button);
+    await user.dblClick(within(panel).getByTestId("approve-proposal"));
     release(row().row);
 
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledTimes(1));
   });
 
-  it("shows Make active on every proposal of a profile: one never blocks another", async () => {
+  it("shows Approve on every proposal of a profile: one never blocks another", async () => {
     const user = setupUser();
     const one = proposal({ id: 11, row_id: 1 });
     const two = proposal({ id: 12, row_id: 1 });
@@ -983,46 +982,8 @@ describe("proposed versions", () => {
     renderWithQueryClient(<ProfilesPage />);
     await user.click(await screen.findByTestId("profile-toggle"));
 
-    const panels = await screen.findAllByTestId("proposal");
-    expect(panels).toHaveLength(2);
-    for (const panel of panels) {
-      expect(within(panel).getByTestId("make-proposal-active")).toBeInTheDocument();
-      expect(within(panel).queryByTestId("proposal-blocked")).not.toBeInTheDocument();
-    }
-  });
-
-  it("offers the Set's button and the plain one together, as they land the same", async () => {
-    const user = setupUser();
-    withProposal(
-      {
-        set_id: 3,
-        set_name: "Ethiopia washed",
-        set_next_minor_label: "v1.2",
-        set_next_major_label: "v2",
-      },
-      { for_set: { row_id: 1, row_label: "9 Bar Espresso" } },
-    );
-    const panel = await open(user);
-
-    expect(within(panel).getByTestId("make-proposal-active-for-set")).toBeInTheDocument();
-    expect(within(panel).getByTestId("make-proposal-active")).toBeInTheDocument();
-  });
-
-  it("offers no put until the board has said where it would land", async () => {
-    const user = setupUser();
-    const p = proposal();
-    api.getProfileBoard.mockResolvedValue(
-      boardView({ rows: [row({ proposed_versions: 1 })], proposals: [] }),
-    );
-    api.getBoardVersions.mockResolvedValue(
-      versionsView([listedVersion({ version_id: 7, is_active: true })], {
-        proposed: [{ draft: p.draft, profile: draftProfile(), compared_to_version_id: 7 }],
-      }),
-    );
-    const panel = await open(user);
-
-    expect(within(panel).getByTestId("proposal-landing-pending")).toBeInTheDocument();
-    expect(within(panel).queryByTestId("make-proposal-active")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByTestId("approve-proposal")).toHaveLength(2));
+    expect(screen.getAllByTestId("profile-proposal")).toHaveLength(2);
   });
 
   it("Decline discards the draft", async () => {
@@ -1030,39 +991,54 @@ describe("proposed versions", () => {
     withProposal();
     const panel = await open(user);
 
+    // No note field on this page: the click declines.
     await user.click(within(panel).getByTestId("decline-proposal"));
 
     await waitFor(() => expect(api.discardProfileDraft).toHaveBeenCalledWith(11));
   });
 
-  it("a proposed new profile is a row at the top, marked New, whose dropdown holds the one proposed version", async () => {
+  it("a proposed new profile is a row at the top, marked New, whose dropdown holds the card with its Name field", async () => {
     const user = setupUser();
     const newOne = proposal({
       id: 21,
       row_id: null,
       landing: landing({ draft_id: 21 }, null),
     });
-    newOne.draft = draft({ id: 21, draft_label: "Fresh idea [AI]", draft_version_id: 61 });
-    api.getProfileBoard.mockResolvedValue(boardView({ proposals: [newOne] }));
-    api.getProfileDraft.mockResolvedValue(
-      draftDetail({ draft: newOne.draft, base_profile: null, draft_profile: draftProfile() }),
+    newOne.draft = draft({ id: 21, draft_label: "Fresh idea", draft_version_id: 61, is_new: true });
+    proposalsOnPage.set(
+      21,
+      standing({
+        draft: newOne.draft,
+        landing: newOne.landing,
+        active_profile: null,
+        profile: draftProfile(),
+      }),
     );
+    api.getProfileBoard.mockResolvedValue(boardView({ proposals: [newOne] }));
     renderWithQueryClient(<ProfilesPage />);
 
     const rows = await screen.findAllByTestId(/profile-row|new-profile-row/);
     expect(rows[0]).toHaveAttribute("data-testid", "new-profile-row");
     const fresh = screen.getByTestId("new-profile-row");
-    expect(within(fresh).getByText("Fresh idea [AI]")).toBeInTheDocument();
+    expect(within(fresh).getByText("Fresh idea")).toBeInTheDocument();
     expect(within(fresh).getByText("New")).toBeInTheDocument();
     expect(within(fresh).queryByRole("switch")).not.toBeInTheDocument();
 
     await user.click(within(fresh).getByTestId("profile-toggle"));
-    const panel = await within(fresh).findByTestId("proposal");
-    // Nothing to diff against: its information is a summary.
+    const panel = await within(fresh).findByTestId("profile-proposal");
+    // Nothing to diff against: its information is a summary, and the name is the person's.
     await within(panel).findByTestId("profile-summary");
-    await user.click(within(panel).getByTestId("make-proposal-active"));
-    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 21 }));
-    expect(within(panel).getByTestId("make-proposal-active")).toHaveTextContent("Add to the list");
+    expect(within(panel).getByTestId("proposal-name")).toHaveValue("Fresh idea");
+    await waitFor(() =>
+      expect(within(panel).getByTestId("approve-proposal")).not.toHaveAttribute(
+        "aria-disabled",
+        "true",
+      ),
+    );
+    await user.click(within(panel).getByTestId("approve-proposal"));
+    await waitFor(() =>
+      expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 21, label: "Fresh idea" }),
+    );
   });
 });
 
@@ -1075,25 +1051,37 @@ describe("a profile designed from scratch", () => {
       id: 31,
       is_new: true,
       base_label: null,
-      draft_label: "Fresh idea [AI]",
+      draft_label: "Fresh idea",
       stop_condition_changes: [yieldChange()],
     });
-    api.getProfileBoard.mockResolvedValue(boardView({ rows: [], proposals: [fresh] }));
-    api.getProfileDraft.mockResolvedValue(
-      draftDetail({ draft: fresh.draft, base_profile: null, draft_profile: draftProfile() }),
+    proposalsOnPage.set(
+      31,
+      standing({
+        draft: fresh.draft,
+        landing: fresh.landing,
+        active_profile: null,
+        profile: draftProfile(),
+      }),
     );
+    api.getProfileBoard.mockResolvedValue(boardView({ rows: [], proposals: [fresh] }));
     renderWithQueryClient(<ProfilesPage />);
     await user.click(await screen.findByTestId("profile-toggle"));
 
-    const panel = await screen.findByTestId("proposal");
+    const panel = await screen.findByTestId("profile-proposal");
     await within(panel).findByTestId("profile-summary");
     expect(within(panel).queryByTestId("profile-diff")).not.toBeInTheDocument();
     expect(within(panel).queryByTestId("stop-condition-warning")).not.toBeInTheDocument();
     expect(within(panel).queryByText("What changes")).not.toBeInTheDocument();
-    const add = within(panel).getByTestId("make-proposal-active");
-    expect(add).toBeEnabled();
-    await user.click(add);
-    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 31 }));
+    await waitFor(() =>
+      expect(within(panel).getByTestId("approve-proposal")).not.toHaveAttribute(
+        "aria-disabled",
+        "true",
+      ),
+    );
+    await user.click(within(panel).getByTestId("approve-proposal"));
+    await waitFor(() =>
+      expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 31, label: "Fresh idea" }),
+    );
   });
 });
 
@@ -1108,6 +1096,10 @@ describe("an is_new draft shown inside a profile", () => {
       draft_label: "9 Bar Espresso",
       stop_condition_changes: [yieldChange()],
     });
+    proposalsOnPage.set(
+      41,
+      standing({ draft: p.draft, landing: p.landing, profile: draftProfile() }),
+    );
     api.getProfileBoard.mockResolvedValue(
       boardView({ rows: [row({ proposed_versions: 1 })], proposals: [p] }),
     );
@@ -1119,11 +1111,11 @@ describe("an is_new draft shown inside a profile", () => {
     renderWithQueryClient(<ProfilesPage />);
     await user.click(await screen.findByTestId("profile-toggle"));
 
-    const panel = await screen.findByTestId("proposal");
+    const panel = await screen.findByTestId("profile-proposal");
+    expect(await within(panel).findByTestId("profile-summary")).toBeInTheDocument();
     expect(within(panel).queryByTestId("profile-diff")).not.toBeInTheDocument();
-    expect(within(panel).getByTestId("profile-summary")).toBeInTheDocument();
     expect(within(panel).queryByTestId("stop-condition-warning")).not.toBeInTheDocument();
-    expect(within(panel).getByTestId("make-proposal-active")).toBeEnabled();
+    expect(within(panel).getByTestId("approve-proposal")).toBeInTheDocument();
   });
 });
 
@@ -1287,10 +1279,9 @@ describe("links into the page", () => {
   it("#staged opens a proposed new profile's row", async () => {
     const newOne = proposal({ id: 21, row_id: null, landing: landing({ draft_id: 21 }, null) });
     api.getProfileBoard.mockResolvedValue(boardView({ proposals: [newOne] }));
-    api.getProfileDraft.mockResolvedValue(draftDetail({ draft_profile: draftProfile() }));
     renderWithQueryClient(<ProfilesPage />, { initialEntries: ["/profiles#staged"] });
 
-    expect(await screen.findByTestId("proposal")).toBeInTheDocument();
+    expect(await screen.findByTestId("profile-proposal")).toBeInTheDocument();
   });
 
   it("#version-N opens the profile that has that version, even one that is off", async () => {

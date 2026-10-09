@@ -61,16 +61,28 @@ export function useProfileBoard(
 export function usePutOnBoard(): UseMutationResult<
   BoardRow,
   Error,
-  { draftId: number; setId?: number; major?: boolean }
+  {
+    draftId: number;
+    setId?: number;
+    major?: boolean;
+    label?: string;
+    /** No toast for the approval itself: the caller starts a sync, which reports itself. */
+    quiet?: boolean;
+    /** No toast for a refusal: the caller shows it where it belongs (under the name field). */
+    quietError?: boolean;
+  }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body) => putOnBoard(body),
-    onSuccess: (row) =>
-      toast.success(`${row.label} has a new active version`, {
-        description: nextSyncWords(row),
-      }),
-    onError: (error) => toast.error(error.message),
+    mutationFn: ({ quiet: _quiet, quietError: _quietError, ...body }) => putOnBoard(body),
+    onSuccess: (row, variables) => {
+      if (variables.quiet) return;
+      // Only the fact: where it stands next is on the card, or on the profile's row.
+      toast.success(`Approved: ${row.label}.`);
+    },
+    onError: (error, variables) => {
+      if (!variables.quietError) toast.error(error.message);
+    },
     onSettled: (_data, _error, variables) => {
       void invalidateBoardWrites(queryClient);
       if (variables?.setId !== undefined) void invalidateSets(queryClient);

@@ -1,13 +1,13 @@
 import { FilePen } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { BoardProposal, BoardRowView, ListedVersion, ProfileVersionsView } from "@/api/types";
+import type { BoardRowView, ListedVersion, ProfileVersionsView } from "@/api/types";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
 import { ProfileJsonEditor } from "@/components/drafts/ProfileJsonEditor";
 import { ProfileSummary } from "@/components/drafts/ProfileSummary";
 import { ConflictPanel } from "@/components/profiles/ConflictPanel";
 import { ProfileCurve } from "@/components/profiles/ProfileCurve";
-import { ProposalPanel } from "@/components/profiles/ProposalPanel";
+import { ProfileProposalCard } from "@/components/profiles/ProfileProposalCard";
 import { SignatureCard } from "@/components/profiles/SignatureCard";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
@@ -31,14 +31,7 @@ type Json = Record<string, unknown>;
  * Nothing here writes to the machine. A version made active, and an edited copy once it is made
  * active, reach the machine on the next sync.
  */
-export function ProfileDropdown({
-  entry,
-  proposals,
-}: {
-  entry: BoardRowView;
-  /** The board's proposals that would land on this profile, for where each would land. */
-  proposals: BoardProposal[];
-}) {
+export function ProfileDropdown({ entry }: { entry: BoardRowView }) {
   const rowId = entry.row.id;
   const versions = useBoardVersions(rowId, true);
   const [editing, setEditing] = useState<ListedVersion | null>(null);
@@ -59,10 +52,7 @@ export function ProfileDropdown({
     );
   }
   const view = versions.data;
-  const landingOf = (draftId: number) => proposals.find((p) => p.draft.id === draftId)?.landing;
   const activeProfile = entry.active_version.profile as Json;
-  const documentOf = (versionId: number): Json | null =>
-    (view.versions.find((v) => v.version_id === versionId)?.profile as Json | undefined) ?? null;
 
   return (
     <div className="min-w-0 space-y-3 border-border border-t p-3" data-testid="profile-dropdown">
@@ -75,14 +65,7 @@ export function ProfileDropdown({
       ) : null}
 
       {(view.proposed ?? []).map((proposed) => (
-        <ProposalPanel
-          key={proposed.draft.id}
-          draft={proposed.draft}
-          profile={proposed.profile as Json}
-          base={documentOf(proposed.compared_to_version_id)}
-          landing={landingOf(proposed.draft.id)}
-          rowOn={entry.on_machine}
-        />
+        <ProfileProposalCard key={proposed.draft.id} draftId={proposed.draft.id} place="profiles" />
       ))}
 
       <ul className="space-y-2" data-testid="version-list">
