@@ -33,6 +33,21 @@ database.
   schema in place of the migration number. The restore refusal codes `RESTORE_NEWER_VERSION` and
   `RESTORE_MIGRATION_DIFFERS` are replaced by `RESTORE_SCHEMA_DIFFERS`.
 
+### Brew or standby from the top bar
+
+- **A mode button sits right after Sync while writes are on.** It reads "Switch to Standby"
+  while the machine is in brew mode and "Switch to Brew" in any other mode (standby, steam,
+  water, grind), and does what the mode buttons on the machine's web UI do. It is refused, with
+  a toast saying why, while a shot or a flush is running (the machine would stop it) or while
+  the machine is not ready, and is disabled while the machine is not connected or has not said
+  which mode it is in. Below 1024 px it is its icon alone. A mode switch is not recorded (not
+  in Recent writes). The label follows the machine's mode as the status pill does, so a change
+  made on the machine itself shows within about fifteen seconds.
+- **Shortcuts moved from the top bar to the foot of the sidebar**, above Collapse sidebar, to
+  make room. `?` still opens the sheet.
+- `POST /api/device/mode` with `{"mode": "brew"}` or `{"mode": "standby"}` is the route behind
+  it. It answers once the machine reports the new mode, and says so when it does not.
+
 ### The Chat page reopens where you were
 
 - **Clicking away from the Chat page and back keeps the conversation you had open.** The sidebar's

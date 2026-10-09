@@ -55,7 +55,7 @@ export function FlushButton() {
         inFlight.current = true;
         flush.mutate();
       }}
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-1 font-medium text-xs hover:bg-accent disabled:opacity-60"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-1.5 py-1 font-medium text-xs hover:bg-accent sm:px-2.5 disabled:opacity-60"
     >
       <Droplet className="size-3.5" aria-hidden="true" />
       <span aria-hidden="true" className="max-lg:sr-only">

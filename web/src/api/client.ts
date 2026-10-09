@@ -62,6 +62,8 @@ import type {
   MachineData,
   MachinePatch,
   MachineRow,
+  ModeData,
+  ModeRequest,
   NameCheck,
   OutcomeProposalDecision,
   OutcomeProposalListData,
@@ -508,6 +510,11 @@ export async function getDeviceStatus(): Promise<DeviceStatusData> {
 /** Run the machine's flush once, for the duration set on the machine. Needs the Writes switch. */
 export async function startFlush(): Promise<FlushData> {
   return fetchApi<FlushData>("/device/flush", { method: "POST" });
+}
+
+/** Put the machine in brew mode or standby; answers once it reports the mode. Needs the Writes switch. */
+export async function changeMode(mode: ModeRequest["mode"]): Promise<ModeData> {
+  return fetchApi<ModeData>("/device/mode", { method: "POST", body: JSON.stringify({ mode }) });
 }
 
 /**

@@ -1,4 +1,4 @@
-import { ChevronRight, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronRight, Keyboard, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { type ReactElement, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DeviceStatusPill } from "@/components/DeviceStatusPill";
@@ -6,6 +6,7 @@ import { DeviceWritesSwitch } from "@/components/DeviceWritesSwitch";
 import { FlushButton } from "@/components/FlushButton";
 import { LlmActivity } from "@/components/LlmActivity";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
+import { ModeButton } from "@/components/ModeButton";
 import { PullButton } from "@/components/PullButton";
 import { SignOutButton } from "@/components/SignOutButton";
 import { SyncOwnerProvider } from "@/components/sync/SyncOwner";
@@ -361,12 +362,28 @@ export function AppShell() {
           </div>
           <NavItems id={NAV_ID} collapsed={collapsed} />
 
+          {/* At the foot of the rail, with the collapse toggle below it: the header
+            gave its place to the mode button, and a keyboard reference is not
+            something anybody needs on every page's top row. */}
+          <RailTooltip collapsed={collapsed} text="Shortcuts · ?">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn("mt-auto justify-center gap-2", collapsed && "px-0")}
+              aria-label={collapsed ? "Shortcuts" : undefined}
+              onClick={() => setShortcutsOpen(true)}
+            >
+              <Keyboard className="size-4" aria-hidden="true" />
+              <span className={collapsed ? "sr-only" : undefined}>Shortcuts</span>
+            </Button>
+          </RailTooltip>
+
           {/* At the foot of the rail rather than in the header: it belongs to the
             thing it changes, and the header is already the busiest row. */}
           <Button
             variant="ghost"
             size="sm"
-            className={cn("mt-auto justify-center gap-2", collapsed && "px-0")}
+            className={cn("justify-center gap-2", collapsed && "px-0")}
             aria-expanded={!collapsed}
             aria-controls={NAV_ID}
             onClick={toggleSidebar}
@@ -410,18 +427,13 @@ export function AppShell() {
             <div className="ml-auto flex items-center gap-1 sm:gap-2">
               {/* First: a sync is the app's main action and belongs to no one page. */}
               <PullButton />
+              {/* Second, while Writes is on: brew or standby, the other thing a person
+                does to the machine from wherever they are. */}
+              <ModeButton />
               <DeviceStatusPill />
               <DeviceWritesSwitch />
               <FlushButton />
               <LlmActivity />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="hidden lg:inline-flex"
-                onClick={() => setShortcutsOpen(true)}
-              >
-                Shortcuts
-              </Button>
               <ThemeToggle />
               {/* Last, and absent entirely when auth is off — see SignOutButton. */}
               <SignOutButton />

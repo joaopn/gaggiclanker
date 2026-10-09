@@ -80,14 +80,63 @@ describe("AppShell", () => {
     },
   );
 
-  it("keeps the top bar's controls tight, and Shortcuts only from lg, so it fits beside the sidebar", () => {
+  it("keeps the top bar's controls tight, so it fits beside the sidebar", () => {
     renderApp();
     const group = screen.getByTestId("device-status-pill").parentElement as HTMLElement;
     expect(group).toHaveClass("gap-1", "sm:gap-2");
-    expect(within(group).getByRole("button", { name: "Shortcuts" })).toHaveClass(
-      "hidden",
-      "lg:inline-flex",
-    );
+    // Shortcuts moved to the foot of the sidebar to make room for the mode button.
+    expect(within(group).queryByRole("button", { name: "Shortcuts" })).toBeNull();
+  });
+
+  it("puts the mode button second, right after Sync, while writes are on", async () => {
+    getSettings.mockResolvedValue({
+      deviceWritesEnabled: {
+        key: "deviceWritesEnabled",
+        type: "bool",
+        secret: false,
+        readonly: false,
+        value: true,
+        default: false,
+        override: true,
+        source: "database",
+      },
+    });
+    getDeviceStatus.mockResolvedValue({
+      configured: true,
+      connected: true,
+      host: "gaggimate.local",
+      identity: null,
+      last_status: { m: 1 },
+    });
+    renderApp();
+    const mode = await screen.findByRole("button", { name: "Switch to Standby" });
+    const group = screen.getByTestId("device-status-pill").parentElement as HTMLElement;
+    const sync = screen.getByRole("button", { name: "Sync with machine" });
+    expect(group.firstElementChild).toContainElement(sync);
+    expect(group.firstElementChild?.nextElementSibling).toBe(mode);
+    expect(mode.nextElementSibling).toBe(screen.getByTestId("device-status-pill"));
+  });
+
+  it("puts Shortcuts at the foot of the sidebar, above the fold toggle, and it opens the sheet", async () => {
+    const user = setupUser();
+    renderApp();
+    const sidebar = screen.getByTestId("sidebar");
+    const shortcuts = within(sidebar).getByRole("button", { name: "Shortcuts" });
+    const fold = within(sidebar).getByRole("button", { name: "Collapse sidebar" });
+    expect(shortcuts.nextElementSibling).toBe(fold);
+    // Pushed to the bottom: the free space of the rail sits above it.
+    expect(shortcuts).toHaveClass("mt-auto");
+
+    await user.click(shortcuts);
+    expect(await screen.findByText("Keyboard shortcuts")).toBeInTheDocument();
+  });
+
+  it("names Shortcuts on the folded rail", () => {
+    window.localStorage.setItem("sidebar.collapsed.v1", "true");
+    renderApp();
+    expect(
+      within(screen.getByTestId("sidebar")).getByRole("button", { name: "Shortcuts" }),
+    ).toBeInTheDocument();
   });
 
   it("gives the brand text up below sm, so the top bar fits at phone width", () => {

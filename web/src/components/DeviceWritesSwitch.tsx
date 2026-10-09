@@ -126,7 +126,7 @@ export function DeviceWritesSwitch() {
             onClick();
           }}
           className={cn(
-            "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium text-xs disabled:opacity-60",
+            "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-1.5 py-1 font-medium text-xs disabled:opacity-60 sm:px-2.5",
             on
               ? "border-status-warn/50 bg-status-warn/10 text-status-warn-text"
               : "border-border text-muted-foreground",

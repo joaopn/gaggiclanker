@@ -65,7 +65,7 @@ export function DeviceStatusPill() {
           data-testid="device-status-pill"
           data-state={state}
           className={cn(
-            "inline-flex items-center gap-2 rounded-full border border-border px-2.5 py-1 font-medium text-xs",
+            "inline-flex items-center gap-2 rounded-full border border-border px-1.5 py-1 font-medium text-xs sm:px-2.5",
             state === "good" && "text-status-good-text",
             state === "bad" && "text-status-bad-text",
             state === "pending" && "text-muted-foreground",

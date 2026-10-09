@@ -305,6 +305,10 @@ shot's notes card and never changes a device setting.
 While the switch is on, a **Flush** button sits beside it: one click runs the machine's
 own flush for the duration set on the machine, as the Flush button on the machine's web
 UI does. It works in brew mode with nothing running, and is not recorded anywhere.
+Next to Sync, a **Switch to Brew** button (it reads **Switch to Standby** while the
+machine is in brew mode) does what the mode buttons on the machine's web UI do. It is
+there only while the switch is on, is refused while a shot or a flush is running (the
+machine would stop it) and is not recorded either.
 
 Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
@@ -325,7 +329,7 @@ Nothing runs on its own: a sync is something you ask for, and there is no timer.
 the Writes switch on, the one thing a sync writes is the profile list's write phase at its
 end (see below); nothing else, and no tool a model calls, starts a write. Every write
 attempt, refused ones included, is listed under **Recent writes** on the Device page; a
-flush, which stores nothing, is not.
+flush or a mode switch, which store nothing, is not.
 
 ### The profile list
 
