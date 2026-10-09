@@ -1219,7 +1219,7 @@ class SetsRepository(Repository):
                 (set_id,),
             )
             await ProfileDraftsRepository(self.db).discard_unsent(
-                [int(row["draft_id"]) for row in drafts], now=now
+                [int(row["draft_id"]) for row in drafts], now=now, why="set_discarded"
             )
             await self.db.execute("DELETE FROM sets WHERE id = ?", (set_id,))
         log.info("set_design_discarded", set_id=set_id)
@@ -1528,7 +1528,7 @@ class SetsRepository(Repository):
             params,
         )
         await ProfileDraftsRepository(self.db).discard_unsent(
-            [int(row["draft_id"]) for row in drafts], now=now
+            [int(row["draft_id"]) for row in drafts], now=now, why="set_written_otherwise"
         )
         await self.db.execute(
             """

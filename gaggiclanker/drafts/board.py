@@ -111,6 +111,7 @@ from gaggiclanker.drafts.proposals import (
     profile_from_version,
     schema_errors,
 )
+from gaggiclanker.drafts.standing import RowFacts, StandingState, classify
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import SignatureService
@@ -123,6 +124,8 @@ __all__ = [
     "BoardService",
     "BoardSummaryItem",
     "BoardView",
+    "DraftStanding",
+    "NameCheck",
     "machine_from_mirror",
 ]
 
@@ -279,6 +282,45 @@ class BoardProposal(BaseModel):
     landing: DraftLanding
 
 
+class DraftStanding(BaseModel):
+    """`GET /api/profile-drafts/{id}/standing`: a proposal, its documents and where it stands."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    draft: ProfileDraftRow
+    #: The proposed document, as stored.
+    profile: dict[str, Any] | None = None
+    #: The document of the active version of the profile it continues, while it is waiting;
+    #: ``None`` once answered and for a new profile.
+    active_profile: dict[str, Any] | None = None
+    #: What a put would do, and whether it would be refused: while waiting, else ``None``.
+    landing: DraftLanding | None = None
+    state: StandingState
+    #: The server's sentence for ``approved``, ``not_on_machine`` and ``replaced``.
+    reason: str | None = None
+    #: The profile it went to (or, while waiting, would go to).
+    row_id: int | None = None
+    row_label: str | None = None
+    #: Whether it is the selected profile on the machine, once it is on the machine.
+    selected: bool | None = None
+    #: The Set version this approval is, or will be, recorded as: the recorded one once a sync has
+    #: recorded it; while approved for a Set and pending, the next minor or major label the put's
+    #: choice names; ``None`` for a proposal that is not for a Set.
+    set_version_label: str | None = None
+    writes_enabled: bool
+
+
+class NameCheck(BaseModel):
+    """May this proposal be approved under this name? Answered for a field as it is typed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The name as it would be stored: the typed one without surrounding whitespace.
+    label: str
+    #: The sentence a put under this name would be refused with, else ``None``.
+    refused: str | None = None
+
+
 class ResumePreview(BaseModel):
     """What resuming a paused sync would do, so one button can say it."""
 
@@ -424,8 +466,6 @@ class BoardService:
         counts = await self.board.shot_counts([p.version.id for p in computed.rows])
         rows: list[BoardRowView] = []
         for plan in computed.rows:
-            device_id = plan.held or plan.row.device_profile_id
-            copy = machine.profiles.get(device_id) if device_id else None
             entry = await self.board.get_version_entry(plan.row.id, plan.version.id)
             listed = {v.version_id for v in await self.board.list_versions(plan.row.id)}
             rows.append(
@@ -433,13 +473,7 @@ class BoardService:
                     row=plan.row,
                     type=plan.version.type,
                     utility=plan.version.utility,
-                    machine=BoardMachineState(
-                        device_id=device_id,
-                        present=copy is not None,
-                        holds_current=plan.held is not None,
-                        favorite=None if copy is None else copy.favorite,
-                        selected=None if copy is None else copy.selected,
-                    ),
+                    machine=_machine_state(plan, machine),
                     planned=[a for a in would_do if a.row_id == plan.row.id],
                     on_machine=plan.row.on_machine,
                     starred=plan.row.on_home_screen,
@@ -608,6 +642,137 @@ class BoardService:
             assert updated is not None
             return updated
 
+    async def name_check(self, draft_id: int, label: str) -> NameCheck:
+        """Whether a put of this proposal under ``label`` would be refused, and with which sentence.
+
+        For the Name field as it is typed. The same questions the put asks, through the same
+        ``place_draft`` and with the same sentences, in the order it asks them; it writes nothing.
+        Refused as a request (422) for a proposal that is not waiting, or that continues a
+        profile (a name never changes through a version).
+        """
+        draft = await self.drafts.get(draft_id)
+        if draft is None:
+            raise NotFound(f"No profile draft {draft_id}")
+        version = (
+            None
+            if draft.draft_version_id is None
+            else await self.profiles.get_version(draft.draft_version_id)
+        )
+        if draft.status != "draft" or version is None:
+            raise Unprocessable("That proposal is not waiting for an answer")
+        if (await self._destination(draft, version, draft.set_id)).row is not None:
+            raise Unprocessable("A change to an existing profile keeps its name")
+        name = label.strip()
+        if not name:
+            return NameCheck(label=name, refused="A profile needs a name")
+        base = await self.profiles.get_version(draft.base_version_id)
+        lookup = LiveLineage(self.db)
+        base_id = None if draft.is_new else draft.base_version_id
+        base_label = None if draft.is_new or base is None else base.label
+        # The constructor's question (no Set), then the put's (with the Set) on the name it stores.
+        first = await place_draft(
+            lookup, label=name, base_version_id=base_id, base_label=base_label
+        )
+        if first.refused:
+            return NameCheck(label=name, refused=taken_name_sentence(first.name))
+        then = await place_draft(
+            lookup,
+            label=first.name,
+            base_version_id=base_id,
+            base_label=base_label,
+            set_id=draft.set_id,
+        )
+        if then.owner is not None or then.refused:
+            return NameCheck(label=name, refused=taken_name_sentence(first.name.strip()))
+        return NameCheck(label=name)
+
+    async def standing(self, draft_id: int, machine: MachineState, *, host: str) -> DraftStanding:
+        """Where one proposal stands, whether it is waiting or answered. Reads the archive only.
+
+        ``machine`` is the mirror (or a read the caller made): nothing here asks the machine
+        anything or writes anything. The state is :func:`~.standing.classify`'s.
+        """
+        draft = await self.drafts.get(draft_id)
+        if draft is None:
+            raise NotFound(f"No profile draft {draft_id}")
+        version = (
+            None
+            if draft.draft_version_id is None
+            else await self.profiles.get_version(draft.draft_version_id)
+        )
+        computed = await self.plans.compute(machine, host=host)
+        writes_enabled = bool(await self.settings.get("deviceWritesEnabled"))
+        listed = (
+            None if version is None else await self.board.find_live_by_listed_version(version.id)
+        )
+        plan = (
+            None
+            if listed is None
+            else next((p for p in computed.rows if p.row.id == listed.id), None)
+        )
+        facts = None
+        if version is not None and listed is not None and plan is not None:
+            machine_state = _machine_state(plan, machine)
+            facts = RowFacts(
+                row_id=listed.id,
+                label=listed.label,
+                active_is_this=listed.current_version_id == version.id,
+                on_machine=listed.on_machine,
+                failed_is_this=listed.failed_version_id == version.id,
+                in_conflict=plan.conflict_file is not None,
+                holds_current=machine_state.holds_current,
+                selected=machine_state.selected,
+            )
+        existing = (
+            None
+            if version is None or draft.status != "draft"
+            else await self.board.find_live_by_version(version.id)
+        )
+        last = (await self.runs.last_runs()).get("profiles")
+        sync_failed_since = (
+            last is not None and last.status == "error" and last.started_at > draft.updated_at
+        )
+        found = classify(
+            draft,
+            facts,
+            writes_enabled=writes_enabled,
+            paused=computed.paused is not None,
+            sync_failed_since=sync_failed_since,
+            already_listed_as=None if existing is None else existing.label,
+        )
+        landing = None
+        active_profile = None
+        row_id = None if facts is None else facts.row_id
+        row_label = None if facts is None else facts.label
+        if existing is not None:
+            row_id, row_label = existing.id, existing.label
+        if found.state == "waiting":
+            landing = await self._draft_landing(draft)
+            if landing is not None:
+                target = landing.for_set if landing.for_set is not None else landing.plain
+                row_id, row_label = target.row_id, target.row_label
+                if target.row_id is not None:
+                    row = await self.board.get(target.row_id)
+                    current = (
+                        None
+                        if row is None
+                        else await self.profiles.get_version(row.current_version_id)
+                    )
+                    active_profile = None if current is None else current.profile
+        return DraftStanding(
+            draft=draft,
+            profile=None if version is None else version.profile,
+            active_profile=active_profile,
+            landing=landing,
+            state=found.state,
+            reason=found.reason,
+            row_id=row_id,
+            row_label=row_label,
+            selected=facts.selected if facts is not None and found.state == "on_machine" else None,
+            set_version_label=_set_version_label(draft, listed),
+            writes_enabled=writes_enabled,
+        )
+
     async def _proposals(self, landings: list[DraftLanding]) -> list[BoardProposal]:
         """Open drafts that are not yet a version of any profile, each placed by its landing.
 
@@ -712,33 +877,34 @@ class BoardService:
             if draft.status in ("draft", "approved")
         ]
         for draft in waiting:
-            if draft.draft_version_id is None:
-                continue
-            version = await self.profiles.get_version(draft.draft_version_id)
-            if version is None:
-                continue
-            existing = await self.board.find_live_by_version(version.id)
-            if existing is not None:
-                # Its document is on the board already (this draft's own row, or another
-                # draft that made the same document): nothing to put.
-                found.append(
-                    DraftLanding(
-                        draft_id=draft.id,
-                        already_on_board_label=existing.label,
-                        plain=BoardLanding(),
-                    )
-                )
-                continue
-            found.append(
-                DraftLanding(
-                    draft_id=draft.id,
-                    plain=await self._landing(draft, version, None),
-                    for_set=None
-                    if draft.set_id is None
-                    else await self._landing(draft, version, draft.set_id),
-                )
-            )
+            landing = await self._draft_landing(draft)
+            if landing is not None:
+                found.append(landing)
         return found
+
+    async def _draft_landing(self, draft: ProfileDraftRow) -> DraftLanding | None:
+        """What a put of this draft would do, or ``None`` for a draft with no document."""
+        if draft.draft_version_id is None:
+            return None
+        version = await self.profiles.get_version(draft.draft_version_id)
+        if version is None:
+            return None
+        existing = await self.board.find_live_by_version(version.id)
+        if existing is not None:
+            # Its document is on the board already (this draft's own row, or another
+            # draft that made the same document): nothing to put.
+            return DraftLanding(
+                draft_id=draft.id,
+                already_on_board_label=existing.label,
+                plain=BoardLanding(),
+            )
+        return DraftLanding(
+            draft_id=draft.id,
+            plain=await self._landing(draft, version, None),
+            for_set=None
+            if draft.set_id is None
+            else await self._landing(draft, version, draft.set_id),
+        )
 
     async def _landing(
         self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
@@ -1986,6 +2152,40 @@ _REASON = {
     "deleted": "the profile was deleted",
     "off": "the profile is switched off",
 }
+
+
+def _set_version_label(draft: ProfileDraftRow, row: BoardRow | None) -> str | None:
+    """The Set version an approved draft is, or will be, recorded as; ``None`` when not for a Set.
+
+    Recorded: the version label the sync stored. Pending: the row still carries this draft for
+    this Set, so the sync will record the next major label when the put asked for one and the
+    next minor label otherwise (the default for a draft).
+    """
+    if draft.set_id is None:
+        return None
+    if draft.recorded_version_label is not None:
+        return draft.recorded_version_label
+    if (
+        row is None
+        or row.pending_draft_id != draft.id
+        or row.pending_set_id != draft.set_id
+        or draft.status not in ("approved", "pushed")
+    ):
+        return None
+    return draft.set_next_major_label if row.pending_major else draft.set_next_minor_label
+
+
+def _machine_state(plan: RowPlan, machine: MachineState) -> BoardMachineState:
+    """Where one board row stands on the machine, as of the read ``machine`` came from."""
+    device_id = plan.held or plan.row.device_profile_id
+    copy = machine.profiles.get(device_id) if device_id else None
+    return BoardMachineState(
+        device_id=device_id,
+        present=copy is not None,
+        holds_current=plan.held is not None,
+        favorite=None if copy is None else copy.favorite,
+        selected=None if copy is None else copy.selected,
+    )
 
 
 def _sets_brewing(

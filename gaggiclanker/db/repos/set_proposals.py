@@ -708,7 +708,7 @@ class SetProposalsRepository(Repository):
                 ):
                     return ProposalWriteResult(refused="bad_draft")
             if replaced is not None:
-                await self._retire(replaced, now)
+                await self._retire(replaced, now, why="newer_recipe")
             cursor = await self.db.execute(
                 """
                 INSERT INTO set_version_proposals
@@ -783,7 +783,7 @@ class SetProposalsRepository(Repository):
                     # nobody is brewing any more, and quietly applying it to
                     # whatever is current now would be this box deciding what the
                     # agent meant. Recorded as stale so the log says what happened.
-                    await self._retire(proposal, now)
+                    await self._retire(proposal, now, why="set_written_otherwise")
                     return ProposalWriteResult(
                         refused="stale", proposal=await self.get(set_id, proposal_id)
                     )
@@ -891,11 +891,11 @@ class SetProposalsRepository(Repository):
         draft = await self.drafts.get(proposal.draft_id)
         return draft is not None and draft.status in ("draft", "approved", "pushed")
 
-    async def _retire(self, proposal: SetProposalRow, now: str) -> None:
-        """Mark a waiting proposal `stale`, and discard the draft it carried."""
+    async def _retire(self, proposal: SetProposalRow, now: str, *, why: str) -> None:
+        """Mark a waiting proposal `stale`, and discard the draft it carried (not as a decline)."""
         await self._decide(proposal.id, "stale", now)
         if proposal.draft_id is not None:
-            await self.drafts.discard_unsent([proposal.draft_id], now=now)
+            await self.drafts.discard_unsent([proposal.draft_id], now=now, why=why)
 
     async def _decide(
         self,

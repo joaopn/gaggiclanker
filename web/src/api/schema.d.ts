@@ -1446,6 +1446,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile-drafts/{draft_id}/name-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Would approving this proposal under that name be refused?
+         * @description Read-only, for the Name field as it is typed. Asks the one placement rule the put asks.
+         *
+         *     Answers ``{label, refused}``: the name as it would be stored, and the sentence a put under it
+         *     would be refused with, if any. A proposal that is not waiting, or that continues an existing
+         *     profile (whose name never changes), is a 422. Writes nothing.
+         */
+        post: operations["check_name_api_profile_drafts__draft_id__name_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-drafts/{draft_id}/refine": {
         parameters: {
             query?: never;
@@ -1457,6 +1481,29 @@ export interface paths {
         put?: never;
         /** Draft again, with more to go on; the old draft is superseded */
         post: operations["refine_draft_api_profile_drafts__draft_id__refine_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-drafts/{draft_id}/standing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where one proposal stands: waiting, approved, on the machine, or answered
+         * @description Read-only, for any draft id, open or answered, from the archive's mirror of the machine.
+         *
+         *     The state and the sentence that explains it are the server's: a card shows them as they
+         *     are. Writes nothing and sends nothing to the machine.
+         */
+        get: operations["get_standing_api_profile_drafts__draft_id__standing_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3109,6 +3156,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[DraftStanding] */
+        ApiResponse_DraftStanding_: {
+            data?: components["schemas"]["DraftStanding"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[EvaluateData] */
         ApiResponse_EvaluateData_: {
             data?: components["schemas"]["EvaluateData"] | null;
@@ -3257,6 +3312,14 @@ export interface components {
         /** ApiResponse[ModelsData] */
         ApiResponse_ModelsData_: {
             data?: components["schemas"]["ModelsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[NameCheck] */
+        ApiResponse_NameCheck_: {
+            data?: components["schemas"]["NameCheck"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4875,6 +4938,35 @@ export interface components {
             notes: string;
         };
         /**
+         * DraftStanding
+         * @description `GET /api/profile-drafts/{id}/standing`: a proposal, its documents and where it stands.
+         */
+        DraftStanding: {
+            /** Active Profile */
+            active_profile?: {
+                [key: string]: unknown;
+            } | null;
+            draft: components["schemas"]["ProfileDraftRow"];
+            landing?: components["schemas"]["DraftLanding"] | null;
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            } | null;
+            /** Reason */
+            reason?: string | null;
+            /** Row Id */
+            row_id?: number | null;
+            /** Row Label */
+            row_label?: string | null;
+            /** Selected */
+            selected?: boolean | null;
+            /** Set Version Label */
+            set_version_label?: string | null;
+            state: components["schemas"]["StandingState"];
+            /** Writes Enabled */
+            writes_enabled: boolean;
+        };
+        /**
          * EntryOut
          * @description One entry of a badge: a fault, as the lists, the detail and the fields serve it.
          */
@@ -5844,6 +5936,24 @@ export interface components {
             models: string[];
             /** Provider */
             provider: string;
+        };
+        /**
+         * NameCheck
+         * @description May this proposal be approved under this name? Answered for a field as it is typed.
+         */
+        NameCheck: {
+            /** Label */
+            label: string;
+            /** Refused */
+            refused?: string | null;
+        };
+        /**
+         * NameCheckBody
+         * @description The name as typed so far.
+         */
+        NameCheckBody: {
+            /** Label */
+            label: string;
         };
         /** OnMachineBody */
         OnMachineBody: {
@@ -8563,6 +8673,8 @@ export interface components {
         SortKey: "started_at" | "duration" | "rating" | "check" | "review";
         /** @enum {string} */
         SpreadMeasure: "shot_time_s" | "cup_first_drip_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "cup_flow_g_s" | "brew_flow_ml_s" | "rating";
+        /** @enum {string} */
+        StandingState: "waiting" | "approved" | "on_machine" | "not_on_machine" | "declined" | "replaced";
         /** StarredBody */
         StarredBody: {
             /** Starred */
@@ -11629,6 +11741,41 @@ export interface operations {
             };
         };
     };
+    check_name_api_profile_drafts__draft_id__name_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NameCheckBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_NameCheck_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refine_draft_api_profile_drafts__draft_id__refine_post: {
         parameters: {
             query?: never;
@@ -11651,6 +11798,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ProfileDraftRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_standing_api_profile_drafts__draft_id__standing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DraftStanding_"];
                 };
             };
             /** @description Validation Error */

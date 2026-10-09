@@ -464,7 +464,9 @@ class ProfileDraftsRepository(Repository):
             await self.clear_pushed_profile(draft.id, outcome=outcome)
         return found
 
-    async def discard_unsent(self, draft_ids: Iterable[int], *, now: str | None = None) -> int:
+    async def discard_unsent(
+        self, draft_ids: Iterable[int], *, now: str | None = None, why: str | None = None
+    ) -> int:
         """Discard these drafts, unless they have already been sent to the machine.
 
         For the callers that retire a draft because what it was proposed for
@@ -474,6 +476,9 @@ class ProfileDraftsRepository(Repository):
         and saying `discarded` about it would be the archive lying about the
         machine (the same rule the discard route enforces with a 409). One that
         is already superseded or discarded is left with the status it has.
+
+        ``why`` records, as ``outcome.action``, that nobody declined it (the first-recipe paths
+        that overtake a draft), so a read of where it stands does not call it declined.
         Returns how many moved.
         """
         wanted = sorted({int(draft_id) for draft_id in draft_ids})
@@ -481,9 +486,10 @@ class ProfileDraftsRepository(Repository):
             return 0
         placeholders = ", ".join("?" * len(wanted))
         cursor = await self.db.execute(
-            "UPDATE profile_drafts SET status = 'discarded', updated_at = ? "  # noqa: S608 - placeholders are generated, the ids are bound
+            "UPDATE profile_drafts SET status = 'discarded', updated_at = ?, "  # noqa: S608 - placeholders are generated, the ids are bound
+            "outcome_json = COALESCE(?, outcome_json) "
             f"WHERE status IN ('draft', 'approved') AND id IN ({placeholders})",
-            [now or utc_now(), *wanted],
+            [now or utc_now(), None if why is None else dumps({"action": why}), *wanted],
         )
         return cursor.rowcount
 

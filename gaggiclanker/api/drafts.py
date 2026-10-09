@@ -20,8 +20,9 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.api.deps import DraftServiceDep
+from gaggiclanker.api.deps import BoardServiceDep, DeviceClientDep, DraftServiceDep, ProfilesRepoDep
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
+from gaggiclanker.drafts.board import DraftStanding, NameCheck, machine_from_mirror
 from gaggiclanker.drafts.models import DraftPreview, ProfileDraftDetail
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import BadRequest
@@ -70,6 +71,14 @@ class DraftRefine(BaseModel):
 
     notes: str = Field(default="", max_length=4000)
     model: str = Field(default="", max_length=200)
+
+
+class NameCheckBody(BaseModel):
+    """The name as typed so far."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(max_length=200)
 
 
 class DraftPreviewRequest(BaseModel):
@@ -157,6 +166,44 @@ async def preview_draft(body: DraftPreviewRequest, drafts: DraftServiceDep) -> J
 async def get_draft(draft_id: int, drafts: DraftServiceDep) -> JSONResponse:
     detail = await drafts.detail(draft_id)
     return envelope_response(detail.model_dump(mode="json"))
+
+
+@router.get(
+    "/{draft_id}/standing",
+    response_model=ApiResponse[DraftStanding],
+    summary="Where one proposal stands: waiting, approved, on the machine, or answered",
+)
+async def get_standing(
+    draft_id: int,
+    board: BoardServiceDep,
+    client: DeviceClientDep,
+    profiles: ProfilesRepoDep,
+) -> JSONResponse:
+    """Read-only, for any draft id, open or answered, from the archive's mirror of the machine.
+
+    The state and the sentence that explains it are the server's: a card shows them as they
+    are. Writes nothing and sends nothing to the machine.
+    """
+    machine = await machine_from_mirror(profiles)
+    host = client.host if client is not None else ""
+    standing = await board.standing(draft_id, machine, host=host)
+    return envelope_response(standing.model_dump(mode="json"))
+
+
+@router.post(
+    "/{draft_id}/name-check",
+    response_model=ApiResponse[NameCheck],
+    summary="Would approving this proposal under that name be refused?",
+)
+async def check_name(draft_id: int, body: NameCheckBody, board: BoardServiceDep) -> JSONResponse:
+    """Read-only, for the Name field as it is typed. Asks the one placement rule the put asks.
+
+    Answers ``{label, refused}``: the name as it would be stored, and the sentence a put under it
+    would be refused with, if any. A proposal that is not waiting, or that continues an existing
+    profile (whose name never changes), is a 422. Writes nothing.
+    """
+    checked = await board.name_check(draft_id, body.label)
+    return envelope_response(checked.model_dump(mode="json"))
 
 
 @router.post(
