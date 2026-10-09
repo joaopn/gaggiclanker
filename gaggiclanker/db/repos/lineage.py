@@ -34,6 +34,7 @@ __all__ = [
     "Placement",
     "lineage_owner",
     "name_key",
+    "person_taken_sentence",
     "place_draft",
     "taken_name_sentence",
 ]
@@ -53,6 +54,13 @@ def taken_name_sentence(label: str) -> str:
         f"{label} is already a profile: draft a change from it, or choose another name for a "
         "new one."
     )
+
+
+def person_taken_sentence(existing_label: str) -> str:
+    """The refusal a person reads on a card's Name field: the profile's own stored name, not what
+    was typed (the typed case may differ), and no advice about drafting. The agent keeps
+    :func:`taken_name_sentence`."""
+    return f"There is already a profile called {existing_label}. Choose another name."
 
 
 class LineageLookup[T](Protocol):

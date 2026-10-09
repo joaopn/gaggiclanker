@@ -54,7 +54,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
-from gaggiclanker.db.repos.lineage import place_draft, taken_name_sentence
+from gaggiclanker.db.repos.lineage import person_taken_sentence, place_draft, taken_name_sentence
 from gaggiclanker.db.repos.profile_board import (
     BoardRow,
     BoardRowPatch,
@@ -378,6 +378,9 @@ class _Destination:
     revived: BoardRow | None = None
     #: The sentence a put is refused with (a new or renamed draft whose name is taken).
     refused: str | None = None
+    #: The stored name of the live profile that has the draft's name: the landing and the name
+    #: check say it to the person.
+    taken_label: str | None = None
 
 
 @dataclass
@@ -673,8 +676,8 @@ class BoardService:
         first = await place_draft(
             lookup, label=name, base_version_id=base_id, base_label=base_label
         )
-        if first.refused:
-            return NameCheck(label=name, refused=taken_name_sentence(first.name))
+        if first.taken is not None:
+            return NameCheck(label=name, refused=person_taken_sentence(first.taken.label))
         then = await place_draft(
             lookup,
             label=first.name,
@@ -682,8 +685,9 @@ class BoardService:
             base_label=base_label,
             set_id=draft.set_id,
         )
-        if then.owner is not None or then.refused:
-            return NameCheck(label=name, refused=taken_name_sentence(first.name.strip()))
+        existing = then.owner or then.taken
+        if existing is not None:
+            return NameCheck(label=name, refused=person_taken_sentence(existing.label))
         return NameCheck(label=name)
 
     async def standing(self, draft_id: int, machine: MachineState, *, host: str) -> DraftStanding:
@@ -911,8 +915,10 @@ class BoardService:
     ) -> BoardLanding:
         dest = await self._destination(draft, version, set_id)
         row = dest.row
-        if dest.refused is not None:
-            return BoardLanding(refused=dest.refused)
+        if dest.taken_label is not None:
+            # For the person: the sentence under the Name field. The put's refusal below keeps
+            # the agent's sentence.
+            return BoardLanding(refused=person_taken_sentence(dest.taken_label))
         if row is None:
             return BoardLanding(revives_label=None if dest.revived is None else dest.revived.label)
         # Every proposal is an independent candidate: making another one active never blocks or
@@ -938,7 +944,10 @@ class BoardService:
             set_id=set_id,
         )
         if placed.refused:
-            return _Destination(refused=taken_name_sentence(version.label.strip()))
+            assert placed.taken is not None
+            return _Destination(
+                refused=taken_name_sentence(version.label.strip()), taken_label=placed.taken.label
+            )
         if placed.owner is not None:
             return _Destination(row=placed.owner)
         return _Destination(revived=await self._revivable(version))

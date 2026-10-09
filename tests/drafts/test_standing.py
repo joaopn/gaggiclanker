@@ -17,7 +17,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.lineage import taken_name_sentence
+from gaggiclanker.db.repos.lineage import person_taken_sentence
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.drafts import standing as words
@@ -87,7 +87,7 @@ async def test_a_waiting_new_profile_has_no_active_document_and_a_refusal_shows(
     refused = await standing(client, second)
 
     assert refused["state"] == "waiting"
-    assert refused["landing"]["plain"]["refused"] == taken_name_sentence("Soft Bloom")
+    assert refused["landing"]["plain"]["refused"] == person_taken_sentence("Soft Bloom")
 
 
 async def test_approved_says_why_it_is_not_on_the_machine_yet(

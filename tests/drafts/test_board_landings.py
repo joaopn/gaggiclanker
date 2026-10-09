@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.lineage import taken_name_sentence
+from gaggiclanker.db.repos.lineage import person_taken_sentence, taken_name_sentence
 from gaggiclanker.db.repos.profile_board import (
     BoardRowPatch,
     BoardRowWrite,
@@ -192,7 +192,8 @@ async def test_a_set_draft_renamed_onto_a_name_that_became_a_profile_is_refused_
     found = landing(await get_board(client), renamed)
 
     sentence = taken_name_sentence("Second")
-    assert found["plain"]["refused"] == found["for_set"]["refused"] == sentence
+    assert found["plain"]["refused"] == found["for_set"]["refused"]
+    assert found["plain"]["refused"] == person_taken_sentence("Second")
     assert found["plain"]["row_id"] is None and found["for_set"]["row_id"] is None
     for body in ({}, {"set_id": set_id}):
         refused = await client.post("/api/profile-board", json={"draft_id": renamed["id"], **body})

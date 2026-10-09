@@ -13,7 +13,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.lineage import taken_name_sentence
+from gaggiclanker.db.repos.lineage import person_taken_sentence, taken_name_sentence
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, data, error
 from tests.drafts.helpers import manual_draft, same_name_draft
@@ -65,7 +65,18 @@ async def test_the_check_and_the_put_agree_on_every_name(adopted: Adopted, typed
         assert refused.status_code == 201, refused.text
     else:
         assert refused.status_code in (409, 422)
-        assert error(refused)["message"] == answer["refused"]
+        if answer["refused"] == "A profile needs a name":
+            assert error(refused)["message"] == answer["refused"]
+        else:
+            # The person reads the live profile's own stored name; the put keeps the agent's
+            # sentence on what was typed.
+            stored = {"other one": "Other One", BASE_LABEL.casefold(): BASE_LABEL}[
+                typed.strip().casefold()
+            ]
+            assert answer["refused"] == person_taken_sentence(stored)
+            assert error(refused)["message"] == taken_name_sentence(
+                error(refused)["message"].split(" is already a profile")[0]
+            )
 
 
 async def test_the_sentences_are_the_ones_the_put_uses(adopted: Adopted) -> None:
@@ -73,7 +84,11 @@ async def test_the_sentences_are_the_ones_the_put_uses(adopted: Adopted) -> None
     await put(client, await manual_draft(app, client, BASE_LABEL, "Other One", 7))
     draft = await manual_draft(app, client, BASE_LABEL, "Soft Bloom", 8)
 
-    assert data(await check(client, draft, "Other One"))["refused"] == taken_name_sentence(
+    assert data(await check(client, draft, "Other One"))["refused"] == person_taken_sentence(
+        "Other One"
+    )
+    # The stored name, not the typed case.
+    assert data(await check(client, draft, "  oTHER one "))["refused"] == person_taken_sentence(
         "Other One"
     )
     assert data(await check(client, draft, "  "))["refused"] == "A profile needs a name"

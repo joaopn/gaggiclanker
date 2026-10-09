@@ -22,7 +22,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
-from gaggiclanker.db.repos.lineage import taken_name_sentence
+from gaggiclanker.db.repos.lineage import person_taken_sentence, taken_name_sentence
 from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
@@ -352,10 +352,11 @@ async def test_a_draft_named_like_a_profile_that_appeared_is_refused_until_that_
     # profile it is not a version of: the landing says it is refused, and the put is.
     await approve(app, draft)
     [found] = [x for x in (await get_board(client))["landings"] if x["draft_id"] == draft["id"]]
-    assert found["plain"]["refused"] == taken_name_sentence("Legacy [AI]")
+    assert found["plain"]["refused"] == person_taken_sentence("Legacy [AI]")
     assert found["plain"]["row_id"] is None
     refused = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
     assert refused.status_code == 409
+    assert error(refused)["message"] == taken_name_sentence("Legacy [AI]")
     assert len((await get_board(client))["rows"]) == len(fake_device.profiles)
 
     # Taking the person's profile off the board (it stays on the machine) frees the label.

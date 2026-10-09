@@ -513,6 +513,12 @@ class SetProposalsRepository(Repository):
             # as its intent. The version's own row id and number, because
             # that is the row the fill writes.
             update |= {"intent": proposal.reason, "origin": "chat"}
+        if proposal.kind == "design" and proposal.draft_id is not None:
+            # The profile as approved: a rename on Accept stored a new version of it, and the
+            # card must name that one, not the name the agent proposed.
+            draft = await self.drafts.get(proposal.draft_id)
+            if draft is not None and draft.draft_version_id is not None:
+                update["profile_version_id"] = draft.draft_version_id
         candidate = base.model_copy(update=update)
         if candidate.profile_version_id != base.profile_version_id:
             candidate = candidate.model_copy(update=await self._profile_facts(candidate))

@@ -121,6 +121,17 @@ async def test_accepting_with_a_name_records_version_1_and_puts_the_profile_unde
     assert (body["profile_draft_id"], body["profile_row_id"]) == (draft.id, board.id)
     assert body["version"]["profile_version_id"] == stored.draft_version_id
     assert body["proposal"]["status"] == "accepted"
+
+    # The card names the profile as approved, in the answer and in every later read of the Set's
+    # proposals: not the name the agent proposed.
+    def profile_line(changes: list[dict[str, Any]]) -> Any:
+        return next(c["after"] for c in changes if c["field"] == "profile_version_id")
+
+    assert profile_line(body["proposal"]["changes"]) == "Gentle Bloom"
+    listed = data(await client.get(f"/api/sets/{row.id}/proposals"))["items"]
+    assert profile_line(next(i for i in listed if i["id"] == proposal.id)["changes"]) == (
+        "Gentle Bloom"
+    )
     # Version 1 is filled in place and appends nothing, and the put records nothing on the Set.
     assert board.pending_set_id is None
 

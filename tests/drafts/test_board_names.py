@@ -14,7 +14,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.lineage import taken_name_sentence
+from gaggiclanker.db.repos.lineage import person_taken_sentence, taken_name_sentence
 from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.device.fake import FakeDevice
@@ -386,7 +386,10 @@ async def test_a_draft_from_a_version_listed_under_a_taken_name_is_refused_every
 
     sentence = taken_name_sentence("Lever test")
     assert late.status_code == 409 and error(late)["message"] == sentence
-    assert (await _landing_of(client, early["id"]))["refused"] == sentence
+    # The landing speaks to the person; the creation and the put keep the agent's sentence.
+    assert (await _landing_of(client, early["id"]))["refused"] == person_taken_sentence(
+        "Lever test"
+    )
     put = await client.post("/api/profile-board", json={"draft_id": early["id"]})
     assert put.status_code == 409 and error(put)["message"] == sentence
 
@@ -428,7 +431,11 @@ async def test_the_landing_and_the_put_agree_on_every_case(
             assert put.status_code == 201, (case, put.text)
         else:
             assert put.status_code == 409, case
-            assert error(put)["message"] == landing["refused"], case
+            assert landing["refused"].startswith("There is already a profile called "), case
+            assert error(put)["message"].endswith(
+                "is already a profile: draft a change from it, or "
+                "choose another name for a new one."
+            ), case
     assert sum(1 for c in drafts if "appears" in c) == 2
 
 
