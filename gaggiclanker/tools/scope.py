@@ -115,8 +115,7 @@ DESIGN_TOOLS: frozenset[str] = frozenset(
 
 #: The tools a General conversation has: every read of the archive, plus the two
 #: proposals that belong to no Set — a starting point for a bag nobody has
-#: brewed yet, and a profile draft, which waits on the Profiles page for a
-#: person either way.
+#: brewed yet, and a profile draft, which waits for a person on its card either way.
 #:
 #: Absent: ``propose_set_version``, ``record_insight`` and
 #: ``propose_insight_deletion``, because a Set is

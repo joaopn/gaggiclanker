@@ -33,6 +33,39 @@ database.
   schema in place of the migration number. The restore refusal codes `RESTORE_NEWER_VERSION` and
   `RESTORE_MIGRATION_DIFFERS` are replaced by `RESTORE_SCHEMA_DIFFERS`.
 
+### A proposed profile can be answered where it is shown (the server's half)
+
+- **Approving a proposed profile switches the profile on.** Putting a draft on the list
+  (`POST /api/profile-board`) now sets "on the machine" for the profile it lands on, a profile that
+  was switched off included; its star is left as it was. With Writes off this is stored only, as
+  every put is.
+- **The put takes a name for a new profile.** `label` is allowed only when the draft would be a
+  profile of its own: it is stripped, an empty name is refused ("A profile needs a name"), a name
+  that is already a profile is refused with the usual sentence, and a change to an existing
+  profile refuses one ("A change to an existing profile keeps its name"). The renamed document
+  goes through the same schema, clamp and check as every draft, inside the put's transaction.
+- **Where a proposal stands is one read:** `GET /api/profile-drafts/{id}/standing` answers for any
+  draft, open or answered, and never writes. It serves the proposal, its document, the active
+  document it would replace, where it would land, one of six states (waiting, approved, on the
+  machine, not on the machine, declined, replaced) and the server's sentence for the states that
+  need one. It also says which Set version an approval is, or will be, recorded as. A name typed
+  into a new profile's card can be checked as it is typed with
+  `POST /api/profile-drafts/{id}/name-check`, which asks the same placement rule the put does and
+  writes nothing.
+- **A first recipe's profile is accepted with it.** `POST /api/sets/{id}/proposals/{id}/accept`
+  puts the card's draft on the profile list in the one transaction that records version 1, while
+  that draft is still waiting: switched on, with version 1 naming the version it ended on.
+  `profile_label` is optional and renames a draft that is a new profile; a draft that continues an
+  existing profile becomes that profile's active version, as approving it would. A draft already
+  answered on the Profiles page is left exactly as it is, and a name for it is refused. Any
+  refusal undoes both. The answer carries the draft's id and the profile's row so a sync can
+  follow. Nothing is sent to the machine.
+- **A declined profile's note is kept in the conversation, not in the database.** The discard
+  route is unchanged; the note reaches the agent as the person's own message.
+- The agent's tool texts and chat prompts now say the person answers a profile proposal on its
+  card in the conversation (and on the Profiles page), and understand the "Approved:" and
+  "Declined:" messages that card sends.
+
 ### A shorter sidebar, and the Sync page is part of the Device page
 
 - **The sidebar is Chat, Shots, Profiles, Brew setup and Settings.** The Machine group is gone:

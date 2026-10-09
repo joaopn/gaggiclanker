@@ -1351,8 +1351,8 @@ class ProposeVersionOutput(_Model):
         "combined_reason. It is refused while this version's own prediction has not been "
         "graded, and while another proposal is already waiting. There is no temperature "
         "here: the machine brews at the temperature the profile states, so a temperature "
-        "change is a profile change — use draft_profile, and the person makes it active "
-        "(with writes on, the next sync puts it on the machine). " + MAJOR_MEANING
+        "change is a profile change — use draft_profile, and the person approves it on its "
+        "card (with writes on, approving syncs it to the machine). " + MAJOR_MEANING
     ),
 )
 async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> ProposeVersionOutput:
@@ -1979,8 +1979,8 @@ class DraftProfileOutput(_Model):
     #: How many expectations were stored, in force, with the draft.
     signature_proposed: int = 0
     #: What the model should tell the person. A draft is further from the
-    #: machine than a proposal is from the Set: somebody has to make it active
-    #: (saying which Set it is for), and a sync with writes on then sends it.
+    #: machine than a proposal is from the Set: somebody has to approve it on its card (saying
+    #: which Set it is for), and a sync with writes on then sends it.
     note: str = ""
 
 
@@ -2006,8 +2006,11 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     description=(
         "Create a profile draft from an existing version plus a patch. The draft goes "
         "through the same schema, safety-policy and clamp checks as one typed by hand, "
-        "and it is NOT on the machine — a person makes it active, and with writes on the "
-        "next sync puts it on the machine. The draft is stored under exactly the label "
+        "and it is NOT on the machine. It becomes a card in this conversation (and inside "
+        "its profile on the Profiles page) that the person approves or declines: "
+        "approving makes it the profile's active version and switches the profile on, and "
+        "with writes on the same click syncs it to the machine. The draft is stored under "
+        "exactly the label "
         "you give it: leave the label alone for a change to the profile, and a new label "
         "must not be the name of a profile that already exists (refused). In a "
         "conversation about one Set a profile change IS a change to the experiment, so a "
@@ -2049,9 +2052,15 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         )
     suggest_major, major_reason = _major_suggestion(args.suggest_major, args.major_reason)
     note = (
-        "Nothing has been sent to the machine. This is a proposal on the Profiles page, "
-        "inside its profile: the person reads the diff and makes it active, and only after a "
-        "sync with writes on does the machine hold it."
+        "Nothing has been sent to the machine. This is a card waiting for the person in this "
+        "conversation (the same card is inside its profile on the Profiles page): they read "
+        "the change and approve or decline it. Approving makes it the profile's active "
+        "version and switches the profile on; with writes on the same click starts a sync, "
+        "with writes off it goes at the first sync after they turn writes on. Only after a "
+        "sync does the machine hold it, and they still select it there themselves. Say that "
+        "the card is waiting for them here; never send them to the Profiles page as the only "
+        "way to answer it. If it is a new profile the card has a Name field, so the name they "
+        "approve may differ from yours; a change to an existing profile keeps its name."
     )
     if ctx.scope.kind == "set":
         set_id = _resolve_set(ctx, None)
@@ -2060,7 +2069,8 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         note += (
             " It is also a change to this experiment, so your prediction is recorded on the "
             "Set as a new version when it reaches the machine for this Set — and not before. Say "
-            "that: until then the Set is where it was. When they put it there they choose "
+            "that: until then the Set is where it was, and with writes off that is until the "
+            "first sync after they turn writes on. When they approve it they choose "
             f"whether it is a minor version ({names.minor}, the default for a draft) or a "
             f"major one ({names.major})"
             + (", and your suggestion of major is shown with your reason" if suggest_major else "")
@@ -2271,9 +2281,10 @@ class ProposeInitialRecipeOutput(_Model):
         "grind, dose and target yield, as ONE card the person accepts or declines. It "
         "creates the profile as a draft that goes through the same schema, safety-policy and "
         "clamp checks as one typed by hand, and nothing else: until the person accepts, the "
-        "Set has no recipe, and the machine never receives anything from here. The label "
-        "you give is the name it is stored under, and a name that is already a profile is "
-        "refused. A profile "
+        "Set has no recipe, and the machine never receives anything from here. The person "
+        "answers on the card in the conversation; a new profile's name is a field they may "
+        "change there. The label you give is the name it is stored under, and a name that is "
+        "already a profile is refused. A profile "
         "identical to one already in the library is refused — give it its own label or "
         "change something. A newer proposal replaces the one waiting. No prediction: a "
         "version 1 is a baseline."
@@ -2397,9 +2408,13 @@ async def propose_initial_recipe(
         clamp_changes=[_as_dict(change) for change in draft.clamp_changes or []],
         stop_condition_changes=[_as_dict(change) for change in draft.stop_condition_changes or []],
         note=(
-            "Nothing exists yet. This is a card waiting for the person: if they accept it, it "
-            "becomes this Set's version 1, and the profile is then a proposal on the Profiles page "
-            "for them to make active (the next sync with writes on puts it on the machine) "
+            "Nothing exists yet. This is a card waiting for the person in this conversation: if "
+            "they accept it, it becomes this Set's version 1 and its profile is accepted with it. "
+            "A new profile has a Name field on the card, so its name may differ from yours; one "
+            "you made by changing a profile they already have keeps that name and becomes that "
+            "profile's active version. The profile is then on the "
+            "profile list and switched on; a sync with writes on (their Accept and sync button "
+            "starts one) puts it on the machine, and they select it there themselves "
             "— nothing brews it until it is there. "
             "If they would rather change something, propose again: a newer card replaces this one."
         ),
