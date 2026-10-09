@@ -4439,7 +4439,10 @@ export interface components {
             badge?: string | null;
             /** Entries */
             entries: components["schemas"]["EntryOut"][];
+            state: components["schemas"]["CheckVerdict"];
         };
+        /** @enum {string} */
+        CheckVerdict: "entries" | "pass" | "unchecked";
         /**
          * ChunkHit
          * @description One search result: the chunk, its BM25 score and a quotable snippet.
@@ -5267,6 +5270,7 @@ export interface components {
             entries: components["schemas"]["EntryOut"][];
             /** Items */
             items: components["schemas"]["CheckOut"][];
+            state: components["schemas"]["CheckVerdict"];
         };
         /**
          * FieldOut

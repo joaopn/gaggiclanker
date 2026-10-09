@@ -272,6 +272,7 @@ def shot_fields_of(facts: ShotFacts) -> ShotFields:
         checks=FieldChecks(
             badge=served.checks_block.badge,
             entries=served.checks_block.entries,
+            state=served.checks_block.state,
             items=[_check_out(c) for c in checks.checks],
         ),
         review=served.review,

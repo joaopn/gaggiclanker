@@ -1259,9 +1259,10 @@ class ShotsRepository(Repository):
         it sorts by, so the two cannot disagree. **Curve check:** the shot's first badge entry, the
         one its badge names: a failed critical expectation first, then a failed important one, an
         unexpected warning, an expected one, then a phase's entry before a whole-shot one and the
-        earlier in the shot; shots with none last. **Review:** a reviewed shot's first fault by the
-        same rule, then, work to do above work done, ``Failed to run``, ``Reviewing…``, ``No
-        faults``, shots not reviewed, ``As intended``, and last the shots nobody can review. In
+        earlier in the shot; then the shots that passed, and last the unchecked ones. **Review:** a
+        reviewed shot's first fault by the same rule, then, work to do above work done, ``Failed
+        to run``, ``Reviewing…``, ``No faults``, shots not reviewed, ``As intended``, and last the
+        shots nobody can review. In
         both, shots with the same key come newest first (by start time, then id), which makes the
         key total, and ascending is the exact reverse of all of it.
         """

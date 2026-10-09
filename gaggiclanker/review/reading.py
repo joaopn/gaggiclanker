@@ -33,7 +33,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.repos.reviews import ReadingRecord, ReviewClaimRow
-from gaggiclanker.domain.signature import Check, ShotChecks
+from gaggiclanker.domain.signature import Check, CheckVerdict, ShotChecks
 from gaggiclanker.domain.warnings import SHOT, badge_text
 
 __all__ = [
@@ -99,6 +99,10 @@ class ChecksBlock(BaseModel):
     badge: str | None = None
     #: Most severe first, then in the order of the shot.
     entries: list[EntryOut]
+    #: What the Curve check cell shows: ``entries`` (the badge), ``pass`` (read against a signature
+    #: in force, at least one expectation measured and none in the badge) or ``unchecked`` (nothing
+    #: was held to anything: no signature in force and no warning, or checks that measured nothing).
+    state: CheckVerdict
 
 
 class ReviewBlock(BaseModel):
@@ -313,6 +317,7 @@ def serve_review(
         checks_block=ChecksBlock(
             badge=badge_text(check_entries),
             entries=[check_entry_out(c) for c in check_entries],
+            state=signature_checks.verdict,
         ),
         review=ReviewBlock(
             state=state,

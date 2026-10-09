@@ -22,10 +22,14 @@ from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersi
 from gaggiclanker.db.repos.shots import CHECK_SORT, ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.models import Profile
+from gaggiclanker.domain.signature import ExpectationInput
+from gaggiclanker.domain.slog import parse_slog
+from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.sync.derive import derive_shot
 from tests.lever_shot import LEVER_PROFILE, TARGET_YIELD_G, lever_shot
+from tests.sets.conftest import make_profile_version
 from tests.sets.test_api import data
-from tests.shotinfo.conftest import Archive
+from tests.shotinfo.conftest import PROFILE_204, SLOG, Archive, _without_scale
 
 
 async def _add_lever(archive: Archive) -> int:
@@ -170,6 +174,7 @@ async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
     listed: dict[str, Any] = data(await client.get("/api/shots?sort=check&order=desc"))
     assert [item["id"] for item in listed["items"]] == [shot]
     assert listed["items"][0]["checks"]["badge"] == "ramp: fast flow +2"
+    assert listed["items"][0]["checks"]["state"] == "entries"
     assert listed["items"][0]["review"]["state"] == "unreviewed"
     assert [w["fault"] for w in listed["items"][0]["checks"]["entries"]] == [
         "fast flow",
@@ -180,3 +185,50 @@ async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
     in_set = detail["versions"][0]["shots"]
     assert [item["checks"]["badge"] for item in in_set] == ["ramp: fast flow +2"]
     assert (await client.get("/api/shots?sort=check&cursor=abc")).status_code == 400
+
+
+async def test_the_curve_check_state_sorts_entries_then_pass_then_unchecked(
+    archive: Archive,
+) -> None:
+    lever = await _add_lever(archive)
+    db = archive.db
+    # Two shots with no warning (no scale, so nothing about the yield is raised): same bytes,
+    # one linked to a profile version with a signature in force, one linked to nothing.
+    passing, unchecked = archive.no_scale, archive.no_pressure
+    await db.execute("DELETE FROM shots WHERE id = ?", (unchecked,))
+    slog = _without_scale(parse_slog(SLOG.read_bytes()))
+    derived = derive_shot(
+        slog, SLOG.read_bytes(), device_id="000207", profile=PROFILE_204, has_pressure=True
+    )
+    unchecked = await ShotsRepository(db).insert(derived.shot, derived.samples)
+    assert await SetsRepository(db).assign_shot(unchecked, archive.version_id)
+    version = await make_profile_version(db, "Alturas signed", temperature=93.0)
+    await db.execute("UPDATE shots SET profile_version_id = ? WHERE id = ?", (version, passing))
+    await SignatureService(db).propose(
+        version,
+        [
+            ExpectationInput(
+                tier="important",
+                kind="measure",
+                expression={
+                    "channel": "temperature",
+                    "op": "mean",
+                    "compare": {"op": "between", "low": 0, "high": 200},
+                },
+            )
+        ],
+        reason="the group stays in range",
+    )
+
+    repo = ShotsRepository(db)
+    page = await repo.list_shots(limit=10, sort=CHECK_SORT, descending=True)
+    states = {row.id: row.checks.state for row in page.items}
+    assert states[lever] == "entries" and states[archive.shot] == "entries"
+    assert states[passing] == "pass"
+    assert states[unchecked] == "unchecked"
+    order = [row.id for row in page.items]
+    assert order.index(lever) < order.index(passing) < order.index(unchecked)
+    assert order.index(archive.shot) < order.index(passing)
+    assert order[-1] == unchecked
+    oldest_first = await repo.list_shots(limit=10, sort=CHECK_SORT, descending=False)
+    assert [row.id for row in oldest_first.items] == order[::-1]

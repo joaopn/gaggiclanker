@@ -69,6 +69,7 @@ __all__ = [
     "FREE_TEXT_MAX",
     "UNIVERSAL_WARNING_FAULTS",
     "Check",
+    "CheckVerdict",
     "ExpectationInput",
     "ExpectationLike",
     "FaultWords",
@@ -514,6 +515,8 @@ class ExpectationLike(Protocol):
 
 
 type CheckColor = Literal["red", "amber", "grey"]
+#: What the Curve check cell says of a shot: its badge entries, a pass, or nothing checked.
+type CheckVerdict = Literal["entries", "pass", "unchecked"]
 type CheckStatus = Literal["failed", "held", "unmeasured", "expected", "warning", "unchecked"]
 type CheckKind = Literal["measure", "reached", "expects_warning", "free_text", "warning"]
 
@@ -620,6 +623,24 @@ class ShotChecks:
         """The entries that make the badge and the list's ``warnings``, in order."""
         return [c for c in self.checks if c.in_badge]
 
+    @property
+    def verdict(self) -> CheckVerdict:
+        """What the Curve check cell says: ``entries``, ``pass`` or ``unchecked``.
+
+        ``pass`` is a shot read against a signature in force with nothing in the badge and at
+        least one expectation measured (held, or failed outside the badge, which can only be a
+        context-tier one: context, not a fault). Unmeasured and free-text checks do not count.
+        Everything else without a badge is ``unchecked``: nothing was held to anything (no
+        signature in force and no warning, or a signature whose checks measured nothing).
+        """
+        if self.badge_entries:
+            return "entries"
+        if self.state.read_with_signature and any(
+            c.status in ("held", "failed") for c in self.checks
+        ):
+            return "pass"
+        return "unchecked"
+
     @classmethod
     def from_warnings(cls, warnings: Sequence[ShotWarning]) -> ShotChecks:
         """The checks of a shot read without a signature: its universal warnings, as they are."""
@@ -631,13 +652,14 @@ def check_key(checks: ShotChecks) -> tuple[int, tuple[int, bool, float, int]]:
 
     A shot with a badge sorts by its first entry, the one the badge names: its group (red,
     amber, an unexpected warning, an expected one), a phase's before a whole-shot one, then
-    the time in the shot. A shot with none sorts after every shot that has one. Smaller is
-    worse. Shots with an equal key are put newest first by the caller (`ShotsRepository`).
+    the time in the shot. After every shot that has one come the shots that passed, then the
+    unchecked ones. Smaller is worse. Shots with an equal key are put newest first by the
+    caller (`ShotsRepository`).
     """
-    entries = checks.badge_entries
-    if not entries:
-        return (1, (0, False, 0.0, 0))
-    return (0, entries[0].order())
+    verdict = checks.verdict
+    if verdict == "entries":
+        return (0, checks.badge_entries[0].order())
+    return (1 if verdict == "pass" else 2, (0, False, 0.0, 0))
 
 
 def _warning_check(warning: ShotWarning, *, expected_by: ExpectationLike | None) -> Check:

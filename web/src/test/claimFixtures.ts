@@ -7,7 +7,8 @@ export function reviewBlock(overrides: Partial<ReviewBlock> = {}): ReviewBlock {
 
 /** A shot's `checks` block (the Curve check), as the list and the detail serve it. */
 export function checksBlock(overrides: Partial<ChecksBlock> = {}): ChecksBlock {
-  return { entries: [], ...overrides };
+  const entries = overrides.entries ?? [];
+  return { entries, state: entries.length > 0 ? "entries" : "unchecked", ...overrides };
 }
 
 /** One evidence item of a claim, as the server evaluated it. */

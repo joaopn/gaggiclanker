@@ -123,7 +123,7 @@ async def test_reading_a_shot_over_http(
     assert detail["review"]["state"] == "reviewed"
     assert detail["review"]["review_id"] == body["id"]
     assert detail["review"]["summary"] == GOOD_REVIEW["summary"]
-    assert set(detail["checks"]) == {"badge", "entries"}
+    assert set(detail["checks"]) == {"badge", "entries", "state"}
     assert "reading" not in detail and "warnings" not in detail and "badge" not in detail
     assert "analyses" not in detail
 
@@ -310,7 +310,7 @@ async def test_the_shots_list_carries_the_checks_and_review_blocks_on_every_row(
         return next(item for item in listing.json()["data"]["items"] if item["id"] == shot_id)
 
     before = row_of(await client.get("/api/shots"))
-    assert before["checks"] == {"badge": None, "entries": []}
+    assert before["checks"] == {"badge": None, "entries": [], "state": "unchecked"}
     assert before["review"] == {
         "state": "unreviewed",
         "badge": None,
