@@ -9,8 +9,8 @@ them gated"**.
 Moving a request type between the forbidden-grep list below, where it lives while
 this client may not send it at all, and the "appears exactly once" list, where it
 lives once a gated method owns it, is the edit that admits the surface has grown
-(`req:flush:start` made it for the top bar's Flush button, the one write that
-stores nothing on the machine);
+(`req:flush:start` made it for the top bar's Flush button and `req:change-mode`
+for its brew/standby button, the two writes that store nothing on the machine);
 a rule that let a write appear *without* that edit would be a rule that does not
 hold. `req:history:delete` and `req:history:notes:save` made that move once, for
 a storage cleanup and a notes write-back, and were moved back when both were
@@ -28,7 +28,7 @@ display.
 So: two allow-lists, a forbidden-request-type grep that still covers everything
 outside them, and a check that no write method can reach `_send` except through
 the gate. If you are here because this test failed, the question is not "how do
-I update the list" but "does this write belong in the six, and has it got a
+I update the list" but "does this write belong in the seven, and has it got a
 rule in front of it".
 """
 
@@ -103,7 +103,7 @@ def test_no_forbidden_request_type_appears_anywhere_in_the_client() -> None:
 
     A source grep rather than an API check, because the way a write sneaks back
     in is somebody adding `req:history:rebuild` to a private helper that a
-    public read then calls. The six writes this client is allowed to make are
+    public read then calls. The seven writes this client is allowed to make are
     absent from this list and checked separately below; everything else the
     firmware will act on is here.
     """
@@ -134,7 +134,6 @@ def test_no_forbidden_request_type_appears_anywhere_in_the_client() -> None:
         # The flush runs for the duration set on the machine; a hold-to-flush,
         # which this stop ends, would need a release relayed through this box.
         '"req:flush:stop"',
-        '"req:change-mode"',
         '"req:change-brew-target"',
         '"req:raise-temp"',
         '"req:lower-temp"',
@@ -159,6 +158,7 @@ def test_each_allowed_write_type_appears_exactly_once() -> None:
         '"req:profiles:favorite"',
         '"req:profiles:unfavorite"',
         '"req:flush:start"',
+        '"req:change-mode"',
     ):
         assert source.count(request_type) == 1, request_type
 

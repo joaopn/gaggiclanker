@@ -343,8 +343,8 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     # changes WiFi and PID (and, up to firmware v1.8.x, cleared every boolean
     # key it omits).
     assert all(not name.startswith(("write", "set_")) for name in public - set(GATED_WRITE_METHODS))
-    # And the six are exactly the six, named rather than counted: a count
-    # would survive a swap. The flush stores nothing on the machine.
+    # And the seven are exactly the seven, named rather than counted: a count
+    # would survive a swap. The flush and the mode switch store nothing on the machine.
     assert set(GATED_WRITE_METHODS) == {
         "save_profile",
         "delete_profile",
@@ -352,6 +352,7 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
         "favorite_profile",
         "unfavorite_profile",
         "start_flush",
+        "change_mode",
     }
 
 

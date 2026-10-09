@@ -42,8 +42,8 @@ PROFILE_WRITES = frozenset(
     }
 )
 REMOVED_WRITES = frozenset({"req:history:delete", "req:history:notes:save"})
-#: Sent only by the top bar's Flush button, never by a pull or a save.
-FLUSH = frozenset({"req:flush:start", "req:flush:stop"})
+#: Sent only by the top bar's Flush and mode buttons, never by a pull or a save.
+FLUSH = frozenset({"req:flush:start", "req:flush:stop", "req:change-mode"})
 
 RETIRED_ENV = (
     "GAGGICLANKER_DEVICE_CLEANUP_AUTO",
@@ -85,8 +85,8 @@ async def live(
         yield app, client
 
 
-def test_the_client_writes_five_profile_operations_and_the_flush() -> None:
-    """The flush stores nothing on the machine; profiles are still all that is stored."""
+def test_the_client_writes_five_profile_operations_the_flush_and_the_mode() -> None:
+    """The flush and the mode switch store nothing; profiles are still all that is stored."""
     assert GATED_WRITE_METHODS == {
         "save_profile",
         "delete_profile",
@@ -94,6 +94,7 @@ def test_the_client_writes_five_profile_operations_and_the_flush() -> None:
         "favorite_profile",
         "unfavorite_profile",
         "start_flush",
+        "change_mode",
     }
 
 

@@ -509,6 +509,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/device/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put the machine in brew mode or in standby
+         * @description The top bar's mode button: what the mode buttons on the machine's own web UI do.
+         *
+         *     Refused (nothing sent) with the Writes switch off, while a shot or a flush is
+         *     running (the firmware's mode change would stop it), or while the machine is not
+         *     ready; the client says which. Answers once the machine's status frame shows the
+         *     new mode.
+         */
+        post: operations["change_mode_api_device_mode_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device/status": {
         parameters: {
             query?: never;
@@ -3339,6 +3364,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ModeData] */
+        ApiResponse_ModeData_: {
+            data?: components["schemas"]["ModeData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[ModelsData] */
         ApiResponse_ModelsData_: {
             data?: components["schemas"]["ModelsData"] | null;
@@ -5968,12 +6001,34 @@ export interface components {
             unit: string;
             value: components["schemas"]["SpreadMeasure"];
         };
+        /**
+         * ModeData
+         * @description What `POST /api/device/mode` answers once the machine reports the mode asked for.
+         */
+        ModeData: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "brew" | "standby";
+        };
         /** ModelsData */
         ModelsData: {
             /** Models */
             models: string[];
             /** Provider */
             provider: string;
+        };
+        /**
+         * ModeRequest
+         * @description The body of `POST /api/device/mode`: the two modes the top bar offers, and no others.
+         */
+        ModeRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "brew" | "standby";
         };
         /**
          * NameCheck
@@ -10220,6 +10275,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_FlushData_"];
+                };
+            };
+        };
+    };
+    change_mode_api_device_mode_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ModeData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

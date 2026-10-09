@@ -1,6 +1,7 @@
 """The gate every device write passes through, and the refusal it raises.
 
-`GaggimateClient` has five write methods, all of them profile operations. It did not gain the
+`GaggimateClient` has seven write methods: five profile operations, the flush and the
+brew/standby switch. It did not gain the
 right to decide whether a write is allowed: that depends on a setting and on an
 audit table, both of which live in the database, and the device layer sits
 *below* the database layer in this codebase's import graph (`sync/engine.py`
@@ -57,16 +58,18 @@ type WriteKind = Literal[
     "profile_unfavorite",
 ]
 
-#: What the gate is asked about: the five audited kinds, plus the flush.
+#: What the gate is asked about: the five audited kinds, plus the flush and the
+#: mode switch.
 #:
-#: The flush (`req:flush:start`) is the one write that is not a profile and not
-#: audited: it runs the machine's own flush, for the duration set on the
-#: machine, exactly as the button on the machine's web UI does, and changes
-#: nothing stored there. It needs the Writes switch like every other write, and
-#: leaves no `device_writes` row (the maintainer's choice), which is why it is
-#: not a :data:`WriteKind`: the audit's kinds stay the five above, held equal to
-#: the repository and the table's CHECK.
-type GateKind = WriteKind | Literal["flush"]
+#: The flush (`req:flush:start`) and the mode switch (`req:change-mode`, brew or
+#: standby only) are the two writes that are not profiles and not audited: each
+#: does what the matching button on the machine's web UI does and changes
+#: nothing stored there. They need the Writes switch like every other write, and
+#: leave no `device_writes` row (the maintainer's choice for the flush, carried
+#: to its sibling in the top bar), which is why they are not :data:`WriteKind`\ s:
+#: the audit's kinds stay the five above, held equal to the repository and the
+#: table's CHECK.
+type GateKind = WriteKind | Literal["flush", "mode"]
 
 
 class DeviceWriteRefused(DeviceError):

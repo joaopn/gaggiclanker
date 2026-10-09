@@ -5,11 +5,14 @@ Verified against the GaggiMate firmware source.
 **gaggiclanker writes exactly five things to a machine's storage, all of them profile
 operations, and only when a person has switched writes on.** Save, delete,
 select, favourite and unfavourite: each a `req:profiles:*` frame. Only profiles
-are ever written. Not a shot delete, not a notes card, not a setting, not a
-mode change, not an index rebuild. The one other frame is the **flush**
-(`req:flush:start`), which stores nothing: the top bar's Flush button, shown only
-while the switch is on, runs the machine's own flush once for the duration set on
-the machine, as the button on the machine's web UI does. (Earlier versions could delete shots the
+are ever written. Not a shot delete, not a notes card, not a setting, not an
+index rebuild. The two other frames store nothing: the **flush**
+(`req:flush:start`) — the top bar's Flush button, shown only while the switch is
+on, runs the machine's own flush once for the duration set on the machine, as the
+button on the machine's web UI does — and the **mode switch** (`req:change-mode`,
+brew or standby only) — the top bar's "Switch to Brew" / "Switch to Standby"
+button, also shown only while the switch is on, as the mode buttons on the
+machine's web UI do. (Earlier versions could delete shots the
 archive already held and write a judgement to a shot's notes card, both from the
 Sync page; both were removed. The firmware deletes its own oldest shots when
 free space runs low and the archive syncs before it does, which is accepted.)
@@ -33,12 +36,20 @@ its button only in brew mode). There is no hold-to-flush (`req:flush:stop` stays
 forbidden), and a flush leaves no `device_writes` row: it changes nothing a later sync or
 a person would need to trace.
 
+The mode switch is the same kind of click: `POST /api/device/mode` with `brew` or
+`standby` (steam, water and grind are not offered), refused before anything is sent
+unless the switch is on, nothing is running and the machine reports itself ready. The
+firmware's handler deactivates and clears the current process before it changes mode, so
+a switch during a shot would end the shot; and it ignores the frame while the controller
+is not ready. The frame gets no answer, so the route waits for the state frame that shows
+the new mode and says so when none comes. It leaves no `device_writes` row either.
+
 That is a property of the code, not a convention. `GaggimateClient`'s public
-surface is two closed lists — ten reads in `READ_ONLY_METHODS`, six writes in
-`GATED_WRITE_METHODS` (the five profile operations and the flush) — `_send` is private, no write method can reach it except
+surface is two closed lists — ten reads in `READ_ONLY_METHODS`, seven writes in
+`GATED_WRITE_METHODS` (the five profile operations, the flush and the mode switch) — `_send` is private, no write method can reach it except
 through the gate, and `tests/device/test_public_surface.py` fails the build if
-an eleventh read or a seventh write appears, or if a request type outside those
-six shows up anywhere in the module, including in a docstring. `req:history:delete`
+an eleventh read or an eighth write appears, or if a request type outside those
+seven shows up anywhere in the module, including in a docstring. `req:history:delete`
 and `req:history:notes:save` are in that test's forbidden list, alongside the
 index rebuild, the profile reorder and everything that moves the hardware.
 Widening the surface means moving a request type from the forbidden list into

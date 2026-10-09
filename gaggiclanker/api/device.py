@@ -14,14 +14,15 @@ what answers "what has this thing done to my machine". The only
 thing this box ever stores on the machine is a profile, so there is no route here
 that deletes a shot or sends a note: what the audit lists is the profile board's
 saves, deletes, selections and stars, and the older rows of the two history
-writes that were removed. The one other write is `/flush`, the top bar's Flush
-button: it runs the machine's own flush once, with the Writes switch on, stores
-nothing there and leaves no audit row.
+writes that were removed. The two other writes are `/flush`, the top bar's Flush
+button, which runs the machine's own flush once, and `/mode`, the top bar's
+"Switch to Brew" / "Switch to Standby" button. Both need the Writes switch on,
+store nothing on the machine and leave no audit row.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -134,3 +135,34 @@ async def start_flush(client: DeviceClientDep) -> JSONResponse:
         raise DeviceUnavailable("No machine is configured. Set its address in Settings.")
     await client.start_flush()
     return envelope_response(FlushData(started=True).model_dump(mode="json"))
+
+
+class ModeRequest(BaseModel):
+    """The body of `POST /api/device/mode`: the two modes the top bar offers, and no others."""
+
+    mode: Literal["brew", "standby"]
+
+
+class ModeData(BaseModel):
+    """What `POST /api/device/mode` answers once the machine reports the mode asked for."""
+
+    mode: Literal["brew", "standby"]
+
+
+@router.post(
+    "/mode",
+    response_model=ApiResponse[ModeData],
+    summary="Put the machine in brew mode or in standby",
+)
+async def change_mode(body: ModeRequest, client: DeviceClientDep) -> JSONResponse:
+    """The top bar's mode button: what the mode buttons on the machine's own web UI do.
+
+    Refused (nothing sent) with the Writes switch off, while a shot or a flush is
+    running (the firmware's mode change would stop it), or while the machine is not
+    ready; the client says which. Answers once the machine's status frame shows the
+    new mode.
+    """
+    if client is None:
+        raise DeviceUnavailable("No machine is configured. Set its address in Settings.")
+    await client.change_mode(body.mode)
+    return envelope_response(ModeData(mode=body.mode).model_dump(mode="json"))

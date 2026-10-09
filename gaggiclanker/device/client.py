@@ -9,12 +9,12 @@ The two-list rule
 -----------------
 
 The public surface is two closed lists and nothing else: the ten reads in
-:data:`READ_ONLY_METHODS`, and the six writes in
-:data:`GATED_WRITE_METHODS`: five profile operations and the flush. Only
-profiles are ever stored on the machine. :meth:`_send`
+:data:`READ_ONLY_METHODS`, and the seven writes in
+:data:`GATED_WRITE_METHODS`: five profile operations, the flush and the mode
+switch. Only profiles are ever stored on the machine. :meth:`_send`
 stays private and ``tests/device/test_public_surface.py`` fails the build if an
-eleventh read or a seventh write appears, or if a request type outside those
-six turns up anywhere in this module — including in a docstring.
+eleventh read or an eighth write appears, or if a request type outside those
+seven turns up anywhere in this module — including in a docstring.
 
 The lists are separate because the two halves have different rules. A read
 needs a socket. **A write additionally needs a gate** (:mod:`.writes`): it is
@@ -134,11 +134,11 @@ READ_ONLY_METHODS: frozenset[str] = frozenset(
     }
 )
 
-#: The other half: the six writes this client can make, every one behind
-#: :class:`DeviceWriteGate`: five profile operations, and the flush a person
-#: starts from the top bar. Only profiles are ever stored on the machine. The
-#: list is closed and the test pins it; a seventh entry is a design decision,
-#: not a refactor.
+#: The other half: the seven writes this client can make, every one behind
+#: :class:`DeviceWriteGate`: five profile operations, and the flush and the
+#: brew/standby switch a person presses in the top bar. Only profiles are ever
+#: stored on the machine. The list is closed and the test pins it; an eighth
+#: entry is a design decision, not a refactor.
 GATED_WRITE_METHODS: frozenset[str] = frozenset(
     {
         "save_profile",
@@ -147,11 +147,14 @@ GATED_WRITE_METHODS: frozenset[str] = frozenset(
         "favorite_profile",
         "unfavorite_profile",
         "start_flush",
+        "change_mode",
     }
 )
 
+#: `evt:status` `m` for standby, one of the two modes the top bar switches to.
+MODE_STANDBY = 0
 #: `evt:status` `m` for brew mode, the only mode the machine's web UI offers its
-#: flush button in (`ActionCard.jsx`).
+#: flush button in (`ActionCard.jsx`), and the other mode the top bar switches to.
 MODE_BREW = 1
 
 # Reconnect curve. 1 s is fast enough that a router blip is invisible; 60 s is
@@ -294,6 +297,10 @@ class GaggimateClient:
 
         self.last_status: LiveStatus | None = None
         self.identity: OtaSettings | None = None
+        # Set, and replaced by a fresh one, on every merged status frame: a waiter
+        # takes the current one, checks, and awaits it, so no frame is missed and
+        # any number of waiters can share it (see `change_mode`).
+        self._status_tick = asyncio.Event()
 
     # ── lifecycle ────────────────────────────────────────────────────
 
@@ -564,6 +571,8 @@ class GaggimateClient:
             log.warning("device_status_invalid", host=self.host, error=str(exc))
             return
         self.last_status = merged
+        tick, self._status_tick = self._status_tick, asyncio.Event()
+        tick.set()
         self.events.publish(StatusChanged(status=merged))
 
     def _on_shot_saved(self, message: dict[str, Any]) -> None:
@@ -614,18 +623,32 @@ class GaggimateClient:
 
     # ── the one private sender ───────────────────────────────────────
 
-    async def _send(self, tp: str, **payload: Any) -> dict[str, Any]:
+    async def _send(self, tp: str, *, reply: bool = True, **payload: Any) -> dict[str, Any]:
         """Send one `req:*` frame and wait for the `res:*` with the same `rid`.
 
         Private, and it stays private: see the module docstring. Correlation is
         by `rid` alone — the firmware echoes whatever string we send and the
         responses can arrive in any order, interleaved with 2 Hz telemetry.
+
+        ``reply=False`` is for the firmware's fire-and-forget commands, which get
+        no `res:*` at all (`req:change-mode` among them): the frame is sent and
+        an empty answer returned at once, and the caller looks for the effect in
+        the status frames instead.
         """
         socket = self._ws
         if socket is None:
             raise DeviceUnavailable(
                 f"Not connected to the machine at {self.host}; request {tp} was not sent"
             )
+
+        if not reply:
+            try:
+                await socket.send(json.dumps({"tp": tp, **payload}))
+            except WebSocketException as exc:
+                raise DeviceUnavailable(
+                    f"The machine disconnected while sending {tp}: {exc}"
+                ) from exc
+            return {}
 
         rid = uuid4().hex
         future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
@@ -863,6 +886,65 @@ class GaggimateClient:
         await self._write(write, "req:flush:start", audit=False, check=ready)
         log.info("device_flush_started", host=self.host)
 
+    async def change_mode(self, mode: Literal["brew", "standby"]) -> int:
+        """Put the machine in brew mode or in standby, as the mode buttons on its web UI do.
+
+        Returns the mode the machine reports afterwards (`evt:status` `m`).
+        Nothing is stored on the machine and nothing is audited (as for the
+        flush); the Writes switch still has to be on.
+
+        The firmware's handler deactivates and clears the current process before
+        it changes the mode, so a switch pressed during a shot or a flush would
+        end it. It also ignores the request while the controller is not ready
+        (`sys.s`), as the machine's web UI does. Both are checked here against
+        the last status frame, before anything is sent. A machine already in the
+        mode asked for is sent nothing.
+
+        `req:change-mode` gets no answer: the state frame the firmware publishes
+        when its mode changes is the confirmation, awaited for ``timeout``.
+        """
+        target = MODE_BREW if mode == "brew" else MODE_STANDBY
+        write = PendingWrite(kind="mode", host=self.host)
+
+        def ready() -> None:
+            status = self.last_status
+            if status is None or status.m is None:
+                raise DeviceWriteRefused(
+                    "The machine has not said which mode it is in yet. Nothing was sent."
+                )
+            if status.process is not None and status.process.a == 1:
+                raise DeviceWriteRefused(
+                    "The machine is running a shot or a flush, and switching mode would stop "
+                    "it. Nothing was sent."
+                )
+            if status.sys is not None and status.sys.s not in (None, "ready"):
+                raise DeviceWriteRefused(
+                    f"The machine is not ready ({status.sys.s}), so it would ignore a mode "
+                    "change. Nothing was sent."
+                )
+
+        if self.last_status is not None and self.last_status.m == target:
+            # Still the gate first: with the switch off this refuses like any write.
+            await self._gate.authorize(write)
+            return target
+
+        await self._write(
+            write, "req:change-mode", audit=False, check=ready, reply=False, mode=target
+        )
+        log.info("device_mode_change_sent", host=self.host, mode=mode)
+        try:
+            async with asyncio.timeout(self.timeout):
+                while True:
+                    tick = self._status_tick
+                    status = self.last_status
+                    if status is not None and status.m == target:
+                        return target
+                    await tick.wait()
+        except TimeoutError:
+            raise DeviceTimeout(
+                f"The machine did not report {mode} mode within {self.timeout:g}s."
+            ) from None
+
     async def _authorize(self, write: PendingWrite) -> None:
         """Ask the gate, and record the refusal if it says no.
 
@@ -885,6 +967,7 @@ class GaggimateClient:
         authorized: bool = False,
         audit: bool = True,
         check: Callable[[], None] | None = None,
+        reply: bool = True,
         **payload: Any,
     ) -> dict[str, Any]:
         """Authorise, send, record. The only path from a write method to `_send`.
@@ -910,21 +993,22 @@ class GaggimateClient:
         audit row for a write that worked is bad, and turning it into an
         exception that makes the caller think the write failed is worse.
 
-        ``audit=False`` is the flush's: the gate is still asked, nothing is
-        recorded whatever happens. ``check`` runs after the gate said yes and
-        before the frame goes, and refuses by raising.
+        ``audit=False`` is the flush's and the mode switch's: the gate is still
+        asked, nothing is recorded whatever happens. ``check`` runs after the gate
+        said yes and before the frame goes, and refuses by raising. ``reply=False``
+        sends a frame the firmware never answers (see :meth:`_send`).
         """
         if not audit:
             await self._gate.authorize(write)
             if check is not None:
                 check()
-            return await self._send(tp, **payload)
+            return await self._send(tp, reply=reply, **payload)
         if not authorized:
             await self._authorize(write)
         if check is not None:
             check()
         try:
-            message = await self._send(tp, **payload)
+            message = await self._send(tp, reply=reply, **payload)
         except Exception as exc:
             await self._record(write, "failed", f"{type(exc).__name__}: {exc}")
             raise

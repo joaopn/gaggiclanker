@@ -272,6 +272,13 @@ class FakeDevice:
     selected_profile_id: str | None = None
     #: How many `req:flush:start` frames arrived.
     flushes: int = 0
+    #: The mode the state frame reports (`m`): 0 standby, 1 brew, 2 steam, 3 water, 4 grind.
+    mode: int = 1
+    #: Every mode a `req:change-mode` asked for, applied or not.
+    mode_changes: list[int] = field(default_factory=list)
+    #: The controller's `SYSTEM_READY`; while off, the state frame says "starting"
+    #: and `req:change-mode` is ignored, as on the firmware.
+    system_ready: bool = True
     #: The firmware favourites every new profile. Off, a test can see whether the app
     #: itself moved a favourite star rather than inheriting the firmware's.
     auto_favorite_new: bool = True
@@ -644,12 +651,12 @@ class FakeDevice:
 
     def _state_frame(self) -> dict[str, Any]:
         return {
-            "m": 1,
+            "m": self.mode,
             "p": "Test Profile",
             "puid": "test",
             "cp": True,
             "cd": True,
-            "sys": {"s": "ready", "m": "", "c": 0},
+            "sys": {"s": "ready" if self.system_ready else "starting", "m": "", "c": 0},
             "bc": False,
             "sbat": None,
         }
@@ -713,6 +720,17 @@ class FakeDevice:
             # when `Controller::onFlush` ignored it because a process was running.
             self.flushes += 1
             await self._reply(socket, tp, rid, success=True)
+        elif tp == "req:change-mode":
+            # `WebSocketHandler`: no answer at all; a valid mode is applied only
+            # while the controller is ready, and the state frame `publishState`
+            # sends on the change is the only sign it happened.
+            mode = message.get("mode")
+            if isinstance(mode, int) and not isinstance(mode, bool) and 0 <= mode <= 255:
+                self.mode_changes.append(mode)
+                if self.system_ready:
+                    self.mode = mode
+                    await self.broadcast({"tp": "evt:status", **self._state_frame()})
+            return
         elif tp == "req:history:notes:get":
             wanted = str(message.get("id", ""))
             shot = next((s for s in self.shots.values() if pad6(s.entry.id) == wanted), None)
