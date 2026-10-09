@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SetVersionDetail } from "@/api/types";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
+import { checksBlock } from "@/test/claimFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import {
   emptyVersion,
@@ -293,6 +294,13 @@ describe("VersionTimeline", () => {
         review: { state: "unreviewed", entries: [] },
       },
     ];
+    // A shot that passed and one nothing was checked for draw nothing here: Pass and Unchecked
+    // belong to the shots table's cell alone.
+    const [lever] = detail.versions[0].shots;
+    detail.versions[0].shots.push(
+      { ...lever, id: 42, device_id: "000142", checks: checksBlock({ state: "pass" }) },
+      { ...lever, id: 43, device_id: "000143", checks: checksBlock({ state: "unchecked" }) },
+    );
     // The judgement's rating wins over the device's: the archive's copy is the
     // one the user edits.
     detail.judgements = { "41": judgement({ shot_id: 41, rating: 5 }) };
@@ -305,7 +313,10 @@ describe("VersionTimeline", () => {
     expect(shots).toHaveTextContent("9 Bar Espresso");
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "5");
     // The same badge as the shots table's Curve check column, and never the review's.
+    expect(within(shots).getAllByTestId("check-badge")).toHaveLength(1);
     expect(within(shots).getByTestId("check-badge")).toHaveTextContent("ramp: fast flow +2");
+    expect(within(shots).queryByTestId("check-pass")).toBeNull();
+    expect(within(shots).queryByTestId("check-unchecked")).toBeNull();
     expect(within(shots).queryByTestId("review-badge")).toBeNull();
   });
 

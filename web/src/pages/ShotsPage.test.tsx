@@ -2031,7 +2031,7 @@ describe("ShotsPage Curve check column", () => {
     expect(screen.queryByTestId("header-score")).not.toBeInTheDocument();
   });
 
-  it("is on every shot, a discarded or quarantined one included, and leaves the cell empty for none", async () => {
+  it("is on every shot, a discarded or quarantined one included, and draws the entry badge only for one with entries", async () => {
     getShots.mockResolvedValue(
       listData([
         withChecks({ review: reviewBlock({ state: "not_reviewable" }) }),
@@ -2046,6 +2046,38 @@ describe("ShotsPage Curve check column", () => {
     // Nothing is in the Review column of a shot nobody can review.
     expect(screen.queryByTestId("review-badge")).not.toBeInTheDocument();
     expect(screen.queryByTestId("review-start")).not.toBeInTheDocument();
+  });
+
+  it("says Pass in green, Unchecked in grey, the entry badge for entries, and nothing without a checks block", async () => {
+    const noChecks = shot({ id: 4, device_id: "000104" });
+    // The server always serves the block; a row without one draws nothing.
+    (noChecks as { checks?: unknown }).checks = undefined;
+    getShots.mockResolvedValue(
+      listData([
+        withChecks({ id: 1 }),
+        shot({ id: 2, device_id: "000102", checks: checksBlock({ state: "pass" }) }),
+        shot({ id: 3, device_id: "000103", checks: checksBlock({ state: "unchecked" }) }),
+        noChecks,
+      ]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(screen.getAllByTestId("check-badge")).toHaveLength(1);
+    const pass = screen.getByTestId("check-pass");
+    expect(pass).toHaveTextContent(/^Pass$/);
+    expect(pass).toHaveClass("text-status-good-text");
+    const unchecked = screen.getByTestId("check-unchecked");
+    expect(unchecked).toHaveTextContent(/^Unchecked$/);
+    expect(unchecked).toHaveClass("text-muted-foreground");
+    expect(screen.getAllByTestId("check-pass")).toHaveLength(1);
+    expect(screen.getAllByTestId("check-unchecked")).toHaveLength(1);
+    // Only the entry badge, which has a hover list, is lifted above the row's toggle; a click on
+    // Pass or Unchecked is a click on the row.
+    expect(screen.getByTestId("check-badge-wrap")).toHaveClass("z-[1]");
+    expect(pass).not.toHaveClass("z-[1]", "relative");
+    expect(unchecked).not.toHaveClass("z-[1]", "relative");
   });
 
   it("is the deterministic checks only: a review beside it never changes it", async () => {

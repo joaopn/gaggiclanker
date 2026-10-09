@@ -10,7 +10,7 @@ import {
 } from "react";
 import type { ShotListRow, ShotSort } from "@/api/types";
 import { SetBadge } from "@/components/sets/SetBadge";
-import { CheckBadge } from "@/components/shots/CheckBadge";
+import { CheckCell } from "@/components/shots/CheckBadge";
 import { CurveChooser } from "@/components/shots/CurveChooser";
 import { DecisionCell } from "@/components/shots/DecisionCell";
 import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
@@ -705,9 +705,9 @@ function Cell({
     case "yield":
       return <span className="text-sm tabular-nums">{formatGrams(shot.volume_g)}</span>;
     case "check":
-      // Lifted above the row's stretched toggle like the stars, so the hover list is
-      // reachable.
-      return <CheckBadge checks={shot.checks} className={INTERACTIVE} />;
+      // The entry badge is lifted above the row's stretched toggle like the stars, so the hover
+      // list is reachable; Pass and Unchecked have nothing to hover and toggle the row.
+      return <CheckCell checks={shot.checks} className={INTERACTIVE} />;
     case "review":
       // Lifted above the row's stretched toggle like the stars, so the buttons and the hover
       // list are reachable and a click on them is not the row's.

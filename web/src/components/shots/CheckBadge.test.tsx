@@ -9,6 +9,12 @@ import { LEVER_BADGE, LEVER_WARNINGS } from "@/test/warningFixtures";
 const checks = (badge: string | null, entries: ShotEntry[]) => checksBlock({ badge, entries });
 
 describe("CheckBadge", () => {
+  it("draws nothing for a shot that passed: Pass belongs to the shots table's cell only", () => {
+    const { container } = render(<CheckBadge checks={checksBlock({ state: "pass" })} />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("says the first warning, and how many more there are", () => {
     render(<CheckBadge checks={checks(LEVER_BADGE, LEVER_WARNINGS)} />);
 
