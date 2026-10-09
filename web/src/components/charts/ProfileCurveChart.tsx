@@ -1,8 +1,8 @@
-import type { ChartOptions, ScriptableLineSegmentContext } from "chart.js";
+import type { ChartOptions, ScriptableLineSegmentContext, TooltipItem } from "chart.js";
 import type { AnnotationOptions } from "chartjs-plugin-annotation";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Line } from "react-chartjs-2";
-import { chartPalette } from "@/components/charts/chartSetup";
+import { chartPalette, crosshairPlugin } from "@/components/charts/chartSetup";
 import { type CurvePoint, profileCurve } from "@/lib/profileCurve";
 import { SHOT_SERIES } from "@/lib/shotChart";
 import { useTheme } from "@/lib/theme";
@@ -39,6 +39,17 @@ function withAlpha(color: string, alpha: number): string {
 /** The firmware's `segment` callbacks look at the point a segment starts from. */
 const startsOnTarget = (ctx: ScriptableLineSegmentContext): boolean =>
   (ctx.p0 as unknown as { raw: CurvePoint }).raw.target;
+
+/** The tooltip's unit for each series, in the axis titles' words. */
+const UNITS: Record<string, string> = { Pressure: "bar", Flow: "ml/s" };
+
+/** One series at the cursor: its value with its unit, and whether the phase only limits it. */
+function tooltipLabel(item: TooltipItem<"line">): string {
+  const label = item.dataset.label ?? "";
+  const point = item.raw as CurvePoint;
+  const value = `${label}: ${Number(point.y.toFixed(1))} ${UNITS[label] ?? ""}`.trimEnd();
+  return point.target ? value : `${value} (limit)`;
+}
 
 function seconds(value: number): string {
   return `${Number(value.toFixed(1))}`;
@@ -148,10 +159,20 @@ function ProfileCurveChartView({
         maintainAspectRatio: false,
         animation: false as const,
         parsing: false as const,
-        interaction: { intersect: false },
+        // The shot chart's readout: one tooltip with both series at the instant under the
+        // cursor, on or off a line, with the crosshair marking where it was read.
+        interaction: { mode: "index" as const, intersect: false },
         plugins: {
           legend: { display: false },
-          tooltip: { enabled: false },
+          tooltip: {
+            // A NaN point (the firmware's zero-duration quirk) has no value to read.
+            filter: (item: TooltipItem<"line">) => Number.isFinite((item.raw as CurvePoint).y),
+            callbacks: {
+              title: (items: TooltipItem<"line">[]) =>
+                items.length ? `${(items[0].parsed.x ?? 0).toFixed(1)} s` : "",
+              label: tooltipLabel,
+            },
+          },
           annotation: { annotations },
         },
         scales: {
@@ -209,6 +230,7 @@ function ProfileCurveChartView({
         <Line
           data={config.data}
           options={config.options}
+          plugins={[crosshairPlugin]}
           aria-label={title ? `${title}: the profile's curve` : "The profile's curve"}
         />
       </div>

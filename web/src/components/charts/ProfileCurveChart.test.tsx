@@ -28,8 +28,25 @@ type ChartProps = {
       string,
       { min: number; max: number; ticks: { callback?: (v: number) => string } }
     >;
-    plugins: { annotation: { annotations: Record<string, Annotation> } };
+    interaction: { mode?: string; intersect: boolean };
+    plugins: {
+      annotation: { annotations: Record<string, Annotation> };
+      tooltip: {
+        enabled?: boolean;
+        filter: (item: TooltipItem) => boolean;
+        callbacks: {
+          title: (items: TooltipItem[]) => string;
+          label: (item: TooltipItem) => string;
+        };
+      };
+    };
   };
+  plugins?: { id: string }[];
+};
+type TooltipItem = {
+  dataset: { label: string };
+  raw: { x: number; y: number; target: boolean };
+  parsed: { x: number; y: number };
 };
 let renders: ChartProps[] = [];
 vi.mock("react-chartjs-2", () => ({
@@ -121,6 +138,46 @@ describe("ProfileCurveChart", () => {
     // Fill aims for flow, so its pressure is the limit and its flow the target.
     expect(pressure.data[0].target).toBe(false);
     expect(last().data.datasets[1].data[0].target).toBe(true);
+  });
+
+  it("reads both series at the cursor, as the shot chart does", () => {
+    render(<ProfileCurveChart profile={profile} />);
+    const { data, options, plugins } = last();
+    expect(options.interaction).toEqual({ mode: "index", intersect: false });
+    expect(options.plugins.tooltip.enabled).not.toBe(false);
+    expect(plugins?.map((p) => p.id)).toEqual(["gaggiclanker-crosshair"]);
+
+    const [pressure, flow] = data.datasets;
+    // 7 s is inside Ramp, which aims for pressure and only limits flow.
+    const index = pressure.data.findIndex((p) => Math.abs(p.x - 7) < 1e-6);
+    const items = [pressure, flow].map((dataset) => ({
+      dataset: { label: dataset.label },
+      raw: dataset.data[index],
+      parsed: { x: dataset.data[index].x, y: dataset.data[index].y },
+    }));
+    const { title, label } = options.plugins.tooltip.callbacks;
+    expect(title(items)).toBe("7.0 s");
+    expect(title([])).toBe("");
+    expect(items.map(label)).toEqual(["Pressure: 9 bar", "Flow: 6 ml/s (limit)"]);
+    // Fill aims for flow (ramping 0 to 4 ml/s over its 4 s), so there pressure is the limit.
+    const fill = [pressure, flow].map((dataset) => ({
+      dataset: { label: dataset.label },
+      raw: dataset.data[20],
+      parsed: { x: dataset.data[20].x, y: dataset.data[20].y },
+    }));
+    expect(fill.map(label)).toEqual(["Pressure: 0 bar (limit)", "Flow: 2 ml/s"]);
+  });
+
+  it("leaves a point with no value out of the tooltip", () => {
+    render(<ProfileCurveChart profile={profile} />);
+    const { filter } = last().options.plugins.tooltip;
+    const item = (y: number) => ({
+      dataset: { label: "Pressure" },
+      raw: { x: 1, y, target: true },
+      parsed: { x: 1, y },
+    });
+    expect(filter(item(3.25))).toBe(true);
+    expect(filter(item(Number.NaN))).toBe(false);
   });
 
   it("marks each phase's start with its name", () => {

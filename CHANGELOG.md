@@ -126,6 +126,10 @@ database.
 - `/sync` and its anchors (`#sync`, `#board`, `#writes`) redirect to the same cards on the Device
   page. The `g y` shortcut is gone with the page.
 
+### A profile curve reads out its values under the cursor
+
+- Hovering a profile curve, in the chat's proposal cards and on the Profiles page, shows a tooltip like the shot chart's: the time, and the pressure (bar) and flow (ml/s) the profile aims for at that instant, with "(limit)" beside a quantity the phase only limits, and a dashed line marking where it was read.
+
 ### The profile curve
 
 - The Profiles page shows each pro profile's curve, the pressure and flow it aims for over time, as the machine's own web page draws it. An open row starts with the active version's curve, and every other version in the list shows its own above its summary or what changed. A solid line is what the pump aims for in a phase and a dashed line is only a limit; each phase starts at a line with its name, which is left out when the chart is narrow. Profiles that are not "pro" get no curve, as on the machine, and keep their summary. The curve is a port of the GaggiMate firmware's (v1.9.0) own drawing code, checked point by point against it.
