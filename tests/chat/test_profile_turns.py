@@ -98,3 +98,24 @@ async def test_no_prompt_sends_the_person_to_the_profiles_page_to_answer_a_propo
 
     assert "make it active" not in system and "makes it active" not in system
     assert "for them to make active" not in system
+
+
+def renamed_first_recipe() -> str:
+    """A first recipe accepted under another name: the same ending, with the new name."""
+    base = TURNS["accepted_first_recipe"]
+    assert base.endswith(".")
+    return base[:-1] + TURNS["accepted_first_recipe_renamed_clause"] + TURNS["renamed_ending"]
+
+
+async def test_the_set_prompt_reads_a_first_recipe_accepted_under_another_name(
+    prompts: PromptService,
+) -> None:
+    system = await _system(prompts, SET_CHAT_PROMPT)
+
+    clause = TURNS["accepted_first_recipe_renamed_clause"].removeprefix(", ")
+    assert f"{clause} (you proposed it as <old name>)" in system
+    assert "and from then on you use the new name" in system
+    assert renamed_first_recipe() == (
+        "Accepted: your first recipe is now <version label> of this Set, "
+        "with its profile named <name> (you proposed it as <old name>)."
+    )

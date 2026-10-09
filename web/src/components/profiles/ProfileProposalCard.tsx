@@ -580,17 +580,50 @@ function Waiting({
 // Answered
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Where an approved proposal stands, as a line inside another card (the first recipe's): the
+ * server's words for it, no frame of its own. Nothing while the proposal is still waiting, or
+ * was never put on the list.
+ */
+export function ProfileStandingLine({
+  draftId,
+  proposedAs = null,
+}: {
+  draftId: number;
+  /** The name the agent proposed, when the person approved it under another. */
+  proposedAs?: string | null;
+}) {
+  const standing = useDraftStanding(draftId);
+  const owner = useSyncOwner();
+  const data = standing.data;
+  if (data === undefined || data.state === "waiting" || data.state === "declined") return null;
+  return (
+    <div className="mt-2 min-w-0 space-y-2" data-testid="profile-standing" data-state={data.state}>
+      <Answered
+        standing={data}
+        syncing={data.state === "approved" && owner.waitingFor(syncKeyOf(draftId))}
+        name={data.draft.draft_label ?? "Untitled"}
+        was={proposedAs}
+        withTime={false}
+      />
+    </div>
+  );
+}
+
 function Answered({
   standing,
   syncing,
   name,
   was,
+  withTime = true,
   focusRef,
 }: {
   standing: DraftStanding;
   syncing: boolean;
   name: string;
   was: string | null;
+  /** The proposal's time at the end of the title; a line inside another card leaves it out. */
+  withTime?: boolean;
   /** Set by an approval on this card: the title takes focus once. */
   focusRef?: React.MutableRefObject<boolean>;
 }) {
@@ -672,7 +705,9 @@ function Answered({
         >
           {title}
         </span>
-        <span className="text-muted-foreground text-xs">{formatTime(draft.created_at)}</span>
+        {withTime ? (
+          <span className="text-muted-foreground text-xs">{formatTime(draft.created_at)}</span>
+        ) : null}
       </div>
       {body}
       {hasCurve(standing.profile) ? (

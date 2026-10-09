@@ -5,5 +5,6 @@
   "renamed_ending": " (you proposed it as <old name>).",
   "declined": "Declined: <note>",
   "declined_no_reason": "Declined: no reason given.",
-  "accepted_first_recipe": "Accepted: your first recipe is now <version label> of this Set."
+  "accepted_first_recipe": "Accepted: your first recipe is now <version label> of this Set.",
+  "accepted_first_recipe_renamed_clause": ", with its profile named <name>"
 }

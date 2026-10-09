@@ -100,6 +100,8 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
       icon: Sparkles,
       setId: Number(setId),
       proposalId: Number(proposalId),
+      // The name the agent gave the profile, to say "proposed as" if the person renames it.
+      proposedAs: recipe.profile_label ? String(recipe.profile_label) : null,
     };
   }
 
@@ -213,7 +215,7 @@ function ProposedChange({ proposal }: { proposal: Proposal }) {
   }
   return (
     <div className="m-2 mt-0" data-testid={`propose-card-${proposal.kind}`}>
-      <ProposalCard setId={setId} proposal={row} />
+      <ProposalCard setId={setId} proposal={row} proposedProfileAs={proposal.proposedAs ?? null} />
     </div>
   );
 }

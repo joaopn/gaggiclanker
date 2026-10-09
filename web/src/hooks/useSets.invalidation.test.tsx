@@ -276,10 +276,12 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     expect(keys).not.toContainEqual(queryKeys.sets.all);
   });
 
-  it("accepting a first recipe reaches the Set, the list, its proposals and its conversation", async () => {
+  it("accepting a first recipe reaches the Set, the list, its proposals, its conversation and the profile it put on the list", async () => {
     acceptSetProposal.mockResolvedValue({
       proposal: designProposal({ status: "accepted" }),
       version: version({ id: 60, set_id: 6 }),
+      profile_draft_id: 14,
+      profile_row_id: 4,
     });
     const { result, queryClient } = renderHookWithQueryClient(() => useDecideProposal());
     const keys = spyOn(queryClient);
@@ -292,13 +294,18 @@ describe("the Set-side writes invalidate no more than they changed", () => {
       threadId: 12,
     });
 
-    await waitFor(() => expect(keys.length).toBe(4));
+    await waitFor(() => expect(keys).toContainEqual(queryKeys.board.all));
     expect(keys).toContainEqual(queryKeys.sets.detail("6"));
     // The list carries the Designing badge, and the Chat page reads it to know
     // which tools the conversation has: both change when the design ends.
     expect(keys).toContainEqual(["sets", "list"]);
     expect(keys).toContainEqual(queryKeys.sets.proposals("6"));
     expect(keys).toContainEqual(queryKeys.chat.thread("12"));
+    // The accept put the card's profile on the list: the board, the drafts (each proposal's
+    // standing is read under them), the mirror and the sync status all changed.
+    expect(keys).toContainEqual(queryKeys.drafts.all);
+    expect(keys).toContainEqual(queryKeys.profiles.all);
+    expect(keys).toContainEqual(queryKeys.sync.all);
     // Version 1 is filled in place and no shot moved: no chart, no shots.
     expect(keys).not.toContainEqual(queryKeys.sets.all);
     expect(keys.flat()).not.toContain("shots");

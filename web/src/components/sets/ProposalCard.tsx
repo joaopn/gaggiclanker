@@ -1,17 +1,28 @@
 import { ArrowRight, Check, X } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
 import type { FieldChange, SetProposal } from "@/api/types";
 import { InlineMarkdown } from "@/components/chat/markdown";
 import { acceptedMessage, declinedMessage, useTellAgent } from "@/components/chat/tellAgent";
+import { ProfileCurve } from "@/components/profiles/ProfileCurve";
+import {
+  landsOnNewProfile,
+  ProfileStandingLine,
+  syncKeyOf,
+} from "@/components/profiles/ProfileProposalCard";
+import { ProposalNameField, useProposalName } from "@/components/profiles/ProposalName";
 import { MajorChoice } from "@/components/sets/MajorChoice";
 import { OutcomeBadge } from "@/components/sets/OutcomeBadge";
+import { useSyncOwner } from "@/components/sync/SyncOwner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useDeviceStatus } from "@/hooks/useDeviceStatus";
+import { useDraftStanding } from "@/hooks/useDrafts";
 import { useDecideProposal } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
 import { formatTime } from "@/lib/shots";
+import { syncUnavailableWhy } from "@/lib/sync";
 
 /**
  * A change an agent has proposed, and the two buttons that answer it.
@@ -31,8 +42,11 @@ import { formatTime } from "@/lib/shots";
  * a Set that has no recipe yet, and it is drawn as a recipe rather than as a
  * diff: "not set → 18 g" five times over says less than "18 g in, 36 g out".
  * It has no prediction and nothing it is compared to — a version 1 is a
- * baseline, not a change to anything — and its profile is a draft of its own,
- * waiting on the Profiles page, so the card links there.
+ * baseline, not a change to anything. Its profile is a draft of its own, and
+ * accepting the card approves it with version 1 (and, with Writes on, starts
+ * the sync that puts it on the machine): while the draft waits, the profile
+ * line is the Name field and the profile's curve, and once it is answered the
+ * card says where the profile stands, in the server's words.
  */
 
 export type ProposalCardProps = {
@@ -40,6 +54,8 @@ export type ProposalCardProps = {
   proposal: SetProposal;
   /** The Set page links into the chat; the chat's own card does not. */
   showThreadLink?: boolean;
+  /** A first recipe: the name the agent gave its profile, from its tool result (the chat only). */
+  proposedProfileAs?: string | null;
 };
 
 /** What the log's diff rows say when a side is missing. The same words. */
@@ -48,11 +64,11 @@ function absent(fromProfile: boolean, side: "before" | "after"): string {
   return side === "before" ? "not set" : "cleared";
 }
 
+/** Where a waiting first recipe's profile can also be answered on its own. */
+const DRAFTS_HREF = "/profiles#staged";
+
 /** How long a turn-down may be, as the route caps it. */
 const NOTE_MAX = 500;
-
-/** Where a proposed profile waits for a person to make it active. */
-const DRAFTS_HREF = "/profiles#staged";
 
 /**
  * The recipe a first-recipe card would fill version 1 with, read off its diff.
@@ -91,29 +107,41 @@ export function designRecipe(changes: FieldChange[]) {
  * is words relative to the usual setting, and reading "two finer" as a dial
  * position loses a bag finding out.
  */
-function RecipeFigures({ proposal }: { proposal: SetProposal }) {
+function RecipeFigures({
+  proposal,
+  draftWaiting,
+  nameFieldShown,
+}: {
+  proposal: SetProposal;
+  /** The card's draft is still a proposal: it can be linked. */
+  draftWaiting: boolean;
+  /** The profile line is the Name field above the figures instead. */
+  nameFieldShown: boolean;
+}) {
   const recipe = designRecipe(proposal.changes);
   if (proposal.changes.length === 0) return null;
   return (
     <dl className="mb-2 grid gap-x-3 gap-y-1 text-sm sm:grid-cols-2" data-testid="proposal-recipe">
-      <Figure label="Profile">
-        {recipe.profile ?? "none named"}
-        {proposal.draft_id ? (
-          <>
-            {" · "}
-            <Link
-              to={DRAFTS_HREF}
-              className="underline underline-offset-2"
-              data-testid="proposal-draft-link"
-            >
-              a new draft
-            </Link>
-          </>
-        ) : null}
-        {recipe.temperature ? (
-          <span className="text-muted-foreground"> · {recipe.temperature}</span>
-        ) : null}
-      </Figure>
+      {nameFieldShown ? null : (
+        <Figure label="Profile">
+          {recipe.profile ?? "none named"}
+          {proposal.draft_id && draftWaiting ? (
+            <>
+              {" · "}
+              <Link
+                to={DRAFTS_HREF}
+                className="underline underline-offset-2"
+                data-testid="proposal-draft-link"
+              >
+                a new draft
+              </Link>
+            </>
+          ) : null}
+          {recipe.temperature ? (
+            <span className="text-muted-foreground"> · {recipe.temperature}</span>
+          ) : null}
+        </Figure>
+      )}
       <Figure label="Grind">
         {recipe.grind ?? "not set"}
         {recipe.grind && !recipe.grindIsAbsolute ? (
@@ -201,28 +229,36 @@ export function acceptHint(changes: FieldChange[]): string {
 /**
  * How a first recipe was answered.
  *
- * Accepted is the one that has a next step, and it is the person's: the Set now
- * has its version 1, but the profile it names is only a proposal until somebody
- * makes it active and a sync sends it, and shots brewed on it only find the Set once it
- * is on the machine. The card says so in those words because nothing else in the
- * conversation will.
+ * Accepted is the one that has a next step, and the card says where it stands: the Set has its
+ * version 1 and the profile was approved with it, so the line under it is the profile's own
+ * standing, in the server's words (waiting for a sync, syncing, on the machine, or what stopped
+ * it). Shots brewed on the profile find the Set once it is on the machine and selected.
  */
-function DecidedDesign({ proposal }: { proposal: SetProposal }) {
+function DecidedDesign({
+  proposal,
+  proposedAs,
+}: {
+  proposal: SetProposal;
+  proposedAs: string | null;
+}) {
   if (proposal.status === "accepted") {
     return (
-      <p className="text-sm" data-testid="proposal-decided">
-        Accepted:{" "}
-        <Link to={`/sets/${proposal.set_id}`} className="font-medium underline underline-offset-2">
-          version 1
-        </Link>{" "}
-        is set. Its profile is{" "}
-        <Link to={DRAFTS_HREF} className="underline underline-offset-2">
-          a proposal on the Profiles page
-        </Link>{" "}
-        for you to make active; once a sync has put it on the machine, shots brewed on it are filed
-        here.{" "}
-        <span className="text-muted-foreground">{formatTime(proposal.decided_at ?? null)}</span>
-      </p>
+      <div data-testid="proposal-decided">
+        <p className="text-sm">
+          Accepted:{" "}
+          <Link
+            to={`/sets/${proposal.set_id}`}
+            className="font-medium underline underline-offset-2"
+          >
+            version 1
+          </Link>{" "}
+          is set; shots brewed on its profile are filed here.{" "}
+          <span className="text-muted-foreground">{formatTime(proposal.decided_at ?? null)}</span>
+        </p>
+        {proposal.draft_id ? (
+          <ProfileStandingLine draftId={proposal.draft_id} proposedAs={proposedAs} />
+        ) : null}
+      </div>
     );
   }
   if (proposal.status === "declined") {
@@ -297,7 +333,12 @@ function Decided({ proposal }: { proposal: SetProposal }) {
   );
 }
 
-export function ProposalCard({ setId, proposal, showThreadLink = false }: ProposalCardProps) {
+export function ProposalCard({
+  setId,
+  proposal,
+  showThreadLink = false,
+  proposedProfileAs = null,
+}: ProposalCardProps) {
   const decide = useDecideProposal();
   // Set inside a conversation only: an answer there is also said to the agent —
   // an accept, so it sends the person to a new conversation, and a decline,
@@ -311,6 +352,14 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
   // then the box shows what the card suggests: major when the agent suggested
   // it or the shared rule says so (a different profile), minor otherwise.
   const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
+  // The name typed on a first recipe's Name field; `null` until the person touches it.
+  const [typedName, setTypedName] = useState<string | null>(null);
+  // One accept per press, however fast the second comes.
+  const accepting = useRef(false);
+  const owner = useSyncOwner();
+  const device = useDeviceStatus();
+  // The name the agent gave the profile, once the person has accepted it under another.
+  const [renamedFrom, setRenamedFrom] = useState<string | null>(null);
   // The card is re-used for whatever proposal it is handed, and a half-typed
   // turn-down must not follow one proposal onto the next. Held in state and
   // reset during render rather than in a ref: StrictMode's double render and a
@@ -321,6 +370,8 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
     setDeclining(false);
     setNote("");
     setMajorChoice(null);
+    setTypedName(null);
+    setRenamedFrom(null);
   }
   // What the server said to the last press on this card, before the lists it
   // invalidated have been read again. Shown straight away: on the Set page the
@@ -335,6 +386,65 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
     design && decide.variables?.proposalId === proposal.id && draftClosed(decide.error);
   const major = majorChoice ?? (proposal.suggest_major || proposal.major_by_default);
   const resulting = major ? proposal.next_major_label : proposal.next_minor_label;
+
+  // A first recipe approves its profile with it, so the card reads where that profile stands:
+  // while the draft still waits, Accept also approves it (and syncs, with Writes on), and a new
+  // profile has a Name field. Anything else about the draft was settled elsewhere and is left.
+  const draftStanding = useDraftStanding(
+    design && waiting ? (shown.draft_id ?? undefined) : undefined,
+  );
+  const standing = draftStanding.data;
+  const draftWaiting = standing?.state === "waiting";
+  const namesProfile = draftWaiting && standing !== undefined && landsOnNewProfile(standing);
+  const proposedName = standing?.draft.draft_label ?? "";
+  const nameText = typedName ?? proposedName;
+  const name = useProposalName(shown.draft_id ?? 0, nameText, namesProfile);
+  const nameBlocked = namesProfile && (name.problem !== null || name.checking);
+  // The click starts a sync only with Writes on and a machine to reach (the top bar's own test).
+  const configured = device.data?.configured ?? true;
+  const connected = device.data?.connected ?? true;
+  const writesOn = draftWaiting && standing?.writes_enabled === true;
+  const willSync = writesOn && configured && connected;
+  const noSyncWhy = writesOn ? syncUnavailableWhy(configured, connected) : null;
+  const acceptWords = design ? (willSync ? "Accept and sync" : "Accept") : `Accept as ${resulting}`;
+
+  const accept = async () => {
+    if (accepting.current || nameBlocked) return;
+    accepting.current = true;
+    try {
+      const result = await attempt(() =>
+        decide.mutateAsync({
+          setId,
+          proposalId: proposal.id,
+          decision: "accept",
+          kind: proposal.kind,
+          threadId: proposal.records_outcome?.thread_id ?? proposal.thread_id,
+          recordsOutcome: Boolean(proposal.records_outcome),
+          // Always said on a change: the box shows an answer, and what is sent is what it shows.
+          ...(design ? {} : { major }),
+          // The sync reports itself; a first recipe's toast is only the fact that it was accepted.
+          quiet: design && willSync,
+          // Only for a draft that is still waiting and would be a profile of its own: a name for
+          // an answered draft is refused, even the same one.
+          ...(namesProfile ? { profileLabel: name.trimmed } : {}),
+        }),
+      );
+      if (!result) return;
+      const renamed =
+        namesProfile && name.trimmed !== proposedName
+          ? { name: name.trimmed, proposedAs: proposedName }
+          : undefined;
+      if (renamed) setRenamedFrom(renamed.proposedAs);
+      const message = acceptedMessage(result, renamed);
+      if (message && tellAgent) tellAgent(message);
+      // The sync is the person's click on Accept and sync, and only after the accept succeeded.
+      if (willSync && result.profile_draft_id != null) {
+        await owner.startSync(syncKeyOf(result.profile_draft_id));
+      }
+    } finally {
+      accepting.current = false;
+    }
+  };
 
   return (
     <div
@@ -373,7 +483,23 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
       ) : null}
 
       {design ? (
-        <RecipeFigures proposal={shown} />
+        <>
+          {namesProfile ? (
+            <div className="mb-2">
+              <ProposalNameField typed={nameText} onChange={setTypedName} problem={name.problem} />
+            </div>
+          ) : null}
+          <RecipeFigures
+            proposal={shown}
+            draftWaiting={draftWaiting}
+            nameFieldShown={namesProfile}
+          />
+          {draftWaiting && standing?.profile ? (
+            <div className="mb-2 min-w-0" data-testid="proposal-profile-curve">
+              <ProfileCurve profile={standing.profile} title="Proposed" />
+            </div>
+          ) : null}
+        </>
       ) : proposal.changes.length > 0 ? (
         <ul className="mb-2 flex flex-wrap gap-2" data-testid="proposal-changes">
           {proposal.changes.map((change) => (
@@ -465,28 +591,18 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
             {proposal.readable ? (
               <Button
                 size="sm"
-                disabled={decide.isPending}
-                onClick={() =>
-                  void attempt(() =>
-                    decide.mutateAsync({
-                      setId,
-                      proposalId: proposal.id,
-                      decision: "accept",
-                      kind: proposal.kind,
-                      threadId: proposal.records_outcome?.thread_id ?? proposal.thread_id,
-                      recordsOutcome: Boolean(proposal.records_outcome),
-                      // Always said on a change: the box shows an answer, and
-                      // what is sent is what it shows.
-                      ...(design ? {} : { major }),
-                    }),
-                  ).then((result) => {
-                    const message = result ? acceptedMessage(result) : null;
-                    if (message && tellAgent) tellAgent(message);
-                  })
-                }
+                // Not `disabled`: a second press of a double click must not drop focus to the
+                // page; the guard in `accept` sends one request either way.
+                aria-disabled={decide.isPending || nameBlocked}
+                className="h-auto min-w-0 max-w-full shrink whitespace-normal text-left aria-disabled:opacity-50"
+                data-testid="accept-proposal"
+                onMouseDown={(event) => {
+                  if (decide.isPending || nameBlocked) event.preventDefault();
+                }}
+                onClick={() => void accept()}
               >
                 <Check className="size-3.5" aria-hidden="true" />
-                {design ? "Accept" : `Accept as ${resulting}`}
+                {acceptWords}
               </Button>
             ) : null}
             <Button
@@ -578,12 +694,20 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
             {!proposal.readable
               ? "The change stored with this one is damaged and cannot be read, so there is nothing to accept. Decline it and ask in the conversation again."
               : design
-                ? "Accepting makes this the Set's version 1. The profile stays a proposal on the Profiles page until you make it active (a sync then sends it to the machine): nothing is sent to the machine either way."
+                ? draftWaiting
+                  ? `Accepting makes this the Set's version 1 and approves its profile, which is switched on. ${
+                      !writesOn
+                        ? "Writes are off (top bar), so the profile goes to the machine at the first sync after you turn them on"
+                        : willSync
+                          ? "It also starts a sync"
+                          : (noSyncWhy ?? "")
+                    }; you select it on the machine yourself.`
+                  : "Accepting makes this the Set's version 1, with the profile as it stands."
                 : acceptHint(proposal.changes)}
           </p>
         </>
       ) : design ? (
-        <DecidedDesign proposal={shown} />
+        <DecidedDesign proposal={shown} proposedAs={renamedFrom ?? proposedProfileAs} />
       ) : (
         <Decided proposal={shown} />
       )}

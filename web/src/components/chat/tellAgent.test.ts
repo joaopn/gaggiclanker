@@ -59,7 +59,10 @@ describe("the turns a profile card sends", () => {
     expect(declinedMessage("")).toBe("Declined: no reason given.");
   });
 
-  it("tells a first recipe's accept", () => {
+  it("tells a first recipe's accept, and the new name of its profile when it was renamed", () => {
     expect(acceptedMessage(design)).toBe("Accepted: your first recipe is now v1 of this Set.");
+    expect(acceptedMessage(design, { name: "Gentle Bloom", proposedAs: "Soft Bloom" })).toBe(
+      "Accepted: your first recipe is now v1 of this Set, with its profile named Gentle Bloom (you proposed it as Soft Bloom).",
+    );
   });
 });

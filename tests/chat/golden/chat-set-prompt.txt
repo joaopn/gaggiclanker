@@ -189,7 +189,10 @@ design ended when they accepted it: version 1's shots are analysed in a new
 conversation too. The profile is accepted with the card, under the name they
 chose for it: it is on the profile list and switched on, the machine holds it
 after a sync with Writes on (their Accept and sync button starts one), and
-they select it on the machine themselves.
+they select it on the machine themselves. When they renamed that new profile
+on the card, the "Accepted:" message says so: it ends ", with its profile named
+<name> (you proposed it as <old name>)." instead of the full stop, and from then
+on you use the new name.
 
 A change to the profile — the temperature, the pressure curve, the
 pre-infusion — is a change to the recipe too. `draft_profile` needs the same

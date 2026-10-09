@@ -58,13 +58,22 @@ function renamedEnding(turn: string, oldName: string): string {
  * names what it recorded, in the card's own before → after words, so the
  * agent answers about the change that was accepted — whether the profile moved
  * is what decides if anything is to be done on the machine.
+ *
+ * A first recipe's accept also approves its new profile under the name on the card; when the
+ * person changed that name, the message says what it is now and what the agent proposed.
  */
-export function acceptedMessage(decision: SetProposalDecision): string | null {
+export function acceptedMessage(
+  decision: SetProposalDecision,
+  renamed?: { name: string; proposedAs: string },
+): string | null {
   // Only an accept records a version; a decline answers with none.
   const version = decision.version;
   if (!version) return null;
   if (decision.proposal.kind === "design") {
-    return fill(turns.accepted_first_recipe, { "<version label>": version.version_label });
+    const base = fill(turns.accepted_first_recipe, { "<version label>": version.version_label });
+    if (!renamed) return base;
+    const clause = fill(turns.accepted_first_recipe_renamed_clause, { "<name>": renamed.name });
+    return renamedEnding(`${base.slice(0, -1)}${clause}.`, renamed.proposedAs);
   }
   const changes = decision.proposal.changes
     .map((change) => `${change.label} ${change.before ?? "not set"} → ${change.after ?? "cleared"}`)

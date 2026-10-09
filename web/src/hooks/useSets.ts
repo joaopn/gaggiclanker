@@ -59,6 +59,7 @@ import type {
   VersionPredictionWrite,
 } from "@/api/types";
 import {
+  invalidateBoardWrites,
   invalidateChatThread,
   invalidateChatThreads,
   invalidateChatTranscripts,
@@ -221,7 +222,10 @@ export function useAnswerOutcomeProposal(): UseMutationResult<
  * is left alone; but it ends the design, which takes the badge off the Sets
  * list and changes the tools the conversation it came from is offered, so the
  * list and that conversation are read again. Declining it discards the profile
- * draft it carried, so the draft queue is read again too.
+ * draft it carried, so the draft queue is read again too, and accepting approves
+ * that draft with version 1 (and switches its profile on), so everything a put on
+ * the board changes is read again: the board, the drafts and each proposal's
+ * standing, the profile mirror, the sync status and the write audit.
  *
  * The failure is the interesting half: the server answers a stale proposal and
  * an ungraded prediction with sentences the person can act on, so the toast
@@ -246,26 +250,35 @@ export function useDecideProposal(): UseMutationResult<
      * against, which the conversation's outcome card is drawn from.
      */
     recordsOutcome?: boolean;
+    /** A first recipe only: the name for its new profile, as the person typed it. */
+    profileLabel?: string;
+    /** No toast: the caller starts a sync, whose own notification follows. */
+    quiet?: boolean;
   }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ setId, proposalId, decision, note, major }) =>
+    mutationFn: ({ setId, proposalId, decision, note, major, profileLabel }) =>
       decision === "accept"
-        ? major === undefined
+        ? major === undefined && profileLabel === undefined
           ? acceptSetProposal(setId, proposalId)
-          : acceptSetProposal(setId, proposalId, { major })
+          : acceptSetProposal(setId, proposalId, {
+              ...(major === undefined ? {} : { major }),
+              ...(profileLabel === undefined ? {} : { profileLabel }),
+            })
         : declineSetProposal(setId, proposalId, { note: note ?? "" }),
-    onSuccess: (result) =>
+    onSuccess: (result, variables) => {
+      if (variables.quiet) return;
       toast.success(
         result.proposal.kind === "design"
           ? result.version
-            ? "Version 1 is set. Its profile is a proposal on the Profiles page, waiting for you to make it active."
+            ? "Accepted: version 1 is set."
             : "First recipe declined, and its proposal declined too"
           : result.version
             ? `${result.version.version_label} recorded. Nothing was sent to the machine.`
             : "Proposal declined",
-      ),
+      );
+    },
     onError: (error) => toast.error(error.message),
     onSettled: (_data, _error, variables) => {
       if (variables.kind === "design") {
@@ -276,7 +289,13 @@ export function useDecideProposal(): UseMutationResult<
         if (variables.threadId !== null && variables.threadId !== undefined) {
           void invalidateChatThread(queryClient, String(variables.threadId));
         }
-        if (variables.decision === "decline") void invalidateDrafts(queryClient);
+        if (variables.decision === "decline") {
+          void invalidateDrafts(queryClient);
+        } else {
+          // Accepting also put the card's profile on the list: the board, the drafts (and each
+          // proposal's standing under them), the mirror and the sync status all changed.
+          void invalidateBoardWrites(queryClient);
+        }
         return;
       }
       if (variables.decision === "accept") {

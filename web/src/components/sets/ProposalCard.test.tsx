@@ -3,12 +3,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import { TellAgentContext } from "@/components/chat/tellAgent";
 import { acceptHint, designRecipe, handSteps, ProposalCard } from "@/components/sets/ProposalCard";
+import { SyncOwnerProvider } from "@/components/sync/SyncOwner";
+import { draft, draftProfile, proProfile, standing } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { designProposal, outcomeProposal, proposal } from "@/test/setsFixtures";
 
-const { acceptSetProposal, declineSetProposal, toastError, toastSuccess } = vi.hoisted(() => ({
+const {
+  acceptSetProposal,
+  declineSetProposal,
+  getDraftStanding,
+  checkDraftName,
+  runSync,
+  getSyncStatus,
+  getDeviceStatus,
+  toastError,
+  toastSuccess,
+} = vi.hoisted(() => ({
   acceptSetProposal: vi.fn(),
   declineSetProposal: vi.fn(),
+  getDraftStanding: vi.fn(),
+  checkDraftName: vi.fn(),
+  runSync: vi.fn(),
+  getSyncStatus: vi.fn(),
+  getDeviceStatus: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
@@ -17,7 +34,35 @@ vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   acceptSetProposal,
   declineSetProposal,
+  getDraftStanding,
+  checkDraftName,
+  runSync,
+  getSyncStatus,
+  getDeviceStatus,
 }));
+
+// Canvas is opaque to jsdom: the chart is a figure that says what it was asked to draw.
+vi.mock("@/components/charts/ProfileCurveChart", () => ({
+  ProfileCurveChart: ({ title }: { title?: string }) => (
+    <figure data-testid="profile-curve" data-title={title ?? ""} />
+  ),
+}));
+
+/** The first recipe's profile as the standing read serves it while the card waits. */
+function designStanding(overrides: Record<string, unknown> = {}, newProfile = false) {
+  return standing({
+    draft: draft({ id: 14, draft_label: "Guji Bloom", is_new: newProfile }),
+    profile: draftProfile({ label: "Guji Bloom" }),
+    active_profile: newProfile ? null : draftProfile(),
+    landing: {
+      draft_id: 14,
+      already_on_board_label: null,
+      plain: { row_id: newProfile ? null : 4, row_label: newProfile ? null : "Guji Bloom" },
+      for_set: null,
+    },
+    ...overrides,
+  });
+}
 
 vi.mock("sonner", () => ({
   toast: { success: toastSuccess, error: toastError, info: vi.fn() },
@@ -25,7 +70,42 @@ vi.mock("sonner", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A first recipe's draft continues a profile unless a test says it is a new one.
+  getDraftStanding.mockResolvedValue(designStanding());
+  checkDraftName.mockImplementation(async (_id: number, label: string) => ({
+    label: label.trim(),
+    refused: null,
+  }));
+  runSync.mockResolvedValue({ queued: ["shots", "profiles"] });
+  getSyncStatus.mockResolvedValue({
+    configured: true,
+    connected: true,
+    running: false,
+    last_runs: {},
+    last_error: null,
+    counts: {
+      total: 0,
+      quarantined: 0,
+      deleted_on_device: 0,
+      incomplete: 0,
+      samples: 0,
+      needs_set: 0,
+    },
+    recent_events: [],
+  });
+  getDeviceStatus.mockResolvedValue({
+    configured: true,
+    connected: true,
+    host: "gaggimate.local",
+    identity: null,
+    last_status: null,
+  });
 });
+
+/** The card with the app's sync owner above it, as AppShell mounts it. */
+function renderCard(ui: React.ReactElement) {
+  return renderWithQueryClient(<SyncOwnerProvider>{ui}</SyncOwnerProvider>);
+}
 
 /**
  * The card is the one place a person decides, so what it has to get right is
@@ -553,8 +633,294 @@ describe("ProposalCard, major or minor", () => {
   });
 });
 
+describe("ProposalCard, a first recipe with a new profile", () => {
+  const accepted = (extra: Record<string, unknown> = {}) => ({
+    proposal: designProposal({ status: "accepted", resulting_version_label: "v1" }),
+    version: { version_label: "v1" },
+    profile_draft_id: 14,
+    profile_row_id: 4,
+    ...extra,
+  });
+
+  it("replaces its profile line with the Name field and draws the profile's curve", async () => {
+    getDraftStanding.mockResolvedValue(
+      designStanding({ profile: proProfile({ label: "Guji Bloom" }) }, true),
+    );
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    const field = await screen.findByTestId("proposal-name");
+    expect(field).toHaveValue("Guji Bloom");
+    // The profile line is the field now, and the draft is not a separate thing to go and answer.
+    expect(screen.getByTestId("proposal-recipe")).not.toHaveTextContent("a new draft");
+    expect(screen.queryByTestId("proposal-draft-link")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("profile-curve")).toHaveAttribute("data-title", "Proposed");
+    expect(screen.getByRole("button", { name: "Accept and sync" })).toBeInTheDocument();
+  });
+
+  it("says Accept, and sends no sync, with Writes off", async () => {
+    const user = setupUser();
+    getDraftStanding.mockResolvedValue(designStanding({ writes_enabled: false }, true));
+    acceptSetProposal.mockResolvedValue(accepted());
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await screen.findByTestId("proposal-name");
+    await waitFor(() =>
+      expect(screen.getByTestId("accept-proposal")).not.toHaveAttribute("aria-disabled", "true"),
+    );
+    expect(screen.getByTestId("accept-proposal")).toHaveTextContent(/^Accept$/);
+    await user.click(screen.getByTestId("accept-proposal"));
+
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledTimes(1));
+    expect(runSync).not.toHaveBeenCalled();
+  });
+
+  it("accepts under the typed name, then starts the sync once, and tells the agent the new name", async () => {
+    const user = setupUser();
+    const tell = vi.fn();
+    getDraftStanding.mockResolvedValue(designStanding({}, true));
+    acceptSetProposal.mockResolvedValue(accepted());
+    renderCard(
+      <TellAgentContext.Provider value={tell}>
+        <ProposalCard setId={6} proposal={designProposal()} />
+      </TellAgentContext.Provider>,
+    );
+
+    const field = await screen.findByTestId("proposal-name");
+    await user.clear(field);
+    await user.type(field, "Gentle Bloom");
+    await waitFor(() =>
+      expect(screen.getByTestId("accept-proposal")).not.toHaveAttribute("aria-disabled", "true"),
+    );
+    await user.dblClick(screen.getByTestId("accept-proposal"));
+
+    await waitFor(() => expect(runSync).toHaveBeenCalledTimes(1));
+    expect(acceptSetProposal).toHaveBeenCalledTimes(1);
+    expect(acceptSetProposal).toHaveBeenCalledWith(6, 8, { profileLabel: "Gentle Bloom" });
+    expect(tell).toHaveBeenCalledTimes(1);
+    expect(tell).toHaveBeenCalledWith(
+      "Accepted: your first recipe is now v1 of this Set, with its profile named Gentle Bloom (you proposed it as Guji Bloom).",
+    );
+  });
+
+  it("sends the proposed name unchanged, and no rename, when the field is left alone", async () => {
+    const user = setupUser();
+    const tell = vi.fn();
+    getDraftStanding.mockResolvedValue(designStanding({}, true));
+    acceptSetProposal.mockResolvedValue(accepted());
+    renderCard(
+      <TellAgentContext.Provider value={tell}>
+        <ProposalCard setId={6} proposal={designProposal()} />
+      </TellAgentContext.Provider>,
+    );
+
+    await screen.findByTestId("proposal-name");
+    await waitFor(() =>
+      expect(screen.getByTestId("accept-proposal")).not.toHaveAttribute("aria-disabled", "true"),
+    );
+    await user.click(screen.getByTestId("accept-proposal"));
+
+    await waitFor(() =>
+      expect(tell).toHaveBeenCalledWith("Accepted: your first recipe is now v1 of this Set."),
+    );
+    expect(acceptSetProposal).toHaveBeenCalledWith(6, 8, { profileLabel: "Guji Bloom" });
+  });
+
+  it("starts no sync when the accept is refused", async () => {
+    const user = setupUser();
+    getDraftStanding.mockResolvedValue(designStanding({}, true));
+    acceptSetProposal.mockRejectedValue(
+      new ApiClientError("Gentle Bloom is already a profile.", { status: 422, code: "REFUSED" }),
+    );
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await screen.findByTestId("proposal-name");
+    await waitFor(() =>
+      expect(screen.getByTestId("accept-proposal")).not.toHaveAttribute("aria-disabled", "true"),
+    );
+    await user.click(screen.getByTestId("accept-proposal"));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    expect(runSync).not.toHaveBeenCalled();
+  });
+
+  it("is blocked, with the server's sentence under the field, while the name is taken or empty", async () => {
+    const user = setupUser();
+    getDraftStanding.mockResolvedValue(designStanding({}, true));
+    checkDraftName.mockImplementation(async (_id: number, label: string) => ({
+      label: label.trim(),
+      refused: label.trim() === "Adaptive Bloom" ? "Adaptive Bloom is already a profile." : null,
+    }));
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    const field = await screen.findByTestId("proposal-name");
+    await user.clear(field);
+    expect(screen.getByTestId("proposal-name-problem")).toHaveTextContent("A profile needs a name");
+    await user.click(screen.getByTestId("accept-proposal"));
+    await user.type(field, "Adaptive Bloom");
+    await waitFor(() =>
+      expect(screen.getByTestId("proposal-name-problem")).toHaveTextContent(
+        "Adaptive Bloom is already a profile.",
+      ),
+    );
+    await user.click(screen.getByTestId("accept-proposal"));
+
+    expect(acceptSetProposal).not.toHaveBeenCalled();
+  });
+
+  it("sends no name, and no sync, for a draft that was already answered elsewhere", async () => {
+    const user = setupUser();
+    getDraftStanding.mockResolvedValue(
+      designStanding({
+        draft: draft({ id: 14, status: "approved", draft_label: "Guji Bloom" }),
+        landing: null,
+        state: "approved",
+        reason: "It goes to the machine at the next sync.",
+      }),
+    );
+    acceptSetProposal.mockResolvedValue(accepted({ profile_draft_id: null, profile_row_id: null }));
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await screen.findByText(
+      /Accepting makes this the Set's version 1, with the profile as it stands/,
+    );
+    expect(screen.queryByTestId("proposal-name")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledWith(6, 8));
+    expect(runSync).not.toHaveBeenCalled();
+    expect(String(toastSuccess.mock.calls[0][0])).toBe("Accepted: version 1 is set.");
+  });
+
+  it("says where the profile stands once the recipe is accepted, in the server's words", async () => {
+    getDraftStanding.mockResolvedValue(
+      designStanding({
+        draft: draft({ id: 14, status: "approved", draft_label: "Gentle Bloom" }),
+        landing: null,
+        state: "approved",
+        reason: "It goes to the machine at the next sync.",
+        set_version_label: "v1",
+      }),
+    );
+    renderCard(
+      <ProposalCard
+        setId={6}
+        proposal={designProposal({ status: "accepted", resulting_version_label: "v1" })}
+      />,
+    );
+
+    const line = await screen.findByTestId("profile-standing");
+    expect(line).toHaveTextContent("✓ Approved · Gentle Bloom");
+    expect(line).toHaveTextContent("It goes to the machine at the next sync.");
+  });
+
+  it("gives one toast only: the sync's own, when the accept syncs, and none of its own", async () => {
+    const user = setupUser();
+    getDraftStanding.mockResolvedValue(designStanding({}, true));
+    acceptSetProposal.mockResolvedValue(accepted());
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await screen.findByTestId("proposal-name");
+    await waitFor(() =>
+      expect(screen.getByTestId("accept-proposal")).not.toHaveAttribute("aria-disabled", "true"),
+    );
+    await user.click(screen.getByTestId("accept-proposal"));
+
+    await waitFor(() => expect(runSync).toHaveBeenCalledTimes(1));
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("promises only a sync in its hint, not what the sync will do", async () => {
+    getDraftStanding.mockResolvedValue(designStanding({}, true));
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    const hint = await screen.findByText(/Accepting makes this the Set's version 1 and approves/);
+    expect(hint).toHaveTextContent("It also starts a sync; you select it on the machine yourself.");
+    expect(hint).not.toHaveTextContent("puts the profile on the machine");
+  });
+
+  it("keeps the Name field out of the recipe's definition list", async () => {
+    getDraftStanding.mockResolvedValue(designStanding({}, true));
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    const field = await screen.findByTestId("proposal-name");
+    expect(field.closest("dl")).toBeNull();
+    const recipe = screen.getByTestId("proposal-recipe");
+    expect(recipe).not.toHaveTextContent("Profile");
+    expect(recipe.querySelectorAll("dt")).toHaveLength(recipe.querySelectorAll("dd").length);
+  });
+
+  it("says Accept, gives the top bar's words and starts no sync when the machine cannot be reached", async () => {
+    const user = setupUser();
+    getDeviceStatus.mockResolvedValue({
+      configured: true,
+      connected: false,
+      host: "",
+      identity: null,
+      last_status: null,
+    });
+    getDraftStanding.mockResolvedValue(designStanding({}, true));
+    acceptSetProposal.mockResolvedValue(accepted());
+    renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await screen.findByTestId("proposal-name");
+    await waitFor(() =>
+      expect(screen.getByTestId("accept-proposal")).toHaveTextContent(/^Accept$/),
+    );
+    expect(
+      screen.getByText(/The machine is not reachable. The archive still works; a sync cannot./),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("accept-proposal")).not.toHaveAttribute("aria-disabled", "true"),
+    );
+    await user.click(screen.getByTestId("accept-proposal"));
+
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledTimes(1));
+    expect(runSync).not.toHaveBeenCalled();
+  });
+
+  it("says what the agent proposed beside the approved name once the recipe is accepted", async () => {
+    getDraftStanding.mockResolvedValue(
+      designStanding({
+        draft: draft({ id: 14, status: "approved", draft_label: "Kenya Bright Bloom" }),
+        landing: null,
+        state: "approved",
+        reason: "It goes to the machine at the next sync.",
+      }),
+    );
+    renderCard(
+      <ProposalCard
+        setId={6}
+        proposal={designProposal({ status: "accepted", resulting_version_label: "v1" })}
+        proposedProfileAs="Kenya Bloom"
+      />,
+    );
+
+    expect(await screen.findByTestId("proposal-title")).toHaveTextContent(
+      "✓ Approved as Kenya Bright Bloom (proposed as Kenya Bloom)",
+    );
+  });
+
+  it("starts from its own name when it is handed another proposal", async () => {
+    const user = setupUser();
+    getDraftStanding.mockImplementation(async (id: number) =>
+      designStanding({ draft: draft({ id, is_new: true, draft_label: `Bloom ${id}` }) }, true),
+    );
+    const view = renderCard(<ProposalCard setId={6} proposal={designProposal()} />);
+    const field = await screen.findByTestId("proposal-name");
+    await user.type(field, " half typed");
+
+    view.rerender(
+      <SyncOwnerProvider>
+        <ProposalCard setId={6} proposal={designProposal({ id: 9, draft_id: 15 })} />
+      </SyncOwnerProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("proposal-name")).toHaveValue("Bloom 15"));
+  });
+});
+
 describe("ProposalCard, a first recipe", () => {
-  it("renders the recipe, the draft it carries and no prediction", () => {
+  it("renders the recipe, the draft it carries and no prediction", async () => {
     renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
 
     const card = screen.getByTestId("proposal-card");
@@ -566,7 +932,12 @@ describe("ProposalCard, a first recipe", () => {
     expect(recipe).toHaveTextContent("Grind20");
     expect(recipe).toHaveTextContent("Dose18 g");
     expect(recipe).toHaveTextContent("Yield40 g (1:2.2)");
-    expect(screen.getByTestId("proposal-draft-link")).toHaveAttribute("href", "/profiles#staged");
+    // The draft continues a profile the person has, so its line stays and links the draft.
+    expect(await screen.findByTestId("proposal-draft-link")).toHaveAttribute(
+      "href",
+      "/profiles#staged",
+    );
+    expect(screen.queryByTestId("proposal-name")).not.toBeInTheDocument();
     expect(card).toHaveTextContent("A bloom to open up a light natural");
     // A version 1 is a baseline: nothing to predict against, nothing compared.
     expect(screen.queryByTestId("proposal-prediction")).not.toBeInTheDocument();
@@ -616,17 +987,16 @@ describe("ProposalCard, a first recipe", () => {
     expect(acceptSetProposal).toHaveBeenCalledWith(6, 8);
     const decided = await screen.findByTestId("proposal-decided");
     expect(decided).toHaveTextContent("version 1 is set");
-    expect(decided).toHaveTextContent("for you to make active");
-    expect(decided).toHaveTextContent("shots brewed on it are filed here");
-    expect(
-      within(decided).getByRole("link", { name: /proposal on the Profiles page/ }),
-    ).toHaveAttribute("href", "/profiles#staged");
+    expect(decided).toHaveTextContent("shots brewed on its profile are filed here");
     expect(within(decided).getByRole("link", { name: "version 1" })).toHaveAttribute(
       "href",
       "/sets/6",
     );
+    // The profile was approved with it: nothing sends the person to the Profiles page for it.
+    expect(decided).not.toHaveTextContent("make active");
+    expect(within(decided).queryByRole("link", { name: /Profiles page/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
-    expect(String(toastSuccess.mock.calls[0][0])).toContain("Version 1 is set");
+    expect(String(toastSuccess.mock.calls[0][0])).toContain("version 1 is set");
   });
 
   it("declines with the note, as a change does", async () => {
