@@ -2077,8 +2077,15 @@ export interface paths {
          *
          *     **Nothing is sent to the machine.** A proposal that names a different
          *     profile records that this Set now brews with that profile, exactly as the
-         *     Add a version form does. Putting a profile on the display stays a separate
-         *     act on the Profiles page.
+         *     Add a version form does. A first recipe is accepted **together with its
+         *     profile**, in the same transaction: while its draft is still waiting it is
+         *     put on the profile list (no Set recording, since version 1 names it), the
+         *     profile is switched on, and version 1 names the version that put ended on.
+         *     A draft that continues an existing profile becomes that profile's active
+         *     version, exactly as approving it would. A draft that was already answered
+         *     (approved or pushed on the Profiles page, a version made active since) is
+         *     left exactly as it is, and version 1 names its version; a name sent for it
+         *     is refused. Only a sync a person starts puts the file on the machine.
          *
          *     The body is optional. ``major`` is the card's "Major change" box; left
          *     out, the shared rule names the version, never the agent's suggestion.
@@ -6720,6 +6727,8 @@ export interface components {
         ProposalAccept: {
             /** Major */
             major?: boolean | null;
+            /** Profile Label */
+            profile_label?: string | null;
         };
         /**
          * ProposalDecline
@@ -7272,6 +7281,10 @@ export interface components {
          * @description What accepting one produced: the proposal as it now stands, and the version.
          */
         SetProposalDecision: {
+            /** Profile Draft Id */
+            profile_draft_id?: number | null;
+            /** Profile Row Id */
+            profile_row_id?: number | null;
             proposal: components["schemas"]["SetProposalDetail"];
             version?: components["schemas"]["SetVersionRow"] | null;
         };

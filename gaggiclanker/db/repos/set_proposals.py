@@ -46,6 +46,7 @@ walks the registry and the tool package's own bytecode to keep it that way.
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
@@ -63,6 +64,7 @@ from pydantic import (
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
+from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profile_identity import same_profile
 from gaggiclanker.db.repos.sets import (
@@ -86,6 +88,7 @@ __all__ = [
     "ProposalStatus",
     "ProposalWrite",
     "ProposalWriteResult",
+    "PutProfile",
     "SetProposalRow",
     "SetProposalsRepository",
     "change_groups",
@@ -344,6 +347,15 @@ class ProposalWriteResult:
     #: The agent's grade this accept recorded on the base version, as it was
     #: before it was marked: set only when the press carried one.
     graded: OutcomeProposalRow | None = None
+    #: The profile row a first recipe's accept put on the list, in the same transaction.
+    profile_row: BoardRow | None = None
+    #: The draft the accept settled (the proposal's own, never a row's pending one), when it did.
+    profile_draft_id: int | None = None
+
+
+type PutProfile = Callable[[int], Awaitable[BoardRow | None]]
+"""Settles a draft on the profile list inside the transaction already open: the draft id in, the
+profile row it is on out (``None`` when it is on no live profile)."""
 
 
 _SELECT = f"""
@@ -739,7 +751,12 @@ class SetProposalsRepository(Repository):
         return ProposalWriteResult(proposal=await self.get(set_id, proposal_id))
 
     async def accept(
-        self, set_id: int, proposal_id: int, *, major: bool | None = None
+        self,
+        set_id: int,
+        proposal_id: int,
+        *,
+        major: bool | None = None,
+        put_profile: PutProfile | None = None,
     ) -> ProposalWriteResult:
         """Make the proposed change the Set's next version. A person's press.
 
@@ -760,12 +777,21 @@ class SetProposalsRepository(Repository):
 
         **Nothing is sent to the machine.** A proposal that names a different
         profile records that the Set now brews with that profile, exactly as the
-        Add a version form does; putting a profile on the display is a separate
-        act, on the Profiles page, by a person.
+        Add a version form does; only a sync a person starts puts a file on the
+        display. A first recipe's accept also puts its profile on the list (see
+        ``put_profile``).
 
         ``major`` is the person's answer on the card's "Major change" box. Left
         out, the shared rule decides (a different profile is a major), never
         the agent's suggestion. A first recipe fills version 1 either way.
+
+        ``put_profile`` is how a first recipe's accept also puts its profile on the profile
+        list, in **this** transaction (the connection's ``transaction()`` does not nest, so the
+        caller hands in a put that runs inside the one already open instead of opening its own).
+        It is called with the card's draft id after every refusal above has been ruled out and
+        returns the profile's row, if it has one; version 1 then names the version the draft
+        ended on (a put that renames the profile stores a new one). Whatever it raises undoes
+        the whole accept.
         """
         now = utc_now()
         try:
@@ -820,9 +846,20 @@ class SetProposalsRepository(Repository):
                     recorded = await self.outcomes.record_in_transaction(grade, now)
                     if recorded.refused is not None:
                         return ProposalWriteResult(refused="grade_unrecordable", proposal=proposal)
+                put: BoardRow | None = None
+                profile_version_id: int | None = None
+                profile_draft_id: int | None = None
+                if put_profile is not None and proposal.draft_id is not None:
+                    profile_draft_id = proposal.draft_id
+                    put = await put_profile(proposal.draft_id)
+                    # The version the draft ended on: a rename stored a new one, and a draft that
+                    # was not waiting is left as it was, so it is the card's own.
+                    settled = await self.drafts.get(proposal.draft_id)
+                    assert settled is not None  # the draft stood a moment ago, in this transaction
+                    profile_version_id = settled.draft_version_id
                 version_id = await self.sets.append_version(
                     set_id,
-                    _version_patch(proposal),
+                    _version_patch(proposal, profile_version_id=profile_version_id),
                     keep_proposal=proposal_id,
                     major=major,
                     path="change",
@@ -851,6 +888,8 @@ class SetProposalsRepository(Repository):
             proposal=await self.get(set_id, proposal_id),
             version=await self.sets.get_version(version_id),
             graded=None if grade is None else await self.outcomes.get(set_id, grade.id),
+            profile_row=put,
+            profile_draft_id=profile_draft_id,
         )
 
     async def decline(self, set_id: int, proposal_id: int, note: str = "") -> ProposalWriteResult:
@@ -926,7 +965,9 @@ class SetProposalsRepository(Repository):
         )
 
 
-def _version_patch(proposal: SetProposalRow) -> SetVersionPatch:
+def _version_patch(
+    proposal: SetProposalRow, *, profile_version_id: int | None = None
+) -> SetVersionPatch:
     """The proposal as the patch that creates its version.
 
     The recipe comes from the stored patch, and everything else from the
@@ -941,9 +982,13 @@ def _version_patch(proposal: SetProposalRow) -> SetVersionPatch:
     comparison nobody agreed to.
     """
     assert proposal.patch is not None  # accept refuses an unreadable one first
+    recipe = recipe_patch(proposal.patch)
+    if profile_version_id is not None:
+        # The profile as the put stored it (a rename is a new version), not as the card named it.
+        recipe["profile_version_id"] = profile_version_id
     return SetVersionPatch.model_validate(
         {
-            **recipe_patch(proposal.patch),
+            **recipe,
             "intent": proposal.reason,
             "prediction": proposal.prediction,
             "compares_to_version_id": proposal.compares_to_version_id,

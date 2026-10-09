@@ -992,6 +992,28 @@ class BoardService:
         async with self.db.transaction():
             return await self.put_in_transaction(draft_id, set_id=set_id, major=major, label=label)
 
+    async def settle_for_accept(self, draft_id: int, *, label: str | None) -> BoardRow | None:
+        """What a first recipe's accept does with its draft, inside the accept's transaction.
+
+        A draft still waiting is put (:meth:`put_in_transaction`: switched on, no Set recording,
+        renamed when ``label`` is given). A draft already answered, whether approved or pushed
+        on the Profiles page or overtaken by a later version of its profile, is left exactly as
+        it is: the accept must not make an older version active again or undo anyone's answer.
+        Its name cannot change here (422). A closed draft (discarded, superseded, failed) never
+        gets this far: the accept refuses it first, as ``draft_closed``. Returns the live profile
+        that lists the draft's version, if there is one.
+        """
+        draft = await self.drafts.get(draft_id)
+        if draft is None:
+            raise NotFound(f"No profile draft {draft_id}")
+        if draft.status == "draft":
+            return await self.put_in_transaction(draft_id, label=label)
+        if label is not None:
+            raise Unprocessable("That profile was already approved; its name cannot change here.")
+        if draft.draft_version_id is None:
+            return None
+        return await self.board.find_live_by_listed_version(draft.draft_version_id)
+
     async def put_in_transaction(
         self,
         draft_id: int,

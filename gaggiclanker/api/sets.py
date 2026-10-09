@@ -40,6 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from gaggiclanker.api.deps import (
     BeansRepoDep,
+    BoardServiceDep,
     DatabaseDep,
     GrindersRepoDep,
     InsightDeletionsRepoDep,
@@ -62,11 +63,13 @@ from gaggiclanker.db.repos.outcome_proposals import (
     OutcomeProposalRow,
     OutcomeResult,
 )
+from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.set_proposals import (
     ProposalKind,
     ProposalRefusal,
     ProposalStatus,
     ProposalWriteResult,
+    PutProfile,
     SetProposalRow,
     SetProposalsRepository,
 )
@@ -166,6 +169,11 @@ class ProposalAccept(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     major: StrictBool | None = None
+    #: A first recipe only: the name for its new profile, stored with the accept. The accept
+    #: always puts the card's draft on the profile list in the same transaction as version 1;
+    #: this renames it first, and is allowed only when the draft is a new profile (a taken or
+    #: empty name refuses the whole accept; a draft that continues a profile keeps its name).
+    profile_label: str | None = Field(default=None, max_length=200)
 
 
 class SetDesignCreate(DesignBrief):
@@ -343,6 +351,10 @@ class SetProposalDecision(BaseModel):
     proposal: SetProposalDetail
     #: The version Accept appended. NULL after a decline, which creates none.
     version: SetVersionRow | None = None
+    #: The profile draft a first recipe's accept put on the list, and the profile it became,
+    #: so a sync can follow. NULL when nothing was put.
+    profile_draft_id: int | None = None
+    profile_row_id: int | None = None
 
 
 class ProposalDecline(BaseModel):
@@ -686,6 +698,8 @@ async def _decided(
         SetProposalDecision(
             proposal=await _proposal_detail(proposals, result.proposal),
             version=result.version,
+            profile_draft_id=result.profile_draft_id,
+            profile_row_id=None if result.profile_row is None else result.profile_row.id,
         ).model_dump(mode="json")
     )
 
@@ -1033,6 +1047,7 @@ async def accept_proposal(
     set_id: int,
     proposal_id: int,
     proposals: SetProposalsRepoDep,
+    board: BoardServiceDep,
     body: ProposalAccept | None = None,
 ) -> JSONResponse:
     """A person's press, and the only way a proposal becomes a version.
@@ -1043,16 +1058,36 @@ async def accept_proposal(
 
     **Nothing is sent to the machine.** A proposal that names a different
     profile records that this Set now brews with that profile, exactly as the
-    Add a version form does. Putting a profile on the display stays a separate
-    act on the Profiles page.
+    Add a version form does. A first recipe is accepted **together with its
+    profile**, in the same transaction: while its draft is still waiting it is
+    put on the profile list (no Set recording, since version 1 names it), the
+    profile is switched on, and version 1 names the version that put ended on.
+    A draft that continues an existing profile becomes that profile's active
+    version, exactly as approving it would. A draft that was already answered
+    (approved or pushed on the Profiles page, a version made active since) is
+    left exactly as it is, and version 1 names its version; a name sent for it
+    is refused. Only a sync a person starts puts the file on the machine.
 
     The body is optional. ``major`` is the card's "Major change" box; left
     out, the shared rule names the version, never the agent's suggestion.
     """
     major = body.major if body is not None else None
+    label = body.profile_label if body is not None else None
+    put_profile: PutProfile | None = None
+    found = await proposals.get(set_id, proposal_id)
+    if found is not None and found.kind != "design" and label is not None:
+        raise Unprocessable("A profile name goes only with a first recipe")
+    if found is not None and found.kind == "design":
+
+        async def put_in_accept(draft_id: int) -> BoardRow | None:
+            # Inside accept's transaction: the put does not open one of its own.
+            return await board.settle_for_accept(draft_id, label=label)
+
+        put_profile = put_in_accept
+
     return await _decided(
         proposals,
-        await proposals.accept(set_id, proposal_id, major=major),
+        await proposals.accept(set_id, proposal_id, major=major, put_profile=put_profile),
         set_id,
         proposal_id,
     )

@@ -160,7 +160,7 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
 ) -> None:
     """Automatch is on from the start, and it needs nothing more than the put and a sync.
 
-    The design's draft belongs to no Set and is put plainly from the Profiles page. What files
+    The design's draft belongs to no Set and is put plainly by the accept itself. What files
     the next shot is the sync verifying the profile against the draft's own document: the
     machine's copy resolves to the version the accepted card put on version 1.
     """
@@ -194,7 +194,6 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
     assert proposal.proposal is not None, proposal.refused
     data(await client.post(f"/api/sets/{set_id}/proposals/{proposal.proposal.id}/accept"))
 
-    await put(client, {"id": draft.id})
     run = await pull(app)
 
     assert run.status == "ok", run.error
@@ -207,3 +206,59 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
     assert summary.matched == 1
     filed = await app.state.db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
     assert filed == created["version"]["id"]
+
+
+async def test_accepting_after_the_profile_was_synced_and_a_later_version_made_active_leaves_it(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    """The card's profile was approved on the Profiles page and synced, then a later version of
+    it was approved and synced. The card's Accept records version 1 on the card's profile and
+    does not make that older version active again."""
+    app, client, _ = adopted
+    bean = data(await client.post("/api/beans", json={"name": "Kenya AA"}))
+    grinder = data(await client.post("/api/grinders", json={"name": "Niche Zero"}))
+    created = data(
+        await client.post(
+            "/api/sets/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
+        )
+    )
+    set_id = created["set"]["id"]
+    draft = await app.state.draft_proposals.create_manual(
+        base_version_id=await base_version_id(app),
+        document={**lower_pressure(await base_profile(app), 8.5), "label": "Kenya AA body"},
+        change_summary="A gentler peak for body.",
+        new_profile_only=True,
+    )
+    proposal = await SetProposalsRepository(app.state.db).create(
+        set_id,
+        ProposalWrite(
+            kind="design",
+            draft_id=draft.id,
+            thread_id=created["thread_id"],
+            reason="A gentler peak for body.",
+            patch=SetVersionPatch(
+                profile_version_id=draft.draft_version_id, grind_setting="20", dose_g=18
+            ),
+        ),
+    )
+    assert proposal.proposal is not None, proposal.refused
+    row = await put(client, {"id": draft.id})
+    assert (await pull(app)).status == "ok"
+    later = await app.state.draft_proposals.create_manual(
+        base_version_id=draft.draft_version_id,
+        document=lower_pressure(await base_profile(app), 7.5) | {"label": "Kenya AA body"},
+    )
+    moved = await put(client, {"id": later.id})
+    assert moved["id"] == row["id"] and moved["current_version_id"] == later.draft_version_id
+    assert (await pull(app)).status == "ok"
+
+    accepted = data(
+        await client.post(f"/api/sets/{set_id}/proposals/{proposal.proposal.id}/accept")
+    )
+
+    after = await app.state.board.board.get(row["id"])
+    assert after is not None and after.current_version_id == later.draft_version_id
+    assert accepted["version"]["profile_version_id"] == draft.draft_version_id
+    assert (accepted["profile_draft_id"], accepted["profile_row_id"]) == (draft.id, row["id"])
+    stored = await ProfileDraftsRepository(app.state.db).get(draft.id)
+    assert stored is not None and stored.status in ("pushed", "superseded")
