@@ -102,7 +102,12 @@ src/
     useVirtualRows.ts the list window with one open row, and "has this row been on screen yet"
   components/
     charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
-    PullButton.tsx    the top bar's Sync (shots, profiles and notes; the toast of what it did)
+    PullButton.tsx    the top bar's Sync (shots, profiles and notes)
+    sync/             SyncOwner: the one owner of "a sync this app started is under way" (mounted
+                      with AppShell; the top bar and the proposal cards ask it, and it toasts once, summing the
+                      passes it covered, read through `GET /api/sync/runs?after=`)
+    profiles/         ProfileProposalCard (a proposed profile version, in the chat and on the
+                      Profiles page), ProposalName (the Name field and its as-typed check)
     shots/            table, filters, columns, drop zone, import results, row editor,
                       ShotRowPanel (an open row), ShotCurvesCard (the Curves box, shared with
                       the shot page), DecisionCell, DeviceNotesCard, ReviewBadge (the Review

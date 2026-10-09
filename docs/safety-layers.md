@@ -238,7 +238,7 @@ ending in a volumetric or pumped stop or a bounded duration.
 
 Two functions, and the difference between them is the design. `clamp()` moves
 numbers into range **and says what it moved** — the list is stored on the draft
-and rendered beside the Make active button, because a silent clamp is a profile
+and rendered on the proposal card beside its Approve button, because a silent clamp is a profile
 nobody approved presented as one they did. `check()` reports what a clamp cannot
 fix, and that list is a refusal: eleven phases is *rejected*, never trimmed to
 ten, because truncating a profile would change what it brews while claiming to

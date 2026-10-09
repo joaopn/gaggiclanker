@@ -104,7 +104,7 @@ pages, in the order the sidebar lists them:
 | --- | --- | --- |
 | **Chat** | `g c` | The tool-using conversation, with a badge per Set above it. A badge lists that Set's conversations; New there starts one already pointed at that Set. |
 | **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard, and **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves the Discard ones out of the list; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The import drop zone is here; Sync is in the top bar, on every page. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
-| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Edit a copy**. A version the agent proposed sits above them, marked **Proposed**, with **Make active** (and the Set it would be recorded on) and **Decline**; a proposed new profile is a row of its own. A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
+| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Edit a copy**. A version the agent proposed sits above them as the proposal card (below): marked **Proposed**, with **Approve and sync** (**Approve** with Writes off) and **Decline**, and **Approve without recording it on** its Set when it has one; a proposed new profile is a row of its own, with its Name field. A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. Each coffee exports as a JSON file, and **Import JSON** reads one back: the file's id updates that coffee with the fields it carries, anything else adds a new one. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
@@ -308,10 +308,12 @@ UI does. It works in brew mode with nothing running, and is not recorded anywher
 
 Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
-nothing. A profile a conversation proposes is a proposed version on the Profiles page, which
-you make active yourself (that is the approval too). When it was proposed in a Set's conversation, the button records it as
-that Set's next version with its prediction once it reaches the machine; the
-button without the Set tries it without touching the Set.
+nothing. A profile a conversation proposes is a proposal card in that conversation (and inside
+its profile on the Profiles page), which you approve yourself: **Approve and sync** with Writes
+on, **Approve** with Writes off. When it was proposed in a Set's conversation, the button
+records it as that Set's next version with its prediction once it reaches the machine; on the
+Profiles page the button **Approve without recording it on** the Set approves it without
+touching the Set.
 
 The machine is a buffer, not an archive: when its storage runs low its own
 firmware deletes its oldest shots, whether or not this box has them. That is
@@ -359,12 +361,24 @@ name is a new version of that profile, whoever made it and whichever version you
 machine's own profiles and ones made on its display included, under their exact name. A
 changed name, or a profile written from scratch, is a profile of its own, stored under exactly the
 name it was given (the app adds nothing to it), and a name that is already a profile is refused.
-It waits inside its profile's dropdown, marked **Proposed**, or as a row marked **New**
-when it is a new profile. **Make
-active** is one click: it approves the proposal (the card of an edit says so when it changes when
-the machine stops pumping, and asks for nothing; a new profile is shown whole), and for a proposal made for a Set it records the Set's
-next version, with the **Major change** box, once the sync has put the profile on the machine.
-Any older version can be made active the same way, from the dropdown; there is no separate
+It waits as a **proposal card**, in the conversation where the agent proposed it and inside its
+profile's dropdown on the Profiles page (marked **Proposed**), or as a row marked **New** when it
+is a new profile. The card is one proposed version of one profile and where it stands, from
+proposed to on the machine: the change in the agent's words, its prediction for a Set, the
+profile's curve beside the active version's on the same axes (pro profiles; a new profile shows
+one), what changes (a new profile is shown whole), the stop-condition warning when it moves when
+the machine stops pumping, and for a new profile a **Name** field, prefilled with the agent's
+name and checked against the list as you type. **Approve and sync** is one click: it approves the
+proposal (the profile's active version, switched on, and for a proposal made for a Set the Set's
+next version, with the **Major change** box, once the sync has put the profile on the machine)
+and then starts the same sync as the top bar's button; with Writes off it is **Approve**, and
+the profile goes to the machine at the first sync after you turn Writes on. It does not select
+the profile on the machine: you still do that. After the click the card goes on telling the
+truth in the server's words: syncing, on the machine (and whether it is the selected profile),
+not on the machine and why (with a link to the profile), declined or replaced. In the
+conversation the answer is also told to the agent ("Approved: Adaptive Bloom as v1.2 of Guji
+natural.", "Declined: <your note>"). Any older version can be made active from the dropdown;
+there is no separate
 going back, and no Delete: switching a profile off removes it from the machine at the next sync,
 and the profile and its versions stay in the list.
 
@@ -1080,8 +1094,8 @@ picked none, from nothing: the agent writes it whole, and never builds on a
 profile of yours you did not choose. A newer card replaces the waiting one. Accepting fills
 version 1 in place and ends the design conversation: the agent is told, and
 tells you to talk version 1's shots through in a new conversation (Discuss in chat on
-the Set page opens one rather than the design); the profile waits on the
-Profiles page for you to make active. Writing a version by hand, or making a proposal active for the Set, ends the design
+the Set page opens one rather than the design); its profile is approved with the card, so the
+card's **Accept and sync** is the whole way to the machine. Writing a version by hand, or making a proposal active for the Set, ends the design
 the same way. A design nobody brewed anything under can be discarded
 (`DELETE /api/sets/{id}/design`).
 
@@ -1156,8 +1170,10 @@ proposes the whole first recipe as one card — a profile of its own, the grind
 the yield. Nothing exists until you accept it, in the conversation or on the
 Set page. Accepting makes it version 1 and ends the design: the agent tells you
 to start a new conversation about the shots, since one conversation is one
-version; the profile is then a proposal on the Profiles page for you to make active,
-and once a sync has put it on the machine, shots brewed on it are filed under the new Set.
+version. Accepting also approves the card's profile, under the Name you typed on the card, and
+switches it on: **Accept and sync** with Writes on starts the sync that puts it on the machine,
+and with Writes off **Accept** leaves it for the first sync after you turn Writes on. Once it is
+on the machine and you have selected it there, shots brewed on it are filed under the new Set.
 
 Until then the Set carries a **Designing** badge on the Sets list, on its page
 and on its badge on the Chat page, with **Continue designing** back into the

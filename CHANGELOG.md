@@ -33,6 +33,45 @@ database.
   schema in place of the migration number. The restore refusal codes `RESTORE_NEWER_VERSION` and
   `RESTORE_MIGRATION_DIFFERS` are replaced by `RESTORE_SCHEMA_DIFFERS`.
 
+### A proposed profile is answered on its card, in the chat and on the Profiles page
+
+- **The chat's link to the Profiles page is gone.** A profile the agent drafts is a card in the
+  conversation, and the same card sits inside its profile (or as its own New row) on the
+  Profiles page. It shows the change, the prediction for a Set, the active version's curve and
+  the proposed one on the same axes (pro profiles), what changes, the stop-condition warning, and
+  for a new profile a **Name** field, prefilled with the agent's name and checked as you type
+  ("There is already a profile called <name>. Choose another name.", "A profile needs a name").
+  The Major change box and the
+  Set's next version are on it for a proposal made for a Set.
+- **One click approves and puts it on its way.** **Approve and sync** approves the version (the
+  profile's active version, switched on) and starts the same sync as the top bar's Sync button;
+  with Writes off it is **Approve**, and the card says the profile goes at the first sync after
+  you turn Writes on, and with no machine to reach it is **Approve** too, with the top bar's
+  words under it. The sync does not select the profile on the machine. **Decline** in the chat
+  reveals an optional note, which is your message to the agent and is not stored; on the Profiles
+  page, where no agent is listening, it declines at once. On the Profiles page a Set's proposal
+  also keeps **Approve without recording it on** the Set (and sync).
+- **The card keeps telling the truth afterwards**, in the server's words: approved and waiting
+  for a sync, syncing, on the machine (and whether it is the selected profile), not on the machine
+  and why (with a link to the profile), declined, or replaced. After a rename the chat card keeps
+  "(proposed as <old>)" beside the new name in every answered state ("Approved as <new>
+  (proposed as <old>)"). The proposed curve stays behind "Show the profile curve".
+- **A first recipe's card takes its profile with it.** Its profile line is the Name field and the
+  profile's curve while the profile is still waiting; **Accept and sync** (Accept with Writes
+  off) records version 1, approves the profile under the typed name and starts the sync. Once
+  accepted, the card says where the profile stands. Accepting no longer says the profile waits on
+  the Profiles page.
+- **The sync has one owner for the whole app.** The top bar's button and the cards ask the same
+  owner to sync, so one sync gives one notification wherever you are when it ends, even after you
+  have left the conversation that started it. A second Approve and sync while one runs asks for
+  another pass, so the second version is sent too, and the one notification covers both: it reads every pass the wait covered from the server (new read-only `GET /api/sync/runs?after=<run id>`, oldest first, at most 50) and adds them up, and says only "Synced." if that read fails. A refused second ask leaves the first one's wait alone.
+- **The server's words for a taken name are for the person**: the card says "There is already a
+  profile called <the profile's own name>. Choose another name."; the agent's tools keep their
+  sentence. A first recipe's card names the profile as approved after a renamed Accept.
+- In the conversation the agent is told your answer ("Approved: Adaptive Bloom as v1.2 of Guji
+  natural.", "Approved: Gentle Bloom, a new profile (you proposed it as Soft Bloom).",
+  "Declined: <note>"); the wording lives in one file the prompt tests also read.
+
 ### A proposed profile can be answered where it is shown (the server's half)
 
 - **Approving a proposed profile switches the profile on.** Putting a draft on the list
