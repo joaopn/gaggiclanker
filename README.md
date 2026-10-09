@@ -780,8 +780,12 @@ current one.
 checks and warnings (`ramp: early yield +1`), worked out whenever the shot is read from its
 stored numbers, its filing and its profile version's signature in force, on every shot and with
 no click; a review never changes it, and a free-text expectation is not part of it ("checked by
-the review"). Its colour is the first entry's severity and it sorts by it. The **Review** column
-is only what the model wrote: a Review button, `Reviewing…`, a grey `Failed to run` with Retry, or
+the review"). Its colour is the first entry's severity and it sorts by it. With no entry it says a
+green `Pass` (the shot's profile has a signature in force and at least one expectation was measured,
+none in the badge) or a grey `Unchecked` (no signature in force on the profile and no warning, or a
+signature whose checks measured nothing); the sort puts those after the entries, in that order.
+The **Review** column is only what the model wrote: a Review button, `Reviewing…`, a grey
+`Failed to run` with Retry, or
 the model's faults in the same `phase: fault +N` form, built by code from claims you did not
 reject and whose numbers bear them out (a failed free-text expectation, red for critical and amber
 for important, and a claim that carries a fault word, amber; a claim the numbers do not bear out

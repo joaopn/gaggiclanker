@@ -13,6 +13,18 @@ database.
 
 ## [Unreleased]
 
+### The Curve check column says Pass and Unchecked
+
+- A shot with nothing in its Curve check used to leave the cell empty, whether nothing could be
+  checked or a signature in force was held and every expectation passed. The shots table now shows a
+  green `Pass` for a shot read against a signature in force with no entry in its badge and at least
+  one expectation measured (a failed context-tier expectation is not a fault), and a grey
+  `Unchecked` for a shot that was held to nothing: no signature in force on the shot's profile and
+  no warning, or a signature whose checks measured nothing (unmeasured or free text). A grey warning
+  the signature expects stays an entry badge. The column sorts entries first, then `Pass`, then
+  `Unchecked`, newest first within each. The shots list, the shot and the fields serve it as
+  `checks.state`. The Set history and the compare tray are unchanged.
+
 ### Breaking: the schema is one file, and the migration chain is gone
 
 - The database is built from a single file, `gaggiclanker/db/schema.sql`. **A database made by

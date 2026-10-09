@@ -512,10 +512,11 @@ the shot tools, the Set chat's context and the design chat's all agree), and `v_
 filters to `status <> 'rejected'` of the newest finished review in the view itself, so a query
 cannot read what a person rejected.
 
-**A shot serves two blocks, and a review never moves the first.** `checks: {badge, entries}`
-is the Curve check: the signature in force's failed critical and important expectations and
-the universal warnings, worked out when the shot is read (`signatures/checks.py`); a free-text
-expectation is in the list as "checked by the review", never merged into it. `review: {state,
+**A shot serves two blocks, and a review never moves the first.** `checks: {badge, entries, state}`
+is the Curve check (`state` is `entries`, `pass` or `unchecked`, from `ShotChecks.verdict`): the
+signature in force's failed critical and important expectations and the universal warnings, worked
+out when the shot is read (`signatures/checks.py`); a free-text expectation is in the list as
+"checked by the review", never merged into it. `review: {state,
 badge, entries, verdict, summary, reason, review_id, in_force_id}` is what the model wrote
 (`review/reading.py::serve_review`, which the shots list, the detail and the fields route all
 use): its entries are built by code from the claims a person did not reject and whose numbers bear them out (an unsupported claim stays in the box and in the chat, not in the badge). **The review in
