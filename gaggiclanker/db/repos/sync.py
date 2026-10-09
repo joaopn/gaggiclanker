@@ -193,6 +193,13 @@ class SyncRepository(Repository):
         )
         return self.to_model(SyncRunRow, row)
 
+    async def runs_after(self, after: int, limit: int) -> list[SyncRunRow]:
+        """Every run with an id above ``after``, oldest first, at most ``limit`` of them."""
+        rows = await self.db.fetch_all(
+            "SELECT * FROM sync_runs WHERE id > ? ORDER BY id LIMIT ?", (after, limit)
+        )
+        return self.to_models(SyncRunRow, rows)
+
     async def recent_runs(self, limit: int = 20) -> list[SyncRunRow]:
         rows = await self.db.fetch_all("SELECT * FROM sync_runs ORDER BY id DESC LIMIT ?", (limit,))
         return self.to_models(SyncRunRow, rows)

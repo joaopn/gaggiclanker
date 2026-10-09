@@ -2901,6 +2901,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sync/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every sync run after the one you already know
+         * @description Read-only. The ledger of `/status` keeps only the newest run of each kind, which is not
+         *     enough to say what a wait covering several passes did; this returns each of them, oldest
+         *     first, at most 50 (`truncated` says when more followed). An `after` beyond the newest run
+         *     answers an empty list.
+         */
+        get: operations["get_sync_runs_api_sync_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sync/status": {
         parameters: {
             query?: never;
@@ -3767,6 +3790,14 @@ export interface components {
         /** ApiResponse[SyncRunAccepted] */
         ApiResponse_SyncRunAccepted_: {
             data?: components["schemas"]["SyncRunAccepted"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SyncRunsData] */
+        ApiResponse_SyncRunsData_: {
+            data?: components["schemas"]["SyncRunsData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -8949,6 +8980,19 @@ export interface components {
             trigger: string;
         };
         /**
+         * SyncRunsData
+         * @description `GET /api/sync/runs`: the runs after one the caller already knows.
+         */
+        SyncRunsData: {
+            /** Runs */
+            runs?: components["schemas"]["SyncRunRow"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
          * SyncStatusData
          * @description The sync ledger in one object.
          */
@@ -13956,6 +14000,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SyncRunAccepted_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sync_runs_api_sync_runs_get: {
+        parameters: {
+            query?: {
+                after?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SyncRunsData_"];
                 };
             };
             /** @description Validation Error */

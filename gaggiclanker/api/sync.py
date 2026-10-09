@@ -13,9 +13,9 @@ The caller watches `/events` or polls `/status`.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sse_starlette.sse import EventSourceResponse
@@ -59,6 +59,22 @@ class SyncRunAccepted(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     queued: list[str]
+
+
+#: The most runs one read of `GET /api/sync/runs` returns. A wait covers a handful of passes; the
+#: cap only keeps one request small, and `truncated` says when it bit.
+RUNS_AFTER_LIMIT = 50
+
+
+class SyncRunsData(BaseModel):
+    """`GET /api/sync/runs`: the runs after one the caller already knows."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Oldest first: every pass (shots, profiles, identity) with an id above ``after``.
+    runs: list[SyncRunRow] = Field(default_factory=list)
+    #: More runs than the cap followed ``after``; these are the oldest ``RUNS_AFTER_LIMIT``.
+    truncated: bool = False
 
 
 class SyncStatusData(BaseModel):
@@ -124,6 +140,24 @@ async def post_sync_run(
         queued.append("identity")
     return envelope_response(
         SyncRunAccepted(queued=queued).model_dump(mode="json"), status_code=202
+    )
+
+
+@router.get(
+    "/runs",
+    response_model=ApiResponse[SyncRunsData],
+    summary="Every sync run after the one you already know",
+)
+async def get_sync_runs(runs: SyncRepoDep, after: Annotated[int, Query(ge=0)] = 0) -> JSONResponse:
+    """Read-only. The ledger of `/status` keeps only the newest run of each kind, which is not
+    enough to say what a wait covering several passes did; this returns each of them, oldest
+    first, at most 50 (`truncated` says when more followed). An `after` beyond the newest run
+    answers an empty list."""
+    found = await runs.runs_after(after, RUNS_AFTER_LIMIT + 1)
+    return envelope_response(
+        SyncRunsData(
+            runs=found[:RUNS_AFTER_LIMIT], truncated=len(found) > RUNS_AFTER_LIMIT
+        ).model_dump(mode="json")
     )
 
 
