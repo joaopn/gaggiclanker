@@ -8,6 +8,7 @@ place they are written down.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -19,16 +20,14 @@ from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_prompts
 
-#: Each turn with its placeholders. A renamed profile ends ``(you proposed it as <old name>).``
-#: in place of the closing full stop.
-TURNS = {
-    "approved_for_set": "Approved: <name> as <version label> of <Set name>.",
-    "approved_new_version": "Approved: <name>, a new version of that profile.",
-    "approved_new_profile": "Approved: <name>, a new profile.",
-    "renamed_ending": " (you proposed it as <old name>).",
-    "declined": "Declined: <note>",
-    "declined_no_reason": "Declined: no reason given.",
-}
+#: Each turn with its placeholders, read from the file the web builds them from: one source, so
+#: the card and the prompts cannot drift apart. A renamed profile ends ``(you proposed it as
+#: <old name>).`` in place of the closing full stop.
+TURNS: dict[str, str] = json.loads(
+    (Path(__file__).resolve().parents[2] / "web" / "src" / "lib" / "profileTurns.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 def renamed(turn: str) -> str:

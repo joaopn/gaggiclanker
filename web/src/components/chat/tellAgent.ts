@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { SetProposalDecision } from "@/api/types";
+import turns from "@/lib/profileTurns.json";
 
 /**
  * How a button inside a conversation says something to the agent in it.
@@ -35,6 +36,20 @@ export function useChatThreadId(): number | null {
 }
 
 /**
+ * A turn's text with its `<placeholders>` filled, in one pass: a name the person typed that
+ * happens to contain another placeholder is never filled in a second time.
+ */
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/<[^<>]+>/g, (placeholder) => values[placeholder] ?? placeholder);
+}
+
+/** The ending of a turn about a profile the person renamed, in place of the full stop. */
+function renamedEnding(turn: string, oldName: string): string {
+  const ending = fill(turns.renamed_ending, { "<old name>": oldName });
+  return turn.endsWith(".") ? turn.slice(0, -1) + ending : turn;
+}
+
+/**
  * The message an accept sends, or `null` when there is nothing to tell.
  *
  * It starts with "Accepted:" because that is what the Set prompt tells the
@@ -49,7 +64,7 @@ export function acceptedMessage(decision: SetProposalDecision): string | null {
   const version = decision.version;
   if (!version) return null;
   if (decision.proposal.kind === "design") {
-    return `Accepted: your first recipe is now ${version.version_label} of this Set.`;
+    return fill(turns.accepted_first_recipe, { "<version label>": version.version_label });
   }
   const changes = decision.proposal.changes
     .map((change) => `${change.label} ${change.before ?? "not set"} → ${change.after ?? "cleared"}`)
@@ -68,5 +83,31 @@ export function acceptedMessage(decision: SetProposalDecision): string | null {
  * note exactly as the decline sent it, already trimmed.
  */
 export function declinedMessage(reason: string): string {
-  return reason ? `Declined: ${reason}` : "Declined: no reason given.";
+  return reason ? fill(turns.declined, { "<note>": reason }) : turns.declined_no_reason;
+}
+
+/**
+ * The message an approved profile proposal sends: which profile, and for a Set which of its
+ * versions, as the server's standing read names them. `proposedAs` is the name the agent gave
+ * it, only when the person typed another.
+ */
+export function approvedProfileMessage(approval: {
+  name: string;
+  /** The Set version this approval is recorded as, with its Set: a profile proposed for a Set. */
+  forSet?: { versionLabel: string; setName: string } | null;
+  /** A change to a profile that exists, not a profile of its own. */
+  newVersion: boolean;
+  proposedAs?: string | null;
+}): string {
+  const template = approval.forSet
+    ? turns.approved_for_set
+    : approval.newVersion
+      ? turns.approved_new_version
+      : turns.approved_new_profile;
+  const turn = fill(template, {
+    "<name>": approval.name,
+    "<version label>": approval.forSet?.versionLabel ?? "",
+    "<Set name>": approval.forSet?.setName ?? "",
+  });
+  return approval.proposedAs ? renamedEnding(turn, approval.proposedAs) : turn;
 }
