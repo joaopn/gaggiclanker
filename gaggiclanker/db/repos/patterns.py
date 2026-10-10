@@ -43,6 +43,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightScope,
     InsightsRepository,
     InsightWrite,
+    home_sets,
     scope_matches,
 )
 from gaggiclanker.db.repository import Repository
@@ -450,33 +451,47 @@ class PatternRunsRepository(Repository):
     # ── the page's two numbers ───────────────────────────────────────
 
     async def sets_with_insights(self) -> int:
-        """How many Sets have at least one confirmed insight: the run needs two."""
-        return int(
-            await self.db.fetch_value(
-                "SELECT COUNT(DISTINCT i.set_id) FROM knowledge_insights i "
-                "JOIN sets s ON s.id = i.set_id "
-                "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
+        """How many Sets have at least one confirmed insight of their own: the run needs two.
+
+        A copy made by duplicating a Set counts for the Set of the insight it copies
+        (:func:`~gaggiclanker.db.repos.knowledge_insights.home_sets`), so a Set holding only
+        copies is not another Set.
+        """
+        rows = await self.db.fetch_all(
+            "SELECT i.id, i.set_id, i.copied_from_insight_id FROM knowledge_insights i "
+            "JOIN sets s ON s.id = i.set_id "
+            "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
+        )
+        return len(
+            set(
+                home_sets(
+                    (row["id"], row["set_id"], row["copied_from_insight_id"]) for row in rows
+                ).values()
             )
-            or 0
         )
 
     async def new_since_last_run(self) -> int:
         """Confirmed Set insights confirmed after the last **finished** run began.
 
         A failed or interrupted run read nothing the person can rely on, so it does not move
-        the line; with no finished run, every confirmed Set insight is new.
+        the line; with no finished run, every confirmed Set insight is new. A copy made by
+        duplicating a Set is not new: it is the lesson it copies.
         """
         since = await self.db.fetch_value(
             "SELECT MAX(created_at) FROM pattern_runs WHERE status = 'done'"
         )
-        return int(
-            await self.db.fetch_value(
-                "SELECT COUNT(*) FROM knowledge_insights i JOIN sets s ON s.id = i.set_id "
-                "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0 "
-                "AND (? IS NULL OR i.confirmed_at > ?)",
-                (since, since),
-            )
-            or 0
+        rows = await self.db.fetch_all(
+            "SELECT i.id, i.set_id, i.copied_from_insight_id, i.confirmed_at "
+            "FROM knowledge_insights i JOIN sets s ON s.id = i.set_id "
+            "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
+        )
+        home = home_sets((row["id"], row["set_id"], row["copied_from_insight_id"]) for row in rows)
+        # A copy is the same lesson as the insight it copies, never a new one.
+        return sum(
+            1
+            for row in rows
+            if home[row["id"]] == row["set_id"]
+            and (since is None or (row["confirmed_at"] or "") > since)
         )
 
 

@@ -21,7 +21,12 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.knowledge_insights import SCOPE_KEYS, InsightScope, InsightsRepository
+from gaggiclanker.db.repos.knowledge_insights import (
+    SCOPE_KEYS,
+    InsightRow,
+    InsightScope,
+    InsightsRepository,
+)
 from gaggiclanker.db.repos.patterns import PatternProposalsRepository, PatternRunsRepository
 
 __all__ = [
@@ -45,6 +50,9 @@ class PatternInsight(BaseModel):
     learned_at: str | None = None
     #: Each version it rests on, as "v3 held → now failed" (the insight's own rendering).
     rests_on: list[str] = Field(default_factory=list)
+    #: The id of the insight this one was copied from, when that insight is read in this run: a
+    #: copy and its original are one lesson, and the copy's Set is not a second Set.
+    copy_of: int | None = None
 
 
 class PatternSet(BaseModel):
@@ -112,9 +120,17 @@ async def build_patterns_input(db: Database) -> PatternsInput:
     """Assemble what one run is told. A pure function of the database it is handed."""
     insights = InsightsRepository(db)
     sets: list[PatternSet] = []
-    for facts in await PatternRunsRepository(db).sets_with_confirmed_insights():
+    set_facts = await PatternRunsRepository(db).sets_with_confirmed_insights()
+    confirmed_by_set: dict[int, list[InsightRow]] = {
+        facts.id: [item for item in await insights.own(facts.id) if item.confirmed]
+        for facts in set_facts
+    }
+    # What a copy is a copy of, when that original is read in this run (a copy whose original
+    # is gone is a lesson of its own Set again, and says nothing).
+    read = {item.id for rows in confirmed_by_set.values() for item in rows}
+    for facts in set_facts:
         attributes = await insights.attributes_of(facts.id) or {}
-        confirmed = [item for item in await insights.own(facts.id) if item.confirmed]
+        confirmed = confirmed_by_set[facts.id]
         sets.append(
             PatternSet(
                 id=facts.id,
@@ -134,6 +150,11 @@ async def build_patterns_input(db: Database) -> PatternsInput:
                         text=item.text,
                         learned_at=item.set_version_label,
                         rests_on=[rest.render() for rest in item.rests_on],
+                        copy_of=(
+                            item.copied_from_insight_id
+                            if item.copied_from_insight_id in read
+                            else None
+                        ),
                     )
                     for item in sorted(confirmed, key=lambda row: row.id)
                 ],
@@ -178,6 +199,8 @@ def _render_sets(sets: list[PatternSet]) -> str:
             facts = [
                 f"learned at {insight.learned_at}" if insight.learned_at else "learned earlier"
             ]
+            if insight.copy_of is not None:
+                facts = [f"copy of #{insight.copy_of}"]
             if insight.rests_on:
                 facts.append("rests on " + ", ".join(insight.rests_on))
             lines.append(f"  #{insight.id} [{'; '.join(facts)}] {insight.text}")
