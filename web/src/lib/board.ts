@@ -8,6 +8,16 @@ import type { BoardAction, BoardRowView, BoardView, SyncRunRow } from "@/api/typ
  * does cannot drift apart.
  */
 
+/**
+ * What the profile list says about Writes, in one line: with them off, nothing here reaches the
+ * machine yet. The Profiles page and the Set page's pinned card both show it.
+ */
+export function writesLine(enabled: boolean): string {
+  return enabled
+    ? "Writes are on: the next sync updates the machine."
+    : "Writes are off: the machine will follow when they are on.";
+}
+
 /** The server's reason for two live profiles sharing a label. */
 const SHARED_LABEL = "duplicate_label";
 

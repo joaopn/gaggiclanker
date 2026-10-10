@@ -1304,6 +1304,24 @@ describe("links into the page", () => {
     expect(await within(li).findByTestId("profile-dropdown")).toBeInTheDocument();
   });
 
+  it("#row-N opens that profile, which a Set's pin card links to", async () => {
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [row(), row({ row: { id: 7, label: "Blooming v1.2" } })],
+      }),
+    );
+    api.getBoardVersions.mockImplementation(async (id: number) =>
+      versionsView([listedVersion({ version_id: 70 + id, is_active: true })], { row_id: id }),
+    );
+    renderWithQueryClient(<ProfilesPage />, { initialEntries: ["/profiles#row-7"] });
+
+    const li = (await screen.findByText("Blooming v1.2")).closest("li") as HTMLElement;
+    expect(await within(li).findByTestId("profile-dropdown")).toBeInTheDocument();
+    expect(li).toHaveAttribute("data-open", "yes");
+    const other = (await screen.findByText("9 Bar Espresso")).closest("li") as HTMLElement;
+    expect(other).toHaveAttribute("data-open", "no");
+  });
+
   it("#version-N opens that version's Signature card, which a shot read without one links to", async () => {
     api.getBoardVersions.mockResolvedValue(
       versionsView([listedVersion({ version_id: 99, is_active: true })]),

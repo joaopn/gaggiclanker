@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileBoard } from "@/hooks/useBoard";
 import { useImportFiles } from "@/hooks/useImport";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { holdsAFile } from "@/lib/board";
+import { holdsAFile, writesLine } from "@/lib/board";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -136,13 +136,16 @@ export function ProfilesPage() {
         )?.row.id;
 
   // Links that used to land on `#staged` (a draft somebody just made) open the newest
-  // proposal's row; `#version-N` opens the profile that has the version.
+  // proposal's row; `#version-N` opens the profile that has the version; `#row-N` opens profile N.
   const target = useMemo(() => {
     if (hash === "#staged") {
       const newest = [...proposals].sort((a, b) => b.draft.id - a.draft.id)[0];
       if (!newest) return null;
       return newest.row_id != null ? `row-${newest.row_id}` : `new-${newest.draft.id}`;
     }
+    // A link to one profile (the Set page's pin card names its copy this way).
+    const rowLinked = /^#row-(\d+)$/.exec(hash)?.[1];
+    if (rowLinked !== undefined) return `row-${rowLinked}`;
     if (versionRow !== undefined) return `row-${versionRow}`;
     return null;
   }, [hash, proposals, versionRow]);
@@ -213,9 +216,7 @@ export function ProfilesPage() {
               data-testid="writes-line"
               data-writes={view.writes_enabled ? "on" : "off"}
             >
-              {view.writes_enabled
-                ? "Writes are on: the next sync updates the machine."
-                : "Writes are off: the machine will follow when they are on."}
+              {writesLine(view.writes_enabled)}
             </p>
             <label className="flex items-center gap-2 text-sm">
               <input

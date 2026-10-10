@@ -30,6 +30,17 @@ export function withoutPinCopies<T extends { pin?: unknown }>(items: readonly T[
   return items.filter((item) => item.pin == null);
 }
 
+/**
+ * What archiving a Set with pins does to them, naming each: the Set stops taking shots, and its
+ * pins are unpinned in the same write, so the next sync takes their copies off the machine.
+ */
+export function archiveWords(pins: SetDetailData["pins"]): string {
+  const names = pins.map((pin) => `"${pin.name}"`);
+  const list = listWords(names);
+  const count = pins.length === 1 ? "Its pin is" : `Its ${pins.length} pins are`;
+  return `It receives no more shots. ${count} unpinned: the next sync takes ${list} off the machine.`;
+}
+
 // ── the log ──────────────────────────────────────────────────────────
 
 /**

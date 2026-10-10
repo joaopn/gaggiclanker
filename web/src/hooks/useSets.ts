@@ -508,7 +508,7 @@ export function useSetAutomatch(): UseMutationResult<
 export function useArchiveSet(): UseMutationResult<SetRow, Error, number> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: archiveSet,
+    mutationFn: (id) => archiveSet(id),
     onSuccess: (row) => toast.success(`"${row.name}" archived`),
     onError: (error) =>
       toast.error(error instanceof ApiClientError ? error.message : noAnswerSentence("the page")),

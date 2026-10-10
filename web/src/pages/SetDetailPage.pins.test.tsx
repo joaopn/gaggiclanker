@@ -1,9 +1,12 @@
+import { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import type { SetDetailData } from "@/api/types";
+import { selectedSuccessorSentence, writesLine } from "@/lib/board";
 import { SetDetailPage } from "@/pages/SetDetailPage";
+import { boardAction, boardRowView, boardView } from "@/test/boardFixtures";
 import { pinDetail, pinPreview, setPin } from "@/test/pinFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { labelCounts, setDetail, setRow, trends, version, vocabulary } from "@/test/setsFixtures";
@@ -14,9 +17,10 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 vi.mock("react-chartjs-2", () => ({ Line: () => <canvas /> }));
+let routeSetId = "3";
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
-  useParams: () => ({ setId: "3" }),
+  useParams: () => ({ setId: routeSetId }),
 }));
 
 const {
@@ -88,6 +92,11 @@ function pinnedDetail(overrides: Partial<SetDetailData> = {}): SetDetailData {
   });
 }
 
+/** The profile-list row of the pinned copy, as the machine holds it. */
+function pinRow(overrides: Parameters<typeof boardRowView>[0] = {}) {
+  return boardRowView({ row: { id: 7, label: "Blooming v1.2" }, ...overrides });
+}
+
 function entryOf(label: string): HTMLElement {
   const found = document.querySelector<HTMLElement>(
     `[data-testid="version-entry"][data-version="${label}"]`,
@@ -98,6 +107,7 @@ function entryOf(label: string): HTMLElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  routeSetId = "3";
   getSet.mockResolvedValue(pinnedDetail());
   getSetTrends.mockResolvedValue(trends());
   getVocabulary.mockResolvedValue(vocabulary);
@@ -105,7 +115,7 @@ beforeEach(() => {
   getSignature.mockResolvedValue(signatureNone);
   getSignatureOverrides.mockResolvedValue({ items: [] });
   getProfileVersions.mockResolvedValue({ items: [], total: 0 });
-  getProfileBoard.mockResolvedValue({ rows: [], actions: [], reports: [], proposals: [] });
+  getProfileBoard.mockResolvedValue(boardView({ rows: [pinRow()] }));
   getPinPreview.mockResolvedValue(pinPreview());
   pinVersion.mockResolvedValue({ pin: pinDetail({ version_label: "v1.1" }), board_id: 8 });
   unpinPin.mockResolvedValue({ pin: pinDetail(), board_id: 7 });
@@ -434,5 +444,412 @@ describe("the pin dialog", () => {
     expect(await screen.findByTestId("pin-explained")).toBeInTheDocument();
     expect(screen.queryByTestId("pin-refused")).not.toBeInTheDocument();
     expect(getPinPreview).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the Pinned on the machine card", () => {
+  it("is absent with no live pin", async () => {
+    getSet.mockResolvedValue(pinnedDetail({ pins: [] }));
+    renderWithQueryClient(<SetDetailPage />);
+    await screen.findByTestId("version-timeline");
+
+    expect(screen.queryByText("Pinned on the machine")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pinned-card")).not.toBeInTheDocument();
+  });
+
+  it("is a line per pin, newest first, with the facts once the machine holds the copy", async () => {
+    getSet.mockResolvedValue(
+      pinnedDetail({
+        pins: [
+          setPin({
+            pin_id: 6,
+            version_label: "v1.3",
+            name: "Blooming v1.3",
+            board_id: 8,
+            shot_count: 1,
+          }),
+          setPin(),
+        ],
+      }),
+    );
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [pinRow(), boardRowView({ row: { id: 8, label: "Blooming v1.3" } })],
+      }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    const lines = await screen.findAllByTestId("pin-line");
+    expect(lines.map((line) => line.dataset.pin)).toEqual(["6", "5"]);
+    expect(lines[1]).toHaveTextContent('v1.2 as "Blooming v1.2"');
+    await waitFor(() =>
+      expect(within(lines[1] as HTMLElement).getByTestId("pin-facts")).toHaveTextContent(
+        /^pinned .*· 14 shots$/,
+      ),
+    );
+    expect(within(lines[0] as HTMLElement).getByTestId("pin-facts")).toHaveTextContent("· 1 shot");
+    // The name goes to the profile's row on the Profiles page.
+    expect(within(lines[1] as HTMLElement).getByTestId("pin-profile-link")).toHaveAttribute(
+      "href",
+      "/profiles#row-7",
+    );
+  });
+
+  it("shows the profile list's own planned line while the copy is not on the machine yet", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          pinRow({
+            machine: {
+              device_id: null,
+              present: false,
+              holds_current: false,
+              favorite: false,
+              selected: false,
+            },
+            planned: [boardAction({ kind: "push", label: "Blooming v1.2" })],
+          }),
+        ],
+      }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    const line = await screen.findByTestId("pin-line");
+    expect(await within(line).findByTestId("profile-state")).toHaveTextContent(
+      "Will be put on the machine at the next sync",
+    );
+    expect(within(line).queryByTestId("pin-facts")).not.toBeInTheDocument();
+  });
+
+  it("shows no second line while the profile list has not answered", async () => {
+    getProfileBoard.mockReturnValue(new Promise(() => {}));
+    renderWithQueryClient(<SetDetailPage />);
+
+    const line = await screen.findByTestId("pin-line");
+    expect(within(line).queryByTestId("pin-facts")).not.toBeInTheDocument();
+    expect(within(line).queryByTestId("profile-state")).not.toBeInTheDocument();
+  });
+
+  it("shows no second line when the profile list could not be read", async () => {
+    getProfileBoard.mockRejectedValue(new Error("down"));
+    renderWithQueryClient(<SetDetailPage />);
+
+    const line = await screen.findByTestId("pin-line");
+    await waitFor(() => expect(getProfileBoard).toHaveBeenCalled());
+    expect(within(line).queryByTestId("pin-facts")).not.toBeInTheDocument();
+    expect(within(line).queryByTestId("profile-state")).not.toBeInTheDocument();
+  });
+
+  it("shows no second line when the list has no row for the pin", async () => {
+    getProfileBoard.mockResolvedValue(boardView({ rows: [] }));
+    renderWithQueryClient(<SetDetailPage />);
+
+    const line = await screen.findByTestId("pin-line");
+    await waitFor(() => expect(getProfileBoard).toHaveBeenCalled());
+    expect(within(line).queryByTestId("pin-facts")).not.toBeInTheDocument();
+    expect(within(line).queryByTestId("profile-state")).not.toBeInTheDocument();
+  });
+
+  it("says once, under the card, that Writes are off, in the Profiles page's words", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({ writes_enabled: false, rows: [pinRow(), boardRowView({ row: { id: 8 } })] }),
+    );
+    getSet.mockResolvedValue(
+      pinnedDetail({ pins: [setPin(), setPin({ pin_id: 6, board_id: 8, version_label: "v1.3" })] }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    const note = await screen.findByTestId("pin-writes-line");
+    expect(note).toHaveTextContent(writesLine(false));
+    expect(screen.getAllByTestId("pin-writes-line")).toHaveLength(1);
+  });
+
+  it("says nothing about Writes when they are on", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+    await screen.findByTestId("pin-line");
+    await waitFor(() => expect(getProfileBoard).toHaveBeenCalled());
+
+    expect(screen.queryByTestId("pin-writes-line")).not.toBeInTheDocument();
+  });
+
+  it("does not read the profile list for a Set with no pins", async () => {
+    getSet.mockResolvedValue(pinnedDetail({ pins: [] }));
+    renderWithQueryClient(<SetDetailPage />);
+    await screen.findByTestId("version-timeline");
+
+    expect(getProfileBoard).not.toHaveBeenCalled();
+  });
+
+  it("shows the row's line, not the facts, while the sync is still matching its file (on the machine, but not holding the current version)", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          pinRow({
+            machine: {
+              device_id: null,
+              present: false,
+              holds_current: false,
+              favorite: false,
+              selected: false,
+            },
+          }),
+        ],
+        actions: [
+          boardAction({ kind: "adopt", reason: "attached", row_id: 7, label: "Blooming v1.2" }),
+        ],
+      }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    const line = await screen.findByTestId("pin-line");
+    // The row's own state reads "ok" (a file is being matched), yet the facts line would claim
+    // more than the list does: the machine does not hold the current version yet.
+    const state = await within(line).findByTestId("profile-state");
+    expect(state).toHaveAttribute("data-tone", "ok");
+    expect(within(line).queryByTestId("pin-facts")).not.toBeInTheDocument();
+  });
+
+  it("shows the row's own line for a conflict too", async () => {
+    getProfileBoard.mockResolvedValue(boardView({ rows: [pinRow({ in_conflict: true })] }));
+    renderWithQueryClient(<SetDetailPage />);
+
+    const line = await screen.findByTestId("pin-line");
+    expect(await within(line).findByTestId("profile-state")).toHaveTextContent(
+      "Edited outside the app: choose a side",
+    );
+  });
+});
+
+describe("a pin whose answer was lost", () => {
+  it("shows one message in the dialog, no toast, and the pin on the card once the Set is re-read", async () => {
+    // The app made the pin, then the answer never arrived.
+    pinVersion.mockImplementation(async () => {
+      const after = pinnedDetail();
+      after.versions[2] = { ...after.versions[2], pinned: { pin_id: 6, shot_count: 0 } } as never;
+      after.pins = [
+        setPin({ pin_id: 6, version_label: "v1.1", name: "Blooming v1.1", board_id: 8 }),
+        setPin(),
+      ];
+      getSet.mockResolvedValue(after);
+      throw new TypeError("Failed to fetch");
+    });
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+    await screen.findByTestId("version-timeline");
+    expect(screen.getAllByTestId("pin-line")).toHaveLength(1);
+    await user.click(within(entryOf("v1.1")).getByRole("button", { name: /^Pin to the machine/ }));
+    const dialog = await screen.findByTestId("pin-dialog");
+    await within(dialog).findByTestId("pin-explained");
+
+    await user.click(within(dialog).getByRole("button", { name: "Pin" }));
+
+    expect(await within(dialog).findByTestId("pin-unreachable")).toHaveTextContent(
+      "No answer came back from the app. Check the card before trying again.",
+    );
+    expect(within(dialog).getAllByTestId("pin-unreachable")).toHaveLength(1);
+    expect(dialog).not.toHaveTextContent(/nothing was pinned|Failed to fetch/);
+    expect(toast.error).not.toHaveBeenCalled();
+    // The card behind it now lists the pin: the failure refreshed the Set and the board.
+    await waitFor(() => expect(screen.getAllByTestId("pin-line")).toHaveLength(2));
+  });
+});
+
+describe("Unpin on the card", () => {
+  it("asks first, in the card's words, and does nothing on Cancel", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+    const line = await screen.findByTestId("pin-line");
+
+    await user.click(within(line).getByRole("button", { name: "Unpin v1.2" }));
+
+    const confirm = within(line).getByTestId("unpin-confirm");
+    expect(confirm).toHaveTextContent(
+      'The next sync takes "Blooming v1.2" off the machine. Its 14 shots stay filed under v1.2.',
+    );
+    expect(within(confirm).queryByTestId("unpin-selected")).not.toBeInTheDocument();
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByTestId("unpin-confirm")).not.toBeInTheDocument();
+    expect(unpinPin).not.toHaveBeenCalled();
+  });
+
+  it("adds the shared successor sentence when the copy is the selected profile", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          pinRow({
+            machine: {
+              device_id: "p1",
+              present: true,
+              holds_current: true,
+              favorite: false,
+              selected: true,
+            },
+          }),
+        ],
+      }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+    const line = await screen.findByTestId("pin-line");
+    await waitFor(() => expect(within(line).getByTestId("pin-facts")).toBeInTheDocument());
+
+    await user.click(within(line).getByRole("button", { name: "Unpin v1.2" }));
+
+    expect(within(line).getByTestId("unpin-selected")).toHaveTextContent(
+      selectedSuccessorSentence(),
+    );
+  });
+
+  it("unpins once however fast it is clicked", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+    const line = await screen.findByTestId("pin-line");
+    await user.click(within(line).getByRole("button", { name: "Unpin v1.2" }));
+
+    await user.dblClick(
+      within(within(line).getByTestId("unpin-confirm")).getByRole("button", { name: "Unpin" }),
+    );
+
+    await waitFor(() => expect(unpinPin).toHaveBeenCalledTimes(1));
+    expect(unpinPin).toHaveBeenCalledWith(5);
+  });
+});
+
+describe("Archive", () => {
+  it("archives at once, as before, when the Set has no pins", async () => {
+    getSet.mockResolvedValue(pinnedDetail({ pins: [] }));
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    await waitFor(() => expect(archiveSet).toHaveBeenCalledWith(3));
+    expect(screen.queryByTestId("archive-confirm")).not.toBeInTheDocument();
+  });
+
+  it("sends one archive for a double click when the Set has no pins", async () => {
+    getSet.mockResolvedValue(pinnedDetail({ pins: [] }));
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.dblClick(await screen.findByRole("button", { name: "Archive" }));
+
+    await waitFor(() => expect(archiveSet).toHaveBeenCalledTimes(1));
+  });
+
+  it("finds the question closed when the route goes to another Set and back", async () => {
+    const user = setupUser();
+    const { rerender } = renderWithQueryClient(<SetDetailPage />);
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+    expect(screen.getByTestId("archive-confirm")).toBeInTheDocument();
+
+    routeSetId = "4";
+    getSet.mockResolvedValue(pinnedDetail({ set: setRow({ id: 4, name: "Other Set" }), pins: [] }));
+    rerender(<SetDetailPage />);
+    await screen.findByRole("heading", { name: "Other Set" });
+    routeSetId = "3";
+    getSet.mockResolvedValue(pinnedDetail());
+    rerender(<SetDetailPage />);
+
+    await screen.findByTestId("pin-line");
+    expect(screen.queryByTestId("archive-confirm")).not.toBeInTheDocument();
+  });
+
+  it("names each pin and says the next sync takes them off, and archives only on confirm", async () => {
+    getSet.mockResolvedValue(
+      pinnedDetail({
+        pins: [setPin({ pin_id: 6, name: "Blooming v1.4", board_id: 8 }), setPin()],
+      }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    const confirm = screen.getByTestId("archive-confirm");
+    expect(confirm).toHaveTextContent(
+      'It receives no more shots. Its 2 pins are unpinned: the next sync takes "Blooming v1.4" and "Blooming v1.2" off the machine.',
+    );
+    expect(archiveSet).not.toHaveBeenCalled();
+
+    await user.dblClick(within(confirm).getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(archiveSet).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not carry an open question over to another Set when the route moves", async () => {
+    const user = setupUser();
+    const { rerender } = renderWithQueryClient(<SetDetailPage />);
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+    expect(screen.getByTestId("archive-confirm")).toBeInTheDocument();
+
+    routeSetId = "4";
+    getSet.mockResolvedValue(
+      pinnedDetail({
+        set: setRow({ id: 4, name: "Other Set" }),
+        pins: [setPin({ pin_id: 9, name: "Other v1.1" })],
+      }),
+    );
+    rerender(<SetDetailPage />);
+
+    await screen.findByRole("heading", { name: "Other Set" });
+    expect(screen.queryByTestId("archive-confirm")).not.toBeInTheDocument();
+  });
+
+  it("a single pin is said in the singular, and Cancel archives nothing", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    expect(screen.getByTestId("archive-pins")).toHaveTextContent(
+      'Its pin is unpinned: the next sync takes "Blooming v1.2" off the machine.',
+    );
+    await user.click(
+      within(screen.getByTestId("archive-confirm")).getByRole("button", { name: "Cancel" }),
+    );
+    expect(screen.queryByTestId("archive-confirm")).not.toBeInTheDocument();
+    expect(archiveSet).not.toHaveBeenCalled();
+  });
+});
+
+describe("focus after a pin", () => {
+  it("does not move focus to another Set's pinned marker after the route moves away and back", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, gcTime: 600_000 } },
+    });
+    const other = () => pinnedDetail({ set: setRow({ id: 4, name: "Other Set" }), pins: [] });
+    const user = setupUser();
+    // The other Set is read first, so moving to it later finds it cached and the timeline stays
+    // mounted (production keeps its cache; a loading skeleton would reset the state by itself).
+    routeSetId = "4";
+    getSet.mockResolvedValue(other());
+    const { rerender } = renderWithQueryClient(<SetDetailPage />, { queryClient: client });
+    await screen.findByRole("heading", { name: "Other Set" });
+
+    routeSetId = "3";
+    getSet.mockResolvedValue(pinnedDetail());
+    rerender(<SetDetailPage />);
+    await screen.findByRole("heading", { name: "Guji on the Niche" });
+    await user.click(within(entryOf("v1.1")).getByRole("button", { name: /^Pin to the machine/ }));
+    const dialog = await screen.findByTestId("pin-dialog");
+    await within(dialog).findByTestId("pin-explained");
+    // The re-read after the pin does not show it yet, so the wish for focus stays pending.
+    await user.click(within(dialog).getByRole("button", { name: "Pin" }));
+    await waitFor(() => expect(screen.queryByTestId("pin-dialog")).not.toBeInTheDocument());
+
+    routeSetId = "4";
+    getSet.mockResolvedValue(other());
+    rerender(<SetDetailPage />);
+    await screen.findByRole("heading", { name: "Other Set" });
+    routeSetId = "3";
+    const later = pinnedDetail();
+    later.versions[2] = { ...later.versions[2], pinned: { pin_id: 6, shot_count: 0 } } as never;
+    getSet.mockResolvedValue(later);
+    rerender(<SetDetailPage />);
+
+    await waitFor(() =>
+      expect(within(entryOf("v1.1")).getByTestId("pinned-marker")).toBeInTheDocument(),
+    );
+    expect(within(entryOf("v1.1")).getByTestId("pinned-marker")).not.toHaveFocus();
   });
 });

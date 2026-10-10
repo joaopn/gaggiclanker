@@ -17,12 +17,14 @@ import {
   recipeHint,
   temperatureNote,
 } from "@/components/sets/NewSetDialog";
+import { PinnedCard } from "@/components/sets/PinnedCard";
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import { RollbackButton } from "@/components/sets/RollbackButton";
 import { SetInsights } from "@/components/sets/SetInsights";
 import { SetSignatureLine } from "@/components/sets/SetSignatureLine";
 import { SetSpread } from "@/components/sets/SetSpread";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
+import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,8 +38,10 @@ import {
   useSetAutomatch,
   useSetTrends,
 } from "@/hooks/useSets";
+import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { attempt } from "@/lib/mutations";
 import {
+  archiveWords,
   currentVersion,
   grindPatch,
   sameProfile,
@@ -78,6 +82,16 @@ export function SetDetailPage() {
   const automatch = useSetAutomatch();
   const archive = useArchiveSet();
   const [versioning, setVersioning] = useState(false);
+  // Which Set the question is about: the page keeps its state across `/sets/:setId`, so a bare flag
+  // would carry an open question over to the next Set.
+  const [archivingId, setArchivingId] = useState<number | null>(null);
+  // Cleared when the route moves: coming back to a Set must not find the question still open.
+  const [archivingSeen, setArchivingSeen] = useState(setId);
+  if (!Object.is(archivingSeen, setId)) {
+    setArchivingSeen(setId);
+    setArchivingId(null);
+  }
+  const archiveOnce = useSingleFlight();
   useQueryErrorToast(detail.error, "Could not load this Set");
 
   if (valid && detail.isPending) {
@@ -154,8 +168,13 @@ export function SetDetailPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={archive.isPending}
-                onClick={() => archive.mutate(row.id)}
+                disabled={archive.isPending || archivingId === row.id}
+                onClick={() =>
+                  // A Set with pins asks first: archiving takes them off the machine.
+                  detail.data.pins.length > 0
+                    ? setArchivingId(row.id)
+                    : archiveOnce((release) => archive.mutate(row.id, { onSettled: release }))
+                }
               >
                 <Archive className="size-3.5" aria-hidden="true" />
                 Archive
@@ -164,6 +183,27 @@ export function SetDetailPage() {
           </div>
         }
       />
+
+      {archivingId === row.id && detail.data.pins.length > 0 ? (
+        <ConfirmStrip
+          title={`Archive ${row.name}?`}
+          confirmLabel="Archive"
+          confirmVariant="default"
+          testId="archive-confirm"
+          focusOnOpen
+          onCancel={() => setArchivingId(null)}
+          onConfirm={() =>
+            archiveOnce((release) =>
+              archive.mutate(row.id, {
+                onSuccess: () => setArchivingId(null),
+                onSettled: release,
+              }),
+            )
+          }
+        >
+          <p data-testid="archive-pins">{archiveWords(detail.data.pins)}</p>
+        </ConfirmStrip>
+      ) : null}
 
       {row.designing ? <DesignNotice set={row} /> : null}
 
@@ -220,6 +260,8 @@ export function SetDetailPage() {
           />
         )}
       </SectionCard>
+
+      <PinnedCard pins={detail.data.pins} />
 
       <SectionCard
         title="How it has gone"
