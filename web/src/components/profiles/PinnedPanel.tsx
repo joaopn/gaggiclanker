@@ -25,7 +25,10 @@ type Json = Record<string, unknown>;
 export function PinnedPanel({ entry, pin }: { entry: BoardRowView; pin: BoardRowPin }) {
   const [confirming, setConfirming] = useState(false);
   const profile = entry.active_version.profile as Json;
-  const shots = `${pin.shot_count} ${pin.shot_count === 1 ? "shot" : "shots"}`;
+  // What the link lists: every shot brewed on the copy. The pin's own count is the shots filed
+  // under the Set version, which can be fewer (a shot waiting in the inbox is brewed, not filed).
+  const brewed = entry.active_version.shots_brewed;
+  const shots = `${brewed} ${brewed === 1 ? "shot" : "shots"}`;
   return (
     <div className="min-w-0 space-y-3 border-border border-t p-3" data-testid="pinned-panel">
       {entry.in_conflict ? <ConflictPanel rowId={entry.row.id} pinned /> : null}

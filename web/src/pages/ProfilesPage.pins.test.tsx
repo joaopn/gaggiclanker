@@ -131,6 +131,25 @@ describe("a pinned row on the Profiles page", () => {
     expect(api.getBoardVersions).not.toHaveBeenCalled();
   });
 
+  it("counts the shots the link lists: those brewed on the copy, filed or waiting", async () => {
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          pinned({
+            pin: boardRowPin({ shot_count: 0 }),
+            active_version: { ...pinned().active_version, shots_brewed: 1 },
+          }),
+        ],
+      }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<ProfilesPage />);
+    await screen.findByText("Blooming v1.2");
+    await user.click(within(rowNamed("Blooming v1.2")).getByTestId("profile-toggle"));
+
+    expect(await screen.findByTestId("pinned-shots-link")).toHaveTextContent("1 shot");
+  });
+
   it("asks before unpinning, in the unpin words, and unpins once", async () => {
     const user = setupUser();
     renderWithQueryClient(<ProfilesPage />);
