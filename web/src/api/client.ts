@@ -71,6 +71,8 @@ import type {
   PatternProposalDecision,
   PatternRun,
   PatternsData,
+  PinAnswer,
+  PinPreview,
   ProfileDraft,
   ProfileDraftDetail,
   ProfileDraftListData,
@@ -1146,6 +1148,40 @@ export async function rollbackSet(id: number, body: RollbackWrite): Promise<SetV
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * What pinning a version would do, without doing it: the name the copy would get, whether it is
+ * taken, and the server's sentence for any refusal.
+ */
+export async function getPinPreview(
+  setId: number,
+  versionId: number,
+  label?: string,
+): Promise<PinPreview> {
+  return fetchApi<PinPreview>(
+    `/sets/${setId}/versions/${versionId}/pin-preview${queryString({ label })}`,
+  );
+}
+
+/**
+ * Keep a Set version on the machine as a profile of its own. Nothing is sent to the machine:
+ * the next sync does. `label` is the person's name for the copy, left out for the default.
+ */
+export async function pinVersion(
+  setId: number,
+  versionId: number,
+  label?: string,
+): Promise<PinAnswer> {
+  return fetchApi<PinAnswer>(`/sets/${setId}/versions/${versionId}/pin`, {
+    method: "POST",
+    body: JSON.stringify(label === undefined ? {} : { label }),
+  });
+}
+
+/** Take a pinned copy off the machine at the next sync; its shots stay filed. */
+export async function unpinPin(pinId: number): Promise<PinAnswer> {
+  return fetchApi<PinAnswer>(`/pins/${pinId}/unpin`, { method: "POST" });
 }
 
 /**

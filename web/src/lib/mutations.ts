@@ -15,3 +15,12 @@ export async function attempt<T>(run: () => Promise<T>): Promise<T | undefined> 
     return undefined;
   }
 }
+
+/**
+ * What to say when a request got no answer (the browser's fetch failed): the one thing that is
+ * not known is whether the write happened, since the app may have done it and the answer been
+ * lost. So it names no outcome, only where the truth is. `where` is the place that shows it.
+ */
+export function noAnswerSentence(where: string): string {
+  return `No answer came back from the app. Check ${where} before trying again.`;
+}

@@ -91,6 +91,13 @@ export const queryKeys = {
      * version accept that records a grade reaches it with the rest.
      */
     outcomeProposals: (id: string) => ["sets", "outcome-proposals", id] as const,
+    /**
+     * What pinning one version would do. Under `sets` so that a pin, an unpin, an archive and a
+     * sync's board write (which can free or take the name) all reach it; the name typed into
+     * the dialog is part of the key, because it is a different question.
+     */
+    pinPreview: (setId: string, versionId: string, label: string) =>
+      ["sets", "pin-preview", setId, versionId, label] as const,
   },
   beans: {
     all: ["beans"] as const,

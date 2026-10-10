@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  ApiClientError,
   acceptOutcomeProposal,
   acceptSetProposal,
   addSetVersion,
@@ -72,6 +73,7 @@ import {
   invalidateShotDetails,
   invalidateShots,
 } from "@/lib/invalidate";
+import { noAnswerSentence } from "@/lib/mutations";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -508,8 +510,14 @@ export function useArchiveSet(): UseMutationResult<SetRow, Error, number> {
   return useMutation({
     mutationFn: archiveSet,
     onSuccess: (row) => toast.success(`"${row.name}" archived`),
-    onError: (error) => toast.error(error.message),
-    onSettled: () => invalidateSets(queryClient),
+    onError: (error) =>
+      toast.error(error instanceof ApiClientError ? error.message : noAnswerSentence("the page")),
+    // Archiving unpins the Set's pins in the same write: their profile-list rows are
+    // tombstoned, so the board, the profile mirror and what the sync does about them moved too.
+    onSettled: () =>
+      Promise.all([invalidateSets(queryClient), invalidateBoardWrites(queryClient)]).then(
+        () => undefined,
+      ),
   });
 }
 
