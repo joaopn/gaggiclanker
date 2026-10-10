@@ -31,6 +31,9 @@ import type {
   DraftCreateBody,
   DraftPreview,
   DraftStanding,
+  DuplicateAnswer,
+  DuplicatePreview,
+  DuplicateRequest,
   FlavorPicks,
   FlushData,
   GrinderRow,
@@ -1179,6 +1182,29 @@ export async function pinVersion(
   return fetchApi<PinAnswer>(`/sets/${setId}/versions/${versionId}/pin`, {
     method: "POST",
     body: JSON.stringify(label === undefined ? {} : { label }),
+  });
+}
+
+/**
+ * What duplicating a version starts from: the suggested Set name, the bean, the grinder, the
+ * recipe, whether the version names a profile and the source Set's own confirmed insights.
+ */
+export async function getDuplicatePreview(
+  setId: number,
+  versionId: number,
+): Promise<DuplicatePreview> {
+  return fetchApi<DuplicatePreview>(`/sets/${setId}/versions/${versionId}/duplicate-preview`);
+}
+
+/** Start a new Set from a version: its profile copied under a new name, no history. */
+export async function duplicateVersion(
+  setId: number,
+  versionId: number,
+  body: DuplicateRequest,
+): Promise<DuplicateAnswer> {
+  return fetchApi<DuplicateAnswer>(`/sets/${setId}/versions/${versionId}/duplicate`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

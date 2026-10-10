@@ -1,5 +1,6 @@
 import type {
   BeanRow,
+  DuplicateRecipe,
   EvidenceCounts,
   MeasureEvidence,
   MeasureSpread,
@@ -116,6 +117,24 @@ export function versionSummary(version: SetVersionRow): string {
   // own, so this line follows whichever profile the version names.
   if (version.profile_temperature_c) parts.push(`${version.profile_temperature_c} °C`);
   return parts.join(" · ") || "nothing recorded yet";
+}
+
+/**
+ * The recipe a duplicate starts from, as one line: "Blooming · grind 2.2 · 18 g → 40 g". Only
+ * the parts the version records; an "Any profile" version has no profile part.
+ */
+export function recipeLine(recipe: DuplicateRecipe): string {
+  const parts: string[] = [];
+  if (recipe.profile_label) parts.push(recipe.profile_label);
+  if (recipe.grind_setting) parts.push(`grind ${recipe.grind_setting}`);
+  if (recipe.dose_g && recipe.target_yield_g) {
+    parts.push(`${recipe.dose_g} g → ${recipe.target_yield_g} g`);
+  } else if (recipe.dose_g) {
+    parts.push(`${recipe.dose_g} g in`);
+  } else if (recipe.target_yield_g) {
+    parts.push(`${recipe.target_yield_g} g out`);
+  }
+  return parts.join(" · ") || "nothing recorded";
 }
 
 /** "a", "a and b", "a, b and c": the one way a list of parts is said in a sentence. */

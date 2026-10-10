@@ -101,6 +101,16 @@ export const queryKeys = {
   pins: {
     preview: (setId: string, versionId: string) => ["pins", "preview", setId, versionId] as const,
   },
+  /**
+   * What duplicating one version starts from. Outside `sets` for the reason the pin's preview is:
+   * it lives only while the dialog is open and is asked afresh at every opening, and a refetch
+   * caused by the duplicate's own invalidation of the Sets would answer under the dialog that
+   * has just succeeded.
+   */
+  duplicates: {
+    preview: (setId: string, versionId: string) =>
+      ["duplicates", "preview", setId, versionId] as const,
+  },
   beans: {
     all: ["beans"] as const,
     list: (includeArchived?: boolean) => ["beans", "list", includeArchived ?? false] as const,
