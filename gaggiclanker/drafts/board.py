@@ -112,6 +112,7 @@ from gaggiclanker.drafts.machine import (
 )
 from gaggiclanker.drafts.proposals import (
     DraftProposals,
+    PinFrozen,
     PinnedCopyName,
     TakenName,
     profile_from_version,
@@ -387,6 +388,12 @@ class _Destination:
     #: The stored name of the live profile that has the draft's name: the landing and the name
     #: check say it to the person.
     taken_label: str | None = None
+    #: The put is refused because the profile it would continue is a pin's frozen copy
+    #: (``refused`` is then the person's sentence about the pin).
+    frozen: bool = False
+    #: The put is refused because the draft's document is exactly a pin's copy, which belongs to
+    #: that pin's Set version for ever (``refused`` is then the person's sentence).
+    pinned_copy: PinnedCopyName | None = None
 
 
 @dataclass
@@ -606,6 +613,10 @@ class BoardService:
         """
         async with self.db.transaction():
             row = await self._live_row(row_id)
+            if keep == "machine":
+                # Keeping the machine's side would make the copy something the pinned version
+                # never was. Keeping the app's still works, and so does unpinning.
+                await self._refuse_if_pinned(row)
             machine = await self._mirror_conflict(row)
             if machine is None:
                 raise Conflict(
@@ -667,7 +678,10 @@ class BoardService:
         )
         if draft.status != "draft" or version is None:
             raise Unprocessable("That proposal is not waiting for an answer")
-        if (await self._destination(draft, version, draft.set_id)).row is not None:
+        landing = await self._destination(draft, version, draft.set_id)
+        if (landing.frozen or landing.pinned_copy is not None) and landing.refused is not None:
+            return NameCheck(label=label.strip(), refused=landing.refused)
+        if landing.row is not None:
             raise Unprocessable("A change to an existing profile keeps its name")
         name = label.strip()
         if not name:
@@ -682,6 +696,8 @@ class BoardService:
         )
         if first.taken is not None:
             return NameCheck(label=name, refused=person_taken_sentence(first.taken.label))
+        if first.frozen is not None:
+            return NameCheck(label=name, refused=first.frozen)
         then = await place_draft(
             lookup,
             label=first.name,
@@ -689,6 +705,10 @@ class BoardService:
             base_label=base_label,
             set_id=draft.set_id,
         )
+        if then.frozen is not None:
+            # Reached through case variants: the sync matches labels exactly, so "x v1" and
+            # "X v1" can both be live, and the Set's own profile can be the pinned one's variant.
+            return NameCheck(label=name, refused=then.frozen)
         existing = then.owner or then.taken
         if existing is not None:
             return NameCheck(label=name, refused=person_taken_sentence(existing.label))
@@ -933,6 +953,8 @@ class BoardService:
     ) -> BoardLanding:
         dest = await self._destination(draft, version, set_id)
         row = dest.row
+        if (dest.frozen or dest.pinned_copy is not None) and dest.refused is not None:
+            return BoardLanding(refused=dest.refused)
         if dest.taken_label is not None:
             # For the person: the sentence under the Name field. The put's refusal below keeps
             # the agent's sentence.
@@ -961,11 +983,18 @@ class BoardService:
             base_label=None if draft.is_new or base is None else base.label,
             set_id=set_id,
         )
-        if placed.refused:
-            assert placed.taken is not None
+        if placed.frozen is not None:
+            return _Destination(refused=placed.frozen, frozen=True)
+        if placed.taken is not None:
             return _Destination(
                 refused=taken_name_sentence(version.label.strip()), taken_label=placed.taken.label
             )
+        # A draft made before the pin can end up exactly equal to the pin's copy; a put would
+        # then list a live row on a profile version that belongs to the pin. The constructor
+        # refuses this for a new draft (`prepare`); a stored one meets the same function here.
+        pinned = await self.proposals.pinned_copy_of(profile_from_version(version))
+        if pinned is not None:
+            return _Destination(refused=pinned.person, pinned_copy=pinned)
         if placed.owner is not None:
             return _Destination(row=placed.owner)
         return _Destination(revived=await self._revivable(version))
@@ -1078,6 +1107,10 @@ class BoardService:
                 raise Conflict("That profile version is already in the list.")
 
         dest = await self._destination(draft, version, set_id)
+        if dest.frozen and dest.refused is not None:
+            raise PinFrozen(dest.refused)
+        if dest.pinned_copy is not None:
+            raise dest.pinned_copy
         if dest.refused is not None:
             raise TakenName(version.label.strip())
         row = dest.row
@@ -1198,6 +1231,7 @@ class BoardService:
     async def set_on_machine(self, row_id: int, on: bool) -> BoardRow:
         """Switch a profile on or off the machine. The next sync follows; nothing is sent now."""
         row = await self._live_row(row_id)
+        await self._refuse_if_pinned(row)
         updated = await self.board.update(row.id, BoardRowPatch(on_machine=on))
         assert updated is not None
         return updated
@@ -1214,6 +1248,7 @@ class BoardService:
         """
         async with self.db.transaction():
             row = await self._live_row(row_id)
+            await self._refuse_if_pinned(row)
             version = await self.profiles.get_version(version_id)
             if version is None:
                 raise NotFound(f"No profile version {version_id}")
@@ -1281,6 +1316,13 @@ class BoardService:
         updated = await self.board.update(row.id, BoardRowPatch(on_home_screen=on))
         assert updated is not None
         return updated
+
+    async def _refuse_if_pinned(self, row: BoardRow) -> None:
+        """A pin's frozen copy changes only by unpinning it (the star is the one thing a person may
+        still set): a 409 naming the pin."""
+        sentence = await LiveLineage(self.db).frozen_sentence(row)
+        if sentence is not None:
+            raise PinFrozen(sentence)
 
     async def _live_row(self, row_id: int) -> BoardRow:
         row = await self.board.get(row_id)

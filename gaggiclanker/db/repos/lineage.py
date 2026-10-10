@@ -37,6 +37,7 @@ __all__ = [
     "person_taken_sentence",
     "pinned_copy_agent_sentence",
     "pinned_copy_sentence",
+    "pinned_sentence",
     "place_draft",
     "taken_name_sentence",
 ]
@@ -63,6 +64,11 @@ def person_taken_sentence(existing_label: str) -> str:
     was typed (the typed case may differ), and no advice about drafting. The agent keeps
     :func:`taken_name_sentence`."""
     return f"There is already a profile called {existing_label}. Choose another name."
+
+
+def pinned_sentence(profile_name: str, set_name: str, version_label: str) -> str:
+    """The refusal for a change to a profile that is the frozen copy of a pinned Set version."""
+    return f"{profile_name} is pinned to {set_name} {version_label}: unpin it to change it."
 
 
 def pinned_copy_sentence(name: str, set_name: str, version_label: str) -> str:
@@ -115,6 +121,9 @@ class DraftLookup[T](LineageLookup[T], Protocol):
     async def base_profile(self, version_id: int) -> T | None:
         """The live profile this version belongs to (listed in it, or mapped to its file)."""
 
+    async def frozen_sentence(self, profile: T) -> str | None:
+        """Why this profile may not be continued (a pin's frozen copy), else ``None``."""
+
 
 @dataclass(frozen=True, slots=True)
 class Placement[T]:
@@ -126,10 +135,14 @@ class Placement[T]:
     taken: T | None
     #: The label to store: the continued profile's own name, else the name stripped.
     name: str
+    #: Why a draft that would continue a profile is refused: that profile is the frozen copy of a
+    #: pinned Set version (the person's sentence), else ``None``. A pinned profile is changed only
+    #: by unpinning it, so a draft never continues one, exactly as it never takes a taken name.
+    frozen: str | None = None
 
     @property
     def refused(self) -> bool:
-        return self.taken is not None
+        return self.taken is not None or self.frozen is not None
 
 
 async def place_draft[T](
@@ -154,6 +167,8 @@ async def place_draft[T](
       one, and is not a rename.
     * Anything else is new or renamed. Its name is **taken** when a live profile has it, and
       the draft is refused; otherwise it is a profile of its own.
+    * A draft that would continue a profile that is a **pin's frozen copy** is refused too
+      (:attr:`Placement.frozen`): the pin is changed only by unpinning it.
 
     A Set's draft goes to the Set's profile when that is the profile its name names.
     """
@@ -176,4 +191,8 @@ async def place_draft[T](
     # what the draft is stored under. Only a continuation with no live profile behind it (a
     # base outside every list, nothing of that name yet) keeps the base's label.
     stored = lookup.label_of(owner) if owner is not None else (base_label or label.strip())
+    if owner is not None:
+        frozen = await lookup.frozen_sentence(owner)
+        if frozen is not None:
+            return Placement(owner=None, taken=None, name=stored, frozen=frozen)
     return Placement(owner=owner, taken=None, name=stored)

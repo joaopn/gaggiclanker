@@ -7,6 +7,8 @@ the three cannot disagree about where a draft goes or whether its name is taken.
 from __future__ import annotations
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.lineage import pinned_sentence
+from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
@@ -17,6 +19,7 @@ __all__ = ["LiveLineage"]
 class LiveLineage:
     def __init__(self, db: Database) -> None:
         self.board = ProfileBoardRepository(db)
+        self.pins = PinsRepository(db)
         self.profiles = ProfilesRepository(db)
         self.sets = SetsRepository(db)
 
@@ -47,3 +50,9 @@ class LiveLineage:
             device = await self.profiles.find_device_id_for_version(version_id)
             row = None if device is None else await self.board.find_live_by_device(device)
         return row
+
+    async def frozen_sentence(self, profile: BoardRow) -> str | None:
+        pin = await self.pins.live_for_board(profile.id)
+        if pin is None:
+            return None
+        return pinned_sentence(profile.label, pin.set_name, pin.version_label)

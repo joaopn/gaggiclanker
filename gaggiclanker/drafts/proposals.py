@@ -59,6 +59,7 @@ from gaggiclanker.signatures.service import DraftSignature, SignatureService, sp
 __all__ = [
     "DraftProposals",
     "DraftSignature",
+    "PinFrozen",
     "PinnedCopyName",
     "PreparedDraft",
     "TakenName",
@@ -85,6 +86,13 @@ class TakenName(Conflict):
         #: The stored name of the live profile that has it (its case may differ from ``label``):
         #: what a person is told, in their own sentence.
         self.existing = existing if existing is not None else label
+
+
+class PinFrozen(Conflict):
+    """A change to a profile that is a pin's frozen copy: it changes only by unpinning it."""
+
+    def __init__(self, sentence: str) -> None:
+        super().__init__(sentence, code="PIN_FROZEN")
 
 
 class PinnedCopyName(Conflict):
@@ -161,6 +169,8 @@ class DraftProposals:
         )
         if placement.taken is not None:
             raise TakenName(placement.name, existing=placement.taken.label)
+        if placement.frozen is not None:
+            raise PinFrozen(placement.frozen)
         label = placement.name
         document = clamped.for_new_device_profile(label=label)
         if not for_pin:
