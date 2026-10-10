@@ -20,7 +20,7 @@ from gaggiclanker.drafts.copies import ProfileCopier
 from gaggiclanker.drafts.proposals import PinnedCopyName
 from tests.drafts.conftest import BASE_LABEL, base_version_id, data, error
 from tests.drafts.helpers import make_set_on
-from tests.drafts.test_board import adopted, get_board, pull, row_for
+from tests.drafts.test_board import WRITE_FRAMES, adopted, get_board, pull, row_for
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
 
@@ -462,3 +462,38 @@ async def test_archiving_a_set_unpins_every_pin_in_one_step_and_the_sync_takes_t
     assert run.status == "ok", run.error
     assert not set(names) & {p["label"] for p in fake.profiles}
     assert (await client.post("/api/sets/9999/archive")).status_code == 404
+
+
+async def test_unpinning_the_profile_selected_on_the_machine_selects_another_one_first(
+    adopted: Adopted,
+) -> None:
+    app, client, fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    pin = data(await _pin(client, set_id, version_id))["pin"]
+    await pull(app)
+    name = pin["name"]
+    [file_id] = [str(p["id"]) for p in fake.profiles if p["label"] == name]
+    fake.selected_profile_id = file_id
+    data(await client.post(f"/api/pins/{pin['id']}/unpin"))
+
+    run = await pull(app)
+
+    assert run.status == "ok", run.error
+    assert file_id not in [str(p["id"]) for p in fake.profiles]
+    assert fake.selected_profile_id in [str(p["id"]) for p in fake.profiles]
+
+
+async def test_with_writes_off_a_pin_and_an_unpin_are_stored_and_nothing_is_sent(
+    live: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+) -> None:
+    app, client = live
+    set_id, version_id = await _set_with_version(app, client)
+    fake_device.ws_requests.clear()
+
+    pin = data(await _pin(client, set_id, version_id))["pin"]
+    data(await client.post(f"/api/pins/{pin['id']}/unpin"))
+    await pull(app)
+
+    sent = [t for t in fake_device.ws_requests if t in WRITE_FRAMES]
+    assert sent == [], "Writes are off: the copy and its removal are only stored"
+    assert pin["name"] not in [p["label"] for p in fake_device.profiles]
