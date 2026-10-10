@@ -70,6 +70,12 @@ database.
 - Optionally the source Set's own confirmed insights (never the general ones) are copied: each
   becomes a confirmed insight of the new Set with its text and source and nothing else, so the
   new Set's chat reads them as the Set's insights and never as its own proposals.
+  Each copy carries the id of the insight it was copied from, which outlives that insight, and
+  the Set page files copies under their own heading, "Copied with this Set", last. A copy and its
+  original are one lesson: Find patterns never counts a copy as a second Set's evidence. A
+  proposal that cites an insight and its copy is dropped as coming from one Set, a Set holding only
+  copies does not count toward the two Sets a run needs or the Knowledge page's count, the "new
+  since the last run" count leaves copies out, and the model is told which insights are copies.
 - The new Set remembers where it came from, for the person only: its page says "Copied from <Set>
   <version> on <date>" with a link, and the note is never given to the chat, the tools or the MCP
   server.
