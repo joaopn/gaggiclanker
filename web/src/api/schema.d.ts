@@ -1242,6 +1242,28 @@ export interface paths {
         patch: operations["patch_machine_api_machine_patch"];
         trace?: never;
     };
+    "/api/pins/{pin_id}/unpin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a pinned copy off the machine at the next sync
+         * @description Stamp the pin and tombstone its profile-list row in one transaction; the next sync removes
+         *     the file through the fresh-load check. The shots already filed stay where they are. 404 for an
+         *     unknown pin, 409 `NOT_PINNED` for one already unpinned.
+         */
+        post: operations["unpin_api_pins__pin_id__unpin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-board": {
         parameters: {
             query?: never;
@@ -2276,6 +2298,51 @@ export interface paths {
         post?: never;
         /** Take back the grade on this version's prediction */
         delete: operations["clear_outcome_api_sets__set_id__versions__version_id__outcome_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/versions/{version_id}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep this Set version on the machine as a profile of its own
+         * @description Copy the version's profile under a new name onto the profile list, switched on and starred,
+         *     and record the pin, in one transaction. Nothing is sent to the machine: the next sync with
+         *     Writes on puts it there. Refused (409, one code each, nothing written): `SET_ARCHIVED`,
+         *     `DESIGNING`, `VERSION_HAS_NO_PROFILE`, `ALREADY_PINNED`, `PIN_NAME_TAKEN`,
+         *     `PIN_POLICY_REFUSED`; 404 for a Set or version that is not there; 422 for a blank label.
+         */
+        post: operations["pin_version_api_sets__set_id__versions__version_id__pin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/versions/{version_id}/pin-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What pinning this Set version would do, without doing it
+         * @description The pin's own questions, asked and not acted on: the name the copy would have, whether it
+         *     is taken, and the sentence a refusal would carry (any refusal, not only a taken name).
+         */
+        get: operations["preview_pin_api_sets__set_id__versions__version_id__pin_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3455,6 +3522,22 @@ export interface components {
         /** ApiResponse[PatternsData] */
         ApiResponse_PatternsData_: {
             data?: components["schemas"]["PatternsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PinAnswer] */
+        ApiResponse_PinAnswer_: {
+            data?: components["schemas"]["PinAnswer"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PinPreview] */
+        ApiResponse_PinPreview_: {
+            data?: components["schemas"]["PinPreview"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -6448,6 +6531,84 @@ export interface components {
             name: string;
             /** Number */
             number: number | null;
+        };
+        /**
+         * PinAnswer
+         * @description `POST .../pin` and `POST /api/pins/{id}/unpin`: the pin as it now stands, and the id of the
+         *     profile-list row that carries its copy (tombstoned after an unpin).
+         */
+        PinAnswer: {
+            /** Board Id */
+            board_id: number;
+            pin: components["schemas"]["PinDetail"];
+        };
+        /**
+         * PinBody
+         * @description `POST .../pin`: the name for the copy, when the person does not want the default.
+         */
+        PinBody: {
+            /** Label */
+            label?: string | null;
+        };
+        /**
+         * PinDetail
+         * @description A pin with the names a page says it in, and the shots brewed on its copy.
+         */
+        PinDetail: {
+            /** Board Id */
+            board_id: number;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Original Label */
+            original_label?: string | null;
+            /** Original Version Id */
+            original_version_id?: number | null;
+            /** Pinned At */
+            pinned_at: string;
+            /** Profile Version Id */
+            profile_version_id: number;
+            /**
+             * Set Archived
+             * @default false
+             */
+            set_archived: boolean;
+            /** Set Id */
+            set_id: number;
+            /** Set Name */
+            set_name: string;
+            /** Set Version Id */
+            set_version_id: number;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
+            /** Unpinned At */
+            unpinned_at?: string | null;
+            /** Version Label */
+            version_label: string;
+        };
+        /**
+         * PinPreview
+         * @description `GET .../pin-preview`: what a pin of this version would do, without doing it.
+         */
+        PinPreview: {
+            /**
+             * Clamp Changes
+             * @default []
+             */
+            clamp_changes: components["schemas"]["PolicyChange"][];
+            /** Name */
+            name: string;
+            /** Refused */
+            refused?: string | null;
+            /**
+             * Taken
+             * @default false
+             */
+            taken: boolean;
         };
         /**
          * PolicyChange
@@ -11477,6 +11638,37 @@ export interface operations {
             };
         };
     };
+    unpin_api_pins__pin_id__unpin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pin_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PinAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_board_api_profile_board_get: {
         parameters: {
             query?: {
@@ -13172,6 +13364,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pin_version_api_sets__set_id__versions__version_id__pin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PinBody"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PinAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_pin_api_sets__set_id__versions__version_id__pin_preview_get: {
+        parameters: {
+            query?: {
+                label?: string | null;
+            };
+            header?: never;
+            path: {
+                set_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PinPreview_"];
                 };
             };
             /** @description Validation Error */

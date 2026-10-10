@@ -19,6 +19,7 @@ from gaggiclanker.api import (
     llm,
     machine,
     patterns,
+    pins,
     profile_board,
     profiles,
     prompts,
@@ -58,6 +59,7 @@ api_router.include_router(beans.router)
 api_router.include_router(grinders.router)
 api_router.include_router(sets.router)
 api_router.include_router(signatures.router)
+api_router.include_router(pins.router)
 api_router.include_router(imports.router)
 api_router.include_router(llm.router)
 api_router.include_router(prompts.router)

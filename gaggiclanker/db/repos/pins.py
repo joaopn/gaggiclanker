@@ -21,6 +21,8 @@ from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
+from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 
@@ -170,6 +172,45 @@ class PinsRepository(Repository):
         if pin is None:  # pragma: no cover - the caller read it in this transaction
             raise RuntimeError("the pin vanished between write and read")
         return pin
+
+    async def unpin(self, pin_id: int) -> bool:
+        """Unpin: stamp the record and tombstone the copy's row, in the caller's transaction.
+
+        The next sync removes the file through the deleted-row plan (the fresh-load content
+        check, the selected profile moving first). A copy that never reached the machine has
+        nothing to remove. The row's waiting draft, if the sync has not pushed it yet, is
+        discarded with the reason recorded, so the copy leaves no proposal on the Profiles page.
+        Returns ``False`` when the pin was not live.
+        """
+        pin = await self.get(pin_id)
+        if pin is None or pin.unpinned_at is not None:
+            return False
+        await self.mark_unpinned(pin_id)
+        board = ProfileBoardRepository(self.db)
+        row = await board.get(pin.board_id)
+        if row is not None and row.deleted_at is None:
+            if row.pending_draft_id is not None:
+                await ProfileDraftsRepository(self.db).discard_unsent(
+                    [row.pending_draft_id], why="unpinned"
+                )
+            await board.update(
+                row.id,
+                BoardRowPatch(
+                    deleted_at=utc_now(),
+                    pending_draft_id=None,
+                    pending_set_id=None,
+                    pending_major=None,
+                ),
+            )
+        return True
+
+    async def unpin_set(self, set_id: int) -> list[int]:
+        """Unpin every live pin of a Set (an archived Set receives no shots). The ids."""
+        unpinned = []
+        for pin in await self.live_for_set(set_id):
+            if await self.unpin(pin.id):
+                unpinned.append(pin.id)
+        return unpinned
 
     async def mark_unpinned(self, pin_id: int) -> None:
         await self.db.execute(
