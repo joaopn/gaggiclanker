@@ -4236,6 +4236,31 @@ export interface components {
             updated_at: string;
         };
         /**
+         * BoardRowPin
+         * @description The live pin a profile-list row carries the copy of: which Set version it belongs to.
+         */
+        BoardRowPin: {
+            /** Original Label */
+            original_label?: string | null;
+            /** Original Version Id */
+            original_version_id?: number | null;
+            /** Pin Id */
+            pin_id: number;
+            /** Set Id */
+            set_id: number;
+            /** Set Name */
+            set_name: string;
+            /** Set Version Id */
+            set_version_id: number;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
+            /** Version Label */
+            version_label: string;
+        };
+        /**
          * BoardRowView
          * @description A board row, its machine state and what the next sync would do about it.
          */
@@ -4253,6 +4278,7 @@ export interface components {
              * @default true
              */
             on_machine: boolean;
+            pin?: components["schemas"]["BoardRowPin"] | null;
             /** Planned */
             planned?: components["schemas"]["BoardAction"][];
             /**
@@ -6878,6 +6904,7 @@ export interface components {
              * @default false
              */
             mirrored: boolean;
+            pin?: components["schemas"]["VersionPin"] | null;
             /** Profile Entry Id */
             profile_entry_id?: number | null;
             /**
@@ -7493,6 +7520,11 @@ export interface components {
                 [key: string]: components["schemas"]["ShotJudgementRow"];
             };
             outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
+            /**
+             * Pins
+             * @default []
+             */
+            pins: components["schemas"]["SetPin"][];
             proposal?: components["schemas"]["SetProposalDetail"] | null;
             /**
              * Reverts
@@ -7526,6 +7558,26 @@ export interface components {
         SetListData: {
             /** Items */
             items: components["schemas"]["SetRow"][];
+        };
+        /**
+         * SetPin
+         * @description One live pin, as the Set page's "Pinned on the machine" card lists it.
+         */
+        SetPin: {
+            /** Board Id */
+            board_id: number;
+            /** Name */
+            name: string;
+            /** Pin Id */
+            pin_id: number;
+            /** Pinned At */
+            pinned_at: string;
+            /** Set Version Id */
+            set_version_id: number;
+            /** Shot Count */
+            shot_count: number;
+            /** Version Label */
+            version_label: string;
         };
         /**
          * SetProposalDecision
@@ -8032,6 +8084,7 @@ export interface components {
              */
             labels: components["schemas"]["VersionLabelCounts"];
             outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
+            pinned?: components["schemas"]["VersionPinned"] | null;
             /** Shots */
             shots: components["schemas"]["ShotListItem"][];
             version: components["schemas"]["SetVersionRow"];
@@ -9426,6 +9479,28 @@ export interface components {
              */
             note: string;
             outcome: components["schemas"]["VersionOutcome"];
+        };
+        /**
+         * VersionPin
+         * @description The pin a profile version is the copy of.
+         */
+        VersionPin: {
+            /** Pin Id */
+            pin_id: number;
+            /** Set Id */
+            set_id: number;
+            /** Set Version Id */
+            set_version_id: number;
+        };
+        /**
+         * VersionPinned
+         * @description A version that has a live pin: which, and how many shots were brewed on its copy.
+         */
+        VersionPinned: {
+            /** Pin Id */
+            pin_id: number;
+            /** Shot Count */
+            shot_count: number;
         };
         /**
          * VersionPredictionWrite

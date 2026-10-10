@@ -30,6 +30,7 @@ __all__ = [
     "ProfileVersionRow",
     "ProfileVersionSummary",
     "ProfilesRepository",
+    "VersionPin",
     "not_synthetic_sql",
     "stored_document",
     "stored_document_json",
@@ -95,6 +96,16 @@ class ProfileVersionRow(BaseModel):
     created_at: str
 
 
+class VersionPin(BaseModel):
+    """The pin a profile version is the copy of."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pin_id: int
+    set_id: int
+    set_version_id: int
+
+
 class ProfileVersionSummary(BaseModel):
     """A version as a table row: what it is, where it came from, who uses it.
 
@@ -136,6 +147,10 @@ class ProfileVersionSummary(BaseModel):
     #: NULL on two different versions does NOT mean the same profile: a version
     #: in no entry is the same as itself and as nothing else.
     profile_entry_id: int | None = None
+    #: Set when this version is the copy of a pin (live or since unpinned): the pin, its Set and
+    #: the Set version it belongs to. A recipe picker leaves such a version out, because no Set
+    #: version names a copy; ``None`` for every other version.
+    pin: VersionPin | None = None
 
 
 class ProfileVersionPage(BaseModel):
@@ -354,8 +369,11 @@ class ProfilesRepository(Repository):
                    EXISTS (SELECT 1 FROM device_profiles d
                             WHERE d.current_version_id = v.id
                               AND d.deleted_at IS NULL) AS mirrored,
-                   (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = v.id) AS shot_count
+                   (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = v.id) AS shot_count,
+                   p.id AS pin_id, pv.set_id AS pin_set_id, p.set_version_id AS pin_set_version_id
             FROM profile_versions v
+            LEFT JOIN set_version_pins p ON p.profile_version_id = v.id
+            LEFT JOIN set_versions pv ON pv.id = p.set_version_id
             WHERE {clause}
             ORDER BY v.id DESC
             LIMIT ? OFFSET ?
@@ -544,6 +562,19 @@ def _summary(row: dict[str, object]) -> ProfileVersionSummary:
     raw = row.pop("document", None)
     document = json.loads(raw) if isinstance(raw, str) else None
     recipe = profile_recipe(document if isinstance(document, dict) else None)
+    pin_id = row.pop("pin_id", None)
+    pin_set_id = row.pop("pin_set_id", None)
+    pin_set_version_id = row.pop("pin_set_version_id", None)
+    pin = (
+        None
+        if pin_id is None
+        else {"pin_id": pin_id, "set_id": pin_set_id, "set_version_id": pin_set_version_id}
+    )
     return ProfileVersionSummary.model_validate(
-        {**row, "temperature_c": recipe.temperature_c, "target_yield_g": recipe.target_yield_g}
+        {
+            **row,
+            "temperature_c": recipe.temperature_c,
+            "target_yield_g": recipe.target_yield_g,
+            "pin": pin,
+        }
     )

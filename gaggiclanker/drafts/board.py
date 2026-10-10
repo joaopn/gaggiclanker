@@ -55,6 +55,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.lineage import person_taken_sentence, place_draft, taken_name_sentence
+from gaggiclanker.db.repos.pins import PinDetail, PinsRepository
 from gaggiclanker.db.repos.profile_board import (
     BoardRow,
     BoardRowPatch,
@@ -126,6 +127,7 @@ from gaggiclanker.signatures.service import SignatureService
 __all__ = [
     "AttachToSet",
     "BoardMachineState",
+    "BoardRowPin",
     "BoardRowView",
     "BoardRunSummary",
     "BoardService",
@@ -218,6 +220,24 @@ class BoardMachineState(BaseModel):
     selected: bool | None = None
 
 
+class BoardRowPin(BaseModel):
+    """The live pin a profile-list row carries the copy of: which Set version it belongs to."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pin_id: int
+    set_id: int
+    set_name: str
+    set_version_id: int
+    #: The pinned version's name, "v1.2".
+    version_label: str
+    #: The profile the pinned version brews, the one whose signature judges the copy's shots.
+    original_label: str | None = None
+    original_version_id: int | None = None
+    #: Shots filed under the pinned version whose profile is this copy.
+    shot_count: int = 0
+
+
 class BoardRowView(BaseModel):
     """A board row, its machine state and what the next sync would do about it."""
 
@@ -244,6 +264,9 @@ class BoardRowView(BaseModel):
     conflict: ConflictSummary | None = None
     #: How many open drafts would become a version of this profile once made active.
     proposed_versions: int = 0
+    #: Set when this row carries the frozen copy of a pinned Set version: it has one version for
+    #: ever, no switch, and changes only by unpinning. ``None`` for every other profile.
+    pin: BoardRowPin | None = None
 
 
 class BoardLanding(BaseModel):
@@ -478,6 +501,7 @@ class BoardService:
                 proposed_by_row[proposal.row_id] = proposed_by_row.get(proposal.row_id, 0) + 1
         brews = await self.sets.current_brews()
         counts = await self.board.shot_counts([p.version.id for p in computed.rows])
+        pinned = await PinsRepository(self.db).live_for_boards(p.row.id for p in computed.rows)
         rows: list[BoardRowView] = []
         for plan in computed.rows:
             entry = await self.board.get_version_entry(plan.row.id, plan.version.id)
@@ -506,6 +530,7 @@ class BoardService:
                     in_conflict=plan.conflict_file is not None,
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),
+                    pin=_row_pin(pinned.get(plan.row.id)),
                 )
             )
         preview = None
@@ -2264,6 +2289,21 @@ def _set_version_label(draft: ProfileDraftRow, row: BoardRow | None) -> str | No
     ):
         return None
     return draft.set_next_major_label if row.pending_major else draft.set_next_minor_label
+
+
+def _row_pin(pin: PinDetail | None) -> BoardRowPin | None:
+    if pin is None:
+        return None
+    return BoardRowPin(
+        pin_id=pin.id,
+        set_id=pin.set_id,
+        set_name=pin.set_name,
+        set_version_id=pin.set_version_id,
+        version_label=pin.version_label,
+        original_label=pin.original_label,
+        original_version_id=pin.original_version_id,
+        shot_count=pin.shot_count,
+    )
 
 
 def _machine_state(plan: RowPlan, machine: MachineState) -> BoardMachineState:

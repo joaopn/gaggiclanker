@@ -30,6 +30,7 @@ from gaggiclanker.db.repos.machines import MachineRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.patterns import PatternProposalsRepository, PatternRunsRepository
+from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
@@ -80,6 +81,7 @@ __all__ = [
     "PatternRunsRepoDep",
     "PatternsServiceDep",
     "PinServiceDep",
+    "PinsRepoDep",
     "ProfilesRepoDep",
     "PromptServiceDep",
     "ReviewServiceDep",
@@ -225,6 +227,10 @@ def get_grinders_repo(request: Request) -> GrindersRepository:
     return GrindersRepository(get_database(request))
 
 
+def get_pins_repo(request: Request) -> PinsRepository:
+    return PinsRepository(get_database(request))
+
+
 def get_sets_repo(request: Request) -> SetsRepository:
     return SetsRepository(get_database(request))
 
@@ -358,6 +364,7 @@ SyncRepoDep = Annotated[SyncRepository, Depends(get_sync_repo)]
 BeansRepoDep = Annotated[BeansRepository, Depends(get_beans_repo)]
 GrindersRepoDep = Annotated[GrindersRepository, Depends(get_grinders_repo)]
 SetsRepoDep = Annotated[SetsRepository, Depends(get_sets_repo)]
+PinsRepoDep = Annotated[PinsRepository, Depends(get_pins_repo)]
 OutcomeProposalsRepoDep = Annotated[OutcomeProposalsRepository, Depends(get_outcome_proposals_repo)]
 SetProposalsRepoDep = Annotated[SetProposalsRepository, Depends(get_set_proposals_repo)]
 JudgementsRepoDep = Annotated[JudgementsRepository, Depends(get_judgements_repo)]

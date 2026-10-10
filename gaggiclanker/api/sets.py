@@ -46,6 +46,7 @@ from gaggiclanker.api.deps import (
     InsightDeletionsRepoDep,
     JudgementsRepoDep,
     OutcomeProposalsRepoDep,
+    PinsRepoDep,
     ProfilesRepoDep,
     SetProposalsRepoDep,
     SetsRepoDep,
@@ -228,6 +229,34 @@ class SetListData(BaseModel):
     items: list[SetRow]
 
 
+class VersionPinned(BaseModel):
+    """A version that has a live pin: which, and how many shots were brewed on its copy."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pin_id: int
+    #: Shots filed under this version whose profile is the pin's copy (a share of the version's
+    #: own ``shot_count``, which counts every shot filed under it).
+    shot_count: int
+
+
+class SetPin(BaseModel):
+    """One live pin, as the Set page's "Pinned on the machine" card lists it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pin_id: int
+    set_version_id: int
+    #: The pinned version's name, "v1.2".
+    version_label: str
+    #: The copy's name on the machine.
+    name: str
+    #: The profile-list row that carries the copy: the Profiles page's row for the pin.
+    board_id: int
+    pinned_at: str
+    shot_count: int
+
+
 class SetVersionDetail(BaseModel):
     """One version, its diff against its parent, and the shots pulled with it."""
 
@@ -259,6 +288,8 @@ class SetVersionDetail(BaseModel):
     #: answered. NULL once it is answered; never the recorded outcome, which is
     #: `version.outcome` and is written only by a person.
     outcome_proposal: OutcomeProposalRow | None = None
+    #: The live pin of this version, if it has one.
+    pinned: VersionPinned | None = None
 
 
 class SetProposalDetail(BaseModel):
@@ -402,6 +433,9 @@ class SetDetailData(BaseModel):
     proposal: SetProposalDetail | None = None
     #: The agent's grade of the **current** version, waiting for the person.
     outcome_proposal: OutcomeProposalRow | None = None
+    #: The versions of this Set kept on the machine as profiles of their own, newest pin first.
+    #: Live pins only; empty when there are none.
+    pins: list[SetPin] = []
 
 
 def _missing(field: str, value: int, noun: str) -> NoReturn:
@@ -877,6 +911,7 @@ async def get_set(
     judgements: JudgementsRepoDep,
     proposals: SetProposalsRepoDep,
     outcomes: OutcomeProposalsRepoDep,
+    pins: PinsRepoDep,
 ) -> JSONResponse:
     row = await sets.get(set_id)
     if row is None:
@@ -911,6 +946,8 @@ async def get_set(
     # without a request per row.
     threads = await proposals.accepted_threads(set_id)
     grades = await outcomes.waiting_by_version(set_id)
+    live_pins = await pins.live_for_set(set_id)
+    pin_of_version = {pin.set_version_id: pin for pin in live_pins}
     details = [
         SetVersionDetail(
             version=version,
@@ -920,6 +957,14 @@ async def get_set(
             labels=counts.get(version.id, VersionLabelCounts()),
             chat_thread_id=threads.get(version.id),
             outcome_proposal=grades.get(version.id),
+            pinned=(
+                VersionPinned(
+                    pin_id=pin_of_version[version.id].id,
+                    shot_count=pin_of_version[version.id].shot_count,
+                )
+                if version.id in pin_of_version
+                else None
+            ),
             evidence=(
                 version_evidence(
                     counted,
@@ -948,6 +993,18 @@ async def get_set(
             reverts=await sets.reverts(set_id),
             proposal=(await _proposal_detail(proposals, waiting) if waiting is not None else None),
             outcome_proposal=grades.get(row.current_version_id or 0),
+            pins=[
+                SetPin(
+                    pin_id=pin.id,
+                    set_version_id=pin.set_version_id,
+                    version_label=pin.version_label,
+                    name=pin.name,
+                    board_id=pin.board_id,
+                    pinned_at=pin.pinned_at,
+                    shot_count=pin.shot_count,
+                )
+                for pin in live_pins
+            ],
         ).model_dump(mode="json")
     )
 

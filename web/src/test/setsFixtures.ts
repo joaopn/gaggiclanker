@@ -410,6 +410,7 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
     reverts: [],
     proposal: null,
     outcome_proposal: null,
+    pins: [],
     ...overrides,
   };
 }
