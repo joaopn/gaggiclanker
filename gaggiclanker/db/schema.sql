@@ -203,7 +203,11 @@ CREATE TABLE sets (
     archived INTEGER NOT NULL DEFAULT 0,
     designing INTEGER NOT NULL DEFAULT 0,
     design_brief TEXT NOT NULL DEFAULT '{}',
-    current_version_id INTEGER REFERENCES set_versions(id)
+    current_version_id INTEGER REFERENCES set_versions(id),
+    -- Where this Set's first recipe came from, when it was started as a copy of another Set's
+    -- version: the "copied from" note, display only (nothing reads it as evidence). Cleared if
+    -- that version's Set is discarded, which leaves the note without its link.
+    copied_from_version_id INTEGER REFERENCES set_versions(id) ON DELETE SET NULL
 ) STRICT;
 CREATE INDEX idx_sets_bean ON sets(bean_id);
 
@@ -887,6 +891,28 @@ CREATE INDEX idx_set_versions_profile ON set_versions(profile_version_id);
 CREATE INDEX idx_set_versions_created ON set_versions(set_id, created_at, id);
 CREATE UNIQUE INDEX idx_set_versions_name
     ON set_versions(set_id, version_major, version_minor);
+
+-- A pin: one Set version kept on the machine as a profile of its own, frozen, while the Set goes on
+-- changing. A pin is a record, not a state of the profile-list row: the row is an ordinary app
+-- profile, and the pin says which Set version it belongs to.
+--   * profile_version_id: the copy, the pinned version's profile under the pin's name. A different
+--     profile version from the original because the label is in the content hash. UNIQUE: a copy
+--     names exactly one Set version for ever, so a shot brewed on it files under that version even
+--     after the pin is gone, and no other version can claim the same copy.
+--   * board_id: the profile-list row that carries the copy (tombstoned when unpinned, brought
+--     back if the same version is pinned again under the same name).
+--   * unpinned_at: NULL while the pin is live; at most one live pin per Set version.
+CREATE TABLE set_version_pins (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    set_version_id     INTEGER NOT NULL REFERENCES set_versions(id) ON DELETE CASCADE,
+    board_id           INTEGER NOT NULL REFERENCES profile_board(id),
+    profile_version_id INTEGER NOT NULL UNIQUE REFERENCES profile_versions(id),
+    pinned_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    unpinned_at        TEXT
+) STRICT;
+CREATE UNIQUE INDEX idx_set_version_pins_live_version
+    ON set_version_pins(set_version_id) WHERE unpinned_at IS NULL;
+CREATE INDEX idx_set_version_pins_board ON set_version_pins(board_id);
 
 CREATE TABLE profile_signatures (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,

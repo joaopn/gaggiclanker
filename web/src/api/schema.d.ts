@@ -7537,6 +7537,8 @@ export interface components {
             bean_id: number;
             /** Bean Name */
             bean_name?: string | null;
+            /** Copied From Version Id */
+            copied_from_version_id?: number | null;
             /** Created At */
             created_at: string;
             /** Current Version Id */

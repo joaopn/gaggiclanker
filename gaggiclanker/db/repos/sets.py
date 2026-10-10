@@ -570,6 +570,9 @@ class SetRow(BaseModel):
     shot_count: int = 0
     profile_version_id: int | None = None
     profile_label: str | None = None
+    #: The version this Set's first recipe was copied from, when it was started as a copy. Display
+    #: only: it is never read as evidence, and it is empty once that version's Set is discarded.
+    copied_from_version_id: int | None = None
 
     @model_validator(mode="before")
     @classmethod

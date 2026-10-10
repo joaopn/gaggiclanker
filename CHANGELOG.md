@@ -13,6 +13,14 @@ database.
 
 ## [Unreleased]
 
+### Breaking: pins add a table to the database
+
+- **Delete the database before starting this version** (Settings → System → Reset, or delete
+  the file; take a backup first, which restores only into a version with the same database). The
+  schema gains a table for pinned Set versions and a column on Sets for the Set a copy came from.
+  An app started on the old database stops with the "made by a different version" line and
+  changes nothing.
+
 ### The Curve check column says Pass and Unchecked
 
 - A shot with nothing in its Curve check used to leave the cell empty, whether nothing could be

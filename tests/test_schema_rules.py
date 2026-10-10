@@ -247,6 +247,58 @@ async def test_a_set_version_name_is_unique_within_its_set(db: Database) -> None
         await db.execute(insert, (1,))
 
 
+async def _a_set_with_two_versions_and_two_copies(db: Database) -> None:
+    await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
+    await db.execute("INSERT INTO sets (name, bean_id) VALUES ('S', 1)")
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_major, version_minor) "
+        "VALUES (1, 1, 0), (1, 1, 1)"
+    )
+    for number in (1, 2, 3):
+        await db.execute(
+            "INSERT INTO profile_versions (content_hash, label, type, json) "
+            "VALUES (?, 'Blooming', 'pro', '{}')",
+            (f"h{number}",),
+        )
+    await db.execute(
+        "INSERT INTO profile_board (label, current_version_id, origin) VALUES ('A', 2, 'draft')"
+    )
+
+
+_PIN = (
+    "INSERT INTO set_version_pins (set_version_id, board_id, profile_version_id, unpinned_at) "
+    "VALUES (?, 1, ?, ?)"
+)
+
+
+async def test_a_set_version_has_one_live_pin_and_a_copy_names_one_pin(db: Database) -> None:
+    await _a_set_with_two_versions_and_two_copies(db)
+    await db.execute(_PIN, (1, 1, "2026-10-01T00:00:00Z"))
+    # An unpinned record does not stand in the way of a live one, nor of another unpinned one.
+    await db.execute(_PIN, (1, 2, None))
+    await db.execute(_PIN, (1, 3, "2026-10-02T00:00:00Z"))
+    await db.execute(
+        "INSERT INTO profile_versions (content_hash, label, type, json) "
+        "VALUES ('h4', 'x', 'pro', '{}')"
+    )
+    with pytest.raises(sqlite3.IntegrityError):  # a second live pin on version 1
+        await db.execute(_PIN, (1, 4, None))
+    with pytest.raises(sqlite3.IntegrityError):  # the same copy for another Set version
+        await db.execute(_PIN, (2, 2, None))
+
+
+async def test_a_pin_goes_with_its_set_version_and_a_copied_from_note_outlives_it(
+    db: Database,
+) -> None:
+    await _a_set_with_two_versions_and_two_copies(db)
+    await db.execute(_PIN, (2, 1, None))
+    await db.execute("INSERT INTO sets (name, bean_id, copied_from_version_id) VALUES ('T', 1, 2)")
+    await db.execute("DELETE FROM sets WHERE id = 1")
+    assert await db.fetch_value("SELECT COUNT(*) FROM set_version_pins") == 0
+    assert await db.fetch_value("SELECT copied_from_version_id FROM sets WHERE id = 2") is None
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+
 # ── the curated views ───────────────────────────────────────────────────
 
 
