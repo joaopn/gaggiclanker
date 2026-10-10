@@ -13,7 +13,7 @@ database.
 
 ## [Unreleased]
 
-### Pin a Set version to the machine (the back end; the screens follow)
+### Pin a Set version to the machine
 
 - A Set version can be kept on the machine as a profile of its own while the Set goes on
   changing: `POST /api/sets/{id}/versions/{version_id}/pin` copies the version's profile under a
@@ -33,6 +33,16 @@ database.
   and its star still works. Archiving a Set unpins its pins. No Set version can name a pin's copy.
   The Set page's read lists the live pins and the version each belongs to, the profile list's read
   says which row carries a pin, and the Set chat is told which versions are pinned.
+- The screens: every version of a Set that takes shots and names a profile has a "Pin to the
+  machine" button on the Set page's log, which opens a dialog that asks the pin's preview first
+  and shows the server's own sentence for a taken name (with a Name field) or any other refusal.
+  A pinned version is marked and counts the shots brewed on its pin. Under "Now brewing", a
+  "Pinned on the machine" card lists the pins, newest first, each with the profile list's own line
+  while the copy is not on the machine yet, and Unpin, which asks first. Archiving a Set that has
+  pins asks first too and names them. On the Profiles page a pinned copy has no On the machine
+  switch, shows a badge linking to its Set and opens to a frozen panel (the curve, its shots, the
+  signature that judges them, Unpin) with no version list; in conflict it offers only "Keep the
+  app's". The recipe profile pickers no longer offer a pin's copy.
 
 ### Breaking: pins add a table to the database
 
