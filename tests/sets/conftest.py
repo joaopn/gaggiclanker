@@ -19,6 +19,8 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository
+from gaggiclanker.db.repos.pins import PinsRepository, PinWrite
+from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -121,3 +123,16 @@ async def make_shot(
             final_weight_g=final_weight_g,
         )
     )
+
+
+async def make_pin(db: Database, set_version_id: int, copy_label: str) -> tuple[int, int, int]:
+    """A pin of a Set version: a profile version called ``copy_label``, its profile-list row and
+    the record. Returns (pin id, the copy's profile version, the row)."""
+    copy = await make_profile_version(db, copy_label)
+    row = await ProfileBoardRepository(db).insert(
+        BoardRowWrite(label=copy_label, current_version_id=copy, origin="draft")
+    )
+    pin = await PinsRepository(db).insert(
+        PinWrite(set_version_id=set_version_id, board_id=row.id, profile_version_id=copy)
+    )
+    return pin.id, copy, row.id

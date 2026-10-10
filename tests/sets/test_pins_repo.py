@@ -12,23 +12,8 @@ from gaggiclanker.db.repos.pins import (
     judged_profile_version,
     judged_profile_versions,
 )
-from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch, SetVersionWrite, SetWrite
-from tests.sets.conftest import Fixtures, make_profile_version, make_shot
-
-
-async def _pin(
-    wired: Fixtures, set_version_id: int, copy_label: str, original: int
-) -> tuple[int, int, int]:
-    """A copy of ``original`` under ``copy_label``, its row, and the pin: (pin, copy, row)."""
-    copy = await make_profile_version(wired.db, copy_label)
-    row = await ProfileBoardRepository(wired.db).insert(
-        BoardRowWrite(label=copy_label, current_version_id=copy, origin="draft")
-    )
-    pin = await PinsRepository(wired.db).insert(
-        PinWrite(set_version_id=set_version_id, board_id=row.id, profile_version_id=copy)
-    )
-    return pin.id, copy, row.id
+from tests.sets.conftest import Fixtures, make_pin, make_profile_version, make_shot
 
 
 async def _a_set(wired: Fixtures, original: int) -> tuple[int, int]:
@@ -49,7 +34,7 @@ async def test_a_pin_names_its_set_version_and_the_copy_is_judged_by_the_origina
 ) -> None:
     original = await make_profile_version(wired.db, "Blooming")
     v1, _v2 = await _a_set(wired, original)
-    pin_id, copy, _row = await _pin(wired, v1, "Blooming v1", original)
+    pin_id, copy, _row = await make_pin(wired.db, v1, "Blooming v1")
 
     pins = PinsRepository(wired.db)
     assert (await pins.live_for_version(v1)) is not None
@@ -73,7 +58,7 @@ async def test_the_detail_counts_shots_filed_under_the_version_on_the_copy(
 ) -> None:
     original = await make_profile_version(wired.db, "Blooming")
     v1, v2 = await _a_set(wired, original)
-    pin_id, copy, _row = await _pin(wired, v1, "Blooming v1", original)
+    pin_id, copy, _row = await make_pin(wired.db, v1, "Blooming v1")
     on_copy = await make_shot(wired.db, "000601", profile_version_id=copy)
     on_original = await make_shot(wired.db, "000602", profile_version_id=original)
     elsewhere = await make_shot(wired.db, "000603", profile_version_id=copy)
@@ -97,8 +82,8 @@ async def test_live_pins_of_a_set_come_newest_first_and_leave_out_unpinned_ones(
 ) -> None:
     original = await make_profile_version(wired.db, "Blooming")
     v1, v2 = await _a_set(wired, original)
-    old_pin, _, _ = await _pin(wired, v1, "Blooming v1", original)
-    new_pin, _, _ = await _pin(wired, v2, "Blooming v1.1", original)
+    old_pin, _, _ = await make_pin(wired.db, v1, "Blooming v1")
+    new_pin, _, _ = await make_pin(wired.db, v2, "Blooming v1.1")
     pins = PinsRepository(wired.db)
     made = await wired.sets.get((await wired.sets.versions_by_id([v1]))[v1].set_id)
     assert made is not None
@@ -111,7 +96,7 @@ async def test_live_pins_of_a_set_come_newest_first_and_leave_out_unpinned_ones(
 async def test_a_copy_belongs_to_one_pin_and_a_version_to_one_live_pin(wired: Fixtures) -> None:
     original = await make_profile_version(wired.db, "Blooming")
     v1, v2 = await _a_set(wired, original)
-    _pin_id, copy, row = await _pin(wired, v1, "Blooming v1", original)
+    _pin_id, copy, row = await make_pin(wired.db, v1, "Blooming v1")
     pins = PinsRepository(wired.db)
 
     with pytest.raises(sqlite3.IntegrityError):

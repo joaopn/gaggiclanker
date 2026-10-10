@@ -2113,6 +2113,26 @@ class SetsRepository(Repository):
         )
         return cursor.rowcount > 0
 
+    async def pinned_version(self, profile_version_id: int) -> int | None:
+        """The Set version a pin's copy belongs to, when its Set is open to automatic filing.
+
+        The Set's own "file matching shots here" governs a pin as it governs every other way a
+        shot is filed by its profile: with it off the Set's shots are filed by hand, and the
+        Match by profile button files the waiting ones once it is back on. An archived Set
+        receives none. The pin's own record may be unpinned already: the copy still names the
+        version (the file may be on the machine until the next sync removes it).
+        """
+        found = await self.db.fetch_value(
+            """
+            SELECT p.set_version_id FROM set_version_pins p
+            JOIN set_versions v ON v.id = p.set_version_id
+            JOIN sets s ON s.id = v.set_id
+            WHERE p.profile_version_id = ? AND s.automatch = 1 AND s.archived = 0
+            """,
+            (profile_version_id,),
+        )
+        return None if found is None else int(found)
+
     async def versions_naming_profile(self, profile_version_id: int) -> list[int]:
         """The current version of every Set offered to the matcher for this profile.
 
@@ -2172,6 +2192,14 @@ class SetsRepository(Repository):
         resolved = await self._resolved_profile_version(profile_version_id, device_profile_id)
         if resolved is None:
             return ProfileMatch(outcome="unmatched")
+        pinned = await self.pinned_version(resolved)
+        if pinned is not None:
+            # A pin's copy names exactly one Set version, so there is nothing to guess: the
+            # shot is that version's (a shot brewed between an unpin and the sync that removes
+            # the file included). Like every automatic filing it only fills a NULL.
+            if not await self._fill(shot_id, pinned):
+                return ProfileMatch(outcome="unmatched")
+            return ProfileMatch(outcome="matched", set_version_id=pinned)
         candidates = await self.versions_naming_profile(resolved)
         if len(candidates) > 1:
             return ProfileMatch(outcome="ambiguous")
