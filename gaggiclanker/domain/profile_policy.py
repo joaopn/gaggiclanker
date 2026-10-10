@@ -32,6 +32,7 @@ the caller owns the lookup.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -61,6 +62,7 @@ __all__ = [
     "clamp",
     "diff_stop_conditions",
     "enforce",
+    "outside_bounds_sentence",
 ]
 
 
@@ -157,6 +159,14 @@ class PolicyChange(BaseModel):
     before: float
     after: float
     reason: str
+
+
+def outside_bounds_sentence(changes: Sequence[PolicyChange]) -> str:
+    """The one way a profile the clamp would change is described: what a push, a make-active and
+    a copy are all refused with."""
+    return "outside the current safety bounds: " + "; ".join(
+        f"{c.path} {c.before:g} -> {c.after:g}" for c in changes
+    )
 
 
 class Violation(BaseModel):

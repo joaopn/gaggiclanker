@@ -71,7 +71,7 @@ from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_policy import clamp
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.sets import grind_value, set_name
-from gaggiclanker.drafts.proposals import DraftProposals, TakenName
+from gaggiclanker.drafts.proposals import DraftProposals, PinnedCopyName, TakenName
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskSpawner
@@ -551,6 +551,11 @@ class StartingPointService:
             # The wizard has no name field: the person's way out is another suggestion.
             raise Conflict(
                 f"The suggested name {taken.label} is already a profile. Ask for another "
+                "suggestion, or pick an option that uses a profile you already have."
+            ) from None
+        except PinnedCopyName as pinned:
+            raise Conflict(
+                f"The suggested name {pinned.label} belongs to a pinned copy. Ask for another "
                 "suggestion, or pick an option that uses a profile you already have."
             ) from None
         return draft

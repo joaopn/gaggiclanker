@@ -35,6 +35,8 @@ __all__ = [
     "lineage_owner",
     "name_key",
     "person_taken_sentence",
+    "pinned_copy_agent_sentence",
+    "pinned_copy_sentence",
     "place_draft",
     "taken_name_sentence",
 ]
@@ -61,6 +63,23 @@ def person_taken_sentence(existing_label: str) -> str:
     was typed (the typed case may differ), and no advice about drafting. The agent keeps
     :func:`taken_name_sentence`."""
     return f"There is already a profile called {existing_label}. Choose another name."
+
+
+def pinned_copy_sentence(name: str, set_name: str, version_label: str) -> str:
+    """What a person is told when a name is the copy of a pin (live or since unpinned): the copy
+    belongs to that Set version for ever, so the name is not free even when no profile has it."""
+    return (
+        f"{name} is the name of the copy pinned from {set_name} {version_label}. "
+        "Choose another name."
+    )
+
+
+def pinned_copy_agent_sentence(name: str, set_name: str, version_label: str) -> str:
+    """The same refusal in the agent's wording (as :func:`taken_name_sentence` is the agent's)."""
+    return (
+        f"{name} is the name of the copy pinned from {set_name} {version_label}. Choose another "
+        "name for a new profile."
+    )
 
 
 class LineageLookup[T](Protocol):

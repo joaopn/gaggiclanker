@@ -26,7 +26,13 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.lineage import place_draft, taken_name_sentence
+from gaggiclanker.db.repos.lineage import (
+    pinned_copy_agent_sentence,
+    pinned_copy_sentence,
+    place_draft,
+    taken_name_sentence,
+)
+from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftRow,
     ProfileDraftsRepository,
@@ -53,6 +59,7 @@ from gaggiclanker.signatures.service import DraftSignature, SignatureService, sp
 __all__ = [
     "DraftProposals",
     "DraftSignature",
+    "PinnedCopyName",
     "PreparedDraft",
     "TakenName",
     "profile_from_version",
@@ -72,9 +79,24 @@ class PreparedDraft:
 class TakenName(Conflict):
     """A new or renamed draft asked for the name of a profile that is already in the list."""
 
-    def __init__(self, label: str) -> None:
+    def __init__(self, label: str, *, existing: str | None = None) -> None:
         super().__init__(taken_name_sentence(label))
         self.label = label
+        #: The stored name of the live profile that has it (its case may differ from ``label``):
+        #: what a person is told, in their own sentence.
+        self.existing = existing if existing is not None else label
+
+
+class PinnedCopyName(Conflict):
+    """A draft's document is the copy of a pin, which belongs to that pin's Set version for ever.
+
+    The message is the agent's wording; ``person`` is the sentence under a Name field.
+    """
+
+    def __init__(self, label: str, *, set_name: str, version_label: str) -> None:
+        super().__init__(pinned_copy_agent_sentence(label, set_name, version_label))
+        self.label = label
+        self.person = pinned_copy_sentence(label, set_name, version_label)
 
 
 class DraftProposals:
@@ -98,7 +120,13 @@ class DraftProposals:
         return bounds_from({key: setting.value for key, setting in resolved.items()})
 
     async def prepare(
-        self, base_version_id: int, base: Profile, candidate: Profile, *, is_new: bool = False
+        self,
+        base_version_id: int,
+        base: Profile,
+        candidate: Profile,
+        *,
+        is_new: bool = False,
+        for_pin: bool = False,
     ) -> PreparedDraft:
         """Clamp, re-check, refuse a taken name, diff the stop conditions.
 
@@ -110,6 +138,10 @@ class DraftProposals:
         for it. Raises :class:`Unprocessable` carrying every violation at once —
         a person fixing a hand-edited profile wants the whole list, not the
         first problem six times.
+
+        A document that is the copy a pin made is refused (:class:`PinnedCopyName`): a copy names
+        one Set version for ever, so an ordinary draft cannot land on it once its pin is gone.
+        ``for_pin`` is the pin's own path, which decides what to do with a copy it finds.
         """
         bounds = await self.bounds()
         clamped, changes = clamp(candidate, bounds)
@@ -127,14 +159,33 @@ class DraftProposals:
             base_version_id=None if is_new else base_version_id,
             base_label=None if is_new else base.label,
         )
-        if placement.refused:
-            raise TakenName(placement.name)
+        if placement.taken is not None:
+            raise TakenName(placement.name, existing=placement.taken.label)
         label = placement.name
         document = clamped.for_new_device_profile(label=label)
+        if not for_pin:
+            pinned = await self.pinned_copy_of(document)
+            if pinned is not None:
+                raise pinned
         return PreparedDraft(
             profile=document,
             clamp_changes=changes,
             stop_condition_changes=[] if is_new else diff_stop_conditions(base, document),
+        )
+
+    async def pinned_copy_of(self, document: Profile) -> PinnedCopyName | None:
+        """The refusal for a document that is exactly the copy of a pin (live or unpinned), else
+        ``None``. One function for the constructor and the name check."""
+        stored = await self.profiles.get_version_by_hash(profile_content_hash(document))
+        if stored is None:
+            return None
+        pins = PinsRepository(self.db)
+        record = await pins.by_copy(stored.id)
+        detail = None if record is None else await pins.detail(record.id)
+        if detail is None:
+            return None
+        return PinnedCopyName(
+            document.label, set_name=detail.set_name, version_label=detail.version_label
         )
 
     async def create_manual(
@@ -233,15 +284,19 @@ class DraftProposals:
         is_new: bool = False,
         made_by: Literal["agent", "edit"] = "agent",
         signature: DraftSignature | None = None,
+        carry_signature: bool = True,
     ) -> ProfileDraftRow:
         """Insert the draft row for a prepared document.
 
         A draft's version carries the base's confirmed signature as proposals (a draft carries
         from its base), and the agent's own expectations for it, when it sent some, are stored
         as proposed on the same version with the draft named as where they came from.
+
+        ``carry_signature`` false stores the version without its base's signature: a pin's copy
+        is judged by the original's, so it carries none of its own.
         """
         version, created = await self.profiles.ensure_version(prepared.profile, source="draft")
-        if created:
+        if created and carry_signature:
             await self.signatures.carry_quietly(base_version_id, version.id)
         # The draft and the expectations it carries are one write: a refusal or a crash between
         # them must not leave a draft whose signature is half there.

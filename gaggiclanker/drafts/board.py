@@ -73,7 +73,12 @@ from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.domain.models import Profile, profile_content_hash
-from gaggiclanker.domain.profile_policy import ProfileRejected, enforce
+from gaggiclanker.domain.profile_policy import (
+    ProfileRejected,
+    clamp,
+    enforce,
+    outside_bounds_sentence,
+)
 from gaggiclanker.drafts.board_plan import (
     ANOTHER_ROW,
     CONFLICT,
@@ -107,6 +112,7 @@ from gaggiclanker.drafts.machine import (
 )
 from gaggiclanker.drafts.proposals import (
     DraftProposals,
+    PinnedCopyName,
     TakenName,
     profile_from_version,
     schema_errors,
@@ -444,9 +450,7 @@ class BoardService:
         except (ProfileRejected, Unprocessable, ValidationError) as exc:
             return str(exc)
         if changes:
-            return "outside the current safety bounds: " + "; ".join(
-                f"{c.path} {c.before:g} -> {c.after:g}" for c in changes
-            )
+            return outside_bounds_sentence(changes)
         return None
 
     async def plan(self, machine: MachineState, *, host: str) -> BoardPlan:
@@ -688,7 +692,21 @@ class BoardService:
         existing = then.owner or then.taken
         if existing is not None:
             return NameCheck(label=name, refused=person_taken_sentence(existing.label))
+        # The put rebuilds the document under this name, and a document that is exactly a pin's
+        # copy is refused there: say so here too, in the person's words.
+        pinned = await self._pinned_copy_named(version, first.name)
+        if pinned is not None:
+            return NameCheck(label=name, refused=pinned.person)
         return NameCheck(label=name)
+
+    async def _pinned_copy_named(
+        self, version: ProfileVersionRow, name: str
+    ) -> PinnedCopyName | None:
+        """Whether this version's document under ``name`` (as the constructor would store it,
+        clamped) is the copy of a pin."""
+        candidate = Profile.model_validate({**(version.profile or {}), "label": name})
+        clamped, _ = clamp(candidate, await self.proposals.bounds())
+        return await self.proposals.pinned_copy_of(clamped.for_new_device_profile(label=name))
 
     async def standing(self, draft_id: int, machine: MachineState, *, host: str) -> DraftStanding:
         """Where one proposal stands, whether it is waiting or answered. Reads the archive only.
