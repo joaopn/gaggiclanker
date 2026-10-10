@@ -15,6 +15,7 @@ from typing import Any
 import structlog
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.pins import judged_profile_version
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.signatures import (
     AnotherOverrideInForce,
@@ -202,6 +203,15 @@ class SignatureService:
         self.repo = SignatureRepository(db)
         self.profiles = ProfilesRepository(db)
 
+    async def _refuse_a_pins_copy(self, profile_version_id: int) -> None:
+        """A pin's copy carries no expectations of its own: its shots are judged by the profile
+        it was copied from, so proposing or storing one on the copy would never be read."""
+        judged = await judged_profile_version(self.db, profile_version_id)
+        if judged != profile_version_id:
+            original = await self.profiles.get_version(judged)
+            name = original.label if original is not None else f"profile version {judged}"
+            raise SignatureRefused(f"A pin is judged by {name}'s signature.")
+
     async def phase_names(self, profile_version_id: int) -> list[str] | None:
         """The profile version's phase names, or ``None`` when it is not stored."""
         version = await self.profiles.get_version(profile_version_id)
@@ -227,6 +237,7 @@ class SignatureService:
         """
         if not items:
             raise SignatureRefused("Propose at least one expectation.")
+        await self._refuse_a_pins_copy(profile_version_id)
         names = list(phases) if phases is not None else await self.phase_names(profile_version_id)
         if names is None:
             raise SignatureRefused(f"There is no profile version {profile_version_id}.")
@@ -247,6 +258,7 @@ class SignatureService:
         draft_id: int | None,
     ) -> list[ExpectationRow]:
         """Store expectations that were validated already (a draft's, with the draft)."""
+        await self._refuse_a_pins_copy(profile_version_id)
         return await self.repo.add(
             profile_version_id,
             _writes(valid, reason=reason, thread_id=thread_id, draft_id=draft_id),
@@ -263,6 +275,9 @@ class SignatureService:
         """
         if from_version_id == to_version_id:
             return []
+        # A pin's copy has no signature of its own: a profile made from it starts from the
+        # signature that judges its shots, the original's.
+        from_version_id = await judged_profile_version(self.db, from_version_id)
         confirmed = (await self.repo.confirmed_for_versions([from_version_id])).get(
             from_version_id, []
         )

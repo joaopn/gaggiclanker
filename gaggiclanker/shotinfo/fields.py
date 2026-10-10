@@ -138,7 +138,8 @@ class SignatureStateOut(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: The profile version the shot brewed, whose signature applies (``None``: no profile).
+    #: The profile version whose signature judged the shot (``None``: no profile): the profile
+    #: the shot brewed, or the original it was copied from when it was brewed on a pin's copy.
     profile_version_id: int | None
     #: How many confirmed expectations that signature has; 0 reads as "without a signature".
     confirmed: int

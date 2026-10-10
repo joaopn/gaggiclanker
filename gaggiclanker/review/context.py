@@ -49,6 +49,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.knowledge import RulesRepository
+from gaggiclanker.db.repos.pins import judged_profile_version
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.signatures import SignatureRepository
@@ -254,10 +255,9 @@ async def build_review_input(
     expectations: list[ExpectationAsked] = []
     confirmed = 0
     if facts.shot.profile_version_id is not None:
-        found = await SignatureRepository(db).confirmed_for_versions(
-            [facts.shot.profile_version_id]
-        )
-        rows = found.get(facts.shot.profile_version_id, [])
+        judged = await judged_profile_version(db, facts.shot.profile_version_id)
+        found = await SignatureRepository(db).confirmed_for_versions([judged])
+        rows = found.get(judged, [])
         confirmed = len(rows)
         expectations = [
             ExpectationAsked(

@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.pins import judged_profile_versions
 from gaggiclanker.db.repos.signatures import ExpectationRow, SignatureRepository
 from gaggiclanker.domain.metric_language import Compare, ShotData
 from gaggiclanker.domain.models import PhaseTransition
@@ -80,7 +81,8 @@ class CheckSubject:
     """What one shot's checks are worked out from, besides its profile's signature."""
 
     shot_id: int
-    #: The profile version the shot brewed: whose signature applies.
+    #: The profile version the shot brewed. Its signature applies, but for a pin's copy, which is
+    #: judged by the signature of the profile it was copied from (`judged_profile_version`).
     profile_version_id: int | None
     #: The Set version it is filed under: whose override applies.
     set_version_id: int | None
@@ -174,6 +176,7 @@ def _expectation_print(rows: Sequence[ExpectationRow]) -> str:
 
 def _key(
     subject: CheckSubject,
+    judged: int | None,
     expectations: Sequence[ExpectationRow],
     override: tuple[int, Compare] | None,
 ) -> _Key:
@@ -184,6 +187,9 @@ def _key(
             json.dumps(subject.phases, sort_keys=True), json.dumps(subject.metrics, sort_keys=True)
         ),
         subject.profile_version_id,
+        # Whose signature judged it: a pin's copy is judged by its original's, so the key moves
+        # with that, not only with the shot's own profile.
+        judged,
         subject.set_version_id,
         subject.scale_connected,
         subject.has_pressure,
@@ -213,13 +219,20 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
     if not subjects:
         return {}
     repo = SignatureRepository(db)
-    confirmed = await repo.confirmed_for_versions(
-        {s.profile_version_id for s in subjects if s.profile_version_id is not None}
+    # The signature that judges a shot is the one of `judged_profile_version`: a pin's copy is
+    # judged by the original's, everything else by its own profile.
+    judges = await judged_profile_versions(
+        db, {s.profile_version_id for s in subjects if s.profile_version_id is not None}
     )
+
+    def judged_by(subject: CheckSubject) -> int | None:
+        if subject.profile_version_id is None:
+            return None
+        return judges[subject.profile_version_id]
+
+    confirmed = await repo.confirmed_for_versions(set(judges.values()))
     live = [s for s in subjects if not s.quarantined]
-    applying = [
-        s for s in live if s.profile_version_id is not None and confirmed.get(s.profile_version_id)
-    ]
+    applying = [s for s in live if (j := judged_by(s)) is not None and confirmed.get(j)]
     overrides = await repo.confirmed_overrides(
         {s.set_version_id for s in applying if s.set_version_id is not None}
     )
@@ -230,11 +243,10 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
     for subject in subjects:
         if subject.quarantined:
             # Bytes that did not parse have no samples and nothing to check; nothing is logged.
-            found[subject.shot_id] = ShotChecks(state=SignatureState(subject.profile_version_id))
+            found[subject.shot_id] = ShotChecks(state=SignatureState(judged_by(subject)))
             continue
-        expectations: Sequence[ExpectationRow] = (
-            confirmed.get(subject.profile_version_id, []) if subject.profile_version_id else []
-        )
+        judged = judged_by(subject)
+        expectations: Sequence[ExpectationRow] = confirmed.get(judged, []) if judged else []
         override = None
         if expectations and subject.set_version_id is not None:
             stored = overrides.get(subject.set_version_id)
@@ -242,7 +254,7 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
                 # Applied to the expectation it names and to nothing else; an expectation of
                 # another profile version's signature is never in this list to be hit.
                 override = (stored.expectation_id, stored.compare)
-        key = _key(subject, expectations, override) if expectations else ()
+        key = _key(subject, judged, expectations, override) if expectations else ()
         hit = _MEMO.get(key) if expectations else None
         if hit is not None:
             _MEMO.move_to_end(key)
@@ -275,7 +287,7 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
             data=data,
             phases=subject.phases,
             duration_s=subject.duration_s,
-            profile_version_id=subject.profile_version_id,
+            profile_version_id=judged_by(subject),
         )
         if expectations:
             # A shot with no signature costs nothing to work out again, and would only push the

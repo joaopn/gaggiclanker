@@ -20,6 +20,7 @@ Two pieces, kept apart because they move differently.
 from __future__ import annotations
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.pins import judged_profile_version
 from gaggiclanker.db.repos.signatures import ExpectationRow, SignatureRepository
 from gaggiclanker.domain.metric_language import compare_words
 from gaggiclanker.domain.signature import expectation_line
@@ -48,7 +49,11 @@ async def signature_block(
     profile_version_id: int,
     set_version_id: int | None,
 ) -> list[str]:
-    """A profile version's signature in force as lines, or the sentence saying there is none."""
+    """A profile version's signature in force as lines, or the sentence saying there is none.
+
+    A pin's copy is read as the profile it was copied from: that signature judges its shots.
+    """
+    profile_version_id = await judged_profile_version(db, profile_version_id)
     repo = SignatureRepository(db)
     rows = (await repo.confirmed_for_versions([profile_version_id])).get(profile_version_id, [])
     if not rows:
@@ -71,7 +76,9 @@ async def signature_block(
 
 
 async def signature_lines(db: Database, profile_version_id: int) -> list[str]:
-    """A profile version's expectations in force, one line each, tier first."""
+    """A profile version's expectations in force, one line each, tier first (a pin's copy reads
+    as the profile it was copied from)."""
+    profile_version_id = await judged_profile_version(db, profile_version_id)
     rows = (await SignatureRepository(db).confirmed_for_versions([profile_version_id])).get(
         profile_version_id, []
     )
