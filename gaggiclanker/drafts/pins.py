@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.lineage import person_taken_sentence
+from gaggiclanker.db.repos.lineage import person_taken_sentence, pinned_copy_sentence
 from gaggiclanker.db.repos.pins import PinDetail, PinRow, PinsRepository, PinWrite
 from gaggiclanker.db.repos.profile_board import BoardRow, BoardRowPatch
 from gaggiclanker.db.repos.sets import SetRow, SetsRepository, SetVersionRow
@@ -168,16 +168,29 @@ class PinService:
         else:
             found.name = found.copy.name
             owner = await self._owner_of(found.copy)
-            if owner is not None and owner.set_version_id != version.id:
+            stored = await self.board.profiles.get_version_by_hash(found.copy.content_hash)
+            brewed_by = None if stored is None else await self.pins.set_version_naming(stored.id)
+            held = (
+                None
+                if owner is None or owner.set_version_id == version.id
+                else await self.pins.detail(owner.id)
+            )
+            if held is not None:
                 # A copy names one Set version for ever: a name freed by an unpin cannot be
                 # reused, with the same content, by another version's pin.
+                sentence = pinned_copy_sentence(found.name, held.set_name, held.version_label)
+            elif brewed_by is not None:
+                # A profile some Set version already brews is not a copy to pin.
+                sentence = (
+                    f"{brewed_by[0]} {brewed_by[1]} brews a profile called {found.name}. "
+                    "Choose another name."
+                )
+            else:
+                sentence = ""
+            if sentence:
                 found.copy = None
                 found.taken = True
-                found.refusal = PinRefused(
-                    "PIN_NAME_TAKEN",
-                    person_taken_sentence(found.name),
-                    details={"name": found.name},
-                )
+                found.refusal = PinRefused("PIN_NAME_TAKEN", sentence, details={"name": found.name})
         return found
 
     async def _owner_of(self, copy: PreparedCopy) -> PinRow | None:

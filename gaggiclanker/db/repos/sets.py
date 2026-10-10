@@ -65,6 +65,7 @@ from pydantic import (
 )
 
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profile_identity import profile_entry_sql, same_profile
 from gaggiclanker.db.repos.shots import NEEDS_SET_SQL
@@ -434,6 +435,7 @@ type VersionRefusal = Literal[
     "designing",
     "design_has_versions",
     "design_has_shots",
+    "profile_is_a_pin",
 ]
 
 #: Why a Set being designed cannot take the write asked of it. The last two
@@ -461,6 +463,10 @@ _DESIGN_REFUSALS: dict[str, str] = {
     "designing": "This Set is being designed: there is nothing to go back to yet",
     "not_designing": "This Set is not being designed",
     "no_set": "There is no such Set",
+    "profile_is_a_pin": (
+        "That profile is the frozen copy of a pinned version. A Set version names the profile the "
+        "copy was made from, never the copy"
+    ),
 }
 
 
@@ -1411,6 +1417,7 @@ class SetsRepository(Repository):
         two writers cannot mint one name (the unique index on it is the
         backstop). ``major`` is already decided by the caller's rule.
         """
+        await self._refuse_a_pins_copy(values.get("profile_version_id"))
         numbers = await next_numbers(self.db, set_id, major=major)
         payload: dict[str, Any] = {
             "set_id": set_id,
@@ -1448,6 +1455,15 @@ class SetsRepository(Repository):
         )
         return version_id
 
+    async def _refuse_a_pins_copy(self, profile_version_id: int | None) -> None:
+        """No Set version names a pin's copy: the copy belongs to the pinned version for ever, and
+        a second version brewing it would put two Sets' shots on one frozen profile. Raised from
+        inside the caller's transaction, which it undoes."""
+        if profile_version_id is not None and await PinsRepository(self.db).is_copy(
+            profile_version_id
+        ):
+            raise VersionRefused("profile_is_a_pin")
+
     async def _fill_design(
         self,
         current: SetVersionRow,
@@ -1475,6 +1491,7 @@ class SetsRepository(Repository):
         for field in RECIPE_FIELDS:
             if field in sent:
                 values[field] = sent[field]
+        await self._refuse_a_pins_copy(values["profile_version_id"])
         await self.db.execute(
             """
             UPDATE set_versions

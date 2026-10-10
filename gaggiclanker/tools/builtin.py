@@ -853,17 +853,20 @@ class ListProfilesInput(_Model):
 async def list_profiles(ctx: ToolContext, args: ListProfilesInput) -> ListOutput:
     # `on_machine` is what a proposal naming a profile needs to know: a version
     # the machine does not have can only get there as a pushed draft.
+    # A pin's copy is no profile to choose for a Set: no version may name it.
+    copies = await ProfilesRepository(ctx.db).pin_copy_ids()
     rows = await ctx.db.fetch_all(
-        """
+        f"""
         SELECT p.*,
                EXISTS (SELECT 1 FROM device_profiles d
                         WHERE d.current_version_id = p.profile_version_id
                           AND d.deleted_at IS NULL) AS on_machine
           FROM v_profiles p
+         WHERE p.profile_version_id NOT IN ({", ".join("?" * len(copies)) or "-1"})
          ORDER BY p.created_at DESC, p.profile_version_id DESC
          LIMIT ?
-        """,
-        (args.limit,),
+        """,  # noqa: S608 - placeholders only
+        (*copies, args.limit),
     )
     items = [dict(zip(row.keys(), tuple(row), strict=True)) for row in rows]
     if ctx.scope.kind == "set":
@@ -1535,6 +1538,11 @@ async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalW
             "That profile version is not one this archive knows, so there is nothing for the "
             "Set to be switched to. list_profiles lists the ones it has; to change how a "
             "profile brews rather than which one is used, draft_profile is the tool."
+        )
+    if result.refused == "profile_is_a_pin":
+        return (
+            "That profile version is the frozen copy of a pinned Set version. A Set version names "
+            "the profile the copy was made from, never the copy: name that one instead."
         )
     if result.refused == "designing":
         return DESIGN_RULE

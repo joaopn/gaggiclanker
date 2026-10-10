@@ -15,6 +15,8 @@ import pytest
 
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+from gaggiclanker.db.repos.pins import PinsRepository, PinWrite
+from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
@@ -1180,3 +1182,26 @@ async def test_the_set_tools_name_versions_and_never_count_them(
     rows = [got["set"], *got["versions"], *got["trajectory"], *listed["items"]]
     for row in rows:
         assert not {"version_no", "current_version_no", "compares_to_version_no"} & set(row)
+
+
+async def test_list_profiles_leaves_out_the_copy_of_a_pin(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """No Set version may name a pin's copy, so the agent is not offered it to choose."""
+    copy = await _second_profile(archive)
+    listed = {item["profile_version_id"] for item in (await call(ctx, "list_profiles"))["items"]}
+    assert copy in listed
+    row = await ProfileBoardRepository(archive.db).insert(
+        BoardRowWrite(label="Hotter", current_version_id=copy, origin="draft")
+    )
+    version = await archive.db.fetch_value("SELECT id FROM set_versions ORDER BY id LIMIT 1")
+    pin = await PinsRepository(archive.db).insert(
+        PinWrite(set_version_id=int(version), board_id=row.id, profile_version_id=copy)
+    )
+
+    listed = {item["profile_version_id"] for item in (await call(ctx, "list_profiles"))["items"]}
+    assert copy not in listed and archive.profile_version_id in listed
+
+    await PinsRepository(archive.db).mark_unpinned(pin.id)
+    listed = {item["profile_version_id"] for item in (await call(ctx, "list_profiles"))["items"]}
+    assert copy not in listed

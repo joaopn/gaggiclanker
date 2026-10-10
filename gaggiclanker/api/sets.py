@@ -513,6 +513,15 @@ def version_refused(exc: VersionRefused) -> AppError:
     Public because the other path that writes a version — a push for a Set —
     answers with the same error.
     """
+    if exc.refused == "profile_is_a_pin":
+        return Conflict(
+            exc.message,
+            code=exc.code,
+            details={
+                "field": "profile_version_id",
+                "message": "name the profile it was copied from",
+            },
+        )
     return Conflict(
         exc.message,
         code=exc.code,
@@ -580,6 +589,15 @@ def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> 
                     "its draft was discarded or replaced on the Profiles page; decline this card "
                     "and ask the agent in the Set's chat for a new one"
                 ),
+            },
+        )
+    if refusal == "profile_is_a_pin":
+        return Conflict(
+            design_refusal_message(refusal),
+            code="PROFILE_IS_A_PIN",
+            details={
+                "field": "profile_version_id",
+                "message": "name the profile it was copied from",
             },
         )
     if refusal in ("design_has_shots", "design_has_versions"):
@@ -749,15 +767,18 @@ async def create_set(
     if profile_version_id is not None and await profiles.get_version(profile_version_id) is None:
         _missing("version.profile_version_id", profile_version_id, "profile version")
 
-    row = await sets.create(
-        SetWrite(
-            name=body.name,
-            bean_id=body.bean_id,
-            grinder_id=body.grinder_id,
-        ),
-        body.version,
-        automatch=body.automatch,
-    )
+    try:
+        row = await sets.create(
+            SetWrite(
+                name=body.name,
+                bean_id=body.bean_id,
+                grinder_id=body.grinder_id,
+            ),
+            body.version,
+            automatch=body.automatch,
+        )
+    except VersionRefused as exc:
+        raise version_refused(exc) from None
     return envelope_response(row.model_dump(mode="json"), status_code=201)
 
 

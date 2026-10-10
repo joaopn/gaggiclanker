@@ -408,6 +408,8 @@ async def profile_candidates(db: Database) -> list[ProfileCandidate]:
                (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = pv.id) AS shot_count
           FROM profile_versions pv
          WHERE pv.utility = 0 AND {not_synthetic_sql("pv")}
+           -- A pin's copy belongs to one Set version for ever and no Set version may name it.
+           AND NOT EXISTS (SELECT 1 FROM set_version_pins p WHERE p.profile_version_id = pv.id)
          ORDER BY shot_count DESC, pv.id DESC
          LIMIT ?
         """,  # noqa: S608 - the one interpolation is a constant fragment

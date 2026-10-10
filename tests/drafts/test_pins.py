@@ -355,6 +355,9 @@ async def test_a_name_freed_by_an_unpin_cannot_be_reused_by_another_version_with
 
     assert preview["taken"] is True and preview["refused"] == error(refused)["message"]
     assert refused.status_code == 409 and error(refused)["code"] == "PIN_NAME_TAKEN"
+    assert error(refused)["message"] == (
+        f"{first['name']} is the name of the copy pinned from Guji v1. Choose another name."
+    )
     assert await _counts(app) == before
 
 
@@ -381,5 +384,48 @@ async def test_an_ordinary_copy_cannot_land_on_a_pins_copy_even_after_the_unpin(
     )
     assert refused.value.person == (
         f"{first['name']} is the name of the copy pinned from Guji v1. Choose another name."
+    )
+    assert await _counts(app) == before
+
+
+async def test_the_routes_refuse_a_set_version_that_names_a_copy(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    copy = data(await _pin(client, set_id, version_id))["pin"]["profile_version_id"]
+    bean = data(await client.post("/api/beans", json={"name": "Other", "roaster": "x"}))
+    before = await _counts(app)
+
+    new_set = await client.post(
+        "/api/sets",
+        json={"name": "Other", "bean_id": bean["id"], "version": {"profile_version_id": copy}},
+    )
+    new_version = await client.post(
+        f"/api/sets/{set_id}/versions", json={"profile_version_id": copy}
+    )
+
+    for refused in (new_set, new_version):
+        assert refused.status_code == 409 and error(refused)["code"] == "PROFILE_IS_A_PIN"
+    assert await _counts(app) == before
+
+
+async def test_a_profile_some_set_version_already_brews_is_not_a_copy_to_pin(
+    adopted: Adopted,
+) -> None:
+    app, client, _fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    base = await app.state.board.proposals.base_profile(await base_version_id(app, BASE_LABEL))
+    lookalike, _ = await app.state.board.profiles.ensure_version(
+        base.model_copy(update={"label": f"{BASE_LABEL} v1"}), source="draft"
+    )
+    await make_set_on(client, "Brews the lookalike", lookalike.id)
+    before = await _counts(app)
+
+    preview = data(await _preview(client, set_id, version_id))
+    refused = await _pin(client, set_id, version_id)
+
+    assert preview["taken"] is True and preview["refused"] == error(refused)["message"]
+    assert refused.status_code == 409 and error(refused)["code"] == "PIN_NAME_TAKEN"
+    assert error(refused)["message"] == (
+        f"Brews the lookalike v1 brews a profile called {BASE_LABEL} v1. Choose another name."
     )
     assert await _counts(app) == before

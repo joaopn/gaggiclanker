@@ -367,6 +367,14 @@ class ProfilesRepository(Repository):
             total=int(total_row["n"]) if total_row is not None else 0,
         )
 
+    async def pin_copy_ids(self) -> list[int]:
+        """Every profile version that is the copy of a pin, live or since unpinned: none of them
+        may be named by a Set version, so none is offered to choose from."""
+        rows = await self.db.fetch_all(
+            "SELECT profile_version_id FROM set_version_pins ORDER BY profile_version_id"
+        )
+        return [int(row["profile_version_id"]) for row in rows]
+
     async def find_version_for_device_profile(self, device_id: str) -> ProfileVersionRow | None:
         """The version a device id currently holds, if we have mirrored it.
 

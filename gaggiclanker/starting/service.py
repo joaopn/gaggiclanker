@@ -53,6 +53,7 @@ from typing import Any
 import structlog
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import (
@@ -61,6 +62,8 @@ from gaggiclanker.db.repos.sets import (
     SetVersionRow,
     SetVersionWrite,
     SetWrite,
+    VersionRefused,
+    design_refusal_message,
 )
 from gaggiclanker.db.repos.starting import (
     StartingPointRunRow,
@@ -429,6 +432,17 @@ class StartingPointService:
                 details={"field": "option", "message": f"{option_key} was not offered"},
             )
 
+        if option.profile_version_id is not None and await PinsRepository(self.db).is_copy(
+            option.profile_version_id
+        ):
+            # The wizard offers no copy, but a suggestion can still name one: a Set version never
+            # names a pin's copy, so it is refused here, before a claim or a draft is made.
+            raise Conflict(
+                design_refusal_message("profile_is_a_pin"),
+                code="PROFILE_IS_A_PIN",
+                details={"field": "option", "message": "this option names a pinned copy"},
+            )
+
         # **Claim first, create second.** The read above is not a guard: two
         # requests can both see an unaccepted run and both get past it. The
         # guarded UPDATE is atomic, so exactly one of them proceeds to create
@@ -662,22 +676,28 @@ class StartingPointService:
 
         intent = _intent(run, option, draft)
         name = set_name(run.bean_name, run.grinder_name)
-        stored = await self.sets.create(
-            SetWrite(
-                name=name,
-                bean_id=run.bean_id,
-                grinder_id=run.grinder_id,
-            ),
-            SetVersionWrite(
-                profile_version_id=profile_version_id,
-                grind_setting=option.grind_setting[:100],
-                grind_value=grind_value(option.grind_setting, absolute=option.grind_is_absolute),
-                dose_g=option.dose_g,
-                target_yield_g=option.yield_g,
-                intent=intent,
-                origin="starting_point",
-            ),
-        )
+        try:
+            stored = await self.sets.create(
+                SetWrite(
+                    name=name,
+                    bean_id=run.bean_id,
+                    grinder_id=run.grinder_id,
+                ),
+                SetVersionWrite(
+                    profile_version_id=profile_version_id,
+                    grind_setting=option.grind_setting[:100],
+                    grind_value=grind_value(
+                        option.grind_setting, absolute=option.grind_is_absolute
+                    ),
+                    dose_g=option.dose_g,
+                    target_yield_g=option.yield_g,
+                    intent=intent,
+                    origin="starting_point",
+                ),
+            )
+        except VersionRefused as refused:
+            # The repository refuses from inside its transaction; this is the person's answer.
+            raise Conflict(refused.message, code=refused.code) from None
         version_id = stored.current_version_id
         version = None if version_id is None else await self.sets.get_version(version_id)
         if version is None:  # pragma: no cover - create() writes version 1

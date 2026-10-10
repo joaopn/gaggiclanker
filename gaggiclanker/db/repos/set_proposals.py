@@ -64,6 +64,7 @@ from pydantic import (
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
+from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profile_identity import same_profile
@@ -321,6 +322,7 @@ type ProposalRefusal = Literal[
     "draft_closed",
     "design_has_versions",
     "design_has_shots",
+    "profile_is_a_pin",
 ]
 
 
@@ -702,6 +704,10 @@ class SetProposalsRepository(Repository):
                 )
                 if known is None:
                     return ProposalWriteResult(refused="bad_profile")
+                # Create refuses whatever accept could not apply, and accepting would write a
+                # Set version naming the copy of a pin, which no version may.
+                if await PinsRepository(self.db).is_copy(profile_id):
+                    return ProposalWriteResult(refused="profile_is_a_pin")
             if spec.thread_id is not None:
                 # A conversation of **this Set**, not merely one that exists.
                 # This column is the record of where a change was argued, and a
@@ -874,10 +880,12 @@ class SetProposalsRepository(Repository):
                     return ProposalWriteResult(refused="no_current_version")
                 await self._decide(proposal_id, "accepted", now, resulting_version_id=version_id)
         except VersionRefused as exc:
-            # The only refusals an append raises are a design that can no
-            # longer be filled, and the transaction above is already undone.
+            # The refusals an append raises are a design that can no longer be filled and a
+            # profile that has become a pin's copy; the transaction above is already undone.
             return ProposalWriteResult(
-                refused="design_has_shots"
+                refused="profile_is_a_pin"
+                if exc.refused == "profile_is_a_pin"
+                else "design_has_shots"
                 if exc.refused == "design_has_shots"
                 else "design_has_versions",
                 proposal=await self.get(set_id, proposal_id),
