@@ -226,33 +226,22 @@ def _words(outcome: str | None) -> str:
 def home_sets(facts: Iterable[tuple[int, int, int | None]]) -> dict[int, int]:
     """The Set each insight counts for when insights are weighed across Sets.
 
-    ``facts`` are ``(insight id, its Set's id, the first original it was copied from or None)`` of
-    the insights in play (the confirmed, not dismissed ones of the Sets being read).
+    ``facts`` are ``(insight id, its Set's id, the Set the first original was learned in or None)``
+    of the insights in play (the confirmed, not dismissed ones of the Sets being read).
 
-    An original and every copy that names it are **one lesson**, and the lesson counts for one
-    Set: the original's while the original is among the insights in play, otherwise the lowest
-    Set id among the copies in play (so two duplicates of a Set stay one lesson after the
-    original is gone). Every insight that is no copy and has no copy in play counts for its own
-    Set.
+    A lesson's home is the Set it was first learned in. A copy's home is therefore always that
+    Set, whatever became of the original (deleted, taken back, dismissed) and whichever of several
+    duplicates came first; every other insight counts for its own Set. So an original and all its
+    copies are one lesson, and a Set holding a copy beside a lesson of its own stands for two.
 
     **The one place copies are folded.** Find patterns calls it for the proposal filter, for the
     approval, for the number of Sets a run needs and for the run's own count; nothing else may
     count Sets behind insights without it.
     """
-    rows = list(facts)
-    in_play = {insight_id: set_id for insight_id, set_id, _ in rows}
-    lowest: dict[int, int] = {}
-    for _, set_id, original in rows:
-        if original is not None:
-            lowest[original] = min(set_id, lowest.get(original, set_id))
-    home: dict[int, int] = {}
-    for insight_id, set_id, original in rows:
-        if original is None:
-            home[insight_id] = set_id
-        else:
-            # The original's Set while it is read; else the lowest copy's.
-            home[insight_id] = in_play.get(original, lowest[original])
-    return home
+    return {
+        insight_id: set_id if copied_from_set is None else copied_from_set
+        for insight_id, set_id, copied_from_set in facts
+    }
 
 
 def grouped_by_version(

@@ -71,15 +71,17 @@ database.
 - Optionally the source Set's own confirmed insights (never the general ones) are copied: each
   becomes a confirmed insight of the new Set with its text and source and nothing else, so the
   new Set's chat reads them as the Set's insights and never as its own proposals.
-  Each copy carries the id of the insight it was copied from, which outlives that insight, and
-  the Set page files copies under their own heading, "Copied with this Set", last. A copy and its
-  original are one lesson, and so are all the copies of one original, even after the original is
-  gone: Find patterns never counts them as a second Set's evidence. A proposal that cites an
+  Each copy carries the id of the insight it was copied from and the Set it was learned in,
+  which outlive that insight, and
+  the Set page files copies under their own heading, "Copied with this Set", last. A lesson counts
+  for the Set it was first learned in, whatever became of the original: a copy and its original,
+  and every copy of one original, are one lesson even after the original is gone or taken back
+  (a Set holding a copy beside a lesson of its own counts as two). Find patterns never counts a
+  copy as a second Set's evidence. A proposal that cites an
   insight and its copy is dropped as coming from one Set, and approving a pattern refuses when the
   sources that remain are one lesson. A Set holding only copies does not count toward the two Sets
   a run needs or the Knowledge page's count, and the run card says how many Sets the lessons come
-  from after copies are folded. The "new since the last run" count leaves out a copy of an insight
-  that is still there (a copy whose original is gone counts as new). The model is told which
+  from after copies are folded. The "new since the last run" count leaves out every copy. The model is told which
   insights are copies, whether or not the original is listed.
 - The new Set remembers where it came from, for the person only: its page says "Copied from <Set>
   <version> on <date>" with a link, and the note is never given to the chat, the tools or the MCP

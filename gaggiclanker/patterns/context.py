@@ -55,6 +55,8 @@ class PatternInsight(BaseModel):
     #: original are one lesson, copies naming one original are one lesson, and a copy's Set is
     #: not a second Set.
     copy_of: int | None = None
+    #: The Set that original was learned in: the Set this lesson counts for. Not shown to the model.
+    copied_from_set: int | None = None
 
 
 class PatternSet(BaseModel):
@@ -115,7 +117,9 @@ class PatternsInput(BaseModel):
         return len(
             set(
                 home_sets(
-                    (row.id, item.id, row.copy_of) for item in self.sets for row in item.insights
+                    (row.id, item.id, row.copied_from_set)
+                    for item in self.sets
+                    for row in item.insights
                 ).values()
             )
         )
@@ -161,6 +165,7 @@ async def build_patterns_input(db: Database) -> PatternsInput:
                         learned_at=item.set_version_label,
                         rests_on=[rest.render() for rest in item.rests_on],
                         copy_of=item.copied_from_insight_id,
+                        copied_from_set=item.copied_from_set_id,
                     )
                     for item in sorted(confirmed, key=lambda row: row.id)
                 ],

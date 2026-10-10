@@ -61,6 +61,7 @@ async def _duplicate(world: PatternWorld, *, copied_from: int | None = None) -> 
             confirmed=True,
             set_id=dup.id,
             copied_from_insight_id=original if copied_from is None else copied_from,
+            copied_from_set_id=world.a,
         )
     )
     return Duplicated(world, dup.id, original, copy)
@@ -74,14 +75,13 @@ def _cite(*ids: int) -> PatternsResult:
     )
 
 
-def test_an_original_and_its_copies_are_one_lesson_with_one_home_set() -> None:
-    folded = home_sets(
-        [(1, 10, None), (2, 20, 1), (3, 30, None), (4, 40, 99), (5, 25, 99), (6, 50, 98)]
-    )
+def test_a_lessons_home_is_the_set_it_was_first_learned_in() -> None:
+    # (id, its Set, the Set the first original was learned in). 2 and 4 are copies of lessons
+    # learned in Set 10 and 3 is a lesson of Set 30; whether the originals are still read is not
+    # asked at all.
+    folded = home_sets([(1, 10, None), (2, 20, 10), (3, 30, None), (4, 25, 10), (5, 50, None)])
 
-    # 2 is a copy of 1, read: the original's Set. 4 and 5 copy 99, which is not read: one lesson,
-    # at the lowest Set among them. 6 copies 98, alone: its own Set.
-    assert folded == {1: 10, 2: 10, 3: 30, 4: 25, 5: 25, 6: 50}
+    assert folded == {1: 10, 2: 10, 3: 30, 4: 10, 5: 50}
 
 
 async def _second_duplicate(world: PatternWorld, original: int, name: str) -> tuple[int, int]:
@@ -97,6 +97,7 @@ async def _second_duplicate(world: PatternWorld, original: int, name: str) -> tu
             confirmed=True,
             set_id=other.id,
             copied_from_insight_id=original,
+            copied_from_set_id=world.a,
         )
     )
     return other.id, copy
@@ -142,6 +143,60 @@ class TestCopiesOfOneOriginal:
         assert len(given.sets) == 3
         assert given.lesson_set_count == 1
         assert await PatternRunsRepository(world.db).sets_with_insights() == 1
+
+
+class TestWhicheverDuplicateCameFirst:
+    """The verdict does not depend on which of two duplicates of a Set came first."""
+
+    async def _scenario(self, world: PatternWorld, *, d_first: bool) -> tuple[int, int, int, int]:
+        original = await world.own(world.a, "Light roasts channel below 9 clicks.")
+        pair: list[tuple[int, int]] = []
+        for name in ("D", "E") if d_first else ("E", "D"):
+            pair.append(await _second_duplicate(world, original, name))
+        by_name = dict(zip(("D", "E") if d_first else ("E", "D"), pair, strict=True))
+        d_set, d_copy = by_name["D"]
+        _, e_copy = by_name["E"]
+        d_own = await world.own(d_set, "D's own: this bag wants 94 C.")
+        await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (original,))
+        return d_set, d_copy, e_copy, d_own
+
+    @pytest.mark.parametrize("d_first", [True, False])
+    async def test_a_copy_and_an_unrelated_lesson_of_another_duplicate_are_two_sets(
+        self, world: PatternWorld, d_first: bool
+    ) -> None:
+        _d, d_copy, e_copy, d_own = await self._scenario(world, d_first=d_first)
+        given = await build_patterns_input(world.db)
+
+        # E's copy of X counts for A, D's own lesson Y for D: two lessons from two Sets.
+        assert filter_proposals(_cite(e_copy, d_own), given).kept
+        # D's copy of X and E's copy of X are one lesson.
+        assert filter_proposals(_cite(d_copy, e_copy), given).dropped == {"one_set": 1}
+        assert await PatternRunsRepository(world.db).sets_with_insights() == 2
+
+    @pytest.mark.parametrize("d_first", [True, False])
+    async def test_approval_gives_the_same_verdict(
+        self, world: PatternWorld, d_first: bool
+    ) -> None:
+        d_set, _copy, e_copy, d_own = await self._scenario(world, d_first=d_first)
+        e_set = int(
+            await world.db.fetch_value(
+                "SELECT set_id FROM knowledge_insights WHERE id = ?", (e_copy,)
+            )
+        )
+        proposal = PatternProposalWrite(
+            text="A lesson.",
+            scope=InsightScope(),
+            sources=[
+                await _source(world, e_set, e_copy, "Light roasts channel below 9 clicks."),
+                await _source(world, d_set, d_own, "D's own: this bag wants 94 C."),
+            ],
+        )
+        await _finished(world, proposal)
+        proposal_id = int(await world.db.fetch_value("SELECT MAX(id) FROM pattern_proposals"))
+
+        result = await PatternProposalsRepository(world.db).approve(proposal_id)
+
+        assert result.refused is None
 
 
 class TestTheRunCard:
@@ -275,7 +330,7 @@ class TestTheKnowledgePagesCount:
         await world.own(world.c, "Its own.")
         assert await runs.sets_with_insights() == 2
 
-    async def test_a_copy_whose_original_is_gone_is_its_own_sets_lesson_again(
+    async def test_a_copy_stays_its_originals_lesson_when_the_original_is_gone(
         self, world: PatternWorld
     ) -> None:
         runs = PatternRunsRepository(world.db)
@@ -283,19 +338,39 @@ class TestTheKnowledgePagesCount:
 
         await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
 
-        assert await runs.sets_with_insights() == 1  # D alone: one Set, now its own
+        # D's copy still counts for A, where the lesson was learned: one Set, not two.
+        assert await runs.sets_with_insights() == 1
         await world.own(world.c, "Its own.")
         assert await runs.sets_with_insights() == 2
 
-    async def test_a_dismissed_original_no_longer_holds_its_copy(self, world: PatternWorld) -> None:
+    async def test_a_dismissed_original_still_homes_its_copies_in_a(
+        self, world: PatternWorld
+    ) -> None:
         dup = await _duplicate(world)
         await world.db.execute(
             "UPDATE knowledge_insights SET dismissed = 1 WHERE id = ?", (dup.original,)
         )
+        runs = PatternRunsRepository(world.db)
+        assert await runs.sets_with_insights() == 1  # the copy alone, homed in A
+
         await world.own(world.b, "Another Set.")
 
-        # B and D are two Sets now: D's copy is nobody's duplicate any more.
-        assert await PatternRunsRepository(world.db).sets_with_insights() == 2
+        assert await runs.sets_with_insights() == 2  # A (through the copy) and B
+        given = await build_patterns_input(world.db)
+        assert filter_proposals(_cite(dup.copy), given).dropped == {"one_set": 1}
+
+    async def test_a_set_holding_a_copy_and_a_lesson_of_its_own_stands_for_two_sets(
+        self, world: PatternWorld
+    ) -> None:
+        dup = await _duplicate(world)
+        await world.own(dup.d, "D's own lesson.")
+        runs = PatternRunsRepository(world.db)
+
+        assert await runs.sets_with_insights() == 2  # A (the copy's home) and D
+
+        await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
+
+        assert await runs.sets_with_insights() == 2
 
     async def test_a_copy_of_a_copy_folds_into_the_first_originals_set(
         self, world: PatternWorld
@@ -313,6 +388,7 @@ class TestTheKnowledgePagesCount:
                 confirmed=True,
                 set_id=second.id,
                 copied_from_insight_id=dup.original,
+                copied_from_set_id=world.a,
             )
         )
 
@@ -329,14 +405,13 @@ class TestTheNewSinceTheLastRunCount:
         await world.own(world.c, "Its own.")
         assert await runs.new_since_last_run() == 2
 
-    async def test_a_copy_whose_original_is_gone_is_new_evidence_of_its_own_set(
+    async def test_a_copy_is_never_new_even_when_its_original_is_gone(
         self, world: PatternWorld
     ) -> None:
         dup = await _duplicate(world)
-
         await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
 
-        assert await PatternRunsRepository(world.db).new_since_last_run() == 1
+        assert await PatternRunsRepository(world.db).new_since_last_run() == 0
 
 
 class TestTheProposalFilter:

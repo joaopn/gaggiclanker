@@ -158,7 +158,9 @@ def _why_dropped(
     # Different *lessons*, not different Sets: a copy and its original are one, so a proposal that
     # cites an insight and its copy comes from one Set. The scope check below still reads every
     # Set the sources sit in, since approving deletes the copy too.
-    home = home_sets((row.id, item.id, row.copy_of) for item in given.sets for row in item.insights)
+    home = home_sets(
+        (row.id, item.id, row.copied_from_set) for item in given.sets for row in item.insights
+    )
     if len({home[insight_id] for insight_id in ids}) < 2:
         return "one_set"
     if proposal.scope.profile_style is not None:

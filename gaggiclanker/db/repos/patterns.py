@@ -271,11 +271,11 @@ async def read_home_sets(db: Database) -> dict[int, int]:
     over what is still there.
     """
     rows = await db.fetch_all(
-        "SELECT i.id, i.set_id, i.copied_from_insight_id FROM knowledge_insights i "
+        "SELECT i.id, i.set_id, i.copied_from_set_id FROM knowledge_insights i "
         "JOIN sets s ON s.id = i.set_id "
         "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
     )
-    return home_sets((row["id"], row["set_id"], row["copied_from_insight_id"]) for row in rows)
+    return home_sets((row["id"], row["set_id"], row["copied_from_set_id"]) for row in rows)
 
 
 class PatternRunsRepository(Repository):
@@ -479,24 +479,21 @@ class PatternRunsRepository(Repository):
 
         A failed or interrupted run read nothing the person can rely on, so it does not move
         the line; with no finished run, every confirmed Set insight is new. A copy made by
-        duplicating a Set is not new: it is the lesson it copies.
+        duplicating a Set is never new: it is the lesson it copies.
         """
         since = await self.db.fetch_value(
             "SELECT MAX(created_at) FROM pattern_runs WHERE status = 'done'"
         )
-        rows = await self.db.fetch_all(
-            "SELECT i.id, i.set_id, i.copied_from_insight_id, i.confirmed_at "
-            "FROM knowledge_insights i JOIN sets s ON s.id = i.set_id "
-            "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
-        )
-        home = home_sets((row["id"], row["set_id"], row["copied_from_insight_id"]) for row in rows)
-        # A copy of an insight still present is the lesson it copies, never a new one; a copy
-        # whose original is gone is a lesson of its own.
-        return sum(
-            1
-            for row in rows
-            if (row["copied_from_insight_id"] is None or row["copied_from_insight_id"] not in home)
-            and (since is None or (row["confirmed_at"] or "") > since)
+        # A copy is the lesson it copies, never a new one, whatever became of the original.
+        return int(
+            await self.db.fetch_value(
+                "SELECT COUNT(*) FROM knowledge_insights i JOIN sets s ON s.id = i.set_id "
+                "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0 "
+                "AND i.copied_from_insight_id IS NULL "
+                "AND (? IS NULL OR i.confirmed_at > ?)",
+                (since, since),
+            )
+            or 0
         )
 
 
