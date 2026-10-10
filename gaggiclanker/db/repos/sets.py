@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Protocol
 
@@ -1270,11 +1271,20 @@ class SetsRepository(Repository):
         return await self.get(set_id)
 
     async def archive(self, set_id: int) -> SetRow | None:
-        """Retire a Set. Clears `automatch` too — an archived Set collects no shots."""
-        cursor = await self.db.execute(
-            "UPDATE sets SET archived = 1, automatch = 0 WHERE id = ?", (set_id,)
-        )
-        return None if cursor.rowcount == 0 else await self.get(set_id)
+        """Retire a Set. Clears `automatch` too — an archived Set collects no shots.
+
+        Its pins are unpinned in the same transaction: a copy left on the machine would brew
+        shots nobody can file, so the next sync takes each one off (the pinned shots already
+        filed stay where they are).
+        """
+        async with nullcontext() if self.db.in_transaction else self.db.transaction():
+            cursor = await self.db.execute(
+                "UPDATE sets SET archived = 1, automatch = 0 WHERE id = ?", (set_id,)
+            )
+            if cursor.rowcount == 0:
+                return None
+            await PinsRepository(self.db).unpin_set(set_id)
+        return await self.get(set_id)
 
     # ── versions ─────────────────────────────────────────────────────
 

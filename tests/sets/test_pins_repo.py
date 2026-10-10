@@ -104,3 +104,32 @@ async def test_a_copy_belongs_to_one_pin_and_a_version_to_one_live_pin(wired: Fi
     other = await make_profile_version(wired.db, "Blooming other")
     with pytest.raises(sqlite3.IntegrityError):
         await pins.insert(PinWrite(set_version_id=v1, board_id=row, profile_version_id=other))
+
+
+async def test_archiving_and_unpinning_are_one_transaction(
+    wired: Fixtures, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The last write of the archive fails: the archive and the unpin are undone together."""
+    original = await make_profile_version(wired.db, "Blooming")
+    v1, _v2 = await _a_set(wired, original)
+    pin_id, _copy, row_id = await make_pin(wired.db, v1, "Blooming v1")
+    set_id = (await wired.sets.versions_by_id([v1]))[v1].set_id
+    real = PinsRepository.unpin_set
+
+    async def unpin_then_fail(self: PinsRepository, which: int) -> list[int]:
+        await real(self, which)
+        raise RuntimeError("the last write of the transaction fails")
+
+    monkeypatch.setattr(PinsRepository, "unpin_set", unpin_then_fail)
+
+    with pytest.raises(RuntimeError):
+        await wired.sets.archive(set_id)
+
+    row = await wired.sets.get(set_id)
+    assert row is not None and row.archived is False and row.automatch is True
+    pin = await PinsRepository(wired.db).get(pin_id)
+    assert pin is not None and pin.unpinned_at is None
+    assert (
+        await wired.db.fetch_value("SELECT deleted_at FROM profile_board WHERE id = ?", (row_id,))
+        is None
+    )

@@ -429,3 +429,36 @@ async def test_a_profile_some_set_version_already_brews_is_not_a_copy_to_pin(
         f"Brews the lookalike v1 brews a profile called {BASE_LABEL} v1. Choose another name."
     )
     assert await _counts(app) == before
+
+
+async def test_archiving_a_set_unpins_every_pin_in_one_step_and_the_sync_takes_them_off(
+    adopted: Adopted,
+) -> None:
+    app, client, fake = adopted
+    set_id, v1 = await _set_with_version(app, client)
+    data(await client.post(f"/api/sets/{set_id}/versions", json={"dose_g": 18.5}))
+    versions = data(await client.get(f"/api/sets/{set_id}"))["versions"]
+    (v2,) = [int(v["version"]["id"]) for v in versions if v["version"]["id"] != v1]
+    names = [data(await _pin(client, set_id, v))["pin"]["name"] for v in (v1, v2)]
+    await pull(app)
+    assert set(names) <= {p["label"] for p in fake.profiles}
+
+    archived = data(await client.post(f"/api/sets/{set_id}/archive"))
+
+    assert archived["archived"] is True and archived["automatch"] is False
+    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_version_pins")) == 2
+    assert (
+        int(
+            await app.state.db.fetch_value(
+                "SELECT COUNT(*) FROM set_version_pins WHERE unpinned_at IS NULL"
+            )
+        )
+        == 0
+    )
+    board = await get_board(client)
+    assert not set(names) & {r["row"]["label"] for r in board["rows"]}
+    assert board["proposals"] == []
+    run = await pull(app)
+    assert run.status == "ok", run.error
+    assert not set(names) & {p["label"] for p in fake.profiles}
+    assert (await client.post("/api/sets/9999/archive")).status_code == 404
