@@ -162,7 +162,7 @@ async def test_the_preview_is_the_suggested_name_the_recipe_and_the_sets_own_ins
     assert await _counts(app) == before, "a preview writes nothing"
 
 
-async def test_the_preview_lists_insights_by_version_newest_first_and_unversioned_last(
+async def test_the_preview_lists_insights_by_version_newest_first_unversioned_then_copies(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
@@ -172,8 +172,9 @@ async def test_the_preview_lists_insights_by_version_newest_first_and_unversione
         v["version"]["version_label"]: v["version"]["id"]
         for v in data(await client.get(f"/api/sets/{set_id}"))["versions"]
     }
-    # Written oldest first: A at v1, a note with no version, B at v1.1, then another at v1.
+    # Written oldest first: A at v1, a copy, a note with no version, B at v1.1, then another at v1.
     a = await _insight(app, set_id, "A learned at v1")
+    copy = await _insight(app, set_id, "Copied with this Set")
     loose = await _insight(app, set_id, "Written with no version")
     b = await _insight(app, set_id, "B learned at v1.1")
     a2 = await _insight(app, set_id, "A2 learned at v1")
@@ -181,11 +182,17 @@ async def test_the_preview_lists_insights_by_version_newest_first_and_unversione
     await _learned_at(app, a2, versions["v1"])
     await _learned_at(app, b, versions["v1.1"])
     await _learned_at(app, loose, None)
+    # A copy names no version in practice; the flag alone puts it last, whatever it names.
+    await _learned_at(app, copy, versions["v1.1"])
+    await app.state.db.execute(
+        "UPDATE knowledge_insights SET copied_from_insight_id = 99 WHERE id = ?", (copy,)
+    )
 
     body = data(await _preview(client, set_id, v1))
 
-    # The newest version's group first, each group oldest first, no version last: the Set page.
-    assert [item["id"] for item in body["insights"]] == [b, a, a2, loose]
+    # The newest version's group first, each group oldest first, no version, then the copies:
+    # the Set page. The same fixture as the page's own test (`SetInsights.test.tsx`).
+    assert [item["id"] for item in body["insights"]] == [b, a, a2, loose, copy]
 
 
 async def test_a_version_with_no_profile_says_so_and_names_none(adopted: Adopted) -> None:

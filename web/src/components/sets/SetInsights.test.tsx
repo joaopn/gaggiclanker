@@ -82,12 +82,14 @@ describe("SetInsights", () => {
     expect(within(groups[1]).getAllByTestId("own-insight")).toHaveLength(2);
   });
 
-  it("orders the groups as the Duplicate preview does: the newest version's first, none last", async () => {
+  it("orders the groups as the Duplicate preview does: the newest version's first, none, then copies", async () => {
     // The same fixture as the server's `test_the_preview_lists_insights_by_version_newest_first…`:
-    // A and A2 at v1, a note with no version, B at v1.1; written in that order.
+    // A and A2 at v1, a copy, a note with no version, B at v1.1; written in that order. The copy
+    // names a version too, and the flag alone puts it last.
     getKnowledgeInsights.mockResolvedValue({
       items: [
         own(1, "v1", { text: "A learned at v1" }),
+        own(5, "v1.1", { text: "A copied lesson", copied_from_insight_id: 99 }),
         own(2, null, { text: "Written with no version" }),
         own(3, "v1.1", { text: "B learned at v1.1" }),
         own(4, "v1", { text: "A2 learned at v1" }),
@@ -103,13 +105,26 @@ describe("SetInsights", () => {
         .getAllByRole("listitem")
         .map(
           (item) =>
-            item.textContent?.match(/[AB]2? learned at v1(\.1)?|Written with no version/)?.[0],
+            item.textContent?.match(
+              /[AB]2? learned at v1(\.1)?|Written with no version|A copied lesson/,
+            )?.[0],
         ),
     ).toEqual([
       "B learned at v1.1",
       "A learned at v1",
       "A2 learned at v1",
       "Written with no version",
+      "A copied lesson",
+    ]);
+    // Under its own heading, which is not "Learned at": it was not learned here.
+    const headings = screen
+      .getAllByTestId("set-insights-version")
+      .map((g) => g.querySelector("h3"));
+    expect(headings.map((h) => h?.textContent)).toEqual([
+      "Learned at v1.1",
+      "Learned at v1",
+      "Version not recorded",
+      "Copied with this Set",
     ]);
   });
 

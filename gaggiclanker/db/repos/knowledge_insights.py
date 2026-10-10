@@ -249,15 +249,18 @@ def grouped_by_version(
     """A Set's own insights in the order its page lists them.
 
     The page groups them by the version they were learned at, the newest version's group first,
-    and the insights that name no version last; inside a group they keep the order they came in
-    (oldest first). A version the list does not know sits after the known ones and before the
-    unversioned. The Set page does this client-side (``SetInsights``); the Duplicate preview calls
-    this, and a test on each side holds both to one fixture.
+    then the insights that name no version, then the copies made when the Set was duplicated
+    ("Copied with this Set"); inside a group they keep the order they came in (oldest first). A
+    version the list does not know sits after the known ones and before the unversioned. The Set
+    page does this client-side (``SetInsights``); the Duplicate preview calls this, and a test on
+    each side holds both to one fixture.
     """
     rank = {version_id: place for place, version_id in enumerate(versions_newest_first)}
-    unknown, unversioned = len(rank), len(rank) + 1
+    unknown, unversioned, copied = len(rank), len(rank) + 1, len(rank) + 2
 
     def place(insight: InsightRow) -> int:
+        if insight.copied_from_insight_id is not None:
+            return copied
         if insight.set_version_id is None:
             return unversioned
         return rank.get(insight.set_version_id, unknown)

@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 
 /** Where an insight that names no version is filed. */
 const UNVERSIONED = "Version not recorded";
+/** Where the insights copied in when this Set was duplicated are filed: after every other group. */
+const COPIED = "Copied with this Set";
 
 /**
  * What this Set has learned, by the version it was learned at.
@@ -25,7 +27,8 @@ const UNVERSIONED = "Version not recorded";
  * An insight written in a Set's conversation belongs to that Set and reaches its
  * conversations only, so this is its home: grouped under the version the
  * conversation was about, **waiting** ones with Add and Dismiss (they are not
- * evidence until a person adds one), **added** ones with Take back. Beneath it the
+ * evidence until a person adds one), **added** ones with Take back. Insights copied in when the
+ * Set was duplicated are their own group, "Copied with this Set", last. Beneath it the
  * general knowledge that applies to this bean and grinder, marked as general and
  * linking to the Knowledge page, which holds general knowledge only.
  *
@@ -55,15 +58,19 @@ export function SetInsights({
   const general = items.filter((item) => item.general);
   const groups = new Map<string, KnowledgeInsight[]>();
   for (const item of own) {
-    const key = item.set_version_label ?? UNVERSIONED;
+    // A copy is told apart by its flag, not by having no version: it is another Set's lesson, kept
+    // here as this Set's own, and it is the one group that never holds evidence learned here.
+    const key =
+      item.copied_from_insight_id != null ? COPIED : (item.set_version_label ?? UNVERSIONED);
     groups.set(key, [...(groups.get(key) ?? []), item]);
   }
   const order = [
     ...versionLabels.filter((label) => groups.has(label)),
     ...[...groups.keys()].filter(
-      (label) => label !== UNVERSIONED && !versionLabels.includes(label),
+      (label) => label !== UNVERSIONED && label !== COPIED && !versionLabels.includes(label),
     ),
     ...(groups.has(UNVERSIONED) ? [UNVERSIONED] : []),
+    ...(groups.has(COPIED) ? [COPIED] : []),
   ];
 
   return (
@@ -75,7 +82,7 @@ export function SetInsights({
         {order.map((label) => (
           <section key={label} data-testid="set-insights-version" data-version={label}>
             <h3 className="mb-1.5 font-medium text-sm">
-              {label === UNVERSIONED ? UNVERSIONED : `Learned at ${label}`}
+              {label === UNVERSIONED || label === COPIED ? label : `Learned at ${label}`}
             </h3>
             <ul className="space-y-2">
               {(groups.get(label) ?? []).map((item) => (
