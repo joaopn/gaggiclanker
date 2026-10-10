@@ -48,7 +48,8 @@ database.
 
 - **Delete the database before starting this version** (Settings → System → Reset, or delete
   the file; take a backup first, which restores only into a version with the same database). The
-  schema gains a table for pinned Set versions and a column on Sets for the Set a copy came from.
+  schema gains a table for pinned Set versions, a column on Sets for the Set a copy came from,
+  and a column on insights naming the insight a duplicated Set's copy was made from.
   An app started on the old database stops with the "made by a different version" line and
   changes nothing.
 

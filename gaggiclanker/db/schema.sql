@@ -622,7 +622,13 @@ CREATE TABLE knowledge_insights (
     replaces_id INTEGER REFERENCES knowledge_insights(id) ON DELETE SET NULL,
     replaces_text TEXT NOT NULL DEFAULT '',
     replaced TEXT CHECK (replaced IS NULL OR replaced IN ('deleted', 'old_changed')),
-    pattern_run_id INTEGER REFERENCES pattern_runs(id) ON DELETE SET NULL
+    pattern_run_id INTEGER REFERENCES pattern_runs(id) ON DELETE SET NULL,
+    -- Set when the insight was copied to a duplicated Set: the id of the first original (a copy of
+    -- a copy names the first). A copy and its original are one lesson, so a reading that weighs
+    -- insights across Sets folds the copy into the original's Set. Deliberately no foreign key: it
+    -- outlives the original (an approved pattern deletes its sources), and a copy must not start
+    -- counting as a second Set's lesson that day.
+    copied_from_insight_id INTEGER
 ) STRICT;
 CREATE INDEX idx_knowledge_insights_confirmed
     ON knowledge_insights(confirmed, created_at, id);

@@ -150,6 +150,8 @@ class _Source:
     version: SetVersionRow
     insights: list[DuplicateInsight]
     sources: dict[int, str]
+    #: Each offered insight's first original: its own id, or the one it is itself a copy of.
+    originals: dict[int, int]
 
 
 class DuplicateService:
@@ -188,6 +190,7 @@ class DuplicateService:
             version=version,
             insights=[DuplicateInsight(id=i.id, text=i.text, source=i.source) for i in own],
             sources={i.id: i.source for i in own},
+            originals={i.id: i.copied_from_insight_id or i.id for i in own},
         )
 
     async def preview(self, set_id: int, version_id: int) -> DuplicatePreview:
@@ -286,6 +289,7 @@ class DuplicateService:
                             source=cast(InsightSource, found.sources[item.id]),
                             confirmed=True,
                             set_id=new_id,
+                            copied_from_insight_id=found.originals[item.id],
                         )
                     )
         created = await self.sets.get(new_id)

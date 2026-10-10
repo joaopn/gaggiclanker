@@ -663,3 +663,71 @@ async def test_no_insights_chosen_copies_none_and_a_repeated_id_copies_one(
     count = "SELECT COUNT(*) FROM knowledge_insights WHERE set_id = ?"
     assert int(await app.state.db.fetch_value(count, (none["id"],))) == 0
     assert int(await app.state.db.fetch_value(count, (twice["id"],))) == 1
+
+
+# ── the flag on a copy ───────────────────────────────────────────────
+
+
+async def _copy_flags(app: FastAPI, set_id: int) -> list[Any]:
+    rows = await app.state.db.fetch_all(
+        "SELECT copied_from_insight_id FROM knowledge_insights WHERE set_id = ? ORDER BY id",
+        (set_id,),
+    )
+    return [row["copied_from_insight_id"] for row in rows]
+
+
+async def test_a_copy_names_its_original_and_a_copy_of_a_copy_names_the_first(
+    adopted: Adopted,
+) -> None:
+    app, client, _fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    first = await _insight(app, set_id, "One")
+    second = await _insight(app, set_id, "Two")
+    assert await _copy_flags(app, set_id) == [None, None]
+
+    b = data(
+        await _duplicate(client, set_id, version_id, insight_ids=[first, second], profile_name="B")
+    )["set"]
+    assert await _copy_flags(app, b["id"]) == [first, second]
+    b_version = data(await client.get(f"/api/sets/{b['id']}"))["versions"][0]["version"]["id"]
+    c = data(
+        await _duplicate(
+            client,
+            b["id"],
+            b_version,
+            set_name="C",
+            profile_name="C profile",
+            insight_ids=[
+                item["id"] for item in data(await _preview(client, b["id"], b_version))["insights"]
+            ],
+        )
+    )["set"]
+
+    # The first original, not the copy it was copied from.
+    assert await _copy_flags(app, c["id"]) == [first, second]
+    # The originals carry no flag, and the API serves it.
+    assert await _copy_flags(app, set_id) == [None, None]
+    served = data(await client.get("/api/knowledge/insights", params={"set_id": c["id"]}))["items"]
+    assert [item["copied_from_insight_id"] for item in served] == [first, second]
+
+
+async def test_the_flag_outlives_its_original(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    only = await _insight(app, set_id, "Only")
+    b = data(await _duplicate(client, set_id, version_id, insight_ids=[only]))["set"]
+
+    await app.state.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (only,))
+
+    assert await _copy_flags(app, b["id"]) == [only]
+
+
+async def test_no_route_takes_the_flag_as_input(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    refused = await client.post(
+        "/api/knowledge/insights", json={"text": "x", "copied_from_insight_id": 1}
+    )
+    assert refused.status_code in (400, 422)
+    body = await _duplicate(client, set_id, version_id, copied_from_insight_id=1)
+    assert body.status_code in (400, 422)

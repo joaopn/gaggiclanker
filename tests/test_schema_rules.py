@@ -394,3 +394,13 @@ async def test_the_views_the_chat_reads_answer_through_the_sql_tool(db: Database
     ):
         with pytest.raises(SqlRefused, match="no such column"):
             await run_query(db.path, f"SELECT {column} FROM {view}")  # noqa: S608
+
+
+async def test_a_copied_insight_names_its_original_without_a_foreign_key(db: Database) -> None:
+    """The flag outlives the insight it names: an approved pattern deletes its sources."""
+    keys = await db.fetch_all("PRAGMA foreign_key_list(knowledge_insights)")
+    assert "copied_from_insight_id" not in [key["from"] for key in keys]
+    await db.execute(
+        "INSERT INTO knowledge_insights (id, text, copied_from_insight_id) VALUES (7, 'x', 99)"
+    )
+    assert await db.fetch_value("SELECT copied_from_insight_id FROM knowledge_insights") == 99

@@ -5887,6 +5887,8 @@ export interface components {
             confirmed: boolean;
             /** Confirmed At */
             confirmed_at?: string | null;
+            /** Copied From Insight Id */
+            copied_from_insight_id?: number | null;
             /**
              * Created At
              * @default
