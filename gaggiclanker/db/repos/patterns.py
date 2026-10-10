@@ -263,6 +263,21 @@ def _loads(raw: Any, default: Any) -> Any:
         return default
 
 
+async def read_home_sets(db: Database) -> dict[int, int]:
+    """The Set each insight a run reads counts for (:func:`home_sets` over those insights).
+
+    The insights a run reads are the confirmed, not dismissed ones of Sets that are not being
+    designed. Asked of the database as it is now, so an approval folds exactly as the run did,
+    over what is still there.
+    """
+    rows = await db.fetch_all(
+        "SELECT i.id, i.set_id, i.copied_from_insight_id FROM knowledge_insights i "
+        "JOIN sets s ON s.id = i.set_id "
+        "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
+    )
+    return home_sets((row["id"], row["set_id"], row["copied_from_insight_id"]) for row in rows)
+
+
 class PatternRunsRepository(Repository):
     """Opens, closes and reads runs. The only writer of `pattern_runs`."""
 
@@ -457,18 +472,7 @@ class PatternRunsRepository(Repository):
         (:func:`~gaggiclanker.db.repos.knowledge_insights.home_sets`), so a Set holding only
         copies is not another Set.
         """
-        rows = await self.db.fetch_all(
-            "SELECT i.id, i.set_id, i.copied_from_insight_id FROM knowledge_insights i "
-            "JOIN sets s ON s.id = i.set_id "
-            "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
-        )
-        return len(
-            set(
-                home_sets(
-                    (row["id"], row["set_id"], row["copied_from_insight_id"]) for row in rows
-                ).values()
-            )
-        )
+        return len(set((await read_home_sets(self.db)).values()))
 
     async def new_since_last_run(self) -> int:
         """Confirmed Set insights confirmed after the last **finished** run began.
@@ -486,11 +490,12 @@ class PatternRunsRepository(Repository):
             "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
         )
         home = home_sets((row["id"], row["set_id"], row["copied_from_insight_id"]) for row in rows)
-        # A copy is the same lesson as the insight it copies, never a new one.
+        # A copy of an insight still present is the lesson it copies, never a new one; a copy
+        # whose original is gone is a lesson of its own.
         return sum(
             1
             for row in rows
-            if home[row["id"]] == row["set_id"]
+            if (row["copied_from_insight_id"] is None or row["copied_from_insight_id"] not in home)
             and (since is None or (row["confirmed_at"] or "") > since)
         )
 
@@ -570,7 +575,10 @@ class PatternProposalsRepository(Repository):
                             reason=reason,
                         )
                     )
-            if len({source.set_id for source in kept}) < 2:
+            # Different lessons, not different Sets, as the run counted them: a copy and its
+            # original are one, whatever the sources that remain happen to be.
+            home = await read_home_sets(self.db)
+            if len({home.get(source.insight_id, source.set_id) for source in kept}) < 2:
                 return ApproveResult(proposal=proposal, refused="too_few_sets", skipped=skipped)
 
             if proposal.replaces_id is not None or proposal.replaces_text:

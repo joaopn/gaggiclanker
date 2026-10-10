@@ -16,11 +16,16 @@ import pytest
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.knowledge_insights import (
+    InsightScope,
     InsightWrite,
     home_sets,
 )
 from gaggiclanker.db.repos.llm import PromptsRepository
-from gaggiclanker.db.repos.patterns import PatternRunsRepository
+from gaggiclanker.db.repos.patterns import (
+    PatternProposalsRepository,
+    PatternProposalWrite,
+    PatternRunsRepository,
+)
 from gaggiclanker.db.repos.sets import SetVersionWrite, SetWrite
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_prompts
@@ -29,6 +34,7 @@ from gaggiclanker.patterns.context import build_patterns_input
 from gaggiclanker.patterns.models import PatternProposalOut, PatternsResult, filter_proposals
 from gaggiclanker.patterns.service import NotEnoughSets, PatternsService
 from tests.llm.conftest import FakeProvider
+from tests.patterns.test_repository import _finished, _source
 from tests.patterns.world import PatternWorld
 
 
@@ -68,11 +74,161 @@ def _cite(*ids: int) -> PatternsResult:
     )
 
 
-def test_a_copy_counts_for_its_originals_set_and_anything_else_for_its_own() -> None:
-    folded = home_sets([(1, 10, None), (2, 20, 1), (3, 30, None), (4, 40, 99)])
+def test_an_original_and_its_copies_are_one_lesson_with_one_home_set() -> None:
+    folded = home_sets(
+        [(1, 10, None), (2, 20, 1), (3, 30, None), (4, 40, 99), (5, 25, 99), (6, 50, 98)]
+    )
 
-    # 2 is a copy of 1 (read), 4 a copy of an insight that is not read: its own lesson again.
-    assert folded == {1: 10, 2: 10, 3: 30, 4: 40}
+    # 2 is a copy of 1, read: the original's Set. 4 and 5 copy 99, which is not read: one lesson,
+    # at the lowest Set among them. 6 copies 98, alone: its own Set.
+    assert folded == {1: 10, 2: 10, 3: 30, 4: 25, 5: 25, 6: 50}
+
+
+async def _second_duplicate(world: PatternWorld, original: int, name: str) -> tuple[int, int]:
+    """Another duplicate of A, with its copy of A's insight: (the Set's id, the copy's id)."""
+    other = await world.sets.create(
+        SetWrite(name=name, bean_id=world.bean_a, grinder_id=world.grinder_id),
+        SetVersionWrite(dose_g=18),
+    )
+    copy = await world.insights.insert(
+        InsightWrite(
+            text="Light roasts channel below 9 clicks.",
+            source="chat",
+            confirmed=True,
+            set_id=other.id,
+            copied_from_insight_id=original,
+        )
+    )
+    return other.id, copy
+
+
+class TestCopiesOfOneOriginal:
+    async def test_two_duplicates_of_a_stay_one_lesson_after_as_insight_is_gone(
+        self, world: PatternWorld
+    ) -> None:
+        dup = await _duplicate(world)
+        _, second = await _second_duplicate(world, dup.original, "Guji second copy")
+        runs = PatternRunsRepository(world.db)
+        assert await runs.sets_with_insights() == 1  # A, D and E: one lesson
+
+        await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
+
+        # Still one Set: D and E copy the same #N, listed or not.
+        assert await runs.sets_with_insights() == 1
+        given = await build_patterns_input(world.db)
+        outcome = filter_proposals(_cite(dup.copy, second), given)
+        assert outcome.kept == [] and outcome.dropped == {"one_set": 1}
+        assert given.lesson_set_count == 1
+        await world.own(world.c, "Its own.")
+        assert await runs.sets_with_insights() == 2
+
+    async def test_a_proposal_citing_only_the_copies_is_one_set_while_the_original_is_read(
+        self, world: PatternWorld
+    ) -> None:
+        dup = await _duplicate(world)
+        _, second = await _second_duplicate(world, dup.original, "Guji second copy")
+        given = await build_patterns_input(world.db)
+
+        outcome = filter_proposals(_cite(dup.copy, second), given)
+
+        assert outcome.dropped == {"one_set": 1}
+
+    async def test_the_runs_set_count_is_the_folded_one(self, world: PatternWorld) -> None:
+        dup = await _duplicate(world)
+        await _second_duplicate(world, dup.original, "Guji second copy")
+        given = await build_patterns_input(world.db)
+
+        # Three Sets hold insights, one lesson: what the run card and the Knowledge page say.
+        assert len(given.sets) == 3
+        assert given.lesson_set_count == 1
+        assert await PatternRunsRepository(world.db).sets_with_insights() == 1
+
+
+class TestTheRunCard:
+    async def test_the_run_records_the_folded_set_count(
+        self, world: PatternWorld, llm: LlmService
+    ) -> None:
+        dup = await _duplicate(world)
+        await _second_duplicate(world, dup.original, "Guji second copy")
+        await world.own(world.c, "Its own.")
+        await seed_prompts(PromptsRepository(world.db), DEFAULT_PROMPTS_DIR)
+        service = PatternsService(world.db, llm, PromptService(PromptsRepository(world.db)))
+
+        row = await service.run()
+
+        # Four Sets hold insights, but A, D and E are one lesson: "from 2 Sets".
+        assert (row.insights_read, row.sets_read) == (4, 2)
+
+
+class TestApproval:
+    async def _waiting(self, world: PatternWorld, dup: Duplicated, other: int) -> int:
+        proposal = PatternProposalWrite(
+            text="Light roasts channel below 9 clicks.",
+            scope=InsightScope(),
+            sources=[
+                await _source(world, world.a, dup.original, "Light roasts channel below 9 clicks."),
+                await _source(world, dup.d, dup.copy, "Light roasts channel below 9 clicks."),
+                await _source(world, world.c, other, "Light roasts want care below 9 clicks."),
+            ],
+        )
+        await _finished(world, proposal)
+        return int(await world.db.fetch_value("SELECT MAX(id) FROM pattern_proposals"))
+
+    async def test_a_copy_and_its_original_are_not_two_sets_at_approval(
+        self, world: PatternWorld
+    ) -> None:
+        dup = await _duplicate(world)
+        other = await world.own(world.c, "Light roasts want care below 9 clicks.")
+        given = await build_patterns_input(world.db)
+        assert filter_proposals(_cite(dup.original, dup.copy, other), given).kept
+        proposal_id = await self._waiting(world, dup, other)
+        # C's insight is deleted before the person presses Approve.
+        await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (other,))
+        before = int(await world.db.fetch_value("SELECT COUNT(*) FROM knowledge_insights"))
+
+        result = await PatternProposalsRepository(world.db).approve(proposal_id)
+
+        assert result.refused == "too_few_sets"
+        assert int(await world.db.fetch_value("SELECT COUNT(*) FROM knowledge_insights")) == before
+        assert (
+            await world.db.fetch_value(
+                "SELECT COUNT(*) FROM knowledge_insights "
+                "WHERE set_id IS NULL AND pattern_run_id IS NOT NULL"
+            )
+            == 0
+        )
+
+    async def test_with_the_third_set_still_there_it_goes_through(
+        self, world: PatternWorld
+    ) -> None:
+        dup = await _duplicate(world)
+        other = await world.own(world.c, "Light roasts want care below 9 clicks.")
+        proposal_id = await self._waiting(world, dup, other)
+
+        result = await PatternProposalsRepository(world.db).approve(proposal_id)
+
+        assert result.refused is None and result.proposal is not None
+
+    async def test_a_copy_and_another_insight_of_its_originals_set_are_one_set(
+        self, world: PatternWorld
+    ) -> None:
+        """The approval folds over every insight there is, not only the cited ones."""
+        dup = await _duplicate(world)
+        second_a = await world.own(world.a, "Another of A's lessons.")
+        proposal = PatternProposalWrite(
+            text="Something.",
+            scope=InsightScope(),
+            sources=[
+                await _source(world, dup.d, dup.copy, "Light roasts channel below 9 clicks."),
+                await _source(world, world.a, second_a, "Another of A's lessons."),
+            ],
+        )
+        await _finished(world, proposal)
+        proposal_id = int(await world.db.fetch_value("SELECT MAX(id) FROM pattern_proposals"))
+
+        result = await PatternProposalsRepository(world.db).approve(proposal_id)
+
+        assert result.refused == "too_few_sets"
 
 
 class TestTheGate:
@@ -244,7 +400,7 @@ class TestWhatTheModelIsTold:
         assert f"#{dup.original} [learned at" in rendered
         assert "copied from" not in rendered.lower()
 
-    async def test_a_copy_whose_original_is_not_read_says_nothing(
+    async def test_a_copy_is_marked_even_when_its_original_is_not_listed(
         self, world: PatternWorld
     ) -> None:
         dup = await _duplicate(world)
@@ -252,8 +408,8 @@ class TestWhatTheModelIsTold:
 
         rendered = (await build_patterns_input(world.db)).render()["set_insights"]
 
-        assert f"#{dup.copy} [learned earlier]" in rendered
-        assert "copy of" not in rendered
+        # Copies naming one #N are one lesson, whether #N is listed or not.
+        assert f"#{dup.copy} [copy of #{dup.original}]" in rendered
 
 
 async def test_the_prompt_says_a_copy_is_never_a_second_sets_evidence() -> None:

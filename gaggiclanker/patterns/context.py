@@ -26,6 +26,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightRow,
     InsightScope,
     InsightsRepository,
+    home_sets,
 )
 from gaggiclanker.db.repos.patterns import PatternProposalsRepository, PatternRunsRepository
 
@@ -50,8 +51,9 @@ class PatternInsight(BaseModel):
     learned_at: str | None = None
     #: Each version it rests on, as "v3 held → now failed" (the insight's own rendering).
     rests_on: list[str] = Field(default_factory=list)
-    #: The id of the insight this one was copied from, when that insight is read in this run: a
-    #: copy and its original are one lesson, and the copy's Set is not a second Set.
+    #: The id of the first original this insight was copied from, listed or not: a copy and its
+    #: original are one lesson, copies naming one original are one lesson, and a copy's Set is
+    #: not a second Set.
     copy_of: int | None = None
 
 
@@ -107,6 +109,17 @@ class PatternsInput(BaseModel):
     def insight_count(self) -> int:
         return sum(len(item.insights) for item in self.sets)
 
+    @property
+    def lesson_set_count(self) -> int:
+        """How many Sets the insights come from once a copy is folded into its original's."""
+        return len(
+            set(
+                home_sets(
+                    (row.id, item.id, row.copy_of) for item in self.sets for row in item.insights
+                ).values()
+            )
+        )
+
     def render(self) -> dict[str, str]:
         """The prompt's variables: one rendered block per section."""
         return {
@@ -125,9 +138,6 @@ async def build_patterns_input(db: Database) -> PatternsInput:
         facts.id: [item for item in await insights.own(facts.id) if item.confirmed]
         for facts in set_facts
     }
-    # What a copy is a copy of, when that original is read in this run (a copy whose original
-    # is gone is a lesson of its own Set again, and says nothing).
-    read = {item.id for rows in confirmed_by_set.values() for item in rows}
     for facts in set_facts:
         attributes = await insights.attributes_of(facts.id) or {}
         confirmed = confirmed_by_set[facts.id]
@@ -150,11 +160,7 @@ async def build_patterns_input(db: Database) -> PatternsInput:
                         text=item.text,
                         learned_at=item.set_version_label,
                         rests_on=[rest.render() for rest in item.rests_on],
-                        copy_of=(
-                            item.copied_from_insight_id
-                            if item.copied_from_insight_id in read
-                            else None
-                        ),
+                        copy_of=item.copied_from_insight_id,
                     )
                     for item in sorted(confirmed, key=lambda row: row.id)
                 ],

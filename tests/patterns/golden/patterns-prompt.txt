@@ -14,7 +14,8 @@ HOW TO FIND A PATTERN
    Set's experience, however many there are; a proposal needs sources from two or more
    Sets. If the Sets only touch the same subject and disagree, that is not a pattern. An
    insight marked `copy of #N` is the same lesson as insight #N, copied when a Set was
-   duplicated: it is never a second Set's evidence.
+   duplicated, and so are all the insights that name the same #N, whether #N is listed or
+   not: copies are never a second Set's evidence.
 
 2. **State it at the level the Sets support, and no further.** If three light roasts on the
    Niche channel below 9 clicks, say light roasts and the Niche; do not say every coffee. A

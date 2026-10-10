@@ -738,3 +738,25 @@ async def test_no_route_takes_the_flag_as_input(adopted: Adopted) -> None:
     assert refused.status_code in (400, 422)
     body = await _duplicate(client, set_id, version_id, copied_from_insight_id=1)
     assert body.status_code in (400, 422)
+
+
+async def test_an_edited_copy_keeps_its_flag(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    only = await _insight(app, set_id, "Grind finer than 2.3 runs sour")
+    b = data(await _duplicate(client, set_id, version_id, insight_ids=[only]))["set"]
+    (copy,) = [
+        item["id"]
+        for item in data(await client.get("/api/knowledge/insights", params={"set_id": b["id"]}))[
+            "items"
+        ]
+    ]
+
+    edited = await client.patch(
+        f"/api/knowledge/insights/{copy}", json={"text": "Grind finer than 2.4 runs sour"}
+    )
+
+    # A reworded copy is still that lesson: erring towards one count is the safe side.
+    assert data(edited)["text"] == "Grind finer than 2.4 runs sour"
+    assert data(edited)["copied_from_insight_id"] == only
+    assert await _copy_flags(app, b["id"]) == [only]

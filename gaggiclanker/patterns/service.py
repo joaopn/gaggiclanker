@@ -190,7 +190,7 @@ class PatternsService:
                 prompt_version=version,
                 input=given.model_dump(mode="json"),
                 insights_read=given.insight_count,
-                sets_read=len(given.sets),
+                sets_read=given.lesson_set_count,
             )
         )
         self._publish("patterns.started", run_id, status="running")
