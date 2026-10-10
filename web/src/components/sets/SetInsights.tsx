@@ -76,7 +76,7 @@ export function SetInsights({
   return (
     <SectionCard
       title="What this Set has learned"
-      description="Insights from this Set's conversations reach this Set only. Added ones are told to its later conversations; a waiting one is not evidence until you add it."
+      description="Insights learned in this Set's conversations, and the ones copied in when it was duplicated, reach this Set only. Added ones are told to its later conversations; a waiting one is not evidence until you add it."
     >
       <div className="space-y-4" data-testid="set-insights">
         {order.map((label) => (

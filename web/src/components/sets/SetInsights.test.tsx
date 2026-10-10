@@ -128,6 +128,16 @@ describe("SetInsights", () => {
     ]);
   });
 
+  it("says in its description that copied-in insights are here too, not only this Set's conversations'", async () => {
+    getKnowledgeInsights.mockResolvedValue({ items: [own(1, "v1")], scope_keys: [] });
+    renderSection();
+
+    await screen.findByTestId("set-insights");
+
+    expect(screen.getByText(/the ones copied in when it was duplicated/)).toBeVisible();
+    expect(screen.queryByText(/conversations reach this Set only/)).not.toBeInTheDocument();
+  });
+
   it("offers Add and Dismiss on a waiting insight and Take back on an added one", async () => {
     getKnowledgeInsights.mockResolvedValue({
       items: [own(1, "v2", { confirmed: false }), own(2, "v2")],
