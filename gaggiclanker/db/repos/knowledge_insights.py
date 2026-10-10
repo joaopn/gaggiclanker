@@ -35,6 +35,7 @@ manufactured its own evidence. :meth:`InsightsRepository.select` reads
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -220,6 +221,28 @@ class RestsOnRow(BaseModel):
 
 def _words(outcome: str | None) -> str:
     return "no outcome" if outcome is None else outcome.replace("_", " ")
+
+
+def grouped_by_version(
+    insights: Sequence[InsightRow], versions_newest_first: Sequence[int]
+) -> list[InsightRow]:
+    """A Set's own insights in the order its page lists them.
+
+    The page groups them by the version they were learned at, the newest version's group first,
+    and the insights that name no version last; inside a group they keep the order they came in
+    (oldest first). A version the list does not know sits after the known ones and before the
+    unversioned. The Set page does this client-side (``SetInsights``); the Duplicate preview calls
+    this, and a test on each side holds both to one fixture.
+    """
+    rank = {version_id: place for place, version_id in enumerate(versions_newest_first)}
+    unknown, unversioned = len(rank), len(rank) + 1
+
+    def place(insight: InsightRow) -> int:
+        if insight.set_version_id is None:
+            return unversioned
+        return rank.get(insight.set_version_id, unknown)
+
+    return sorted(insights, key=place)  # stable: a group keeps its own order
 
 
 class InsightWrite(BaseModel):

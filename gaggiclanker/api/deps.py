@@ -40,6 +40,7 @@ from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.drafts.board import BoardService
+from gaggiclanker.drafts.duplicates import DuplicateService
 from gaggiclanker.drafts.pins import PinService
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.sse import SseEventBus
@@ -64,6 +65,7 @@ __all__ = [
     "DeviceConnectionDep",
     "DeviceWritesRepoDep",
     "DraftServiceDep",
+    "DuplicateServiceDep",
     "EnvSettingsDep",
     "EventBusDep",
     "FlavorPicksRepoDep",
@@ -344,6 +346,11 @@ def get_pin_service(request: Request) -> PinService:
     return PinService(get_database(request), get_board_service(request))
 
 
+def get_duplicate_service(request: Request) -> DuplicateService:
+    """Duplicating a Set. Built over the board service, which only the routes hold."""
+    return DuplicateService(get_database(request), get_board_service(request))
+
+
 DatabaseDep = Annotated[Database, Depends(get_database)]
 SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]
 EnvSettingsDep = Annotated[EnvSettings, Depends(get_env_settings)]
@@ -384,5 +391,6 @@ DeviceWritesRepoDep = Annotated[DeviceWritesRepository, Depends(get_device_write
 DraftServiceDep = Annotated[ProfileDraftService, Depends(get_draft_service)]
 BoardServiceDep = Annotated[BoardService, Depends(get_board_service)]
 PinServiceDep = Annotated[PinService, Depends(get_pin_service)]
+DuplicateServiceDep = Annotated[DuplicateService, Depends(get_duplicate_service)]
 StartingPointServiceDep = Annotated[StartingPointService, Depends(get_starting_point_service)]
 ChatRunnerDep = Annotated[ChatRunner, Depends(get_chat_runner)]

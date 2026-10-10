@@ -2279,6 +2279,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/{set_id}/versions/{version_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a new Set from this version's recipe, on a new profile, with no history
+         * @description The new profile (the version's profile under `profile_name`, put on the list switched on and
+         *     starred), the new Set with its first version and the chosen insights, in one transaction.
+         *     Refused, nothing written: 404; 422 for an empty Set name, an empty profile name when the
+         *     version has a profile, a profile name when it has none, an insight that is not one of the
+         *     preview's, or a bean or grinder that is not there; 409 `DESIGNING`, `PROFILE_NAME_TAKEN` and
+         *     `PROFILE_POLICY_REFUSED`.
+         */
+        post: operations["duplicate_version_api_sets__set_id__versions__version_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/versions/{version_id}/duplicate-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What duplicating this Set version would start from, without doing it
+         * @description The suggested Set name, the bean and grinder, the recipe as a line, whether the version has
+         *     a profile, and the source Set's own confirmed insights. 404 for a Set or version that is not
+         *     there, 409 `DESIGNING` for a Set still being designed.
+         */
+        get: operations["preview_duplicate_api_sets__set_id__versions__version_id__duplicate_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets/{set_id}/versions/{version_id}/outcome": {
         parameters: {
             query?: never;
@@ -3281,6 +3328,22 @@ export interface components {
         /** ApiResponse[DraftStanding] */
         ApiResponse_DraftStanding_: {
             data?: components["schemas"]["DraftStanding"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[DuplicateAnswer] */
+        ApiResponse_DuplicateAnswer_: {
+            data?: components["schemas"]["DuplicateAnswer"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[DuplicatePreview] */
+        ApiResponse_DuplicatePreview_: {
+            data?: components["schemas"]["DuplicatePreview"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -5162,6 +5225,85 @@ export interface components {
             state: components["schemas"]["StandingState"];
             /** Writes Enabled */
             writes_enabled: boolean;
+        };
+        /**
+         * DuplicateAnswer
+         * @description `POST .../duplicate`: the new Set, and the id of the profile-list row of its new profile
+         *     (``None`` for a duplicate of an "Any profile" version).
+         */
+        DuplicateAnswer: {
+            /** Board Id */
+            board_id?: number | null;
+            set: components["schemas"]["SetRow"];
+        };
+        /**
+         * DuplicateInsight
+         * @description One of the source Set's own confirmed insights, offered for copying.
+         */
+        DuplicateInsight: {
+            /** Id */
+            id: number;
+            /** Source */
+            source: string;
+            /** Text */
+            text: string;
+        };
+        /**
+         * DuplicatePreview
+         * @description `GET .../duplicate-preview`: what the dialog starts from. Read-only.
+         */
+        DuplicatePreview: {
+            /** Bean Id */
+            bean_id: number;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Has Profile */
+            has_profile: boolean;
+            /** Insights */
+            insights: components["schemas"]["DuplicateInsight"][];
+            recipe: components["schemas"]["DuplicateRecipe"];
+            /** Set Name */
+            set_name: string;
+        };
+        /**
+         * DuplicateRecipe
+         * @description The source version's recipe, as the dialog's read-only line says it.
+         */
+        DuplicateRecipe: {
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /** Profile Label */
+            profile_label?: string | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+        };
+        /**
+         * DuplicateRequest
+         * @description `POST .../duplicate`: what the dialog sends.
+         */
+        DuplicateRequest: {
+            /** Bean Id */
+            bean_id: number;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /**
+             * Insight Ids
+             * @default []
+             */
+            insight_ids: number[];
+            /** Profile Name */
+            profile_name?: string | null;
+            /** Set Name */
+            set_name: string;
         };
         /**
          * EntryOut
@@ -13384,6 +13526,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_version_api_sets__set_id__versions__version_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DuplicateAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_duplicate_api_sets__set_id__versions__version_id__duplicate_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DuplicatePreview_"];
                 };
             };
             /** @description Validation Error */
