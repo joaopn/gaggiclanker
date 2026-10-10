@@ -13,6 +13,27 @@ database.
 
 ## [Unreleased]
 
+### Pin a Set version to the machine (the back end; the screens follow)
+
+- A Set version can be kept on the machine as a profile of its own while the Set goes on
+  changing: `POST /api/sets/{id}/versions/{version_id}/pin` copies the version's profile under a
+  new name ("<profile> <version>", or the label sent) onto the profile list, switched on and
+  starred, through the same draft constructor as every other profile (strict schema, clamp and
+  check, the name rule). The copy is refused when the safety policy would change any number of
+  it, since it would not brew what the version brewed. `GET .../pin-preview` answers what the pin
+  would do without doing it, and `POST /api/pins/{id}/unpin` takes it off at the next sync. Nothing
+  is sent to the machine by either: with Writes on, the next sync pushes or removes the file like
+  any other profile on the list.
+- Shots brewed on a pin's copy are filed under the pinned version, only into a shot that is not
+  filed yet and only while that Set's "file matching shots here" is on (with it off they wait in
+  the inbox, and Match by profile files them once it is back on). They are judged by the
+  signature of the profile the version names, so the pinned version's override applies to them.
+- A pinned profile is frozen: it cannot be switched off, made another version active, drafted over
+  or have the machine's side of a conflict kept (409, naming the pin); only unpinning changes it,
+  and its star still works. Archiving a Set unpins its pins. No Set version can name a pin's copy.
+  The Set page's read lists the live pins and the version each belongs to, the profile list's read
+  says which row carries a pin, and the Set chat is told which versions are pinned.
+
 ### Breaking: pins add a table to the database
 
 - **Delete the database before starting this version** (Settings → System → Reset, or delete
