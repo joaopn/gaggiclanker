@@ -536,6 +536,17 @@ class ProfileMatchSummary(BaseModel):
     unmatched: int = 0
 
 
+class CopiedFrom(BaseModel):
+    """The "copied from" note of a Set: the version its first recipe was copied from, by name."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    set_id: int
+    set_name: str
+    version_id: int
+    version_label: str
+
+
 class SetRow(BaseModel):
     """One row of `sets`, with the current version and the joined names."""
 
@@ -577,9 +588,11 @@ class SetRow(BaseModel):
     shot_count: int = 0
     profile_version_id: int | None = None
     profile_label: str | None = None
-    #: The version this Set's first recipe was copied from, when it was started as a copy. Display
-    #: only: it is never read as evidence, and it is empty once that version's Set is discarded.
-    copied_from_version_id: int | None = None
+    #: Where this Set's first recipe was copied from, when it was started as a copy of another
+    #: Set's version. Display only: it is never read as evidence, never handed to an agent
+    #: (:func:`~gaggiclanker.db.repos.version_names.named_dump` leaves it out), and it is empty
+    #: once that version's Set is discarded.
+    copied_from: CopiedFrom | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -601,6 +614,29 @@ class SetRow(BaseModel):
         )
         payload["next_minor_label"] = names.minor
         payload["next_major_label"] = names.major
+        return payload
+
+    @model_validator(mode="before")
+    @classmethod
+    def _name_the_note(cls, data: Any) -> Any:
+        """Turn the columns that name where the Set was copied from into one note, or none."""
+        if not isinstance(data, dict) or "copied_from_set_id" not in data:
+            return data
+        payload = dict(data)
+        set_id = payload.pop("copied_from_set_id")
+        set_name = payload.pop("copied_from_set_name", None)
+        version_label = payload.pop("copied_from_version_label", None)
+        version_id = payload.pop("copied_from_version_id", None)
+        payload["copied_from"] = (
+            None
+            if set_id is None or version_id is None
+            else {
+                "set_id": set_id,
+                "set_name": set_name,
+                "version_id": version_id,
+                "version_label": version_label,
+            }
+        )
         return payload
 
     @field_validator("design_brief", mode="before")
@@ -1037,6 +1073,9 @@ _SET_SELECT = f"""
            {state_sql("cur")},
            cur.profile_version_id AS profile_version_id,
            pv.label AS profile_label,
+           cfs.id AS copied_from_set_id,
+           cfs.name AS copied_from_set_name,
+           {label_sql("cf")} AS copied_from_version_label,
            (SELECT COUNT(*) FROM set_versions v WHERE v.set_id = s.id) AS version_count,
            (SELECT COUNT(*) FROM shots sh
              JOIN set_versions v2 ON v2.id = sh.set_version_id
@@ -1048,6 +1087,8 @@ _SET_SELECT = f"""
     -- moves the Set back onto an older version without writing a new one.
     LEFT JOIN set_versions cur ON cur.id = s.current_version_id
     LEFT JOIN profile_versions pv ON pv.id = cur.profile_version_id
+    LEFT JOIN set_versions cf ON cf.id = s.copied_from_version_id
+    LEFT JOIN sets cfs ON cfs.id = cf.set_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 #: The self-joins resolve a row id into the version *name* a reader sees.
@@ -1099,31 +1140,50 @@ class SetsRepository(Repository):
         from any other Set — several coffees are loaded at once and the matcher
         tells them apart by profile.
         """
-        now = utc_now()
         async with self.db.transaction():
-            cursor = await self.db.execute(
-                """
-                INSERT INTO sets (name, bean_id, grinder_id, archived, automatch, created_at)
-                VALUES (:name, :bean_id, :grinder_id, 0, :automatch, :created_at)
-                """,
-                {
-                    "name": spec.name,
-                    "bean_id": spec.bean_id,
-                    "grinder_id": spec.grinder_id,
-                    "automatch": int(automatch),
-                    "created_at": now,
-                },
-            )
-            set_id = int(cursor.lastrowid or 0)
-            values = version.model_dump()
-            # Version 1 has no parent, so a prediction on it compares against
-            # nothing: it is graded against the numbers the version states.
-            values.update(_prediction_values(version.prediction, None, now=now))
-            await self._insert_version(set_id, None, values, now, major=True)
+            set_id = await self.create_in_transaction(spec, version, automatch=automatch)
         stored = await self.get(set_id)
         if stored is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("the set vanished between write and read")
         return stored
+
+    async def create_in_transaction(
+        self,
+        spec: SetWrite,
+        version: SetVersionWrite,
+        *,
+        automatch: bool = True,
+        copied_from_version_id: int | None = None,
+    ) -> int:
+        """:meth:`create` inside a transaction the caller already holds; returns the Set's id.
+
+        The database allows one transaction at a time and refuses to nest, so a write that must
+        be one with the Set (a duplicate's new profile and insights) opens it itself and calls
+        this. ``copied_from_version_id`` is the "copied from" note, written with the row.
+        """
+        now = utc_now()
+        cursor = await self.db.execute(
+            """
+            INSERT INTO sets (name, bean_id, grinder_id, archived, automatch, created_at,
+                              copied_from_version_id)
+            VALUES (:name, :bean_id, :grinder_id, 0, :automatch, :created_at, :copied_from)
+            """,
+            {
+                "name": spec.name,
+                "bean_id": spec.bean_id,
+                "grinder_id": spec.grinder_id,
+                "automatch": int(automatch),
+                "created_at": now,
+                "copied_from": copied_from_version_id,
+            },
+        )
+        set_id = int(cursor.lastrowid or 0)
+        values = version.model_dump()
+        # Version 1 has no parent, so a prediction on it compares against
+        # nothing: it is graded against the numbers the version states.
+        values.update(_prediction_values(version.prediction, None, now=now))
+        await self._insert_version(set_id, None, values, now, major=True)
+        return set_id
 
     async def create_design(self, spec: SetWrite, brief: DesignBrief) -> SetRow:
         """Create a Set to be designed in its conversation, atomically.

@@ -4712,6 +4712,20 @@ export interface components {
             /** Row Id */
             row_id: number;
         };
+        /**
+         * CopiedFrom
+         * @description The "copied from" note of a Set: the version its first recipe was copied from, by name.
+         */
+        CopiedFrom: {
+            /** Set Id */
+            set_id: number;
+            /** Set Name */
+            set_name: string;
+            /** Version Id */
+            version_id: number;
+            /** Version Label */
+            version_label: string;
+        };
         /** CredentialCheckData */
         CredentialCheckData: {
             /**
@@ -7750,8 +7764,7 @@ export interface components {
             bean_id: number;
             /** Bean Name */
             bean_name?: string | null;
-            /** Copied From Version Id */
-            copied_from_version_id?: number | null;
+            copied_from?: components["schemas"]["CopiedFrom"] | null;
             /** Created At */
             created_at: string;
             /** Current Version Id */

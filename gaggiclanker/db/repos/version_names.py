@@ -38,8 +38,13 @@ __all__ = [
 
 
 def named_dump(row: BaseModel) -> dict[str, Any]:
-    """A row as the agent is handed it: its versions by name (there is no ordinal)."""
+    """A row as the agent is handed it: its versions by name (there is no ordinal).
+
+    A Set's "copied from" note is left out: it is where a Set's first recipe came from, a record
+    for the person's page, and the agent reasons from this Set's own shots and versions only.
+    """
     dumped: dict[str, Any] = row.model_dump(mode="json")
+    dumped.pop("copied_from", None)
     return dumped
 
 
