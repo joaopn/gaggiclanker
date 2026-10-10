@@ -52,6 +52,33 @@ database.
   An app started on the old database stops with the "made by a different version" line and
   changes nothing.
 
+### Duplicate a Set
+
+- A new Set can be started from any version of another: `POST /api/sets/{id}/versions/{version_id}/duplicate`
+  copies the version's grind, dose, yield and intent into version 1 of a new Set (automatch on,
+  no history: no versions, shots, predictions, outcomes, conversations or overrides cross over)
+  on a new profile. The profile is the version's profile under the name sent, made by the same
+  draft constructor as every other profile (strict schema, clamp and check, the name rule) and put
+  on the profile list switched on and starred, with the profile's signature carried over; a pinned
+  version is copied from the profile it brews, never from the pin's frozen copy. An "Any profile"
+  version duplicates with no profile. It is refused, with nothing written, when the safety policy
+  would change any number of the profile (the same sentence a pin gets), when the name is taken,
+  when the source Set is still being designed, or when an insight is not one of the source Set's
+  own confirmed ones; an archived source is fine. The profile, the Set and the insights are one
+  transaction. `GET .../duplicate-preview` answers what the dialog starts from without writing.
+- Optionally the source Set's own confirmed insights (never the general ones) are copied: each
+  becomes a confirmed insight of the new Set with its text and source and nothing else, so the
+  new Set's chat reads them as the Set's insights and never as its own proposals.
+- The new Set remembers where it came from, for the person only: its page says "Copied from <Set>
+  <version> on <date>" with a link, and the note is never given to the chat, the tools or the MCP
+  server.
+- The screens: "Duplicate as a new Set" is on every version of a Set's log (the current one
+  included), on each line of the Pinned on the machine card, and on a pinned profile's row on the
+  Profiles page, which goes to the Set page with the dialog open (`/sets/<id>?duplicate=<version>`;
+  an id that is not one of that Set's versions opens nothing, and closing removes it). The dialog
+  asks for the Set name and, when the version has a profile, a name for the new one; the bean,
+  grinder and insights are prefilled.
+
 ### The Curve check column says Pass and Unchecked
 
 - A shot with nothing in its Curve check used to leave the cell empty, whether nothing could be
