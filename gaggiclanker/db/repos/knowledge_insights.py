@@ -310,6 +310,8 @@ class InsightWrite(BaseModel):
     pattern_run_id: int | None = None
     #: The first original, when this is a copy made by duplicating a Set; nothing else writes it.
     copied_from_insight_id: int | None = None
+    #: The Set that original was learned in; written with it, by the duplicate only.
+    copied_from_set_id: int | None = None
 
     @model_validator(mode="after")
     def _a_set_insight_has_no_scope(self) -> InsightWrite:
@@ -384,6 +386,9 @@ class InsightRow(BaseModel):
     #: The first original this insight was copied from (a copy of a copy names the first), when it
     #: is a copy; it outlives that original. A copy and its original are one lesson.
     copied_from_insight_id: int | None = None
+    #: The Set that original was learned in: this copy's home Set when insights are weighed across
+    #: Sets, whatever became of the original.
+    copied_from_set_id: int | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -592,11 +597,11 @@ class InsightsRepository(Repository):
                 (scope_json, text, evidence_shot_ids_json, source,
                  confirmed, created_at, updated_at, confirmed_at, set_id, set_version_id,
                  thread_id, rests_on_json, replaces_id, replaces_text, pattern_run_id,
-                 copied_from_insight_id)
+                 copied_from_insight_id, copied_from_set_id)
             VALUES (:scope, :text, :evidence, :source,
                     :confirmed, :now, :now, :confirmed_at, :set_id, :set_version_id,
                     :thread_id, :rests_on, :replaces_id, :replaces_text, :pattern_run_id,
-                    :copied_from)
+                    :copied_from, :copied_from_set)
             """,
             {
                 "rests_on": dumps(
@@ -609,6 +614,7 @@ class InsightsRepository(Repository):
                 "replaces_text": insight.replaces_text,
                 "pattern_run_id": insight.pattern_run_id,
                 "copied_from": insight.copied_from_insight_id,
+                "copied_from_set": insight.copied_from_set_id,
                 "set_id": insight.set_id,
                 "set_version_id": insight.set_version_id,
                 "thread_id": insight.thread_id,

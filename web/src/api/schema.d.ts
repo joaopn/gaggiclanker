@@ -5889,6 +5889,8 @@ export interface components {
             confirmed_at?: string | null;
             /** Copied From Insight Id */
             copied_from_insight_id?: number | null;
+            /** Copied From Set Id */
+            copied_from_set_id?: number | null;
             /**
              * Created At
              * @default

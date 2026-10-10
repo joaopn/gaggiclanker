@@ -628,7 +628,11 @@ CREATE TABLE knowledge_insights (
     -- insights across Sets folds the copy into the original's Set. Deliberately no foreign key: it
     -- outlives the original (an approved pattern deletes its sources), and a copy must not start
     -- counting as a second Set's lesson that day.
-    copied_from_insight_id INTEGER
+    copied_from_insight_id INTEGER,
+    -- The Set the first original was learned in, written with the flag above and carried through a
+    -- copy of a copy: a copy's home Set when insights are weighed across Sets, whatever became of
+    -- the original or its Set. No foreign key, for the same reason.
+    copied_from_set_id INTEGER
 ) STRICT;
 CREATE INDEX idx_knowledge_insights_confirmed
     ON knowledge_insights(confirmed, created_at, id);

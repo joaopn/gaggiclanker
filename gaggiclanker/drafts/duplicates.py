@@ -158,6 +158,9 @@ class _Source:
     sources: dict[int, str]
     #: Each offered insight's first original: its own id, or the one it is itself a copy of.
     originals: dict[int, int]
+    #: The Set each offered insight's first original was learned in: this Set's, or the one the
+    #: insight is itself a copy from.
+    home_sets: dict[int, int]
 
 
 class DuplicateService:
@@ -197,6 +200,10 @@ class DuplicateService:
             insights=[DuplicateInsight(id=i.id, text=i.text, source=i.source) for i in own],
             sources={i.id: i.source for i in own},
             originals={i.id: i.copied_from_insight_id or i.id for i in own},
+            home_sets={
+                i.id: i.copied_from_set_id if i.copied_from_set_id is not None else set_id
+                for i in own
+            },
         )
 
     async def preview(self, set_id: int, version_id: int) -> DuplicatePreview:
@@ -296,6 +303,7 @@ class DuplicateService:
                             confirmed=True,
                             set_id=new_id,
                             copied_from_insight_id=found.originals[item.id],
+                            copied_from_set_id=found.home_sets[item.id],
                         )
                     )
         created = await self.sets.get(new_id)

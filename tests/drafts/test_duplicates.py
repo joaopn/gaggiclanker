@@ -683,6 +683,14 @@ async def _copy_flags(app: FastAPI, set_id: int) -> list[Any]:
     return [row["copied_from_insight_id"] for row in rows]
 
 
+async def _home_flags(app: FastAPI, set_id: int) -> list[Any]:
+    rows = await app.state.db.fetch_all(
+        "SELECT copied_from_set_id FROM knowledge_insights WHERE set_id = ? ORDER BY id",
+        (set_id,),
+    )
+    return [row["copied_from_set_id"] for row in rows]
+
+
 async def test_a_copy_names_its_original_and_a_copy_of_a_copy_names_the_first(
     adopted: Adopted,
 ) -> None:
@@ -710,12 +718,16 @@ async def test_a_copy_names_its_original_and_a_copy_of_a_copy_names_the_first(
         )
     )["set"]
 
-    # The first original, not the copy it was copied from.
+    # The first original, not the copy it was copied from, and the Set it was learned in.
     assert await _copy_flags(app, c["id"]) == [first, second]
+    assert await _home_flags(app, b["id"]) == [set_id, set_id]
+    assert await _home_flags(app, c["id"]) == [set_id, set_id]
+    assert await _home_flags(app, set_id) == [None, None]
     # The originals carry no flag, and the API serves it.
     assert await _copy_flags(app, set_id) == [None, None]
     served = data(await client.get("/api/knowledge/insights", params={"set_id": c["id"]}))["items"]
     assert [item["copied_from_insight_id"] for item in served] == [first, second]
+    assert [item["copied_from_set_id"] for item in served] == [set_id, set_id]
 
 
 async def test_the_flag_outlives_its_original(adopted: Adopted) -> None:
@@ -727,15 +739,15 @@ async def test_the_flag_outlives_its_original(adopted: Adopted) -> None:
     await app.state.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (only,))
 
     assert await _copy_flags(app, b["id"]) == [only]
+    assert await _home_flags(app, b["id"]) == [set_id]
 
 
 async def test_no_route_takes_the_flag_as_input(adopted: Adopted) -> None:
     app, client, _fake = adopted
     set_id, version_id = await _set_with_version(app, client)
-    refused = await client.post(
-        "/api/knowledge/insights", json={"text": "x", "copied_from_insight_id": 1}
-    )
-    assert refused.status_code in (400, 422)
+    for field in ("copied_from_insight_id", "copied_from_set_id"):
+        refused = await client.post("/api/knowledge/insights", json={"text": "x", field: 1})
+        assert refused.status_code in (400, 422)
     body = await _duplicate(client, set_id, version_id, copied_from_insight_id=1)
     assert body.status_code in (400, 422)
 

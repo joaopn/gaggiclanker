@@ -399,8 +399,11 @@ async def test_the_views_the_chat_reads_answer_through_the_sql_tool(db: Database
 async def test_a_copied_insight_names_its_original_without_a_foreign_key(db: Database) -> None:
     """The flag outlives the insight it names: an approved pattern deletes its sources."""
     keys = await db.fetch_all("PRAGMA foreign_key_list(knowledge_insights)")
-    assert "copied_from_insight_id" not in [key["from"] for key in keys]
+    assert not {"copied_from_insight_id", "copied_from_set_id"} & {key["from"] for key in keys}
     await db.execute(
-        "INSERT INTO knowledge_insights (id, text, copied_from_insight_id) VALUES (7, 'x', 99)"
+        "INSERT INTO knowledge_insights (id, text, copied_from_insight_id, copied_from_set_id) "
+        "VALUES (7, 'x', 99, 98)"
     )
-    assert await db.fetch_value("SELECT copied_from_insight_id FROM knowledge_insights") == 99
+    row = await db.fetch_one("SELECT * FROM knowledge_insights")
+    assert row is not None
+    assert (row["copied_from_insight_id"], row["copied_from_set_id"]) == (99, 98)
