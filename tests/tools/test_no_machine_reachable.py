@@ -54,6 +54,8 @@ from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
 from gaggiclanker.drafts.board import BoardService
+from gaggiclanker.drafts.copies import ProfileCopier
+from gaggiclanker.drafts.pins import PinService
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
@@ -71,7 +73,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: What a tool must never be able to reach. The profile board's service is here as well as
 #: the client: it edits the board a pull pushes from and its write phase is handed the client,
 #: so a path to it is a path to a machine write one pull later.
-MACHINE_TYPES: tuple[type, ...] = (GaggimateClient, DeviceConnection, SyncEngine, BoardService)
+MACHINE_TYPES: tuple[type, ...] = (
+    GaggimateClient,
+    DeviceConnection,
+    SyncEngine,
+    BoardService,
+    # Pinning and unpinning put a profile on the list and take it off, and the copy function
+    # is built over the board service: a person's actions, never a tool's.
+    PinService,
+    ProfileCopier,
+)
 
 #: Not descended into, and why each one. Every entry is either a leaf or a
 #: place from which *everything* in the process is reachable, which would make
