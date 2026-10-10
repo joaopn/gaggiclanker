@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileVersionSummary } from "@/api/types";
@@ -60,6 +60,10 @@ function profileVersion(overrides: Partial<ProfileVersionSummary>): ProfileVersi
     target_yield_g: null,
     ...overrides,
   };
+}
+
+function pinOf(id: number) {
+  return { pin_id: id, set_id: 3, set_version_id: id + 100 };
 }
 
 beforeEach(() => {
@@ -152,6 +156,25 @@ async function pickProfile(id: string) {
 }
 
 describe("NewSetDialog", () => {
+  it("leaves a pin's copy out of the profile picker", async () => {
+    getProfileVersions.mockResolvedValue({
+      items: [
+        profileVersion({ id: 7, label: "9 Bar Espresso" }),
+        profileVersion({ id: 11, label: "9 Bar Espresso v1.2", pin: pinOf(11) }),
+        profileVersion({ id: 12, label: "Turbo v1.1", pin: pinOf(12) }),
+      ],
+      total: 3,
+      limit: 200,
+      offset: 0,
+    });
+    renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+    await screen.findByRole("option", { name: "9 Bar Espresso" });
+
+    const options = within(screen.getByLabelText("Profile version")).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Any profile", "9 Bar Espresso"]);
+  });
+
   it("starts a Set from one screen", async () => {
     const user = setupUser();
     renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);

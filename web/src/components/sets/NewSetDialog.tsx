@@ -16,7 +16,7 @@ import { useBeans, useGrinders } from "@/hooks/useCatalog";
 import { useSendChatMessage } from "@/hooks/useChat";
 import { useCreateSet, useStartDesign } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
-import { beanLabel, beanScaleLabels } from "@/lib/sets";
+import { beanLabel, beanScaleLabels, withoutPinCopies } from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
 /**
@@ -463,7 +463,7 @@ export function NewSetDialog({
                 onChange={(event) => pickProfile(event.target.value)}
               >
                 <option value="">Any profile</option>
-                {(versions.data?.items ?? []).map((version) => (
+                {withoutPinCopies(versions.data?.items ?? []).map((version) => (
                   <option key={version.id} value={String(version.id)}>
                     {version.label}
                   </option>

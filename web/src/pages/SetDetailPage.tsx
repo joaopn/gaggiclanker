@@ -44,6 +44,7 @@ import {
   setSummary,
   trackRecordSentence,
   versionSummary,
+  withoutPinCopies,
 } from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
@@ -606,7 +607,7 @@ function NewVersionForm({
           onChange={(event) => pickProfile(event.target.value)}
         >
           <option value="">Any profile</option>
-          {(profiles.data?.items ?? []).map((version) => (
+          {withoutPinCopies(profiles.data?.items ?? []).map((version) => (
             <option key={version.id} value={String(version.id)}>
               {version.label}
             </option>

@@ -441,6 +441,38 @@ describe("SetDetailPage", () => {
     await waitFor(() => expect(screen.getByLabelText("Compared to")).toHaveValue("21"));
   });
 
+  it("leaves a pin's copy out of the Add a version profile picker", async () => {
+    getProfileVersions.mockResolvedValue({
+      items: [
+        { id: 7, label: "9 Bar Espresso", target_yield_g: 36, temperature_c: 93, pin: null },
+        {
+          id: 11,
+          label: "9 Bar Espresso v1.2",
+          target_yield_g: 36,
+          temperature_c: 93,
+          pin: { pin_id: 5, set_id: 3, set_version_id: 21 },
+        },
+        // The copy of a pin that was taken off: still a copy, still not offered.
+        {
+          id: 12,
+          label: "Turbo v1.1",
+          target_yield_g: 45,
+          temperature_c: 90,
+          pin: { pin_id: 6, set_id: 4, set_version_id: 30 },
+        },
+      ],
+      total: 3,
+    });
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await screen.findByRole("option", { name: "9 Bar Espresso" });
+
+    const options = within(screen.getByLabelText("Profile")).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Any profile", "9 Bar Espresso"]);
+  });
+
   it("starts the box on a changed profile when the current version is in no list entry", async () => {
     const detail = setDetail();
     detail.versions[0].version = {

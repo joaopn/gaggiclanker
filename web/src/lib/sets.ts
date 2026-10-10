@@ -19,6 +19,17 @@ import type {
  * nobody notices until they are comparing two versions side by side.
  */
 
+/**
+ * The profile versions a recipe may name: every one except a pin's copy.
+ *
+ * A copy belongs to one pinned Set version for ever and is changed only by unpinning, so a recipe
+ * that named it would be brewed on a profile some other version owns. The server marks each copy
+ * (`pin`, the copies of unpinned pins included); a picker leaves them out.
+ */
+export function withoutPinCopies<T extends { pin?: unknown }>(items: readonly T[]): T[] {
+  return items.filter((item) => item.pin == null);
+}
+
 // ── the log ──────────────────────────────────────────────────────────
 
 /**
