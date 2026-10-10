@@ -138,6 +138,8 @@ const AUTH_TOKEN_KEY = "gaggiclanker.token";
 
 export class ApiClientError extends Error {
   readonly requestId: string | undefined;
+  /** The server's sentence alone, without the request id `message` carries for a bug report. */
+  readonly sentence: string;
   readonly status: number | undefined;
   readonly code: string | undefined;
   /** The server's `error.details`, echoed verbatim. Never carries a secret. */
@@ -152,6 +154,7 @@ export class ApiClientError extends Error {
     // into a bug report, and it is the only handle on the server-side log line.
     super(requestId ? `${message} (request ${requestId})` : message);
     this.name = "ApiClientError";
+    this.sentence = message;
     this.requestId = requestId;
     this.status = options?.status;
     this.code = options?.code;

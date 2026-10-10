@@ -26,16 +26,10 @@ import { queryKeys } from "@/lib/queryKeys";
  * The pin's own questions, asked and not acted on. Never cached: a name the preview called free
  * a minute ago may be taken now, and the dialog is the moment to ask.
  */
-export function usePinPreview(
-  setId: number,
-  versionId: number,
-  label: string,
-  enabled: boolean,
-): UseQueryResult<PinPreview, Error> {
+export function usePinPreview(setId: number, versionId: number): UseQueryResult<PinPreview, Error> {
   return useQuery({
-    queryKey: queryKeys.sets.pinPreview(String(setId), String(versionId), label),
-    queryFn: () => getPinPreview(setId, versionId, label === "" ? undefined : label),
-    enabled,
+    queryKey: queryKeys.pins.preview(String(setId), String(versionId)),
+    queryFn: () => getPinPreview(setId, versionId),
     staleTime: 0,
     gcTime: 0,
     retry: 0,

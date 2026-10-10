@@ -107,6 +107,30 @@ export function versionSummary(version: SetVersionRow): string {
   return parts.join(" · ") || "nothing recorded yet";
 }
 
+/** "a", "a and b", "a, b and c": the one way a list of parts is said in a sentence. */
+export function listWords(parts: readonly string[]): string {
+  return parts.length <= 1
+    ? (parts[0] ?? "")
+    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * What a version leaves to the person's hands, in words: "grind 2.2, dose 18 g and yield 40 g".
+ *
+ * A pin copies the profile only; the grinder and the scale are set by hand. `null` when the
+ * version records none of the three.
+ */
+export function handSettingsWords(
+  version: Pick<SetVersionRow, "grind_setting" | "dose_g" | "target_yield_g">,
+): string | null {
+  const parts: string[] = [];
+  if (version.grind_setting) parts.push(`grind ${version.grind_setting}`);
+  if (version.dose_g) parts.push(`dose ${version.dose_g} g`);
+  if (version.target_yield_g) parts.push(`yield ${version.target_yield_g} g`);
+  if (parts.length === 0) return null;
+  return listWords(parts);
+}
+
 /**
  * How a version's shots were labelled, on one line: "2 Keep · 1 Improve".
  *

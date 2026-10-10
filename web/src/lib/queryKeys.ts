@@ -91,13 +91,15 @@ export const queryKeys = {
      * version accept that records a grade reaches it with the rest.
      */
     outcomeProposals: (id: string) => ["sets", "outcome-proposals", id] as const,
-    /**
-     * What pinning one version would do. Under `sets` so that a pin, an unpin, an archive and a
-     * sync's board write (which can free or take the name) all reach it; the name typed into
-     * the dialog is part of the key, because it is a different question.
-     */
-    pinPreview: (setId: string, versionId: string, label: string) =>
-      ["sets", "pin-preview", setId, versionId, label] as const,
+  },
+  /**
+   * What pinning one version would do. Outside `sets` on purpose: it lives only while the pin
+   * dialog is open and is asked afresh at every opening (no cache, no stale time), and a
+   * refetch in the middle of a pin, caused by the pin's own invalidation of the Set, would
+   * answer "already pinned" under the dialog that has just succeeded.
+   */
+  pins: {
+    preview: (setId: string, versionId: string) => ["pins", "preview", setId, versionId] as const,
   },
   beans: {
     all: ["beans"] as const,

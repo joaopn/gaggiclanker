@@ -1,7 +1,9 @@
 import { ArrowRight, Undo2 } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SetRevertRow, SetVersionDetail, ShotJudgement } from "@/api/types";
+import { PinDialog, pinnedMarkerId } from "@/components/sets/PinDialog";
+import { VersionActions } from "@/components/sets/VersionActions";
 import { VersionEvidence } from "@/components/sets/VersionEvidence";
 import { VersionOutcomeControl } from "@/components/sets/VersionOutcomeControl";
 import { VersionOverrides } from "@/components/sets/VersionOverrides";
@@ -14,7 +16,6 @@ import { useVocabulary } from "@/hooks/useCatalog";
 import { currentVersion, labelSummary, logItems, versionRatio, versionSummary } from "@/lib/sets";
 import { formatSeconds, formatTime, profileName } from "@/lib/shots";
 import { cn } from "@/lib/utils";
-import { RollbackButton } from "./RollbackButton";
 
 /**
  * A Set's history as an experiment log, newest made first.
@@ -106,6 +107,7 @@ export function VersionTimeline({
   judgements,
   reverts = [],
   designing = false,
+  archived = false,
 }: {
   setId: number;
   versions: SetVersionDetail[];
@@ -114,6 +116,8 @@ export function VersionTimeline({
   reverts?: SetRevertRow[];
   /** The Set is still being designed: its version 1 may have no recipe yet. */
   designing?: boolean;
+  /** The Set is archived: it receives no shots, so no version of it can be pinned. */
+  archived?: boolean;
 }) {
   // Origins are a closed vocabulary like every other one on these pages, so the
   // words come from `GET /api/vocab`. The slug is the fallback while that is in
@@ -122,6 +126,25 @@ export function VersionTimeline({
   const originLabel = (origin: string) =>
     vocab.data?.origins.find((term) => term.value === origin)?.label ?? origin;
   const [editing, setEditing] = useState<number | null>(null);
+  // The version whose pin dialog is open. One dialog for the whole log, not one per entry.
+  const [pinning, setPinning] = useState<number | null>(null);
+  // The version just pinned: the button the person pressed is gone once the Set is re-read, so
+  // focus moves to that version's pinned marker when it appears.
+  const [justPinned, setJustPinned] = useState<number | null>(null);
+  // Both are about one Set's versions: the page keeps this component across `/sets/:setId`, so
+  // they are dropped when the route moves, and a pin made on another Set never takes focus here.
+  const [shownFor, setShownFor] = useState(setId);
+  if (!Object.is(shownFor, setId)) {
+    setShownFor(setId);
+    setPinning(null);
+    setJustPinned(null);
+  }
+  useEffect(() => {
+    if (justPinned === null) return;
+    if (!versions.some((entry) => entry.version.id === justPinned && entry.pinned)) return;
+    document.getElementById(pinnedMarkerId(justPinned))?.focus();
+    setJustPinned(null);
+  }, [justPinned, versions]);
   const current = currentVersion(versions)?.version.id;
 
   // A plain function, not a component: it reads the state above, and a
@@ -163,6 +186,16 @@ export function VersionTimeline({
               title="The Set went back past this version."
             >
               dead end
+            </Badge>
+          ) : null}
+          {entry.pinned ? (
+            <Badge
+              variant="secondary"
+              data-testid="pinned-marker"
+              id={pinnedMarkerId(entry.version.id)}
+              tabIndex={-1}
+            >
+              <span aria-hidden="true">📌</span> pinned
             </Badge>
           ) : null}
           {entry.version.profile_label ? (
@@ -307,6 +340,9 @@ export function VersionTimeline({
           >
             {entry.version.shot_count} shot{entry.version.shot_count === 1 ? "" : "s"}
           </Link>
+          {entry.pinned ? (
+            <span data-testid="pinned-shots"> ({entry.pinned.shot_count} on the pin)</span>
+          ) : null}
           {labelSummary(entry.labels) ? ` · ${labelSummary(entry.labels)}` : ""}
         </p>
 
@@ -357,31 +393,51 @@ export function VersionTimeline({
           proposed={entry.outcome_proposal ?? null}
         />
 
-        {entry.version.id !== current ? (
-          <RollbackButton
-            setId={setId}
-            versionId={entry.version.id}
-            versionLabel={entry.version.version_label}
-            label="Go back to this version"
-            icon={<Undo2 className="size-3.5" aria-hidden="true" />}
-          />
-        ) : null}
+        {/* The one row of version buttons, for every version: what applies to this one. A
+            version that is already pinned has no pin button: the card above the log is where
+            its pin is undone. */}
+        <VersionActions
+          setId={setId}
+          entry={entry}
+          current={entry.version.id === current}
+          canPin={canPin(entry)}
+          onPin={() => setPinning(entry.version.id)}
+        />
       </div>
     </li>
   );
 
+  // A version can be pinned when the Set takes shots, the version names a profile to copy and
+  // no live pin holds it. The server refuses the rest in its own words.
+  const canPin = (entry: SetVersionDetail) =>
+    !archived && !designing && entry.version.profile_version_id != null && !entry.pinned;
+  const pinningEntry = versions.find((entry) => entry.version.id === pinning);
+
   return (
-    <ol className="space-y-3" data-testid="version-timeline">
-      {logItems(versions, reverts).map((item) =>
-        item.kind === "revert" ? (
-          <RevertLine key={`revert-${item.revert.id}`} revert={item.revert} />
-        ) : designing && versions.length === 1 && hasNoRecipe(item.entry.version) ? (
-          <BeingDesigned key={item.entry.version.id} setId={setId} entry={item.entry} />
-        ) : (
-          renderVersion(item.entry)
-        ),
-      )}
-    </ol>
+    <>
+      <ol className="space-y-3" data-testid="version-timeline">
+        {logItems(versions, reverts).map((item) =>
+          item.kind === "revert" ? (
+            <RevertLine key={`revert-${item.revert.id}`} revert={item.revert} />
+          ) : designing && versions.length === 1 && hasNoRecipe(item.entry.version) ? (
+            <BeingDesigned key={item.entry.version.id} setId={setId} entry={item.entry} />
+          ) : (
+            renderVersion(item.entry)
+          ),
+        )}
+      </ol>
+      {pinningEntry ? (
+        <PinDialog
+          setId={setId}
+          version={pinningEntry.version}
+          open
+          onPinned={() => setJustPinned(pinningEntry.version.id)}
+          onOpenChange={(next) => {
+            if (!next) setPinning(null);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

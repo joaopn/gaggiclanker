@@ -265,6 +265,7 @@ export function SetDetailPage() {
           judgements={detail.data.judgements}
           reverts={detail.data.reverts}
           designing={row.designing}
+          archived={row.archived}
         />
       </SectionCard>
     </div>
