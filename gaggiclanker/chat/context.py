@@ -43,6 +43,7 @@ from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
+from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document_json
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
@@ -291,6 +292,10 @@ async def _heading(
         f"{_plural(row.version_count, 'version')}, {_plural(row.shot_count, 'shot')}. "
         + ("Archived." if row.archived else "In use.")
         + (" New shots on its profile are filed here." if row.automatch else ""),
+        *[
+            f'Pinned on the machine: {pin.version_label} as "{pin.name}".'
+            for pin in await PinsRepository(db).live_for_set(row.id)
+        ],
         "",
         f"THIS VERSION IS {version.version_label}"
         + (" (a dead end: the Set went back past it)" if version.id in dead_ends else "")

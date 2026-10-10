@@ -41,6 +41,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightsRepository,
     InsightWrite,
 )
+from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document_json
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
@@ -64,7 +65,7 @@ from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
-from tests.sets.conftest import make_profile_version
+from tests.sets.conftest import make_pin, make_profile_version
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "set-chat-context.txt"
 
@@ -387,6 +388,8 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 confirmed=True,
             )
         )
+        # The Keep recipe of v2 is kept on the machine as a profile of its own.
+        await make_pin(db, v3, "Adaptive v2 v2")
         yield Experiment(db=db, set_id=set_id, v1=v1, v2=v2, v3=v3, v4=v4, v5=v5)
     finally:
         await db.close()
@@ -674,7 +677,8 @@ async def test_a_reason_that_ends_in_a_full_stop_is_not_given_a_second_one(
     )
 
     assert 'carry the finish."' in rendered
-    assert '".' not in rendered
+    # (the pin line is the one other place a quoted name ends a sentence)
+    assert '".' not in rendered.replace('as "Adaptive v2 v2".', "")
 
 
 async def test_a_set_nobody_has_proposed_anything_for_says_so(
@@ -1765,3 +1769,22 @@ async def test_rows_proposed_before_signatures_were_in_force_are_told_as_not_in_
     assert "at most 1 (not in force: this version reads the profile's limit)" in told
     assert "replaced" not in told
     assert "this version's limit" not in told
+
+
+async def test_each_live_pin_is_one_line_naming_the_version_and_the_copy(
+    experiment: Experiment,
+) -> None:
+    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    assert (await opening_context(experiment.db, scope)).count("Pinned on the machine:") == 1
+
+    older, _, _ = await make_pin(experiment.db, experiment.v2, "Blooming v1.1")
+    rendered = await opening_context(experiment.db, scope)
+
+    assert rendered.count("Pinned on the machine:") == 2
+    # Newest pin first; the line sits with the Set's own facts, before the version's.
+    assert rendered.index('Pinned on the machine: v1.1 as "Blooming v1.1".') < rendered.index(
+        'Pinned on the machine: v2 as "Adaptive v2 v2".'
+    )
+    assert rendered.index("Pinned on the machine") < rendered.index("THIS VERSION IS")
+    await PinsRepository(experiment.db).mark_unpinned(older)
+    assert 'as "Blooming v1.1"' not in await opening_context(experiment.db, scope)
