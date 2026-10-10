@@ -28,7 +28,18 @@ from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.proposals import PreparedDraft
 from gaggiclanker.infra.errors import Conflict, Unprocessable
 
-__all__ = ["CopyBeyondPolicy", "PreparedCopy", "ProfileCopier"]
+__all__ = [
+    "SET_GONE",
+    "VERSION_NOT_OF_SET",
+    "CopyBeyondPolicy",
+    "PreparedCopy",
+    "ProfileCopier",
+]
+
+#: What a person is told when the Set or version a pin or a duplicate was asked about is not
+#: there: one wording for both screens that ask.
+SET_GONE = "That Set is not there any more."
+VERSION_NOT_OF_SET = "That version is not one of this Set's."
 
 
 class CopyBeyondPolicy(Conflict):

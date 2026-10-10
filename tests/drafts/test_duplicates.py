@@ -400,9 +400,9 @@ async def test_the_sentences_a_person_reads_are_person_worded(adopted: Adopted) 
     app, client, _fake = adopted
     set_id, version_id = await _set_with_version(app, client)
     cases: list[tuple[dict[str, Any], str]] = [
-        ({"set_name": " "}, "A Set needs a name"),
-        ({"set_name": "x" * 201}, "A Set name is at most 200 characters"),
-        ({"profile_name": " "}, "A profile needs a name"),
+        ({"set_name": " "}, "A Set needs a name."),
+        ({"set_name": "x" * 201}, "A Set name is at most 200 characters."),
+        ({"profile_name": " "}, "A profile needs a name."),
         (
             {"insight_ids": [9999]},
             "One of the chosen insights is no longer one of this Set's confirmed insights.",

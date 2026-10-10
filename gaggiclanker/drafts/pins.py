@@ -28,7 +28,13 @@ from gaggiclanker.db.repos.profile_board import BoardRow, BoardRowPatch
 from gaggiclanker.db.repos.sets import SetRow, SetsRepository, SetVersionRow
 from gaggiclanker.domain.profile_policy import PolicyChange
 from gaggiclanker.drafts.board import BoardService
-from gaggiclanker.drafts.copies import CopyBeyondPolicy, PreparedCopy, ProfileCopier
+from gaggiclanker.drafts.copies import (
+    SET_GONE,
+    VERSION_NOT_OF_SET,
+    CopyBeyondPolicy,
+    PreparedCopy,
+    ProfileCopier,
+)
 from gaggiclanker.drafts.proposals import TakenName
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 
@@ -114,10 +120,10 @@ class PinService:
         """
         set_row = await self.sets.get(set_id)
         if set_row is None:
-            raise NotFound(f"No Set {set_id}")
+            raise NotFound(SET_GONE)
         version = await self.sets.version_of_set(set_id, version_id)
         if version is None:
-            raise NotFound(f"Set {set_id} has no version {version_id}")
+            raise NotFound(VERSION_NOT_OF_SET)
         if label is not None and not label.strip():
             raise Unprocessable("A profile needs a name")
         name = (

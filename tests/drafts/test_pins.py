@@ -125,6 +125,18 @@ async def test_an_unknown_set_or_a_version_of_another_set_is_not_found(adopted: 
         assert (await _pin(client, url_set, url_version)).status_code == 404
         assert (await _preview(client, url_set, url_version)).status_code == 404
 
+    # The words a person reads are the duplicate's: one wording for both screens that ask.
+    for response in (
+        await _pin(client, 9999, version_id),
+        await _preview(client, 9999, version_id),
+    ):
+        assert error(response)["message"] == "That Set is not there any more."
+    for response in (
+        await _pin(client, set_id, other_version),
+        await _preview(client, set_id, 9999),
+    ):
+        assert error(response)["message"] == "That version is not one of this Set's."
+
     assert await _counts(app) == before
 
 

@@ -45,7 +45,13 @@ from gaggiclanker.db.repos.sets import (
     SetWrite,
 )
 from gaggiclanker.drafts.board import BoardService
-from gaggiclanker.drafts.copies import CopyBeyondPolicy, PreparedCopy, ProfileCopier
+from gaggiclanker.drafts.copies import (
+    SET_GONE,
+    VERSION_NOT_OF_SET,
+    CopyBeyondPolicy,
+    PreparedCopy,
+    ProfileCopier,
+)
 from gaggiclanker.drafts.proposals import PinnedCopyName, TakenName
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 
@@ -173,10 +179,10 @@ class DuplicateService:
         """
         set_row = await self.sets.get(set_id)
         if set_row is None:
-            raise NotFound("That Set is not there any more.")
+            raise NotFound(SET_GONE)
         version = await self.sets.version_of_set(set_id, version_id)
         if version is None:
-            raise NotFound("That version is not one of this Set's.")
+            raise NotFound(VERSION_NOT_OF_SET)
         if set_row.designing:
             raise DuplicateRefused(
                 "DESIGNING",
@@ -223,15 +229,15 @@ class DuplicateService:
             version = found.version
             set_name = request.set_name.strip()
             if not set_name:
-                raise Unprocessable("A Set needs a name", details={"field": "set_name"})
+                raise Unprocessable("A Set needs a name.", details={"field": "set_name"})
             if len(set_name) > SET_NAME_MAX:
                 raise Unprocessable(
-                    f"A Set name is at most {SET_NAME_MAX} characters",
+                    f"A Set name is at most {SET_NAME_MAX} characters.",
                     details={"field": "set_name"},
                 )
             has_profile = version.profile_version_id is not None
             if has_profile and (request.profile_name is None or not request.profile_name.strip()):
-                raise Unprocessable("A profile needs a name", details={"field": "profile_name"})
+                raise Unprocessable("A profile needs a name.", details={"field": "profile_name"})
             if not has_profile and request.profile_name is not None:
                 raise Unprocessable(
                     f"{version.version_label} names no profile, so there is no profile to name.",
