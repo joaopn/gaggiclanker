@@ -1,6 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { BoardProposal, BoardRowView, BoardView } from "@/api/types";
+import { PinnedPanel } from "@/components/profiles/PinnedPanel";
 import { ProfileDropdown } from "@/components/profiles/ProfileDropdown";
 import { StateLine } from "@/components/profiles/StateLine";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
@@ -44,6 +46,7 @@ export function ProfileRow({
   const state = rowStateOf(view, entry);
   const sets = entry.sets_brewing ?? [];
   const selected = entry.machine.selected === true;
+  const pin = entry.pin ?? null;
   const waiting = proposals.length > 0 ? proposals.length : (entry.proposed_versions ?? 0);
   const busy = onMachine.isPending || starred.isPending;
   const once = useSingleFlight();
@@ -99,17 +102,38 @@ export function ProfileRow({
           </span>
         </button>
 
-        <div className="flex shrink-0 items-center gap-4">
-          <div className="flex items-center gap-2 text-sm">
-            <Switch
-              checked={entry.on_machine}
-              disabled={busy}
-              label={`${row.label} on the machine`}
-              data-testid="on-machine-switch"
-              onCheckedChange={turn}
-            />
-            <span aria-hidden="true">On the machine</span>
-          </div>
+        <div
+          className={cn(
+            "flex items-center",
+            // The badge carries a Set's name, which can be long: that group wraps and shrinks.
+            pin ? "min-w-0 max-w-full flex-wrap gap-x-4 gap-y-2" : "shrink-0 gap-4",
+          )}
+        >
+          {/* A pinned copy is on the machine for as long as it is pinned and is taken off only by
+              unpinning, so it has no switch; the badge says whose it is and goes to that Set. */}
+          {pin ? (
+            <Link
+              to={`/sets/${pin.set_id}`}
+              data-testid="pinned-badge"
+              className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs underline-offset-2 hover:underline"
+            >
+              <span aria-hidden="true">📌</span>
+              <span className="min-w-0 break-words">
+                Pinned: {pin.set_name} {pin.version_label}
+              </span>
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2 text-sm">
+              <Switch
+                checked={entry.on_machine}
+                disabled={busy}
+                label={`${row.label} on the machine`}
+                data-testid="on-machine-switch"
+                onCheckedChange={turn}
+              />
+              <span aria-hidden="true">On the machine</span>
+            </div>
+          )}
           <div className="flex items-center gap-2 text-sm">
             <Switch
               checked={entry.starred}
@@ -162,7 +186,13 @@ export function ProfileRow({
         </div>
       ) : null}
 
-      {open ? <ProfileDropdown entry={entry} /> : null}
+      {open ? (
+        pin ? (
+          <PinnedPanel entry={entry} pin={pin} />
+        ) : (
+          <ProfileDropdown entry={entry} />
+        )
+      ) : null}
     </li>
   );
 }
