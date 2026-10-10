@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoardProposal } from "@/api/types";
+import { selectedSuccessorSentence } from "@/lib/board";
 import { ProfilesPage } from "@/pages/ProfilesPage";
 import {
   boardAction,
@@ -421,8 +422,9 @@ describe("the two switches", () => {
 
     await user.click(await screen.findByRole("switch", { name: "9 Bar Espresso on the machine" }));
 
+    // The words are the shared function's, so the unpin confirmation can never drift from them.
     expect(await screen.findByTestId("switch-off-selected")).toHaveTextContent(
-      "selects another enabled profile first",
+      selectedSuccessorSentence(),
     );
     expect(screen.queryByTestId("switch-off-sets")).not.toBeInTheDocument();
   });

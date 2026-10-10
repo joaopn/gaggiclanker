@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useSetOnMachine, useSetStarred } from "@/hooks/useBoard";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
-import { rowStateOf } from "@/lib/board";
+import { rowStateOf, selectedSuccessorSentence } from "@/lib/board";
 import { profileHeadline } from "@/lib/profileInfo";
 import { cn } from "@/lib/utils";
 
@@ -156,11 +156,7 @@ export function ProfileRow({
               </p>
             ) : null}
             {selected ? (
-              <p data-testid="switch-off-selected">
-                It is the profile the machine has selected: the next sync selects another enabled
-                profile first, then removes this one. With no other profile on, it stays on the
-                machine.
-              </p>
+              <p data-testid="switch-off-selected">{selectedSuccessorSentence()}</p>
             ) : null}
           </ConfirmStrip>
         </div>

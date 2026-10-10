@@ -143,6 +143,15 @@ function sentence(text: string): string {
   return /[.!?]$/.test(capital) ? capital : `${capital}.`;
 }
 
+/**
+ * What a sync does first when the profile it is taking off the machine is the one the machine
+ * has selected. The one wording: the switch-off confirmation and the unpin confirmation both
+ * show it, so a change to what the sync does is a change here.
+ */
+export function selectedSuccessorSentence(): string {
+  return "It is the profile the machine has selected: the next sync selects another enabled profile first, then removes this one. With no other profile on, it stays on the machine.";
+}
+
 /** Where a version came from, in the words the version list uses. */
 export function sourceWords(source: string): string {
   switch (source) {

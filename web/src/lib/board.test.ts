@@ -4,6 +4,7 @@ import {
   previewCounts,
   previewLine,
   rowStateOf,
+  selectedSuccessorSentence,
   sourceWords,
   summaryLine,
 } from "@/lib/board";
@@ -363,5 +364,13 @@ describe("summaryLine reads a reason by the section it is listed under", () => {
     const line = summaryLine(item("off", "the favourite star moved to the new copy"), "removed");
     expect(line.indexOf("switched off")).toBeLessThan(line.indexOf("favourite"));
     expect(line).toContain("favourite");
+  });
+});
+
+describe("selectedSuccessorSentence", () => {
+  it("says the sync selects another enabled profile first, and what happens with none", () => {
+    expect(selectedSuccessorSentence()).toBe(
+      "It is the profile the machine has selected: the next sync selects another enabled profile first, then removes this one. With no other profile on, it stays on the machine.",
+    );
   });
 });
