@@ -9,6 +9,8 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { ContinueDesigning, DesigningBadge } from "@/components/sets/Designing";
+import { DuplicateDialog } from "@/components/sets/DuplicateDialog";
+import { duplicateButtonId } from "@/components/sets/duplicateIds";
 import { MajorChoice } from "@/components/sets/MajorChoice";
 import {
   type AutoFilled,
@@ -29,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileVersions } from "@/hooks/useArchive";
+import { useDuplicateDialog } from "@/hooks/useDuplicateDialog";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import {
   useAddSetVersion,
@@ -50,6 +53,7 @@ import {
   versionSummary,
   withoutPinCopies,
 } from "@/lib/sets";
+import { formatDate } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
 /**
@@ -93,6 +97,7 @@ export function SetDetailPage() {
   }
   const archiveOnce = useSingleFlight();
   useQueryErrorToast(detail.error, "Could not load this Set");
+  const duplicate = useDuplicateDialog(setId, detail.data?.versions);
 
   if (valid && detail.isPending) {
     return (
@@ -122,6 +127,10 @@ export function SetDetailPage() {
 
   const row = detail.data.set;
   const current = currentVersion(detail.data.versions)?.version;
+  const duplicating =
+    duplicate.versionId === null
+      ? undefined
+      : detail.data.versions.find((entry) => entry.version.id === duplicate.versionId);
 
   return (
     <div className="space-y-4">
@@ -183,6 +192,20 @@ export function SetDetailPage() {
           </div>
         }
       />
+
+      {row.copied_from ? (
+        <p className="break-words text-muted-foreground text-sm" data-testid="copied-from">
+          Copied from{" "}
+          <Link
+            to={`/sets/${row.copied_from.set_id}`}
+            className="underline underline-offset-2"
+            data-testid="copied-from-link"
+          >
+            {row.copied_from.set_name} {row.copied_from.version_label} ↗
+          </Link>{" "}
+          on {formatDate(row.created_at)}
+        </p>
+      ) : null}
 
       {archivingId === row.id && detail.data.pins.length > 0 ? (
         <ConfirmStrip
@@ -261,7 +284,7 @@ export function SetDetailPage() {
         )}
       </SectionCard>
 
-      <PinnedCard pins={detail.data.pins} />
+      <PinnedCard pins={detail.data.pins} onDuplicate={duplicate.open} />
 
       <SectionCard
         title="How it has gone"
@@ -308,8 +331,22 @@ export function SetDetailPage() {
           reverts={detail.data.reverts}
           designing={row.designing}
           archived={row.archived}
+          onDuplicate={(versionId) => duplicate.open(versionId, duplicateButtonId(versionId))}
         />
       </SectionCard>
+
+      {duplicating ? (
+        <DuplicateDialog
+          open
+          setId={row.id}
+          setName={row.name}
+          version={duplicating.version}
+          openerId={duplicate.openerId}
+          onOpenChange={(next) => {
+            if (!next) duplicate.close();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

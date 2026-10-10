@@ -20,7 +20,7 @@ type Json = Record<string, unknown>;
  * machine's side would make the copy something the Set version never was. A copy whose round
  * trip failed has no retry here either: Unpin, then Pin again, is the way.
  *
- * Room is kept beside Unpin for the next button.
+ * Duplicate as a new Set (which goes to the Set page with its dialog open) and Unpin sit side by side.
  */
 export function PinnedPanel({ entry, pin }: { entry: BoardRowView; pin: BoardRowPin }) {
   const [confirming, setConfirming] = useState(false);
@@ -39,6 +39,16 @@ export function PinnedPanel({ entry, pin }: { entry: BoardRowView; pin: BoardRow
       </p>
 
       <div className="flex flex-wrap gap-2" data-testid="pinned-actions">
+        {/* The dialog lives on the Set page: this goes there with it open for the pinned version. */}
+        <Button type="button" size="sm" variant="outline" asChild>
+          <Link
+            to={`/sets/${pin.set_id}?duplicate=${pin.set_version_id}`}
+            aria-label={`Duplicate as a new Set: ${pin.version_label} of ${pin.set_name}`}
+            data-testid="pinned-duplicate"
+          >
+            Duplicate as a new Set
+          </Link>
+        </Button>
         <Button
           type="button"
           size="sm"

@@ -4,6 +4,7 @@ import type { BoardRowView, BoardView, SetPin } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { UnpinConfirm } from "@/components/pins/UnpinConfirm";
 import { StateLine } from "@/components/profiles/StateLine";
+import { duplicatePinButtonId } from "@/components/sets/duplicateIds";
 import { Button } from "@/components/ui/button";
 import { useProfileBoard } from "@/hooks/useBoard";
 import { rowStateOf, writesLine } from "@/lib/board";
@@ -17,9 +18,16 @@ import { formatDate } from "@/lib/shots";
  * A line says either the pin's facts (once the machine holds the copy) or the profile list's own
  * line for that row (not on the machine yet, Writes off, a failed round trip, a conflict): the
  * words are the Profiles page's, never new ones here. The name links to the Profiles page row.
- * Room is kept beside Unpin for the next button.
+ * Duplicate as a new Set and Unpin sit beside each other.
  */
-export function PinnedCard({ pins }: { pins: SetPin[] }) {
+export function PinnedCard({
+  pins,
+  onDuplicate,
+}: {
+  pins: SetPin[];
+  /** Open the Duplicate dialog for a pinned version, in place; the button's id gets focus back. */
+  onDuplicate?: (versionId: number, openerId: string) => void;
+}) {
   // Read only for a Set that has pins: most Set pages never need the profile list.
   const board = useProfileBoard({ enabled: pins.length > 0 });
   if (pins.length === 0) return null;
@@ -30,6 +38,7 @@ export function PinnedCard({ pins }: { pins: SetPin[] }) {
           <PinLine
             key={pin.pin_id}
             pin={pin}
+            onDuplicate={onDuplicate}
             view={board.data}
             entry={(board.data?.rows ?? []).find((entry) => entry.row.id === pin.board_id)}
           />
@@ -49,8 +58,10 @@ function PinLine({
   pin,
   view,
   entry,
+  onDuplicate,
 }: {
   pin: SetPin;
+  onDuplicate?: (versionId: number, openerId: string) => void;
   view: BoardView | undefined;
   entry: BoardRowView | undefined;
 }) {
@@ -88,6 +99,18 @@ function PinLine({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2" data-testid="pin-actions">
+          {onDuplicate ? (
+            <Button
+              id={duplicatePinButtonId(pin.pin_id)}
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-label={`Duplicate as a new Set: ${pin.version_label}`}
+              onClick={() => onDuplicate(pin.set_version_id, duplicatePinButtonId(pin.pin_id))}
+            >
+              Duplicate as a new Set
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="sm"

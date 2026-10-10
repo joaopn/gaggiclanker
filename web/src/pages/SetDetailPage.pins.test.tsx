@@ -184,9 +184,9 @@ describe("the timeline's pins", () => {
     expect(within(entry).getByTestId("version-actions")).toContainElement(confirm);
   });
 
-  it("renders the row for every version, and an empty one takes no room", async () => {
+  it("renders the row for every version, and the current pinned version's holds only Duplicate", async () => {
     const detail = pinnedDetail();
-    // The current version, already pinned: nothing applies to it.
+    // The current version, already pinned: no way back and no pin apply to it.
     detail.versions[0] = { ...detail.versions[0], pinned: { pin_id: 9, shot_count: 0 } } as never;
     getSet.mockResolvedValue(detail);
     renderWithQueryClient(<SetDetailPage />);
@@ -195,9 +195,12 @@ describe("the timeline's pins", () => {
     for (const label of ["v1.3", "v1.2", "v1.1"]) {
       expect(within(entryOf(label)).getByTestId("version-actions")).toBeInTheDocument();
     }
-    const empty = within(entryOf("v1.3")).getByTestId("version-actions");
-    expect(empty).toBeEmptyDOMElement();
-    expect(empty).toHaveClass("empty:hidden");
+    const lone = within(entryOf("v1.3")).getByTestId("version-actions");
+    expect(
+      within(lone)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Duplicate as a new Set"]);
   });
 
   it("offers no pin on a version that names no profile", async () => {

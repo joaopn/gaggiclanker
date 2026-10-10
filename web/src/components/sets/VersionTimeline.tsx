@@ -108,6 +108,7 @@ export function VersionTimeline({
   reverts = [],
   designing = false,
   archived = false,
+  onDuplicate,
 }: {
   setId: number;
   versions: SetVersionDetail[];
@@ -118,6 +119,8 @@ export function VersionTimeline({
   designing?: boolean;
   /** The Set is archived: it receives no shots, so no version of it can be pinned. */
   archived?: boolean;
+  /** Open the Duplicate dialog for a version; the page owns the one dialog. */
+  onDuplicate?: (versionId: number) => void;
 }) {
   // Origins are a closed vocabulary like every other one on these pages, so the
   // words come from `GET /api/vocab`. The slug is the fallback while that is in
@@ -402,6 +405,7 @@ export function VersionTimeline({
           current={entry.version.id === current}
           canPin={canPin(entry)}
           onPin={() => setPinning(entry.version.id)}
+          onDuplicate={onDuplicate && !designing ? () => onDuplicate(entry.version.id) : undefined}
         />
       </div>
     </li>

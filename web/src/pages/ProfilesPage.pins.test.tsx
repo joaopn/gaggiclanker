@@ -131,6 +131,26 @@ describe("a pinned row on the Profiles page", () => {
     expect(api.getBoardVersions).not.toHaveBeenCalled();
   });
 
+  it("offers Duplicate as a new Set, which goes to the Set page with the pinned version's dialog to open", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ProfilesPage />);
+    await screen.findByText("Blooming v1.2");
+    await user.click(within(rowNamed("Blooming v1.2")).getByTestId("profile-toggle"));
+
+    const panel = await screen.findByTestId("pinned-panel");
+    const link = within(panel).getByTestId("pinned-duplicate");
+
+    expect(link).toHaveTextContent("Duplicate as a new Set");
+    expect(link).toHaveAccessibleName("Duplicate as a new Set: v1.2 of Ethiopia Guji · Blooming");
+    expect(link).toHaveAttribute("href", "/sets/3?duplicate=22");
+    // Beside Unpin, in the panel's one row of actions.
+    expect(
+      Array.from(within(panel).getByTestId("pinned-actions").children).map((el) => el.textContent),
+    ).toEqual(["Duplicate as a new Set", "Unpin"]);
+    // An ordinary row has no such button.
+    expect(within(rowNamed("9 Bar Espresso")).queryByTestId("pinned-duplicate")).toBeNull();
+  });
+
   it("counts the shots the link lists: those brewed on the copy, filed or waiting", async () => {
     api.getProfileBoard.mockResolvedValue(
       boardView({

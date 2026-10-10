@@ -82,6 +82,37 @@ describe("SetInsights", () => {
     expect(within(groups[1]).getAllByTestId("own-insight")).toHaveLength(2);
   });
 
+  it("orders the groups as the Duplicate preview does: the newest version's first, none last", async () => {
+    // The same fixture as the server's `test_the_preview_lists_insights_by_version_newest_first…`:
+    // A and A2 at v1, a note with no version, B at v1.1; written in that order.
+    getKnowledgeInsights.mockResolvedValue({
+      items: [
+        own(1, "v1", { text: "A learned at v1" }),
+        own(2, null, { text: "Written with no version" }),
+        own(3, "v1.1", { text: "B learned at v1.1" }),
+        own(4, "v1", { text: "A2 learned at v1" }),
+      ],
+      scope_keys: [],
+    });
+    renderWithQueryClient(<SetInsights setId={3} versionLabels={["v1.1", "v1"]} />);
+
+    await screen.findByTestId("set-insights");
+
+    expect(
+      screen
+        .getAllByRole("listitem")
+        .map(
+          (item) =>
+            item.textContent?.match(/[AB]2? learned at v1(\.1)?|Written with no version/)?.[0],
+        ),
+    ).toEqual([
+      "B learned at v1.1",
+      "A learned at v1",
+      "A2 learned at v1",
+      "Written with no version",
+    ]);
+  });
+
   it("offers Add and Dismiss on a waiting insight and Take back on an added one", async () => {
     getKnowledgeInsights.mockResolvedValue({
       items: [own(1, "v2", { confirmed: false }), own(2, "v2")],
