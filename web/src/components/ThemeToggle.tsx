@@ -20,6 +20,7 @@ export function ThemeToggle() {
         <Button
           variant="ghost"
           size="icon"
+          className="max-sm:size-8"
           onClick={toggle}
           aria-label={`Theme: ${LABELS[preference]}`}
           data-testid="theme-toggle"

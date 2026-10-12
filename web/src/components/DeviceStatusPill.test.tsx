@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DeviceStatusPill } from "@/components/DeviceStatusPill";
+import { boilerTemperature, DeviceStatusPill } from "@/components/DeviceStatusPill";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { createTestQueryClient } from "@/test/renderWithQueryClient";
 
@@ -52,11 +52,11 @@ describe("DeviceStatusPill", () => {
     expect(pill()).toHaveTextContent("Offline");
   });
 
-  it("is its dot alone below lg, with the words kept for a screen reader", async () => {
+  it("is its dot alone below xl, with the words kept for a screen reader", async () => {
     renderPill();
     await waitFor(() => expect(pill()).toHaveAttribute("data-state", "good"));
     // The header has to fit at 360 px with Sync, Writes, Flush and Sign out beside it.
-    expect(within(pill()).getByText("Online")).toHaveClass("max-lg:sr-only");
+    expect(within(pill()).getByText("Online")).toHaveClass("max-xl:sr-only");
   });
 
   it("is not a fault when no machine is configured", async () => {
@@ -98,5 +98,64 @@ describe("DeviceStatusPill", () => {
     renderPill();
     await waitFor(() => expect(pill()).toHaveAttribute("data-state", "bad"));
     expect(pill()).toHaveTextContent("Machine offline");
+  });
+
+  it("shows the boiler temperature while connected, at every width", async () => {
+    getDeviceStatus.mockResolvedValue({
+      configured: true,
+      connected: true,
+      host: "192.168.1.50",
+      identity: { hardware: "GaggiMate Pro Rev 1.1", displayVersion: "v1.9.0" },
+      last_status: { m: 1, ct: 92.6, tt: 93 },
+    });
+    renderPill();
+    const temperature = await within(pill()).findByTestId("device-temperature");
+    // "93 °C", shortened to "93°" below sm; a screen reader hears "93 °C" either way.
+    expect(temperature).toHaveTextContent(/^boiler at 93 °C°$/);
+    expect(within(temperature).getByText("°C")).toHaveClass("max-sm:sr-only");
+    expect(within(temperature).getByText("°")).toHaveClass("sm:hidden");
+    // Not hidden below xl like the board's name: the dot and the reading are what fit.
+    expect(temperature).not.toHaveClass("max-xl:sr-only");
+    expect(temperature).not.toHaveClass("sr-only");
+    expect(pill()).toHaveAccessibleName(/^GaggiMate Pro Rev 1\.1 boiler at 93 °C /);
+  });
+
+  it("shows no temperature before the machine has reported one", async () => {
+    getDeviceStatus.mockResolvedValue({
+      configured: true,
+      connected: true,
+      host: "192.168.1.50",
+      identity: { hardware: "GaggiMate Pro Rev 1.1" },
+      last_status: { m: 1 },
+    });
+    renderPill();
+    await waitFor(() => expect(pill()).toHaveTextContent("GaggiMate Pro Rev 1.1"));
+    expect(within(pill()).queryByTestId("device-temperature")).toBeNull();
+  });
+
+  it("shows no temperature once the machine is offline, even with a last reading kept", async () => {
+    getDeviceStatus.mockResolvedValue({
+      configured: true,
+      connected: false,
+      host: "192.168.1.50",
+      identity: null,
+      last_status: { ct: 92.4 },
+    });
+    renderPill();
+    await waitFor(() => expect(pill()).toHaveTextContent("Machine offline"));
+    expect(within(pill()).queryByTestId("device-temperature")).toBeNull();
+    expect(pill()).not.toHaveTextContent("°C");
+  });
+});
+
+describe("boilerTemperature", () => {
+  it("rounds to whole degrees and refuses anything that is not a reading", () => {
+    expect(boilerTemperature(92.4)).toBe(92);
+    expect(boilerTemperature(92.5)).toBe(93);
+    expect(boilerTemperature(0)).toBe(0);
+    expect(boilerTemperature(null)).toBeNull();
+    expect(boilerTemperature(undefined)).toBeNull();
+    expect(boilerTemperature("92")).toBeNull();
+    expect(boilerTemperature(Number.NaN)).toBeNull();
   });
 });

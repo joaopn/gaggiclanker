@@ -26,7 +26,7 @@ export function LlmActivity() {
         <Button
           variant="ghost"
           size="sm"
-          className="gap-1.5"
+          className="gap-1.5 max-sm:gap-1 max-sm:has-[>svg]:px-1.5"
           aria-label={running > 0 ? `${running} LLM calls running` : "LLM activity"}
           data-testid="llm-activity"
         >

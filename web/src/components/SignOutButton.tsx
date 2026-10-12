@@ -24,6 +24,7 @@ export function SignOutButton() {
         <Button
           variant="ghost"
           size="sm"
+          className="max-sm:has-[>svg]:px-1.5"
           aria-label="Sign out"
           disabled={signOut.isPending}
           onClick={() => signOut.mutate()}
