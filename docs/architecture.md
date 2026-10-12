@@ -300,6 +300,33 @@ is restored, and the preview says so. A database made by a newer version is refu
 A schema change ships its step in the same commit. Data that has to move without a step is derived
 data, rebuilt at boot from what is stored (`DERIVATION_VERSION`).
 
+**A profile version belongs to one profile, and a draft says what it is.**
+`profile_versions.board_id` is the profile-list row a version is a version of, and a version is
+unique by its content within a profile (and among those that belong to none: a draft for a new
+profile, an imported file, a machine file that has not joined the list, the empty baseline). A
+profile never takes another profile's version. Every path that lists a version on a profile goes
+through one function (`ProfileBoardRepository.version_for`): a version on no profile is taken
+over, a profile's own is itself, and another profile's becomes a copy of that profile's own,
+carrying the signature and replacing the profile's references to the original. So two profiles
+that brew the same thing have two versions (a Duplicate, a pin's copy), "the same profile" is
+the version's owner, and every writer says whose version it stores (`ensure_version` has no
+default for the owner). The sync's mirror stores what a file holds as a version of the profile
+standing on it; a file no profile stands on holds the version exactly one profile owns with its
+content, else one that belongs to none. A version's content hash still includes its name for now;
+the name is the profile's, and a following change takes it out of the hash.
+
+A draft is a change to one profile or a new profile with a name of its own, decided once when it
+is made and stored on it (`profile_drafts.new_profile`, `destination_board_id`, `label`). A change
+goes to the profile its base belongs to (a Set's profile first when it has that name) and carries
+that profile's own name; one drafted before its profile was on the list stores no destination and
+goes to whichever profile owns its base when it is read. A new profile carries the name it was
+asked for, and the agent's draft tool asks for one with `new_profile_name`. The document's label
+is built from the stored name and decides nothing, and a hand edit whose label is the base
+profile's name is read as a change at that edge, once. `destination_now` and `place_draft`
+(`db/repos/lineage.py`) answer what a put does, for the constructor, the name check, the page's
+landing, the standing and the put alike; a put never renames the profile it changes. The mirror
+also stores the name each machine file has (`device_profiles.label`), on every sync.
+
 **The LLM call does not run inside the HTTP request.** The route opens a
 `running` row, hands the work to the app's `TaskRegistry` and answers 202; the
 page follows the event stream. `docker stop` allows ten seconds, and a request

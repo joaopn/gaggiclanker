@@ -13,6 +13,34 @@ database.
 
 ## [Unreleased]
 
+### A profile now owns its versions
+
+- **Changed: a profile version now belongs to one profile, and a draft is either a change to
+  one profile or a new profile with a name of its own.** Two profiles that brew the same thing
+  (a Duplicate, a pin's copy) have a version each, so a version always names exactly one
+  profile. Drafts keep their own name, what they are and the profile they change, and the sync
+  keeps the name each machine file has. Nothing written to the machine changes. **Database
+  change, carried forward at the next start** (the copy is made first, as above): a profile
+  version gains the profile it belongs to, a draft gains its name, what it is and its
+  destination, and a machine file gains its name. Every row is kept. Where two profiles listed
+  one version (a rare state), the profile it is active for keeps it, and the others get their
+  own copy with the same brew and the same signature; shots, Sets, pins and drafts keep
+  pointing at the original, so the other profile's history entry for it shows its copy with no
+  shots counted. **Nothing to do.**
+  In that rare state a Set version now names the profile it brews, which can change the
+  minor/major default of Add a version.
+- **Changed: putting a change on the list never renames the profile it changes.** A change
+  goes to the profile it was drafted for and is stored under that profile's name *now*. Before,
+  a draft made under a profile's old name (before you made an older version active, which gives
+  the profile that version's name) was put as a second profile with the old name, or refused
+  because another profile had taken it.
+- **Changed, for the agent: a new profile is asked for with a parameter.** The draft tool
+  takes `new_profile_name`; without it the draft is a change to the base version's profile and
+  keeps that profile's name, and a `label` in the patch is refused unless it is that name (so
+  a whole document read back is fine). The draft prompt (`draft`, rule 4) and the chat prompts
+  (`chat-set`, `chat-general`, `chat-design`) describe it; a person who edited one keeps their
+  text on boot and does not get the new sentences.
+
 ### The app upgrades its database when it starts
 
 - **Changed: when a new version needs a different database, the app now carries your database
