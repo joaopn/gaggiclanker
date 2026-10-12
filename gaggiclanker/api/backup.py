@@ -86,6 +86,9 @@ class RestoreCheckData(BaseModel):
     now: RestoreCounts
     keys_in_file: bool
     keys_here: bool
+    #: The level of the file when it came from an earlier version of the app and has been
+    #: brought up to date on the staged copy; null when it needed nothing.
+    upgrade_from_level: int | None = None
 
 
 class RestoreDiscardData(BaseModel):
@@ -155,6 +158,7 @@ async def check_restore(
             now=await state.counts(),
             keys_in_file=staged.keys_in_file,
             keys_here=await state.keys_held(),
+            upgrade_from_level=staged.upgrade_from_level,
         ).model_dump(mode="json")
     )
 

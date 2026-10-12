@@ -176,6 +176,9 @@ function Preview({
           ? `Taken ${formatTaken(manifest.created_at)} by gaggiclanker ${manifest.app_version}`
           : "A plain copy of a gaggiclanker database (no backup details)"}
       </p>
+      {typeof check.upgrade_from_level === "number" && (
+        <p>This backup is from an earlier version; it will be upgraded when restored.</p>
+      )}
       <table className="text-sm">
         <thead>
           <tr className="text-left text-muted-foreground text-xs">

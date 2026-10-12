@@ -7280,6 +7280,8 @@ export interface components {
             size_bytes: number;
             /** Token */
             token: string;
+            /** Upgrade From Level */
+            upgrade_from_level?: number | null;
         };
         /** RestoreCounts */
         RestoreCounts: {

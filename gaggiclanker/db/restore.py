@@ -13,8 +13,11 @@ What "a file we can restore" means (every one is a refusal with its own code):
 * it has the core tables;
 * its schema is this build's: the same structural comparison the boot makes
   (:func:`~gaggiclanker.db.schema.schema_differences`), so what a boot would refuse, a
-  restore refuses before touching anything. A backup restores only into the version
-  that made it, or one with the same database;
+  restore refuses before touching anything. A backup made by an **older** version, in the
+  state that version left it, is first carried forward on the staged copy by the same steps
+  the boot runs (:func:`~gaggiclanker.db.upgrade.upgrade_connection`; no further backup is
+  made, since the upload is the copy), and then compared like any other; a backup from a
+  newer version, or any other structure, is refused;
 * ``PRAGMA foreign_key_check`` is empty.
 
 **Applying** is three steps in three places. :func:`prepare_staged` makes the staged
@@ -37,7 +40,7 @@ import os
 import re
 import secrets
 import sqlite3
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,7 +49,13 @@ from pydantic import BaseModel, ValidationError
 from starlette.requests import ClientDisconnect
 
 from gaggiclanker.db.backup import KEY_SETTING_KEYS, BackupManifest, ensure_free_space
-from gaggiclanker.db.schema import schema_differences, schema_fingerprint
+from gaggiclanker.db.schema import (
+    inspect_database_file,
+    schema_differences,
+    schema_fingerprint,
+)
+from gaggiclanker.db.upgrade import UpgradeRefused, upgrade_connection
+from gaggiclanker.db.upgrades import STEPS, Step
 from gaggiclanker.infra.errors import AppError, BadRequest, PayloadTooLarge
 from gaggiclanker.settings import SETTINGS_REGISTRY
 
@@ -115,6 +124,9 @@ class StagedRestore:
     manifest: BackupManifest | None
     counts: RestoreCounts
     keys_in_file: bool
+    #: The level the file was at when it was an older version's and has been upgraded on the
+    #: staged copy; ``None`` when it needed nothing.
+    upgrade_from_level: int | None = None
 
 
 def new_token() -> str:
@@ -218,13 +230,24 @@ def _read_manifest(conn: sqlite3.Connection) -> BackupManifest | None:
         return None
 
 
-def validate_staged(path: Path, token: str) -> StagedRestore:
-    """Run every check on a staged file, read-only. Raises :class:`RestoreRefused`."""
+def validate_staged(
+    path: Path,
+    token: str,
+    *,
+    steps: Sequence[Step] = STEPS,
+    expected: dict[str, str] | None = None,
+) -> StagedRestore:
+    """Run every check on a staged file. Raises :class:`RestoreRefused`.
+
+    Read-only on everything but the staged copy itself, which is upgraded in place when it is
+    an older version's backup (``steps`` and ``expected`` are for tests with a schema of their
+    own).
+    """
     with path.open("rb") as handle:
         if handle.read(len(_SQLITE_HEADER)) != _SQLITE_HEADER:
             raise RestoreRefused("RESTORE_NOT_A_DATABASE", "This is not a gaggiclanker database.")
     try:
-        return _validate_open(path, token)
+        return _validate_open(path, token, steps, expected)
     except sqlite3.DatabaseError as exc:
         # A page that cannot be read anywhere in the checks is the same fault as a failed
         # integrity check. The message is SQLite's own and carries the path: log it, keep
@@ -239,7 +262,50 @@ def validate_staged(path: Path, token: str) -> StagedRestore:
             sidecar.unlink(missing_ok=True)
 
 
-def _validate_open(path: Path, token: str) -> StagedRestore:
+def _upgrade_staged(
+    path: Path, steps: Sequence[Step], expected: dict[str, str] | None
+) -> int | None:
+    """Carry an older version's backup forward on the staged copy; its old level, or ``None``.
+
+    The same steps and the same checks as the boot's upgrade, in one transaction: a failure
+    leaves the staged copy as uploaded and the answer is the structure refusal, with the
+    step's reason in the log. A backup from a newer version is refused here, by name.
+    """
+    inspection = inspect_database_file(path, steps=steps, expected=expected)
+    if inspection.case == "newer":
+        log.info("restore_from_newer_version", db_level=inspection.level)
+        raise RestoreRefused(
+            "RESTORE_SCHEMA_DIFFERS",
+            "This backup was made by a newer version of gaggiclanker than this one. "
+            "Update gaggiclanker, then restore it.",
+        )
+    if inspection.case != "upgradable" or inspection.level is None:
+        return None
+    conn = sqlite3.connect(path, isolation_level=None)
+    try:
+        upgrade_connection(conn, steps=steps, expected=expected)
+    except (UpgradeRefused, sqlite3.Error) as exc:
+        reason = exc.reason if isinstance(exc, UpgradeRefused) else f"{type(exc).__name__}: {exc}"
+        log.warning(
+            "restore_upgrade_failed",
+            from_level=inspection.level,
+            step=getattr(exc, "step", None),
+            reason=reason,
+        )
+        raise RestoreRefused(
+            "RESTORE_SCHEMA_DIFFERS",
+            "This backup was made by an earlier version of gaggiclanker and could not be "
+            "brought up to date. Restore it with the version that made it.",
+        ) from exc
+    finally:
+        conn.close()
+    log.info("restore_upgraded", from_level=inspection.level)
+    return inspection.level
+
+
+def _validate_open(
+    path: Path, token: str, steps: Sequence[Step], expected: dict[str, str] | None
+) -> StagedRestore:
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
         names = {
@@ -251,7 +317,13 @@ def _validate_open(path: Path, token: str) -> StagedRestore:
             raise RestoreRefused(
                 "RESTORE_DAMAGED", "This file is damaged: its integrity check failed."
             )
-        found = schema_differences(conn)
+    finally:
+        conn.close()
+    # Only once the file is known to be a whole database: the upgrade writes to the copy.
+    upgraded_from = _upgrade_staged(path, steps, expected)
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        found = schema_differences(conn, expected)
         if found:
             log.info("restore_schema_differs", count=len(found), differences=found[:5])
             raise RestoreRefused(
@@ -277,6 +349,7 @@ def _validate_open(path: Path, token: str) -> StagedRestore:
                 beans=_scalar(conn, "SELECT COUNT(*) FROM beans"),
             ),
             keys_in_file=keys_in_file,
+            upgrade_from_level=upgraded_from,
         )
     finally:
         conn.close()

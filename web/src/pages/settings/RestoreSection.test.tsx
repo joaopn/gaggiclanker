@@ -94,6 +94,26 @@ describe("RestoreSection", () => {
     expect(applyRestore).not.toHaveBeenCalled();
   });
 
+  it("says a backup from an earlier version will be upgraded, and only then", async () => {
+    const user = setupUser();
+    const sentence = "This backup is from an earlier version; it will be upgraded when restored.";
+    checkRestore.mockResolvedValue({ ...CHECK, upgrade_from_level: 0 });
+    const { unmount } = renderWithQueryClient(<RestoreSection />);
+    await choose(user);
+    expect(await screen.findByText(sentence)).toBeVisible();
+    unmount();
+
+    // Absent from the answer, and null: nothing to say.
+    for (const answer of [CHECK, { ...CHECK, upgrade_from_level: null }]) {
+      checkRestore.mockResolvedValue(answer);
+      const again = renderWithQueryClient(<RestoreSection />);
+      await choose(user);
+      expect(await screen.findByText("Restore gaggiclanker-20261001T101500Z.db?")).toBeVisible();
+      expect(screen.queryByText(sentence)).not.toBeInTheDocument();
+      again.unmount();
+    }
+  });
+
   it("says so when the file has no manifest", async () => {
     const user = setupUser();
     checkRestore.mockResolvedValue({ ...CHECK, manifest: null });
