@@ -104,7 +104,24 @@ _TRIGGER = (
     "    INSERT INTO knowledge_chunks_fts(rowid, heading, body)\n"
     "    VALUES (new.id, new.%s, new.%s);"
 )
+
+
+def _schema_level() -> int:
+    """The level ``schema.sql`` ends at, read from the file so no test names a number."""
+    match = re.search(r"^PRAGMA user_version = (\d+);$", schema.schema_sql(), re.MULTILINE)
+    assert match is not None
+    return int(match.group(1))
+
+
+LEVEL = _schema_level()
+
 _ONE_FACT = [
+    (
+        "the upgrade level",
+        f"PRAGMA user_version = {LEVEL};",
+        f"PRAGMA user_version = {LEVEL + 1};",
+        "user_version",
+    ),
     (
         "a column type",
         "duration_ms             INTEGER NOT NULL",
@@ -180,6 +197,44 @@ def test_the_description_names_each_fact() -> None:
     assert "started_at desc" in described["index idx_sync_runs_kind"]
     assert "unique 0" in described["index idx_sync_runs_kind"]
     assert "new.heading,new.body" in described["trigger knowledge_chunks_ai"]
+
+
+def test_the_level_is_described_and_a_database_at_another_level_differs() -> None:
+    conn = _memory_database()
+    try:
+        assert schema.describe(conn)["user_version"] == str(LEVEL)
+        conn.execute(f"PRAGMA user_version = {LEVEL + 3}")
+        found = schema.schema_differences(conn)
+    finally:
+        conn.close()
+    assert found == [f"user_version differs (database: {LEVEL + 3}; expected: {LEVEL})"]
+
+
+def test_the_schema_file_sets_the_level_it_is_compared_at() -> None:
+    conn = _memory_database()
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone() == (LEVEL,)
+    finally:
+        conn.close()
+
+
+async def test_the_level_is_the_same_on_every_kind_of_connection(
+    db: Database, data_dir: Path
+) -> None:
+    """A new database, a read-only open (the boot's check, a staged restore) and a copy
+    made by VACUUM INTO (a backup) all read the level the file holds."""
+    await schema.create_schema(db)
+    other = LEVEL + 4
+    await db.execute(f"PRAGMA user_version = {other}")
+    assert await db.fetch_value("PRAGMA user_version") == other
+    await db.execute(f"VACUUM INTO '{data_dir / 'copy.db'}'")
+    await db.close()
+    for name in ("test.db", "copy.db"):
+        readonly = sqlite3.connect(f"file:{data_dir / name}?mode=ro", uri=True)
+        try:
+            assert schema.describe(readonly)["user_version"] == str(other), name
+        finally:
+            readonly.close()
 
 
 def test_the_ledger_and_a_backup_manifest_are_not_schema() -> None:

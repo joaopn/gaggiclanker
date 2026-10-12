@@ -1324,3 +1324,8 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
     ('shots', 0),
     ('set_versions', 0),
     ('review_claims', 0);
+
+-- The upgrade level of this schema. A new database starts at it, and the comparison treats a
+-- database at another level as a different one, even when its structure is the same. It stays
+-- 0 until a database made by an older version has to be carried forward by an upgrade step.
+PRAGMA user_version = 0;

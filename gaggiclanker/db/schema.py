@@ -159,7 +159,9 @@ def _table_body(sql: str) -> str:
 
 def describe(conn: sqlite3.Connection) -> dict[str, str]:
     """Everything about a database's structure that must match, as ``kind name -> text``."""
-    out: dict[str, str] = {}
+    # The upgrade level is part of what a database is: the same tables at another level
+    # are a database an upgrade step has not finished with (or one a newer version made).
+    out: dict[str, str] = {"user_version": str(conn.execute("PRAGMA user_version").fetchone()[0])}
     sql_of = {
         str(name): sql
         for name, sql in conn.execute("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL")
