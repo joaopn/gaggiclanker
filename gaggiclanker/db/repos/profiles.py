@@ -81,6 +81,8 @@ class ProfileVersionRow(BaseModel):
 
     id: int
     content_hash: str
+    #: The profile this version belongs to, or ``None`` while it is on none.
+    board_id: int | None = None
     label: str
     type: str
     utility: bool = False
@@ -175,10 +177,13 @@ class DeviceProfileRow(BaseModel):
     first_seen_at: str
     last_seen_at: str
     deleted_at: str | None = None
+    #: The name the file had when the sync last read it.
+    label: str = ""
 
 
 class DeviceProfileSummary(BaseModel):
-    """A device profile joined to its current version — what `GET /api/profiles` returns."""
+    """A device profile joined to its current version — what `GET /api/profiles` returns. Its
+    ``label`` is the name the machine's file has (the mirror stores it with the file)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -203,9 +208,23 @@ class ProfilesRepository(Repository):
     # ── versions ─────────────────────────────────────────────────────
 
     async def ensure_version(
-        self, profile: Profile, *, source: str = "device", device_json: str | None = None
+        self,
+        profile: Profile,
+        *,
+        owner: int | None,
+        source: str = "device",
+        device_json: str | None = None,
     ) -> tuple[ProfileVersionRow, bool]:
-        """Return the version row for this profile, inserting it if it is new.
+        """Return the version row for this profile under ``owner``, inserting it if it is new.
+
+        A version belongs to one profile (``owner``, a profile-list row id) and is found or made
+        by that profile and its content; ``owner=None`` is a version that is on no profile yet (a
+        draft for a new profile, an imported file, a machine file that has not joined the list,
+        the empty baseline), found or made among the versions that have none. Every caller says
+        which: there is no default, because a version stored under the wrong owner is a version
+        another profile can end up listing. The profile that lists an ownerless version takes it
+        over (:meth:`ProfileBoardRepository.version_for`); a profile never takes another
+        profile's version, it gets its own copy.
 
         The second element says whether it was inserted, which is what the sync
         engine reports as "a profile changed" — a profile the machine serves
@@ -213,11 +232,13 @@ class ProfilesRepository(Repository):
 
         The label is *not* part of the hash's input beyond being a field of the
         canonical JSON, so renaming a profile does create a new version. That is
-        deliberate: the name is what the shot header records and what the user
-        recognises, so a rename is a change worth keeping.
+        deliberate for now: the name is what the shot header records and what the user
+        recognises. It is the profile's name that is meant to leave the hash, and a following
+        change takes it out, so nothing outside this class may rely on a version's label being
+        part of its identity.
         """
         content_hash = profile_content_hash(profile)
-        existing = await self.get_version_by_hash(content_hash)
+        existing = await self.find_version(content_hash, owner=owner)
         if existing is not None:
             if device_json is not None and json.loads(device_json) != existing.device_profile:
                 # Same profile, textually different device document (a firmware
@@ -232,11 +253,13 @@ class ProfilesRepository(Repository):
         cursor = await self.db.execute(
             """
             INSERT INTO profile_versions
-                (content_hash, label, type, utility, json, device_json, source, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (content_hash, board_id, label, type, utility, json, device_json, source,
+                 created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 content_hash,
+                owner,
                 profile.label,
                 profile.type,
                 int(profile.utility),
@@ -250,6 +273,38 @@ class ProfilesRepository(Repository):
         if version is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("profile version vanished between write and read")
         return version, True
+
+    async def version_for_file(
+        self, profile: Profile, device_id: str, *, device_json: str | None = None
+    ) -> tuple[ProfileVersionRow, bool]:
+        """The version a machine file holds, as the mirror stores it: ``(version, inserted)``.
+
+        A file a profile stands on holds that profile's version of its content. A file no
+        profile stands on (an extra copy of a profile's file, one put back after a reset while
+        the list was paused, one made on the display) holds the stored version with that content
+        when exactly one profile owns one, so nothing is inserted and nothing is news; it holds a
+        version that belongs to none only when no profile, or several, own that content.
+        """
+        owner = await self.standing_profile(device_id)
+        if owner is None:
+            content_hash = profile_content_hash(profile)
+            owned = await self.db.fetch_all(
+                "SELECT * FROM profile_versions WHERE content_hash = ? AND board_id IS NOT NULL",
+                (content_hash,),
+            )
+            if len(owned) == 1:
+                return ProfileVersionRow.model_validate(dict(owned[0])), False
+        return await self.ensure_version(profile, owner=owner, device_json=device_json)
+
+    async def find_version(
+        self, content_hash: str, *, owner: int | None
+    ) -> ProfileVersionRow | None:
+        """The version with this content that belongs to ``owner`` (``None``: to no profile)."""
+        row = await self.db.fetch_one(
+            "SELECT * FROM profile_versions WHERE content_hash = ? AND board_id IS ?",
+            (content_hash, owner),
+        )
+        return self.to_model(ProfileVersionRow, row)
 
     async def get_version(self, version_id: int) -> ProfileVersionRow | None:
         row = await self.db.fetch_one("SELECT * FROM profile_versions WHERE id = ?", (version_id,))
@@ -308,32 +363,55 @@ class ProfilesRepository(Repository):
                     ],
                 }
             ),
+            owner=None,
             source="draft",
         )
         return version.id
 
-    async def get_version_by_hash(self, content_hash: str) -> ProfileVersionRow | None:
+    async def find_stored_version(self, content_hash: str) -> ProfileVersionRow | None:
+        """A version with this content that belongs to any profile or to none: whether a profile
+        document is stored at all, not whose it is. The oldest is the answer."""
         row = await self.db.fetch_one(
-            "SELECT * FROM profile_versions WHERE content_hash = ?", (content_hash,)
+            "SELECT * FROM profile_versions WHERE content_hash = ? ORDER BY id LIMIT 1",
+            (content_hash,),
+        )
+        return self.to_model(ProfileVersionRow, row)
+
+    async def find_version_named_by_a_set(self, content_hash: str) -> ProfileVersionRow | None:
+        """A version with this content that a Set's current version names, if there is one."""
+        row = await self.db.fetch_one(
+            "SELECT pv.* FROM profile_versions pv "
+            "JOIN set_versions v ON v.profile_version_id = pv.id "
+            "JOIN sets s ON s.current_version_id = v.id "
+            "WHERE pv.content_hash = ? ORDER BY pv.id LIMIT 1",
+            (content_hash,),
         )
         return self.to_model(ProfileVersionRow, row)
 
     async def find_version_by_label(self, label: str) -> ProfileVersionRow | None:
-        """The newest stored version carrying this exact label.
+        """The version a name stands for.
 
-        The importer's fallback link: a shot export names its profile but
-        the `profileId` it carries is usually long gone from the machine, so the
-        label is the only handle left. Newest wins because a relabelled profile
-        makes a new version and the most recent one is the current meaning of
-        that name. An exact, case-sensitive match on purpose — "9 Bar" and
-        "9 bar" are two profiles as far as the machine is concerned.
+        The importer's fallback link: a shot export names its profile but the `profileId` it
+        carries is usually long gone from the machine, so the name is the only handle left. The
+        profile list's own name comes first (that profile's active version; a live profile before
+        a deleted one, the newest of those of one name); with no such profile (the list has not
+        adopted the machine, as it does not with Writes off) the newest stored version whose
+        label is the name, which until a version stops carrying its name is what it was called.
+        An exact, case-sensitive match on purpose: "9 Bar" and "9 bar" are two profiles as far
+        as the machine is concerned.
         """
         if not label:
             return None
         row = await self.db.fetch_one(
-            "SELECT * FROM profile_versions WHERE label = ? ORDER BY id DESC LIMIT 1",
+            "SELECT pv.* FROM profile_board b JOIN profile_versions pv "
+            "ON pv.id = b.current_version_id WHERE b.label = ? "
+            "ORDER BY (b.deleted_at IS NOT NULL), b.id DESC LIMIT 1",
             (label,),
         )
+        if row is None:
+            row = await self.db.fetch_one(
+                "SELECT * FROM profile_versions WHERE label = ? ORDER BY id DESC LIMIT 1", (label,)
+            )
         return self.to_model(ProfileVersionRow, row)
 
     async def list_versions(
@@ -421,8 +499,10 @@ class ProfilesRepository(Repository):
         favorite: bool = False,
         selected: bool = False,
         position: int | None = None,
+        label: str | None = None,
     ) -> DeviceProfileRow:
-        """Point a device id at a version and refresh its NVS-side state.
+        """Point a device id at a version and refresh its NVS-side state, and the name the file
+        has right now (``label``, from the document the machine served; left out, the version's).
 
         ``deleted_at = NULL`` on every upsert: a profile that reappears (the
         user restored it, or a previous list arrived during an OTA and was
@@ -430,17 +510,25 @@ class ProfilesRepository(Repository):
         UI for ever.
         """
         now = utc_now()
+        if label is None:
+            label = str(
+                await self.db.fetch_value(
+                    "SELECT label FROM profile_versions WHERE id = ?", (version_id,)
+                )
+                or ""
+            )
         await self.db.execute(
             """
             INSERT INTO device_profiles
-                (device_id, current_version_id, favorite, selected, position,
+                (device_id, current_version_id, favorite, selected, position, label,
                  first_seen_at, last_seen_at, deleted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
             ON CONFLICT(device_id) DO UPDATE SET
                 current_version_id = excluded.current_version_id,
                 favorite = excluded.favorite,
                 selected = excluded.selected,
                 position = excluded.position,
+                label = excluded.label,
                 last_seen_at = excluded.last_seen_at,
                 deleted_at = NULL
             """,
@@ -450,6 +538,7 @@ class ProfilesRepository(Repository):
                 int(favorite),
                 int(selected),
                 position,
+                label,
                 now,
                 now,
             ),
@@ -495,14 +584,64 @@ class ProfilesRepository(Repository):
         Recorded on a draft at creation time so staleness can be checked later.
         ``None`` is a real answer, not a failure: an imported
         version, or a version this box drafted, was never on the machine and has
-        nothing to drift from.
+        nothing to drift from. When more than one file holds it the file the version's own
+        profile stands on is the answer.
         """
         row = await self.db.fetch_one(
-            "SELECT device_id FROM device_profiles "
-            "WHERE current_version_id = ? AND deleted_at IS NULL LIMIT 1",
+            """
+            SELECT d.device_id FROM device_profiles d
+            LEFT JOIN profile_versions pv ON pv.id = d.current_version_id
+            WHERE d.current_version_id = ? AND d.deleted_at IS NULL
+            ORDER BY d.device_id IS NOT (SELECT b.device_profile_id FROM profile_board b
+                                          WHERE b.id = pv.board_id),
+                     d.device_id
+            LIMIT 1
+            """,
             (version_id,),
         )
         return str(row["device_id"]) if row is not None else None
+
+    async def owner_of(self, version_id: int) -> int | None:
+        """The profile a version belongs to, or ``None``."""
+        found = await self.db.fetch_value(
+            "SELECT board_id FROM profile_versions WHERE id = ?", (version_id,)
+        )
+        return None if found is None else int(found)
+
+    async def standing_profile(self, device_id: str) -> int | None:
+        """The profile-list row that stands on this machine file: a live one, else the newest
+        tombstoned one, else ``None``. The owner of a version the mirror reads off that file."""
+        found = await self.db.fetch_value(
+            "SELECT id FROM profile_board WHERE device_profile_id = ? "
+            "ORDER BY (deleted_at IS NOT NULL), id DESC LIMIT 1",
+            (device_id,),
+        )
+        return None if found is None else int(found)
+
+    async def point_file_at(self, device_id: str, version_id: int) -> None:
+        """Make a mirrored file hold another version (of the same document): a file a profile has
+        just been attached to, or made into, holds that profile's own version of it.
+
+        The shots already linked to the file's old version follow, and only those of this file:
+        a shot is linked to what the file held when it was brewed, and the profile that now stands
+        on the file is the one its shots are filed under. Without it a shot read between the
+        mirror and the attach would stay on a version that belongs to no profile, and the Set
+        that brews the profile would not file it.
+        """
+        old = await self.db.fetch_value(
+            "SELECT current_version_id FROM device_profiles WHERE device_id = ?", (device_id,)
+        )
+        if old is None or int(old) == version_id:
+            return
+        await self.db.execute(
+            "UPDATE device_profiles SET current_version_id = ? WHERE device_id = ?",
+            (version_id, device_id),
+        )
+        await self.db.execute(
+            "UPDATE shots SET profile_version_id = ?, updated_at = ? "
+            "WHERE profile_id_on_device = ? AND profile_version_id = ?",
+            (version_id, utc_now(), device_id, int(old)),
+        )
 
     async def mark_one_deleted(self, device_id: str) -> int:
         """Tombstone one device profile, by id, without a list to diff against.
@@ -533,14 +672,16 @@ class ProfilesRepository(Repository):
             where.append("d.deleted_at IS NULL")
         rows = await self.db.fetch_all(
             f"""
-            SELECT d.*, v.label, v.type, v.utility, v.content_hash,
+            SELECT d.device_id, d.current_version_id, d.favorite, d.selected, d.position,
+                   d.first_seen_at, d.last_seen_at, d.deleted_at,
+                   d.label, v.type, v.utility, v.content_hash,
                    (SELECT COUNT(*) FROM shots s
                      WHERE s.profile_id_on_device = d.device_id) AS shot_count
             FROM device_profiles d
             JOIN profile_versions v ON v.id = d.current_version_id
             WHERE {" AND ".join(where)}
             ORDER BY d.deleted_at IS NOT NULL,
-                     COALESCE(d.position, 9999), v.label
+                     COALESCE(d.position, 9999), d.label
             """,  # noqa: S608 - the WHERE clauses above are literals, values are bound
             params,
         )

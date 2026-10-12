@@ -560,6 +560,7 @@ class StartingPointService:
                 change_summary=option.profile_note or option.headline,
                 notes=f"Proposed by the starting-point wizard ({option.option}).",
                 is_new=True,
+                new_profile_name=option.profile.label,
             )
         except TakenName as taken:
             # The wizard has no name field: the person's way out is another suggestion.

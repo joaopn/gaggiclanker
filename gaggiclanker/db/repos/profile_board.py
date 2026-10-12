@@ -117,6 +117,16 @@ class BoardRowPatch(BaseModel):
     deleted_at: str | None = None
 
 
+#: The columns of a profile-list row that name one of its versions. A row only names versions it
+#: owns.
+_VERSION_COLUMNS = (
+    "current_version_id",
+    "device_version_id",
+    "failed_version_id",
+    "previous_version_id",
+    "back_from_version_id",
+)
+
 #: Columns a patch may name that hold a boolean, stored as 0/1.
 _BOOLEAN_COLUMNS = frozenset({"on_machine", "on_home_screen", "pending_major"})
 
@@ -162,16 +172,19 @@ class ProfileBoardRepository(Repository):
         row = await self.db.fetch_one("SELECT * FROM profile_board WHERE id = ?", (row_id,))
         return self.to_model(BoardRow, row)
 
-    async def find_deleted_with_file(self, version_id: int) -> BoardRow | None:
-        """A deleted app row for this version whose machine file the pull has not dealt with.
+    async def find_deleted_with_file(self, content_hash: str) -> BoardRow | None:
+        """A deleted app row whose active version has this content and whose machine file the
+        pull has not dealt with.
 
         Putting the same profile back on the board while its old file is still waiting
         (a Set may be brewing it) revives that row instead of pushing a second identical copy.
         """
         row = await self.db.fetch_one(
-            "SELECT * FROM profile_board WHERE current_version_id = ? AND deleted_at IS NOT NULL "
-            "AND device_profile_id IS NOT NULL AND origin = 'draft' ORDER BY id LIMIT 1",
-            (version_id,),
+            "SELECT b.* FROM profile_board b "
+            "JOIN profile_versions cv ON cv.id = b.current_version_id "
+            "WHERE cv.content_hash = ? AND b.deleted_at IS NOT NULL "
+            "AND b.device_profile_id IS NOT NULL AND b.origin = 'draft' ORDER BY b.id LIMIT 1",
+            (content_hash,),
         )
         return self.to_model(BoardRow, row)
 
@@ -278,11 +291,13 @@ class ProfileBoardRepository(Repository):
                 now,
             ),
         )
-        row = await self.get(int(cursor.lastrowid or 0))
+        row_id = int(cursor.lastrowid or 0)
+        # A profile's active version is always one of its versions, and a version it lists is its
+        # own: if the one given belongs to another profile the row gets a copy and names that.
+        await self.add_version(row_id, write.current_version_id, write.version_source)
+        row = await self.get(row_id)
         if row is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("board row vanished between write and read")
-        # A profile's active version is always one of its versions.
-        await self.add_version(row.id, write.current_version_id, write.version_source)
         return row
 
     async def update(self, row_id: int, patch: BoardRowPatch) -> BoardRow | None:
@@ -301,6 +316,66 @@ class ProfileBoardRepository(Repository):
 
     # ── a profile's versions ─────────────────────────────────────────
 
+    async def version_for(self, row_id: int, version_id: int) -> int:
+        """The version of this profile that stands for ``version_id``: the one place a version is
+        attached to a profile.
+
+        * on no profile yet: the profile takes it over (unless it already has a version of
+          that brew, which is then the answer and the ownerless one is left alone);
+        * already this profile's: itself;
+        * another profile's: a profile never takes another's version, so it gets its own copy,
+          carrying the signature the way a new version of a profile does. A profile that already
+          has a version of that brew uses it.
+
+        Whatever the answer is, the profile's own columns that named ``version_id`` name it.
+        Every path that lists a version on a profile goes through here (:meth:`add_version`).
+        """
+        found = await self.db.fetch_one(
+            "SELECT id, board_id, content_hash FROM profile_versions WHERE id = ?", (version_id,)
+        )
+        if found is None:
+            raise RuntimeError(f"profile version {version_id} is missing")
+        if found["board_id"] == row_id:
+            return version_id
+        mine = await self.db.fetch_value(
+            "SELECT id FROM profile_versions WHERE board_id = ? AND content_hash = ?",
+            (row_id, found["content_hash"]),
+        )
+        if found["board_id"] is None and mine is None:
+            await self.db.execute(
+                "UPDATE profile_versions SET board_id = ? WHERE id = ?", (row_id, version_id)
+            )
+            return version_id
+        carries = False
+        if mine is not None:
+            effective = int(mine)
+            # What a draft stored with its still ownerless version (the agent's expectations)
+            # follows it onto the profile's own version of that brew. Another profile's version
+            # has its own signature, which this profile's version does not take.
+            carries = found["board_id"] is None
+        else:
+            cursor = await self.db.execute(
+                "INSERT INTO profile_versions "
+                "(content_hash, board_id, label, type, utility, json, device_json, source, "
+                " created_at) "
+                "SELECT content_hash, ?, label, type, utility, json, device_json, source, "
+                " created_at FROM profile_versions WHERE id = ?",
+                (row_id, version_id),
+            )
+            effective = int(cursor.lastrowid or 0)
+            carries = True
+        if carries:
+            # Imported here: the signature service reads this module's neighbours.
+            from gaggiclanker.signatures.service import SignatureService
+
+            await SignatureService(self.db).carry_quietly(version_id, effective)
+        for column in _VERSION_COLUMNS:
+            await self.db.execute(
+                f"UPDATE profile_board SET {column} = ? WHERE id = ? AND {column} = ?",  # noqa: S608 - constant column names
+                (effective, row_id, version_id),
+            )
+        return effective
+
     async def add_version(
         self,
         board_id: int,
@@ -309,11 +384,14 @@ class ProfileBoardRepository(Repository):
         *,
         added_at: str | None = None,
     ) -> bool:
-        """Record that this profile has had this version. ``False`` when it already had it."""
+        """Record that this profile has had this version (its own version of it, see
+        :meth:`version_for`; callers that go on to use the version ask for it first). ``False``
+        when it already had it."""
+        effective = await self.version_for(board_id, version_id)
         cursor = await self.db.execute(
             "INSERT OR IGNORE INTO profile_board_versions (board_id, version_id, added_at, source) "
             "VALUES (?, ?, ?, ?)",
-            (board_id, version_id, added_at or utc_now(), source),
+            (board_id, effective, added_at or utc_now(), source),
         )
         return cursor.rowcount > 0
 

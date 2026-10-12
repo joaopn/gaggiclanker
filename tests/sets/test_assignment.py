@@ -73,7 +73,9 @@ def _device_with_two_shots(*, with_notes: bool = False) -> FakeDevice:
 async def _profile_version(db: Database, label: str) -> int:
     document = json.loads((FIXTURES / "profiles" / "docs-medium-18g.json").read_text())
     document["label"] = label
-    version, _ = await ProfilesRepository(db).ensure_version(Profile.model_validate(document))
+    version, _ = await ProfilesRepository(db).ensure_version(
+        Profile.model_validate(document), owner=None
+    )
     return version.id
 
 

@@ -380,7 +380,7 @@ async def test_making_a_version_active_is_refused_when_its_name_is_taken(
     taken = data(await client.get(f"/api/profile-versions/{other['current_version_id']}"))
     document = {**taken["profile"], "phases": taken["profile"]["phases"]}
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**document, "label": "Old name", "id": None})
+        Profile.model_validate({**document, "label": "Old name", "id": None}), owner=None
     )
     await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
 
@@ -424,7 +424,7 @@ async def test_making_a_version_active_is_refused_when_its_name_differs_only_in_
     base = await ProfilesRepository(app.state.db).get_version(mine["current_version_id"])
     assert base is not None and base.profile is not None
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**base.profile, "label": "OLD NAME ", "id": None})
+        Profile.model_validate({**base.profile, "label": "OLD NAME ", "id": None}), owner=None
     )
     await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
 
@@ -446,7 +446,8 @@ async def test_a_version_of_the_same_profile_differing_only_in_case_is_not_refus
     base = await ProfilesRepository(app.state.db).get_version(mine["current_version_id"])
     assert base is not None and base.profile is not None
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**base.profile, "label": mine["label"].upper(), "id": None})
+        Profile.model_validate({**base.profile, "label": mine["label"].upper(), "id": None}),
+        owner=None,
     )
     await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
 

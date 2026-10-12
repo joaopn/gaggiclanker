@@ -357,7 +357,7 @@ async def test_the_synthetic_base_is_not_a_candidate_a_default_base_or_a_row_of_
     from gaggiclanker.starting.context import profile_candidates
 
     profiles = ProfilesRepository(plain_db)
-    real, _ = await profiles.ensure_version(Profile.model_validate(_document(40)))
+    real, _ = await profiles.ensure_version(Profile.model_validate(_document(40)), owner=None)
     # Stored after the real one, so it is the newest: the tie-break would pick it.
     synthetic = await profiles.empty_base()
 

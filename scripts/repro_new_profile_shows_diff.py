@@ -114,7 +114,8 @@ async def main() -> int:
             library = await ProfilesRepository(db).ensure_version(
                 Profile.model_validate(
                     {**json.loads((FIXTURE / "docs-medium-18g.json").read_text()), "label": "Mine"}
-                )
+                ),
+                owner=None,
             )
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:

@@ -1,8 +1,9 @@
-"""A major version means a different profile, and a profile is a list entry.
+"""A major version means a different profile, and a version belongs to one profile.
 
 Moving a Set to a newer version of the same profile is dialling in (a minor);
-moving it to another entry of the profile list is a functional change (a major).
-A profile version that no entry holds is a profile of its own. The person's box
+moving it to a version another profile owns is a functional change (a major), even when that
+version brews exactly what the first one did (a Duplicate has a version of its own).
+A profile version no profile owns is a profile of its own. The person's box
 wins in both directions, and a pushed draft stays minor whatever it names (pinned
 in `tests/drafts/test_record_on_set.py`).
 """
@@ -16,6 +17,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.profile_board import BoardRowPatch, BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profile_identity import profile_entry_id, same_profile
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch, SetVersionWrite, SetWrite
@@ -27,20 +29,17 @@ PREDICTION = "Compared to v1: a rounder cup, no slower, less of the dry finish."
 async def make_entry(
     db: Database, label: str, versions: list[int], *, deleted: bool = False
 ) -> int:
-    """A profile list entry that has had these versions (the first is active)."""
-    cursor = await db.execute(
-        "INSERT INTO profile_board (label, current_version_id, origin, deleted_at) "
-        "VALUES (?, ?, 'adopted', ?)",
-        (label, versions[0], "2026-01-01T00:00:00.000Z" if deleted else None),
+    """A profile list entry that has had these versions (the first is active), through the
+    repository: a version it lists becomes the entry's own, as it does in the app."""
+    board = ProfileBoardRepository(db)
+    row = await board.insert(
+        BoardRowWrite(label=label, current_version_id=versions[0], origin="adopted")
     )
-    entry = int(cursor.lastrowid or 0)
-    for version in versions:
-        await db.execute(
-            "INSERT INTO profile_board_versions (board_id, version_id, source) "
-            "VALUES (?, ?, 'machine')",
-            (entry, version),
-        )
-    return entry
+    for version in versions[1:]:
+        await board.add_version(row.id, version, "machine")
+    if deleted:
+        await board.update(row.id, BoardRowPatch(deleted_at="2026-01-01T00:00:00.000Z"))
+    return row.id
 
 
 class World:
@@ -101,25 +100,55 @@ class TestWhatTheSameProfileIs:
         assert await same_profile(wired.db, old, new)
 
 
-class TestWhichEntryAVersionBelongsTo:
-    async def test_a_live_entry_comes_before_a_deleted_one_whatever_the_ids(
+class TestWhichProfileAVersionBelongsTo:
+    async def test_a_second_profile_listing_a_version_gets_a_copy_of_its_own(
         self, wired: Fixtures
     ) -> None:
         version = await make_profile_version(wired.db, "Shared")
-        deleted = await make_entry(wired.db, "Old copy", [version], deleted=True)
-        live = await make_entry(wired.db, "Live copy", [version])
-        assert deleted < live
-        assert await profile_entry_id(wired.db, version) == live
-
-    async def test_otherwise_the_lowest_id_is_the_stable_pick(self, wired: Fixtures) -> None:
-        version = await make_profile_version(wired.db, "Shared two")
-        first = await make_entry(wired.db, "First", [version])
-        await make_entry(wired.db, "Second", [version])
+        first = await make_entry(wired.db, "First copy", [version])
+        second = await make_entry(wired.db, "Second copy", [version])
+        board = ProfileBoardRepository(wired.db)
+        second_row = await board.get(second)
+        assert second_row is not None
+        copy = second_row.current_version_id
+        assert copy != version
         assert await profile_entry_id(wired.db, version) == first
-        gone_first = await make_profile_version(wired.db, "Shared three")
-        low = await make_entry(wired.db, "Low", [gone_first], deleted=True)
-        await make_entry(wired.db, "High", [gone_first], deleted=True)
-        assert await profile_entry_id(wired.db, gone_first) == low
+        assert await profile_entry_id(wired.db, copy) == second
+        # One brew, two profiles: the same document, two versions, and they are not the same
+        # profile.
+        hashes = {
+            r["content_hash"]
+            for r in await wired.db.fetch_all(
+                "SELECT content_hash FROM profile_versions WHERE id IN (?, ?)", (version, copy)
+            )
+        }
+        assert len(hashes) == 1
+        assert not await same_profile(wired.db, version, copy)
+
+    async def test_a_profile_holds_a_brew_once(self, wired: Fixtures) -> None:
+        version = await make_profile_version(wired.db, "Once")
+        entry = await make_entry(wired.db, "Once", [version])
+        board = ProfileBoardRepository(wired.db)
+        # The same brew arriving again, on no profile yet: the profile keeps the version it
+        # has and leaves the loose one alone.
+        loose = await make_profile_version(wired.db, "Once")
+        assert loose != version
+        assert await board.version_for(entry, loose) == version
+        assert await profile_entry_id(wired.db, loose) is None
+
+    async def test_a_duplicate_is_a_major_change_though_it_brews_the_same(
+        self, wired: Fixtures
+    ) -> None:
+        version = await make_profile_version(wired.db, "Original")
+        await make_entry(wired.db, "Original", [version])
+        duplicate = await make_entry(wired.db, "Duplicate", [version])
+        row = await ProfileBoardRepository(wired.db).get(duplicate)
+        assert row is not None
+        set_id = await _new_set(wired, version)
+        added = await wired.sets.add_version(
+            set_id, SetVersionPatch(profile_version_id=row.current_version_id, dose_g=18.5)
+        )
+        assert added is not None and added.version_label == "v2"
 
 
 class TestTheDefaultOnTheForm:

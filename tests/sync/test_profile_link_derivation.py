@@ -187,7 +187,7 @@ async def test_an_imported_shot_whose_profile_is_already_stored_is_derived_with_
     """A profile the archive already holds under the export's own profile id."""
     profile = Profile.model_validate(constructed_profile("shot_129"))
     repo = ProfilesRepository(db)
-    version, _ = await repo.ensure_version(profile)
+    version, _ = await repo.ensure_version(profile, owner=None)
     document = load_export("shot-129.json")
     await repo.upsert_device_profile(device_id=document["profileId"], version_id=version.id)
 
@@ -209,7 +209,7 @@ async def test_a_replace_that_finds_no_profile_keeps_the_link_and_derives_with_i
     # Labelled otherwise, so the batch's label guess does not link the first import.
     profile = Profile.model_validate({**constructed_profile("shot_129"), "label": "Not its name"})
     repo = ProfilesRepository(db)
-    version, _ = await repo.ensure_version(profile)
+    version, _ = await repo.ensure_version(profile, owner=None)
     document = load_export("shot-129.json")
     service = ImportService(db)
     first = await service.import_files(

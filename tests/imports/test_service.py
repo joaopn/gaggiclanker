@@ -514,7 +514,7 @@ async def test_a_shot_links_to_the_profile_version_when_the_mirror_has_it(
 
     profiles = ProfilesRepository(db)
     [profile] = profile_export_to_profiles(document(PROFILE_FIXTURE))
-    version, _ = await profiles.ensure_version(profile)
+    version, _ = await profiles.ensure_version(profile, owner=None)
     await profiles.upsert_device_profile(device_id="rV4GhUcSZc", version_id=version.id)
 
     summary = await ImportService(db).import_files(files(SHOT_FIXTURE))
@@ -598,7 +598,7 @@ async def test_an_id_match_is_never_overridden_by_a_label_match(db: Database) ->
 
     profiles = ProfilesRepository(db)
     [profile] = profile_export_to_profiles(json.loads(fixture_bytes(PROFILE_FIXTURE)))
-    version, _ = await profiles.ensure_version(profile)
+    version, _ = await profiles.ensure_version(profile, owner=None)
     await profiles.upsert_device_profile(device_id="rV4GhUcSZc", version_id=version.id)
 
     summary = await ImportService(db).import_files(
@@ -744,3 +744,33 @@ async def test_an_unreadable_file_with_no_start_time_keeps_the_archived_start_ti
     assert summary.items[0].status == "updated" and summary.items[0].quarantined
     assert await db.fetch_value("SELECT COUNT(*) FROM shots") == 1
     assert await db.fetch_value("SELECT start_epoch FROM shots") == epoch
+
+
+async def test_a_shot_is_linked_by_its_profile_name_with_no_profile_list_at_all(
+    service: ImportService, db: Database
+) -> None:
+    """Writes off, the list has never adopted a machine: the name finds the newest stored
+    version called that, as it always did. With the list, its profile's active version wins."""
+    from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+    from gaggiclanker.db.repos.profiles import ProfilesRepository
+    from gaggiclanker.domain.models import Profile
+    from tests.drafts.conftest import profile_fixture
+
+    document = profile_fixture("docs-medium-18g")
+    profiles = ProfilesRepository(db)
+    older, _ = await profiles.ensure_version(
+        Profile.model_validate({**document, "label": "Named", "temperature": 90}), owner=None
+    )
+    newer, _ = await profiles.ensure_version(
+        Profile.model_validate({**document, "label": "Named", "temperature": 92}), owner=None
+    )
+
+    found = await profiles.find_version_by_label("Named")
+    assert found is not None and found.id == newer.id
+    assert await profiles.find_version_by_label("Never called that") is None
+
+    row = await ProfileBoardRepository(db).insert(
+        BoardRowWrite(label="Named", current_version_id=older.id, origin="adopted")
+    )
+    listed = await profiles.find_version_by_label("Named")
+    assert listed is not None and listed.id == older.id and row.current_version_id == older.id

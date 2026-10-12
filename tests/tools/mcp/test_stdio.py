@@ -685,6 +685,42 @@ async def test_a_profile_draft_can_be_proposed_over_stdio(
     assert result.structured_content["status"] == "draft"
 
 
+async def test_the_listing_asks_for_a_new_profile_by_name_and_refuses_a_label_in_the_patch(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The MCP surface serves the draft tool as it is registered: a new profile is asked for with
+    a parameter, and the document's label is not a way to name one."""
+    data_dir, fixture = archive_dir
+    async with AsyncExitStack() as stack:
+        session = await session_for(stack, data_dir)
+
+        listed = {tool.name: tool for tool in (await session.list_tools()).tools}
+        forked = await session.call_tool(
+            "draft_profile",
+            {
+                "base_version_id": fixture.profile_version_id,
+                "patch": {"temperature": 91},
+                "new_profile_name": "Over stdio",
+                "reason": "A fork.",
+            },
+        )
+        renamed = await session.call_tool(
+            "draft_profile",
+            {
+                "base_version_id": fixture.profile_version_id,
+                "patch": {"label": "Over stdio too"},
+                "reason": "A rename.",
+            },
+        )
+
+    properties = listed["draft_profile"].input_schema["properties"]
+    assert "new_profile_name" in properties
+    assert "new_profile_name" in (listed["draft_profile"].description or "")
+    assert forked.is_error is False, forked.content
+    assert renamed.is_error is True
+    assert "pass new_profile_name" in json.dumps([c.model_dump() for c in renamed.content])
+
+
 async def test_a_change_proposed_over_stdio_waits_and_creates_no_version(
     archive_dir: tuple[Path, Fixture],
 ) -> None:

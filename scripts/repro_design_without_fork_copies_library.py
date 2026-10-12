@@ -80,7 +80,8 @@ async def main() -> int:
             await ProfilesRepository(db).ensure_version(
                 Profile.model_validate(
                     {**document, "label": "What I brew", "description": "Library words"}
-                )
+                ),
+                owner=None,
             )
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:

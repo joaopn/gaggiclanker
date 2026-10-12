@@ -564,7 +564,7 @@ async def _second_profile(archive: Fixture) -> int:
     own = await profiles.get_version(archive.profile_version_id)
     assert own is not None and isinstance(own.profile, dict)
     version, _ = await profiles.ensure_version(
-        Profile.model_validate({**own.profile, "label": "Hotter"})
+        Profile.model_validate({**own.profile, "label": "Hotter"}), owner=None
     )
     return version.id
 
@@ -784,11 +784,73 @@ async def test_a_profile_draft_in_a_set_conversation_needs_a_prediction(
     assert "cannot be proposed without a prediction" in data["detail"]
 
 
+async def test_a_name_in_the_patch_is_refused_and_says_how_to_make_a_new_profile(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    stored = await ProfilesRepository(archive.db).get_version(archive.profile_version_id)
+    assert stored is not None
+    data = await refuse(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"label": "Renamed", "temperature": 91},
+        reason="A new name.",
+    )
+    assert data["detail"] == (
+        "A profile's name is not part of its document. To make a new profile, pass "
+        f"new_profile_name; a change to {stored.label} keeps its name."
+    )
+    assert await ProfileDraftsRepository(archive.db).list_drafts() == []
+
+
+async def test_a_patch_carrying_the_profiles_own_name_is_accepted_and_ignored(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    stored = await ProfilesRepository(archive.db).get_version(archive.profile_version_id)
+    assert stored is not None
+    made = await call(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"label": f"  {stored.label.upper()} ", "temperature": 91},
+        reason="Whole document back.",
+    )
+    draft = await ProfileDraftsRepository(archive.db).get(made["draft_id"])
+    assert draft is not None and draft.draft_label == stored.label
+
+
+async def test_a_new_profile_name_makes_a_draft_that_is_a_new_profile_under_that_name(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    made = await call(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        new_profile_name="  A gentler fork ",
+        reason="A fork with a lower temperature.",
+    )
+    stored = await ProfileDraftsRepository(archive.db).get(made["draft_id"])
+    assert stored is not None and stored.draft_version_id is not None
+    assert (stored.draft_label, stored.destination_board_id) == ("A gentler fork", None)
+    version = await ProfilesRepository(archive.db).get_version(stored.draft_version_id)
+    assert version is not None and version.label == "A gentler fork" and version.board_id is None
+    blank = await refuse(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        new_profile_name="   ",
+        reason="No name.",
+    )
+    assert "needs a name" in blank["detail"]
+
+
 async def test_a_profile_draft_renamed_onto_a_profile_that_exists_is_refused(
     ctx: ToolContext, archive: Fixture
 ) -> None:
-    """A rename never takes a name that is already a profile; keeping the base profile's own
-    name is a change to it, not a rename, and is not refused."""
+    """A new profile never takes a name that is already a profile; a change to the base's
+    profile keeps its name and is not refused."""
     from gaggiclanker.db.repos.lineage import taken_name_sentence
     from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 
@@ -810,8 +872,9 @@ async def test_a_profile_draft_renamed_onto_a_profile_that_exists_is_refused(
         _with_drafts(ctx),
         "draft_profile",
         base_version_id=archive.profile_version_id,
-        patch={"label": "Taken"},
-        reason="Renamed.",
+        patch={"temperature": 91},
+        new_profile_name="Taken",
+        reason="A copy under a name that is taken.",
     )
     assert data["detail"] == taken_name_sentence("Taken")
 

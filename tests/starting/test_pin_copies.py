@@ -30,7 +30,7 @@ async def _a_lookalike(fixture: Fixture) -> int:
     original = await profiles.get_version(fixture.profile_version_id)
     assert original is not None and original.profile is not None
     copy, _ = await profiles.ensure_version(
-        Profile.model_validate({**original.profile, "label": original.label + " v1"})
+        Profile.model_validate({**original.profile, "label": original.label + " v1"}), owner=None
     )
     return copy.id
 
@@ -122,7 +122,7 @@ async def test_an_authored_option_that_is_exactly_a_copy_answers_the_wizards_409
 ) -> None:
     """The wizard has no name field, so it says what the person can do: ask for another."""
     profiles = ProfilesRepository(fixture.db)
-    authored, _ = await profiles.ensure_version(Profile.model_validate(GOOD_PROFILE))
+    authored, _ = await profiles.ensure_version(Profile.model_validate(GOOD_PROFILE), owner=None)
     # That very document is a pin's copy, and the pin has since been removed: no live profile
     # has the name, so only the pin's claim on the copy stands in the way.
     pin = await _pin_it(fixture, authored.id)

@@ -134,7 +134,7 @@ async def test_the_landing_and_the_put_agree_for_a_draft_that_reached_the_copys_
     assert stored is not None and stored.profile is not None
     changed = Profile.model_validate(stored.profile)
     changed = changed.model_copy(update={"description": "not the same"})
-    version, _ = await app.state.board.profiles.ensure_version(changed, source="draft")
+    version, _ = await app.state.board.profiles.ensure_version(changed, source="draft", owner=None)
     assert version.id != copy_version
     draft = await ProfileDraftsRepository(app.state.db).create(
         ProfileDraftWrite(base_version_id=copy_version, draft_version_id=version.id, made_by="edit")
@@ -236,18 +236,20 @@ async def test_the_name_check_refuses_a_case_variant_the_sets_profile_makes_froz
     base = await board.proposals.base_profile(await base_version_id(app, BASE_LABEL))
     lower = NAME.lower()
     variant, _ = await board.profiles.ensure_version(
-        base.model_copy(update={"label": lower, "temperature": 91.0}), source="draft"
+        base.model_copy(update={"label": lower, "temperature": 91.0}), source="draft", owner=None
     )
     await board.board.insert(
         BoardRowWrite(label=lower, current_version_id=variant.id, origin="adopted")
     )
     edited, _ = await board.profiles.ensure_version(
-        base.model_copy(update={"label": NAME, "temperature": 92.0}), source="draft"
+        base.model_copy(update={"label": NAME, "temperature": 92.0}), source="draft", owner=None
     )
     await board.board.add_version(pinned["id"], edited.id, "edited_on_machine")
     brewing = await make_set_on(client, "Brews the edit", edited.id)
     spin, _ = await board.profiles.ensure_version(
-        base.model_copy(update={"label": "Spin-off", "temperature": 89.0}), source="draft"
+        base.model_copy(update={"label": "Spin-off", "temperature": 89.0}),
+        source="draft",
+        owner=None,
     )
     draft = await ProfileDraftsRepository(app.state.db).create(
         ProfileDraftWrite(

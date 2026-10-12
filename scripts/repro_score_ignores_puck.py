@@ -69,7 +69,7 @@ async def read_base_rendering() -> str:
         try:
             await create_schema(db)
             version, _ = await ProfilesRepository(db).ensure_version(
-                Profile.model_validate(lever.LEVER_PROFILE)
+                Profile.model_validate(lever.LEVER_PROFILE), owner=None
             )
             bean = await BeansRepository(db).create(
                 BeanWrite(name="Constructed bean", roast_level="medium", process="washed")

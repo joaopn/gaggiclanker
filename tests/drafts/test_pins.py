@@ -427,7 +427,7 @@ async def test_a_profile_some_set_version_already_brews_is_not_a_copy_to_pin(
     set_id, version_id = await _set_with_version(app, client)
     base = await app.state.board.proposals.base_profile(await base_version_id(app, BASE_LABEL))
     lookalike, _ = await app.state.board.profiles.ensure_version(
-        base.model_copy(update={"label": f"{BASE_LABEL} v1"}), source="draft"
+        base.model_copy(update={"label": f"{BASE_LABEL} v1"}), source="draft", owner=None
     )
     await make_set_on(client, "Brews the lookalike", lookalike.id)
     before = await _counts(app)

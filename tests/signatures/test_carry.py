@@ -31,7 +31,9 @@ RAMP_CUP = {
 
 
 async def _version(db: Database, document: dict[str, Any]) -> int:
-    version, _ = await ProfilesRepository(db).ensure_version(Profile.model_validate(document))
+    version, _ = await ProfilesRepository(db).ensure_version(
+        Profile.model_validate(document), owner=None
+    )
     return version.id
 
 

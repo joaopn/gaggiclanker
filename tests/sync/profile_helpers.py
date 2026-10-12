@@ -19,7 +19,7 @@ PROFILE_ID_204 = parse_slog(SLOG_204.read_bytes()).header.profile_id
 
 async def profile_version(db: Database, variant: str = "pressure-first") -> int:
     profile = Profile.model_validate(constructed_profile("shot_204", variant))
-    version, _ = await ProfilesRepository(db).ensure_version(profile)
+    version, _ = await ProfilesRepository(db).ensure_version(profile, owner=None)
     return version.id
 
 

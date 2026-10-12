@@ -4834,7 +4834,8 @@ export interface components {
         };
         /**
          * DeviceProfileSummary
-         * @description A device profile joined to its current version — what `GET /api/profiles` returns.
+         * @description A device profile joined to its current version — what `GET /api/profiles` returns. Its
+         *     ``label`` is the name the machine's file has (the mirror stores it with the file).
          */
         DeviceProfileSummary: {
             /** Content Hash */
@@ -6881,6 +6882,8 @@ export interface components {
             compares_to_version_label?: string | null;
             /** Created At */
             created_at: string;
+            /** Destination Board Id */
+            destination_board_id?: number | null;
             /** Draft Label */
             draft_label?: string | null;
             /** Draft Version Id */
@@ -6901,6 +6904,11 @@ export interface components {
              * @default
              */
             major_reason: string;
+            /**
+             * New Profile
+             * @default false
+             */
+            new_profile: boolean;
             /**
              * Notes
              * @default
@@ -7018,6 +7026,8 @@ export interface components {
          * @description One immutable profile version, identified by its content hash.
          */
         ProfileVersionRow: {
+            /** Board Id */
+            board_id?: number | null;
             /** Content Hash */
             content_hash: string;
             /** Created At */

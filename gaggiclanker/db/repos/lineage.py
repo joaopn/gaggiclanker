@@ -1,23 +1,23 @@
-"""Where a draft's version lands: :func:`place_draft` for the live paths, :func:`lineage_owner`
-for the one-time list fill.
+"""Where a draft goes: :func:`change_destination` decides it once, :func:`place_draft` answers for
+a put, and :func:`lineage_owner` replays history for the one-time list fill.
 
-A put of a draft is a new version of an existing profile, or a new profile. For every live path
-(a Set's draft or not, an edit, the agent's change, a profile written from scratch) one function
-decides, and the draft constructor, Make active and the page's landing all ask it: **a draft
-continues the live profile whose name is its label (case and surrounding whitespace ignored),
-and otherwise it is a profile of its own.** A name never changes through a version. The fill
-replays stored history through :func:`lineage_owner`, which matches names exactly, as that
-history was written.
+A draft is either a **change to one profile** or a **new profile** with a name of its own, and
+which it is is decided once, when the draft is made, and stored on the draft
+(``destination_board_id``, ``label``). A change goes to the profile its base belongs to (the
+profile that lists the base version, else the one standing on a machine file that holds it), or
+to the Set's profile when that is the profile the Set brews under the same name; it always
+carries that profile's own name. A name never places a draft: the document's label is rebuilt
+from the destination's name, so there is nothing to compare. A new profile is refused when a live
+profile already has its name (:func:`taken_name_sentence`): the only name check there is.
 
-A name is exactly what the person or the agent gave it; the app adds nothing to it. A change to
-an existing profile carries that profile's name (the profile the base belongs to, found through its
-version list or the machine file it was mirrored under). A rename, or a profile written from
-scratch, must not take a name another live profile has, or its put would silently become a version
-of that profile: :func:`taken_name_sentence` is the refusal. :func:`place_draft` is the one
-function that decides, and it is asked wherever the answer matters: when a draft is made, when it
-is put, and for the landing the Profiles page shows beside the Make active button. A Set's draft
-goes to the Set's profile when that is the profile its name names; renamed, it is a profile of its
-own and the Set records the change.
+A change whose base belongs to no live profile (a superseded draft's version, a profile that has
+been deleted) becomes a new profile under the base's name, or a change to the live profile that
+has that name. :func:`place_draft` is what the draft constructor, the name check, the page's
+landing and the put all ask, so they cannot disagree; the destination it is given is the stored
+one, never worked out again. A profile that is a pin's frozen copy is changed only by unpinning
+it, so a draft never goes there.
+
+A name is exactly what the person or the agent gave it, stripped; the app adds nothing to it.
 
 Stored drafts from before this carry an ``[AI]`` suffix on some names; they are grouped as they
 always were, by the one-time list fill.
@@ -32,6 +32,8 @@ __all__ = [
     "DraftLookup",
     "LineageLookup",
     "Placement",
+    "change_destination",
+    "destination_now",
     "lineage_owner",
     "name_key",
     "person_taken_sentence",
@@ -113,7 +115,7 @@ async def lineage_owner[T](
 
 
 class DraftLookup[T](LineageLookup[T], Protocol):
-    """What :func:`place_draft` asks of whoever holds the live profiles."""
+    """What the placement functions ask of whoever holds the live profiles."""
 
     async def by_name_key(self, label: str) -> T | None:
         """A live profile whose name is this label by :func:`name_key`, if any."""
@@ -127,17 +129,17 @@ class DraftLookup[T](LineageLookup[T], Protocol):
 
 @dataclass(frozen=True, slots=True)
 class Placement[T]:
-    """Where a draft's version lands, and the name it is stored under."""
+    """What a put of a draft does, and the name it is stored under."""
 
-    #: The live profile the draft continues, or ``None`` (a new profile, or a refused one).
+    #: The live profile the draft is a change to, or ``None`` (a new profile, or a refused one).
     owner: T | None
-    #: A live profile that already has the name of a new or renamed draft: the draft is refused.
+    #: A live profile that already has the name of a new profile: the draft is refused.
     taken: T | None
-    #: The label to store: the continued profile's own name, else the name stripped.
+    #: The name to store: the destination's own name, else the new profile's name, stripped.
     name: str
-    #: Why a draft that would continue a profile is refused: that profile is the frozen copy of a
+    #: Why a draft that is a change to a profile is refused: that profile is the frozen copy of a
     #: pinned Set version (the person's sentence), else ``None``. A pinned profile is changed only
-    #: by unpinning it, so a draft never continues one, exactly as it never takes a taken name.
+    #: by unpinning it, so a draft never goes there, exactly as it never takes a taken name.
     frozen: str | None = None
 
     @property
@@ -145,54 +147,108 @@ class Placement[T]:
         return self.taken is not None or self.frozen is not None
 
 
-async def place_draft[T](
+async def change_destination[T](
     lookup: DraftLookup[T],
     *,
-    label: str,
-    base_version_id: int | None,
+    base_version_id: int,
     base_label: str | None,
     set_id: int | None = None,
-) -> Placement[T]:
-    """The one rule for where a draft goes, used when it is made, when it is put and by the
-    landing the page shows.
+) -> T | None:
+    """The live profile a change to the base's profile is a change to; ``None`` when no live
+    profile has the base.
 
-    ``base_version_id`` and ``base_label`` are ``None`` for a profile written from scratch.
-
-    * A draft **continues** its base's live profile when its label is that profile's name
-      (:func:`name_key`). The version's own name decides nothing there: a profile may list a
-      version under another name (renamed on the display), and a draft from it that restores the
-      profile's name continues the profile; one that keeps the other name is a rename.
-    * A base that belongs to no live profile (a superseded draft's version, say) has nothing but
-      its own label: a draft that keeps it continues the live profile of that name, if there is
-      one, and is not a rename.
-    * Anything else is new or renamed. Its name is **taken** when a live profile has it, and
-      the draft is refused; otherwise it is a profile of its own.
-    * A draft that would continue a profile that is a **pin's frozen copy** is refused too
-      (:attr:`Placement.frozen`): the pin is changed only by unpinning it.
-
-    A Set's draft goes to the Set's profile when that is the profile its name names.
+    * The base's own profile (:meth:`DraftLookup.base_profile`).
+    * A Set's profile goes first when it has that profile's name (two live profiles can differ in
+      case only, since the sync matches names exactly).
+    * A base that belongs to no live profile has only its own label: the live profile with that
+      name is the destination, the Set's first. With none, the change is a new profile.
     """
-    key = name_key(label)
-    own = None if base_version_id is None else await lookup.base_profile(base_version_id)
+    own = await lookup.base_profile(base_version_id)
     if own is not None:
-        continues = key == name_key(lookup.label_of(own))
+        key = name_key(lookup.label_of(own))
+    elif base_label is not None:
+        key = name_key(base_label)
     else:
-        continues = base_label is not None and key == name_key(base_label)
-    if not continues:
-        return Placement(owner=None, taken=await lookup.by_name_key(label), name=label.strip())
+        return None
     owner = own
     if set_id is not None:
         theirs = await lookup.by_set(set_id)
         if theirs is not None and name_key(lookup.label_of(theirs)) == key:
             owner = theirs
-    if owner is None:
-        owner = await lookup.by_name_key(label)
-    # A name never changes through a version: whatever profile is continued, its own name is
-    # what the draft is stored under. Only a continuation with no live profile behind it (a
-    # base outside every list, nothing of that name yet) keeps the base's label.
-    stored = lookup.label_of(owner) if owner is not None else (base_label or label.strip())
-    if owner is not None:
-        frozen = await lookup.frozen_sentence(owner)
-        if frozen is not None:
-            return Placement(owner=None, taken=None, name=stored, frozen=frozen)
-    return Placement(owner=owner, taken=None, name=stored)
+    if owner is None and base_label is not None:
+        owner = await lookup.by_name_key(base_label)
+    return owner
+
+
+async def destination_now[T](
+    lookup: DraftLookup[T],
+    *,
+    new_profile: bool,
+    stored: T | None,
+    base_version_id: int | None,
+    base_label: str | None,
+    set_id: int | None = None,
+) -> T | None:
+    """Where a draft goes **now**: the one answer the constructor, the landing, the standing and
+    the put all use.
+
+    A new profile goes nowhere (it is a row of its own). A change goes to the profile stored on
+    it while that profile is live; with none stored, or once that profile is gone, to whichever
+    live profile its base belongs to when it is read (:func:`change_destination`), so a change
+    drafted before its profile was on the list is a version of it when the list has it.
+    """
+    if new_profile:
+        return None
+    if stored is not None:
+        return stored
+    if base_version_id is None:
+        return None
+    return await change_destination(
+        lookup, base_version_id=base_version_id, base_label=base_label, set_id=set_id
+    )
+
+
+async def place_draft[T](
+    lookup: DraftLookup[T],
+    *,
+    label: str,
+    destination: T | None,
+    base_version_id: int | None = None,
+    set_id: int | None = None,
+) -> Placement[T]:
+    """What a put of a draft does, from the draft's stored destination and name: the one rule the
+    constructor, the name check, the page's landing and the put all ask.
+
+    * a **destination** (a live profile): the draft is a change to it, stored under its own name,
+      unless it is a pin's frozen copy (:attr:`Placement.frozen`);
+    * **none**: a new profile under ``label``, refused when a live profile has that name
+      (:attr:`Placement.taken`). When that profile is a pin's frozen copy that the draft comes
+      from (the profile its base belongs to, or the one its Set brews: ``base_version_id`` and
+      ``set_id``), the refusal says the profile is pinned, as it would for a change to it.
+    """
+    if destination is None:
+        taken = await lookup.by_name_key(label)
+        frozen = None
+        if taken is not None:
+            frozen = await _frozen_origin(lookup, taken, base_version_id, set_id)
+        return Placement(owner=None, taken=taken, name=label.strip(), frozen=frozen)
+    stored = lookup.label_of(destination)
+    frozen = await lookup.frozen_sentence(destination)
+    if frozen is not None:
+        return Placement(owner=None, taken=None, name=stored, frozen=frozen)
+    return Placement(owner=destination, taken=None, name=stored)
+
+
+async def _frozen_origin[T](
+    lookup: DraftLookup[T], taken: T, base_version_id: int | None, set_id: int | None
+) -> str | None:
+    """Why the profile that has a new profile's name may not be changed, when the draft comes from
+    it: the sentence about its pin, else ``None``."""
+    sentence = await lookup.frozen_sentence(taken)
+    if sentence is None:
+        return None
+    if base_version_id is not None and await lookup.base_profile(base_version_id) == taken:
+        return sentence
+    if set_id is not None and await lookup.by_set(set_id) == taken:
+        return sentence
+    return None

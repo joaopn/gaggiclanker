@@ -64,7 +64,7 @@ async def test_the_temperature_reported_is_the_profiles(fixture: Fixture) -> Non
     version = await ProfilesRepository(fixture.db).get_version(fixture.profile_version_id)
     assert version is not None and version.profile is not None
     hotter, _ = await ProfilesRepository(fixture.db).ensure_version(
-        Profile.model_validate({**version.profile, "temperature": 96.0})
+        Profile.model_validate({**version.profile, "temperature": 96.0}), owner=None
     )
     await fixture.db.execute(
         "UPDATE set_versions SET profile_version_id = ? WHERE id = ?",
@@ -78,7 +78,7 @@ async def test_the_temperature_reported_is_the_profiles(fixture: Fixture) -> Non
     # The firmware writes 0 for "not set": that is no temperature, not a 0 °C
     # shot, and a card offering 0 °C would be advice to freeze the group.
     unset, _ = await ProfilesRepository(fixture.db).ensure_version(
-        Profile.model_validate({**version.profile, "temperature": 0})
+        Profile.model_validate({**version.profile, "temperature": 0}), owner=None
     )
     await fixture.db.execute(
         "UPDATE set_versions SET profile_version_id = ? WHERE id = ?",

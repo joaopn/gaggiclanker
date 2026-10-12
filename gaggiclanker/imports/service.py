@@ -58,6 +58,7 @@ from gaggiclanker.domain.exports import (
     shot_export_to_slog,
     slog_to_raw,
 )
+from gaggiclanker.domain.models import profile_content_hash
 from gaggiclanker.domain.slog import SlogError
 from gaggiclanker.sync.derive import derive_shot, rederive_shots
 
@@ -562,12 +563,11 @@ class ImportService:
         * only shots whose `profile_version_id` is still NULL — an id match
           (`_version_for`) is evidence and this is a guess, so it never
           overrides one;
-        * match on the `.slog` header's `profileName` against
-          `profile_versions.label`, exactly and case-sensitively, because the
+        * match on the `.slog` header's `profileName` against the name of a
+          profile in the list, exactly and case-sensitively, because the
           machine treats "9 Bar" and "9 bar" as two profiles;
-        * newest matching version wins (`find_version_by_label`), since a
-          relabelled profile creates a new version and the most recent one is
-          what that name means now.
+        * the profile's active version is the link (`find_version_by_label`);
+          a live profile wins, then the newest.
 
         It can be wrong: two profiles that once shared a name are
         indistinguishable here. That is the honest cost of having any link at
@@ -645,9 +645,18 @@ class ImportService:
 
         results: list[ImportResult] = []
         for profile in profiles:
-            version, created = await self.profiles.ensure_version(
-                profile, source=IMPORT_SOURCE, device_json=dumps(profile.to_device())
-            )
+            # A file whose profile is stored already (a version of some profile, or loose) is
+            # not stored again; one that is new belongs to no profile until the list takes it.
+            stored = await self.profiles.find_stored_version(profile_content_hash(profile))
+            if stored is not None:
+                version, created = stored, False
+            else:
+                version, created = await self.profiles.ensure_version(
+                    profile,
+                    owner=None,
+                    source=IMPORT_SOURCE,
+                    device_json=dumps(profile.to_device()),
+                )
             await self._list_imported(version)
             results.append(
                 ImportResult(

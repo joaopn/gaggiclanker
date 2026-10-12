@@ -417,6 +417,7 @@ async def test_a_made_profile_is_active_on_its_newest_pushed_version(db: Databas
     assert [v for v, _ in made["versions"]] == [7, 8, 9]  # type: ignore[attr-defined]
     assert made["current"] == 8 and made["label"] == "Pushed name [AI]"
     # With nothing pushed it is the newest by id.
+    await db.execute("UPDATE profile_versions SET board_id = NULL")
     await db.execute("DELETE FROM profile_board")
     await db.execute("DELETE FROM profile_board_versions")
     await db.execute("DELETE FROM profile_list_build")

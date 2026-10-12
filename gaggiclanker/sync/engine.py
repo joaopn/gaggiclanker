@@ -1198,8 +1198,10 @@ class SyncEngine:
                 # firmware we do not understand, not a profile we can mirror.
                 update.errors += 1
                 continue
-            version, created = await self.profiles.ensure_version(
-                profile, device_json=dumps(profile.to_device())
+            # A file a profile stands on holds that profile's version of what it contains (see
+            # `version_for_file` for a file no profile stands on).
+            version, created = await self.profiles.version_for_file(
+                profile, profile.id, device_json=dumps(profile.to_device())
             )
             existing = await self.profiles.get_device_profile(profile.id)
             if created and existing is not None:
@@ -1216,6 +1218,7 @@ class SyncEngine:
                 # two and wins when we have one.
                 selected=(profile.id == selected_id) if selected_id else profile.selected,
                 position=position,
+                label=profile.label,
             )
             relinked += await self.shots.link_unlinked_by_device_profile(profile.id, version.id)
             seen.append(profile.id)

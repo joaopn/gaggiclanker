@@ -92,7 +92,7 @@ async def make_profile_version(db: Database, label: str, temperature: float | No
     if temperature is not None:
         document["temperature"] = temperature
     profile = Profile.model_validate(document)
-    version, _ = await ProfilesRepository(db).ensure_version(profile)
+    version, _ = await ProfilesRepository(db).ensure_version(profile, owner=None)
     return version.id
 
 

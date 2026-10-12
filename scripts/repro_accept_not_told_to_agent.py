@@ -95,10 +95,10 @@ async def main() -> int:
                 profiles = ProfilesRepository(db)
                 document = json.loads((FIXTURE / "docs-medium-18g.json").read_text())
                 base, _ = await profiles.ensure_version(
-                    Profile.model_validate({**document, "label": "Library profile"})
+                    Profile.model_validate({**document, "label": "Library profile"}), owner=None
                 )
                 drafted, _ = await profiles.ensure_version(
-                    Profile.model_validate({**document, "label": "Designed for Kenya"})
+                    Profile.model_validate({**document, "label": "Designed for Kenya"}), owner=None
                 )
                 draft = await ProfileDraftsRepository(db).create(
                     ProfileDraftWrite(

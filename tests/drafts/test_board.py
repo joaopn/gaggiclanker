@@ -1007,7 +1007,7 @@ async def test_a_copy_that_another_board_profile_already_stands_on_is_never_shar
         twin = copy.deepcopy(fake_device.profiles[0])
         twin.update(id=name, label=label)
         fake_device.profiles.append(twin)
-        version, _ = await profiles.ensure_version(Profile.model_validate(twin))
+        version, _ = await profiles.ensure_version(Profile.model_validate(twin), owner=None)
         await board.insert(
             BoardRowWrite(
                 label=label,

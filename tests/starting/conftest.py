@@ -390,7 +390,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
 
     document = json.loads((FIXTURES / "profiles" / "docs-medium-18g.json").read_text())
     profile_version, _ = await ProfilesRepository(db).ensure_version(
-        Profile.model_validate(document)
+        Profile.model_validate(document), owner=None
     )
 
     beans = BeansRepository(db)

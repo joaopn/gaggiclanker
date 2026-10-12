@@ -27,6 +27,9 @@ from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.lineage import (
+    change_destination,
+    destination_now,
+    name_key,
     pinned_copy_agent_sentence,
     pinned_copy_sentence,
     place_draft,
@@ -59,6 +62,7 @@ from gaggiclanker.signatures.service import DraftSignature, SignatureService, sp
 __all__ = [
     "DraftProposals",
     "DraftSignature",
+    "DraftTarget",
     "PinFrozen",
     "PinnedCopyName",
     "PreparedDraft",
@@ -69,12 +73,31 @@ __all__ = [
 
 
 @dataclass(frozen=True, slots=True)
+class DraftTarget:
+    """Where a draft goes and what it is called, decided once when it is made and stored on it."""
+
+    #: The profile the draft is a change to (its version is that profile's), or ``None`` for a new
+    #: profile, whose version belongs to no profile until it is put.
+    destination_board_id: int | None
+    #: The draft's own name: a new profile's name, or the name the profile it changes had.
+    label: str
+    #: A new profile called ``label``; otherwise a change (to ``destination_board_id``, or to the
+    #: profile that owns its base when it is read).
+    new_profile: bool
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedDraft:
     """A document that has been through every offline layer. The only way in."""
 
     profile: Profile
     clamp_changes: list[PolicyChange]
     stop_condition_changes: list[StopConditionChange]
+    target: DraftTarget
+
+    @property
+    def owner_board_id(self) -> int | None:
+        return self.target.destination_board_id
 
 
 class TakenName(Conflict):
@@ -133,10 +156,19 @@ class DraftProposals:
         base: Profile,
         candidate: Profile,
         *,
+        new_profile_name: str | None = None,
+        inherit: DraftTarget | None = None,
+        set_id: int | None = None,
         is_new: bool = False,
         for_pin: bool = False,
     ) -> PreparedDraft:
-        """Clamp, re-check, refuse a taken name, diff the stop conditions.
+        """Decide where the draft goes, clamp, re-check, diff the stop conditions.
+
+        **Where it goes is decided here, once** (:meth:`target_for`) and the document's label is
+        rebuilt from it: the candidate's own label decides nothing. ``new_profile_name`` makes a
+        new profile of that name (refused when a live profile has it); without it the draft is a
+        change to the base's profile and carries that profile's name; ``inherit`` is a
+        refinement, which keeps the destination and name of the draft it refines.
 
         A new profile has no stop-condition changes: there is nothing it changes the stops *of*,
         and the base it is stored against is not a profile anybody brews, so a diff against it
@@ -156,23 +188,15 @@ class DraftProposals:
         violations = check(clamped, bounds)
         if violations:
             raise _rejected(violations)
-        # The name is what it was given, but for a change to a profile, which carries that
-        # profile's own name. One rule decides (`place_draft`), the same one the put and the
-        # page's landing ask: a new or renamed draft must not take a name a profile has.
-        if not clamped.label.strip():
-            raise Unprocessable("A profile needs a name")
-        placement = await place_draft(
-            LiveLineage(self.db),
-            label=clamped.label,
-            base_version_id=None if is_new else base_version_id,
-            base_label=None if is_new else base.label,
+        target = await self.target_for(
+            base_version_id=base_version_id,
+            base_label=base.label,
+            new_profile_name=new_profile_name,
+            inherit=inherit,
+            set_id=set_id,
+            is_new=is_new,
         )
-        if placement.taken is not None:
-            raise TakenName(placement.name, existing=placement.taken.label)
-        if placement.frozen is not None:
-            raise PinFrozen(placement.frozen)
-        label = placement.name
-        document = clamped.for_new_device_profile(label=label)
+        document = clamped.for_new_device_profile(label=target.label)
         if not for_pin:
             pinned = await self.pinned_copy_of(document)
             if pinned is not None:
@@ -181,16 +205,95 @@ class DraftProposals:
             profile=document,
             clamp_changes=changes,
             stop_condition_changes=[] if is_new else diff_stop_conditions(base, document),
+            target=target,
         )
+
+    async def target_for(
+        self,
+        *,
+        base_version_id: int,
+        base_label: str,
+        new_profile_name: str | None = None,
+        inherit: DraftTarget | None = None,
+        set_id: int | None = None,
+        is_new: bool = False,
+    ) -> DraftTarget:
+        """Where a draft goes and what it is called. Raises the refusal when it cannot go there.
+
+        One rule (`place_draft`, with `change_destination` for a change), asked here and nowhere
+        else when a draft is made: a new profile is refused when a live profile has its name
+        (:class:`TakenName`), a change to a pin's frozen copy is refused (:class:`PinFrozen`).
+        """
+        lookup = LiveLineage(self.db)
+        if inherit is not None:
+            new_profile = inherit.new_profile
+            stored = (
+                None
+                if inherit.destination_board_id is None
+                else await lookup.by_id(inherit.destination_board_id)
+            )
+            name = inherit.label
+        elif new_profile_name is not None:
+            new_profile, stored, name = True, None, new_profile_name
+        else:
+            new_profile, stored, name = False, None, base_label
+        destination = await destination_now(
+            lookup,
+            new_profile=new_profile,
+            stored=stored,
+            base_version_id=base_version_id,
+            base_label=base_label,
+            set_id=set_id,
+        )
+        if destination is not None:
+            name = destination.label
+        if not name.strip():
+            raise Unprocessable("A profile needs a name")
+        placement = await place_draft(
+            lookup,
+            label=name,
+            destination=destination,
+            base_version_id=None if is_new else base_version_id,
+            set_id=set_id,
+        )
+        if placement.frozen is not None:
+            raise PinFrozen(placement.frozen)
+        if placement.taken is not None:
+            raise TakenName(placement.name, existing=placement.taken.label)
+        return DraftTarget(
+            destination_board_id=None if placement.owner is None else placement.owner.id,
+            label=placement.name,
+            new_profile=new_profile,
+        )
+
+    async def change_name(self, base_version_id: int, *, set_id: int | None = None) -> str:
+        """The name a change to this version's profile carries: the profile's own, else the
+        version's. What a refusal says when a draft tries to rename the profile it changes."""
+        base = await self.profiles.get_version(base_version_id)
+        if base is None:
+            raise NotFound(f"No profile version {base_version_id}")
+        destination = await change_destination(
+            LiveLineage(self.db),
+            base_version_id=base_version_id,
+            base_label=base.label,
+            set_id=set_id,
+        )
+        return base.label if destination is None else destination.label
+
+    async def editor_name(self, base_version_id: int, label: str) -> str | None:
+        """What a hand-edited document is: ``None`` for a change to the base's profile (its label
+        is that profile's name, case and surrounding space aside), else the name of the new
+        profile it makes. Decided here, at the edge, so the person's experience is unchanged; the
+        draft stores the answer and nothing works it out from the label again."""
+        if name_key(label) == name_key(await self.change_name(base_version_id)):
+            return None
+        return label
 
     async def pinned_copy_of(self, document: Profile) -> PinnedCopyName | None:
         """The refusal for a document that is exactly the copy of a pin (live or unpinned), else
         ``None``. One function for the constructor and the name check."""
-        stored = await self.profiles.get_version_by_hash(profile_content_hash(document))
-        if stored is None:
-            return None
         pins = PinsRepository(self.db)
-        record = await pins.by_copy(stored.id)
+        record = await pins.by_copy_content(profile_content_hash(document))
         detail = None if record is None else await pins.detail(record.id)
         if detail is None:
             return None
@@ -211,12 +314,19 @@ class DraftProposals:
         suggest_major: bool = False,
         major_reason: str = "",
         is_new: bool = False,
+        new_profile_name: str | None = None,
         new_profile_only: bool = False,
         reusable_version_ids: Collection[int] = (),
         made_by: Literal["agent", "edit"] = "agent",
         signature: DraftSignature | None = None,
     ) -> ProfileDraftRow:
         """A draft somebody typed, or a tool proposed. Same layers, no model involved.
+
+        **Where it goes is asked for, never read off the document.** ``new_profile_name`` makes a
+        new profile of that name; without it the draft is a change to the base's profile and is
+        stored under that profile's own name, whatever label the document carries. A profile
+        written from scratch (``is_new``) is a new profile, named by its document's label when
+        no name is given.
 
         ``set_id``, ``prediction`` and ``compares_to_version_id`` are the
         experiment half and travel together (with the agent's ``suggest_major``
@@ -247,11 +357,18 @@ class DraftProposals:
                 "That document is not a valid GaggiMate profile",
                 details={"schema_errors": schema_errors(exc)},
             ) from None
-        prepared = await self.prepare(base_version_id, base, candidate, is_new=is_new)
+        if is_new and new_profile_name is None:
+            new_profile_name = candidate.label
+        prepared = await self.prepare(
+            base_version_id,
+            base,
+            candidate,
+            new_profile_name=new_profile_name,
+            set_id=set_id,
+            is_new=is_new,
+        )
         if new_profile_only:
-            existing = await self.profiles.get_version_by_hash(
-                profile_content_hash(prepared.profile)
-            )
+            existing = await self.already_a_profiles_brew(prepared.profile)
             if existing is not None and existing.id not in reusable_version_ids:
                 raise Conflict(
                     f"This profile is identical to one already in the library "
@@ -273,6 +390,16 @@ class DraftProposals:
             made_by=made_by,
             signature=signature,
         )
+
+    async def already_a_profiles_brew(self, document: Profile) -> ProfileVersionRow | None:
+        """The stored version a new profile's document would be, if the library has one: a
+        version on no profile with exactly this content, or one that a Set's current version
+        names (whichever profile it belongs to). ``None`` when the document is new."""
+        content_hash = profile_content_hash(document)
+        loose = await self.profiles.find_version(content_hash, owner=None)
+        if loose is not None:
+            return loose
+        return await self.profiles.find_version_named_by_a_set(content_hash)
 
     def _atomic(self) -> AbstractAsyncContextManager[Any]:
         """One transaction for the writes that follow, or none when the caller holds one."""
@@ -305,7 +432,9 @@ class DraftProposals:
         ``carry_signature`` false stores the version without its base's signature: a pin's copy
         is judged by the original's, so it carries none of its own.
         """
-        version, created = await self.profiles.ensure_version(prepared.profile, source="draft")
+        version, created = await self.profiles.ensure_version(
+            prepared.profile, owner=prepared.owner_board_id, source="draft"
+        )
         if created and carry_signature:
             await self.signatures.carry_quietly(base_version_id, version.id)
         # The draft and the expectations it carries are one write: a refusal or a crash between
@@ -315,6 +444,11 @@ class DraftProposals:
                 ProfileDraftWrite(
                     base_version_id=base_version_id,
                     draft_version_id=version.id,
+                    # Where it goes and what it is called, decided once (`prepare`) and kept:
+                    # nothing works either out from a name again.
+                    label=prepared.target.label,
+                    destination_board_id=prepared.target.destination_board_id,
+                    new_profile=prepared.target.new_profile,
                     # Resolved now rather than at push time: what this draft was
                     # derived from is a fact about this moment, and by the time
                     # somebody pushes it the mirror may point somewhere else — which

@@ -1,4 +1,5 @@
-"""The live profile list answering :func:`~gaggiclanker.db.repos.lineage.place_draft`.
+"""The live profile list answering :func:`~gaggiclanker.db.repos.lineage.place_draft` and
+:func:`~gaggiclanker.db.repos.lineage.change_destination`.
 
 One implementation, used by the draft constructor, the put and the landing the page shows, so
 the three cannot disagree about where a draft goes or whether its name is taken.
@@ -26,6 +27,11 @@ class LiveLineage:
     def label_of(self, profile: BoardRow) -> str:
         return profile.label
 
+    async def by_id(self, board_id: int) -> BoardRow | None:
+        """The profile with this id when it is live: a draft's stored destination."""
+        row = await self.board.get(board_id)
+        return None if row is None or row.deleted_at is not None else row
+
     async def by_label(self, label: str) -> BoardRow | None:
         return await self.board.find_live_by_label(label)
 
@@ -45,11 +51,14 @@ class LiveLineage:
         return row
 
     async def base_profile(self, version_id: int) -> BoardRow | None:
-        row = await self.board.find_live_by_listed_version(version_id)
-        if row is None:
-            device = await self.profiles.find_device_id_for_version(version_id)
-            row = None if device is None else await self.board.find_live_by_device(device)
-        return row
+        """The live profile this version belongs to: its owner, when it has one and that profile
+        is live. A version that belongs to no profile (a mirrored file nothing stands on, a
+        draft) belongs to the live profile standing on a live file that holds it, if any."""
+        owner = await self.profiles.owner_of(version_id)
+        if owner is not None:
+            return await self.by_id(owner)
+        device = await self.profiles.find_device_id_for_version(version_id)
+        return None if device is None else await self.board.find_live_by_device(device)
 
     async def frozen_sentence(self, profile: BoardRow) -> str | None:
         pin = await self.pins.live_for_board(profile.id)

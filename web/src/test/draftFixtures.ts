@@ -58,6 +58,7 @@ export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
     suggest_major: false,
     major_reason: "",
     is_new: false,
+    new_profile: false,
     set_next_minor_label: null,
     set_next_major_label: null,
     recorded_version_label: null,

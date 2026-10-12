@@ -232,7 +232,11 @@ async def _deleted_app_row_waiting(
     row = await app_row(app, client, fake, provider, 8)
     assert (await tombstone(client, row["id"])).status_code == 200
     again = await draft_from(app, client, provider, row, 8)  # the very same document
-    assert again["draft_version_id"] == row["current_version_id"]
+    hashes = {
+        data(await client.get(f"/api/profile-versions/{version_id}"))["content_hash"]
+        for version_id in (again["draft_version_id"], row["current_version_id"])
+    }
+    assert len(hashes) == 1
     await approve(app, again)
     return row, again
 

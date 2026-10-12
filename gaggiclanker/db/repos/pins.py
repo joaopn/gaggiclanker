@@ -123,6 +123,16 @@ class PinsRepository(Repository):
         )
         return self.to_model(PinRow, row)
 
+    async def by_copy_content(self, content_hash: str) -> PinRow | None:
+        """The pin record, live or not, whose copy has exactly this content (the first)."""
+        row = await self.db.fetch_one(
+            "SELECT p.* FROM set_version_pins p "
+            "JOIN profile_versions pv ON pv.id = p.profile_version_id "
+            "WHERE pv.content_hash = ? ORDER BY p.id LIMIT 1",
+            (content_hash,),
+        )
+        return self.to_model(PinRow, row)
+
     async def live_for_board(self, board_id: int) -> PinDetail | None:
         """The live pin whose copy the profile-list row carries, if the row is a pinned one."""
         row = await self.db.fetch_one(
@@ -221,14 +231,15 @@ class PinsRepository(Repository):
     async def is_copy(self, profile_version_id: int) -> bool:
         return await self.by_copy(profile_version_id) is not None
 
-    async def set_version_naming(self, profile_version_id: int) -> tuple[str, str] | None:
-        """The Set and version name of a Set version that brews this profile version, if any
-        (the first). A profile version a Set version names can never become a pin's copy."""
+    async def set_version_naming_content(self, content_hash: str) -> tuple[str, str] | None:
+        """The Set and version name of a Set version that brews a profile version with this
+        content, if any (the first). A brew a Set version names can never become a pin's copy."""
         row = await self.db.fetch_one(
             f"SELECT s.name AS set_name, {label_sql('v')} AS version_label "  # noqa: S608
             "FROM set_versions v JOIN sets s ON s.id = v.set_id "
-            "WHERE v.profile_version_id = ? ORDER BY v.id LIMIT 1",
-            (profile_version_id,),
+            "JOIN profile_versions pv ON pv.id = v.profile_version_id "
+            "WHERE pv.content_hash = ? ORDER BY v.id LIMIT 1",
+            (content_hash,),
         )
         return None if row is None else (str(row["set_name"]), str(row["version_label"]))
 

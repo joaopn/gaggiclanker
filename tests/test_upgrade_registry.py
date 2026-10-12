@@ -102,7 +102,7 @@ def test_each_frozen_schema_builds_the_database_the_next_step_expects() -> None:
 
 
 def test_the_frozen_schema_at_the_latest_level_is_the_schema_file() -> None:
-    """With no step, level 0's file builds a database with no difference from ``schema.sql``."""
+    """The latest level's frozen file, once the next step has frozen it, is ``schema.sql``."""
     latest = SCHEMAS_DIR / f"level_{LATEST:03d}.sql"
     if not latest.exists():  # a step has moved past it; the file is committed with the next one
         pytest.skip("the latest level has no frozen file yet")

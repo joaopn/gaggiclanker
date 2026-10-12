@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from gaggiclanker.db.upgrades.level_001 import STEP as _LEVEL_1
 from gaggiclanker.db.upgrades.step import Step, validate_steps
 
 __all__ = [
@@ -37,8 +38,8 @@ __all__ = [
     "validate_steps",
 ]
 
-#: Registered in order. Empty while every database that exists is at level 0.
-STEPS: tuple[Step, ...] = validate_steps(())
+#: Registered in order; the step at index N-1 produces level N.
+STEPS: tuple[Step, ...] = validate_steps((_LEVEL_1,))
 
 #: The level a database ends at: what ``schema.sql`` says, which a test ties to ``STEPS``.
 LATEST = len(STEPS)

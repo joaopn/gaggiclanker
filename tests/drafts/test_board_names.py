@@ -138,7 +138,8 @@ async def test_a_file_carrying_the_marker_still_joins_the_row_that_holds_its_con
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
         Profile.model_validate(
             {k: v for k, v in old.items() if k not in ("id", "favorite", "selected")}
-        )
+        ),
+        owner=None,
     )
     await ProfileBoardRepository(app.state.db).add_version(row["id"], version.id, "agent")
     fake_device.profiles.append(old)
@@ -328,7 +329,8 @@ async def _listed_other_name(
     current = await profiles.get_version(row["current_version_id"])
     assert current is not None and current.profile is not None
     version, _ = await profiles.ensure_version(
-        Profile.model_validate({**current.profile, "label": name, "temperature": temperature})
+        Profile.model_validate({**current.profile, "label": name, "temperature": temperature}),
+        owner=None,
     )
     await ProfileBoardRepository(app.state.db).add_version(
         row["id"], version.id, "edited_on_machine"
@@ -451,7 +453,7 @@ async def test_a_continuation_through_an_unlisted_version_keeps_the_profiles_own
     assert current is not None and current.profile is not None
     lower = BASE_LABEL.lower()
     stray, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**current.profile, "label": lower, "temperature": 91})
+        Profile.model_validate({**current.profile, "label": lower, "temperature": 91}), owner=None
     )
     assert stray.profile is not None
 

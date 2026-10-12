@@ -26,7 +26,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.profiles import ProfileVersionRow
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.drafts.service import ProfileDraftService
@@ -137,15 +137,23 @@ async def writes_on(live: tuple[FastAPI, httpx.AsyncClient]) -> tuple[FastAPI, h
     return app, client
 
 
+async def _newest_labelled(app: FastAPI, label: str) -> ProfileVersionRow | None:
+    """The newest stored version carrying this name, whether or not any profile lists it."""
+    row = await app.state.db.fetch_one(
+        "SELECT * FROM profile_versions WHERE label = ? ORDER BY id DESC LIMIT 1", (label,)
+    )
+    return None if row is None else ProfileVersionRow.model_validate(dict(row))
+
+
 async def base_version_id(app: FastAPI, label: str = BASE_LABEL) -> int:
     """The mirrored version id of a profile, by label."""
-    version = await ProfilesRepository(app.state.db).find_version_by_label(label)
+    version = await _newest_labelled(app, label)
     assert version is not None, f"the mirror has no profile labelled {label!r}"
     return version.id
 
 
 async def base_profile(app: FastAPI, label: str = BASE_LABEL) -> Profile:
-    version = await ProfilesRepository(app.state.db).find_version_by_label(label)
+    version = await _newest_labelled(app, label)
     assert version is not None
     return Profile.model_validate(version.profile)
 

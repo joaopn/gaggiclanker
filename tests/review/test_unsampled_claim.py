@@ -30,7 +30,7 @@ CLAIM = "The fill was already over when the first sample was logged."
 async def _shot(app: FastAPI) -> int:
     slog, _, profile = fill_ended_shot()
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate(profile)
+        Profile.model_validate(profile), owner=None
     )
     derived = derive_shot(slog, slog_to_raw(slog), device_id="000225", profile=profile)
     shot_id = await ShotsRepository(app.state.db).insert(derived.shot, derived.samples)
@@ -116,7 +116,7 @@ async def test_a_shot_that_both_skipped_a_fill_and_stopped_early_gets_both_excer
     # of skipped warning.
     profile = {**profile, "phases": [*profile["phases"], {**profile["phases"][2], "name": "Tail"}]}
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate(profile)
+        Profile.model_validate(profile), owner=None
     )
     derived = derive_shot(slog, slog_to_raw(slog), device_id="000225", profile=profile)
     shot_id = await ShotsRepository(app.state.db).insert(derived.shot, derived.samples)

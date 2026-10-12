@@ -44,6 +44,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightsRepository,
     InsightWrite,
 )
+from gaggiclanker.db.repos.lineage import name_key
 from gaggiclanker.db.repos.outcome_proposals import (
     OutcomeProposalsRepository,
     OutcomeProposalWrite,
@@ -1925,6 +1926,16 @@ class DraftProfileInput(_Model):
             "replaced wholesale when 'phases' is present — send the full list."
         )
     )
+    new_profile_name: str | None = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Leave it out for a change to the base version's profile: the draft then keeps that "
+            "profile's name. Give it to make a NEW profile instead, with this name (refused when "
+            "a profile already has it). The name is not part of the document: a 'label' in the "
+            "patch is refused."
+        ),
+    )
     reason: str = Field(min_length=1, max_length=500)
     prediction: str = Field(
         default="",
@@ -2017,10 +2028,12 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
         "and it is NOT on the machine. It becomes a card in this conversation (and inside "
         "its profile on the Profiles page) that the person approves or declines: "
         "approving makes it the profile's active version and switches the profile on, and "
-        "with writes on the same click syncs it to the machine. The draft is stored under "
-        "exactly the label "
-        "you give it: leave the label alone for a change to the profile, and a new label "
-        "must not be the name of a profile that already exists (refused). In a "
+        "with writes on the same click syncs it to the machine. By default the draft is a "
+        "change to the base version's profile and keeps that profile's name (a profile's "
+        "name is not part of its document, so a 'label' in the patch other than that name is "
+        "refused). To make a NEW profile instead, pass new_profile_name: it is stored under "
+        "exactly that name, "
+        "which must not be the name of a profile that already exists (refused). In a "
         "conversation about one Set a profile change IS a change to the experiment, so a "
         "prediction is required and the same rules apply as to any other change: not while "
         "this version's own prediction is ungraded, and not while a proposal is already "
@@ -2049,6 +2062,24 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
     version = await ProfilesRepository(ctx.db).get_version(args.base_version_id)
     if version is None:
         raise ValueError(f"No profile version {args.base_version_id}.")
+    if "label" in args.patch:
+        # A whole document read from `get_profile` carries its label: the profile's own name (or
+        # the new profile's) is accepted and ignored, any other name is refused.
+        current = (
+            args.new_profile_name
+            if args.new_profile_name is not None
+            else await ctx.drafts.change_name(args.base_version_id, set_id=ctx.scope.set_id)
+        )
+        sent = args.patch["label"]
+        if not isinstance(sent, str) or name_key(sent) != name_key(current):
+            raise ValueError(
+                "A profile's name is not part of its document. To make a new profile, pass "
+                "new_profile_name; a change to "
+                f"{await ctx.drafts.change_name(args.base_version_id, set_id=ctx.scope.set_id)} "
+                "keeps its name."
+            )
+    if args.new_profile_name is not None and not args.new_profile_name.strip():
+        raise ValueError("A new profile needs a name: pass new_profile_name, or leave it out.")
 
     set_id: int | None = None
     prediction = args.prediction.strip()
@@ -2114,6 +2145,7 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         suggest_major=suggest_major,
         major_reason=major_reason,
         signature=carried,
+        new_profile_name=args.new_profile_name,
     )
     return DraftProfileOutput(
         draft_id=draft.id,
@@ -2357,6 +2389,7 @@ async def propose_initial_recipe(
             notes=f"Designed in chat for Set “{row.name}”.",
             # With a fork the draft is an edit of it, and its diff is the point.
             is_new=fork_id is None,
+            new_profile_name=args.profile.label,
             new_profile_only=True,
             reusable_version_ids=await proposals.design_profile_versions(set_id),
         )

@@ -171,7 +171,9 @@ class Scene:
         self.set_version_id = 0
 
     async def version(self, document: dict[str, Any]) -> int:
-        version, _ = await self.profiles.ensure_version(Profile.model_validate(document))
+        version, _ = await self.profiles.ensure_version(
+            Profile.model_validate(document), owner=None
+        )
         return version.id
 
     async def make_set(self, version_id: int, name: str, target: float) -> int:

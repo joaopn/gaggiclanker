@@ -21,9 +21,11 @@ what a draft needs before that (drafting, refining, discarding) and
 :meth:`ProfileDraftService.attach_to_set`, which the write phase calls once a profile is on
 the machine, so a Set records the version the same way whoever put the profile there.
 
-**The name is fixed at draft time, not at write time.** The label a person or the agent gave the
-draft is the label of the document that is approved, the one that goes on the wire and the one the
-round trip compares against: one document, one content hash. The app adds nothing to a name.
+**The name and the destination are fixed at draft time, not at write time.** A draft is a change
+to one profile (it carries that profile's name) or a new profile with a name of its own, decided
+once when it is made and stored on it; the document that is approved, the one that goes on the
+wire and the one the round trip compares against, is built with that name. The app adds nothing
+to a name.
 """
 
 from __future__ import annotations
@@ -50,6 +52,7 @@ from gaggiclanker.domain.profile_policy import (
 from gaggiclanker.drafts.models import DraftedProfile, DraftPreview, ProfileDraftDetail
 from gaggiclanker.drafts.proposals import (
     DraftProposals,
+    DraftTarget,
     PreparedDraft,
     schema_errors,
 )
@@ -144,13 +147,23 @@ class ProfileDraftService:
     ) -> ProfileDraftRow:
         """A draft somebody typed into the editor. Same four layers, no model involved.
 
-        Recorded as the person's own edit (``made_by``).
+        Recorded as the person's own edit (``made_by``). A document whose label is the name of
+        the profile it was made from (case and surrounding space aside) is a change to that
+        profile; any other label is a new profile with that name. That is decided here, once,
+        and the draft stores it.
         """
+        label = document.get("label")
+        new_profile_name = (
+            await self.proposals.editor_name(base_version_id, label)
+            if isinstance(label, str) and label.strip()
+            else None
+        )
         return await self.proposals.create_manual(
             base_version_id=base_version_id,
             document=document,
             change_summary=change_summary,
             notes=notes,
+            new_profile_name=new_profile_name,
             made_by="edit",
         )
 
@@ -193,8 +206,32 @@ class ProfileDraftService:
                 f"The model could not draft a profile: {result.code}: {result.message}",
                 details={"code": result.code},
             )
+        # A refinement is the next attempt at the same idea: it goes where its parent went and
+        # keeps the name its parent had, whatever label the model wrote.
+        # A first attempt is read the way a hand edit is: a label that is the name of the base's
+        # profile is a change to it, any other is a new profile with that name (the prompt tells
+        # the model to keep the label). Decided here, once, and stored.
+        inherit = (
+            None
+            if parent is None
+            else DraftTarget(
+                destination_board_id=parent.destination_board_id,
+                label=parent.draft_label or base.label,
+                new_profile=parent.new_profile,
+            )
+        )
         prepared: PreparedDraft = await self.proposals.prepare(
-            base_version_id, base, result.data.profile, is_new=is_new
+            base_version_id,
+            base,
+            result.data.profile,
+            new_profile_name=(
+                await self.proposals.editor_name(base_version_id, result.data.profile.label)
+                if parent is None
+                else None
+            ),
+            inherit=inherit,
+            set_id=parent.set_id if parent is not None else None,
+            is_new=is_new,
         )
         row = await self.proposals.store(
             base_version_id=base_version_id,

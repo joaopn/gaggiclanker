@@ -216,3 +216,52 @@ async def audit(app: FastAPI) -> list[DeviceWriteRow]:
 
 def kinds(rows: list[DeviceWriteRow], *wanted: str) -> list[tuple[str, str | None, str]]:
     return [(r.kind, r.device_id, r.result) for r in rows if r.kind in wanted]
+
+
+async def assert_versions_owned(db: Any) -> None:
+    """The rules of version ownership, as the database stands: what every writer must leave true.
+
+    * a version a profile lists is that profile's;
+    * a profile's active version is one it lists;
+    * a profile's own columns name only versions it owns;
+    * no profile holds one brew twice, and no two versions on no profile share a brew;
+    * a file the mirror holds holds a version of the profile standing on it.
+    """
+    unowned = await db.fetch_all(
+        "SELECT pbv.board_id, pbv.version_id, pv.board_id AS owner FROM profile_board_versions pbv "
+        "JOIN profile_versions pv ON pv.id = pbv.version_id WHERE pv.board_id IS NOT pbv.board_id"
+    )
+    assert [dict(r) for r in unowned] == [], "a listed version is not its lister's"
+    for column in (
+        "current_version_id",
+        "device_version_id",
+        "failed_version_id",
+        "previous_version_id",
+        "back_from_version_id",
+    ):
+        stray = await db.fetch_all(
+            f"SELECT pb.id, pb.{column} AS version, pv.board_id AS owner FROM profile_board pb "  # noqa: S608
+            f"JOIN profile_versions pv ON pv.id = pb.{column} WHERE pv.board_id IS NOT pb.id"
+        )
+        assert [dict(r) for r in stray] == [], f"{column} names another profile's version"
+    unlisted = await db.fetch_all(
+        "SELECT pb.id FROM profile_board pb WHERE NOT EXISTS (SELECT 1 FROM profile_board_versions "
+        "pbv WHERE pbv.board_id = pb.id AND pbv.version_id = pb.current_version_id)"
+    )
+    assert [dict(r) for r in unlisted] == [], "a profile's active version is not one of its own"
+    twice = await db.fetch_all(
+        "SELECT board_id, content_hash, COUNT(*) AS n FROM profile_versions "
+        "GROUP BY board_id, content_hash HAVING n > 1"
+    )
+    assert [dict(r) for r in twice] == [], "a brew is held twice by one profile"
+    wrong_file = await db.fetch_all(
+        "SELECT d.device_id, pv.board_id AS owner, b.id AS standing "
+        "FROM device_profiles d JOIN profile_versions pv ON pv.id = d.current_version_id "
+        "JOIN profile_board b ON b.device_profile_id = d.device_id "
+        "AND b.id = (SELECT b2.id FROM profile_board b2 WHERE b2.device_profile_id = d.device_id "
+        " ORDER BY (b2.deleted_at IS NOT NULL), b2.id DESC LIMIT 1) "
+        "WHERE d.deleted_at IS NULL AND pv.board_id IS NOT b.id"
+    )
+    assert [dict(r) for r in wrong_file] == [], (
+        f"a file holds a version of a profile not on it {[dict(r) for r in wrong_file]}"
+    )

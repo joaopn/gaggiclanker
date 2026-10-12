@@ -30,7 +30,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from gaggiclanker.db.repos.base import JsonList, JsonObject, dumps, utc_now
 from gaggiclanker.db.repos.version_names import label_sql, next_names
@@ -72,6 +72,13 @@ class ProfileDraftWrite(BaseModel):
 
     base_version_id: int
     draft_version_id: int | None = None
+    #: The draft's own name. Left out, it is the name its document carries.
+    label: str | None = None
+    #: The profile this draft is a change to; ``None`` for a new profile, and for a change whose
+    #: profile was not on the list yet.
+    destination_board_id: int | None = None
+    #: A new profile called ``label`` (not a change to a profile).
+    new_profile: bool = False
     source_analysis_id: int | None = None
     source_suggestion_id: int | None = None
     parent_draft_id: int | None = None
@@ -208,13 +215,27 @@ class ProfileDraftRow(BaseModel):
     #: Joined from `profile_versions`, so a list row can say what it is about
     #: without a second request per draft.
     base_label: str | None = None
-    draft_label: str | None = None
+    #: The draft's own name, stored with it (`profile_drafts.label`): what the profile will be
+    #: called if this becomes a new profile, or the name of the profile it changes as it was when
+    #: the draft was made.
+    draft_label: str | None = Field(default=None, validation_alias="label")
+    #: The profile this draft is a change to, decided once when the draft was made; ``None`` for
+    #: a new profile, whose name is ``draft_label``, and for a change whose profile was not on
+    #: the list then: it goes to whichever profile owns its base version when it is read.
+    destination_board_id: int | None = None
+    #: What the draft is, decided once and kept: a new profile called ``draft_label``, or a change.
+    new_profile: bool = False
+
+    @field_validator("draft_label", mode="before")
+    @classmethod
+    def _no_name_is_none(cls, value: object) -> object:
+        """An old draft with nothing to name it (the column's empty default) has no name."""
+        return value or None
 
 
 _SELECT = f"""
     SELECT d.*,
            CASE WHEN d.is_new THEN NULL ELSE base.label END AS base_label,
-           drafted.label AS draft_label,
            s.name AS set_name,
            {label_sql("cmp")} AS compares_to_version_label,
            (SELECT {label_sql("rv")} FROM set_versions rv
@@ -237,7 +258,6 @@ _SELECT = f"""
            END AS base_is_current
     FROM profile_drafts d
     LEFT JOIN profile_versions base ON base.id = d.base_version_id
-    LEFT JOIN profile_versions drafted ON drafted.id = d.draft_version_id
     LEFT JOIN sets s ON s.id = d.set_id
     LEFT JOIN set_versions cmp ON cmp.id = d.compares_to_version_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
@@ -251,16 +271,25 @@ class ProfileDraftsRepository(Repository):
         cursor = await self.db.execute(
             """
             INSERT INTO profile_drafts
-                (base_version_id, draft_version_id, source_analysis_id, source_suggestion_id,
+                (base_version_id, draft_version_id, label, destination_board_id, new_profile,
+                 source_analysis_id, source_suggestion_id,
                  parent_draft_id, base_device_profile_id, set_id, prediction,
                  compares_to_version_id, suggest_major, major_reason, is_new, change_summary,
                  stop_condition_changes_json, clamp_changes_json, notes, status,
                  made_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
+            VALUES (?, ?,
+                    COALESCE(?, (SELECT label FROM profile_versions WHERE id = ?), ''),
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
             """,
             (
                 write.base_version_id,
                 write.draft_version_id,
+                write.label,
+                write.draft_version_id
+                if write.draft_version_id is not None
+                else write.base_version_id,
+                write.destination_board_id,
+                int(write.new_profile),
                 write.source_analysis_id,
                 write.source_suggestion_id,
                 write.parent_draft_id,
@@ -409,11 +438,13 @@ class ProfileDraftsRepository(Repository):
             "UPDATE profile_drafts SET recorded_version_id = ? WHERE id = ?", (version_id, draft_id)
         )
 
-    async def set_draft_version(self, draft_id: int, version_id: int) -> None:
-        """Point a draft at the version of its document under a new name (a rename on approval)."""
+    async def set_draft_version(self, draft_id: int, version_id: int, *, label: str) -> None:
+        """Point a draft at the version of its document under a new name (a rename on approval),
+        and name the draft the same."""
         await self.db.execute(
-            "UPDATE profile_drafts SET draft_version_id = ?, updated_at = ? WHERE id = ?",
-            (version_id, utc_now(), draft_id),
+            "UPDATE profile_drafts SET draft_version_id = ?, label = ?, updated_at = ? "
+            "WHERE id = ?",
+            (version_id, label, utc_now(), draft_id),
         )
 
     async def supersede_pushed(self, device_id: str, *, by_draft_id: int) -> int:

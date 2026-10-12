@@ -83,13 +83,15 @@ class ProfileCopier:
         name = label.strip()
         if not name:
             raise Unprocessable("A profile needs a name")
-        # A copy is a profile of its own whatever its name: `is_new` keeps the name rule from
-        # reading a copy named like its original as a new version of the original.
+        # A copy is a profile of its own whatever its name: it is asked for as a new profile, so
+        # a copy named like its original is refused as a taken name, never read as a new version
+        # of the original.
         try:
             prepared = await self.proposals.prepare(
                 base_version_id,
                 base,
                 base.model_copy(update={"label": name}),
+                new_profile_name=name,
                 is_new=True,
                 for_pin=for_pin,
             )

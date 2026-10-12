@@ -256,7 +256,7 @@ async def _live_profile_named(fixture: Fixture, label: str, *, other_temperature
     base = await profiles.get_version(fixture.profile_version_id)
     assert base is not None and base.profile is not None
     other, _ = await profiles.ensure_version(
-        Profile.model_validate({**base.profile, "temperature": other_temperature})
+        Profile.model_validate({**base.profile, "temperature": other_temperature}), owner=None
     )
     assert other.id != fixture.profile_version_id and other.label == label
     await ProfileBoardRepository(fixture.db).insert(
@@ -333,7 +333,8 @@ async def test_a_profile_that_states_no_temperature_is_redrafted_too(
     base = await profiles.get_version(fixture.profile_version_id)
     assert base is not None and base.profile is not None
     silent, _ = await profiles.ensure_version(
-        Profile.model_validate({**base.profile, "label": "Says nothing", "temperature": 0})
+        Profile.model_validate({**base.profile, "label": "Says nothing", "temperature": 0}),
+        owner=None,
     )
     provider.script = [json.dumps(option_with(profile_version_id=silent.id, temperature_c=96.0))]
     run = await _propose(starting, fixture)

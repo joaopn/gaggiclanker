@@ -69,7 +69,7 @@ async def lever(tmp_path: Path) -> AsyncIterator[tuple[Database, int, int]]:
     await create_schema(db)
     try:
         profile, _ = await ProfilesRepository(db).ensure_version(
-            Profile.model_validate(LEVER_PROFILE)
+            Profile.model_validate(LEVER_PROFILE), owner=None
         )
         bean = await BeansRepository(db).create(
             BeanWrite(name="Constructed", roast_level="medium", process="washed")
@@ -370,7 +370,9 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     db: Database = app.state.db
-    profile, _ = await ProfilesRepository(db).ensure_version(Profile.model_validate(LEVER_PROFILE))
+    profile, _ = await ProfilesRepository(db).ensure_version(
+        Profile.model_validate(LEVER_PROFILE), owner=None
+    )
     bean = await BeansRepository(db).create(
         BeanWrite(name="Constructed", roast_level="medium", process="washed")
     )

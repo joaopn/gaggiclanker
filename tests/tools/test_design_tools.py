@@ -295,7 +295,7 @@ async def test_a_forked_design_starts_from_the_fork_and_the_patch_only(archive: 
     stored = await profiles.get_version(archive.profile_version_id)
     assert stored is not None and stored.profile is not None
     fork_doc = {**stored.profile, "label": "The one to fork", "temperature": 90}
-    fork, _ = await profiles.ensure_version(Profile.model_validate(fork_doc))
+    fork, _ = await profiles.ensure_version(Profile.model_validate(fork_doc), owner=None)
     row = await _designed(
         archive.db, archive.bean_id, archive.grinder_id, fork_profile_version_id=fork.id
     )
@@ -321,7 +321,7 @@ async def test_a_forked_design_reports_the_stop_condition_it_moves(archive: Fixt
     phases = [dict(phase) for phase in stored.profile["phases"]]
     phases[-1]["targets"] = [{"type": "volumetric", "operator": "gte", "value": 61}]
     fork, _ = await profiles.ensure_version(
-        Profile.model_validate({**stored.profile, "label": "Fork with a stop"})
+        Profile.model_validate({**stored.profile, "label": "Fork with a stop"}), owner=None
     )
     row = await _designed(
         archive.db, archive.bean_id, archive.grinder_id, fork_profile_version_id=fork.id

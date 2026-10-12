@@ -34,7 +34,9 @@ from tests.shotinfo.conftest import PROFILE_204, SLOG, Archive, _without_scale
 
 async def _add_lever(archive: Archive) -> int:
     """The constructed lever shot, filed under the archive's 36 g version."""
-    await ProfilesRepository(archive.db).ensure_version(Profile.model_validate(LEVER_PROFILE))
+    await ProfilesRepository(archive.db).ensure_version(
+        Profile.model_validate(LEVER_PROFILE), owner=None
+    )
     slog = lever_shot()
     derived = derive_shot(
         slog, slog_to_raw(slog), device_id="000900", source="import", profile=LEVER_PROFILE
@@ -151,7 +153,9 @@ async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     db: Database = app.state.db
-    profile, _ = await ProfilesRepository(db).ensure_version(Profile.model_validate(LEVER_PROFILE))
+    profile, _ = await ProfilesRepository(db).ensure_version(
+        Profile.model_validate(LEVER_PROFILE), owner=None
+    )
     bean = await BeansRepository(db).create(
         BeanWrite(name="Constructed", roast_level="medium", process="washed")
     )

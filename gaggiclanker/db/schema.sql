@@ -20,9 +20,16 @@ CREATE TABLE settings (
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
+-- A profile version: one brew a profile has had, with the document that says how.
+--   * board_id: the profile this version belongs to. A version is its profile's alone; a profile
+--     never takes another profile's version, it gets its own copy of the same brew. NULL while the
+--     version is on no profile (a draft for a new profile, an imported file, a machine file that
+--     has not joined the list, the empty baseline); the profile it lands on takes it over.
+--     Unique by content per profile, and among the versions that have none.
 CREATE TABLE profile_versions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    content_hash TEXT    NOT NULL UNIQUE,
+    content_hash TEXT    NOT NULL,
+    board_id     INTEGER REFERENCES profile_board(id),
     label        TEXT    NOT NULL,
     type         TEXT    NOT NULL,
     utility      INTEGER NOT NULL DEFAULT 0,
@@ -35,6 +42,11 @@ CREATE TABLE profile_versions (
                  CHECK (source IN ('device', 'draft', 'import')),
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
+CREATE UNIQUE INDEX idx_profile_versions_owned
+    ON profile_versions(board_id, content_hash) WHERE board_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_profile_versions_unowned
+    ON profile_versions(content_hash) WHERE board_id IS NULL;
+CREATE INDEX idx_profile_versions_board ON profile_versions(board_id);
 
 CREATE TABLE shot_samples (
     shot_id      INTEGER NOT NULL REFERENCES shots(id) ON DELETE CASCADE,
@@ -321,7 +333,18 @@ CREATE TABLE profile_drafts (
     is_new INTEGER NOT NULL DEFAULT 0 CHECK (is_new IN (0, 1)),
     -- `edit` for a document a person typed into the editor, `agent` for everything a model or a
     -- tool proposed. It becomes the source of the version a proposal makes. NULL for old drafts.
-    made_by TEXT CHECK (made_by IN ('agent', 'edit'))
+    made_by TEXT CHECK (made_by IN ('agent', 'edit')),
+    -- The draft's own name: what the profile will be called if it becomes a new profile, or the
+    -- name of the profile it changes as it was when the draft was made (history only).
+    label TEXT NOT NULL DEFAULT '',
+    -- The profile this draft is a change to, decided once when the draft is made (a refinement
+    -- inherits it) and never worked out from a name. NULL for a new profile, whose name is `label`,
+    -- and for a change whose profile was not on the list yet: that one goes to whichever profile
+    -- owns its base version when it is read.
+    destination_board_id INTEGER REFERENCES profile_board(id),
+    -- What the draft is: 1 a new profile called `label` (asked for by name, written from scratch,
+    -- a copy, a first recipe, or a hand edit under another name), 0 a change to a profile.
+    new_profile INTEGER NOT NULL DEFAULT 0 CHECK (new_profile IN (0, 1))
 ) STRICT;
 CREATE INDEX idx_profile_drafts_status ON profile_drafts(status, id DESC);
 CREATE INDEX idx_profile_drafts_base ON profile_drafts(base_version_id, id DESC);
@@ -529,6 +552,8 @@ CREATE TABLE device_profiles (
     first_seen_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     last_seen_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     deleted_at         TEXT,
+    -- The name the machine's file had when the sync last read it.
+    label              TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (device_id)
 ) STRICT;
 CREATE INDEX idx_device_profiles_version ON device_profiles(current_version_id);
@@ -1327,6 +1352,7 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
     ('review_claims', 0);
 
 -- The upgrade level of this schema. A new database starts at it, and the comparison treats a
--- database at another level as a different one, even when its structure is the same. It stays
--- 0 until a database made by an older version has to be carried forward by an upgrade step.
-PRAGMA user_version = 0;
+-- database at another level as a different one, even when its structure is the same. It is the
+-- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
+-- by those steps at the app's start.
+PRAGMA user_version = 1;
