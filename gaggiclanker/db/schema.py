@@ -28,28 +28,39 @@ from __future__ import annotations
 import hashlib
 import re
 import sqlite3
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
+from typing import Literal
 
 import structlog
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.upgrades import STEPS, Step
 
 __all__ = [
     "SCHEMA_PATH",
+    "Case",
+    "Inspection",
     "SchemaMismatch",
     "check_database_file",
+    "classify",
     "create_schema",
     "describe",
     "describe_sql",
     "differences",
     "ensure_schema",
+    "expected_description",
     "fingerprint_of",
+    "inspect_database_file",
     "normalize_sql",
     "refusal_message",
     "schema_differences",
     "schema_fingerprint",
     "schema_sql",
+    "upgrade_pending_message",
 ]
 
 log = structlog.get_logger(__name__)
@@ -66,21 +77,45 @@ _REPORTED = 5
 _QUOTED = 160
 
 
-class SchemaMismatch(RuntimeError):
-    """The database's structure is not the one ``schema.sql`` builds."""
+#: How a database file stands against this build (see :func:`classify`).
+Case = Literal["missing", "current", "upgradable", "newer", "differs"]
 
-    def __init__(self, path: Path, found: list[str]) -> None:
+
+class SchemaMismatch(RuntimeError):
+    """The database cannot be opened by this build as it is.
+
+    ``case`` says why: ``differs`` (another structure), ``newer`` (made by a later version) or
+    ``upgradable`` (an older version's, which the app's own start upgrades; the offline
+    commands refuse it).
+    """
+
+    def __init__(self, path: Path, found: list[str], case: Case = "differs") -> None:
         self.path = path
         self.differences = found
-        super().__init__(refusal_message(path))
+        self.case = case
+        super().__init__(refusal_message(path, case))
 
 
-def refusal_message(path: Path) -> str:
-    """The one plain line a refused boot prints."""
+def refusal_message(path: Path, case: Case = "differs") -> str:
+    """The one plain line a refused start prints."""
+    if case == "newer":
+        return (
+            f"The database at {path} was made by a newer version of gaggiclanker than this "
+            "one. Start the newer version again, or restore a backup made by this one."
+        )
+    if case == "upgradable":
+        return upgrade_pending_message()
     return (
         f"The database at {path} was made by a different version of gaggiclanker. "
-        "Delete it to start fresh (a backup can be restored only into the version "
-        "that made it)."
+        "Delete it to start fresh, or restore a backup made by this version."
+    )
+
+
+def upgrade_pending_message() -> str:
+    """What the commands that never upgrade say about a database an older version made."""
+    return (
+        "This database is upgraded the next time the app starts; start the app once, "
+        "then run this again."
     )
 
 
@@ -262,6 +297,11 @@ def _expected() -> dict[str, str]:
     return describe_sql(schema_sql())
 
 
+def expected_description() -> dict[str, str]:
+    """What ``schema.sql`` builds, described (a copy; the original is cached)."""
+    return dict(_expected())
+
+
 def schema_differences(
     conn: sqlite3.Connection, expected: dict[str, str] | None = None
 ) -> list[str]:
@@ -276,45 +316,125 @@ def _is_empty(conn: sqlite3.Connection) -> bool:
     return bool(conn.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()[0] == 0)
 
 
-def check_database_file(path: Path) -> None:
-    """Refuse (raise :class:`SchemaMismatch`) a database file made by a different schema.
+@dataclass(frozen=True, slots=True)
+class Inspection:
+    """What a read-only look at a database file found."""
 
-    Read-only, before the application opens the file: the database file and its `-wal` are
-    never written, whatever the answer, and nothing is converted or deleted. A file that is
-    missing or has nothing in it is fine; it is about to be made. One side effect remains:
-    SQLite's read-only open of a database that a crash left a write-ahead log for rebuilds
-    its `-shm` index (the database, the `-wal` and the directory listing stay as they were).
+    case: Case
+    #: The file's upgrade level; ``None`` when there is no database in it.
+    level: int | None
+    #: How its structure differs from the schema it is held against (empty when it matches).
+    found: list[str]
+    #: Its structure as :func:`describe` reads it (empty when there is no database in it).
+    description: dict[str, str]
+
+
+@contextmanager
+def _open_read_only(path: Path) -> Iterator[sqlite3.Connection]:
+    """A read-only connection that leaves no sidecar behind that it made itself.
+
+    A read-only open of a write-ahead-log database makes an empty -wal and -shm beside
+    it that it cannot remove again; the ones this open made are removed on the way out. That
+    cleanup has a race, accepted on purpose: if another process opens the same database in the
+    instant between this check closing and the unlink, a sidecar that process is using could
+    be removed under it. Only sidecars this check created are removed, and a running app's
+    `-wal` and `-shm` already exist before the check starts, so they are never touched; the
+    window needs a process that opens a database nobody had open, in that instant. Skipping
+    the cleanup would leave stray files beside every refused database instead.
     """
-    if not path.exists() or path.stat().st_size == 0:
-        return
-    # A read-only open of a write-ahead-log database makes an empty -wal and -shm beside
-    # it that it cannot remove again; the ones this check made are removed here. That cleanup
-    # has a race, accepted on purpose: if another process opens the same database in the
-    # instant between this check closing and the unlink, a sidecar that process is using could
-    # be removed under it. Only sidecars this check created are removed, and a running app's
-    # `-wal` and `-shm` already exist before the check starts, so they are never touched; the
-    # window needs a process that opens a database nobody had open, in that instant. Skipping
-    # the cleanup would leave stray files beside every refused database instead.
     sidecars = [Path(f"{path}-wal"), Path(f"{path}-shm")]
     present = [p.exists() for p in sidecars]
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
-        if _is_empty(conn):
-            return
-        found = schema_differences(conn)
+        yield conn
     finally:
         conn.close()
         for sidecar, existed in zip(sidecars, present, strict=True):
             if not existed:
                 sidecar.unlink(missing_ok=True)
-    if found:
+
+
+def inspect_database_file(
+    path: Path,
+    *,
+    steps: Sequence[Step] = STEPS,
+    expected: dict[str, str] | None = None,
+) -> Inspection:
+    """Look at a database file, read-only, and say how it stands against this build.
+
+    The one place that decides the case; every caller (the boot's upgrade, the boot's check,
+    ``import``, ``mcp``, ``serve``'s early check) goes through it. ``expected`` and ``steps``
+    are for tests with a schema and steps of their own.
+    """
+    if not path.exists() or path.stat().st_size == 0:
+        return Inspection("missing", None, [], {})
+    want = _expected() if expected is None else expected
+    with _open_read_only(path) as conn:
+        if _is_empty(conn):
+            return Inspection("missing", None, [], {})
+        found_description = describe(conn)
+    found = differences(found_description, want)
+    level = int(found_description["user_version"])
+    if not found:
+        return Inspection("current", level, [], found_description)
+    if level > int(want["user_version"]):
+        return Inspection("newer", level, found, found_description)
+    if level < len(steps) and fingerprint_of(found_description) == steps[level].expects:
+        return Inspection("upgradable", level, found, found_description)
+    return Inspection("differs", level, found, found_description)
+
+
+def classify(
+    path: Path,
+    *,
+    steps: Sequence[Step] = STEPS,
+    expected: dict[str, str] | None = None,
+) -> Case:
+    """``missing``, ``current``, ``upgradable``, ``newer`` or ``differs`` for a database file."""
+    return inspect_database_file(path, steps=steps, expected=expected).case
+
+
+def _level_of(expected: dict[str, str] | None) -> int:
+    return int((_expected() if expected is None else expected)["user_version"])
+
+
+def check_database_file(
+    path: Path,
+    *,
+    allow_older: bool = False,
+    steps: Sequence[Step] = STEPS,
+    expected: dict[str, str] | None = None,
+) -> None:
+    """Refuse (raise :class:`SchemaMismatch`) a database file this build cannot start on.
+
+    Read-only, before the application opens the file: the database file and its `-wal` are
+    never written, whatever the answer, and nothing is converted or deleted. A file that is
+    missing or has nothing in it is fine; it is about to be made. A database below the latest
+    level is refused too, unless ``allow_older``: only the app's own start upgrades one (or
+    refuses it with a line of its own, when it is not in the state its level left), so the early
+    check in ``serve`` lets every older file through to it, and the commands that only read the
+    file say to start the app once. One side effect remains: SQLite's
+    read-only open of a database that a crash left a write-ahead log for rebuilds its `-shm`
+    index (the database, the `-wal` and the directory listing stay as they were).
+    """
+    inspection = inspect_database_file(path, steps=steps, expected=expected)
+    if inspection.case in ("missing", "current"):
+        return
+    older = inspection.level is not None and inspection.level < _level_of(expected)
+    if allow_older and older:
+        return
+    if inspection.case == "upgradable":
+        log.info("database_upgrade_pending", path=str(path), db_level=inspection.level)
+    else:
         log.error(
             "database_schema_differs",
             path=str(path),
-            count=len(found),
-            differences=found[:_REPORTED],
+            case=inspection.case,
+            db_level=inspection.level,
+            count=len(inspection.found),
+            differences=inspection.found[:_REPORTED],
         )
-        raise SchemaMismatch(path, found)
+    raise SchemaMismatch(path, inspection.found, inspection.case)
 
 
 async def create_schema(db: Database) -> None:

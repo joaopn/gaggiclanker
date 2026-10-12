@@ -69,6 +69,7 @@ __all__ = [
     "clean_stale_exports",
     "create_export",
     "ensure_free_space",
+    "live_size",
     "timestamp",
 ]
 
@@ -172,7 +173,8 @@ def clean_stale_exports(data_dir: Path) -> int:
     return removed
 
 
-def _live_size(path: Path) -> int:
+def live_size(path: Path) -> int:
+    """Bytes the database holds on disk: the file and its write-ahead log."""
     return sum(p.stat().st_size for p in (path, Path(f"{path}-wal")) if p.exists())
 
 
@@ -226,7 +228,7 @@ async def create_export(db: Database, data_dir: Path, *, include_keys: bool) -> 
     """
     now = datetime.now(UTC)
     await asyncio.to_thread(
-        ensure_free_space, data_dir, 2 * await asyncio.to_thread(_live_size, db.path)
+        ensure_free_space, data_dir, 2 * await asyncio.to_thread(live_size, db.path)
     )
     directory = Path(
         await asyncio.to_thread(tempfile.mkdtemp, prefix=EXPORT_DIR_PREFIX, dir=data_dir)

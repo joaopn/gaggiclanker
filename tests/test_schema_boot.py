@@ -80,8 +80,7 @@ async def test_a_database_with_another_schema_is_refused_and_not_touched(
     err = capsys.readouterr().err
     assert err.strip() == (
         f"The database at {path} was made by a different version of gaggiclanker. "
-        "Delete it to start fresh (a backup can be restored only into the version "
-        "that made it)."
+        "Delete it to start fresh, or restore a backup made by this version."
     )
     assert _digest(path) == before
     assert sorted(p.name for p in path.parent.iterdir()) == names_before
