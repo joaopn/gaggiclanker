@@ -41,6 +41,7 @@ __all__ = [
     "check_database_file",
     "create_schema",
     "describe",
+    "describe_sql",
     "differences",
     "ensure_schema",
     "fingerprint_of",
@@ -245,20 +246,30 @@ def schema_fingerprint() -> str:
     return fingerprint_of(_expected())
 
 
-@cache
-def _expected() -> dict[str, str]:
-    """What ``schema.sql`` builds, described once (it is built in memory)."""
+def describe_sql(sql: str) -> dict[str, str]:
+    """What a schema script builds, described (it is run in an in-memory database)."""
     conn = sqlite3.connect(":memory:")
     try:
-        conn.executescript(schema_sql())
+        conn.executescript(sql)
         return describe(conn)
     finally:
         conn.close()
 
 
-def schema_differences(conn: sqlite3.Connection) -> list[str]:
-    """How the database behind ``conn`` differs from ``schema.sql``; empty when it matches."""
-    return differences(describe(conn), _expected())
+@cache
+def _expected() -> dict[str, str]:
+    """What ``schema.sql`` builds, described once."""
+    return describe_sql(schema_sql())
+
+
+def schema_differences(
+    conn: sqlite3.Connection, expected: dict[str, str] | None = None
+) -> list[str]:
+    """How the database behind ``conn`` differs from ``schema.sql``; empty when it matches.
+
+    ``expected`` is for the upgrade tests, which compare with a schema of their own.
+    """
+    return differences(describe(conn), _expected() if expected is None else expected)
 
 
 def _is_empty(conn: sqlite3.Connection) -> bool:
