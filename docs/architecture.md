@@ -274,18 +274,31 @@ or by shutdown — is recorded as an error saying it was stopped, never as `ok`,
 and a rebuild that fails part-way leaves no connection at all, so the next save
 tries again.
 
-**The schema is one file, and a database made by another version is refused.**
+**The schema is one file, and an older database is upgraded at start.**
 `db/schema.sql` builds the whole database and the few rows a new one starts with (the one
-machine, the flavour picks); a database that does not exist yet gets it in one transaction.
-There is no migration chain. An existing database is compared with what the file builds before
-anything opens it: tables with their columns and definitions, indexes, foreign keys, views and
-triggers, by structure rather than text, so editing a comment or the layout of the file never
+machine, the flavour picks); a database that does not exist yet gets it in one transaction. It
+ends with `PRAGMA user_version = N`, the database's upgrade level, which is the number of steps in
+`db/upgrades`. An existing database is compared with what the file builds before anything opens
+it: tables with their columns and definitions, indexes, foreign keys, views and triggers, and the
+level, by structure rather than text, so editing a comment or the layout of the file never
 refuses a database. A difference stops the app with one plain line and a log event naming what
-differs, and the file is never altered or deleted. Changing the schema is an edit to the file with
-a breaking note in the changelog: the person deletes their database (Settings → System → Reset
-does it), and a backup restores only into a version with the same database, by the same
-comparison. Data that has to move without a wipe is derived data, rebuilt at boot from what is
-stored (`DERIVATION_VERSION`), not a schema step.
+differs, and the file is never altered or deleted.
+
+A database an older version made, in exactly the state that version left it, is carried forward
+instead: at the app's own start, before anything opens the file, the app checks there is room,
+writes a copy beside it (`upgrade-backup-L<level>-<time>.db` in the data directory, kept until the
+person deletes it), runs every step from the file's level up in **one transaction**, and before
+committing checks that the result is exactly what the schema file builds, that no reference
+breaks that held before, and that SQLite's integrity check passes. Any failure rolls back, removes
+the copy and refuses to start with the database as it was; a crash mid-way leaves an uncommitted
+transaction, so the next start begins again. A step is frozen code with raw SQL (it imports nothing
+from the rest of the app, so a repository that changes later cannot change what an old step does),
+and the schema of every level it passes is kept as a checksummed file beside it. Only the app's
+own start upgrades: `import` and `mcp` refuse a database that is behind and say to start the app
+once. A backup from an earlier version is upgraded on its staged copy by the same steps when it
+is restored, and the preview says so. A database made by a newer version is refused and says that.
+A schema change ships its step in the same commit. Data that has to move without a step is derived
+data, rebuilt at boot from what is stored (`DERIVATION_VERSION`).
 
 **The LLM call does not run inside the HTTP request.** The route opens a
 `running` row, hands the work to the app's `TaskRegistry` and answers 202; the

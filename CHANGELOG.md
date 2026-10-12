@@ -13,6 +13,21 @@ database.
 
 ## [Unreleased]
 
+### The app upgrades its database when it starts
+
+- **Changed: when a new version needs a different database, the app now carries your database
+  forward at its own start instead of asking you to delete it.** The database records an upgrade
+  level. At start, a database made by an earlier version is first copied (the copy is
+  `upgrade-backup-L<level>-<time>.db` in the data directory), then upgraded in one transaction, and
+  the result is checked against the schema before it is kept. If anything fails, nothing is
+  changed, the copy is removed and the app stops with one line saying why. **Nothing to do.** The
+  copy stays until you delete it: the app never removes it, so delete it once you are happy (a
+  reset removes it too). This release changes nothing in your database; it is the machinery later
+  releases use. Restoring a backup from an earlier version upgrades it the same way, and the
+  preview says so. `gaggiclanker import` and `gaggiclanker mcp` do not upgrade: on a database that
+  is behind they ask you to start the app once. A database made by a newer version is refused, and
+  the message says so.
+
 ### A shot keeps its yield when the empty scale reads a tenth of a gram after the drop
 
 - **A shot whose scale drops from the yield to an empty reading as it ends keeps the yield,

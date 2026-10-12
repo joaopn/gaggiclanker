@@ -1,19 +1,23 @@
 """The database schema: one file, one comparison.
 
-``db/schema.sql`` holds the whole schema and the few rows a new database starts with. A
-database that does not exist yet is made by running it once, in one transaction. A
-database that does exist is **compared** with what the file builds, and the app starts
-on it only when the two have the same structure; otherwise it refuses to start and
-never writes or deletes the database or its `-wal` (see :class:`SchemaMismatch` and
-:func:`check_database_file`). A schema change is an edit to the file,
-with a breaking note in the changelog telling the person to delete their database.
+``db/schema.sql`` holds the whole schema and the few rows a new database starts with, and ends
+with ``PRAGMA user_version = N``: the upgrade level, the number of steps in ``db/upgrades``. A
+database that does not exist yet is made by running the file once, in one transaction. A
+database that does exist is **compared** with what the file builds, level included, and the app
+starts on it only when the two are the same. One that an older version made, in exactly the state
+that version left it (:func:`classify` says ``upgradable``), is carried forward first by the
+app's own start (``db/upgrade.py``: a backup, the steps in one transaction, a check of the
+result). Anything else is refused: the app prints one line, logs what differs and never writes or
+deletes the database or its `-wal` (see :class:`SchemaMismatch` and :func:`check_database_file`).
+A schema change is an edit to the file together with the upgrade step that carries older
+databases to it.
 
 **The comparison is of structure, not of text.** Both sides are described the same way:
 every table with its columns (position, type, not-null, default, primary key, hidden or
 generated) and its definition with comments and layout removed, every index (columns,
-uniqueness, partial ``WHERE``), every foreign key, and every view and trigger by its
-normalised SQL. Editing a comment or the layout of ``schema.sql`` therefore never
-refuses a database. Rows are not compared. The same function decides whether an
+uniqueness, partial ``WHERE``), every foreign key, every view and trigger by its
+normalised SQL, and the upgrade level. Editing a comment or the layout of ``schema.sql``
+therefore never refuses a database. Rows are not compared. The same function decides whether an
 uploaded backup may be restored (``db/restore.py``), so what a boot would refuse, a
 restore refuses.
 

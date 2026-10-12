@@ -1,9 +1,10 @@
 -- The whole database, in one file.
 --
--- A fresh database is made by running this script once, in one transaction. A change to the
--- schema edits this file, and an app started on a database whose structure differs from
--- what this file builds refuses to start (see `gaggiclanker/db/schema.py`). It never
--- alters or deletes the database it refuses.
+-- A fresh database is made by running this script once, in one transaction. A database an older
+-- version made is carried forward at start by the upgrade steps in `gaggiclanker/db/upgrades`
+-- (a schema change ships its step in the same commit); an app started on a database whose
+-- structure differs from what this file builds, and that no step leads from, refuses to start
+-- (see `gaggiclanker/db/schema.py`). It never alters or deletes the database it refuses.
 --
 -- What the comparison looks at is structure (tables and their columns and constraints,
 -- indexes, foreign keys, views, triggers), not text layout: comments and whitespace here
