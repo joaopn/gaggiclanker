@@ -13,6 +13,20 @@ database.
 
 ## [Unreleased]
 
+### The top bar's new order, and the boiler temperature in the machine status
+
+- **The top bar reads Sync, the mode button, Flush, Writes, the machine status, LLM activity,
+  the theme**, then Sign out when sign-in is on. The two buttons that act on the machine (shown
+  only while Writes is on) now sit together right after Sync, and the machine status moved to
+  sit after the Writes switch.
+- **The machine status shows the boiler's current temperature while the machine is connected**,
+  in whole degrees ("93 °C"; "93°" below 640 px), at every width. It comes from the same
+  fifteen-second status read that says whether the machine is there, so it can be up to fifteen
+  seconds old, and it is not shown while the machine is offline or before it has reported one.
+- To make room, the board's name in the status now shows from 1280 px instead of 1024 px (it
+  stays in the tooltip and for a screen reader), and below 640 px the LLM activity, theme and
+  Sign out buttons are a little narrower.
+
 ### Pin a Set version to the machine
 
 - A Set version can be kept on the machine as a profile of its own while the Set goes on
