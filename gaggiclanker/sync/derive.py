@@ -100,7 +100,10 @@ log = structlog.get_logger(__name__)
 #: of the shot (``diagnostics_json["metrics"]["phases_unsampled"]``: its number and name, why it
 #: ended, when, and the pressure at the first sample after it), and the shot's phase-began rule
 #: reads the samples that carry a phase's number.
-DERIVATION_VERSION = 12
+#: 13: the last phase's cup at end and gained read the final weight when the shot's last
+#: reading is an empty scale (under a gram, not only zero): a cup lifted as the shot ended
+#: left a tenth of a gram in the last sample, and the phase ended there instead of at the yield.
+DERIVATION_VERSION = 13
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these

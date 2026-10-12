@@ -339,6 +339,23 @@ def test_the_last_phase_ends_at_the_final_weight_when_the_scale_dropped_to_zero(
     assert run(data, channel="cup_weight", op="at_end").value == RAMP_END_G
 
 
+def test_the_last_phase_ends_at_the_final_weight_past_an_empty_scale_blip() -> None:
+    """Zeros, then the empty scale's 0.1 g in the last sample: still the cup that vanished."""
+    slog = lever_shot()
+    samples = as_sample_dicts(slog)
+    for sample in samples[-3:]:
+        sample["v"] = 0.0
+    samples[-1]["v"] = 0.1
+    data = ShotData.build(samples, slog.transitions, final_weight_g=RAMP_END_G, profile_phases=None)
+    assert run(data, channel="cup_weight", op="at_end", window={"phase": "ramp"}).value == (
+        RAMP_END_G
+    )
+    assert run(data, channel="cup_weight", op="at_end").value == RAMP_END_G
+    # A shot that never weighed a gram keeps its own last reading.
+    tiny = ShotData.build(samples, slog.transitions, final_weight_g=None, profile_phases=None)
+    assert run(tiny, channel="cup_weight", op="at_end").value == 0.1
+
+
 def test_gained_is_for_the_cup_and_the_water_over_one_phase() -> None:
     for fields in (
         {"channel": "pressure", "op": "gained", "window": {"phase": "ramp"}},

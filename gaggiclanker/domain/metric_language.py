@@ -42,6 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from gaggiclanker.domain.cup_flow import cup_flow
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_names import phase_key, same_phase
+from gaggiclanker.domain.slog import DROPOUT_MIN_WEIGHT_G
 from gaggiclanker.domain.unsampled import ended_before_sampled
 
 __all__ = [
@@ -746,17 +747,21 @@ def _at_end_of_phase(data: ShotData, channel: str, position: int) -> float | Non
     if not series:
         return None
     last = series[-1][1]
-    if (
-        channel == "cup_weight"
-        and resolved.ends_shot
-        and last <= 0
-        and (data.final_weight_g or 0.0) > 0
-    ):
+    if channel == "cup_weight" and resolved.ends_shot and _cup_vanished(data, last):
         # The scale reads 0 once the cup is lifted or it resets, so a shot can end in
         # zeros: the last phase then ends at the weight the yield is, not at a cup that
         # vanished at the last sample.
         return float(data.final_weight_g or 0.0)
     return last
+
+
+def _cup_vanished(data: ShotData, last: float) -> bool:
+    """Whether the shot's last weight reading is an empty scale while the shot has a yield.
+
+    Below :data:`DROPOUT_MIN_WEIGHT_G` is an empty scale: zero, or the tenth of a gram one
+    drifts to after the cup is lifted (the shot that showed it read 0.1 g in its last sample).
+    """
+    return last < DROPOUT_MIN_WEIGHT_G and (data.final_weight_g or 0.0) > 0
 
 
 def _gained(data: ShotData, channel: str, position: int) -> float:
@@ -857,12 +862,7 @@ def _compute(expr: Expression, data: ShotData, resolved: _Resolved) -> float:
         raise _Absent("empty_window", "no recorded sample falls in the window")
     values = [v for _, v in series]
     end_value = values[-1]
-    if (
-        channel == "cup_weight"
-        and resolved.ends_shot
-        and end_value <= 0
-        and (data.final_weight_g or 0.0) > 0
-    ):
+    if channel == "cup_weight" and resolved.ends_shot and _cup_vanished(data, end_value):
         # The scale reads 0 once the cup is lifted or it resets, so a shot can end in
         # zeros: a window that ends with the shot ends at the weight the yield is, not at a
         # cup that vanished at the last sample.

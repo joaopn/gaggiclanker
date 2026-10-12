@@ -111,3 +111,48 @@ def test_a_reading_within_the_peak_share_still_counts() -> None:
     """A scale settling a little below its peak (drips, a wobble) before the drop."""
     slog = make_slog(_samples([*_ramp(36.0), 33.0, 0.0, 0.0]))
     assert slog.volume_g == pytest.approx(33.0)
+
+
+def test_an_empty_scale_blip_after_the_drop_does_not_hide_the_yield() -> None:
+    """The shot that showed it: 31.3 g, six samples of 0, then 0.1 g, and the header at 0.1 g.
+
+    The firmware writes the header from the reading at file close, so the empty
+    scale's tenth of a gram was in both, and the shot read 0.3 % of its target.
+    """
+    weights = [*_ramp(31.3), *[0.0] * 6, 0.1]
+    assert make_slog(_samples(weights)).volume_g == pytest.approx(31.3)
+    assert make_slog(_samples(weights), final_weight_g=0.1).volume_g == pytest.approx(31.3)
+    raw = encode_slog(make_slog(_samples(weights), final_weight_g=0.1))
+    assert parse_slog(raw).volume_g == pytest.approx(31.3)
+
+
+def test_a_run_of_readings_under_a_gram_is_the_drop() -> None:
+    """Zeros and drift mixed, straight after the yield: the run is everything under a gram."""
+    weights = [*_ramp(36.2), 0.4, 0.0, 0.1, 0.0, 0.2]
+    assert make_slog(_samples(weights)).volume_g == pytest.approx(36.2)
+
+
+def test_a_header_of_a_gram_or_more_still_wins_over_the_samples() -> None:
+    weights = [*_ramp(31.3), 0.0, 0.0, 0.1]
+    assert make_slog(_samples(weights), final_weight_g=1.0).volume_g == pytest.approx(1.0)
+    assert make_slog(_samples(weights), final_weight_g=32.4).volume_g == pytest.approx(32.4)
+
+
+def test_a_sub_gram_header_stands_when_the_samples_show_no_drop() -> None:
+    """A shot that never brewed a gram keeps what the machine said."""
+    weights = [0.0] * 40 + [0.3, 0.3, 0.2]
+    assert make_slog(_samples(weights), final_weight_g=0.3).volume_g == pytest.approx(0.3)
+    assert make_slog(_samples(weights)).volume_g == pytest.approx(0.2)
+
+
+def test_a_blip_run_longer_than_the_window_is_not_a_dropout() -> None:
+    under = DROPOUT_WINDOW_MS // INTERVAL + 1
+    weights = [*_ramp(31.8), *[0.0] * (under - 1), 0.1]
+    assert make_slog(_samples(weights)).volume_g == pytest.approx(0.1)
+
+
+def test_a_last_reading_of_a_gram_or_more_is_the_yield_as_before() -> None:
+    """A reading at the floor is a weight, not an empty scale: nothing to look past."""
+    weights = [*_ramp(31.8), 0.0, 0.0, 1.0]
+    assert make_slog(_samples(weights)).volume_g == pytest.approx(1.0)
+    assert weight_before_dropout(make_slog(_samples(_ramp(31.8))).samples, INTERVAL) is None

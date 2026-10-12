@@ -162,15 +162,25 @@ class Slog:
 
         The header's `finalWeight` is the scale reading at the moment the file
         is closed, and the firmware writes a reading at or below zero as 0. Some
-        shots end with the scale dropping straight from the yield to zero for
-        their last few samples (the cup lifted, or the scale resetting as the
-        shot ends), which leaves both the header and the last sample at 0 while
-        the curve shows the yield right before the drop. That reading is the
-        yield; see :func:`weight_before_dropout` for how narrowly it is matched.
+        shots end with the scale dropping straight from the yield to an empty
+        scale for their last few samples (the cup lifted, or the scale resetting
+        as the shot ends), which leaves the header and the last sample at 0, or
+        at the tenth of a gram an empty scale drifts to, while the curve shows
+        the yield right before the drop. That reading is the yield; see
+        :func:`weight_before_dropout` for how narrowly it is matched. A header
+        under :data:`DROPOUT_MIN_WEIGHT_G` is that empty scale too, so it gives
+        way to the drop when the samples show one.
         """
-        if self.header.final_weight_g:
-            return self.header.final_weight_g
-        return weight_before_dropout(self.samples, self.sample_interval)
+        header = self.header.final_weight_g
+        if header and header >= DROPOUT_MIN_WEIGHT_G:
+            return header
+        dropped = weight_before_dropout(self.samples, self.sample_interval)
+        if dropped is not None:
+            return dropped
+        if header:
+            return header
+        last = self.samples[-1].v if self.samples else None
+        return last or None
 
     @property
     def has_pressure(self) -> bool:
@@ -189,8 +199,9 @@ class Slog:
 #: after 1 s of a steady reading, so a drop at the end leaves a few samples of
 #: zero; a zero run longer than that window began during the brew itself.
 DROPOUT_WINDOW_MS = 3000
-#: The reading before the drop must be at least this: a scale with nothing on
-#: it drifts by a tenth of a gram, and that is no yield.
+#: A reading below this is an empty scale: one with nothing on it drifts by a
+#: tenth of a gram, and that is no yield. The run at the end is made of such
+#: readings, and the reading before it must be at least this.
 DROPOUT_MIN_WEIGHT_G = 1.0
 #: ... and at least this share of the shot's highest reading, so the drop is
 #: straight from the yield to zero. A weight that fell away over several
@@ -199,26 +210,26 @@ DROPOUT_PEAK_SHARE = 0.9
 
 
 def weight_before_dropout(samples: list[Sample], sample_interval: int) -> float | None:
-    """The last scale reading, looking past a drop to zero at the very end.
+    """The reading before a drop to an empty scale at the very end, or ``None``.
 
-    A shot whose last reading is positive returns it. One that ends in a run of
-    zero readings returns the reading right before the run, but only for the
-    narrow pattern the machine produces: the run lasts at most
-    :data:`DROPOUT_WINDOW_MS`, and the reading before it is at least
-    :data:`DROPOUT_MIN_WEIGHT_G` and within :data:`DROPOUT_PEAK_SHARE` of the
-    shot's peak. Anything else ending at zero has no final weight.
+    A shot that ends in a run of readings below :data:`DROPOUT_MIN_WEIGHT_G`
+    (zeros, or an empty scale drifting by a tenth of a gram: the shot that
+    showed it read 31.3 g, then 0 for six samples, then 0.1 g in the last)
+    returns the reading right before the run, but only for the narrow pattern
+    the machine produces: the run lasts at most :data:`DROPOUT_WINDOW_MS`, and
+    the reading before it is within :data:`DROPOUT_PEAK_SHARE` of the shot's
+    peak. A shot whose last reading is a weight, and anything else, gives
+    ``None``: there was no drop to look past.
     """
     if not samples:
         return None
     last = samples[-1]
-    if last.v:
-        return last.v
 
     # A missing reading (`v` not in the mask) is no weight, the same as a zero.
     before_index = len(samples) - 1
-    while before_index >= 0 and not samples[before_index].v:
+    while before_index >= 0 and (samples[before_index].v or 0.0) < DROPOUT_MIN_WEIGHT_G:
         before_index -= 1
-    if before_index < 0:
+    if before_index < 0 or before_index == len(samples) - 1:
         return None
     before = samples[before_index]
     weight = before.v or 0.0
@@ -228,11 +239,7 @@ def weight_before_dropout(samples: list[Sample], sample_interval: int) -> float 
     else:
         run_ms = (len(samples) - 1 - before_index) * sample_interval
     peak = max(s.v or 0.0 for s in samples)
-    if (
-        run_ms > DROPOUT_WINDOW_MS
-        or weight < DROPOUT_MIN_WEIGHT_G
-        or weight < DROPOUT_PEAK_SHARE * peak
-    ):
+    if run_ms > DROPOUT_WINDOW_MS or weight < DROPOUT_PEAK_SHARE * peak:
         return None
     return weight
 

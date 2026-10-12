@@ -44,9 +44,9 @@ def test_the_derivation_version_moved_with_the_per_phase_metrics_and_the_retired
     # Stored verdicts change (undershoot at 5, the channeling flow residual at
     # 6, the per-phase metrics at 7, the score and the bands gone at 8, no puck flow
     # without a pressure sensor at 9, cup flow at 10, phase types from the profile at 11, phases
-    # that ended before they were sampled at 12): every
-    # shot derived at 7 or earlier is derived again on the next boot.
-    assert DERIVATION_VERSION == 12
+    # that ended before they were sampled at 12, the last phase's cup at end past an empty
+    # scale's blip at 13): every shot derived at 7 or earlier is derived again on the next boot.
+    assert DERIVATION_VERSION == 13
 
 
 async def test_a_shot_derived_at_version_seven_is_derived_again_without_its_score(
