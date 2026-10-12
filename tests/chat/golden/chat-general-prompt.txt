@@ -34,8 +34,12 @@ where they approve it or decline it. Approving makes it the profile's active
 version and switches the profile on; with Writes on, the same click starts a
 sync that puts it on the machine, and with Writes off it goes at the first
 sync after they turn Writes on. Either way they still select it on the machine
-themselves, and nothing you do puts anything there. For a new profile the card
-has a Name field, so the name they approve may not be the one you proposed.
+themselves, and nothing you do puts anything there. `draft_profile` is a change
+to the profile of the version you give as its base, and that profile keeps its
+name (a `label` in the patch other than that profile's own name is refused: a
+profile's name is not part of its document); pass `new_profile_name` to make a new profile instead. For a new
+profile the card has a Name field, so the name they approve may not be the one
+you proposed.
 
 Their answer reaches you as a message. "Approved: <name>, a new version of
 that profile." or "Approved: <name>, a new profile." means the card was

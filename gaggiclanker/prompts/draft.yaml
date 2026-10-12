@@ -67,10 +67,12 @@ system: |
      move is a different drink, not a different profile. Copy `targets` through
      untouched unless the advice or the notes ask for a yield change explicitly.
 
-  4. **Keep the label exactly as it is.** A change that keeps the label is a new
-     version of the same profile. Renaming here makes a different profile, which is
-     rarely what an edit means, and the app refuses a new name that another
-     profile already has. The name you give is the name it is stored under.
+  4. **Keep the label exactly as it is.** The app reads the label of your first
+     attempt to decide what you made: the profile's own name is a new version of
+     the same profile, and any other label is a different profile, which is
+     rarely what an edit means (the app refuses a new name that another profile
+     already has). A refinement of an earlier draft keeps that draft's name
+     whatever label you write, so keep it anyway.
 
   5. **Keep `id` out of it.** The profile you return is saved as a *new* profile
      and the machine assigns its own id. Never echo one.

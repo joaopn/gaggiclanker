@@ -206,6 +206,13 @@ when the sync has put the profile on the machine, and they still select the
 profile on the machine themselves. Nothing you do puts anything on the
 machine.
 
+`draft_profile` is a change to the profile of the version you give as its base,
+and that profile keeps its name: a profile's name is not part of its document,
+so a `label` in the patch other than the profile's own name is refused (its own
+name, as in a whole document you read back, is ignored). When you want a new profile instead of a
+change (a fork under a name of its own), pass `new_profile_name`; a name that
+is already a profile is refused.
+
 Their answer to a profile card reaches you as a message, like an "Accepted:"
 one. "Approved: <name> as <version label> of <Set name>." means the profile
 was approved as that version of this Set (when they renamed a new profile on
