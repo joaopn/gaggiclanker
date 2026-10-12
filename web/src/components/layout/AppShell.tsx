@@ -427,12 +427,12 @@ export function AppShell() {
             <div className="ml-auto flex items-center gap-1 sm:gap-2">
               {/* First: a sync is the app's main action and belongs to no one page. */}
               <PullButton />
-              {/* Second, while Writes is on: brew or standby, the other thing a person
-                does to the machine from wherever they are. */}
+              {/* Then, while Writes is on, the two things a person does to the machine
+                from wherever they are: brew or standby, and a flush. */}
               <ModeButton />
-              <DeviceStatusPill />
-              <DeviceWritesSwitch />
               <FlushButton />
+              <DeviceWritesSwitch />
+              <DeviceStatusPill />
               <LlmActivity />
               <ThemeToggle />
               {/* Last, and absent entirely when auth is off — see SignOutButton. */}

@@ -53,18 +53,16 @@ describe("AppShell", () => {
     }
   });
 
-  it("puts the writes switch in the top bar, right after the machine status", () => {
+  it("puts the writes switch in the top bar, right before the machine status", () => {
     renderApp();
     const pill = screen.getByTestId("device-status-pill");
     const toggle = screen.getByRole("switch", { name: "Machine writes" });
     expect(pill.closest("header")).toContainElement(toggle);
-    expect(pill.nextElementSibling ?? pill.parentElement?.nextElementSibling).toBe(
-      toggle.parentElement,
-    );
+    expect(pill.previousElementSibling).toContainElement(toggle);
   });
 
   it.each(["/shots", "/chat", "/profiles", "/device", "/settings/system"])(
-    "puts Sync first in the top bar, before the machine status, on %s",
+    "puts Sync first in the top bar, before the writes switch, on %s",
     (path) => {
       renderApp(path);
       const sync = screen.getByRole("button", { name: "Sync with machine" });
@@ -74,8 +72,9 @@ describe("AppShell", () => {
       expect(screen.getAllByTestId("pull-button")).toHaveLength(1);
       const group = screen.getByTestId("device-status-pill").parentElement as HTMLElement;
       expect(group.firstElementChild).toContainElement(sync);
-      expect(group.firstElementChild?.nextElementSibling).toBe(
-        screen.getByTestId("device-status-pill"),
+      // Writes off: no mode button and no Flush, so the switch comes straight after.
+      expect(group.firstElementChild?.nextElementSibling).toContainElement(
+        screen.getByTestId("device-writes-switch"),
       );
     },
   );
@@ -88,7 +87,7 @@ describe("AppShell", () => {
     expect(within(group).queryByRole("button", { name: "Shortcuts" })).toBeNull();
   });
 
-  it("puts the mode button second, right after Sync, while writes are on", async () => {
+  it("orders the top bar Sync, mode, Flush, Writes, status, LLM activity, theme while writes are on", async () => {
     getSettings.mockResolvedValue({
       deviceWritesEnabled: {
         key: "deviceWritesEnabled",
@@ -106,15 +105,28 @@ describe("AppShell", () => {
       connected: true,
       host: "gaggimate.local",
       identity: null,
-      last_status: { m: 1 },
+      last_status: { m: 1, ct: 92.4 },
     });
     renderApp();
-    const mode = await screen.findByRole("button", { name: "Switch to Standby" });
+    await screen.findByRole("button", { name: "Switch to Standby" });
+    await screen.findByTestId("flush-button");
     const group = screen.getByTestId("device-status-pill").parentElement as HTMLElement;
-    const sync = screen.getByRole("button", { name: "Sync with machine" });
-    expect(group.firstElementChild).toContainElement(sync);
-    expect(group.firstElementChild?.nextElementSibling).toBe(mode);
-    expect(mode.nextElementSibling).toBe(screen.getByTestId("device-status-pill"));
+    const order = [
+      "pull-button",
+      "mode-button",
+      "flush-button",
+      "device-writes-switch",
+      "device-status-pill",
+      "llm-activity",
+      "theme-toggle",
+    ].map((id) =>
+      Array.from(group.children).findIndex((child) =>
+        child.matches(`[data-testid="${id}"]`)
+          ? true
+          : child.querySelector(`[data-testid="${id}"]`),
+      ),
+    );
+    expect(order).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
   it("puts Shortcuts at the foot of the sidebar, above the fold toggle, and it opens the sheet", async () => {
