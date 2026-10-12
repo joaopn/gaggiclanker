@@ -55,7 +55,10 @@ def _refuse_foreign_database(env: EnvSettings) -> None:
 
     The application checks again as it starts; this is the same check made early enough
     that the person reads a sentence instead of a lifespan failure. A reset that is
-    waiting deletes the database first, so it is not refused.
+    waiting deletes the database first, so it is not refused, and every database below the
+    latest level is let through: the application's own start upgrades it, or refuses it with
+    a line of its own when it is not in the state its level left. One at the latest level
+    with another structure, or from a newer version, is refused here.
     """
     from gaggiclanker.db.reset import reset_is_waiting
     from gaggiclanker.db.schema import SchemaMismatch, check_database_file
@@ -63,7 +66,7 @@ def _refuse_foreign_database(env: EnvSettings) -> None:
     if reset_is_waiting(env.data_dir):
         return
     try:
-        check_database_file(env.database_path)
+        check_database_file(env.database_path, allow_older=True)
     except SchemaMismatch as exc:
         print(exc, file=sys.stderr)
         raise SystemExit(1) from None

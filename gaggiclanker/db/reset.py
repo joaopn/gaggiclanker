@@ -5,7 +5,8 @@ writes ``DATA_DIR/reset-requested`` (file and directory flushed) before it answe
 from then on the reset happens no matter how the process ends. The boot looks for the
 marker **before the database is opened** and deletes what the app wrote: the database
 with its ``-wal``, ``-shm`` and ``-journal``, every restore staging file, every backup
-export directory, the restore's note, and the downloaded Claude Code program. The marker
+export directory, every copy the upgrade at start made (the app never deletes those
+itself), the restore's note, and the downloaded Claude Code program. The marker
 goes last, so a crash in the middle of the deletion finishes it at the following start.
 
 Doing it at boot rather than in the shutdown is what makes it crash-safe, and deleting the
@@ -30,6 +31,7 @@ import structlog
 
 from gaggiclanker.db.backup import EXPORT_DIR_PREFIX
 from gaggiclanker.db.restore import RESTORE_MARKER, STAGING_GLOB
+from gaggiclanker.db.upgrade import BACKUP_GLOB as UPGRADE_BACKUP_GLOB
 from gaggiclanker.settings import CLAUDE_CODE_DIRNAME
 
 __all__ = [
@@ -99,6 +101,8 @@ def _doomed(data_dir: Path) -> list[Path]:
     paths.extend(data_dir.glob(STAGING_GLOB))
     # A staging file's own sidecars carry the same prefix, so the glob has them.
     paths.extend(data_dir.glob(f"{EXPORT_DIR_PREFIX}*"))
+    # The upgrade's backups, and the temporary name of one that was being written.
+    paths.extend(data_dir.glob(UPGRADE_BACKUP_GLOB))
     paths.append(data_dir / CLAUDE_CODE_DIRNAME)
     return paths
 

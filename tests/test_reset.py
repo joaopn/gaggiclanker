@@ -49,6 +49,10 @@ def plant_files(data_dir: Path) -> None:
     (data_dir / INSTALL_DIR / "current").write_text("2.1.0\n")
     (data_dir / INSTALL_DIR / ".staging-2.1.1-1").mkdir()
     (data_dir / RESTORE_MARKER).write_text("{}")
+    # What the upgrade at start leaves: a finished backup (the app never deletes one) and the
+    # temporary name of one cut off while it was being written.
+    (data_dir / "upgrade-backup-L0-20261012T120000Z.db").write_bytes(b"a whole copy")
+    (data_dir / "upgrade-backup-L0-20261012T120001Z.db.tmp").write_bytes(b"half a copy")
 
 
 def table_counts(path: Path) -> dict[str, int]:

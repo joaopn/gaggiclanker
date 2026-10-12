@@ -53,6 +53,7 @@ from gaggiclanker.db.restore import (
 )
 from gaggiclanker.db.schema import SchemaMismatch, check_database_file, ensure_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
+from gaggiclanker.db.upgrade import UpgradeRefused, upgrade_database_file
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import (
     DEVICE_SETTING_KEYS,
@@ -288,8 +289,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # file: gone before anything opens, so it cannot be mistaken for data.
     clean_stale_staging(env.data_dir)
 
-    # A database made by a different version is refused before anything opens it, and left
-    # exactly as it is.
+    # A database an older version made is carried forward before anything opens it: a backup
+    # first, then the steps in one transaction, or nothing changes and the start is refused.
+    # Only this start upgrades; `import`, `mcp` and the early check in `serve` leave it be.
+    try:
+        await asyncio.to_thread(upgrade_database_file, env.database_path, env.data_dir)
+    except UpgradeRefused as exc:
+        print(exc, file=sys.stderr)
+        raise
+
+    # A database made by a different (or a newer) version is refused before anything opens
+    # it, and left exactly as it is.
     try:
         check_database_file(env.database_path)
     except SchemaMismatch as exc:
