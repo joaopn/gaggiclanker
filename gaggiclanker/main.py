@@ -423,8 +423,9 @@ async def _start(app: FastAPI, db: Database) -> None:
     # spinner, and nothing else would ever clear one left by a restart.
     interrupted_starts = await StartingPointRunsRepository(db).reconcile_running()
     # Shots archived before the final-weight rule last changed keep the weight
-    # the old rule found in their bytes; re-reading the few with none brings
-    # them in line (a scale that dropped to zero as the shot ended).
+    # the old rule found in their bytes; re-reading the few with none, or with an
+    # empty scale's tenth of a gram, brings them in line (a scale that dropped to
+    # zero as the shot ended).
     final_weights_refilled = await refill_final_weights(ShotsRepository(db))
     # Shots derived by an older version of the diagnostics are re-derived from
     # their bytes, once: see `DERIVATION_VERSION`. Before any request, so no page

@@ -35,7 +35,7 @@ from gaggiclanker.domain.firmware_values import compute_firmware_values
 from gaggiclanker.domain.models import IndexEntry
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls, phase_types
 from gaggiclanker.domain.phase_metrics import compute_phase_metrics
-from gaggiclanker.domain.slog import Slog, SlogError, parse_slog
+from gaggiclanker.domain.slog import DROPOUT_MIN_WEIGHT_G, Slog, SlogError, parse_slog
 
 __all__ = [
     "DERIVATION_VERSION",
@@ -278,25 +278,32 @@ def _attach_diagnostics(
 
 
 async def refill_final_weights(shots: ShotsRepository) -> int:
-    """Re-read the final weight of every stored shot that has none; return the count filled.
+    """Re-read the final weight of every stored shot that has no yield; return the count changed.
 
     The final weight is derived from the bytes, so a better rule for reading it
-    (a shot whose scale dropped to zero in its last samples, see
+    (a shot whose scale dropped to an empty reading in its last samples, see
     :meth:`Slog.volume_g`) reaches the shots already archived only by reading
     their bytes again. Run at boot: the candidates are the few shots a scale was
-    connected to that still have no weight, and a shot the rule finds nothing in
+    connected to that have no weight, or one under
+    :data:`~gaggiclanker.domain.slog.DROPOUT_MIN_WEIGHT_G` (the empty scale's
+    tenth of a gram the old rule kept). A shot the rule reads the same as before
     stays as it is, so running it again changes nothing.
     """
     filled = 0
-    for shot in await shots.missing_final_weight():
+    for shot in await shots.final_weight_candidates(DROPOUT_MIN_WEIGHT_G):
         try:
             weight = parse_slog(shot.raw_slog, shot.device_id).volume_g
         except SlogError:
             continue  # stored before it was quarantined for this; nothing to read
-        if weight is None:
+        if weight is None or weight == shot.final_weight_g:
             continue
         await shots.set_final_weight(shot.id, weight)
-        log.info("shot_final_weight_refilled", shot_id=shot.id, final_weight_g=weight)
+        log.info(
+            "shot_final_weight_refilled",
+            shot_id=shot.id,
+            final_weight_g=weight,
+            was_g=shot.final_weight_g,
+        )
         filled += 1
     return filled
 

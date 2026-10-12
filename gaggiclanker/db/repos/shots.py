@@ -149,6 +149,8 @@ class ShotBytes(BaseModel):
     id: int
     device_id: str
     raw_slog: bytes
+    #: The final weight stored now, which a re-read compares against.
+    final_weight_g: float | None = None
 
 
 class ShotDerivationSource(BaseModel):
@@ -662,19 +664,23 @@ class ShotsRepository(Repository):
             (utc_now(), shot_id),
         )
 
-    async def missing_final_weight(self) -> list[ShotBytes]:
-        """Shots a scale was connected to that were stored with no final weight.
+    async def final_weight_candidates(self, below_g: float) -> list[ShotBytes]:
+        """Shots a scale was connected to that were stored with no yield to speak of.
 
         The candidates for re-reading the yield out of the bytes when the rule
-        that derives it changes: a shot with no scale has no weight to find, and
-        a quarantined one has no samples to read it from.
+        that derives it changes: no final weight, or one under ``below_g`` (an
+        empty scale's reading, which is what the header holds when the cup was
+        lifted as the shot ended). A shot with no scale has no weight to find,
+        and a quarantined one has no samples to read it from.
         """
         rows = await self.db.fetch_all(
             """
-            SELECT id, device_id, raw_slog FROM shots
-            WHERE final_weight_g IS NULL AND scale_connected = 1 AND quarantined = 0
+            SELECT id, device_id, raw_slog, final_weight_g FROM shots
+            WHERE (final_weight_g IS NULL OR final_weight_g < ?)
+              AND scale_connected = 1 AND quarantined = 0
             ORDER BY id
-            """
+            """,
+            (below_g,),
         )
         return self.to_models(ShotBytes, rows)
 
@@ -747,7 +753,7 @@ class ShotsRepository(Repository):
         )
 
     async def set_final_weight(self, shot_id: int, final_weight_g: float) -> None:
-        """Fill a final weight that a better reading of the same bytes found."""
+        """Store a final weight that a better reading of the same bytes found."""
         await self.db.execute(
             "UPDATE shots SET final_weight_g = ?, updated_at = ? WHERE id = ?",
             (final_weight_g, utc_now(), shot_id),

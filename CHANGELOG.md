@@ -13,6 +13,22 @@ database.
 
 ## [Unreleased]
 
+### A shot keeps its yield when the empty scale reads a tenth of a gram after the drop
+
+- **A shot whose scale drops from the yield to an empty reading as it ends keeps the yield,
+  even when the empty scale reads 0.1 g rather than 0.** The rule that looks past the drop only
+  looked past readings of exactly zero; on a real shot the scale read 31.3 g, then 0 for six
+  samples, then 0.1 g in the last one, and the machine wrote that 0.1 g into the shot's file as
+  its final weight. The shot was stored at 0.1 g, the Curve check said "Shot: under target"
+  (0.3 % of a 32 g target), and the last phase's cup at end read 0.1 g. Now any reading under
+  1 g counts as an empty scale: the run of them at the end lasts at most three seconds, the
+  reading before it is within 90 % of the shot's highest, and a final weight the machine
+  recorded under 1 g gives way to that reading. A final weight of 1 g or more is still the
+  machine's, and a shot that never weighed a gram keeps what it had.
+- **Shots already in the archive are fixed at the next start**, with nothing to do: the app
+  reads the bytes again for every shot with a scale whose stored final weight is under 1 g, and
+  re-derives every shot once so the last phase's cup at end follows. No database change.
+
 ### The top bar's new order, and the boiler temperature in the machine status
 
 - **The top bar reads Sync, the mode button, Flush, Writes, the machine status, LLM activity,

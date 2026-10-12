@@ -34,6 +34,21 @@ def _raw(weights: list[float], *, si: int = SCALE) -> bytes:
 DROPOUT = _raw([*[round(31.8 * i / 119, 1) for i in range(120)], 0.0, 0.0, 0.0])
 LONG_ZEROS = _raw([*[round(31.8 * i / 119, 1) for i in range(120)], *[0.0] * 40])
 NO_SCALE = _raw([0.0] * 120, si=0)
+# The cup lifted as the shot ended, and the empty scale read 0.1 g in the last sample and the
+# header: the earlier rule stored that tenth of a gram as the yield.
+BLIP = encode_slog(
+    make_slog(
+        [
+            {"t": i * 250, "v": w, "si": SCALE}
+            for i, w in enumerate(
+                [*[round(31.3 * i / 119, 1) for i in range(120)], *[0.0] * 6, 0.1]
+            )
+        ],
+        phases=[(0, 0, "brew")],
+        final_weight_g=0.1,
+    )
+)
+TINY = _raw([*[0.0] * 40, 0.3, 0.3, 0.3])
 
 
 async def _store_as_before(db: Database, device_id: str, raw: bytes) -> int:
@@ -83,5 +98,30 @@ async def test_the_refill_touches_nothing_on_a_second_run(env: EnvSettings) -> N
         assert await refill_final_weights(shots) == 0
         assert await _final_weight(db, dropout) == pytest.approx(31.8)
         assert await _final_weight(db, kept) == pytest.approx(30.0)
+    finally:
+        await db.close()
+
+
+async def _store_with(db: Database, device_id: str, raw: bytes, weight: float | None) -> int:
+    derived = derive_shot(parse_slog(raw), raw, device_id=device_id)
+    derived.shot.final_weight_g = weight
+    return await ShotsRepository(db).insert(derived.shot, derived.samples)
+
+
+async def test_a_stored_empty_scale_reading_is_read_again(env: EnvSettings) -> None:
+    db = Database(env.database_path)
+    await db.connect()
+    try:
+        await create_schema(db)
+        shots = ShotsRepository(db)
+        blip = await _store_with(db, "000013", BLIP, 0.1)
+        tiny = await _store_with(db, "000014", TINY, 0.3)  # a shot that never weighed a gram
+        weighed = await _store_with(db, "000015", BLIP, 30.0)  # a gram or more is not re-read
+
+        assert await refill_final_weights(shots) == 1
+        assert await refill_final_weights(shots) == 0
+        assert await _final_weight(db, blip) == pytest.approx(31.3)
+        assert await _final_weight(db, tiny) == pytest.approx(0.3)
+        assert await _final_weight(db, weighed) == pytest.approx(30.0)
     finally:
         await db.close()
