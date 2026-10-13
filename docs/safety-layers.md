@@ -271,7 +271,7 @@ After `req:profiles:save`, load the returned id back and compare canonical JSON
 echoes what you sent: it parses into a struct and serialises the struct, so the
 document that comes back has an `id`, a `favorite`, a `selected`, a
 `transition.target` and a spelled-out phase `temperature` of 0 that the document
-going out did not. `canonical_profile_json` drops exactly that set, which is why
+going out did not. `canonical_document_json` drops exactly that set, which is why
 a faithful machine compares equal and an unfaithful one does not.
 
 A mismatch removes the copy just written (through the guarded path below), keeps the
@@ -329,7 +329,7 @@ same brew code as the device, so what it accepts, the device accepts.
 `scripts/sim.sh test` is what builds and runs it.
 
 This layer is also what makes layer 3 trustworthy: if the real `writeProfile`
-emitted a field `canonical_profile_json` does not drop, every sync that pushed would report
+emitted a field `canonical_document_json` does not drop, every sync that pushed would report
 a mismatch and the feature would be unusable. The fake device reproduces
 `writeProfile` from the source; this checks the source.
 

@@ -656,7 +656,7 @@ class StopConditionChange(BaseModel):
 def diff_stop_conditions(base: Profile, draft: Profile) -> list[StopConditionChange]:
     """Per-phase `targets` diff, comparing canonical numbers.
 
-    Numbers are normalised the way :func:`canonical_profile_json` normalises
+    Numbers are normalised the way :func:`canonical_document_json` normalises
     them, so ``9`` and ``9.0`` are the same stop condition and a draft that
     merely round-tripped through JSON is not reported as a change.
 

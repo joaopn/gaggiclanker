@@ -105,8 +105,8 @@ from gaggiclanker.domain.models import (
     Profile,
     ShotIndex,
     ShotNotes,
-    canonical_profile_json,
-    profile_content_hash,
+    canonical_document_json,
+    document_hash,
 )
 from gaggiclanker.domain.secrets import without_secrets
 from gaggiclanker.domain.slog import Slog, SlogError, header_size_for, is_html_response, parse_slog
@@ -740,13 +740,13 @@ class GaggimateClient:
         the result back: a new profile is **auto-favourited**
         (`ProfileManager.cpp:186-188`), and `selected`/`favorite` are re-stamped
         from NVS on every load. Neither is part of what a profile brews, and
-        :func:`canonical_profile_json` drops all three.
+        :func:`canonical_document_json` drops all three.
         """
         write = PendingWrite(
             kind="profile_save",
             host=self.host,
             device_id=profile.id,
-            payload_hash=payload_hash(canonical_profile_json(profile)),
+            payload_hash=payload_hash(canonical_document_json(profile)),
         )
         if profile.id is not None:
             refusal = DeviceWriteRefused(
@@ -804,7 +804,7 @@ class GaggimateClient:
         # slots and a refused write should cost it none of them.
         await self._authorize(write)
         profile = await self.load_profile(profile_id)
-        if profile_content_hash(profile) != expected_hash:
+        if document_hash(profile) != expected_hash:
             refusal = DeviceWriteRefused(
                 f"Profile {profile_id!r} no longer holds what was last recorded for it: it "
                 "changed on the display. It was left as it is."

@@ -288,7 +288,7 @@ class ProfileExport(RootModel[Profile | list[Profile]]):
     The UI strips `id`, `selected` and `favorite` on export and the firmware's
     `writeProfile` keeps them and adds `transition.target`;
     :class:`~gaggiclanker.domain.models.Profile` already models both, and
-    :func:`~gaggiclanker.domain.models.canonical_profile_json` drops exactly the
+    :func:`~gaggiclanker.domain.models.canonical_document_json` drops exactly the
     fields that differ — so the two forms of one profile hash the same and
     import as one version.
     """

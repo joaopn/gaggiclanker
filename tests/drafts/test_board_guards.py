@@ -20,7 +20,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
 from gaggiclanker.device.fake import FakeDevice
-from gaggiclanker.domain.models import Profile, profile_content_hash
+from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.drafts import board as board_module
 from gaggiclanker.drafts.board_plan import EDITED
 from gaggiclanker.drafts.machine import place as real_place
@@ -684,7 +684,7 @@ async def test_a_copy_the_app_saved_before_adoption_is_continued_by_a_later_draf
             kind="profile_save",
             host=app.state.connection.client.host,
             device_id="staged1",
-            payload_hash=profile_content_hash(Profile.model_validate(staged)),
+            payload_hash=document_hash(Profile.model_validate(staged)),
             result="ok",
         )
     )
@@ -715,7 +715,7 @@ async def test_origin_comes_from_the_save_audit_alone_not_from_the_name(
             kind="profile_save",
             host=app.state.connection.client.host,
             device_id="plain1",
-            payload_hash=profile_content_hash(Profile.model_validate(saved)),
+            payload_hash=document_hash(Profile.model_validate(saved)),
             result="ok",
         )
     )
@@ -772,7 +772,7 @@ async def test_a_deleted_copy_the_app_saved_before_adoption_is_removed_under_the
             kind="profile_save",
             host=app.state.connection.client.host,
             device_id="staged1",
-            payload_hash=profile_content_hash(Profile.model_validate(staged)),
+            payload_hash=document_hash(Profile.model_validate(staged)),
             result="ok",
         )
     )
@@ -799,7 +799,7 @@ async def test_a_copy_the_app_saved_and_the_person_edited_before_adoption_is_the
             kind="profile_save",
             host=app.state.connection.client.host,
             device_id="staged1",
-            payload_hash=profile_content_hash(Profile.model_validate(saved)),
+            payload_hash=document_hash(Profile.model_validate(saved)),
             result="ok",
         )
     )
@@ -1037,7 +1037,7 @@ async def test_an_ok_save_from_another_machine_does_not_make_a_file_the_apps(
             kind="profile_save",
             host="192.168.9.9",
             device_id="staged1",
-            payload_hash=profile_content_hash(Profile.model_validate(saved)),
+            payload_hash=document_hash(Profile.model_validate(saved)),
             result="ok",
         )
     )

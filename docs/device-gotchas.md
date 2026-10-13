@@ -102,7 +102,7 @@ unstar it. And `writeProfile` **never echoes what you sent**: it parses into a
 struct and serialises the struct, adding `id`, `favorite`, `selected`,
 `transition.target` and a spelled-out phase `temperature` of `0`, and dropping
 `targets` when the list is empty. A round-trip comparison has to be done in a
-canonical form that tolerates exactly that set — `canonical_profile_json` is it.
+canonical form that tolerates exactly that set — `canonical_document_json` is it.
 
 **12. Trust the header's `sampleInterval` and each sample's own `t`.**
 Not the nominal 250 ms, and not the 100 ms that gaggimate-mcp's research

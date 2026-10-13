@@ -32,8 +32,8 @@ from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.domain.models import (
     Profile,
-    canonical_profile_json,
-    profile_content_hash,
+    canonical_document_json,
+    document_hash,
 )
 
 __all__ = [
@@ -72,7 +72,7 @@ class MachineState:
     def id_with_content(self, content_hash: str) -> str | None:
         """The id of a profile holding exactly this canonical content, under any id."""
         for device_id, profile in self.profiles.items():
-            if profile_content_hash(profile) == content_hash:
+            if document_hash(profile) == content_hash:
                 return device_id
         return None
 
@@ -123,7 +123,7 @@ async def place(client: GaggimateClient, profile: Profile, machine: MachineState
     also spends a write the safety layers would have to account for. The comparison is on
     canonical content (the label is part of it), so a renamed copy is a different profile.
     """
-    existing = machine.id_with_content(profile_content_hash(profile))
+    existing = machine.id_with_content(document_hash(profile))
     if existing is not None:
         return Placed(device_id=existing, served=machine.profiles[existing], reused=True)
 
@@ -141,8 +141,8 @@ async def place(client: GaggimateClient, profile: Profile, machine: MachineState
             error=f"saved, but could not be read back: {exc}",
             verification={"sent": profile.to_device(), "loaded": None},
         )
-    sent_canonical = canonical_profile_json(profile)
-    loaded_canonical = canonical_profile_json(served)
+    sent_canonical = canonical_document_json(profile)
+    loaded_canonical = canonical_document_json(served)
     if sent_canonical != loaded_canonical:
         log.warning("profile_push_mismatch", device_id=device_id, host=client.host)
         return Placed(
@@ -209,7 +209,7 @@ async def _check(
         return Removal(reason=f"could not be read: {exc}"), None
     if expected_label is not None and fresh.label != expected_label:
         return Removal(unrelated=True), None
-    if profile_content_hash(fresh) != expected_hash:
+    if document_hash(fresh) != expected_hash:
         return Removal(reason=CHANGED_SINCE), None
     if blocked is not None:
         return Removal(reason=blocked), None
@@ -275,7 +275,7 @@ async def remove_profile(
                 await client.select_profile(successor)
                 result.selected_carried = True
         again = await client.load_profile(device_id)
-        if profile_content_hash(again) != expected_hash:
+        if document_hash(again) != expected_hash:
             result.reason = CHANGED_SINCE
             return result
         await client.delete_profile(device_id, expected_hash=expected_hash)

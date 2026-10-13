@@ -211,7 +211,7 @@ def firmware_profile_form(document: dict[str, Any], profile_id: str) -> dict[str
     puts all three back, spells out a phase `temperature` of 0, and always emits
     a `transition` carrying the undocumented `target` (firmware report §3.3).
     Both forms describe the same profile, and
-    :func:`~gaggiclanker.domain.models.canonical_profile_json` drops exactly
+    :func:`~gaggiclanker.domain.models.canonical_document_json` drops exactly
     what differs — so importing either one twice is one stored version.
     """
     out: dict[str, Any] = {"id": profile_id, **{k: v for k, v in document.items() if k != "id"}}

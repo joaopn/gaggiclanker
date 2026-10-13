@@ -57,7 +57,7 @@ from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
-from gaggiclanker.domain.models import Profile, profile_content_hash
+from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.drafts.machine import NO_SUCCESSOR, MachineState
 
 __all__ = [
@@ -302,7 +302,7 @@ class PlanBuilder:
                 versions[version_id] = found
             return versions[version_id]
 
-        hashes = {device_id: profile_content_hash(p) for device_id, p in machine.profiles.items()}
+        hashes = {device_id: document_hash(p) for device_id, p in machine.profiles.items()}
         # Every file a row stands on is spoken for, deleted rows' included: the sync has not
         # removed those yet, and a live row taking one would have it removed under it.
         claimed = {row.device_profile_id: row.id for row in rows if row.device_profile_id}

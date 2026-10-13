@@ -231,8 +231,15 @@ class Profile(BaseModel):
 _FIRMWARE_DEFAULT_TRANSITION: dict[str, Any] = {"type": "instant", "duration": 0, "adaptive": False}
 
 
-def canonical_profile_json(profile: Profile) -> str:
-    """Return a stable JSON string identifying a profile *by what it brews*.
+def canonical_document_json(profile: Profile) -> str:
+    """Return a stable JSON string identifying a profile *document*: what a file on the
+    machine is, name included.
+
+    This is the form everything that guards or checks the machine reads: the round-trip
+    check after a save, the delete's fresh-load guard, the save audit, the plan's
+    comparison of a file with what it should hold. It is also the form a version's
+    document is stored in. What a version *is* (what the profile brews, whatever it is
+    called) is :func:`canonical_brew_json`.
 
     The job of this function is to survive a trip through the machine. Send a
     profile to the device, read it back, and `writeProfile` hands you something
@@ -256,11 +263,19 @@ def canonical_profile_json(profile: Profile) -> str:
     agree, keys sorted — leaving output that is byte-stable across pydantic and
     JSON round trips.
     """
-    body = profile.model_dump(
-        exclude={"id", "favorite", "selected", "annotations"},
-        exclude_none=True,
-        mode="json",
-    )
+    return _canonical_json(profile, exclude={"id", "favorite", "selected", "annotations"})
+
+
+def canonical_brew_json(profile: Profile) -> str:
+    """:func:`canonical_document_json` without the name: what the profile *brews*.
+
+    A version's identity. Two documents that differ only in ``label`` are one brew.
+    """
+    return _canonical_json(profile, exclude={"id", "favorite", "selected", "annotations", "label"})
+
+
+def _canonical_json(profile: Profile, *, exclude: set[str]) -> str:
+    body = profile.model_dump(exclude=exclude, exclude_none=True, mode="json")
     body["phases"] = [_canonical_phase(phase) for phase in body["phases"]]
     return json.dumps(
         _normalise_numbers(body), sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -288,9 +303,16 @@ def _canonical_phase(phase: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def profile_content_hash(profile: Profile) -> str:
-    """sha256 of :func:`canonical_profile_json` — the profile's content identity."""
-    return hashlib.sha256(canonical_profile_json(profile).encode("utf-8")).hexdigest()
+def document_hash(profile: Profile) -> str:
+    """sha256 of :func:`canonical_document_json`: exactly what a file on the machine holds,
+    name included. For everything that guards or checks the machine; never a version's
+    identity (that is :func:`brew_hash`)."""
+    return hashlib.sha256(canonical_document_json(profile).encode("utf-8")).hexdigest()
+
+
+def brew_hash(profile: Profile) -> str:
+    """sha256 of :func:`canonical_brew_json`: a version's identity. The name is not in it."""
+    return hashlib.sha256(canonical_brew_json(profile).encode("utf-8")).hexdigest()
 
 
 def _normalise_numbers(value: Any) -> Any:

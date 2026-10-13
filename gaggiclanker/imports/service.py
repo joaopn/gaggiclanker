@@ -58,7 +58,7 @@ from gaggiclanker.domain.exports import (
     shot_export_to_slog,
     slog_to_raw,
 )
-from gaggiclanker.domain.models import profile_content_hash
+from gaggiclanker.domain.models import document_hash
 from gaggiclanker.domain.slog import SlogError
 from gaggiclanker.sync.derive import derive_shot, rederive_shots
 
@@ -647,7 +647,7 @@ class ImportService:
         for profile in profiles:
             # A file whose profile is stored already (a version of some profile, or loose) is
             # not stored again; one that is new belongs to no profile until the list takes it.
-            stored = await self.profiles.find_stored_version(profile_content_hash(profile))
+            stored = await self.profiles.find_stored_version(document_hash(profile))
             if stored is not None:
                 version, created = stored, False
             else:

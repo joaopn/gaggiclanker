@@ -161,7 +161,7 @@ def write_profile(profile: dict[str, Any], *, favorite: bool, selected: bool) ->
 
     And it omits `targets` when the list is empty, rather than sending `[]`.
 
-    `canonical_profile_json` drops exactly this set, which is why a faithful
+    `canonical_document_json` drops exactly this set, which is why a faithful
     round trip compares equal.
     """
     phases = [_write_phase(phase) for phase in profile.get("phases", [])]

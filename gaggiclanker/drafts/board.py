@@ -78,7 +78,7 @@ from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
 from gaggiclanker.db.repos.version_names import next_names
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
-from gaggiclanker.domain.models import Profile, profile_content_hash
+from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.domain.profile_policy import (
     ProfileRejected,
     clamp,
@@ -2003,7 +2003,7 @@ class BoardService:
                 cleanup = await remove_profile(
                     phase.client,
                     device_id=placed.device_id,
-                    expected_hash=profile_content_hash(placed.served),
+                    expected_hash=document_hash(placed.served),
                     successor=None,
                 )
             else:

@@ -44,8 +44,8 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.domain.models import (
     Profile,
-    canonical_profile_json,
-    profile_content_hash,
+    canonical_document_json,
+    document_hash,
 )
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.llm.budget import RateLimitBudget
@@ -82,7 +82,7 @@ def with_test_mark(label: str) -> str:
 async def delete_now(client: Any, profile_id: str) -> None:
     """Delete a profile this test made, against what the machine holds right now."""
     held = await client.load_profile(profile_id)
-    await client.delete_profile(profile_id, expected_hash=profile_content_hash(held))
+    await client.delete_profile(profile_id, expected_hash=document_hash(held))
 
 
 @pytest.fixture
@@ -222,7 +222,7 @@ async def test_every_fixture_profile_survives_a_round_trip_through_the_firmware(
     """Nine profiles in, nine profiles back, byte-identical in canonical form.
 
     This is the assertion that makes the push flow's comparison trustworthy: if
-    the real `writeProfile` added a field `canonical_profile_json` does not drop,
+    the real `writeProfile` added a field `canonical_document_json` does not drop,
     every push would report a mismatch and the feature would be unusable. The
     fake reproduces `writeProfile` from the source; this checks the source.
 
@@ -243,10 +243,10 @@ async def test_every_fixture_profile_survives_a_round_trip_through_the_firmware(
             created.append(stored.id)
 
             served = await client.load_profile(stored.id)
-            assert canonical_profile_json(served) == canonical_profile_json(sent), (
+            assert canonical_document_json(served) == canonical_document_json(sent), (
                 f"{name} came back different:\n"
-                f"  sent:   {canonical_profile_json(sent)}\n"
-                f"  loaded: {canonical_profile_json(served)}"
+                f"  sent:   {canonical_document_json(sent)}\n"
+                f"  loaded: {canonical_document_json(served)}"
             )
             # The firmware auto-favourites new profiles. Undo it, or nine gate
             # profiles end up on somebody's home screen.
@@ -370,7 +370,7 @@ async def test_a_second_version_replaces_the_first_and_making_the_first_active_r
             first["draft"]["draft_version_id"]
         )
         assert kept is not None and kept.profile is not None
-        assert canonical_profile_json(restored) == canonical_profile_json(
+        assert canonical_document_json(restored) == canonical_document_json(
             Profile.model_validate(kept.profile).for_new_device_profile()
         )
     finally:

@@ -41,7 +41,7 @@ from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftWrite,
 )
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
-from gaggiclanker.domain.models import Profile, profile_content_hash
+from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.domain.profile_policy import (
     PolicyBounds,
     PolicyChange,
@@ -286,7 +286,7 @@ class DraftProposals:
         """The refusal for a document that is exactly the copy of a pin (live or unpinned), else
         ``None``. One function for the constructor and the name check."""
         pins = PinsRepository(self.db)
-        record = await pins.by_copy_content(profile_content_hash(document))
+        record = await pins.by_copy_content(document_hash(document))
         detail = None if record is None else await pins.detail(record.id)
         if detail is None:
             return None

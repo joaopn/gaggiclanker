@@ -803,7 +803,7 @@ def test_a_copy_hashes_as_the_application_hashes_it_under_its_new_name() -> None
     import hashlib
     from pathlib import Path
 
-    from gaggiclanker.domain.models import Profile, profile_content_hash
+    from gaggiclanker.domain.models import Profile, document_hash
 
     for path in sorted(Path("tests/fixtures/profiles").glob("*.json")):
         document = json.loads(path.read_text())
@@ -811,7 +811,7 @@ def test_a_copy_hashes_as_the_application_hashes_it_under_its_new_name() -> None
         profile = Profile.model_validate(document)
         stored = profile.model_dump(exclude={"annotations"}, exclude_none=True, mode="json")
         mine = hashlib.sha256(level_002._canonical(stored).encode()).hexdigest()
-        assert mine == profile_content_hash(profile), path.name
+        assert mine == document_hash(profile), path.name
 
 
 def test_a_set_across_profiles_has_its_versions_under_each_profiles_name(db: Level1) -> None:

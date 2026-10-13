@@ -24,7 +24,7 @@ import pytest
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.device.fake import FakeDevice
-from gaggiclanker.domain.models import Profile, profile_content_hash
+from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.drafts.machine import (
     CHANGED_SINCE,
     GONE,
@@ -79,7 +79,7 @@ async def test_place_saves_reads_back_and_leaves_the_machine_holding_the_documen
     placed = await place(client, profile, machine)
 
     assert placed.problem is None and placed.reused is False and placed.served is not None
-    assert profile_content_hash(placed.served) == profile_content_hash(profile)
+    assert document_hash(placed.served) == document_hash(profile)
     assert placed.device_id in {str(p["id"]) for p in fake_device.profiles}
     assert machine.profiles[placed.device_id] is placed.served, "the state is kept current"
     assert kinds(await audit(app), "profile_save") == [("profile_save", placed.device_id, "ok")]
@@ -210,7 +210,7 @@ async def test_removal_moves_the_star_and_the_selection_before_it_deletes(
     removal = await remove_profile(
         client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=new_id,
     )
 
@@ -238,7 +238,7 @@ async def test_the_startup_profile_is_reported_only_when_the_firmware_cleared_it
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=new_id,
     )
 
@@ -259,7 +259,7 @@ async def test_any_profile_is_removed_whoever_made_it_when_it_holds_what_was_rec
     removal = await remove_profile(
         app.state.connection.client,
         device_id=default_id,
-        expected_hash=profile_content_hash(machine.profiles[default_id]),
+        expected_hash=document_hash(machine.profiles[default_id]),
         successor=None,
     )
 
@@ -280,7 +280,7 @@ async def test_a_copy_renamed_on_the_display_is_a_changed_copy_and_is_kept(
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=None,
     )
 
@@ -299,7 +299,7 @@ async def test_the_selected_profile_is_never_removed_with_nothing_to_take_the_se
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=None,
     )
 
@@ -322,7 +322,7 @@ async def test_a_removal_that_does_not_carry_the_star_moves_only_the_selection(
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=new_id,
         carry_favorite=False,
     )
@@ -344,7 +344,7 @@ async def test_a_copy_edited_on_the_display_since_is_kept(
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=new_id,
     )
 
@@ -372,7 +372,7 @@ async def test_an_edit_made_while_the_star_moves_is_not_deleted(
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=new_id,
     )
 
@@ -391,7 +391,7 @@ async def test_somebody_elses_claim_keeps_the_file_and_is_the_reason_given(
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=new_id,
         blocked="still the current version of the Set 'Other'",
     )
@@ -409,7 +409,7 @@ async def test_a_profile_under_another_label_is_not_this_replacements_to_remove(
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=None,
         expected_label="Some other lineage [AI]",
     )
@@ -446,7 +446,7 @@ async def test_a_failure_between_the_carry_and_the_delete_leaves_both_profiles(
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=new_id,
     )
 
@@ -466,7 +466,7 @@ async def test_a_removal_the_switch_refuses_mid_way_is_a_reason_not_an_exception
     removal = await remove_profile(
         app.state.connection.client,
         device_id=old_id,
-        expected_hash=profile_content_hash(old),
+        expected_hash=document_hash(old),
         successor=new_id,
     )
 
@@ -490,7 +490,7 @@ async def test_a_copy_that_did_not_verify_is_removed_against_what_the_machine_st
     removal = await remove_profile(
         client,
         device_id=placed.device_id,
-        expected_hash=profile_content_hash(placed.served),
+        expected_hash=document_hash(placed.served),
         successor=None,
     )
 

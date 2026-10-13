@@ -24,7 +24,7 @@ from gaggiclanker.domain.exports import (
     shot_export_to_slog,
     slog_to_raw,
 )
-from gaggiclanker.domain.models import Profile, profile_content_hash
+from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.domain.slog import FIELDS_MASK_ALL, FIELDS_MASK_V5, SlogError, parse_slog
 from tests.domain.helpers import PROFILE_FIXTURES, constructed_controls, load_export
 from tests.imports.helpers import (
@@ -283,7 +283,7 @@ def test_the_ui_export_and_the_firmware_output_are_one_profile() -> None:
     assert from_firmware.phases[0].transition is not None
     assert from_firmware.phases[0].transition.target == "time"
     assert firmware_form["phases"][0]["transition"]["target"] == "time"
-    assert profile_content_hash(from_ui) == profile_content_hash(from_firmware)
+    assert document_hash(from_ui) == document_hash(from_firmware)
     assert from_ui.label == "Cremina v2"
 
 

@@ -21,8 +21,8 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.device.writes import DeviceWriteRefused
 from gaggiclanker.domain.models import (
     Profile,
-    canonical_profile_json,
-    profile_content_hash,
+    canonical_document_json,
+    document_hash,
 )
 from tests.drafts.conftest import base_profile
 from tests.drafts.helpers import forked
@@ -146,7 +146,7 @@ async def test_what_comes_back_from_a_save_round_trips_to_the_same_canonical_for
     `writeProfile` adds `id`, `favorite`, `selected` and `transition.target`,
     spells out a phase `temperature` of 0, and emits a transition where the
     author wrote none. None of that changes what the profile brews, and
-    `canonical_profile_json` drops all of it — so a faithful machine compares
+    `canonical_document_json` drops all of it — so a faithful machine compares
     equal and an unfaithful one does not.
     """
     app, _ = writes_on
@@ -154,7 +154,7 @@ async def test_what_comes_back_from_a_save_round_trips_to_the_same_canonical_for
     stored = await app.state.connection.client.save_profile(sent)
     loaded = await app.state.connection.client.load_profile(stored.id or "")
 
-    assert canonical_profile_json(loaded) == canonical_profile_json(sent)
+    assert canonical_document_json(loaded) == canonical_document_json(sent)
     # And the added fields really are there, or the test above is vacuous.
     served = loaded.to_device()
     assert served["id"]
@@ -172,7 +172,7 @@ async def test_a_delete_needs_only_the_content_the_caller_recorded(
     stored = await app.state.connection.client.save_profile(await a_new_profile(app))
 
     await app.state.connection.client.delete_profile(
-        stored.id or "", expected_hash=profile_content_hash(stored)
+        stored.id or "", expected_hash=document_hash(stored)
     )
 
     assert all(profile["id"] != stored.id for profile in fake_device.profiles)
@@ -189,7 +189,7 @@ async def test_a_delete_does_not_ask_who_made_the_profile(
     assert not default.label.endswith("[AI]")
     assert not any(kind == "profile_save" and dev == "9bar" for kind, _, dev in await audit(app))
 
-    await client.delete_profile("9bar", expected_hash=profile_content_hash(default))
+    await client.delete_profile("9bar", expected_hash=document_hash(default))
 
     assert all(profile["id"] != "9bar" for profile in fake_device.profiles)
     assert ("profile_delete", "ok", "9bar") in await audit(app)
@@ -206,7 +206,7 @@ async def test_a_delete_refuses_a_profile_edited_since_it_was_recorded(
     app, _ = writes_on
     client = app.state.connection.client
     stored = await client.save_profile(await a_new_profile(app))
-    recorded = profile_content_hash(stored)
+    recorded = document_hash(stored)
     for profile in fake_device.profiles:
         if profile["id"] == stored.id:
             profile["label"] = "Renamed by hand"

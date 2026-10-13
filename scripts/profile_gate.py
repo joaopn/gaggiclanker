@@ -44,8 +44,8 @@ from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.writes import DeviceWriteGate, PendingWrite
 from gaggiclanker.domain.models import (
     Profile,
-    canonical_profile_json,
-    profile_content_hash,
+    canonical_document_json,
+    document_hash,
 )
 from gaggiclanker.domain.profile_policy import (
     DEFAULT_BOUNDS,
@@ -127,8 +127,8 @@ async def round_trip(client: GaggimateClient, profile: Profile) -> tuple[str | N
         report("FAIL", "the machine saved the profile and gave it no id")
         return None, False
     served = await client.load_profile(device_id)
-    expected = canonical_profile_json(sent)
-    actual = canonical_profile_json(served)
+    expected = canonical_document_json(sent)
+    actual = canonical_document_json(served)
     if expected != actual:
         report("FAIL", "the machine stored something other than what was sent")
         report("", f"sent:   {expected}")
@@ -209,7 +209,7 @@ async def gate_one(
             try:
                 # The gate's own copy: deleted against what the machine holds right now.
                 held = await client.load_profile(device_id)
-                await client.delete_profile(device_id, expected_hash=profile_content_hash(held))
+                await client.delete_profile(device_id, expected_hash=document_hash(held))
                 report("ok", f"deleted {device_id}")
             except Exception as exc:  # reported, never swallowed
                 report("WARN", f"could not delete {device_id}: {exc}")

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from gaggiclanker.domain.models import Profile, profile_content_hash
+from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.sync.engine import PROFILE_UPDATED_EVENT
 from tests.sync.conftest import Archive
 
@@ -254,7 +254,7 @@ async def test_the_stored_version_is_the_canonical_form(small_archive: Archive) 
     assert "id" not in version.profile
     assert "favorite" not in version.profile
     assert "selected" not in version.profile
-    assert version.content_hash == profile_content_hash(
+    assert version.content_hash == document_hash(
         Profile.model_validate({**version.profile, "id": "x"})
     )
     # The raw document the device served is kept beside it, for reference.

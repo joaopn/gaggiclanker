@@ -8,6 +8,7 @@ the places these tests poke.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -21,8 +22,10 @@ from gaggiclanker.domain.models import (
     Profile,
     Pump,
     ShotNotes,
-    canonical_profile_json,
-    profile_content_hash,
+    brew_hash,
+    canonical_brew_json,
+    canonical_document_json,
+    document_hash,
 )
 from tests.domain.helpers import EXPORT_FIXTURES, PROFILE_FIXTURES, load_export
 
@@ -220,8 +223,8 @@ def test_canonical_json_ignores_device_managed_fields() -> None:
     """Re-importing a profile gives it a new id; that is not a new profile."""
     a = Profile.model_validate(_profile(id="aaa", favorite=True, selected=True))
     b = Profile.model_validate(_profile(id="bbb", favorite=False, selected=False))
-    assert canonical_profile_json(a) == canonical_profile_json(b)
-    assert profile_content_hash(a) == profile_content_hash(b)
+    assert canonical_document_json(a) == canonical_document_json(b)
+    assert document_hash(a) == document_hash(b)
 
 
 def test_canonical_json_normalises_number_spelling() -> None:
@@ -231,11 +234,11 @@ def test_canonical_json_normalises_number_spelling() -> None:
     body["phases"][0]["duration"] = 28.0
     body["temperature"] = 93.0
     b = Profile.model_validate(body)
-    assert canonical_profile_json(a) == canonical_profile_json(b)
+    assert canonical_document_json(a) == canonical_document_json(b)
 
 
 def test_canonical_json_has_sorted_keys() -> None:
-    text = canonical_profile_json(Profile.model_validate(_profile()))
+    text = canonical_document_json(Profile.model_validate(_profile()))
     parsed = json.loads(text)
     assert list(parsed) == sorted(parsed)
     assert text == json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -246,19 +249,88 @@ def test_content_hash_changes_when_the_brew_changes() -> None:
     body = _profile()
     body["phases"][0]["pump"] = {"target": "pressure", "pressure": 6, "flow": 0}
     b = Profile.model_validate(body)
-    assert profile_content_hash(a) != profile_content_hash(b)
+    assert document_hash(a) != document_hash(b)
 
 
 def test_content_hash_ignores_user_annotations() -> None:
     a = Profile.model_validate(_profile())
     b = Profile.model_validate(_profile(_note="second attempt"))
-    assert profile_content_hash(a) == profile_content_hash(b)
+    assert document_hash(a) == document_hash(b)
 
 
 def test_content_hash_is_sha256_hex() -> None:
-    digest = profile_content_hash(Profile.model_validate(_profile()))
+    digest = document_hash(Profile.model_validate(_profile()))
     assert len(digest) == 64
     assert set(digest) <= set("0123456789abcdef")
+
+
+#: What `document_hash` was for each shipped profile before the brew hash existed: the
+#: document hash is exactly those bytes, so a stored guard, audit row or overruled hash keeps
+#: its meaning.
+_DOCUMENT_HASHES_BEFORE_THE_SPLIT = {
+    "docs-backflush.json": "bec3bda3ca6f9789bfcece7228edf9dfd0107fe14760af1cce3c3ac85e16b493",
+    "docs-cremina-lever.json": "3df196608901a9c5ab483c8760c763c3f61a38af638092831e15230edf5faae5",
+    "docs-medium-18g.json": "a248c8347c1cf3b74484448eb02d594721e8b39c447742c6df734eb04c46aa6c",
+    "firmware-9bar.json": "edeaf982b44fc47fa4e40f2d4b844a06ca5313df492a81c68183153145c5e43f",
+    "firmware-adapt.json": "cdecd5bfefcff1455ef532dc1e39d656d35117018aa62e84378105975871644c",
+    "firmware-flush.json": "b8df02fb3fa532990a0372f957fd0aa45ede63d5950c7a512822d2ffa22f557b",
+    "firmware-lever.json": "8d98153310a51f92e315f76908450e740afc484a021245809c6ff4632561747b",
+    "firmware-lmleva.json": "06765135eadb43eed69de81a2c890b33aa88438f3636e7fbc8e87b95ebed55ca",
+    "mcp-automatic-pro-18g.json": (
+        "136441b7d188d27cdde794e12d5f31e1fe2542ee487ea1ae6293da93aee9cfff"
+    ),
+}
+
+
+@pytest.mark.parametrize("name", ALL_PROFILE_FIXTURES)
+def test_document_hash_is_the_hash_the_whole_document_always_had(name: str) -> None:
+    profile = Profile.model_validate(json.loads((PROFILE_FIXTURES / name).read_text()))
+    assert document_hash(profile) == _DOCUMENT_HASHES_BEFORE_THE_SPLIT[name]
+
+
+def test_the_brew_hash_leaves_the_name_out_and_the_document_hash_keeps_it() -> None:
+    a = Profile.model_validate(_profile(label="Bloom"))
+    b = Profile.model_validate(_profile(label="Bloom milk"))
+    assert brew_hash(a) == brew_hash(b)
+    assert canonical_brew_json(a) == canonical_brew_json(b)
+    assert document_hash(a) != document_hash(b)
+    assert canonical_document_json(a) != canonical_document_json(b)
+    assert '"label"' in canonical_document_json(a)
+    assert '"label"' not in canonical_brew_json(a)
+
+
+def test_the_brew_hash_still_moves_with_what_is_brewed() -> None:
+    a = Profile.model_validate(_profile())
+    b = Profile.model_validate(_profile(temperature=94))
+    assert brew_hash(a) != brew_hash(b)
+
+
+@pytest.mark.parametrize("name", ALL_PROFILE_FIXTURES)
+def test_the_brew_form_is_the_document_form_without_the_label(name: str) -> None:
+    profile = Profile.model_validate(json.loads((PROFILE_FIXTURES / name).read_text()))
+    document = json.loads(canonical_document_json(profile))
+    document.pop("label")
+    assert json.loads(canonical_brew_json(profile)) == document
+    assert brew_hash(profile) == hashlib.sha256(canonical_brew_json(profile).encode()).hexdigest()
+
+
+def test_the_brew_hash_survives_the_devices_own_round_trip() -> None:
+    plain = Profile.model_validate(_profile())
+    returned = Profile.model_validate(
+        {
+            **_profile(),
+            "id": "abc",
+            "favorite": True,
+            "selected": True,
+            "phases": [
+                {
+                    **_profile()["phases"][0],
+                    "transition": {"type": "instant", "duration": 0, "adaptive": True},
+                }
+            ],
+        }
+    )
+    assert brew_hash(returned) == brew_hash(plain)
 
 
 # ── shot notes ───────────────────────────────────────────────────────
@@ -569,8 +641,8 @@ def test_content_hash_survives_the_devices_own_round_trip(name: str) -> None:
     returned = Profile.model_validate(_as_write_profile(raw))
 
     assert returned.id == "aB3xYz90Pq"
-    assert profile_content_hash(returned) == profile_content_hash(source)
-    assert canonical_profile_json(returned) == canonical_profile_json(source)
+    assert document_hash(returned) == document_hash(source)
+    assert canonical_document_json(returned) == canonical_document_json(source)
 
 
 def test_a_default_transition_hashes_the_same_as_no_transition() -> None:
@@ -582,7 +654,7 @@ def test_a_default_transition_hashes_the_same_as_no_transition() -> None:
     body["phases"][0]["transition"] = {"type": "instant", "duration": 0, "adaptive": False}
     default = Profile.model_validate(body)
 
-    assert profile_content_hash(absent) == profile_content_hash(default)
+    assert document_hash(absent) == document_hash(default)
 
 
 def test_a_real_transition_still_changes_the_hash() -> None:
@@ -590,7 +662,7 @@ def test_a_real_transition_still_changes_the_hash() -> None:
     plain = Profile.model_validate(_profile())
     body = _profile()
     body["phases"][0]["transition"] = {"type": "linear", "duration": 5, "adaptive": True}
-    assert profile_content_hash(Profile.model_validate(body)) != profile_content_hash(plain)
+    assert document_hash(Profile.model_validate(body)) != document_hash(plain)
 
 
 def test_phase_temperature_zero_hashes_as_inheriting() -> None:
@@ -599,7 +671,7 @@ def test_phase_temperature_zero_hashes_as_inheriting() -> None:
     body["phases"][0].pop("temperature")
     absent = Profile.model_validate(body)
     explicit = Profile.model_validate(_profile())
-    assert profile_content_hash(absent) == profile_content_hash(explicit)
+    assert document_hash(absent) == document_hash(explicit)
 
 
 def test_transition_target_time_hashes_as_absent() -> None:
@@ -614,7 +686,7 @@ def test_transition_target_time_hashes_as_absent() -> None:
     with_target = Profile.model_validate(body)
     body["phases"][0]["transition"].pop("target")
     without = Profile.model_validate(body)
-    assert profile_content_hash(with_target) == profile_content_hash(without)
+    assert document_hash(with_target) == document_hash(without)
 
 
 def test_a_volumetric_transition_target_does_change_the_hash() -> None:
@@ -628,7 +700,7 @@ def test_a_volumetric_transition_target_does_change_the_hash() -> None:
     }
     volumetric = Profile.model_validate(body)
     body["phases"][0]["transition"]["target"] = "time"
-    assert profile_content_hash(volumetric) != profile_content_hash(Profile.model_validate(body))
+    assert document_hash(volumetric) != document_hash(Profile.model_validate(body))
 
 
 def test_unknown_key_inside_process_does_not_fail_the_frame() -> None:

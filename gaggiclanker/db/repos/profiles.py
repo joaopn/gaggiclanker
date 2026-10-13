@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.base import JsonObject, utc_now
 from gaggiclanker.db.repository import Repository, row_to_dict
-from gaggiclanker.domain.models import Profile, canonical_profile_json, profile_content_hash
+from gaggiclanker.domain.models import Profile, canonical_document_json, document_hash
 from gaggiclanker.domain.profile_recipe import profile_recipe
 
 __all__ = [
@@ -246,7 +246,7 @@ class ProfilesRepository(Repository):
         change takes it out, so nothing outside this class may rely on a version's label being
         part of its identity.
         """
-        content_hash = profile_content_hash(profile)
+        content_hash = document_hash(profile)
         existing = await self.find_version(content_hash, owner=owner)
         if existing is not None:
             if device_json is not None and json.loads(device_json) != existing.device_profile:
@@ -272,7 +272,7 @@ class ProfilesRepository(Repository):
                 profile.label,
                 profile.type,
                 int(profile.utility),
-                canonical_profile_json(profile),
+                canonical_document_json(profile),
                 device_json,
                 source,
                 utc_now(),
@@ -296,7 +296,7 @@ class ProfilesRepository(Repository):
         """
         owner = await self.standing_profile(device_id)
         if owner is None:
-            content_hash = profile_content_hash(profile)
+            content_hash = document_hash(profile)
             owned = await self.db.fetch_all(
                 "SELECT * FROM profile_versions WHERE content_hash = ? AND board_id IS NOT NULL",
                 (content_hash,),
