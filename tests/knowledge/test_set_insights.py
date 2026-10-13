@@ -37,6 +37,7 @@ from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
+from tests.profile_rows import with_a_profile
 
 
 @dataclass(slots=True)
@@ -373,12 +374,15 @@ async def _api_world(client: httpx.AsyncClient, app: FastAPI) -> dict[str, int]:
         created = (
             await client.post(
                 "/api/sets",
-                json={
-                    "name": name,
-                    "bean_id": bean,
-                    "grinder_id": grinder,
-                    "version": {"dose_g": 18, "target_yield_g": 36, "grind_setting": "22"},
-                },
+                json=await with_a_profile(
+                    client,
+                    {
+                        "name": name,
+                        "bean_id": bean,
+                        "grinder_id": grinder,
+                        "version": {"dose_g": 18, "target_yield_g": 36, "grind_setting": "22"},
+                    },
+                ),
             )
         ).json()["data"]
         out[name] = created["id"]

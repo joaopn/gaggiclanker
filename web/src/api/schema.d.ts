@@ -2466,6 +2466,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/profile-choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The profiles a new Set may start on
+         * @description The active version of each profile that has no Set, then each mirrored machine file no
+         *     profile stands on and no Set names (with Writes off the list has no profiles, so the files
+         *     are what there is). Exactly what New Set and a Set with no profile accept: one function
+         *     decides both.
+         */
+        get: operations["profile_choices_api_sets_profile_choices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -3606,6 +3629,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ProfileChoiceListData] */
+        ApiResponse_ProfileChoiceListData_: {
+            data?: components["schemas"]["ProfileChoiceListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[ProfileDetailData] */
         ApiResponse_ProfileDetailData_: {
             data?: components["schemas"]["ProfileDetailData"] | null;
@@ -4343,8 +4374,7 @@ export interface components {
              */
             proposed_versions: number;
             row: components["schemas"]["BoardRow"];
-            /** Sets Brewing */
-            sets_brewing?: components["schemas"]["SetBrewing"][];
+            set?: components["schemas"]["SetBrewing"] | null;
             /**
              * Starred
              * @default true
@@ -5222,7 +5252,7 @@ export interface components {
         /**
          * DuplicateAnswer
          * @description `POST .../duplicate`: the new Set, and the id of the profile-list row of its new profile
-         *     (``None`` for a duplicate of an "Any profile" version).
+         *     (``None`` for a duplicate of a version that names no profile).
          */
         DuplicateAnswer: {
             /** Board Id */
@@ -6032,8 +6062,7 @@ export interface components {
             /** Previous Version Id */
             previous_version_id?: number | null;
             profile: components["schemas"]["JsonObject"];
-            /** Sets Brewing */
-            sets_brewing?: components["schemas"]["SetBrewing"][];
+            set?: components["schemas"]["SetBrewing"] | null;
             /** Short Hash */
             short_hash: string;
             /**
@@ -6828,6 +6857,21 @@ export interface components {
         /** @enum {string} */
         Process: "washed" | "natural" | "honey" | "anaerobic" | "other";
         /**
+         * ProfileChoice
+         * @description What a Set may start on: the version to name and the profile's name.
+         */
+        ProfileChoice: {
+            /** Label */
+            label: string;
+            /** Profile Version Id */
+            profile_version_id: number;
+        };
+        /** ProfileChoiceListData */
+        ProfileChoiceListData: {
+            /** Items */
+            items: components["schemas"]["ProfileChoice"][];
+        };
+        /**
          * ProfileDetailData
          * @description One device profile plus the full version document behind it.
          */
@@ -6999,11 +7043,6 @@ export interface components {
          */
         ProfileMatchSummary: {
             /**
-             * Ambiguous
-             * @default 0
-             */
-            ambiguous: number;
-            /**
              * Matched
              * @default 0
              */
@@ -7068,12 +7107,19 @@ export interface components {
          *     contains.
          */
         ProfileVersionSummary: {
+            /** Board Id */
+            board_id?: number | null;
             /** Content Hash */
             content_hash: string;
             /** Created At */
             created_at: string;
             /** Id */
             id: number;
+            /**
+             * Is Active
+             * @default false
+             */
+            is_active: boolean;
             /** Label */
             label: string;
             /**
@@ -7082,6 +7128,7 @@ export interface components {
              */
             mirrored: boolean;
             pin?: components["schemas"]["VersionPin"] | null;
+            set?: components["schemas"]["VersionSet"] | null;
             /**
              * Shot Count
              * @default 0
@@ -7602,11 +7649,14 @@ export interface components {
         };
         /**
          * SetBrewing
-         * @description A Set whose current version brews a profile, so a page can warn before it is changed.
+         * @description The Set a profile has, so a page can warn before the profile is changed: the Set follows
+         *     it with a version of its own.
          */
         SetBrewing: {
             /** Name */
             name: string;
+            /** Next Minor Label */
+            next_minor_label: string;
             /** Set Id */
             set_id: number;
         };
@@ -8210,6 +8260,8 @@ export interface components {
              * @default
              */
             prediction: string;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
             /** Target Yield G */
             target_yield_g?: number | null;
         };
@@ -9683,6 +9735,16 @@ export interface components {
             compares_to_version_id?: number | null;
             /** Prediction */
             prediction: string;
+        };
+        /**
+         * VersionSet
+         * @description The Set a profile has (a profile has at most one, archived or not).
+         */
+        VersionSet: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
         };
         /** @enum {string} */
         VersionSource: "agent" | "edit" | "machine" | "edited_on_machine" | "import";
@@ -13849,6 +13911,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_choices_api_sets_profile_choices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileChoiceListData_"];
                 };
             };
         };

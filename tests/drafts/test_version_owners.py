@@ -706,28 +706,6 @@ async def test_a_file_held_by_two_files_is_found_through_the_file_its_profile_st
     assert await profiles.find_device_id_for_version(version.id) == "a-file"
 
 
-async def test_a_new_recipe_is_refused_a_brew_a_sets_current_version_already_names(
-    adopted: Adopted,
-) -> None:
-    from gaggiclanker.infra.errors import Conflict
-    from tests.drafts.helpers import make_set_on
-
-    app, client, _ = adopted
-    base = await base_version_id(app, BASE_LABEL)
-    first = await put(client, await manual_draft(app, client, BASE_LABEL, "Taken brew", 6.2))
-    await make_set_on(client, "Brews it", first["current_version_id"])
-    await tombstone(client, first["id"])
-    stored = data(await client.get(f"/api/profile-versions/{first['current_version_id']}"))
-
-    with pytest.raises(Conflict, match="identical to one already in the library"):
-        await app.state.draft_proposals.create_manual(
-            base_version_id=base,
-            document=stored["profile"],
-            new_profile_name="Taken brew",
-            new_profile_only=True,
-        )
-
-
 async def test_the_profile_of_a_change_not_yet_put_is_its_destination_though_it_lists_nothing(
     adopted: Adopted, provider: FakeProvider
 ) -> None:

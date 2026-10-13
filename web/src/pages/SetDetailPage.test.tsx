@@ -14,6 +14,7 @@ import {
   point,
   proposal,
   setDetail,
+  setRow,
   trackRecord,
   trends,
   vocabulary,
@@ -79,6 +80,7 @@ const {
   getKnowledgeInsights,
   rollbackSet,
   getProfileVersions,
+  getProfileChoices,
   createProfileDraft,
   putOnBoard,
   acceptSetProposal,
@@ -97,6 +99,7 @@ const {
   // picker asks for them, and an unmocked call is a rejected promise and a
   // console full of noise that hides a real failure.
   getProfileVersions: vi.fn(),
+  getProfileChoices: vi.fn(),
   // Spied only so the tests can assert this path never reaches them: recording
   // a profile on a version is bookkeeping, and the machine is written from one
   // place by one person.
@@ -117,6 +120,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getKnowledgeInsights,
   rollbackSet,
   getProfileVersions,
+  getProfileChoices,
   createProfileDraft,
   putOnBoard,
   acceptSetProposal,
@@ -257,6 +261,40 @@ describe("SetDetailPage", () => {
       // What the Major change box showed: a grind change is a minor version.
       major: false,
     });
+  });
+
+  it("has no profile to choose when the Set has one: its versions follow the profile", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+
+    await screen.findByTestId("new-version-form");
+    expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
+  });
+
+  it("asks a Set with no profile for one, from the profiles no Set has, and sends it", async () => {
+    getSet.mockResolvedValue(
+      setDetail({ set: setRow({ board_id: null, profile_version_id: null, profile_label: null }) }),
+    );
+    getProfileChoices.mockResolvedValue({
+      items: [{ profile_version_id: 50, label: "Free" }],
+    });
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    const picker = await screen.findByLabelText("Profile");
+    await screen.findByRole("option", { name: "Free" });
+    expect(within(picker).queryByRole("option", { name: "Held" })).not.toBeInTheDocument();
+    await user.selectOptions(picker, "50");
+    await user.type(screen.getByLabelText("What are you trying?"), "settle on a profile");
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    expect(addSetVersion.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ profile_version_id: 50 }),
+    );
   });
 
   it("sends the prediction and what it is compared to with a new version", async () => {
@@ -669,6 +707,9 @@ describe("SetDetailPage, a Set being designed", () => {
   });
 
   it("keeps the Add a version form, saying it sets the first recipe by hand", async () => {
+    getProfileChoices.mockResolvedValue({
+      items: [{ profile_version_id: 50, label: "Free" }],
+    });
     const user = setupUser();
     renderWithQueryClient(<SetDetailPage />);
 
@@ -680,6 +721,9 @@ describe("SetDetailPage, a Set being designed", () => {
     );
     // Nothing to compare a version 1 against, and the server ignores one there.
     expect(screen.queryByLabelText("Version prediction")).not.toBeInTheDocument();
+    // The first recipe gives the Set its profile, as New Set does.
+    await screen.findByRole("option", { name: "Free" });
+    await user.selectOptions(screen.getByLabelText("Profile"), "50");
     await user.type(screen.getByLabelText("Dose (g)"), "18");
     await user.type(screen.getByLabelText("What are you trying?"), "the roaster's card");
     await user.click(screen.getByRole("button", { name: "Set version 1" }));
@@ -687,7 +731,12 @@ describe("SetDetailPage, a Set being designed", () => {
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     expect(addSetVersion.mock.calls[0][0]).toBe(6);
     expect(addSetVersion.mock.calls[0][1]).toEqual(
-      expect.objectContaining({ dose_g: 18, intent: "the roaster's card", prediction: "" }),
+      expect.objectContaining({
+        dose_g: 18,
+        intent: "the roaster's card",
+        prediction: "",
+        profile_version_id: 50,
+      }),
     );
     expect(addSetVersion.mock.calls[0][1]).not.toHaveProperty("compares_to_version_id");
   });

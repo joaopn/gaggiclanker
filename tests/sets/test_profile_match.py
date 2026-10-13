@@ -195,7 +195,7 @@ class TestProfileMatch:
         assert match.outcome == "unmatched"
         assert await _filed(wired, shot_id) == by_hand
         summary = await wired.sets.match_unfiled([shot_id])
-        assert summary.model_dump() == {"matched": 0, "unmatched": 0, "ambiguous": 0}
+        assert summary.model_dump() == {"matched": 0, "unmatched": 0}
         assert await _filed(wired, shot_id) == by_hand
 
 
@@ -214,7 +214,7 @@ class TestMatchUnfiled:
 
         summary = await wired.sets.match_unfiled()
 
-        assert summary.model_dump() == {"matched": 2, "unmatched": 2, "ambiguous": 0}
+        assert summary.model_dump() == {"matched": 2, "unmatched": 2}
         for shot_id in matched:
             assert await _filed(wired, shot_id) == await _current(wired, mine)
         for shot_id in (no_set, unknown):
@@ -234,7 +234,7 @@ class TestMatchUnfiled:
             [],
         )
         summary = await wired.sets.match_unfiled()
-        assert summary.model_dump() == {"matched": 0, "unmatched": 0, "ambiguous": 0}
+        assert summary.model_dump() == {"matched": 0, "unmatched": 0}
         assert await _filed(wired, shot_id) is None
 
     async def test_a_discarded_shot_is_left_unless_named(self, wired: Fixtures) -> None:
@@ -252,7 +252,7 @@ class TestMatchUnfiled:
 
         summary = await wired.sets.match_unfiled()
 
-        assert summary.model_dump() == {"matched": 1, "unmatched": 0, "ambiguous": 0}
+        assert summary.model_dump() == {"matched": 1, "unmatched": 0}
         assert await _filed(wired, kept) == await _current(wired, guji)
         assert await _filed(wired, discarded) is None
 
@@ -355,7 +355,7 @@ class TestApi:
         response = await client.post("/api/shots/profile-match", json={})
 
         assert response.status_code == 200, response.text
-        assert response.json()["data"] == {"matched": 1, "unmatched": 1, "ambiguous": 0}
+        assert response.json()["data"] == {"matched": 1, "unmatched": 1}
         detail = (await client.get(f"/api/shots/{shot_id}")).json()["data"]
         assert detail["shot"]["set_version_id"] is not None
 

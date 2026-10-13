@@ -82,9 +82,6 @@ system: |
   look at it. Give it a name of its own that says what it is: the `label` you
   send is the name the new profile is called, and a name that is already a profile
   is refused.
-  A profile identical to one already in the library is refused: two Sets on one
-  profile make the shot matcher ambiguous, and then nothing is filed under
-  either.
 
   The document goes through the same schema, safety policy and clamp as one
   typed by hand, and a refusal comes back to you to fix. Every phase in order

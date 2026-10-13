@@ -96,7 +96,7 @@ class TestProfileMatch:
         match = await wired.sets.profile_match(shot, profile_version_id=copy, device_profile_id="")
         assert match.outcome == "unmatched" and await _filed(wired, shot) is None
         waiting = await wired.sets.match_unfiled()
-        assert waiting.model_dump() == {"matched": 0, "ambiguous": 0, "unmatched": 1}
+        assert waiting.model_dump() == {"matched": 0, "unmatched": 1}
 
         await wired.sets.set_automatch(set_id, True)
         summary = await wired.sets.match_unfiled()
@@ -208,11 +208,11 @@ class TestButton:
         shot = await make_shot(db, "001100", profile_version_id=copy)
 
         waiting = await client.post("/api/shots/profile-match", json={})
-        assert waiting.json()["data"] == {"matched": 0, "ambiguous": 0, "unmatched": 1}
+        assert waiting.json()["data"] == {"matched": 0, "unmatched": 1}
         flagged = await client.put(f"/api/sets/{set_id}/automatch", json={"automatch": True})
         assert flagged.status_code == 200, flagged.text
         filed = await client.post("/api/shots/profile-match", json={"shot_ids": [shot]})
 
-        assert filed.json()["data"] == {"matched": 1, "ambiguous": 0, "unmatched": 0}
+        assert filed.json()["data"] == {"matched": 1, "unmatched": 0}
         detail = (await client.get(f"/api/shots/{shot}")).json()["data"]
         assert detail["shot"]["set_version_id"] == version_id

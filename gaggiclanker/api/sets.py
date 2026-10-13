@@ -156,6 +156,10 @@ class SetVersionAdd(SetVersionChange):
     """
 
     major: StrictBool | None = None
+    #: Only for a Set that has no profile (one being designed, or an old one that never named
+    #: one): the profile it starts on, which is the active version of a profile with no Set, as
+    #: for a new Set. A Set that has a profile has no choice: its versions follow the profile.
+    profile_version_id: int | None = None
 
 
 class ProposalAccept(BaseModel):
@@ -225,6 +229,21 @@ class SetListData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[SetRow]
+
+
+class ProfileChoice(BaseModel):
+    """What a Set may start on: the version to name and the profile's name."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile_version_id: int
+    label: str
+
+
+class ProfileChoiceListData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ProfileChoice]
 
 
 class VersionPinned(BaseModel):
@@ -550,7 +569,12 @@ def version_refused(exc: VersionRefused) -> AppError:
                 "message": "name the profile it was copied from",
             },
         )
-    if exc.refused in ("profile_has_a_set", "other_profile", "not_the_active_version"):
+    if exc.refused in (
+        "profile_has_a_set",
+        "other_profile",
+        "not_the_active_version",
+        "profile_deleted",
+    ):
         return Conflict(
             exc.message,
             code=exc.code,
@@ -756,6 +780,26 @@ async def _decided(
 
 
 @router.get(
+    "/profile-choices",
+    response_model=ApiResponse[ProfileChoiceListData],
+    summary="The profiles a new Set may start on",
+)
+async def profile_choices(sets: SetsRepoDep) -> JSONResponse:
+    """The active version of each profile that has no Set, then each mirrored machine file no
+    profile stands on and no Set names (with Writes off the list has no profiles, so the files
+    are what there is). Exactly what New Set and a Set with no profile accept: one function
+    decides both."""
+    return envelope_response(
+        ProfileChoiceListData(
+            items=[
+                ProfileChoice(profile_version_id=i, label=label)
+                for i, label in await sets.profile_choices()
+            ]
+        ).model_dump(mode="json")
+    )
+
+
+@router.get(
     "",
     response_model=ApiResponse[SetListData],
     summary="The Sets, the ones collecting shots first",
@@ -790,14 +834,20 @@ async def create_set(
     saying which of the three ids was wrong. Each check answers that instead:
     422, with `details.field` naming the one at fault.
     """
-    # A null grinder and a null profile are legitimate — a Set can name neither —
-    # so only a stated id is looked up.
+    # A null grinder is legitimate — pre-ground coffee — so only a stated id is looked up.
     if await beans.get(body.bean_id) is None:
         _missing("bean_id", body.bean_id, "bean")
     if body.grinder_id is not None and await grinders.get(body.grinder_id) is None:
         _missing("grinder_id", body.grinder_id, "grinder")
+    # A Set brews one profile, the one its first version names: a profile no Set has (a profile
+    # that has one is refused by the repository, with the way forward).
     profile_version_id = body.version.profile_version_id
-    if profile_version_id is not None and await profiles.get_version(profile_version_id) is None:
+    if profile_version_id is None:
+        raise Unprocessable(
+            "A Set needs a profile: pick one that has no Set, or design one with the agent.",
+            details={"field": "version.profile_version_id", "message": "a profile is required"},
+        )
+    if await profiles.get_version(profile_version_id) is None:
         _missing("version.profile_version_id", profile_version_id, "profile version")
 
     try:
@@ -1028,8 +1078,25 @@ async def add_version(set_id: int, body: SetVersionAdd, sets: SetsRepoDep) -> JS
     # The Set first: a comparison check against a Set that is not there would
     # answer "that is not a version of this Set", which is true and useless
     # when the Set itself is the thing that does not exist.
-    if await sets.get(set_id) is None:
+    found = await sets.get(set_id)
+    if found is None:
         raise NotFound(f"No Set {set_id}")
+    if found.designing and body.profile_version_id is None:
+        raise Unprocessable(
+            "A Set needs a profile: pick one that has no Set, or design one with the agent.",
+            details={"field": "profile_version_id", "message": "a profile is required"},
+        )
+    if body.profile_version_id is not None and found.board_id is not None:
+        raise Unprocessable(
+            f"{found.name} brews {found.profile_label}: a new version follows its profile, and "
+            "a different profile means a new Set (Duplicate this one).",
+            details={"field": "profile_version_id", "message": "this Set already has a profile"},
+        )
+    if body.profile_version_id is not None:
+        try:
+            await sets.profile_to_start_on(body.profile_version_id)
+        except VersionRefused as exc:
+            raise version_refused(exc) from None
     # The one reference on this body that is not a recipe field. Checked here
     # because it is the only place it can arrive: `add_version` inherits and
     # appends, and a comparison against a version of somebody else's Set is a

@@ -5,7 +5,7 @@ import { signatureHref, signatureSummary } from "@/lib/signatures";
 /**
  * Whether the profile this Set brews has a signature in force, and where to see it.
  *
- * The signature belongs to the profile version, so every Set that brews it shares it; this is
+ * The signature belongs to the profile version, so the Set that brews it reads it; this is
  * that version's state in a line, with a link to its card on the Profiles page. A Set with no
  * profile yet (one being designed) says nothing.
  */

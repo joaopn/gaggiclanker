@@ -11,9 +11,8 @@ import { attempt } from "@/lib/mutations";
  * Set on that one again, and the next change continues its line. It takes an
  * optional note for the log's "Went back" line and nothing else: no prediction,
  * since the version already has one or has shots. It also says the thing nobody
- * should have to guess — nothing is sent to the machine — because the restored version may well name a different profile, and
- * the one rule this app never bends is that the only thing it writes to the
- * machine is a profile, pushed by a person, on purpose.
+ * should have to guess: the Set's profile goes back to what that version brews, so the next
+ * sync puts that on the machine (the profile follows the Set, as the Set follows the profile).
  *
  * An inline strip rather than a dialog: it is two sentences and two buttons,
  * and it is rendered always and toggled with `hidden` so `aria-controls`
@@ -88,7 +87,8 @@ export function RollbackPanel({
           <p className="text-sm" data-testid="rollback-confirm">
             This puts the Set back on {versionLabel}, as it was, with its prediction and shots. New
             shots for this Set count toward {versionLabel} and your next change continues from it.
-            The log gets one line saying you went back. Nothing is sent to the machine.
+            The log gets one line saying you went back. Its profile goes back to what {versionLabel}{" "}
+            brews, and the next sync puts that on the machine.
           </p>
           <div>
             <label htmlFor={noteId} className="mb-1 block text-muted-foreground text-xs">

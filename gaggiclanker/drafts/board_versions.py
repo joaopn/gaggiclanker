@@ -33,12 +33,15 @@ def short_hash(content_hash: str) -> str:
 
 
 class SetBrewing(BaseModel):
-    """A Set whose current version brews a profile, so a page can warn before it is changed."""
+    """The Set a profile has, so a page can warn before the profile is changed: the Set follows
+    it with a version of its own."""
 
     model_config = ConfigDict(extra="forbid")
 
     set_id: int
     name: str
+    #: What the Set's next version would be called, as a minor.
+    next_minor_label: str
 
 
 class ActiveVersion(BaseModel):
@@ -80,7 +83,8 @@ class ListedVersion(BaseModel):
     #: Set when this version did not read back as sent, so a sync does not try it again.
     did_not_verify: bool = False
     shots_brewed: int = 0
-    sets_brewing: list[SetBrewing] = Field(default_factory=list)
+    #: The profile's Set, when its current version is this very version.
+    set: SetBrewing | None = None
     #: The profile document, for the version's own information and for a diff.
     profile: JsonObject
     #: The version before this one **in this list**, which the page diffs this one against. The

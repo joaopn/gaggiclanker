@@ -88,7 +88,7 @@ class DuplicateRecipe(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: The profile the version brews; ``None`` for an "Any profile" version.
+    #: The profile the version brews; ``None`` for a version that names no profile (an older Set's).
     profile_label: str | None = None
     grind_setting: str | None = None
     grind_value: float | None = None
@@ -140,7 +140,7 @@ class DuplicateRequest(BaseModel):
 
 class DuplicateAnswer(BaseModel):
     """`POST .../duplicate`: the new Set, and the id of the profile-list row of its new profile
-    (``None`` for a duplicate of an "Any profile" version)."""
+    (``None`` for a duplicate of a version that names no profile)."""
 
     model_config = ConfigDict(extra="forbid")
 

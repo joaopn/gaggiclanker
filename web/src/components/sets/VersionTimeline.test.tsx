@@ -424,16 +424,16 @@ describe("VersionTimeline", () => {
     });
   });
 
-  it("reads a profile-only version as a change, not as nothing changed", () => {
+  it("reads a version whose only difference is the brew as 'Brew changed', not as 'Foo → Foo'", () => {
     const detail = setDetail();
-    // The diff the server computed for a version whose only difference is the
-    // profile it was brewed with.
+    // A Set brews one profile: the diff the server computes for a version that brews another
+    // version of it names no before and after.
     detail.versions[0].changes = [
       {
         field: "profile_version_id",
-        label: "Profile",
-        before: "9 Bar Espresso",
-        after: "Turbo",
+        label: "Brew changed",
+        before: null,
+        after: null,
         from_profile: false,
       },
     ];
@@ -442,10 +442,19 @@ describe("VersionTimeline", () => {
     );
 
     const changes = screen.getByTestId("version-changes");
-    expect(changes).toHaveTextContent("Profile");
-    expect(changes).toHaveTextContent("9 Bar Espresso");
-    expect(changes).toHaveTextContent("Turbo");
+    expect(within(changes).getByTestId("brew-changed")).toHaveTextContent("Brew changed");
+    expect(changes).not.toHaveTextContent("→");
     expect(screen.queryByText(/Nothing in the recipe changed/)).not.toBeInTheDocument();
+  });
+
+  it("shows no profile on a version: the Set's profile is in its header", () => {
+    const detail = setDetail();
+    detail.versions[0].version.profile_label = "9 Bar Espresso";
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    expect(screen.queryByText("9 Bar Espresso")).not.toBeInTheDocument();
   });
 
   it("links a version's shot count at that version's shots", () => {
@@ -779,7 +788,7 @@ describe("VersionTimeline", () => {
       "your next change continues from it",
     );
     expect(screen.getByTestId("rollback-confirm")).toHaveTextContent(
-      "Nothing is sent to the machine",
+      "the next sync puts that on the machine",
     );
     await user.click(screen.getByRole("button", { name: "Go back to v1" }));
 

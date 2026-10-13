@@ -226,7 +226,7 @@ def _fork_block(fork: ProfileVersionRow | None) -> list[str]:
     return [
         f"THE PROFILE TO FORK: [profile_version {fork.id}] {fork.label}",
         "The new profile is derived from this one and gets a name of its own; this one, and "
-        "every Set that brews it, stays as it is.",
+        "the Set that brews it, stays as it is.",
         "```json",
         json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False),
         "```",

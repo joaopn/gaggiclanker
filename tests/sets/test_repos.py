@@ -401,7 +401,7 @@ class TestAutomatchRefusals:
     async def test_an_archived_set_cannot_be_offered_to_the_matcher(self, wired: Fixtures) -> None:
         """The flag would promise something the matcher will never do.
 
-        `versions_naming_profile` filters on `archived` as well, so a shot
+        `version_naming_profile` filters on `archived` as well, so a shot
         would never be filed there whatever the flag said.
         """
         live = await _new_set(wired, name="The live one")

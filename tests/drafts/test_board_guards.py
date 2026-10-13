@@ -148,6 +148,57 @@ async def test_putting_a_deleted_profile_back_revives_its_row_instead_of_pushing
     assert kinds(await audit(app), "profile_delete") == []
 
 
+async def test_a_put_that_revives_a_row_is_followed_by_the_rows_set(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    """The revived row's active version is the one put, so its Set records it like any put.
+
+    Built from a Set on the row, a change put and synced (the Set follows),
+    the row deleted, the Set sent back to its first version (the profile cannot follow a deleted
+    row), then the put of exactly the later brew brings the row back."""
+    app, client, fake = adopted
+    db = app.state.db
+    row = await app_row(app, client, fake, provider, name="Beta")
+    v1 = row["current_version_id"]
+    set_id = await make_set_on(client, "BetaSet", v1)
+    stored = data(await client.get(f"/api/profile-versions/{v1}"))
+    document = copy.deepcopy(stored["profile"])
+    document["phases"][0]["pump"] = {"target": "pressure", "pressure": 6.1, "flow": 0}
+    changed = await app.state.draft_proposals.create_manual(
+        base_version_id=v1, document=document, change_summary="6.1"
+    )
+    v2 = (await put(client, {"id": changed.id}))["current_version_id"]
+    await pull(app)
+    first = await db.fetch_value(
+        "SELECT id FROM set_versions WHERE set_id = ? ORDER BY created_at, id LIMIT 1", (set_id,)
+    )
+    await tombstone(client, row["id"])
+    back = await client.post(f"/api/sets/{set_id}/rollback", json={"to_version_id": first})
+    assert back.status_code == 200, back.text
+
+    async def named() -> int:
+        return int(
+            await db.fetch_value(
+                "SELECT v.profile_version_id FROM sets s "
+                "JOIN set_versions v ON v.id = s.current_version_id WHERE s.id = ?",
+                (set_id,),
+            )
+        )
+
+    assert await named() == v1, "the Set went back; the deleted profile did not follow"
+    same = await app.state.draft_proposals.create_manual(
+        base_version_id=v2,
+        document=copy.deepcopy(data(await client.get(f"/api/profile-versions/{v2}"))["profile"]),
+        change_summary="the later brew again",
+    )
+
+    revived = await client.post("/api/profile-board", json={"draft_id": same.id})
+
+    assert revived.status_code < 300, revived.text
+    assert data(revived)["id"] == row["id"], "the same profile is the same row"
+    assert await named() == v2, "the Set follows the revived row's active version"
+
+
 async def test_a_removal_is_refused_while_a_live_row_stands_on_the_file(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:

@@ -131,6 +131,25 @@ describe("the list", () => {
     expect(within(profile).getByTestId("profile-state")).toHaveTextContent("On the machine");
   });
 
+  it("says which Set a profile has, or that it has none", async () => {
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          row({
+            row: { id: 1, label: "With a Set" },
+            set: { set_id: 4, name: "Kenya AA", next_minor_label: "v1.1" },
+          }),
+          row({ row: { id: 2, label: "Without", device_profile_id: "two" } }),
+        ],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    const rows = await screen.findAllByTestId("profile-row");
+    expect(within(rows[0]).getByTestId("row-set")).toHaveTextContent("Set: Kenya AA");
+    expect(within(rows[1]).getByTestId("row-set")).toHaveTextContent("No Set");
+  });
+
   it.each([
     [
       "will be put on the machine",
@@ -375,16 +394,13 @@ describe("the two switches", () => {
     expect(star).toHaveAttribute("title", expect.stringContaining("only while the profile is on"));
   });
 
-  it("asks before switching off a profile a Set brews, naming the Sets, and sends nothing until confirmed", async () => {
+  it("asks before switching off a profile a Set brews, naming the Set, and sends nothing until confirmed", async () => {
     const user = setupUser();
     api.getProfileBoard.mockResolvedValue(
       boardView({
         rows: [
           row({
-            sets_brewing: [
-              { set_id: 3, name: "Ethiopia washed" },
-              { set_id: 4, name: "Daily" },
-            ],
+            set: { set_id: 3, name: "Ethiopia washed", next_minor_label: "v1.2" },
           }),
         ],
       }),
@@ -395,7 +411,7 @@ describe("the two switches", () => {
 
     const strip = await screen.findByTestId("switch-off-confirm");
     expect(within(strip).getByTestId("switch-off-sets")).toHaveTextContent(
-      "Ethiopia washed, Daily brew this profile",
+      "Ethiopia washed brews this profile",
     );
     expect(api.setBoardOnMachine).not.toHaveBeenCalled();
 
@@ -752,7 +768,9 @@ describe("the dropdown", () => {
   it("asks first when a Set brews the profile, naming it", async () => {
     const user = setupUser();
     api.getProfileBoard.mockResolvedValue(
-      boardView({ rows: [row({ sets_brewing: [{ set_id: 3, name: "Ethiopia washed" }] })] }),
+      boardView({
+        rows: [row({ set: { set_id: 3, name: "Ethiopia washed", next_minor_label: "v1.2" } })],
+      }),
     );
     api.getBoardVersions.mockResolvedValue(versionsView(three()));
     const versions = await open(user);
@@ -761,6 +779,7 @@ describe("the dropdown", () => {
 
     const strip = await screen.findByTestId("make-active-confirm");
     expect(strip).toHaveTextContent("Ethiopia washed brews this profile");
+    expect(strip).toHaveTextContent("a new version (v1.2) that brews this one");
     expect(api.setBoardActiveVersion).not.toHaveBeenCalled();
     await user.click(within(strip).getByRole("button", { name: "Make active" }));
     await waitFor(() => expect(api.setBoardActiveVersion).toHaveBeenCalledWith(1, 7));

@@ -15,6 +15,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.drafts.copies import ProfileCopier
 from gaggiclanker.drafts.proposals import PinnedCopyName
@@ -167,13 +168,11 @@ async def _state(app: FastAPI, client: httpx.AsyncClient, kind: str) -> tuple[in
         return set_id, version_id, None
     if kind == "no_profile":
         bean = data(await client.post("/api/beans", json={"name": "Bare", "roaster": "x"}))
-        made = data(
-            await client.post(
-                "/api/sets", json={"name": "Bare", "bean_id": bean["id"], "version": {"dose_g": 18}}
-            )
+        made = await SetsRepository(app.state.db).create(
+            SetWrite(name="Bare", bean_id=bean["id"]), SetVersionWrite(dose_g=18)
         )
-        detail = data(await client.get(f"/api/sets/{made['id']}"))
-        return int(made["id"]), int(detail["versions"][0]["version"]["id"]), None
+        detail = data(await client.get(f"/api/sets/{made.id}"))
+        return int(made.id), int(detail["versions"][0]["version"]["id"]), None
     assert kind == "already_pinned"
     set_id, version_id = await _set_with_version(app, client)
     data(await _pin(client, set_id, version_id))

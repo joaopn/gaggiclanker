@@ -943,7 +943,6 @@ describe("ChatPage, accepting a card in the conversation", () => {
     compares_to_version_label: "v4",
     suggest_major: false,
     major_reason: "",
-    major_by_default: false,
     next_minor_label: "v4.1",
     next_major_label: "v5",
     status: "proposed",

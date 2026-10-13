@@ -48,7 +48,6 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
         base_version_id=await base_version_id(app),
         document={**lower_pressure(await base_profile(app), 8.5), "label": "Kenya AA body"},
         change_summary="A gentler peak for body.",
-        new_profile_only=True,
     )
     proposal = await SetProposalsRepository(app.state.db).create(
         set_id,
@@ -98,7 +97,6 @@ async def test_accepting_after_the_profile_was_synced_and_a_later_version_made_a
         base_version_id=await base_version_id(app),
         document={**lower_pressure(await base_profile(app), 8.5), "label": "Kenya AA body"},
         change_summary="A gentler peak for body.",
-        new_profile_only=True,
     )
     proposal = await SetProposalsRepository(app.state.db).create(
         set_id,

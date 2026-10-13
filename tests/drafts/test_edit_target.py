@@ -515,12 +515,12 @@ async def test_a_rename_onto_another_profiles_name_is_refused_by_the_editors_rou
     assert kept.status_code == 201
 
 
-async def test_with_two_profiles_of_one_name_a_sets_draft_goes_to_the_sets_one(
+async def test_with_two_profiles_of_one_name_a_draft_goes_to_the_profile_its_base_belongs_to(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     """Adoption keeps a pair of profiles that share a name. Where a draft goes is decided when it
-    is made and stored: the Set's own profile is the one a draft made for that Set is a change
-    to; made without the Set it is the first."""
+    is made and stored: the profile its base belongs to, whoever argued it (a Set's draft is
+    always a change to the Set's own profile, so its base is one of that profile's versions)."""
     from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 
     app, client, _ = adopted
@@ -538,11 +538,11 @@ async def test_with_two_profiles_of_one_name_a_sets_draft_goes_to_the_sets_one(
     set_id = await make_set_on(client, "Twin set", twin.current_version_id)
     plain = await same_name_draft(app, client, provider, BASE_LABEL, 7)
     document = dict(
-        data(await client.get(f"/api/profile-versions/{first['current_version_id']}"))["profile"]
+        data(await client.get(f"/api/profile-versions/{twin.current_version_id}"))["profile"]
     )
     document["temperature"] = float(document["temperature"]) + 1
     for_set = await app.state.draft_proposals.create_manual(
-        base_version_id=first["current_version_id"],
+        base_version_id=twin.current_version_id,
         document=document,
         set_id=set_id,
         prediction="Compared to v1: a rounder cup.",

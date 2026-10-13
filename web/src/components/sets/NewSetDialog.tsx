@@ -14,9 +14,9 @@ import {
 import { useProfileVersions } from "@/hooks/useArchive";
 import { useBeans, useGrinders } from "@/hooks/useCatalog";
 import { useSendChatMessage } from "@/hooks/useChat";
-import { useCreateSet, useStartDesign } from "@/hooks/useSets";
+import { useCreateSet, useProfileChoices, useStartDesign } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
-import { beanLabel, beanScaleLabels, withoutPinCopies } from "@/lib/sets";
+import { beanLabel, beanScaleLabels } from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
 /**
@@ -185,7 +185,7 @@ export type AutoFilled = Record<RecipeKey, { value: string; from: string } | nul
  * alone. `filled` remembers the value each field was given, so switching from
  * one profile to another replaces the first profile's numbers rather than
  * treating them as typed. A profile that does not state a number leaves that
- * field, and the memory of who filled it, untouched. Picking "Any profile"
+ * field, and the memory of who filled it, untouched. Picking no profile
  * (`version` undefined) changes nothing: clearing the match is not a statement
  * about the recipe.
  *
@@ -277,6 +277,9 @@ export function NewSetDialog({
 }) {
   const beans = useBeans();
   const grinders = useGrinders();
+  // The server says what a Set may start on; the versions only say what a picked one brews, so
+  // a profile older than the newest of them fills nothing.
+  const choices = useProfileChoices();
   const versions = useProfileVersions({ limit: 200 });
   const create = useCreateSet();
   const design = useStartDesign();
@@ -383,7 +386,7 @@ export function NewSetDialog({
           data-testid="new-set-form"
           onSubmit={async (event) => {
             event.preventDefault();
-            if (!draft.beanId || create.isPending) return;
+            if (!draft.beanId || !draft.profileVersionId || create.isPending) return;
             const row = await attempt(() => create.mutateAsync(toCreateBody({ ...draft, name })));
             // The dialog stays open and keeps the draft when the server refuses
             // — a stale bean id in the picker is the usual cause, and retyping
@@ -455,25 +458,25 @@ export function NewSetDialog({
                 ))}
               </select>
             </Labelled>
-            <Labelled id={ids.profile} label="Profile version">
+            <Labelled id={ids.profile} label="Profile">
               <select
                 id={ids.profile}
                 className={FIELD}
                 value={draft.profileVersionId}
                 onChange={(event) => pickProfile(event.target.value)}
               >
-                <option value="">Any profile</option>
-                {withoutPinCopies(versions.data?.items ?? []).map((version) => (
-                  <option key={version.id} value={String(version.id)}>
-                    {version.label}
+                <option value="">Pick a profile</option>
+                {(choices.data?.items ?? []).map((choice) => (
+                  <option key={choice.profile_version_id} value={String(choice.profile_version_id)}>
+                    {choice.label}
                   </option>
                 ))}
               </select>
             </Labelled>
           </div>
-          <p className="text-muted-foreground text-xs">
-            Shots pulled with this profile join the Set on their own; "Any profile" takes every shot
-            the machine pulls.
+          <p className="text-muted-foreground text-xs" data-testid="new-set-profile-help">
+            A profile has one Set, and shots pulled with it join that Set on their own. A profile
+            that already has a Set is started on through Duplicate on that Set.
           </p>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -526,7 +529,11 @@ export function NewSetDialog({
           </Labelled>
 
           <div className="flex justify-end">
-            <Button type="submit" size="sm" disabled={create.isPending || !draft.beanId}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={create.isPending || !draft.beanId || !draft.profileVersionId}
+            >
               {create.isPending ? "Starting…" : "Start the Set"}
             </Button>
           </div>

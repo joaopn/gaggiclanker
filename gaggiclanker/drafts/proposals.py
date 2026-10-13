@@ -18,7 +18,6 @@ point or drafted from notes all go through the same offline layers.
 
 from __future__ import annotations
 
-from collections.abc import Collection
 from contextlib import AbstractAsyncContextManager, nullcontext
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -158,7 +157,6 @@ class DraftProposals:
         *,
         new_profile_name: str | None = None,
         inherit: DraftTarget | None = None,
-        set_id: int | None = None,
         is_new: bool = False,
         for_pin: bool = False,
     ) -> PreparedDraft:
@@ -193,7 +191,6 @@ class DraftProposals:
             base_label=base.label,
             new_profile_name=new_profile_name,
             inherit=inherit,
-            set_id=set_id,
             is_new=is_new,
         )
         document = clamped.for_new_device_profile(label=target.label)
@@ -215,7 +212,6 @@ class DraftProposals:
         base_label: str,
         new_profile_name: str | None = None,
         inherit: DraftTarget | None = None,
-        set_id: int | None = None,
         is_new: bool = False,
     ) -> DraftTarget:
         """Where a draft goes and what it is called. Raises the refusal when it cannot go there.
@@ -243,7 +239,6 @@ class DraftProposals:
             stored=stored,
             base_version_id=base_version_id,
             base_label=base_label,
-            set_id=set_id,
         )
         if destination is not None:
             name = destination.label
@@ -254,7 +249,6 @@ class DraftProposals:
             label=name,
             destination=destination,
             base_version_id=None if is_new else base_version_id,
-            set_id=set_id,
         )
         if placement.frozen is not None:
             raise PinFrozen(placement.frozen)
@@ -266,7 +260,7 @@ class DraftProposals:
             new_profile=new_profile,
         )
 
-    async def change_name(self, base_version_id: int, *, set_id: int | None = None) -> str:
+    async def change_name(self, base_version_id: int) -> str:
         """The name a change to this version's profile carries: the profile's own, else the
         version's. What a refusal says when a draft tries to rename the profile it changes."""
         base = await self.profiles.get_version(base_version_id)
@@ -276,7 +270,6 @@ class DraftProposals:
             LiveLineage(self.db),
             base_version_id=base_version_id,
             base_label=base.label,
-            set_id=set_id,
         )
         return base.label if destination is None else destination.label
 
@@ -315,8 +308,6 @@ class DraftProposals:
         major_reason: str = "",
         is_new: bool = False,
         new_profile_name: str | None = None,
-        new_profile_only: bool = False,
-        reusable_version_ids: Collection[int] = (),
         made_by: Literal["agent", "edit"] = "agent",
         signature: DraftSignature | None = None,
     ) -> ProfileDraftRow:
@@ -339,15 +330,6 @@ class DraftProposals:
         ``is_new`` records that the document is a profile designed from scratch, so it is read
         as one and not as an edit of the base it has to be stored against.
 
-        ``new_profile_only`` refuses a document that, **as it would be stored**
-        — clamped — is a profile version the archive already has. A
-        new Set's recipe carries a profile of its own, because two Sets naming
-        one profile version make the matcher ambiguous and nothing is filed.
-        Checked on the prepared document's content hash, before anything is
-        stored, rather than inferred afterwards from whether the store inserted.
-        ``reusable_version_ids`` are the exceptions the caller vouches for: a
-        design conversation revising its own card may land on the profile it
-        proposed a moment ago.
         """
         base = await self.base_profile(base_version_id)
         try:
@@ -364,18 +346,8 @@ class DraftProposals:
             base,
             candidate,
             new_profile_name=new_profile_name,
-            set_id=set_id,
             is_new=is_new,
         )
-        if new_profile_only:
-            existing = await self.already_a_profiles_brew(prepared.profile)
-            if existing is not None and existing.id not in reusable_version_ids:
-                raise Conflict(
-                    f"This profile is identical to one already in the library "
-                    f"({existing.label!r}, profile version {existing.id}). A new recipe carries "
-                    "a profile of its own: give it its own label or change something in it.",
-                    details={"field": "profile", "message": "the profile is not new"},
-                )
         return await self.store(
             base_version_id=base_version_id,
             prepared=prepared,
@@ -390,16 +362,6 @@ class DraftProposals:
             made_by=made_by,
             signature=signature,
         )
-
-    async def already_a_profiles_brew(self, document: Profile) -> ProfileVersionRow | None:
-        """The stored version a new profile's document would be, if the library has one: a
-        version on no profile with exactly this content, or one that a Set's current version
-        names (whichever profile it belongs to). ``None`` when the document is new."""
-        content_hash = profile_content_hash(document)
-        loose = await self.profiles.find_version(content_hash, owner=None)
-        if loose is not None:
-            return loose
-        return await self.profiles.find_version_named_by_a_set(content_hash)
 
     def _atomic(self) -> AbstractAsyncContextManager[Any]:
         """One transaction for the writes that follow, or none when the caller holds one."""

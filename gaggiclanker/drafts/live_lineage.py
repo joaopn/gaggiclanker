@@ -12,7 +12,6 @@ from gaggiclanker.db.repos.lineage import pinned_sentence
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository
 
 __all__ = ["LiveLineage"]
 
@@ -22,7 +21,6 @@ class LiveLineage:
         self.board = ProfileBoardRepository(db)
         self.pins = PinsRepository(db)
         self.profiles = ProfilesRepository(db)
-        self.sets = SetsRepository(db)
 
     def label_of(self, profile: BoardRow) -> str:
         return profile.label
@@ -32,15 +30,8 @@ class LiveLineage:
         row = await self.board.get(board_id)
         return None if row is None or row.deleted_at is not None else row
 
-    async def by_label(self, label: str) -> BoardRow | None:
-        return await self.board.find_live_by_label(label)
-
     async def by_name_key(self, label: str) -> BoardRow | None:
         return await self.board.find_live_by_name_key(label)
-
-    async def by_set(self, set_id: int) -> BoardRow | None:
-        found = await self.sets.get(set_id)
-        return None if found is None or found.board_id is None else await self.by_id(found.board_id)
 
     async def base_profile(self, version_id: int) -> BoardRow | None:
         """The live profile this version belongs to: its owner, when it has one and that profile

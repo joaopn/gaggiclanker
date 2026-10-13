@@ -21,17 +21,6 @@ import type {
  */
 
 /**
- * The profile versions a recipe may name: every one except a pin's copy.
- *
- * A copy belongs to one pinned Set version for ever and is changed only by unpinning, so a recipe
- * that named it would be brewed on a profile some other version owns. The server marks each copy
- * (`pin`, the copies of unpinned pins included); a picker leaves them out.
- */
-export function withoutPinCopies<T extends { pin?: unknown }>(items: readonly T[]): T[] {
-  return items.filter((item) => item.pin == null);
-}
-
-/**
  * What archiving a Set with pins does to them, naming each: the Set stops taking shots, and its
  * pins are unpinned in the same write, so the next sync takes their copies off the machine.
  */
@@ -102,7 +91,7 @@ export function versionSummary(version: SetVersionRow): string {
 
 /**
  * The recipe a duplicate starts from, as one line: "Blooming · grind 2.2 · 18 g → 40 g". Only
- * the parts the version records; an "Any profile" version has no profile part.
+ * the parts the version records; a version of a Set with no profile has no profile part.
  */
 export function recipeLine(recipe: DuplicateRecipe): string {
   const parts: string[] = [];

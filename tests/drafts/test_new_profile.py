@@ -358,6 +358,11 @@ async def test_the_synthetic_base_is_not_a_candidate_a_default_base_or_a_row_of_
 
     profiles = ProfilesRepository(plain_db)
     real, _ = await profiles.ensure_version(Profile.model_validate(_document(40)), owner=None)
+    from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+
+    await ProfileBoardRepository(plain_db).insert(
+        BoardRowWrite(label=real.label, current_version_id=real.id, origin="adopted")
+    )
     # Stored after the real one, so it is the newest: the tie-break would pick it.
     synthetic = await profiles.empty_base()
 
@@ -366,5 +371,8 @@ async def test_the_synthetic_base_is_not_a_candidate_a_default_base_or_a_row_of_
     labels = [r["label"] for r in await plain_db.fetch_all("SELECT label FROM v_profiles")]
     assert labels == [real.label]
     # With nothing else in the library the stand-in is still what a draft is stored against.
+    await plain_db.execute("DELETE FROM profile_board_versions")
+    await plain_db.execute("UPDATE profile_versions SET board_id = NULL")
+    await plain_db.execute("DELETE FROM profile_board")
     await plain_db.execute("DELETE FROM profile_versions WHERE id = ?", (real.id,))
     assert await profiles.default_draft_base() == synthetic

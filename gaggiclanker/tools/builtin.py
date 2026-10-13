@@ -49,6 +49,7 @@ from gaggiclanker.db.repos.outcome_proposals import (
     OutcomeProposalsRepository,
     OutcomeProposalWrite,
 )
+from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
 from gaggiclanker.db.repos.set_proposals import (
@@ -157,7 +158,8 @@ SCHEMA_NOTES = (
     "centre joined by dots (fruity.berry.blackberry), so json_each with LIKE "
     "'sour_fermented.sour%' finds every sour note. profile_temperature_c is the brew "
     "temperature the profile states — a Set version records none of its own, so two "
-    "versions differ in temperature only when they name different profiles. A Set version "
+    "versions differ in temperature only when they name different versions of the profile. "
+    "A Set version "
     "is named v<major>.<minor>: version_label (set_version_label in v_shots) is the name to "
     "say, 'v1.1'; version_major and version_minor are its parts. A name is an identifier, "
     "not a position: v1.2 may have been made after v2, so sort versions by created_at and "
@@ -874,7 +876,7 @@ async def list_profiles(ctx: ToolContext, args: ListProfilesInput) -> ListOutput
         # `shot_count` counts the whole archive's shots on that profile, which
         # is how busy the *other* Sets have been — a fact this conversation is
         # not entitled to. The profiles themselves are archive-wide on purpose:
-        # a draft is made from one, and they belong to no Set.
+        # a draft is made from one, and a conversation may read any profile.
         for item in items:
             item.pop("shot_count", None)
     return ListOutput(items=items, count=len(items))
@@ -930,8 +932,8 @@ async def get_profile(ctx: ToolContext, args: GetProfileInput) -> GetProfileOutp
 
     `list_profiles` gives labels and metadata; an agent asked to fork or adjust
     a profile has to read what it is changing, or it writes a patch against a
-    document it imagined. Profiles belong to no Set, so every conversation may
-    read any of them; what a Set's conversation does not get is the
+    document it imagined. Every conversation may read any profile; what a Set's
+    conversation does not get is the
     archive-wide shot count, for the reason `list_profiles` gives.
     """
     version = await ProfilesRepository(ctx.db).get_version(args.profile_version_id)
@@ -1894,7 +1896,15 @@ async def propose_signature_override(
 
 
 class DraftProfileInput(_Model):
-    base_version_id: int = Field(gt=0, description="The profile version to start from.")
+    base_version_id: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "The profile version to start from. In a conversation about one Set it defaults to "
+            "the version the Set's profile has active, and must be one of that profile's "
+            "versions: a Set has one profile."
+        ),
+    )
     patch: dict[str, Any] = Field(
         description=(
             "A partial profile document merged into the base, key by key. Phases are "
@@ -1907,8 +1917,9 @@ class DraftProfileInput(_Model):
         description=(
             "Leave it out for a change to the base version's profile: the draft then keeps that "
             "profile's name. Give it to make a NEW profile instead, with this name (refused when "
-            "a profile already has it). The name is not part of the document: a 'label' in the "
-            "patch is refused."
+            "a profile already has it, and refused in a conversation about one Set, where a "
+            "new profile means a new Set). The name is not part of the document: a 'label' in "
+            "the patch is refused."
         ),
     )
     reason: str = Field(min_length=1, max_length=500)
@@ -2009,10 +2020,11 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
         "refused). To make a NEW profile instead, pass new_profile_name: it is stored under "
         "exactly that name, "
         "which must not be the name of a profile that already exists (refused). In a "
-        "conversation about one Set a profile change IS a change to the experiment, so a "
-        "prediction is required and the same rules apply as to any other change: not while "
-        "this version's own prediction is ungraded, and not while a proposal is already "
-        "waiting. " + MAJOR_MEANING
+        "conversation about one Set the draft is always a change to that Set's profile (a new "
+        "profile means a new Set, which is a Duplicate), and a profile change IS a change to "
+        "the experiment, so a prediction is required and the same rules apply as to any other "
+        "change: not while this version's own prediction is ungraded, and not while a "
+        "proposal is already waiting. " + MAJOR_MEANING
     ),
     timeout_s=30.0,
 )
@@ -2034,24 +2046,28 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
             "draft_profile needs the running gaggiclanker application; this connection has "
             "database access only."
         )
-    version = await ProfilesRepository(ctx.db).get_version(args.base_version_id)
+    base_version_id = args.base_version_id
+    if ctx.scope.kind == "set":
+        base_version_id = await _sets_profile_base(ctx, args)
+    elif base_version_id is None:
+        raise ValueError("Name the profile version to start from: base_version_id.")
+    version = await ProfilesRepository(ctx.db).get_version(base_version_id)
     if version is None:
-        raise ValueError(f"No profile version {args.base_version_id}.")
+        raise ValueError(f"No profile version {base_version_id}.")
     if "label" in args.patch:
         # A whole document read from `get_profile` carries its label: the profile's own name (or
         # the new profile's) is accepted and ignored, any other name is refused.
         current = (
             args.new_profile_name
             if args.new_profile_name is not None
-            else await ctx.drafts.change_name(args.base_version_id, set_id=ctx.scope.set_id)
+            else await ctx.drafts.change_name(base_version_id)
         )
         sent = args.patch["label"]
         if not isinstance(sent, str) or name_key(sent) != name_key(current):
             raise ValueError(
                 "A profile's name is not part of its document. To make a new profile, pass "
                 "new_profile_name; a change to "
-                f"{await ctx.drafts.change_name(args.base_version_id, set_id=ctx.scope.set_id)} "
-                "keeps its name."
+                f"{await ctx.drafts.change_name(base_version_id)} keeps its name."
             )
     if args.new_profile_name is not None and not args.new_profile_name.strip():
         raise ValueError("A new profile needs a name: pass new_profile_name, or leave it out.")
@@ -2082,9 +2098,8 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         names = await next_names(ctx.db, set_id)
         note += (
             " It is also a change to this experiment, so your prediction is recorded on the "
-            "Set as a new version when it reaches the machine for this Set — and not before. Say "
-            "that: until then the Set is where it was, and with writes off that is until the "
-            "first sync after they turn writes on. When they approve it they choose "
+            "Set as a new version the moment they approve it — and not before. Say that: until "
+            "then the Set is where it was. When they approve it they choose "
             f"whether it is a minor version ({names.minor}, the default for a draft) or a "
             f"major one ({names.major})"
             + (", and your suggestion of major is shown with your reason" if suggest_major else "")
@@ -2110,7 +2125,7 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
             "page."
         )
     draft = await ctx.drafts.create_manual(
-        base_version_id=args.base_version_id,
+        base_version_id=base_version_id,
         document=document,
         change_summary=args.reason,
         notes="Proposed in chat.",
@@ -2143,6 +2158,34 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
             else ""
         ),
     )
+
+
+async def _sets_profile_base(ctx: ToolContext, args: DraftProfileInput) -> int:
+    """The profile version a Set conversation's draft changes: always one of the Set's profile.
+
+    A Set brews one profile, so a draft here is a change to it: the base is one of its versions
+    (the active one when none is named), and a new profile is a new Set.
+    """
+    set_id = _resolve_set(ctx, None)
+    row = await SetsRepository(ctx.db).get(set_id)
+    if row is None:  # pragma: no cover - the scope's Set exists by construction
+        raise ValueError(f"No Set {set_id}.")
+    if args.new_profile_name is not None:
+        raise ValueError("A new profile means a new Set: duplicate this Set.")
+    if row.board_id is None:
+        raise ValueError("This Set has no profile yet, so there is no profile to change.")
+    profiles = ProfilesRepository(ctx.db)
+    if args.base_version_id is None:
+        active = await ProfileBoardRepository(ctx.db).get(row.board_id)
+        assert active is not None  # a Set's profile row exists
+        return active.current_version_id
+    if await profiles.owner_of(args.base_version_id) != row.board_id:
+        raise ValueError(
+            f"Profile version {args.base_version_id} is not a version of this Set's profile "
+            f"({row.profile_label}). A draft here changes that profile; a different profile "
+            "means a new Set: duplicate this Set."
+        )
+    return args.base_version_id
 
 
 async def _draft_experiment(
@@ -2299,10 +2342,8 @@ class ProposeInitialRecipeOutput(_Model):
         "Set has no recipe, and the machine never receives anything from here. The person "
         "answers on the card in the conversation; a new profile's name is a field they may "
         "change there. The label you give is the name it is stored under, and a name that is "
-        "already a profile is refused. A profile "
-        "identical to one already in the library is refused — give it its own label or "
-        "change something. A newer proposal replaces the one waiting. No prediction: a "
-        "version 1 is a baseline."
+        "already a profile is refused. A newer proposal replaces the one waiting. No "
+        "prediction: a version 1 is a baseline."
     ),
     timeout_s=30.0,
 )
@@ -2365,8 +2406,6 @@ async def propose_initial_recipe(
             # With a fork the draft is an edit of it, and its diff is the point.
             is_new=fork_id is None,
             new_profile_name=args.profile.label,
-            new_profile_only=True,
-            reusable_version_ids=await proposals.design_profile_versions(set_id),
         )
     except Unprocessable as exc:
         # The schema's per-field lines live in the error's details, which the

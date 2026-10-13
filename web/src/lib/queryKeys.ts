@@ -66,6 +66,8 @@ export const queryKeys = {
     all: ["sets"] as const,
     list: (includeArchived?: boolean) => ["sets", "list", includeArchived ?? false] as const,
     detail: (id: string) => ["sets", "detail", id] as const,
+    /** What a Set may start on. Under `sets`, so every write that makes or moves a Set refreshes it. */
+    profileChoices: () => ["sets", "profile-choices"] as const,
     /**
      * Under the `sets` prefix on purpose, unlike `samples` under `shots`.
      *
@@ -155,7 +157,7 @@ export const queryKeys = {
   },
   /**
    * What a profile version is for. Its own prefix: a signature answer changes every shot's
-   * checks and every Set that brews the profile, and `invalidateSignatureAnswers` names those.
+   * checks and the Set that brews the profile, and `invalidateSignatureAnswers` names those.
    * The overrides sit under `sets`, because they belong to a Set version and the Set page's
    * own invalidation reaches them.
    */

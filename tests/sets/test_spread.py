@@ -30,6 +30,7 @@ from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.domain.vocab import SPREAD_MEASURES
 from gaggiclanker.sync.derive import derive_shot
 from tests.domain.helpers import SLOG_FIXTURES
+from tests.profile_rows import with_a_profile
 from tests.sets.conftest import Fixtures
 
 
@@ -409,16 +410,19 @@ class TestTheSetDetail:
         created = self.data(
             await client.post(
                 "/api/sets",
-                json={
-                    "name": "Guji on the Niche",
-                    "bean_id": bean["id"],
-                    "version": {
-                        "dose_g": 18.0,
-                        "target_yield_g": 36.0,
-                        "grind_setting": "22",
-                        "prediction": "around 30 s, balanced",
+                json=await with_a_profile(
+                    client,
+                    {
+                        "name": "Guji on the Niche",
+                        "bean_id": bean["id"],
+                        "version": {
+                            "dose_g": 18.0,
+                            "target_yield_g": 36.0,
+                            "grind_setting": "22",
+                            "prediction": "around 30 s, balanced",
+                        },
                     },
-                },
+                ),
             )
         )
         second = self.data(
@@ -602,11 +606,14 @@ class TestTheSetDetail:
         created = self.data(
             await client.post(
                 "/api/sets",
-                json={
-                    "name": "Kenya",
-                    "bean_id": bean["id"],
-                    "version": {"dose_g": 18.0, "grind_setting": "22"},
-                },
+                json=await with_a_profile(
+                    client,
+                    {
+                        "name": "Kenya",
+                        "bean_id": bean["id"],
+                        "version": {"dose_g": 18.0, "grind_setting": "22"},
+                    },
+                ),
             )
         )
         second = self.data(
@@ -646,7 +653,10 @@ class TestTheSetDetail:
     ) -> None:
         bean = self.data(await client.post("/api/beans", json={"name": "Kenya AA"}))
         created = self.data(
-            await client.post("/api/sets", json={"name": "Kenya", "bean_id": bean["id"]})
+            await client.post(
+                "/api/sets",
+                json=await with_a_profile(client, {"name": "Kenya", "bean_id": bean["id"]}),
+            )
         )
 
         detail = self.data(await client.get(f"/api/sets/{created['id']}"))

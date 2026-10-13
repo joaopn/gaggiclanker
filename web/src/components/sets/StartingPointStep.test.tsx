@@ -45,6 +45,7 @@ function profileVersion(overrides: Partial<ProfileVersionSummary>): ProfileVersi
     shot_count: 12,
     temperature_c: 93,
     target_yield_g: 36,
+    is_active: true,
     ...overrides,
   };
 }

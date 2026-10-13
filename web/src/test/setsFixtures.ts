@@ -293,6 +293,7 @@ export function setRow(overrides: Partial<SetRow> = {}): SetRow {
     version_count: 2,
     shot_count: 4,
     profile_version_id: 7,
+    board_id: 1,
     profile_label: "9 Bar Espresso",
     ...overrides,
   };
@@ -483,6 +484,7 @@ export function designingSet(overrides: Partial<SetRow> = {}): SetRow {
     version_count: 1,
     shot_count: 0,
     profile_version_id: null,
+    board_id: null,
     profile_label: null,
     ...overrides,
   });

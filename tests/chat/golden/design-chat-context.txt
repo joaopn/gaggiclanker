@@ -8,7 +8,7 @@ Goal: "More body than the Niche Set, and keep the blackcurrant."
 Their usual espresso setting on this grinder: 21 (numbers).
 
 THE PROFILE TO FORK: [profile_version 2] Library 18g
-The new profile is derived from this one and gets a name of its own; this one, and every Set that brews it, stays as it is.
+The new profile is derived from this one and gets a name of its own; this one, and the Set that brews it, stays as it is.
 ```json
 {
   "description": "",

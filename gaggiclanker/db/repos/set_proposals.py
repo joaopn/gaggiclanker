@@ -447,16 +447,8 @@ class SetProposalsRepository(Repository):
     async def design_profile_versions(self, set_id: int) -> set[int]:
         """The profile versions this Set's initial recipes have drafted, in any state.
 
-        What a design conversation may land on again when it revises its own
-        card: the profile it proposed a moment ago is this design's, not the
-        library's, so proposing it a second time is not a copy of somebody
-        else's profile.
-
-        **Unless another Set has taken it up since.** A version that the
-        current version of another Set still in use names is somebody else's
-        recipe now, whoever drafted it first: letting the design keep it would
-        put two Sets on one profile, and the matcher files nothing under
-        either.
+        The profiles a design conversation reads back when it revises its own card
+        (the ones it proposed, whatever became of them).
         """
         rows = await self.db.fetch_all(
             """
@@ -464,13 +456,6 @@ class SetProposalsRepository(Repository):
               FROM set_version_proposals p
               JOIN profile_drafts d ON d.id = p.draft_id
              WHERE p.set_id = :set_id AND p.kind = 'design' AND d.draft_version_id IS NOT NULL
-               AND NOT EXISTS (
-                   SELECT 1 FROM sets other
-                     JOIN set_versions cur ON cur.id = other.current_version_id
-                    WHERE other.id != :set_id
-                      AND other.archived = 0
-                      AND cur.profile_version_id = d.draft_version_id
-               )
             """,
             {"set_id": set_id},
         )
@@ -485,9 +470,9 @@ class SetProposalsRepository(Repository):
         person presses Accept.
 
         The brew temperature rides along with the profile, exactly as it does on
-        a real version: when the patch names a different profile, that profile's
-        own temperature and label are read, because a proposal that moves the
-        temperature by switching profiles must say so on the card.
+        a real version: when the patch names a different version of the profile, that
+        version's own temperature is read, because a proposal that moves the
+        temperature must say so on the card.
 
         Built on :meth:`diff_base`, not on the stored row. A first recipe is
         previewed on the empty version 1 whatever fills it now: once somebody
@@ -762,15 +747,12 @@ class SetProposalsRepository(Repository):
         by hand — the whole transaction is rolled back and the refusal says
         why.
 
-        **Nothing is sent to the machine.** A proposal that names a different
-        profile records that the Set now brews with that profile, exactly as the
-        Add a version form does; only a sync a person starts puts a file on the
+        **Nothing is sent to the machine.** Only a sync a person starts puts a file on the
         display. A first recipe's accept also puts its profile on the list (see
         ``put_profile``).
 
         ``major`` is the person's answer on the card's "Major change" box. Left
-        out, the shared rule decides (a different profile is a major), never
-        the agent's suggestion. A first recipe fills version 1 either way.
+        out, it is a minor, never the agent's suggestion. A first recipe fills version 1 either way.
 
         ``put_profile`` is how a first recipe's accept also puts its profile on the profile
         list, in **this** transaction (the connection's ``transaction()`` does not nest, so the
@@ -857,7 +839,12 @@ class SetProposalsRepository(Repository):
             # The refusals an append raises are a design that can no longer be filled and a
             # profile that has become a pin's copy; the transaction above is already undone.
             # Any other is the caller's to say (the first recipe's profile already has a Set).
-            if exc.refused in ("profile_has_a_set", "other_profile", "not_the_active_version"):
+            if exc.refused in (
+                "profile_has_a_set",
+                "other_profile",
+                "not_the_active_version",
+                "profile_deleted",
+            ):
                 raise
             return ProposalWriteResult(
                 refused="profile_is_a_pin"

@@ -30,7 +30,7 @@ import { queryKeys } from "@/lib/queryKeys";
  * What a profile version is for (in force until a person rejects it), and the person's answers.
  *
  * Every mutation here settles with `invalidateSignatureAnswers`, on failure as well as on
- * success: an answer moves every shot's checks and every Set that brews the profile, and a
+ * success: an answer moves every shot's checks and the Set that brews the profile, and a
  * refused one (the expectation was answered in another tab) has to show the answer that won.
  */
 

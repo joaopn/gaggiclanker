@@ -373,7 +373,7 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     expect(keys).not.toContainEqual(queryKeys.sets.all);
   });
 
-  it("a revert sweeps the Sets, the proposals under them and the conversation list", async () => {
+  it("a revert sweeps the Sets, the proposals under them, the conversation list and the Profiles", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => useRollbackSet());
     const keys = spyOn(queryClient);
 
@@ -382,12 +382,14 @@ describe("the Set-side writes invalidate no more than they changed", () => {
       body: { to_version_id: 21, note: "" },
     });
 
-    await waitFor(() => expect(keys.length).toBe(3));
-    expect(keys).toEqual([queryKeys.sets.all, queryKeys.chat.threads(), ["chat", "thread"]]);
+    await waitFor(() => expect(keys.length).toBeGreaterThanOrEqual(3));
     // Invalidation is by prefix, so a key is refreshed when an invalidated key
     // is its prefix. Each reader the revert changes is covered; no shot is.
     const covered = (key: readonly unknown[]) =>
       keys.some((prefix) => prefix.every((part, i) => key[i] === part));
+    // The Set's profile went back with it: the Profiles page reads the board.
+    expect(covered(queryKeys.board.view())).toBe(true);
+    expect(covered(queryKeys.sync.all)).toBe(true);
     expect(covered(queryKeys.sets.detail("3"))).toBe(true);
     expect(covered(queryKeys.sets.list(false))).toBe(true);
     expect(covered(queryKeys.sets.proposals("3"))).toBe(true);

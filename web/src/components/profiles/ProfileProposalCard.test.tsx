@@ -294,12 +294,12 @@ describe("a proposal for a Set", () => {
     getDraftStanding.mockResolvedValue(forSet());
     const chat = renderCard({ place: "chat" });
     await screen.findByTestId("approve-proposal");
-    expect(screen.queryByTestId("approve-proposal-without-set")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /without recording/ })).not.toBeInTheDocument();
     chat.unmount();
 
     renderCard({ place: "profiles" });
     await screen.findByTestId("approve-proposal");
-    expect(screen.queryByTestId("approve-proposal-without-set")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /without recording/ })).not.toBeInTheDocument();
   });
 
   it("starts no sync with Writes off", async () => {

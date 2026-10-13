@@ -21,7 +21,7 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
 from gaggiclanker.tools.scope import ToolScope
-from tests.review.conftest import Fixture, build_fixture
+from tests.review.conftest import Fixture, build_fixture, give_the_set_its_profile
 
 
 @pytest.fixture
@@ -37,7 +37,10 @@ async def tool_db(tmp_path: Path) -> AsyncIterator[Database]:
 
 @pytest.fixture
 async def archive(tool_db: Database) -> Fixture:
-    return await build_fixture(tool_db)
+    """The review tests' archive, with the Set brewing a profile of its own (a Set has one)."""
+    found = await build_fixture(tool_db)
+    await give_the_set_its_profile(found)
+    return found
 
 
 @pytest.fixture

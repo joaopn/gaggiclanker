@@ -21,6 +21,7 @@ import {
   discardDesign,
   dismissOutcomeProposal,
   getOutcomeProposals,
+  getProfileChoices,
   getSet,
   getSetProposals,
   getSets,
@@ -38,6 +39,7 @@ import type {
   JudgementWrite,
   OutcomeProposalDecision,
   OutcomeProposalListData,
+  ProfileChoiceListData,
   ProfileMatchSummary,
   RollbackWrite,
   SetCreate,
@@ -92,6 +94,16 @@ export function useSets(includeArchived = false): UseQueryResult<SetListData, Er
   return useQuery({
     queryKey: queryKeys.sets.list(includeArchived),
     queryFn: () => getSets(includeArchived),
+  });
+}
+
+export function useProfileChoices(
+  options: { enabled?: boolean } = {},
+): UseQueryResult<ProfileChoiceListData, Error> {
+  return useQuery({
+    queryKey: queryKeys.sets.profileChoices(),
+    queryFn: getProfileChoices,
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -468,7 +480,7 @@ export function useRollbackSet(): UseMutationResult<
     mutationFn: ({ setId, body }) => rollbackSet(setId, body),
     onSuccess: (version) =>
       toast.success(
-        `The Set is back on ${version.version_label}. Nothing was sent to the machine.`,
+        `The Set is back on ${version.version_label}. Its profile is back on that brew, and the next sync puts it on the machine.`,
       ),
     onError: (error) => toast.error(`Could not go back: ${error.message}`),
     onSettled: () => {
@@ -479,6 +491,9 @@ export function useRollbackSet(): UseMutationResult<
       // Set's live conversation is now the version's it went back to. No shot
       // moved, so no shot query is touched.
       void invalidateSets(queryClient);
+      // The Set's profile went back with it: the Profiles page, its versions and what the next
+      // sync will do read that.
+      void invalidateBoardWrites(queryClient);
       void invalidateChatThreads(queryClient);
       // The open conversation's heading says whether its version is a dead end.
       void invalidateChatTranscripts(queryClient);
@@ -627,9 +642,9 @@ export function useDeleteJudgement(): UseMutationResult<{ deleted: boolean }, Er
 }
 
 /**
- * "Match by profile": file waiting shots under the one Set that brews their
+ * "Match by profile": file waiting shots under the Set that brews their
  * profile. The toast says what happened to each kind, because a press that
- * filed nothing should say why (two Sets on the profile, or none).
+ * filed nothing should say why (no Set brews the profile).
  */
 export function useMatchShotsByProfile(): UseMutationResult<
   ProfileMatchSummary,
@@ -657,12 +672,11 @@ export function useMatchShotsByProfile(): UseMutationResult<
 
 /** One sentence for what a match did, leaving out the outcomes that did not happen. */
 export function profileMatchMessage(summary: ProfileMatchSummary): string {
-  const { matched, ambiguous, unmatched } = summary;
-  if (matched + ambiguous + unmatched === 0) return "No shots were waiting for a Set";
+  const { matched, unmatched } = summary;
+  if (matched + unmatched === 0) return "No shots were waiting for a Set";
   const parts = [
     matched > 0 ? `Filed ${matched} ${matched === 1 ? "shot" : "shots"}` : "Nothing filed",
   ];
-  if (ambiguous > 0) parts.push(`${ambiguous} left: more than one Set brews the profile`);
   if (unmatched > 0) parts.push(`${unmatched} left: no Set brews the profile`);
   return parts.join(" · ");
 }

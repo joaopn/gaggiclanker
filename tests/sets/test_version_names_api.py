@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch
+from tests.profile_rows import with_a_profile
 from tests.sets.test_api import data, error
 
 PREDICTION = "Compared to v1: two to four seconds longer and less sour."
@@ -28,11 +29,14 @@ async def set_id(client: httpx.AsyncClient) -> int:
     created = data(
         await client.post(
             "/api/sets",
-            json={
-                "name": "Guji on the Niche",
-                "bean_id": bean["id"],
-                "version": {"dose_g": 18.0, "grind_setting": "22"},
-            },
+            json=await with_a_profile(
+                client,
+                {
+                    "name": "Guji on the Niche",
+                    "bean_id": bean["id"],
+                    "version": {"dose_g": 18.0, "grind_setting": "22"},
+                },
+            ),
         )
     )
     return int(created["id"])

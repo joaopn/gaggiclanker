@@ -30,6 +30,7 @@ import {
   useAddSetVersion,
   useArchiveSet,
   useDiscardDesign,
+  useProfileChoices,
   useSet,
   useSetAutomatch,
   useSetTrends,
@@ -250,6 +251,7 @@ export function SetDetailPage() {
             setId={row.id}
             versions={detail.data.versions}
             designing={row.designing}
+            needsProfile={row.board_id == null}
             nextMinorLabel={row.next_minor_label}
             nextMajorLabel={row.next_major_label}
             onDone={() => setVersioning(false)}
@@ -360,9 +362,8 @@ function discardRefusal(error: Error | null): string | null {
  * The same brief the agent is given on every turn, so the person can see what
  * the conversation is working from without scrolling back to its first
  * message. Only the parts that were given; nothing at all for an empty brief.
- * The fork's label comes from the profile versions the page already reads for
- * the version form (one cached query), with the id as the fallback while that
- * list is loading or when the version is older than it reaches.
+ * The fork's label comes from the newest profile versions (one cached query), with the id as
+ * the fallback while that list is loading or when the version is older than it reaches.
  */
 function DesignBrief({ brief }: { brief: SetRow["design_brief"] }) {
   const profiles = useProfileVersions({ limit: 200 });
@@ -547,6 +548,7 @@ function NewVersionForm({
   setId,
   versions,
   designing = false,
+  needsProfile = false,
   nextMinorLabel,
   nextMajorLabel,
   onDone,
@@ -562,9 +564,17 @@ function NewVersionForm({
    * compared to, and the server ignores one there, so none is asked for.
    */
   designing?: boolean;
+  /**
+   * The Set has no profile (one being designed, or an old one that never named one): this
+   * version gives it the active version of a profile no Set has, as New Set does. A Set that
+   * has a profile has no choice here: its versions follow the profile.
+   */
+  needsProfile?: boolean;
   onDone: () => void;
 }) {
   const add = useAddSetVersion();
+  const choices = useProfileChoices({ enabled: needsProfile });
+  const [profile, setProfile] = useState("");
   const [grind, setGrind] = useState("");
   const [dose, setDose] = useState("");
   const [target, setTarget] = useState("");
@@ -584,6 +594,7 @@ function NewVersionForm({
     intent: useId(),
     prediction: useId(),
     compare: useId(),
+    profile: useId(),
   };
 
   function number(value: string): number | undefined {
@@ -613,6 +624,7 @@ function NewVersionForm({
                 ? { compares_to_version_id: compare ? Number(compare) : null }
                 : {}),
               origin: "manual",
+              ...(needsProfile && profile ? { profile_version_id: Number(profile) } : {}),
               ...grindPatch(grind),
               ...(number(dose) ? { dose_g: number(dose) } : {}),
               ...(number(target) ? { target_yield_g: number(target) } : {}),
@@ -635,6 +647,24 @@ function NewVersionForm({
           Fill in only what changed. Anything left blank carries over from the current version.
         </p>
       )}
+      {needsProfile ? (
+        <Labelled id={ids.profile} label="Profile">
+          <select
+            id={ids.profile}
+            required
+            className={FIELD}
+            value={profile}
+            onChange={(event) => setProfile(event.target.value)}
+          >
+            <option value="">Pick a profile</option>
+            {(choices.data?.items ?? []).map((choice) => (
+              <option key={choice.profile_version_id} value={String(choice.profile_version_id)}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </Labelled>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-3">
         <Labelled id={ids.grind} label="Grind">
           <input

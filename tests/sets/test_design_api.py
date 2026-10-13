@@ -18,6 +18,7 @@ from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
+from tests.profile_rows import free_profile_version, with_a_profile
 from tests.sets.conftest import make_profile_version, make_shot
 
 
@@ -146,7 +147,10 @@ async def test_discarding_anything_else_is_refused_with_its_own_code(
     app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
 ) -> None:
     ordinary = data(
-        await client.post("/api/sets", json={"name": "By hand", "bean_id": kit["bean_id"]})
+        await client.post(
+            "/api/sets",
+            json=await with_a_profile(client, {"name": "By hand", "bean_id": kit["bean_id"]}),
+        )
     )
     designed = await _design(client, kit)
     shot = await make_shot(app.state.db, "000501")
@@ -259,7 +263,12 @@ async def test_a_card_overtaken_by_a_hand_written_recipe_still_shows_only_its_ow
     data(
         await client.post(
             f"/api/sets/{set_id}/versions",
-            json={"grind_setting": "19", "grind_value": 19, "dose_g": 18},
+            json={
+                "profile_version_id": await free_profile_version(app.state.db),
+                "grind_setting": "19",
+                "grind_value": 19,
+                "dose_g": 18,
+            },
         )
     )
     listed = data(await client.get(f"/api/sets/{set_id}/proposals"))["items"]
@@ -312,7 +321,12 @@ async def test_the_add_a_version_form_ends_the_design_and_retires_the_card(
     proposal_id, draft_id, _ = await _card(app, set_id, created["thread_id"])
 
     response = await client.post(
-        f"/api/sets/{set_id}/versions", json={"grind_setting": "19", "dose_g": 18}
+        f"/api/sets/{set_id}/versions",
+        json={
+            "profile_version_id": await free_profile_version(app.state.db),
+            "grind_setting": "19",
+            "dose_g": 18,
+        },
     )
 
     version = data(response)

@@ -200,3 +200,40 @@ async def test_an_empty_archive_says_so_rather_than_rendering_nothing(
     context = await _build(fixture)
     rendered = context.render()["similar_sets"]  # type: ignore[attr-defined]
     assert "Nothing comparable" in rendered
+
+
+async def test_the_candidates_are_the_active_versions_of_profiles_with_no_set(
+    fixture: Fixture,
+) -> None:
+    """A profile a Set brews, a switched-off row, a utility profile and an older version of a free
+    profile are none of them what the wizard may offer."""
+    from gaggiclanker.starting.context import profile_candidates
+    from tests.profile_rows import another_version, free_profile_version
+
+    free = await free_profile_version(fixture.db, "Free and active")
+    older = await free_profile_version(fixture.db, "Free but moved on")
+    newer = await another_version(fixture.db, older, description="newer")
+    board = await fixture.db.fetch_value(
+        "SELECT board_id FROM profile_versions WHERE id = ?", (older,)
+    )
+    await fixture.db.execute(
+        "UPDATE profile_board SET current_version_id = ? WHERE id = ?", (newer, board)
+    )
+    held = await free_profile_version(fixture.db, "Held by a Set")
+    held_board = await fixture.db.fetch_value(
+        "SELECT board_id FROM profile_versions WHERE id = ?", (held,)
+    )
+    await fixture.db.execute(
+        "UPDATE sets SET board_id = ? WHERE id = ?", (held_board, next(iter(fixture.sets.values())))
+    )
+    off = await free_profile_version(fixture.db, "Switched off")
+    await fixture.db.execute(
+        "UPDATE profile_board SET deleted_at = '2026-10-13T10:00:00.000Z' "
+        "WHERE id = (SELECT board_id FROM profile_versions WHERE id = ?)",
+        (off,),
+    )
+
+    offered = {c.profile_version_id for c in await profile_candidates(fixture.db)}
+
+    assert free in offered and newer in offered
+    assert older not in offered and held not in offered and off not in offered

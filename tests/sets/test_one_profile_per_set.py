@@ -16,10 +16,12 @@ from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepos
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import (
     DesignBrief,
+    SetsRepository,
     SetVersionPatch,
     SetVersionWrite,
     SetWrite,
     VersionRefused,
+    version_changes,
 )
 from tests.drafts.helpers import assert_sets_follow_their_profiles, assert_versions_owned
 from tests.profile_rows import another_version
@@ -142,16 +144,147 @@ async def test_every_version_of_a_set_names_a_version_its_profile_owns(wired: Fi
     assert other_board
 
 
-async def test_a_set_with_no_profile_may_not_start_naming_a_profiles_version(
-    wired: Fixtures,
-) -> None:
-    _board, version = await profile(wired, "Bloom")
+async def test_a_set_with_no_profile_gets_one_at_its_next_version(wired: Fixtures) -> None:
+    board, version = await profile(wired, "Bloom")
     bare = await new_set(wired, "Bare", None)
 
-    with pytest.raises(VersionRefused) as refused:
-        await wired.sets.add_version(bare.id, SetVersionPatch(profile_version_id=version))
+    added = await wired.sets.add_version(bare.id, SetVersionPatch(profile_version_id=version))
 
-    assert refused.value.refused == "other_profile"
+    assert added is not None and added.profile_version_id == version
+    stored = await wired.sets.get(bare.id)
+    assert stored is not None and stored.board_id == board
+
+
+async def test_that_profile_is_the_one_a_new_set_may_take(wired: Fixtures) -> None:
+    taken_board, taken = await profile(wired, "Taken")
+    await new_set(wired, "Holder", taken)
+    older_board, older = await profile(wired, "Moved on")
+    await wired.db.execute(
+        "UPDATE profile_board SET current_version_id = ? WHERE id = ?",
+        (await another_version(wired.db, older, description="newer"), older_board),
+    )
+    bare = await new_set(wired, "Bare", None)
+
+    for refused_version, why in ((taken, "profile_has_a_set"), (older, "not_the_active_version")):
+        with pytest.raises(VersionRefused) as refused:
+            await wired.sets.profile_to_start_on(refused_version)
+        assert refused.value.refused == why
+    stored = await wired.sets.get(bare.id)
+    assert stored is not None and stored.board_id is None and taken_board
+
+
+async def test_a_set_on_a_loose_version_is_given_a_profile_that_takes_the_version_over(
+    wired: Fixtures,
+) -> None:
+    board, version = await profile(wired, "Bloom")
+    loose = await make_profile_version(wired.db, "Imported", owned=False)
+    older = await wired.sets.create(
+        SetWrite(name="Old", bean_id=wired.bean_id),
+        SetVersionWrite(profile_version_id=loose),
+        from_a_draft=True,
+    )
+
+    added = await wired.sets.add_version(older.id, SetVersionPatch(profile_version_id=version))
+
+    assert added is not None
+    stored = await wired.sets.get(older.id)
+    assert stored is not None and stored.board_id == board
+    owners = {
+        await ProfilesRepository(wired.db).owner_of(v.profile_version_id or 0)
+        for v in await wired.sets.versions(older.id)
+    }
+    assert owners == {board}, "every version of the Set is that profile's now"
+
+
+async def test_a_set_on_two_loose_versions_is_given_a_profile_that_takes_both(
+    wired: Fixtures,
+) -> None:
+    board, version = await profile(wired, "Bloom")
+    first = await make_profile_version(wired.db, "First file", owned=False)
+    second = await make_profile_version(wired.db, "Second file", owned=False)
+    made = await wired.sets.create(
+        SetWrite(name="Old", bean_id=wired.bean_id),
+        SetVersionWrite(profile_version_id=first),
+        from_a_draft=True,
+    )
+    await wired.sets.add_version(made.id, SetVersionPatch(profile_version_id=second))
+
+    await wired.sets.add_version(made.id, SetVersionPatch(profile_version_id=version))
+
+    stored = await wired.sets.get(made.id)
+    assert stored is not None and stored.board_id == board
+    for v in await wired.sets.versions(made.id):
+        assert await ProfilesRepository(wired.db).owner_of(v.profile_version_id or 0) == board
+
+
+async def test_a_mirrored_file_no_profile_stands_on_is_something_a_set_may_start_on(
+    wired: Fixtures,
+) -> None:
+    """With Writes off the list is never adopted, so the files the sync mirrored are what a
+    person has. The Set has no profile until the list takes the file over, and then it has."""
+    file_version = await make_profile_version(wired.db, "On the machine", owned=False)
+    await ProfilesRepository(wired.db).upsert_device_profile(
+        device_id="abc123", version_id=file_version
+    )
+    assert (file_version, "On the machine") in await wired.sets.profile_choices()
+
+    made = await new_set(wired, "Writes off", file_version)
+
+    assert made.board_id is None
+    assert all(c[0] != file_version for c in await wired.sets.profile_choices()), "now named"
+    row = await ProfileBoardRepository(wired.db).insert(
+        BoardRowWrite(
+            label="On the machine",
+            current_version_id=file_version,
+            origin="adopted",
+            device_profile_id="abc123",
+        )
+    )
+    stored = await wired.sets.get(made.id)
+    assert stored is not None and stored.board_id == row.id, "the adopting list gave it the profile"
+    with pytest.raises(VersionRefused):
+        await new_set(wired, "Second", file_version)
+
+
+async def test_a_file_a_profile_stands_on_or_a_set_names_is_not_offered(wired: Fixtures) -> None:
+    stood = await make_profile_version(wired.db, "Stood on", owned=False)
+    await ProfilesRepository(wired.db).upsert_device_profile(device_id="one", version_id=stood)
+    await ProfileBoardRepository(wired.db).insert(
+        BoardRowWrite(
+            label="Stood on", current_version_id=stood, origin="adopted", device_profile_id="one"
+        )
+    )
+    deleted = await make_profile_version(wired.db, "Deleted", owned=False)
+    await ProfilesRepository(wired.db).upsert_device_profile(device_id="two", version_id=deleted)
+    await wired.db.execute(
+        "UPDATE device_profiles SET deleted_at = '2026-10-13' WHERE device_id='two'"
+    )
+
+    choices = await wired.sets.profile_choices()
+
+    assert choices == [(stood, "Stood on")], "the profile once, not its file again"
+    with pytest.raises(VersionRefused):
+        await new_set(wired, "On a deleted file", deleted)
+
+
+async def test_a_design_filled_from_a_card_whose_version_the_profile_moved_on_from_follows(
+    wired: Fixtures,
+) -> None:
+    board, first = await profile(wired, "Designed")
+    later = await another_version(wired.db, first, description="later")
+    await wired.db.execute(
+        "UPDATE profile_board SET current_version_id = ? WHERE id = ?", (later, board)
+    )
+    designing = await wired.sets.create_design(
+        SetWrite(name="Design", bean_id=wired.bean_id), DesignBrief()
+    )
+
+    await wired.sets.add_version(designing.id, SetVersionPatch(profile_version_id=first))
+
+    versions = await wired.sets.versions(designing.id)
+    assert [v.version_label for v in reversed(versions)] == ["v1", "v1.1"]
+    current = await wired.sets.current_version(designing.id)
+    assert current is not None and current.profile_version_id == later
 
 
 async def test_following_a_profile_is_the_function_that_adds_its_sets_version(
@@ -263,8 +396,31 @@ async def test_a_new_version_has_no_profile_to_choose(
         f"/api/sets/{made['id']}/versions", json={"profile_version_id": version, "dose_g": 19}
     )
 
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "UNPROCESSABLE_ENTITY"
+
+
+async def test_a_version_that_brews_a_newer_version_of_the_profile_logs_a_brew_change(
+    wired: Fixtures,
+) -> None:
+    """One profile, one name: the log says the brew changed (and the temperature that came with
+    it), never "Foo → Foo"."""
+    board, version = await profile(wired, "Bloom")
+    made = await new_set(wired, "Guji", version)
+    newer = await ProfileBoardRepository(wired.db).version_for(
+        board, await make_profile_version(wired.db, "Bloom", temperature=95)
+    )
+    followed = await wired.sets.follow_profile(board, newer)
+    assert followed is not None
+    second, first = await wired.sets.versions(made.id)  # newest first
+
+    changes = version_changes(second, first, {version: "Bloom", newer: "Bloom"})
+
+    assert [(c.field, c.label, c.before, c.after) for c in changes] == [
+        ("profile_version_id", "Brew changed", None, None),
+        ("profile_temperature_c", "Temperature", "93 °C", "95 °C"),
+    ]
+    assert changes[1].from_profile
 
 
 async def test_a_profile_that_takes_over_a_loose_version_takes_its_set_with_it(
@@ -312,71 +468,94 @@ async def test_a_profile_with_a_set_gets_its_own_copy_and_the_loose_version_stay
     assert stored is not None and stored.board_id is None
 
 
-async def test_a_mirrored_file_no_profile_stands_on_is_something_a_set_may_start_on(
-    wired: Fixtures,
+async def test_the_add_a_version_route_gives_a_design_its_profile_under_new_sets_rule(
+    client: httpx.AsyncClient, app: FastAPI
 ) -> None:
-    """With Writes off the list is never adopted, so the files the sync mirrored are what a
-    person has. The Set has no profile until the list takes the file over, and then it has."""
-    file_version = await make_profile_version(wired.db, "On the machine", owned=False)
-    await ProfilesRepository(wired.db).upsert_device_profile(
-        device_id="abc123", version_id=file_version
+    db = app.state.db
+    free = await make_profile_version(db, "Free")
+    older = await make_profile_version(db, "Moved on")
+    await db.execute(
+        "UPDATE profile_board SET current_version_id = ? "
+        "WHERE id = (SELECT board_id FROM profile_versions WHERE id = ?)",
+        (await another_version(db, older, description="newer"), older),
     )
-
-    made = await new_set(wired, "Writes off", file_version)
-
-    assert made.board_id is None
-    row = await ProfileBoardRepository(wired.db).insert(
-        BoardRowWrite(
-            label="On the machine",
-            current_version_id=file_version,
-            origin="adopted",
-            device_profile_id="abc123",
+    taken = await make_profile_version(db, "Taken")
+    bean = (await client.post("/api/beans", json={"name": "Guji"})).json()["data"]["id"]
+    grinder = (
+        await client.post("/api/grinders", json={"name": "Niche", "step_unit": "numbers"})
+    ).json()["data"]["id"]
+    held = (
+        await client.post(
+            "/api/sets",
+            json={"name": "Holder", "bean_id": bean, "version": {"profile_version_id": taken}},
         )
-    )
-    stored = await wired.sets.get(made.id)
-    assert stored is not None and stored.board_id == row.id, "the adopting list gave it the profile"
-    with pytest.raises(VersionRefused):
-        await new_set(wired, "Second", file_version)
+    ).json()["data"]
+    design = (
+        await client.post("/api/sets/design", json={"bean_id": bean, "grinder_id": grinder})
+    ).json()["data"]["set"]
 
-
-async def test_a_file_a_profile_stands_on_or_the_machine_dropped_is_not_something_to_start_on(
-    wired: Fixtures,
-) -> None:
-    stood = await make_profile_version(wired.db, "Stood on", owned=False)
-    await ProfilesRepository(wired.db).upsert_device_profile(device_id="one", version_id=stood)
-    await ProfileBoardRepository(wired.db).insert(
-        BoardRowWrite(
-            label="Stood on", current_version_id=stood, origin="adopted", device_profile_id="one"
+    async def add(version: int) -> httpx.Response:
+        return await client.post(
+            f"/api/sets/{design['id']}/versions", json={"profile_version_id": version, "dose_g": 18}
         )
+
+    assert (await add(older)).status_code == 409
+    refused = await add(taken)
+    assert refused.status_code == 409
+    assert refused.json()["error"]["message"] == (
+        f"Taken belongs to {held['name']}. Duplicate {held['name']} to start a new one on a copy."
     )
-    deleted = await make_profile_version(wired.db, "Deleted", owned=False)
-    await ProfilesRepository(wired.db).upsert_device_profile(device_id="two", version_id=deleted)
-    await wired.db.execute(
-        "UPDATE device_profiles SET deleted_at = '2026-10-13' WHERE device_id = 'two'"
-    )
-
-    with pytest.raises(VersionRefused):
-        await new_set(wired, "On a deleted file", deleted)
+    done = await add(free)
+    assert done.status_code == 201
+    page = (await client.get(f"/api/sets/{design['id']}")).json()["data"]["set"]
+    assert page["designing"] is False and page["profile_label"] == "Free"
 
 
-async def test_a_design_filled_from_a_card_whose_version_the_profile_moved_on_from_follows(
-    wired: Fixtures,
+async def test_the_choices_route_lists_free_profiles_and_the_files_nobody_stands_on(
+    client: httpx.AsyncClient, app: FastAPI
 ) -> None:
-    board, first = await profile(wired, "Designed")
-    later = await another_version(wired.db, first, description="later")
-    await wired.db.execute(
-        "UPDATE profile_board SET current_version_id = ? WHERE id = ?", (later, board)
-    )
-    designing = await wired.sets.create_design(
-        SetWrite(name="Design", bean_id=wired.bean_id), DesignBrief()
+    db = app.state.db
+    free = await make_profile_version(db, "Free")
+    held = await make_profile_version(db, "Held")
+    file_version = await make_profile_version(db, "A file", owned=False)
+    await ProfilesRepository(db).upsert_device_profile(device_id="f1", version_id=file_version)
+    bean = (await client.post("/api/beans", json={"name": "Guji"})).json()["data"]["id"]
+    await client.post(
+        "/api/sets",
+        json={"name": "Holder", "bean_id": bean, "version": {"profile_version_id": held}},
     )
 
-    await wired.sets.add_version(designing.id, SetVersionPatch(profile_version_id=first))
+    response = await client.get("/api/sets/profile-choices")
 
-    versions = await wired.sets.versions(designing.id)
-    assert [v.version_label for v in reversed(versions)] == ["v1", "v1.1"]
-    current = await wired.sets.current_version(designing.id)
-    assert current is not None and current.profile_version_id == later
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["items"] == [
+        {"profile_version_id": free, "label": "Free"},
+        {"profile_version_id": file_version, "label": "A file"},
+    ]
+
+
+async def test_a_set_on_a_loose_version_is_given_a_profile_through_the_route(
+    client: httpx.AsyncClient, app: FastAPI
+) -> None:
+    """The old Set whose versions name a file no profile has: its next version gives it one."""
+    db = app.state.db
+    loose = await make_profile_version(db, "On a file", owned=False)
+    free = await make_profile_version(db, "Free")
+    bean = (await client.post("/api/beans", json={"name": "Guji"})).json()["data"]["id"]
+    sets = SetsRepository(db)
+    old = await sets.create(
+        SetWrite(name="Old", bean_id=bean),
+        SetVersionWrite(profile_version_id=loose),
+        from_a_draft=True,
+    )
+
+    response = await client.post(
+        f"/api/sets/{old.id}/versions", json={"profile_version_id": free, "dose_g": 18}
+    )
+
+    assert response.status_code == 201, response.text
+    page = (await client.get(f"/api/sets/{old.id}")).json()["data"]["set"]
+    assert page["profile_label"] == "Free"
 
 
 @pytest.mark.parametrize("order", ["current first", "older first"])
@@ -481,3 +660,82 @@ async def test_a_second_set_on_a_shared_loose_version_leaves_the_profile_its_own
         assert await profiles.owner_of(version.profile_version_id or 0) == row.id
     b_version = (await wired.sets.versions(other.id))[0]
     assert b_version.profile_version_id == shared, "the other Set keeps what it named"
+
+
+async def test_the_choices_are_exactly_what_a_new_set_accepts(wired: Fixtures) -> None:
+    """One function decides both: every version a Set could be created on is offered, and every
+    offered one is accepted (utility files and deleted profiles are answered the same way)."""
+    profiles = ProfilesRepository(wired.db)
+    free = await make_profile_version(wired.db, "Free")
+    held = await make_profile_version(wired.db, "Held")
+    await new_set(wired, "Holder", held)
+    deleted = await make_profile_version(wired.db, "Deleted")
+    await wired.db.execute(
+        "UPDATE profile_board SET deleted_at = '2026-10-13' "
+        "WHERE id = (SELECT board_id FROM profile_versions WHERE id = ?)",
+        (deleted,),
+    )
+    older = await make_profile_version(wired.db, "Moved on")
+    await wired.db.execute(
+        "UPDATE profile_board SET current_version_id = ? "
+        "WHERE id = (SELECT board_id FROM profile_versions WHERE id = ?)",
+        (await another_version(wired.db, older, description="newer"), older),
+    )
+    file_version = await make_profile_version(wired.db, "File", owned=False)
+    await profiles.upsert_device_profile(device_id="f", version_id=file_version)
+    utility = await make_profile_version(wired.db, "Utility file", owned=False)
+    await profiles.upsert_device_profile(device_id="u", version_id=utility)
+    await wired.db.execute("UPDATE profile_versions SET utility = 1 WHERE id = ?", (utility,))
+    gone = await make_profile_version(wired.db, "Gone file", owned=False)
+    await profiles.upsert_device_profile(device_id="g", version_id=gone)
+    await wired.db.execute(
+        "UPDATE device_profiles SET deleted_at = '2026-10-13' WHERE device_id='g'"
+    )
+
+    offered = {version for version, _ in await wired.sets.profile_choices()}
+
+    everything = await wired.db.fetch_all("SELECT id FROM profile_versions")
+    for row in everything:
+        version = int(row["id"])
+        try:
+            await wired.sets.profile_to_start_on(version)
+            accepted = True
+        except VersionRefused:
+            accepted = False
+        if accepted:
+            # Every accepted version is a live profile's active one or a mirrored file's.
+            continue
+        assert version not in offered, f"offered {version} but New Set refuses it"
+    assert {free, file_version, utility} <= offered
+    with pytest.raises(VersionRefused) as refused:
+        await wired.sets.profile_to_start_on(deleted)
+    assert refused.value.refused == "profile_deleted"
+    assert "deleted from the list" in refused.value.message
+    assert not {held, deleted, older, gone} & offered
+
+
+async def test_a_set_with_no_profile_now_is_given_one_though_an_older_version_names_a_file(
+    client: httpx.AsyncClient, app: FastAPI
+) -> None:
+    """An old Set: a version on a file, then a newer "any profile" one. Its next version names a
+    free profile, which is the Set's whatever the current version is, and the file's version is
+    settled for it."""
+    db = app.state.db
+    loose = await make_profile_version(db, "On a file", owned=False)
+    free = await make_profile_version(db, "Free")
+    bean = (await client.post("/api/beans", json={"name": "Guji"})).json()["data"]["id"]
+    sets = SetsRepository(db)
+    old = await sets.create(
+        SetWrite(name="OnLoose", bean_id=bean),
+        SetVersionWrite(profile_version_id=loose),
+        from_a_draft=True,
+    )
+    assert await sets.add_version(old.id, SetVersionPatch(profile_version_id=None))
+
+    response = await client.post(
+        f"/api/sets/{old.id}/versions", json={"profile_version_id": free, "dose_g": 18.5}
+    )
+
+    assert response.status_code == 201, response.text
+    await assert_versions_owned(db)
+    await assert_sets_follow_their_profiles(db)

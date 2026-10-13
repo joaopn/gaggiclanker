@@ -76,6 +76,7 @@ import type {
   PatternsData,
   PinAnswer,
   PinPreview,
+  ProfileChoiceListData,
   ProfileDraft,
   ProfileDraftDetail,
   ProfileDraftListData,
@@ -1063,6 +1064,11 @@ export async function getSets(includeArchived = false): Promise<SetListData> {
   return fetchApi<SetListData>(`/sets${queryString({ include_archived: includeArchived })}`);
 }
 
+/** What a Set may start on: free profiles by their active version, and unadopted machine files. */
+export async function getProfileChoices(): Promise<ProfileChoiceListData> {
+  return fetchApi<ProfileChoiceListData>("/sets/profile-choices");
+}
+
 export async function getSet(id: number): Promise<SetDetailData> {
   return fetchApi<SetDetailData>(`/sets/${id}`);
 }
@@ -1225,7 +1231,7 @@ export async function getSetProposals(id: number): Promise<SetProposalListData> 
 /** Record a proposed change as the Set's next version. A person's press. */
 /**
  * Accept a proposed change. `major` is the card's "Major change" box; left out,
- * the server's rule names the version (a different profile is a major).
+ * it is a minor.
  */
 export async function acceptSetProposal(
   id: number,

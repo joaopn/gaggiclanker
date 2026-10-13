@@ -119,6 +119,26 @@ async def seeded(db: Database) -> Database:
     return db
 
 
+async def give_the_set_its_profile(found: Fixture) -> None:
+    """The fixture Set brews a profile of its own: a profile-list row that owns its version.
+
+    A Set has one profile, so a conversation about it that drafts a change to its profile needs
+    one. The review tests themselves need no row, which is why the fixture leaves it out.
+    """
+    from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+
+    if await found.db.fetch_value("SELECT board_id FROM sets WHERE id = ?", (found.set_id,)):
+        return
+    version = await ProfilesRepository(found.db).get_version(found.profile_version_id)
+    assert version is not None
+    row = await ProfileBoardRepository(found.db).insert(
+        BoardRowWrite(
+            label=version.label, current_version_id=version.id, origin="adopted", on_machine=False
+        )
+    )
+    await found.db.execute("UPDATE sets SET board_id = ? WHERE id = ?", (row.id, found.set_id))
+
+
 @dataclass(slots=True)
 class Fixture:
     """The ids the review, chat and tool tests reach for."""

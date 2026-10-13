@@ -241,6 +241,21 @@ def test_a_sets_profile_is_the_owner_of_its_current_versions_profile_version(db:
     assert db.board_of(set_id) == mine
 
 
+def test_the_current_version_decides_even_when_it_is_not_the_newest_made(db: Level1) -> None:
+    """A Set that went back: its current version is an older one, and its profile is that one's."""
+    mine = db.board("Mine")
+    other = db.board("Other")
+    older = db.version("Older", mine)
+    newer = db.version("Newer", other)
+    set_id = db.set_on("S", older, newer)
+    first = db.set_versions(set_id)[0]["id"]
+    db.conn.execute("UPDATE sets SET current_version_id = ? WHERE id = ?", (first, set_id))
+
+    db.upgrade()
+
+    assert db.board_of(set_id) == mine
+
+
 def test_when_the_current_version_has_no_owner_the_newest_owned_one_decides(db: Level1) -> None:
     mine = db.board("Mine")
     other = db.board("Other")

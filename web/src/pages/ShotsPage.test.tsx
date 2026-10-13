@@ -172,6 +172,7 @@ const versions: ProfileVersionListData = {
       created_at: "2026-03-01T00:00:00.000Z",
       mirrored: true,
       shot_count: 12,
+      is_active: true,
     },
     {
       id: 9,
@@ -183,6 +184,7 @@ const versions: ProfileVersionListData = {
       created_at: "2026-02-01T00:00:00.000Z",
       mirrored: false,
       shot_count: 1,
+      is_active: false,
     },
   ],
   total: 2,

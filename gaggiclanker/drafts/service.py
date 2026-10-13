@@ -228,7 +228,6 @@ class ProfileDraftService:
                 else None
             ),
             inherit=inherit,
-            set_id=parent.set_id if parent is not None else None,
             is_new=is_new,
         )
         row = await self.proposals.store(

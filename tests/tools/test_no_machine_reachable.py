@@ -64,7 +64,7 @@ from gaggiclanker.tools.mcp.stdio import stdio_tool_context
 from gaggiclanker.tools.registry import registry
 from gaggiclanker.tools.scope import ToolScope
 from tests.conftest import running_app, seed_settings
-from tests.review.conftest import Fixture, build_fixture
+from tests.review.conftest import Fixture, build_fixture, give_the_set_its_profile
 from tests.sync.conftest import SMALL_COUNT, build_archive_device
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -245,6 +245,7 @@ async def connected(
         assert await connection.client.wait_connected(5.0), "the fake machine did not connect"
         assert connection.engine is not None
         fixture = await build_fixture(app.state.db)
+        await give_the_set_its_profile(fixture)
         yield app, client, fixture
 
 
@@ -624,6 +625,7 @@ async def test_the_stdio_context_proposes_drafts(
     try:
         await create_schema(db)
         fixture = await build_fixture(db)
+        await give_the_set_its_profile(fixture)
         settings = SettingsService(SettingsRepository(db))
         ctx = stdio_tool_context(db, settings, scope=ToolScope.for_thread(fixture.set_id))
 

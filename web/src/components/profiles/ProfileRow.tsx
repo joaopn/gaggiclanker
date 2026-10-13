@@ -44,7 +44,7 @@ export function ProfileRow({
   const starred = useSetStarred();
   const [confirming, setConfirming] = useState(false);
   const state = rowStateOf(view, entry);
-  const sets = entry.sets_brewing ?? [];
+  const set = entry.set ?? null;
   const selected = entry.machine.selected === true;
   const pin = entry.pin ?? null;
   const waiting = proposals.length > 0 ? proposals.length : (entry.proposed_versions ?? 0);
@@ -55,7 +55,7 @@ export function ProfileRow({
   const send = (next: boolean) =>
     once((release) => onMachine.mutate({ rowId: row.id, on: next }, { onSettled: release }));
   const turn = (next: boolean) => {
-    if (!next && (sets.length > 0 || selected)) {
+    if (!next && (set !== null || selected)) {
       setConfirming(true);
       return;
     }
@@ -98,6 +98,11 @@ export function ProfileRow({
                 ? ` · ${entry.active_version.shots_brewed} ${entry.active_version.shots_brewed === 1 ? "shot" : "shots"}`
                 : ""}
             </span>
+            {pin ? null : (
+              <span className="block text-muted-foreground text-xs" data-testid="row-set">
+                {set ? `Set: ${set.name}` : "No Set"}
+              </span>
+            )}
             <StateLine state={state} />
           </span>
         </button>
@@ -172,11 +177,10 @@ export function ProfileRow({
               send(false);
             }}
           >
-            {sets.length > 0 ? (
+            {set !== null ? (
               <p data-testid="switch-off-sets">
-                {sets.map((s) => s.name).join(", ")} brew{sets.length === 1 ? "s" : ""} this
-                profile. The next sync takes it off the machine, and{" "}
-                {sets.length === 1 ? "it" : "they"} can no longer brew it there.
+                {set.name} brews this profile. The next sync takes it off the machine, and it can no
+                longer brew it there.
               </p>
             ) : null}
             {selected ? (

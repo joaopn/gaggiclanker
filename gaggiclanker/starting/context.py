@@ -395,21 +395,23 @@ async def planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, s
 
 
 async def profile_candidates(db: Database) -> list[ProfileCandidate]:
-    """The library, shortlisted: most-used brew profiles first.
+    """The library, shortlisted: the profiles no Set has, most-used first, each as the version it
+    has active (a new Set brews that one).
 
-    Utility profiles are excluded — a backflush is not a starting point — and
-    so is anything that has never been used *and* is not mirrored, because a
-    profile the machine does not have is one the person would have to make active
-    in the list, and sync, before they could brew a shot with it.
+    Utility profiles are excluded — a backflush is not a starting point — and so is every
+    profile that already has a Set: a profile has at most one, so a new Set cannot take it, and
+    a recipe for a second bag on it is a Duplicate of that Set, not a suggestion made here.
     """
     rows = await db.fetch_all(
         f"""
         SELECT pv.id, pv.label, pv.json,
                (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = pv.id) AS shot_count
-          FROM profile_versions pv
-         WHERE pv.utility = 0 AND {not_synthetic_sql("pv")}
+          FROM profile_board b
+          JOIN profile_versions pv ON pv.id = b.current_version_id
+         WHERE b.deleted_at IS NULL AND pv.utility = 0 AND {not_synthetic_sql("pv")}
+           AND NOT EXISTS (SELECT 1 FROM sets s WHERE s.board_id = b.id)
            -- A pin's copy belongs to one Set version for ever and no Set version may name it.
-           AND NOT EXISTS (SELECT 1 FROM set_version_pins p WHERE p.profile_version_id = pv.id)
+           AND NOT EXISTS (SELECT 1 FROM set_version_pins p WHERE p.board_id = b.id)
          ORDER BY shot_count DESC, pv.id DESC
          LIMIT ?
         """,  # noqa: S608 - the one interpolation is a constant fragment

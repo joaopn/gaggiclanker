@@ -38,9 +38,9 @@ one of them true:
   the fact, not against somebody setting out to deceive themselves.
 * **a Set says whether shots may be filed under it** (`automatch`), and any
   number of them may say yes: a kitchen with several grinders has several
-  coffees loaded at once, and the matcher tells them apart by the profile they
-  were brewed with. Exactly one candidate naming the shot's profile files it;
-  none or several leaves it in the inbox.
+  coffees loaded at once, and each Set has a profile of its own. The Set whose
+  current version names the shot's profile version files it; none leaves it in
+  the inbox.
 * **a shot's Set is never guessed twice.** The matcher only ever writes over a
   NULL, so a correction made by hand survives every later sync pass.
 """
@@ -72,6 +72,7 @@ from gaggiclanker.db.repos.shots import NEEDS_SET_SQL
 from gaggiclanker.db.repos.version_names import (
     label_sql,
     names_from_state,
+    next_names,
     next_numbers,
     state_sql,
 )
@@ -97,6 +98,7 @@ __all__ = [
     "DesignBrief",
     "DesignRefusal",
     "FieldChange",
+    "LiveSet",
     "ProfileMatch",
     "ProfileMatchSummary",
     "RollbackWrite",
@@ -160,7 +162,7 @@ class DesignBrief(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     #: The profile version the new profile is derived from. Never the Set's
-    #: own profile: forking means a new profile, and the source and every Set
+    #: own profile: forking means a new profile, and the source and the Set
     #: that brews it are left as they are.
     fork_profile_version_id: int | None = None
     #: Where they grind espresso on this grinder, in its own units. The one
@@ -175,9 +177,9 @@ class SetVersionWrite(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: Which profile this Set brews with. NULL means the Set names no profile,
-    #: and then no shot is ever filed here on its own — the Set is picked by
-    #: hand. See :meth:`SetsRepository.versions_naming_profile`.
+    #: Which profile version this Set's first recipe brews, which is how the Set gets its profile
+    #: (a profile that has a Set already is refused). NULL means the Set names no profile, and
+    #: then no shot is ever filed here on its own — the Set is picked by hand.
     profile_version_id: int | None = None
     #: The grinder's own reading, as text: a Niche says "22", a Mazzer says
     #: "between 3 and 4". `grind_value` is the same thing as a number when there
@@ -436,6 +438,7 @@ type VersionRefusal = Literal[
     "profile_has_a_set",
     "other_profile",
     "not_the_active_version",
+    "profile_deleted",
 ]
 
 #: Why a Set being designed cannot take the write asked of it. The last two
@@ -469,6 +472,7 @@ _DESIGN_REFUSALS: dict[str, str] = {
     ),
     "profile_has_a_set": "That profile already has a Set",
     "other_profile": "A Set brews one profile: that profile version belongs to another",
+    "profile_deleted": "That profile was deleted from the list: pick one that is on it",
     "not_the_active_version": (
         "A Set starts on a profile's active version: pick a profile that has no Set"
     ),
@@ -517,12 +521,24 @@ class VersionWriteResult:
     refused: VersionRefusal | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class LiveSet:
+    """A profile's Set, for a page that warns before the profile changes."""
+
+    set_id: int
+    name: str
+    #: The profile version the Set's current version brews.
+    brewing_version_id: int | None
+    #: What a change of the profile's active version would make the Set's next version.
+    next_minor_label: str
+
+
 class ProfileMatch(BaseModel):
     """What :meth:`SetsRepository.profile_match` did with one shot."""
 
     model_config = ConfigDict(extra="forbid")
 
-    outcome: Literal["matched", "ambiguous", "unmatched"]
+    outcome: Literal["matched", "unmatched"]
     #: The version the shot was filed under; only set when ``matched``.
     set_version_id: int | None = None
 
@@ -532,10 +548,8 @@ class ProfileMatchSummary(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: Filed under the one Set that brews their profile.
+    #: Filed under the Set that brews their profile.
     matched: int = 0
-    #: Two or more Sets brew their profile, so nothing was guessed.
-    ambiguous: int = 0
     #: No Set brews their profile, or the archive does not know which it was.
     unmatched: int = 0
 
@@ -854,11 +868,11 @@ def version_changes(
     against.
 
     The temperature is the sixth line the log can show and the one nobody typed:
-    it rides along with the profile. A version that switched profiles changed
-    the brew temperature too whenever the two documents state different ones,
-    and that is the change the reader is looking for — "one degree hotter" is
-    the profile's doing, so it is only ever reported beside the profile change
-    that caused it.
+    it rides along with the profile. A version whose profile version changed
+    changed the brew temperature too whenever the two documents state different
+    ones, and that is the change the reader is looking for — "one degree hotter"
+    is the profile's doing, so it is only ever reported beside the "Brew changed"
+    line that caused it.
     """
     if parent is None:
         return []
@@ -867,6 +881,11 @@ def version_changes(
         before = getattr(parent, field)
         after = getattr(version, field)
         if before == after:
+            continue
+        if field == "profile_version_id" and before is not None and after is not None:
+            # A Set brews one profile, so both are versions of it and carry its name: the log
+            # says the brew changed, not "Foo → Foo".
+            changes.append(FieldChange(field=field, label="Brew changed", before=None, after=None))
             continue
         changes.append(
             FieldChange(
@@ -1181,26 +1200,9 @@ class SetsRepository(Repository):
         now = utc_now()
         # The Set's profile is the profile its first version brews; a profile that has a Set
         # already is refused (a bag on the same profile is a Duplicate, which copies it).
-        board_id = await self._owner_of(version.profile_version_id)
-        if board_id is not None:
-            await self._refuse_a_taken_profile(board_id)
-            active = await self.db.fetch_value(
-                "SELECT current_version_id FROM profile_board WHERE id = ?", (board_id,)
-            )
-            if active != version.profile_version_id and not from_a_draft:
-                raise VersionRefused("not_the_active_version")
-        elif version.profile_version_id is not None:
-            # A version no profile has yet is the starting point's own: the draft it made, which
-            # the Set brews until the draft is put (and the profile that takes it over is the
-            # Set's). Nobody else names it, and no other path starts a Set on one (nor on a
-            # version of a profile that is not its active one, which a draft's is until it is put).
-            # The same holds for the version of a machine file the list has not adopted (Writes
-            # off never adopts any): the Set has no profile until the list takes the file over.
-            if await self.db.fetch_value(
-                "SELECT 1 FROM set_versions WHERE profile_version_id = ? LIMIT 1",
-                (version.profile_version_id,),
-            ) or not (from_a_draft or await self._is_an_unadopted_file(version.profile_version_id)):
-                raise VersionRefused("not_the_active_version")
+        board_id = await self.profile_to_start_on(
+            version.profile_version_id, from_a_draft=from_a_draft
+        )
         cursor = await self.db.execute(
             """
             INSERT INTO sets (name, bean_id, grinder_id, archived, automatch, created_at,
@@ -1226,6 +1228,40 @@ class SetsRepository(Repository):
         await self._insert_version(set_id, None, values, now, major=True)
         return set_id
 
+    async def profile_to_start_on(
+        self, profile_version_id: int | None, *, from_a_draft: bool = False
+    ) -> int | None:
+        """The profile a Set may start on, which is the one thing New Set, filling a design and a
+        legacy Set's first profile all ask: the active version of a profile that has no Set.
+
+        Returns that profile (``None`` for no version at all). A profile that has a Set is refused
+        with the way forward; so is any other version. The starting point alone starts a Set on
+        its draft: a version no profile has yet that no Set names, or a version of a profile that
+        is not its active one, which a draft's is until it is put.
+        """
+        board_id = await self._owner_of(profile_version_id)
+        await self._refuse_a_pins_copy(profile_version_id)
+        if board_id is not None:
+            await self._refuse_a_taken_profile(board_id)
+            row = await self.db.fetch_one(
+                "SELECT current_version_id, deleted_at FROM profile_board WHERE id = ?",
+                (board_id,),
+            )
+            if row is None or row["deleted_at"] is not None:
+                raise VersionRefused("profile_deleted")
+            if row["current_version_id"] != profile_version_id and not from_a_draft:
+                raise VersionRefused("not_the_active_version")
+        elif profile_version_id is not None:
+            # A version no profile owns: the starting point's own draft, or the version of a
+            # machine file the list has not adopted (Writes off never adopts any), in either case
+            # one no Set names yet. The Set has no profile until the list takes the file over.
+            if await self.db.fetch_value(
+                "SELECT 1 FROM set_versions WHERE profile_version_id = ? LIMIT 1",
+                (profile_version_id,),
+            ) or not (from_a_draft or await self._is_an_unadopted_file(profile_version_id)):
+                raise VersionRefused("not_the_active_version")
+        return board_id
+
     async def _is_an_unadopted_file(self, profile_version_id: int) -> bool:
         """The version a machine file holds, as the last sync read it, that no profile stands on."""
         return bool(
@@ -1236,6 +1272,33 @@ class SetsRepository(Repository):
                 (profile_version_id,),
             )
         )
+
+    async def profile_choices(self) -> list[tuple[int, str]]:
+        """What a Set may start on, as ``(profile version id, label)``: every live profile's
+        active version and every mirrored machine file's version, each kept only when
+        :meth:`profile_to_start_on` accepts it. One rule answers both what this lists and what New
+        Set takes, so the picker never offers what the create refuses, nor the other way round."""
+        candidates = await self.db.fetch_all(
+            "SELECT current_version_id AS id, label FROM profile_board WHERE deleted_at IS NULL "
+            "ORDER BY label COLLATE NOCASE, id"
+        )
+        files = await self.db.fetch_all(
+            "SELECT current_version_id AS id, label FROM device_profiles WHERE deleted_at IS NULL "
+            "ORDER BY label COLLATE NOCASE, device_id"
+        )
+        chosen: list[tuple[int, str]] = []
+        seen: set[int] = set()
+        for entry in [*candidates, *files]:
+            version_id = int(entry["id"])
+            if version_id in seen:
+                continue
+            seen.add(version_id)
+            try:
+                await self.profile_to_start_on(version_id)
+            except VersionRefused:
+                continue
+            chosen.append((version_id, str(entry["label"])))
+        return chosen
 
     async def create_design(self, spec: SetWrite, brief: DesignBrief) -> SetRow:
         """Create a Set to be designed in its conversation, atomically.
@@ -1372,7 +1435,7 @@ class SetsRepository(Repository):
         rather than by which one somebody flagged last.
 
         An **archived** Set cannot be offered. It receives no shots either way
-        (`versions_naming_profile` filters on `archived`), so the flag on one
+        (`version_naming_profile` filters on `archived`), so the flag on one
         would be a badge that promises something the archive will not do. The
         route turns the ``None`` into a 409.
         """
@@ -1471,6 +1534,7 @@ class SetsRepository(Repository):
         for field in RECIPE_FIELDS:
             if field in sent:
                 values[field] = sent[field]
+        await self._give_a_legacy_set_its_profile(set_id, sent.get("profile_version_id"))
         values["intent"] = patch.intent
         values["origin"] = patch.origin
         values["origin_analysis_id"] = patch.origin_analysis_id
@@ -1488,6 +1552,34 @@ class SetsRepository(Repository):
             major=bool(major),
             keep_proposal=keep_proposal,
         )
+
+    async def _give_a_legacy_set_its_profile(
+        self, set_id: int, profile_version_id: int | None
+    ) -> None:
+        """A Set with no profile that is given one at its next version: under New Set's rule. Each
+        version no profile owns that its versions name goes through the profile's own
+        ``version_for`` like everywhere else (the profile takes it over, or keeps a copy of its
+        own), so the Set's versions are all that profile's afterwards. A
+        version no profile owns gives it none. A Set that has a profile is not touched: its
+        version follows the profile, and a version naming another is refused by the write."""
+        board = await self._owner_of(profile_version_id)
+        if board is None:
+            return
+        if (
+            await self.db.fetch_value("SELECT board_id FROM sets WHERE id = ?", (set_id,))
+            is not None
+        ):
+            return
+        await self.profile_to_start_on(profile_version_id)
+        # Imported here: the profile list's repository reads this one's neighbours.
+        from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
+
+        # The person named the profile, so it is the Set's whatever its current version is, and
+        # every version no profile owns that the Set names is settled for it: taken over, or the
+        # profile gets a copy of its own that the Set's versions then name. The new version, which
+        # names the profile's own, is written by the caller; nothing is followed from here.
+        await self.db.execute("UPDATE sets SET board_id = ? WHERE id = ?", (board, set_id))
+        await ProfileBoardRepository(self.db).settle_a_sets_versions(board, set_id, follow=False)
 
     async def _insert_version(
         self,
@@ -1575,18 +1667,22 @@ class SetsRepository(Repository):
         row = await self.db.fetch_one("SELECT id, name FROM sets WHERE board_id = ?", (board_id,))
         return None if row is None else (int(row["id"]), str(row["name"]))
 
-    async def _refuse_a_taken_profile(self, board_id: int) -> None:
-        """A profile has at most one Set: say whose it is, and what to do instead."""
+    async def taken_sentence(self, board_id: int) -> str | None:
+        """Why a Set cannot take this profile, if it has one already: whose it is, and what to do
+        instead. ``None`` for a profile with no Set."""
         taken = await self.set_of_profile(board_id)
         if taken is None:
-            return
+            return None
         label = await self.db.fetch_value(
             "SELECT label FROM profile_board WHERE id = ?", (board_id,)
         )
-        raise VersionRefused(
-            "profile_has_a_set",
-            f"{label} belongs to {taken[1]}. Duplicate {taken[1]} to start a new one on a copy.",
-        )
+        return f"{label} belongs to {taken[1]}. Duplicate {taken[1]} to start a new one on a copy."
+
+    async def _refuse_a_taken_profile(self, board_id: int) -> None:
+        """A profile has at most one Set."""
+        sentence = await self.taken_sentence(board_id)
+        if sentence is not None:
+            raise VersionRefused("profile_has_a_set", sentence)
 
     async def _refuse_another_profile(self, set_id: int, profile_version_id: int | None) -> None:
         """Every version of a Set brews a version its profile owns (nothing else keeps the rule,
@@ -1639,10 +1735,11 @@ class SetsRepository(Repository):
             if field in sent:
                 values[field] = sent[field]
         await self._refuse_a_pins_copy(values["profile_version_id"])
-        # The first recipe gives the Set its profile (a profile that has a Set is refused).
-        owner = await self._owner_of(values["profile_version_id"])
+        # The first recipe gives the Set its profile. An accepted card has put its draft first, so
+        # it may be a version the profile has moved on from; the person's own choice in the form is
+        # held to New Set's rule before it arrives (:meth:`profile_to_start_on`).
+        owner = await self.profile_to_start_on(values["profile_version_id"], from_a_draft=True)
         if owner is not None:
-            await self._refuse_a_taken_profile(owner)
             await self.db.execute(
                 "UPDATE sets SET board_id = ? WHERE id = ?", (owner, current.set_id)
             )
@@ -2051,18 +2148,26 @@ class SetsRepository(Repository):
         line = live_line(self.to_models(VersionLink, rows), current)
         return next((version_id for version_id in line[1:] if version_id in kept), None)
 
-    async def current_brews(self) -> list[tuple[int, str, int | None]]:
-        """What every live Set brews right now: ``(set id, name, profile version)``.
-
-        The Set's current version, archived Sets left out: a warning about a profile a Set no
-        longer uses would only be noise. The version is ``None`` for a Set with no profile.
-        """
+    async def live_sets_by_profile(self) -> dict[int, LiveSet]:
+        """The Set each profile has, by profile id: archived Sets left out (a warning about a
+        profile a Set no longer uses would only be noise), with the version the Set brews now and
+        what its next minor version would be called."""
         rows = await self.db.fetch_all(
-            "SELECT s.id AS id, s.name AS name, v.profile_version_id AS pv FROM sets s "
+            "SELECT s.board_id AS board_id, s.id AS id, s.name AS name, "
+            "v.profile_version_id AS pv FROM sets s "
             "JOIN set_versions v ON v.id = s.current_version_id "
-            "WHERE s.archived = 0 ORDER BY s.id"
+            "WHERE s.archived = 0 AND s.board_id IS NOT NULL"
         )
-        return [(int(r["id"]), str(r["name"]), r["pv"]) for r in rows]
+        found: dict[int, LiveSet] = {}
+        for r in rows:
+            names = await next_names(self.db, int(r["id"]))
+            found[int(r["board_id"])] = LiveSet(
+                set_id=int(r["id"]),
+                name=str(r["name"]),
+                brewing_version_id=r["pv"],
+                next_minor_label=names.minor,
+            )
+        return found
 
     async def follow_profile(
         self,
@@ -2258,15 +2363,14 @@ class SetsRepository(Repository):
         )
         return None if found is None else int(found)
 
-    async def versions_naming_profile(self, profile_version_id: int) -> list[int]:
-        """The current version of every Set offered to the matcher for this profile.
+    async def version_naming_profile(self, profile_version_id: int) -> int | None:
+        """The current version of the Set offered to the matcher that brews this profile version.
 
         Three filters, and each one is a rule stated elsewhere:
 
         * **`automatch`** is the Set's own answer to "file shots here". It is
           the only thing the flag means, and a Set with it off is not a
-          candidate — it does not match and it does not make another Set's
-          match ambiguous.
+          candidate.
         * **`archived = 0`**, because a finished bag receives no shots.
         * only a Set's **current** version counts: an older one that named the
           profile describes what the Set used to be, and filing today's shot
@@ -2274,9 +2378,9 @@ class SetsRepository(Repository):
 
         A Set that names no profile is not configured for this one, so it is
         not here either — it collects nothing on its own and waits to be picked
-        by hand. Two rows are enough to know the answer is ambiguous.
+        by hand. A profile has at most one Set, so there is at most one answer.
         """
-        rows = await self.db.fetch_all(
+        found = await self.db.fetch_value(
             """
             SELECT v.id FROM set_versions v
             JOIN sets s ON s.id = v.set_id
@@ -2284,11 +2388,10 @@ class SetsRepository(Repository):
               AND v.profile_version_id = ?
               AND v.id = s.current_version_id
             ORDER BY v.id
-            LIMIT 2
             """,
             (profile_version_id,),
         )
-        return [int(row["id"]) for row in rows]
+        return None if found is None else int(found)
 
     async def profile_match(
         self,
@@ -2297,19 +2400,16 @@ class SetsRepository(Repository):
         profile_version_id: int | None,
         device_profile_id: str,
     ) -> ProfileMatch:
-        """File a shot under the one Set offered to the matcher that brews its profile.
+        """File a shot under the Set offered to the matcher that brews its profile.
 
         The only path into a Set that is not a person's own decision, for every
         shot alike: one a pull brought in, one an import did, one the button
         was pressed on.
 
-        Only when the answer is not a guess: exactly one candidate Set's
-        current version names the shot's profile version. None is
-        ``unmatched``, two or more is ``ambiguous``, and both leave the shot in
-        the inbox. Guessing wrong is worse than not guessing: a mis-filed shot
-        pollutes the trend chart of a Set it was never part of and nobody goes
-        looking for it, whereas an unfiled shot is on a list with a button next
-        to it.
+        Only when the Set's current version names the shot's profile version.
+        None is ``unmatched`` and leaves the shot in the inbox, where a button
+        stands next to it: a shot filed under the wrong Set pollutes the trend
+        chart of a Set it was never part of and nobody goes looking for it.
 
         A shot that already has a Set is never moved (the `IS NULL` guard), and
         comes back as ``unmatched`` with no version, since nothing was filed.
@@ -2325,12 +2425,10 @@ class SetsRepository(Repository):
             if not await self._fill(shot_id, pinned):
                 return ProfileMatch(outcome="unmatched")
             return ProfileMatch(outcome="matched", set_version_id=pinned)
-        candidates = await self.versions_naming_profile(resolved)
-        if len(candidates) > 1:
-            return ProfileMatch(outcome="ambiguous")
-        if not candidates or not await self._fill(shot_id, candidates[0]):
+        candidate = await self.version_naming_profile(resolved)
+        if candidate is None or not await self._fill(shot_id, candidate):
             return ProfileMatch(outcome="unmatched")
-        return ProfileMatch(outcome="matched", set_version_id=candidates[0])
+        return ProfileMatch(outcome="matched", set_version_id=candidate)
 
     async def match_unfiled(self, shot_ids: Sequence[int] | None = None) -> ProfileMatchSummary:
         """Run :meth:`profile_match` over every shot that needs a Set.
@@ -2366,8 +2464,6 @@ class SetsRepository(Repository):
                 )
                 if match.outcome == "matched":
                     summary.matched += 1
-                elif match.outcome == "ambiguous":
-                    summary.ambiguous += 1
                 else:
                     summary.unmatched += 1
         return summary

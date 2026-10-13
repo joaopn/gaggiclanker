@@ -4,11 +4,11 @@ a put, and :func:`lineage_owner` replays history for the one-time list fill.
 A draft is either a **change to one profile** or a **new profile** with a name of its own, and
 which it is is decided once, when the draft is made, and stored on the draft
 (``destination_board_id``, ``label``). A change goes to the profile its base belongs to (the
-profile that lists the base version, else the one standing on a machine file that holds it), or
-to the Set's profile when that is the profile the Set brews under the same name; it always
-carries that profile's own name. A name never places a draft: the document's label is rebuilt
-from the destination's name, so there is nothing to compare. A new profile is refused when a live
-profile already has its name (:func:`taken_name_sentence`): the only name check there is.
+profile that lists the base version, else the one standing on a machine file that holds it); it
+always carries that profile's own name. A name never places a draft: the document's label is
+rebuilt from the destination's name, so there is nothing to compare. A new profile is refused
+when a live profile already has its name (:func:`taken_name_sentence`): the only name check
+there is.
 
 A change whose base belongs to no live profile (a superseded draft's version, a profile that has
 been deleted) becomes a new profile under the base's name, or a change to the live profile that
@@ -114,8 +114,11 @@ async def lineage_owner[T](
     return await lookup.by_label(version_label)
 
 
-class DraftLookup[T](LineageLookup[T], Protocol):
+class DraftLookup[T](Protocol):
     """What the placement functions ask of whoever holds the live profiles."""
+
+    def label_of(self, profile: T) -> str:
+        """The profile's name."""
 
     async def by_name_key(self, label: str) -> T | None:
         """A live profile whose name is this label by :func:`name_key`, if any."""
@@ -152,32 +155,20 @@ async def change_destination[T](
     *,
     base_version_id: int,
     base_label: str | None,
-    set_id: int | None = None,
 ) -> T | None:
     """The live profile a change to the base's profile is a change to; ``None`` when no live
     profile has the base.
 
     * The base's own profile (:meth:`DraftLookup.base_profile`).
-    * A Set's profile goes first when it has that profile's name (two live profiles can differ in
-      case only, since the sync matches names exactly).
     * A base that belongs to no live profile has only its own label: the live profile with that
-      name is the destination, the Set's first. With none, the change is a new profile.
+      name is the destination. With none, the change is a new profile.
     """
     own = await lookup.base_profile(base_version_id)
     if own is not None:
-        key = name_key(lookup.label_of(own))
-    elif base_label is not None:
-        key = name_key(base_label)
-    else:
+        return own
+    if base_label is None:
         return None
-    owner = own
-    if set_id is not None:
-        theirs = await lookup.by_set(set_id)
-        if theirs is not None and name_key(lookup.label_of(theirs)) == key:
-            owner = theirs
-    if owner is None and base_label is not None:
-        owner = await lookup.by_name_key(base_label)
-    return owner
+    return await lookup.by_name_key(base_label)
 
 
 async def destination_now[T](
@@ -187,7 +178,6 @@ async def destination_now[T](
     stored: T | None,
     base_version_id: int | None,
     base_label: str | None,
-    set_id: int | None = None,
 ) -> T | None:
     """Where a draft goes **now**: the one answer the constructor, the landing, the standing and
     the put all use.
@@ -203,9 +193,7 @@ async def destination_now[T](
         return stored
     if base_version_id is None:
         return None
-    return await change_destination(
-        lookup, base_version_id=base_version_id, base_label=base_label, set_id=set_id
-    )
+    return await change_destination(lookup, base_version_id=base_version_id, base_label=base_label)
 
 
 async def place_draft[T](
@@ -214,7 +202,6 @@ async def place_draft[T](
     label: str,
     destination: T | None,
     base_version_id: int | None = None,
-    set_id: int | None = None,
 ) -> Placement[T]:
     """What a put of a draft does, from the draft's stored destination and name: the one rule the
     constructor, the name check, the page's landing and the put all ask.
@@ -223,14 +210,14 @@ async def place_draft[T](
       unless it is a pin's frozen copy (:attr:`Placement.frozen`);
     * **none**: a new profile under ``label``, refused when a live profile has that name
       (:attr:`Placement.taken`). When that profile is a pin's frozen copy that the draft comes
-      from (the profile its base belongs to, or the one its Set brews: ``base_version_id`` and
-      ``set_id``), the refusal says the profile is pinned, as it would for a change to it.
+      from (the profile its base belongs to: ``base_version_id``), the refusal says the profile
+      is pinned, as it would for a change to it.
     """
     if destination is None:
         taken = await lookup.by_name_key(label)
         frozen = None
         if taken is not None:
-            frozen = await _frozen_origin(lookup, taken, base_version_id, set_id)
+            frozen = await _frozen_origin(lookup, taken, base_version_id)
         return Placement(owner=None, taken=taken, name=label.strip(), frozen=frozen)
     stored = lookup.label_of(destination)
     frozen = await lookup.frozen_sentence(destination)
@@ -240,7 +227,7 @@ async def place_draft[T](
 
 
 async def _frozen_origin[T](
-    lookup: DraftLookup[T], taken: T, base_version_id: int | None, set_id: int | None
+    lookup: DraftLookup[T], taken: T, base_version_id: int | None
 ) -> str | None:
     """Why the profile that has a new profile's name may not be changed, when the draft comes from
     it: the sentence about its pin, else ``None``."""
@@ -248,7 +235,5 @@ async def _frozen_origin[T](
     if sentence is None:
         return None
     if base_version_id is not None and await lookup.base_profile(base_version_id) == taken:
-        return sentence
-    if set_id is not None and await lookup.by_set(set_id) == taken:
         return sentence
     return None

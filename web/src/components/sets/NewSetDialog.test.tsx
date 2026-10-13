@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProfileVersionSummary } from "@/api/types";
+import type { ProfileChoice, ProfileVersionSummary } from "@/api/types";
 import { designName, fillFromProfile, NewSetDialog } from "@/components/sets/NewSetDialog";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { bean, grinder, setRow, startingPointRun, version } from "@/test/setsFixtures";
@@ -16,6 +16,7 @@ const {
   getGrinders,
   getMachines,
   getProfileVersions,
+  getProfileChoices,
   createSet,
   getSimilarSets,
   createStartingPoint,
@@ -26,6 +27,7 @@ const {
   getGrinders: vi.fn(),
   getMachines: vi.fn(),
   getProfileVersions: vi.fn(),
+  getProfileChoices: vi.fn(),
   createSet: vi.fn(),
   getSimilarSets: vi.fn(),
   createStartingPoint: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getGrinders,
   getMachines,
   getProfileVersions,
+  getProfileChoices,
   createSet,
   getSimilarSets,
   createStartingPoint,
@@ -58,12 +61,16 @@ function profileVersion(overrides: Partial<ProfileVersionSummary>): ProfileVersi
     shot_count: 12,
     temperature_c: null,
     target_yield_g: null,
+    // A profile no Set has, by the version it has active: what a new Set may take.
+    board_id: overrides.id ?? 7,
+    is_active: true,
+    set: null,
     ...overrides,
   };
 }
 
-function pinOf(id: number) {
-  return { pin_id: id, set_id: 3, set_version_id: id + 100 };
+function choice(id: number, label: string): ProfileChoice {
+  return { profile_version_id: id, label };
 }
 
 beforeEach(() => {
@@ -116,6 +123,9 @@ beforeEach(() => {
     limit: 200,
     offset: 0,
   });
+  getProfileChoices.mockResolvedValue({
+    items: [choice(7, "9 Bar Espresso"), choice(8, "Adaptive v2"), choice(9, "Turbo by time")],
+  });
   createSet.mockResolvedValue(setRow());
   getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: 1, items: [] });
   createStartingPoint.mockResolvedValue(startingPointRun({ status: "running", output: null }));
@@ -152,27 +162,27 @@ async function pickBean() {
 async function pickProfile(id: string) {
   const user = setupUser();
   await screen.findByRole("option", { name: "9 Bar Espresso" });
-  await user.selectOptions(screen.getByLabelText("Profile version"), id);
+  await user.selectOptions(screen.getByLabelText("Profile"), id);
 }
 
 describe("NewSetDialog", () => {
-  it("leaves a pin's copy out of the profile picker", async () => {
-    getProfileVersions.mockResolvedValue({
-      items: [
-        profileVersion({ id: 7, label: "9 Bar Espresso" }),
-        profileVersion({ id: 11, label: "9 Bar Espresso v1.2", pin: pinOf(11) }),
-        profileVersion({ id: 12, label: "Turbo v1.1", pin: pinOf(12) }),
-      ],
-      total: 3,
-      limit: 200,
-      offset: 0,
+  it("offers what the server says a Set may start on: profiles with no Set, then machine files", async () => {
+    getProfileChoices.mockResolvedValue({
+      items: [choice(7, "9 Bar Espresso"), choice(14, "Switched off"), choice(20, "A file")],
     });
     renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
 
     await screen.findByRole("option", { name: "9 Bar Espresso" });
 
-    const options = within(screen.getByLabelText("Profile version")).getAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual(["Any profile", "9 Bar Espresso"]);
+    const options = within(screen.getByLabelText("Profile")).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "Pick a profile",
+      "9 Bar Espresso",
+      "Switched off",
+      "A file",
+    ]);
+    expect(screen.getByTestId("new-set-profile-help")).toHaveTextContent("through Duplicate");
+    expect(screen.queryByText(/Any profile/)).not.toBeInTheDocument();
   });
 
   it("starts a Set from one screen", async () => {
@@ -185,7 +195,7 @@ describe("NewSetDialog", () => {
       "Bean",
       "Call it",
       "Grinder",
-      "Profile version",
+      "Profile",
       "Grind",
       "Dose (g)",
       "Target yield (g)",
@@ -196,9 +206,10 @@ describe("NewSetDialog", () => {
     expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
     expect(form).toContainElement(screen.getByRole("button", { name: "Start the Set" }));
 
-    // The bean is the one thing a Set cannot start without.
+    // The bean and the profile are what a Set cannot start without.
     expect(screen.getByRole("button", { name: "Start the Set" })).toBeDisabled();
     await pickBean();
+    expect(screen.getByRole("button", { name: "Start the Set" })).toBeDisabled();
     // What the coffee is, not how old a bag of it is: a bean is a type.
     expect(screen.getByTestId("new-set-bean-facts")).toHaveTextContent("light");
 
@@ -256,6 +267,7 @@ describe("NewSetDialog", () => {
 
     await screen.findByRole("option", { name: /Ethiopia Guji/ });
     expect(screen.getByLabelText("Bean")).toHaveValue("1");
+    await pickProfile("7");
     expect(screen.getByRole("button", { name: "Start the Set" })).toBeEnabled();
   });
 
@@ -266,6 +278,7 @@ describe("NewSetDialog", () => {
     renderWithQueryClient(<NewSetDialog open onOpenChange={onOpenChange} />);
 
     await pickBean();
+    await pickProfile("7");
     await user.type(screen.getByLabelText("Dose (g)"), "18");
     await user.click(screen.getByRole("button", { name: "Start the Set" }));
 
@@ -280,6 +293,7 @@ describe("NewSetDialog", () => {
     renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} onCreated={onCreated} />);
 
     await pickBean();
+    await pickProfile("7");
     await user.click(screen.getByRole("button", { name: "Start the Set" }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(3));
@@ -442,11 +456,12 @@ describe("NewSetDialog", () => {
         limit: 200,
         offset: 0,
       });
+      getProfileChoices.mockResolvedValue({ items: [choice(7, "Says nothing")] });
       const user = setupUser();
       renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
 
       await screen.findByRole("option", { name: "Says nothing" });
-      await user.selectOptions(screen.getByLabelText("Profile version"), "7");
+      await user.selectOptions(screen.getByLabelText("Profile"), "7");
 
       expect(screen.getByTestId("profile-temperature")).toHaveTextContent("—");
       expect(screen.getByTestId("temperature-from-profile")).toHaveTextContent(

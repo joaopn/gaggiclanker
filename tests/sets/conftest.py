@@ -99,12 +99,16 @@ async def make_profile_version(
         # A Set starts on a profile's active version, so the profile is on the list.
         from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 
-        await ProfileBoardRepository(db).insert(
+        # Names are unique among live profiles, so a second profile of the same document label
+        # (a test that makes several versions) gets a name of its own.
+        board = ProfileBoardRepository(db)
+        name, n = profile.label, 1
+        while await board.find_live_by_label(name) is not None:
+            n += 1
+            name = f"{profile.label} ({n})"
+        await board.insert(
             BoardRowWrite(
-                label=profile.label,
-                current_version_id=version.id,
-                origin="adopted",
-                on_machine=False,
+                label=name, current_version_id=version.id, origin="adopted", on_machine=False
             )
         )
     return version.id

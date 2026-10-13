@@ -730,6 +730,84 @@ async def test_a_profile_draft_in_a_set_conversation_needs_a_prediction(
     assert "cannot be proposed without a prediction" in data["detail"]
 
 
+async def test_a_set_conversation_cannot_make_a_new_profile(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """A Set has one profile for good: a new profile means a new Set, with or without a guess."""
+    for extra in ({}, {"prediction": "It runs a little sweeter."}):
+        data = await refuse(
+            _with_drafts(set_ctx),
+            "draft_profile",
+            base_version_id=archive.profile_version_id,
+            patch={"temperature": 92},
+            new_profile_name="A gentler fork",
+            reason="A fork with a lower temperature.",
+            **extra,
+        )
+        assert data["detail"] == "A new profile means a new Set: duplicate this Set."
+    assert await ProfileDraftsRepository(archive.db).list_drafts() == []
+
+
+async def test_a_set_conversations_profile_draft_changes_the_sets_profile_by_default(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """The base is the profile's active version, which on a profile with two is the later one."""
+    from tests.profile_rows import another_version
+
+    later = await another_version(archive.db, archive.profile_version_id, description="later")
+    await archive.db.execute(
+        "UPDATE profile_board SET current_version_id = ? "
+        "WHERE id = (SELECT board_id FROM sets WHERE id = ?)",
+        (later, archive.set_id),
+    )
+    made = await call(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        patch={"temperature": 92},
+        prediction="It runs a little sweeter, about two seconds slower.",
+        reason="A degree cooler.",
+    )
+    stored = await ProfileDraftsRepository(archive.db).get(made["draft_id"])
+    assert stored is not None
+    assert stored.base_version_id == later != archive.profile_version_id
+    assert stored.destination_board_id == await archive.db.fetch_value(
+        "SELECT board_id FROM sets WHERE id = ?", (archive.set_id,)
+    )
+
+
+async def test_a_set_conversations_profile_draft_cannot_start_from_another_profile(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    from tests.profile_rows import free_profile_version
+
+    other = await free_profile_version(archive.db)
+    data = await refuse(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        base_version_id=other,
+        patch={"temperature": 92},
+        prediction="It runs a little sweeter, about two seconds slower.",
+        reason="Another profile.",
+    )
+    assert "is not a version of this Set's profile" in data["detail"]
+    assert await ProfileDraftsRepository(archive.db).list_drafts() == []
+
+
+async def test_a_set_with_no_profile_has_none_to_change(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    await archive.db.execute("UPDATE sets SET board_id = NULL WHERE id = ?", (archive.set_id,))
+    data = await refuse(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        prediction="It runs a little sweeter, about two seconds slower.",
+        reason="A degree cooler.",
+    )
+    assert "has no profile yet" in data["detail"]
+
+
 async def test_a_name_in_the_patch_is_refused_and_says_how_to_make_a_new_profile(
     ctx: ToolContext, archive: Fixture
 ) -> None:

@@ -82,7 +82,7 @@ export function boardRowView(
     starred: base.on_home_screen,
     in_conflict: false,
     conflict: null,
-    sets_brewing: [],
+    set: null,
     proposed_versions: 0,
     active_version: {
       version_id: base.current_version_id,
@@ -131,7 +131,7 @@ export function listedVersion(overrides: Partial<ListedVersion> = {}): ListedVer
     is_on_machine: false,
     did_not_verify: false,
     shots_brewed: 0,
-    sets_brewing: [],
+    set: null,
     profile: profileDocument(),
     previous_version_id: null,
     ...overrides,

@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 /**
  * Which Set this shot belongs to, and the shortcut for "that was a new recipe".
  *
- * The archive files a shot on its own when exactly one Set collecting shots
- * brews its profile, so most of the time this panel is a confirmation. It
- * exists for the times it is not: two bags on one profile, a shot pulled on
+ * The archive files a shot on its own when the Set collecting shots brews
+ * its profile, so most of the time this panel is a confirmation. It exists for
+ * the times it is not: a shot pulled on a profile no Set has, a shot pulled on
  * the wrong profile, a backfill from before any Set existed. Assigning by hand
  * overwrites, and the matcher never touches a shot that already has a version
  * — that asymmetry is what makes a correction stick.
@@ -72,7 +72,7 @@ export function AssignToSet({
   return (
     <SectionCard
       title="Set"
-      description="What you were brewing. The archive files a shot under the one Set that brews its profile; anything else — two Sets on that profile, or none — waits here for an answer."
+      description="What you were brewing. The archive files a shot under the Set that brews its profile; anything else — a profile no Set has — waits here for an answer."
       actions={
         setVersion ? (
           <Link

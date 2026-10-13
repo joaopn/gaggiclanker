@@ -24,7 +24,7 @@ beforeEach(() => {
 describe("ProfileAutomatch", () => {
   it("matches every waiting shot from the Shots page and says what happened", async () => {
     const user = setupUser();
-    matchShotsByProfile.mockResolvedValue({ matched: 3, ambiguous: 1, unmatched: 0 });
+    matchShotsByProfile.mockResolvedValue({ matched: 3, unmatched: 1 });
     renderWithQueryClient(<ProfileAutomatch />);
 
     await user.click(screen.getByRole("button", { name: "Match by profile" }));
@@ -32,14 +32,14 @@ describe("ProfileAutomatch", () => {
     await waitFor(() => expect(matchShotsByProfile).toHaveBeenCalledWith(undefined));
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith(
-        "Filed 3 shots · 1 left: more than one Set brews the profile",
+        "Filed 3 shots · 1 left: no Set brews the profile",
       ),
     );
   });
 
   it("matches only this shot on a shot's page, and is gone once it has a Set", async () => {
     const user = setupUser();
-    matchShotsByProfile.mockResolvedValue({ matched: 0, ambiguous: 0, unmatched: 1 });
+    matchShotsByProfile.mockResolvedValue({ matched: 0, unmatched: 1 });
     const { rerender } = renderWithQueryClient(<ProfileAutomatch shotId={42} />);
 
     await user.click(screen.getByRole("button", { name: "Match by profile" }));

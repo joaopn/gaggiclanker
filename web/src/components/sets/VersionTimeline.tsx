@@ -201,9 +201,6 @@ export function VersionTimeline({
               <span aria-hidden="true">📌</span> pinned
             </Badge>
           ) : null}
-          {entry.version.profile_label ? (
-            <Badge variant="outline">{entry.version.profile_label}</Badge>
-          ) : null}
           <Badge variant="ghost" className="text-muted-foreground">
             {originLabel(entry.version.origin)}
           </Badge>
@@ -216,35 +213,50 @@ export function VersionTimeline({
       <div className="space-y-2 px-3 py-2">
         {entry.changes.length > 0 ? (
           <ul className="flex flex-wrap gap-2" data-testid="version-changes">
-            {entry.changes.map((change) => (
-              <li
-                key={change.field}
-                data-testid={change.from_profile ? "change-from-profile" : "change"}
-                data-field={change.field}
-                className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
-              >
-                <span className="text-muted-foreground">{change.label}</span>
-                {/* "93 °C → —" reads as a rendering bug. A field that was
+            {entry.changes.map((change) =>
+              /* The Set brews one profile, so a version that brews another version of it is
+                 said once ("Brew changed"): there is no "Foo → Foo" to show. */
+              change.field === "profile_version_id" &&
+              change.before == null &&
+              change.after == null ? (
+                <li
+                  key={change.field}
+                  data-testid="brew-changed"
+                  data-field={change.field}
+                  className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 font-medium text-xs"
+                >
+                  {change.label}
+                </li>
+              ) : (
+                <li
+                  key={change.field}
+                  data-testid={change.from_profile ? "change-from-profile" : "change"}
+                  data-field={change.field}
+                  className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
+                >
+                  <span className="text-muted-foreground">{change.label}</span>
+                  {/* "93 °C → —" reads as a rendering bug. A field that was
                         set and is now unset is a deliberate change, and the
                         word is what makes it one — except for a change that
                         came with the profile, where nobody cleared anything:
                         the new profile simply does not state the number. */}
-                <span className="tabular-nums line-through opacity-60">
-                  {change.before ?? absent(change.from_profile, "before")}
-                </span>
-                <ArrowRight className="size-3" aria-hidden="true" />
-                <span className="font-medium tabular-nums">
-                  {change.after ?? absent(change.from_profile, "after")}
-                </span>
-                {/* Said in words rather than shown in a colour: this is the
+                  <span className="tabular-nums line-through opacity-60">
+                    {change.before ?? absent(change.from_profile, "before")}
+                  </span>
+                  <ArrowRight className="size-3" aria-hidden="true" />
+                  <span className="font-medium tabular-nums">
+                    {change.after ?? absent(change.from_profile, "after")}
+                  </span>
+                  {/* Said in words rather than shown in a colour: this is the
                         one line in the log with no field behind it on the form,
                         and a reader who cannot see why it is there reads it as
                         a bug. */}
-                {change.from_profile ? (
-                  <span className="text-muted-foreground">· from the profile</span>
-                ) : null}
-              </li>
-            ))}
+                  {change.from_profile ? (
+                    <span className="text-muted-foreground">· from the profile</span>
+                  ) : null}
+                </li>
+              ),
+            )}
           </ul>
         ) : (
           <p className="text-muted-foreground text-xs" data-testid="version-baseline">
@@ -302,7 +314,7 @@ export function VersionTimeline({
 
         {entry.version.restores_version_label ? (
           <p className="text-muted-foreground text-xs" data-testid="version-restores">
-            Restores {entry.version.restores_version_label}. Nothing was sent to the machine.
+            Restores {entry.version.restores_version_label}; its profile went back with it.
           </p>
         ) : null}
 

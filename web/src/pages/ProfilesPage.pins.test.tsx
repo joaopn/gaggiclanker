@@ -220,7 +220,7 @@ describe("a pinned row on the Profiles page", () => {
     );
   });
 
-  it("in conflict, offers Keep the app's and Unpin, and never Keep the machine's", async () => {
+  it("in conflict, offers both sides and Unpin", async () => {
     api.getProfileBoard.mockResolvedValue(boardView({ rows: [pinned({ in_conflict: true })] }));
     const user = setupUser();
     renderWithQueryClient(<ProfilesPage />);
@@ -229,9 +229,12 @@ describe("a pinned row on the Profiles page", () => {
 
     const conflict = await screen.findByTestId("conflict-panel");
     expect(within(conflict).getByTestId("keep-app")).toBeEnabled();
-    expect(within(conflict).queryByTestId("keep-machine")).not.toBeInTheDocument();
+    expect(within(conflict).getByTestId("keep-machine")).toBeEnabled();
     expect(screen.getByRole("button", { name: "Unpin v1.2" })).toBeEnabled();
-    expect(conflict).not.toHaveTextContent("Either way the machine's version is kept");
+    expect(conflict).toHaveTextContent("Either way the machine's version is kept");
+    expect(within(conflict).getByTestId("keep-machine-help")).toHaveTextContent(
+      "The Set gets a new version with the machine's brew, and the next sync puts it on the machine.",
+    );
 
     await user.click(within(conflict).getByTestId("keep-app"));
     await waitFor(() => expect(api.resolveBoardConflict).toHaveBeenCalledTimes(1));

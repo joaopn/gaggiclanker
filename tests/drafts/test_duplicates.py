@@ -17,12 +17,14 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, InsightWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.signatures.service import SignatureService
 from tests.drafts.conftest import BASE_LABEL, base_version_id, data, error
 from tests.drafts.helpers import make_set_on, make_set_on_a_free_profile
 from tests.drafts.test_board import adopted, get_board, pull, row_for
+from tests.profile_rows import database_of
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
 
@@ -109,19 +111,14 @@ async def _learned_at(app: FastAPI, insight_id: int, version_id: int | None) -> 
 
 
 async def _no_profile_set(client: httpx.AsyncClient) -> tuple[int, int]:
+    """A Set that never named a profile: one an older version made (the API no longer does)."""
     bean = data(await client.post("/api/beans", json={"name": "Bare", "roaster": "x"}))
-    made = data(
-        await client.post(
-            "/api/sets",
-            json={
-                "name": "Bare",
-                "bean_id": bean["id"],
-                "version": {"dose_g": 18, "grind_setting": "22"},
-            },
-        )
+    made = await SetsRepository(database_of(client)).create(
+        SetWrite(name="Bare", bean_id=bean["id"]),
+        SetVersionWrite(dose_g=18, grind_setting="22"),
     )
-    detail = data(await client.get(f"/api/sets/{made['id']}"))
-    return int(made["id"]), int(detail["versions"][0]["version"]["id"])
+    detail = data(await client.get(f"/api/sets/{made.id}"))
+    return int(made.id), int(detail["versions"][0]["version"]["id"])
 
 
 # ── the preview ──────────────────────────────────────────────────────

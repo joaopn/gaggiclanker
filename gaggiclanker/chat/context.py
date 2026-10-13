@@ -300,7 +300,7 @@ async def _heading(
         f"THIS VERSION IS {version.version_label}"
         + (" (a dead end: the Set went back past it)" if version.id in dead_ends else "")
         + (" — the current version of this Set" if version.is_current else ""),
-        f"Recipe: {_recipe(version)}.",
+        f"Recipe: {_recipe(version, profile=False)}.",
         f"Changed against {parent.version_label}: {_changes(changes)}."
         if parent is not None
         else "It is the Set's first version: a baseline, not a change to anything.",
@@ -419,7 +419,13 @@ def _changes(changes: Sequence[Any]) -> str:
     if not changes:
         return "nothing in the recipe — only the intent"
     return "; ".join(
-        f"{change.label} {change.before or 'not set'} → {change.after or 'cleared'}"
+        (
+            "the brew changed (a new version of the profile)"
+            if change.field == "profile_version_id"
+            and change.before is None
+            and change.after is None
+            else f"{change.label} {change.before or 'not set'} → {change.after or 'cleared'}"
+        )
         + (" (it came with the profile)" if change.from_profile else "")
         for change in changes
     )
@@ -440,7 +446,7 @@ def _prediction_line(version: SetVersionRow) -> str:
     )
 
 
-def _recipe(version: SetVersionRow) -> str:
+def _recipe(version: SetVersionRow, *, profile: bool = True) -> str:
     """One line of numbers, omitting what the version does not state.
 
     A blank where a dose should be is a fact — this Set has never recorded one —
@@ -458,7 +464,7 @@ def _recipe(version: SetVersionRow) -> str:
     # Set field would propose changing a field that does not exist.
     if version.profile_temperature_c is not None:
         parts.append(f"{version.profile_temperature_c:g} °C from its profile")
-    if version.profile_label:
+    if profile and version.profile_label:
         parts.append(f"profile {version.profile_label}")
     return ", ".join(parts) if parts else "(nothing recorded)"
 
@@ -828,7 +834,7 @@ def _ledger_line(
     changed = (
         _changes(version_changes(version, parent, profile_labels))
         if parent is not None
-        else _recipe(version)
+        else _recipe(version, profile=False)
     )
     parts = [
         f"{version.version_label}{marks}",

@@ -73,7 +73,7 @@ from gaggiclanker.db.repos.profiles import (
     ProfilesRepository,
     ProfileVersionRow,
 )
-from gaggiclanker.db.repos.sets import RollbackWrite, SetsRepository, VersionWriteResult
+from gaggiclanker.db.repos.sets import LiveSet, RollbackWrite, SetsRepository, VersionWriteResult
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
 from gaggiclanker.db.repos.version_names import next_names
 from gaggiclanker.device.client import GaggimateClient
@@ -258,9 +258,10 @@ class BoardRowView(BaseModel):
     starred: bool = True
     #: The active version, summarised.
     active_version: ActiveVersion
-    #: Sets whose current version brews this profile (any of its versions, or the file it stands
-    #: on): changing the active version or switching it off changes what they brew.
-    sets_brewing: list[SetBrewing] = Field(default_factory=list)
+    #: The profile's Set (a profile has at most one, and archived Sets do not count): changing the
+    #: active version gives it a version of its own, and switching the profile off changes what
+    #: the machine holds for it.
+    set: SetBrewing | None = None
     #: In conflict: the machine's file differs from everything the app knows, so a sync does
     #: nothing for this profile until a person chooses a side (``POST .../conflict``).
     in_conflict: bool = False
@@ -506,13 +507,12 @@ class BoardService:
         for proposal in proposals:
             if proposal.row_id is not None:
                 proposed_by_row[proposal.row_id] = proposed_by_row.get(proposal.row_id, 0) + 1
-        brews = await self.sets.current_brews()
+        brews = await self.sets.live_sets_by_profile()
         counts = await self.board.shot_counts([p.version.id for p in computed.rows])
         pinned = await PinsRepository(self.db).live_for_boards(p.row.id for p in computed.rows)
         rows: list[BoardRowView] = []
         for plan in computed.rows:
             entry = await self.board.get_version_entry(plan.row.id, plan.version.id)
-            listed = {v.version_id for v in await self.board.list_versions(plan.row.id)}
             rows.append(
                 BoardRowView(
                     row=plan.row,
@@ -533,7 +533,7 @@ class BoardService:
                         shots_brewed=counts.get(plan.version.id, 0),
                         profile=plan.version.profile,
                     ),
-                    sets_brewing=_sets_brewing(brews, listed),
+                    set=_set_brewing(brews.get(plan.row.id)),
                     in_conflict=plan.conflict_file is not None,
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),
@@ -757,7 +757,6 @@ class BoardService:
             label=name,
             destination=None,
             base_version_id=None if draft.is_new else draft.base_version_id,
-            set_id=draft.set_id,
         )
         if placed.frozen is not None:
             return NameCheck(label=name, refused=placed.frozen)
@@ -904,7 +903,7 @@ class BoardService:
             if found is not None:
                 stored[entry.version_id] = found
         on_machine = {d.current_version_id for d in await self.profiles.list_device_profiles()}
-        brews = await self.sets.current_brews()
+        brewing = (await self.sets.live_sets_by_profile()).get(row.id)
         counts = await self.board.shot_counts(list(stored))
         ordered = [e for e in entries if e.version_id in stored]
         listed: list[ListedVersion] = []
@@ -924,7 +923,9 @@ class BoardService:
                     is_on_machine=version.id in on_machine,
                     did_not_verify=row.failed_version_id == version.id,
                     shots_brewed=counts.get(version.id, 0),
-                    sets_brewing=_sets_brewing(brews, {version.id}),
+                    set=_set_brewing(
+                        brewing if brewing and brewing.brewing_version_id == version.id else None
+                    ),
                     profile=version.profile,
                     previous_version_id=None if older is None else older.version_id,
                 )
@@ -1040,14 +1041,12 @@ class BoardService:
             ),
             base_version_id=base_id,
             base_label=None if base is None else base.label,
-            set_id=draft.set_id,
         )
         placed = await place_draft(
             lookup,
             label=draft.draft_label or version.label,
             destination=destination,
             base_version_id=base_id,
-            set_id=draft.set_id,
         )
         if placed.frozen is not None:
             return _Destination(refused=placed.frozen, frozen=True)
@@ -1102,7 +1101,7 @@ class BoardService:
 
         Where it lands is decided by ``place_draft``, the same function the draft constructor and
         the page's landing ask: a draft continues its base's live profile when its label is that
-        profile's name (a Set's profile first, when its name is the draft's); a new or renamed
+        profile's name; a new or renamed
         draft whose name is already a live profile (it became one after the draft was made) is
         refused with the same sentence, and the draft stays as it was.
 
@@ -1342,7 +1341,6 @@ class BoardService:
             base,
             candidate,
             new_profile_name=name,
-            set_id=draft.set_id,
             is_new=draft.is_new,
         )
         renamed, _ = await self.profiles.ensure_version(
@@ -1375,7 +1373,6 @@ class BoardService:
             base,
             candidate,
             inherit=DraftTarget(row.id, row.label, new_profile=False),
-            set_id=draft.set_id,
             is_new=draft.is_new,
         )
         rebuilt, _ = await self.profiles.ensure_version(
@@ -2443,15 +2440,11 @@ def _machine_state(plan: RowPlan, machine: MachineState) -> BoardMachineState:
     )
 
 
-def _sets_brewing(
-    brews: list[tuple[int, str, int | None]], version_ids: set[int]
-) -> list[SetBrewing]:
-    """The Sets whose current version brews one of these versions."""
-    return [
-        SetBrewing(set_id=set_id, name=name)
-        for set_id, name, version_id in brews
-        if version_id is not None and version_id in version_ids
-    ]
+def _set_brewing(found: LiveSet | None) -> SetBrewing | None:
+    """The profile's Set as the pages show it, or ``None``."""
+    if found is None:
+        return None
+    return SetBrewing(set_id=found.set_id, name=found.name, next_minor_label=found.next_minor_label)
 
 
 def _is_settled(removal: Removal) -> bool:

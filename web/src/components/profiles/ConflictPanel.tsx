@@ -19,8 +19,8 @@ type Json = Record<string, unknown>;
  * since is refused ("the machine changed again") and the panel re-reads and shows the new one.
  * Either choice keeps the machine's content as a version, so nothing is lost.
  *
- * A pinned copy is frozen, so it offers "Keep the app's" alone: keeping the machine's side would
- * make the copy something its Set version never was.
+ * A pinned row is a conflict like any other: keeping the machine's side gives the Set's profile
+ * its own version of that brew, made active, and the pin then names the Set's new version.
  */
 export function ConflictPanel({ rowId, pinned = false }: { rowId: number; pinned?: boolean }) {
   const conflict = useBoardConflict(rowId, true);
@@ -69,7 +69,7 @@ export function ConflictPanel({ rowId, pinned = false }: { rowId: number; pinned
         <p className="mt-1 text-muted-foreground text-xs">
           Someone edited {view.label} on the machine, or made another profile with its name. The app
           holds the ground truth, so a sync leaves this profile alone until you choose.
-          {pinned ? "" : " Either way the machine's version is kept as a version of the profile."}
+          {" Either way the machine's version is kept as a version of the profile."}
         </p>
       </div>
 
@@ -91,7 +91,7 @@ export function ConflictPanel({ rowId, pinned = false }: { rowId: number; pinned
         }}
       />
 
-      <div className={cn("grid gap-2", pinned ? "" : "md:grid-cols-2")}>
+      <div className={cn("grid gap-2", "md:grid-cols-2")}>
         <div className="space-y-1">
           <Button
             size="sm"
@@ -106,24 +106,23 @@ export function ConflictPanel({ rowId, pinned = false }: { rowId: number; pinned
             The next sync replaces the machine's file with the app's active version.
           </p>
         </div>
-        {pinned ? null : (
-          <div className="space-y-1">
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full"
-              disabled={resolve.isPending}
-              data-testid="keep-machine"
-              onClick={() => choose("machine")}
-            >
-              Keep the machine's
-            </Button>
-            <p className="text-muted-foreground text-xs">
-              The machine's version becomes the profile's active version. Nothing is sent to the
-              machine.
-            </p>
-          </div>
-        )}
+        <div className="space-y-1">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full"
+            disabled={resolve.isPending}
+            data-testid="keep-machine"
+            onClick={() => choose("machine")}
+          >
+            Keep the machine's
+          </Button>
+          <p className="text-muted-foreground text-xs" data-testid="keep-machine-help">
+            {pinned
+              ? "The Set gets a new version with the machine's brew, and the next sync puts it on the machine."
+              : "The machine's version becomes the profile's active version. Nothing is sent to the machine."}
+          </p>
+        </div>
       </div>
     </section>
   );

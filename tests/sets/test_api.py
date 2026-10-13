@@ -19,6 +19,7 @@ from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepos
 from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetVersionPatch, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository, StartingPointStart
+from tests.profile_rows import database_of, free_profile_version
 
 
 def data(response: httpx.Response) -> Any:
@@ -62,6 +63,10 @@ async def _make_set(client: httpx.AsyncClient, bean_id: int, **over: Any) -> Any
         "version": {"dose_g": 18.0, "target_yield_g": 36.0, "grind_setting": "22"},
     }
     body.update(over)
+    body["version"] = {
+        "profile_version_id": await free_profile_version(database_of(client)),
+        **body["version"],
+    }
     response = await client.post("/api/sets", json=body)
     assert response.status_code == 201, response.text
     return data(response)
@@ -1097,20 +1102,31 @@ class TestSetReferencesAndRefusals:
         assert response.status_code == 422, response.text
         assert error(response)["details"]["field"] == field
 
-    async def test_a_null_grinder_and_a_null_profile_are_fine(
+    async def test_a_null_grinder_is_fine_and_a_null_profile_is_not(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
-        """A Set can name neither, so only a *stated* id is checked."""
-        response = await client.post(
+        """A Set can name no grinder (pre-ground coffee), but it brews a profile."""
+        profile = await free_profile_version(database_of(client))
+        fine = await client.post(
             "/api/sets",
             json={
                 "name": "Whatever is loaded",
                 "bean_id": bean_id,
                 "grinder_id": None,
+                "version": {"profile_version_id": profile},
+            },
+        )
+        none = await client.post(
+            "/api/sets",
+            json={
+                "name": "Any profile",
+                "bean_id": bean_id,
                 "version": {"profile_version_id": None},
             },
         )
-        assert response.status_code == 201
+        assert fine.status_code == 201
+        assert none.status_code == 422
+        assert error(none)["details"]["field"] == "version.profile_version_id"
 
     async def test_offering_an_archived_set_to_the_matcher_is_a_conflict(
         self, client: httpx.AsyncClient, bean_id: int

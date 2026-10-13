@@ -28,6 +28,7 @@ from gaggiclanker.db.repos.sets import (
     SetWrite,
     VersionRefused,
 )
+from tests.profile_rows import free_profile_version
 from tests.sets.conftest import Fixtures, make_profile_version, make_shot
 
 
@@ -268,7 +269,13 @@ async def test_the_add_a_version_form_fills_a_designed_set_s_version_1(
 
     response = await client.post(
         f"/api/sets/{row.id}/versions",
-        json={"grind_setting": "18", "dose_g": 18, "target_yield_g": 40, "intent": "By hand."},
+        json={
+            "profile_version_id": await free_profile_version(app.state.db),
+            "grind_setting": "18",
+            "dose_g": 18,
+            "target_yield_g": 40,
+            "intent": "By hand.",
+        },
     )
 
     assert response.status_code == 201, response.text
@@ -290,7 +297,10 @@ async def test_the_add_a_version_form_is_refused_once_a_shot_is_filed_on_the_des
     shot = await make_shot(app.state.db, "000201")
     await SetsRepository(app.state.db).assign_shot(shot, row.current_version_id)
 
-    response = await client.post(f"/api/sets/{row.id}/versions", json={"dose_g": 18})
+    response = await client.post(
+        f"/api/sets/{row.id}/versions",
+        json={"profile_version_id": await free_profile_version(app.state.db), "dose_g": 18},
+    )
 
     assert response.status_code == 409
     body = response.json()
@@ -299,6 +309,21 @@ async def test_the_add_a_version_form_is_refused_once_a_shot_is_filed_on_the_des
         "field": "set_id",
         "message": "version 1 of this Set can no longer be filled",
     }
+
+
+async def test_a_design_filled_by_hand_without_a_profile_is_refused_with_new_sets_sentence(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    row = await _designed_through(app)
+
+    response = await client.post(f"/api/sets/{row.id}/versions", json={"dose_g": 18})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == (
+        "A Set needs a profile: pick one that has no Set, or design one with the agent."
+    )
+    after = await SetsRepository(app.state.db).get(row.id)
+    assert after is not None and after.designing is True
 
 
 async def test_the_set_rows_carry_the_flag_and_the_brief(

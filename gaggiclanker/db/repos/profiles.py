@@ -107,6 +107,15 @@ class VersionPin(BaseModel):
     set_version_id: int
 
 
+class VersionSet(BaseModel):
+    """The Set a profile has (a profile has at most one, archived or not)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+
+
 class ProfileVersionSummary(BaseModel):
     """A version as a table row: what it is, where it came from, who uses it.
 
@@ -142,9 +151,16 @@ class ProfileVersionSummary(BaseModel):
     #: out of it is the payload this summary exists to avoid.
     temperature_c: float | None = None
     target_yield_g: float | None = None
-    #: Set when this version is the copy of a pin (live or since unpinned): the pin, its Set and
-    #: the Set version it belongs to. A recipe picker leaves such a version out, because no Set
-    #: version names a copy; ``None`` for every other version.
+    #: The profile the version belongs to (``None``: an imported file or a draft no profile has
+    #: taken yet), whether it is that profile's active version, and the profile's Set. A new Set
+    #: takes a profile no Set has, by the version that profile has active.
+    board_id: int | None = None
+    is_active: bool = False
+    set: VersionSet | None = None
+    #: Set when this version belongs to a pin's copy (the copy, live or since unpinned, or what
+    #: the machine's file came to hold): the pin, its Set and the Set version it belongs to. A
+    #: recipe picker leaves such a version out, because no Set brews a pin's profile; ``None``
+    #: for every other version.
     pin: VersionPin | None = None
 
 
@@ -370,17 +386,6 @@ class ProfilesRepository(Repository):
         )
         return self.to_model(ProfileVersionRow, row)
 
-    async def find_version_named_by_a_set(self, content_hash: str) -> ProfileVersionRow | None:
-        """A version with this content that a Set's current version names, if there is one."""
-        row = await self.db.fetch_one(
-            "SELECT pv.* FROM profile_versions pv "
-            "JOIN set_versions v ON v.profile_version_id = pv.id "
-            "JOIN sets s ON s.current_version_id = v.id "
-            "WHERE pv.content_hash = ? ORDER BY pv.id LIMIT 1",
-            (content_hash,),
-        )
-        return self.to_model(ProfileVersionRow, row)
-
     async def find_version_by_label(self, label: str) -> ProfileVersionRow | None:
         """The version a name stands for.
 
@@ -440,8 +445,14 @@ class ProfilesRepository(Repository):
                             WHERE d.current_version_id = v.id
                               AND d.deleted_at IS NULL) AS mirrored,
                    (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = v.id) AS shot_count,
+                   v.board_id,
+                   EXISTS (SELECT 1 FROM profile_board b
+                            WHERE b.id = v.board_id AND b.current_version_id = v.id
+                              AND b.deleted_at IS NULL) AS is_active,
+                   ps.id AS set_id, ps.name AS set_name,
                    p.id AS pin_id, pv.set_id AS pin_set_id, p.set_version_id AS pin_set_version_id
             FROM profile_versions v
+            LEFT JOIN sets ps ON ps.board_id = v.board_id
             LEFT JOIN set_version_pins p ON p.profile_version_id = v.id
             LEFT JOIN set_versions pv ON pv.id = p.set_version_id
             WHERE {clause}
@@ -703,9 +714,12 @@ def _summary(row: dict[str, object]) -> ProfileVersionSummary:
         if pin_id is None
         else {"pin_id": pin_id, "set_id": pin_set_id, "set_version_id": pin_set_version_id}
     )
+    set_id = row.pop("set_id", None)
+    set_name = row.pop("set_name", None)
     return ProfileVersionSummary.model_validate(
         {
             **row,
+            "set": None if set_id is None else {"id": set_id, "name": set_name},
             "temperature_c": recipe.temperature_c,
             "target_yield_g": recipe.target_yield_g,
             "pin": pin,

@@ -339,7 +339,7 @@ class ProfileBoardRepository(Repository):
                     await self.db.execute(
                         "UPDATE sets SET board_id = ? WHERE id = ?", (row_id, taker)
                     )
-                    await self._settle_the_sets_other_versions(row_id, taker)
+                    await self.settle_a_sets_versions(row_id, taker)
                 return version_id
             # Otherwise the version stays with the Set that names it, and the profile gets its own.
         carries = False
@@ -372,7 +372,9 @@ class ProfileBoardRepository(Repository):
             )
         return effective
 
-    async def _settle_the_sets_other_versions(self, row_id: int, set_id: int) -> None:
+    async def settle_a_sets_versions(
+        self, row_id: int, set_id: int, *, follow: bool = True
+    ) -> None:
         """A Set that has just become this profile's: every other version no profile owns that its
         versions name goes through :meth:`version_for` like any other (taken over, or the profile
         gets a copy of its own that the Set's versions then name), so all of the Set's versions
@@ -393,6 +395,8 @@ class ProfileBoardRepository(Repository):
                     (mine, set_id, old),
                 )
             await self.add_version(row_id, mine, "edit")
+        if not follow:
+            return
         # The Set brews what its profile has active: a version taken over while the profile had
         # another active (one it listed without making active) is followed from.
         active = await self.db.fetch_value(

@@ -109,7 +109,7 @@ function VersionItem({
   const makeActive = useSetActiveVersion();
   const [confirming, setConfirming] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const sets = entry.sets_brewing ?? [];
+  const set = entry.set ?? null;
   const first = version.previous_version_id == null;
   // Only ever the version before this one in this list, never another.
   const previous = first
@@ -144,7 +144,7 @@ function VersionItem({
             variant="outline"
             disabled={busy}
             data-testid="make-active"
-            onClick={() => (sets.length > 0 ? setConfirming(true) : choose())}
+            onClick={() => (set !== null ? setConfirming(true) : choose())}
           >
             Make active
           </Button>
@@ -165,18 +165,13 @@ function VersionItem({
         ) : (
           "No shots yet"
         )}
-        {(version.sets_brewing ?? []).length > 0 ? (
+        {version.set ? (
           <>
             {" "}
             · brewed by{" "}
-            {(version.sets_brewing ?? []).map((set, index) => (
-              <span key={set.set_id}>
-                {index > 0 ? ", " : ""}
-                <Link className="underline underline-offset-2" to={`/sets/${set.set_id}`}>
-                  {set.name}
-                </Link>
-              </span>
-            ))}
+            <Link className="underline underline-offset-2" to={`/sets/${version.set.set_id}`}>
+              {version.set.name}
+            </Link>
           </>
         ) : null}
         {version.did_not_verify
@@ -197,9 +192,9 @@ function VersionItem({
             choose();
           }}
         >
-          {sets.map((s) => s.name).join(", ")} brew{sets.length === 1 ? "s" : ""} this profile. The
-          next sync puts this version on the machine, so that is what{" "}
-          {sets.length === 1 ? "it brews" : "they brew"} from then on.
+          {set?.name} brews this profile. Making this version active gives it a new version (
+          {set?.next_minor_label}) that brews this one, and the next sync puts this version on the
+          machine.
         </ConfirmStrip>
       ) : null}
 
