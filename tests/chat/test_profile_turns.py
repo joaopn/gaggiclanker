@@ -68,12 +68,11 @@ async def test_the_set_prompt_understands_the_turns_of_a_profile_card(
     assert f'"{TURNS["approved_for_set"]}"' in system
     assert '(you proposed it as <old name>)."' in system
     assert '"Declined: <note>"' in system and '"Declined: no reason given."' in system
-    # The Set records the version only when the profile reaches the machine, so the message
-    # does not end the conversation's version by itself.
+    # The Set follows its profile the moment the proposal is approved: it has recorded the
+    # version already, and the profile reaches the machine with the next sync.
     approved = system[system.index(TURNS["approved_for_set"]) :]
-    assert "only once the profile has reached the machine" in approved
-    assert "not that it is recorded, unless `get_set` already shows the new version" in approved
-    assert "with Writes on the sync may have finished by now" in approved
+    assert "The Set has recorded that version already" in approved
+    assert "`get_set` shows it" in approved
     assert "start a new conversation" in approved
     # The rule for a grind, dose or yield change stays true.
     assert "There is nothing to push, make active, stage or log, and no queue" in system

@@ -22,6 +22,7 @@ UNOWNED = (
     "INSERT INTO profile_versions (content_hash, label, type, json) VALUES ('h', 'l', 't', '{}')"
 )
 NOW = datetime(2026, 10, 12, 12, 0, 0, tzinfo=UTC)
+LEVEL_ONE = schema.describe_sql(frozen_schema_sql(1))
 
 
 class Level0:
@@ -181,7 +182,14 @@ class Level0:
     def upgrade(self) -> UpgradeReport:
         self.conn.commit()
         self.conn.close()
-        report = upgrade_database_file(self.path, self.path.parent, now=NOW)
+        # This step alone, onto the schema it produced: the steps after it have their own tests.
+        report = upgrade_database_file(
+            self.path,
+            self.path.parent,
+            steps=STEPS[:1],
+            expected=LEVEL_ONE,
+            now=NOW,
+        )
         assert report is not None
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
@@ -208,7 +216,7 @@ def db(tmp_path: Path) -> Level0:
 
 
 def test_the_step_is_registered_and_expects_the_frozen_level_zero() -> None:
-    assert [s.level for s in STEPS] == [1]
+    assert [s.level for s in STEPS][:1] == [1]
     assert STEPS[0].foreign_keys_off is True
     built = schema.describe_sql(frozen_schema_sql(0))
     assert schema.fingerprint_of(built) == STEPS[0].expects == level_001.EXPECTS
@@ -231,7 +239,7 @@ def test_the_result_is_the_schema_file_at_level_one_and_every_row_is_still_there
     report = db.upgrade()
     assert report.to_level == 1
     conn = sqlite3.connect(db.path)
-    assert schema.schema_differences(conn) == []
+    assert schema.schema_differences(conn, LEVEL_ONE) == []
     conn.close()
     assert conn is not None and board
     for table, count in before.items():
@@ -667,7 +675,7 @@ def test_a_failed_end_state_check_rolls_the_whole_upgrade_back(
 
     monkeypatch.setattr(level_001, "_check_end_state", broken)
     with pytest.raises(UpgradeRefused, match="not owned by the profile"):
-        upgrade_database_file(db.path, db.path.parent, now=NOW)
+        upgrade_database_file(db.path, db.path.parent, steps=STEPS[:1], expected=LEVEL_ONE, now=NOW)
     conn = sqlite3.connect(db.path)
     try:
         assert list(conn.iterdump()) == before

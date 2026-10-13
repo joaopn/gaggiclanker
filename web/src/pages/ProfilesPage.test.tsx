@@ -888,7 +888,13 @@ describe("proposed versions", () => {
         set_next_major_label: "v2",
         prediction: "Less bitter",
       },
-      { for_set: { row_id: 1, row_label: "9 Bar Espresso" } },
+      {
+        plain: {
+          row_id: 1,
+          row_label: "9 Bar Espresso",
+          set: { id: 3, name: "Ethiopia washed", next_minor_label: "v1.2", next_major_label: "v2" },
+        },
+      },
     );
     const panel = await open(user);
 
@@ -899,27 +905,7 @@ describe("proposed versions", () => {
     expect(forSet).toHaveTextContent("Approve as v2 of Ethiopia washed");
     await user.click(forSet);
 
-    await waitFor(() =>
-      expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11, setId: 3, major: true }),
-    );
-  });
-
-  it("the other button records nothing on the Set", async () => {
-    const user = setupUser();
-    withProposal(
-      {
-        set_id: 3,
-        set_name: "Ethiopia washed",
-        set_next_minor_label: "v1.2",
-        set_next_major_label: "v2",
-      },
-      { for_set: { row_id: 1, row_label: "9 Bar Espresso" } },
-    );
-    const panel = await open(user);
-
-    await user.click(within(panel).getByTestId("approve-proposal-without-set"));
-
-    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
+    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11, major: true }));
   });
 
   it("holds Approve under the Name field when the server says the name is already a profile", async () => {

@@ -1,4 +1,4 @@
-"""Draft a profile, and record it on a Set once it is on the machine.
+"""Draft a profile.
 
 The shape of the whole feature is a path and one invariant.
 
@@ -17,9 +17,7 @@ This service holds no machine connection at all. A draft reaches the machine onl
 the profile list (:mod:`.board`): a person's "Make active" approves it and makes it a
 profile's next version, and the write phase of the next sync saves it, reads it back and
 removes what it replaces, through the primitives in :mod:`.machine`. What remains here is
-what a draft needs before that (drafting, refining, discarding) and
-:meth:`ProfileDraftService.attach_to_set`, which the write phase calls once a profile is on
-the machine, so a Set records the version the same way whoever put the profile there.
+what a draft needs before that: drafting, refining and discarding.
 
 **The name and the destination are fixed at draft time, not at write time.** A draft is a change
 to one profile (it carries that profile's name) or a new profile with a name of its own, decided
@@ -39,7 +37,7 @@ from pydantic import ValidationError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionRow
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.domain.models import (
     Profile,
 )
@@ -298,87 +296,6 @@ class ProfileDraftService:
                 "another version active, and sync, before declining it."
             )
         return _require_row(await self.drafts.set_status(draft_id, "discarded"), draft_id)
-
-    async def attach_to_set(
-        self, draft: ProfileDraftRow, set_id: int, *, major: bool | None = None
-    ) -> SetVersionRow | None:
-        """Record a new Set version pointing at what was just pushed.
-
-        Optional and opt-in: a person may push a draft to try it without saying
-        that this is now what the Set means. When they do say so, the version
-        carries both identities — the content-hashed `profile_version_id` and
-        the device id the firmware assigned — because "what did this Set brew"
-        and "which profile on the machine is that" are different questions.
-
-        **And it carries the prediction, if this is the Set the draft was made
-        for.** A profile change argued in a Set's conversation is a change to
-        that experiment and owes the same falsifiable guess a proposed grind
-        change owes; this is the moment it becomes one, because until the person
-        pushed it nothing about the Set had changed. Pushed for a different Set
-        the prediction is left off — it was about the other experiment and says
-        nothing about this one — and a draft nobody predicted anything about
-        records what it always did.
-
-        **Its name** is a minor version unless the person marks it major: a
-        pushed draft is a tuned copy of a profile, which is dialling in
-        (``path="draft"`` in :func:`~gaggiclanker.domain.sets.change_is_major`).
-        The agent's suggestion only preselects the box on the card.
-        """
-        if draft.draft_version_id is None:  # pragma: no cover - a pushed draft has one
-            return None
-        experiment = await self._experiment(draft, set_id)
-        # Who proposed this recipe, which is what "did following the advice
-        # help" is a GROUP BY on. A draft made from an analysis before the
-        # analysis was retired still records it. Otherwise it is
-        # `chat` exactly when this push is recording the agent's own prediction
-        # — the draft was argued in this Set's conversation and is being pushed
-        # for that Set — because a profile change the agent proposed filed under
-        # `manual` would credit the person with the model's idea.
-        origin = (
-            "analysis"
-            if draft.source_analysis_id is not None
-            else ("chat" if experiment else "manual")
-        )
-        return await self.sets.add_version(
-            set_id,
-            SetVersionPatch.model_validate(
-                {
-                    "profile_version_id": draft.draft_version_id,
-                    "pushed_device_profile_id": draft.pushed_device_profile_id,
-                    "origin": origin,
-                    "origin_analysis_id": draft.source_analysis_id,
-                    "intent": draft.change_summary[:500],
-                    **experiment,
-                }
-            ),
-            # A pushed draft is a tuned copy of a profile — dialling in — so its
-            # default is a minor version; the person can say otherwise.
-            major=major,
-            path="draft",
-        )
-
-    async def _experiment(self, draft: ProfileDraftRow, set_id: int) -> dict[str, Any]:
-        """The prediction this push records on the Set version, if it records one.
-
-        Nothing unless the draft was made for **this** Set and carries a
-        prediction. When it does, the comparison is the version the prediction
-        named, and the current version when that one is no longer a version of
-        this Set — a comparison against something that is not there would leave
-        the log rendering a dangling reference. Sent explicitly either way, so
-        `add_version` never quietly substitutes its own default.
-        """
-        if draft.set_id != set_id or not draft.prediction:
-            return {}
-        compares_to = draft.compares_to_version_id
-        if compares_to is not None:
-            if await self.sets.version_of_set(set_id, compares_to) is None:
-                compares_to = None
-        if compares_to is None:
-            current = await self.sets.current_version(set_id)
-            compares_to = current.id if current is not None else None
-        return {"prediction": draft.prediction, "compares_to_version_id": compares_to}
-
-    # ── reading ──────────────────────────────────────────────────────
 
     async def detail(self, draft_id: int) -> ProfileDraftDetail:
         draft = await self._require(draft_id)

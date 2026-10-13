@@ -43,9 +43,7 @@ async def tombstone(client: httpx.AsyncClient, row_id: int) -> httpx.Response:
     app = client._transport.app  # type: ignore[attr-defined]
     row = await app.state.board.board.update(
         row_id,
-        BoardRowPatch(
-            deleted_at=utc_now(), pending_draft_id=None, pending_set_id=None, pending_major=None
-        ),
+        BoardRowPatch(deleted_at=utc_now(), pending_draft_id=None),
     )
     assert row is not None
     return httpx.Response(200)
@@ -145,14 +143,12 @@ async def manual_draft(
     return dict(data(response))
 
 
-async def set_device_ids(app: FastAPI, set_id: int) -> list[str | None]:
-    """The device profile each version of a Set names, oldest first."""
+async def set_version_ids(app: FastAPI, set_id: int) -> list[int]:
+    """The ids of a Set's versions, oldest first."""
     rows = await app.state.db.fetch_all(
-        "SELECT pushed_device_profile_id AS d FROM set_versions "
-        "WHERE set_id = ? ORDER BY created_at, id",
-        (set_id,),
+        "SELECT id FROM set_versions WHERE set_id = ? ORDER BY created_at, id", (set_id,)
     )
-    return [row["d"] for row in rows]
+    return [int(row["id"]) for row in rows]
 
 
 def document_of(fake: FakeDevice, device_id: str) -> dict[str, Any]:
@@ -192,6 +188,20 @@ async def make_set_on(client: httpx.AsyncClient, name: str, profile_version_id: 
     )
     assert response.status_code < 300, response.text
     return int(data(response)["id"])
+
+
+async def make_set_on_a_free_profile(app: FastAPI, client: httpx.AsyncClient, name: str) -> int:
+    """A Set on the first live profile that has no Set (a profile has at most one) and is no
+    pin's copy."""
+    row = await app.state.db.fetch_one(
+        "SELECT b.current_version_id AS version FROM profile_board b "
+        "WHERE b.deleted_at IS NULL "
+        "AND NOT EXISTS (SELECT 1 FROM sets s WHERE s.board_id = b.id) "
+        "AND NOT EXISTS (SELECT 1 FROM set_version_pins p WHERE p.board_id = b.id) "
+        "ORDER BY b.id"
+    )
+    assert row is not None, "every live profile has a Set"
+    return await make_set_on(client, name, int(row["version"]))
 
 
 async def grind_change(client: httpx.AsyncClient, set_id: int) -> None:
@@ -265,3 +275,33 @@ async def assert_versions_owned(db: Any) -> None:
     assert [dict(r) for r in wrong_file] == [], (
         f"a file holds a version of a profile not on it {[dict(r) for r in wrong_file]}"
     )
+    await assert_sets_follow_their_profiles(db)
+
+
+async def assert_sets_follow_their_profiles(db: Any) -> None:
+    """What a Set and its profile owe each other, as the database stands.
+
+    * every Set version names a version its Set's profile owns (a Set with no profile names
+      only versions nobody owns, or none);
+    * no two Sets share a profile;
+    * a Set that is not being designed has, as its current version, the version its profile has
+      active: the Set follows its profile (a revert makes the profile follow the Set).
+    """
+    foreign = await db.fetch_all(
+        "SELECT v.id, v.set_id, pv.board_id AS owner, s.board_id AS mine FROM set_versions v "
+        "JOIN sets s ON s.id = v.set_id JOIN profile_versions pv ON pv.id = v.profile_version_id "
+        "WHERE pv.board_id IS NOT s.board_id"
+    )
+    assert [dict(r) for r in foreign] == [], "a Set version brews another profile's version"
+    shared = await db.fetch_all(
+        "SELECT board_id, COUNT(*) AS n FROM sets WHERE board_id IS NOT NULL "
+        "GROUP BY board_id HAVING n > 1"
+    )
+    assert [dict(r) for r in shared] == [], "a profile has two Sets"
+    behind = await db.fetch_all(
+        "SELECT s.id AS set_id, cur.profile_version_id AS brews, b.current_version_id AS active "
+        "FROM sets s JOIN profile_board b ON b.id = s.board_id "
+        "JOIN set_versions cur ON cur.id = s.current_version_id "
+        "WHERE s.designing = 0 AND cur.profile_version_id IS NOT b.current_version_id"
+    )
+    assert [dict(r) for r in behind] == [], "a Set does not brew its profile's active version"

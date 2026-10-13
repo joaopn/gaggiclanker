@@ -371,7 +371,7 @@ async def test_a_waiting_proposal_whose_document_is_already_listed_is_replaced(
     assert got["landing"] is None
 
 
-async def test_the_set_version_an_approval_is_or_will_be_recorded_as(
+async def test_the_set_version_an_approval_is_recorded_as(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
@@ -387,59 +387,40 @@ async def test_the_set_version_an_approval_is_or_will_be_recorded_as(
 
     plain = await for_set(7)
     assert (await standing(client, plain))["set_version_label"] is None, "waiting: not yet"
-    minor = await put(client, plain, set_id=set_id)
+    await put(client, plain)
     got = await standing(client, plain)
-    assert minor["pending_set_id"] == set_id
-    assert got["set_version_label"] == got["draft"]["set_next_minor_label"] == "v1.1"
+    assert got["set_version_label"] == got["draft"]["recorded_version_label"] == "v1.1"
+    assert got["draft"]["recorded_set_name"] == "Label set"
 
     assert (await pull(app)).status == "ok"
-    recorded = await standing(client, plain)
-    assert recorded["set_version_label"] == recorded["draft"]["recorded_version_label"] == "v1.1"
+    assert (await standing(client, plain))["set_version_label"] == "v1.1", "the sync adds none"
 
     major = await for_set(6)
-    await put(client, major, set_id=set_id, major=True)
-    got = await standing(client, major)
-    assert got["set_version_label"] == got["draft"]["set_next_major_label"] == "v2"
+    await put(client, major, major=True)
+    assert (await standing(client, major))["set_version_label"] == "v2"
 
     other = await same_name_draft(app, client, provider, "For a set", 5)
     await put(client, other)
-    assert (await standing(client, other))["set_version_label"] is None, "not for a Set"
+    got = await standing(client, other)
+    assert got["set_version_label"] == "v2.1", "the Set follows its profile whoever drafted it"
+    assert got["draft"]["recorded_set_name"] == "Label set"
 
 
-async def test_a_set_draft_put_without_its_set_has_no_set_version_label(
+async def test_a_later_put_leaves_an_earlier_approvals_version_where_it_was(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
     first = await put(client, await manual_draft(app, client, BASE_LABEL, "For a set", 8))
-    set_id = await make_set_on(client, "Unlinked set", first["current_version_id"])
-    draft = await same_name_draft(app, client, provider, "For a set", 7)
-    await app.state.db.execute(
-        "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, draft["id"])
-    )
-    row = await put(client, draft)  # the put carries no Set
-    assert row["pending_set_id"] is None
-
-    assert (await standing(client, draft))["set_version_label"] is None
-
-
-async def test_a_set_draft_whose_row_moved_on_to_another_pending_draft_has_no_label(
-    adopted: Adopted, provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    first = await put(client, await manual_draft(app, client, BASE_LABEL, "For a set", 8))
-    set_id = await make_set_on(client, "Moved set", first["current_version_id"])
+    await make_set_on(client, "Moved set", first["current_version_id"])
     older = await same_name_draft(app, client, provider, "For a set", 7)
     newer = await same_name_draft(app, client, provider, "For a set", 6)
-    for draft in (older, newer):
-        await app.state.db.execute(
-            "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, draft["id"])
-        )
-    await put(client, older, set_id=set_id)
+    await put(client, older)
     assert (await standing(client, older))["set_version_label"] == "v1.1"
 
-    await put(client, newer, set_id=set_id)  # the row now waits to record this one instead
+    await put(client, newer)
 
-    assert (await standing(client, older))["set_version_label"] is None
+    assert (await standing(client, older))["set_version_label"] == "v1.1"
+    assert (await standing(client, newer))["set_version_label"] == "v1.2"
 
 
 # -- the rule: six states, exactly one for every input ---------------------------------------

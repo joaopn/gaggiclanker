@@ -21,7 +21,7 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.signatures.service import SignatureService
 from tests.drafts.conftest import BASE_LABEL, base_version_id, data, error
-from tests.drafts.helpers import make_set_on
+from tests.drafts.helpers import make_set_on, make_set_on_a_free_profile
 from tests.drafts.test_board import adopted, get_board, pull, row_for
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
@@ -32,8 +32,12 @@ Adopted = tuple[FastAPI, httpx.AsyncClient, FakeDevice]
 async def _set_with_version(
     app: FastAPI, client: httpx.AsyncClient, name: str = "Guji"
 ) -> tuple[int, int]:
-    """A Set on the base profile and its v1: (set id, version id)."""
-    set_id = await make_set_on(client, name, await base_version_id(app, BASE_LABEL))
+    """A Set and its v1: (set id, version id). The first is on the base profile; a profile has at
+    most one Set, so any other is on the first profile that has none."""
+    if name == "Guji":
+        set_id = await make_set_on(client, name, await base_version_id(app, BASE_LABEL))
+    else:
+        set_id = await make_set_on_a_free_profile(app, client, name)
     detail = data(await client.get(f"/api/sets/{set_id}"))
     return set_id, int(detail["versions"][0]["version"]["id"])
 
@@ -265,7 +269,7 @@ async def test_a_duplicate_is_a_new_set_on_a_new_profile_with_a_note_and_no_hist
     assert row["row"]["id"] == body["board_id"]
     assert (row["on_machine"], row["starred"], row["row"]["origin"]) == (True, True, "draft")
     assert row["row"]["current_version_id"] == version["profile_version_id"]
-    assert row["row"]["pending_set_id"] is None and board["proposals"] == []
+    assert board["proposals"] == []
     # The source Set is untouched, and still names its own profile.
     after = data(await client.get(f"/api/sets/{set_id}"))
     assert len(after["versions"]) == 2 and after["set"]["copied_from"] is None

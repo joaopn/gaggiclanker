@@ -257,6 +257,9 @@ async def test_the_whole_prototype_against_the_simulator(
         lambda: _profiles_mirrored(client), timeout=60.0, what="the profile mirror to run"
     )
     assert profiles, "the simulator listed no profiles"
+    # Writes are off, so the list has no profiles: a Set starts on the machine file the sync
+    # mirrored, and has its profile once the list adopts the file.
+    profile_version_id = profiles[0]["current_version_id"]
 
     before = data(await client.get("/api/shots"))["total"]
 
@@ -320,6 +323,7 @@ async def test_the_whole_prototype_against_the_simulator(
                 "bean_id": bean["id"],
                 "grinder_id": grinder["id"],
                 "version": {
+                    "profile_version_id": profile_version_id,
                     "grind_setting": "22",
                     "grind_value": 22.0,
                     "dose_g": 18.0,

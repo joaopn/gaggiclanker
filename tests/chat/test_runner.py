@@ -1136,10 +1136,13 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
 
     first = await send(runner, tasks, thread_id, "Help me design this Set")
 
+    from tests.profile_rows import free_profile_version
+
+    free = await free_profile_version(archive.db)
     draft = await ProfileDraftsRepository(archive.db).create(
         ProfileDraftWrite(
-            base_version_id=archive.profile_version_id,
-            draft_version_id=archive.profile_version_id,
+            base_version_id=free,
+            draft_version_id=free,
         )
     )
     proposals = SetProposalsRepository(archive.db)
@@ -1150,7 +1153,7 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
             draft_id=draft.id,
             thread_id=thread_id,
             reason="The recipe we agreed.",
-            patch=SetVersionPatch(profile_version_id=archive.profile_version_id, dose_g=18),
+            patch=SetVersionPatch(profile_version_id=free, dose_g=18),
         ),
     )
     assert card.proposal is not None, card.refused

@@ -61,19 +61,19 @@ describe("the profile board's requests", () => {
     __resetApiClientAuthForTests(null);
   });
 
-  it("puts a draft on the board with its Set and major choice, only together", async () => {
+  it("puts a draft on the board with the major choice when there is one", async () => {
     const spy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async () => jsonResponse(201, success({})));
-    await putOnBoard({ draftId: 4, setId: 3, major: true });
     await putOnBoard({ draftId: 4, major: true });
+    await putOnBoard({ draftId: 4 });
     const body = (n: number) => {
       const init = spy.mock.calls[n]?.[1] as RequestInit;
       return JSON.parse(String(init.body));
     };
     expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board");
-    expect(body(0)).toEqual({ draft_id: 4, set_id: 3, major: true });
-    expect(body(1)).toEqual({ draft_id: 4, set_id: null });
+    expect(body(0)).toEqual({ draft_id: 4, major: true });
+    expect(body(1)).toEqual({ draft_id: 4 });
   });
 
   it("switches a profile on or off the machine and stars it by their own routes", async () => {

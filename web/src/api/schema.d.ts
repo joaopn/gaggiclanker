@@ -1286,10 +1286,10 @@ export interface paths {
          * Make a proposal active: a new version of a profile, or a new profile
          * @description The next sync puts it on the machine. Nothing is sent to the machine now.
          *
-         *     One action for a proposal: a drafted draft is approved by it. Refused (409) for a draft
-         *     that is already on the machine, discarded or overtaken, one whose version is already in the
-         *     list, and for a Set that could no longer be given a
-         *     version. A proposal continues the live profile with exactly its name, or is a new profile.
+         *     One action for a proposal: a drafted draft is approved by it. The profile's Set, if it has
+         *     one, gets a new version naming it in the same transaction. Refused (409) for a draft that is
+         *     already on the machine, discarded or overtaken, and one whose version is already in the
+         *     list. A proposal continues the live profile with exactly its name, or is a new profile.
          */
         post: operations["put_on_board_api_profile_board_post"];
         delete?: never;
@@ -2135,7 +2135,7 @@ export interface paths {
          *     is refused. Only a sync a person starts puts the file on the machine.
          *
          *     The body is optional. ``major`` is the card's "Major change" box; left
-         *     out, the shared rule names the version, never the agent's suggestion.
+         *     out, it is a minor, never the agent's suggestion.
          */
         post: operations["accept_proposal_api_sets__set_id__proposals__proposal_id__accept_post"];
         delete?: never;
@@ -2180,8 +2180,9 @@ export interface paths {
          *     Nothing is written to the machine and no version is created: the target is
          *     the Set's current version again, with its prediction, shots and outcome as
          *     they were, and the next change continues its line (v2.1 back to v1.2, then
-         *     v1.3). The answer is the version the Set is now on. A Set still being
-         *     designed has nothing to go back to: 409 `DESIGNING`.
+         *     v1.3). The Set's profile is put back on the version the target brews, as Make active
+         *     would do (and refused as it would be). The answer is the version the Set is now on. A Set
+         *     still being designed has nothing to go back to: 409 `DESIGNING`.
          */
         post: operations["rollback_api_sets__set_id__rollback_post"];
         delete?: never;
@@ -2269,8 +2270,7 @@ export interface paths {
          *     different statements about the coffee.
          *
          *     ``major`` names it: true is the next major, false the next minor, left out
-         *     the shared rule (a different profile is a major). The answer carries the
-         *     name it was given (`version_label`).
+         *     a minor. The answer carries the name it was given (`version_label`).
          */
         post: operations["add_version_api_sets__set_id__versions_post"];
         delete?: never;
@@ -4200,6 +4200,7 @@ export interface components {
             row_id?: number | null;
             /** Row Label */
             row_label?: string | null;
+            set?: components["schemas"]["LandingSet"] | null;
         };
         /**
          * BoardMachineState
@@ -4246,16 +4247,12 @@ export interface components {
             label?: string | null;
             /** Major */
             major?: boolean | null;
-            /** Set Id */
-            set_id?: number | null;
         };
         /**
          * BoardRow
          * @description One profile on the board.
          */
         BoardRow: {
-            /** Back From Set Version Id */
-            back_from_set_version_id?: number | null;
             /** Back From Version Id */
             back_from_version_id?: number | null;
             /** Conflict Overruled Hash */
@@ -4289,10 +4286,6 @@ export interface components {
             origin: components["schemas"]["BoardOrigin"];
             /** Pending Draft Id */
             pending_draft_id?: number | null;
-            /** Pending Major */
-            pending_major?: boolean | null;
-            /** Pending Set Id */
-            pending_set_id?: number | null;
             /** Previous Version Id */
             previous_version_id?: number | null;
             /** Updated At */
@@ -5125,14 +5118,13 @@ export interface components {
         };
         /**
          * DraftLanding
-         * @description What putting an approved draft on the board would do, with and without its Set.
+         * @description What putting an approved draft on the board would do.
          */
         DraftLanding: {
             /** Already On Board Label */
             already_on_board_label?: string | null;
             /** Draft Id */
             draft_id: number;
-            for_set?: components["schemas"]["BoardLanding"] | null;
             plain: components["schemas"]["BoardLanding"];
         };
         /**
@@ -6003,6 +5995,20 @@ export interface components {
         };
         /** @enum {string} */
         Kind: "measured" | "estimated" | "commanded";
+        /**
+         * LandingSet
+         * @description The Set a put would give a new version: the Set of the profile it lands on.
+         */
+        LandingSet: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Next Major Label */
+            next_major_label: string;
+            /** Next Minor Label */
+            next_minor_label: string;
+        };
         /**
          * ListedVersion
          * @description One version a profile has been.
@@ -6875,7 +6881,6 @@ export interface components {
              */
             change_summary: string;
             clamp_changes?: components["schemas"]["JsonList"];
-            cleared_set_version_ids?: components["schemas"]["JsonList"];
             /** Compares To Version Id */
             compares_to_version_id?: number | null;
             /** Compares To Version Label */
@@ -6929,6 +6934,8 @@ export interface components {
              * @default false
              */
             pushed_saved: boolean;
+            /** Recorded Set Name */
+            recorded_set_name?: string | null;
             /** Recorded Version Id */
             recorded_version_id?: number | null;
             /** Recorded Version Label */
@@ -7075,8 +7082,6 @@ export interface components {
              */
             mirrored: boolean;
             pin?: components["schemas"]["VersionPin"] | null;
-            /** Profile Entry Id */
-            profile_entry_id?: number | null;
             /**
              * Shot Count
              * @default 0
@@ -7168,8 +7173,7 @@ export interface components {
          * ProposalAccept
          * @description `POST .../accept`: the person's answer to the card's "Major change" box.
          *
-         *     Optional, as the body itself is: left out, the shared rule decides (a
-         *     different profile is a major, anything else a minor). The agent's
+         *     Optional, as the body itself is: left out, it is a minor. The agent's
          *     suggestion is never the default — it only preselects the box.
          */
         ProposalAccept: {
@@ -7819,11 +7823,6 @@ export interface components {
             /** @default change */
             kind: components["schemas"]["ProposalKind"];
             /**
-             * Major By Default
-             * @default false
-             */
-            major_by_default: boolean;
-            /**
              * Major Reason
              * @default
              */
@@ -7922,6 +7921,8 @@ export interface components {
             bean_id: number;
             /** Bean Name */
             bean_name?: string | null;
+            /** Board Id */
+            board_id?: number | null;
             copied_from?: components["schemas"]["CopiedFrom"] | null;
             /** Created At */
             created_at: string;
@@ -8180,9 +8181,7 @@ export interface components {
          *
          *     ``major`` is the person's answer to the form's "Major change" box: true
          *     starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
-         *     Left out, the shared rule decides — a different profile (another entry of the
-         *     profile list) is a major; a newer version of the same profile, grind, dose and
-         *     yield are minor. It is not part of the recipe, so it is split off
+         *     Left out, it is a minor. It is not part of the recipe, so it is split off
          *     before the patch reaches the repository. Strictly a boolean: "yes" or 1 is
          *     a request somebody should look at, not a guess this route makes.
          */
@@ -8211,10 +8210,6 @@ export interface components {
              * @default
              */
             prediction: string;
-            /** Profile Version Id */
-            profile_version_id?: number | null;
-            /** Pushed Device Profile Id */
-            pushed_device_profile_id?: string | null;
             /** Target Yield G */
             target_yield_g?: number | null;
         };
@@ -8324,16 +8319,12 @@ export interface components {
             prediction: string;
             /** Prediction At */
             prediction_at?: string | null;
-            /** Profile Entry Id */
-            profile_entry_id?: number | null;
             /** Profile Label */
             profile_label?: string | null;
             /** Profile Temperature C */
             profile_temperature_c?: number | null;
             /** Profile Version Id */
             profile_version_id?: number | null;
-            /** Pushed Device Profile Id */
-            pushed_device_profile_id?: string | null;
             /** Restores Version Id */
             restores_version_id?: number | null;
             /** Restores Version Label */

@@ -16,7 +16,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
-from tests.drafts.helpers import APP_LABEL, draft_of, make_set_on, same_name_draft, set_device_ids
+from tests.drafts.helpers import APP_LABEL, draft_of, make_set_on, same_name_draft, set_version_ids
 from tests.drafts.test_board import (
     adopted,
     approve,
@@ -136,7 +136,7 @@ async def test_a_refused_put_leaves_the_draft_drafted_and_the_board_as_it_was(
     assert len((await get_board(client))["rows"]) == rows
 
 
-async def test_the_sets_version_and_the_major_choice_ride_on_the_same_request(
+async def test_the_sets_version_and_the_major_choice_ride_on_the_put(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
@@ -148,14 +148,20 @@ async def test_the_sets_version_and_the_major_choice_ride_on_the_same_request(
         "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, newer["id"])
     )
     await pull(app)
-    before = await set_device_ids(app, set_id)
+    before = await set_version_ids(app, set_id)
 
-    put_row = await put(client, newer, set_id=set_id, major=True)
-    assert put_row["pending_set_id"] == set_id and put_row["pending_major"] is True
+    await put(client, newer, major=True)
+
+    assert len(await set_version_ids(app, set_id)) == len(before) + 1
+    major = await app.state.db.fetch_value(
+        "SELECT version_major FROM set_versions WHERE set_id = ? ORDER BY created_at DESC, id DESC",
+        (set_id,),
+    )
+    assert major == 2
     run = await pull(app)
 
     assert run.status == "ok", run.error
-    assert len(await set_device_ids(app, set_id)) == len(before) + 1
+    assert len(await set_version_ids(app, set_id)) == len(before) + 1
     assert (await draft_status(client, newer))["status"] == "pushed"
 
 

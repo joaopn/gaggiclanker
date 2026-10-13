@@ -1233,10 +1233,9 @@ MAJOR_MEANING = (
     "A Set version is named v<major>.<minor>. A major version (v1.2 → v2) is a functional "
     "change to what the profile wants to do, and the person triggers it; dial-in technical "
     "changes stay minor (v1.2 → v1.3): grind, dose, yield, or a draft that only tunes a "
-    "parameter such as a degree of temperature. By default a switch to a different profile "
-    "(another entry of the profile list, not a newer version of the same profile) is major "
-    "and everything else is minor. You may suggest major with suggest_major and "
-    "major_reason; the card shows your reason and the person decides."
+    "parameter such as a degree of temperature. By default everything is minor. You may "
+    "suggest major with suggest_major and major_reason; the card shows your reason and the "
+    "person decides."
 )
 
 MAJOR_REASON_REFUSAL = (
@@ -1302,7 +1301,6 @@ class ProposeVersionInput(_Model):
     grind_value: float | None = Field(default=None, ge=0, le=10000)
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
-    profile_version_id: int | None = None
     suggest_major: bool = Field(
         default=False,
         description=(
@@ -1392,7 +1390,6 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
             "grind_value",
             "dose_g",
             "target_yield_g",
-            "profile_version_id",
         )
         if getattr(args, name) is not None
     }
@@ -1402,8 +1399,8 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
         raise ValueError(
             "A proposal has to change something. If the right next step is another shot on "
             "the same recipe, say so to the person in words — that is a legitimate answer "
-            "and it needs no version. Otherwise name one of: profile_version_id, "
-            "grind_setting, grind_value, dose_g, target_yield_g."
+            "and it needs no version. Otherwise name one of: grind_setting, grind_value, "
+            "dose_g, target_yield_g. A different brew is a draft_profile, not a proposal."
         )
     combined = args.combined_reason.strip()
     if len(groups) > 1 and len(combined) < PREDICTION_MIN_CHARS:
@@ -1413,27 +1410,6 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
             "call this again with combined_reason saying why, in at least "
             f"{PREDICTION_MIN_CHARS} characters."
         )
-
-    if patch.profile_version_id is not None:
-        profiles = ProfilesRepository(ctx.db)
-        if (
-            await profiles.get_version(patch.profile_version_id) is not None
-            and await profiles.find_device_id_for_version(patch.profile_version_id) is None
-        ):
-            # Accepting records the version and sends nothing, and nothing in
-            # this app can put an existing profile version on the machine: only
-            # a draft is ever pushed. A version naming a profile the machine
-            # does not have is a recipe nobody can brew, and the person would
-            # find that out at the machine, after the press. (A profile the
-            # archive does not know at all is the repository's refusal below.)
-            raise ValueError(
-                f"Profile version {patch.profile_version_id} is not on the machine, and "
-                "nothing in this app can put an existing profile version there, so a Set "
-                "version naming it could not be brewed. list_profiles says which profiles are "
-                "on the machine (on_machine). To brew this one, use draft_profile with it as "
-                "the base: the person makes the proposal active for this Set, and the Set "
-                "records the version when the next sync puts it on the machine."
-            )
 
     proposals = SetProposalsRepository(ctx.db)
     spec: dict[str, Any] = {
@@ -1466,14 +1442,13 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
         else ""
     )
     names = await next_names(ctx.db, set_id)
-    default = "major" if await proposals.default_major(stored) else "minor"
     note = (
         "Nothing has changed yet. This is waiting for the person: the next shot is still "
         f"filed under {stored.base_version_label}, and it becomes a version only if they "
         "accept it. Tell them what you are proposing and why, and say what you expect it to "
         "do. If they decline it, that is information about what they want — not a reason to "
         "propose it again. On the card they choose whether it is a minor version "
-        f"({names.minor}) or a major one ({names.major}); by default it is {default}"
+        f"({names.minor}) or a major one ({names.major}); by default it is minor"
         + (", and your suggestion of major is shown with your reason" if suggest_major else "")
         + ". Do not name the new version as if it were decided."
     )

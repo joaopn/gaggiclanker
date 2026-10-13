@@ -52,7 +52,7 @@ from tests.drafts.helpers import (
     make_set_on,
     manual_draft,
     same_name_draft,
-    set_device_ids,
+    set_version_ids,
     tombstone,
 )
 from tests.llm.conftest import FakeProvider
@@ -779,7 +779,7 @@ async def test_three_failures_in_a_row_stop_the_phase(
 # ── Sets ─────────────────────────────────────────────────────────────
 
 
-async def test_a_set_version_is_recorded_when_the_pull_puts_the_profile_on_the_machine(
+async def test_a_set_version_is_recorded_when_the_draft_is_put_and_the_pull_adds_none(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
@@ -787,23 +787,22 @@ async def test_a_set_version_is_recorded_when_the_pull_puts_the_profile_on_the_m
     set_id = await make_set_on(client, "Board set", base["row"]["current_version_id"])
     await grind_change(client, set_id)
     draft = await same_name_draft(app, client, provider, BASE_LABEL, 8)
-    row = await put(client, draft, set_id=set_id, major=True)
+    before = await set_version_ids(app, set_id)
+    row = await put(client, draft, major=True)
     # The Set brews the person's own profile, and the draft keeps its name: a new version of it.
-    assert row["id"] == base["row"]["id"] and row["pending_set_id"] == set_id
-    before = await set_device_ids(app, set_id)
-
-    run = await pull(app)
-
-    assert run.status == "ok", run.error
-    [pushed] = summary_of(run)["pushed"]
-    after = await set_device_ids(app, set_id)
-    assert len(after) == len(before) + 1 and after[-1] == pushed["device_id"]
+    assert row["id"] == base["row"]["id"]
+    after_put = await set_version_ids(app, set_id)
+    assert len(after_put) == len(before) + 1, "the Set follows its profile when it is put"
     majors = await app.state.db.fetch_all(
         "SELECT version_major FROM set_versions WHERE set_id = ? ORDER BY created_at, id", (set_id,)
     )
     assert majors[-1]["version_major"] > majors[-2]["version_major"], "the 'major' answer was kept"
-    again = (await get_board(client))["rows"]
-    assert all(r["row"]["pending_set_id"] is None for r in again)
+
+    run = await pull(app)
+
+    assert run.status == "ok", run.error
+    assert len(summary_of(run)["pushed"]) == 1
+    assert await set_version_ids(app, set_id) == after_put, "the sync records nothing"
     assert summary_of(run)["left"] == []
     assert row_for(await get_board(client), BASE_LABEL)["row"]["id"] == base["row"]["id"]
 
@@ -900,12 +899,12 @@ async def test_a_copy_another_set_brews_is_replaced_all_the_same(
     assert summary_of(run)["left"] == []
     assert old_id not in [str(p["id"]) for p in fake.profiles]
     assert len([p for p in fake.profiles if p["label"] == APP_LABEL]) == 1
-    # The Set keeps what it brewed (its profile version); it just stops naming a file that is gone.
-    assert old_id not in await set_device_ids(app, set_id)
+    # The Set followed its profile when the draft was put.
+    assert len(await set_version_ids(app, set_id)) == 2
     assert (await get_board(client))["actions"] == []
 
 
-async def test_the_set_the_new_version_is_recorded_on_does_not_keep_its_old_copy(
+async def test_the_set_that_followed_its_profile_does_not_keep_the_old_copy(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
@@ -913,7 +912,7 @@ async def test_the_set_the_new_version_is_recorded_on_does_not_keep_its_old_copy
     mine = row_for(await get_board(client), APP_LABEL)
     old_id = mine["machine"]["device_id"]
     set_id = await make_set_on(client, "Moves", mine["row"]["current_version_id"])
-    await put(client, await draft_of(app, client, provider, APP_LABEL, 7), set_id=set_id)
+    await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
 
     run = await pull(app)
 
@@ -921,8 +920,7 @@ async def test_the_set_the_new_version_is_recorded_on_does_not_keep_its_old_copy
     assert [i["device_id"] for i in summary_of(run)["removed"]] == [old_id]
     assert summary_of(run)["left"] == []
     assert old_id not in [str(p["id"]) for p in fake.profiles]
-    ids = await set_device_ids(app, set_id)
-    assert ids[-1] is not None and old_id not in ids
+    assert len(await set_version_ids(app, set_id)) == 2
 
 
 @pytest.mark.parametrize(

@@ -695,6 +695,7 @@ class StartingPointService:
                     intent=intent,
                     origin="starting_point",
                 ),
+                from_a_draft=draft is not None,
             )
         except VersionRefused as refused:
             # The repository refuses from inside its transaction; this is the person's answer.

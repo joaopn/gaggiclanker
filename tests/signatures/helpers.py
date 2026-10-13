@@ -20,6 +20,7 @@ from gaggiclanker.domain.slog import Slog
 from gaggiclanker.domain.warnings import ShotWarning, shot_warnings
 from gaggiclanker.sync.derive import derive_shot
 from tests.lever_shot import LEVER_PROFILE, TARGET_YIELD_G, lever_shot
+from tests.profile_rows import own_version
 
 
 async def make_set_versions(
@@ -29,6 +30,7 @@ async def make_set_versions(
     bean = await BeansRepository(db).create(BeanWrite(name="Alturas", roast_level="light"))
     grinder = await GrindersRepository(db).create(GrinderWrite(name="Niche", step_unit="numbers"))
     sets = SetsRepository(db)
+    await own_version(db, profile_version_id)
     row = await sets.create(
         SetWrite(name="Alturas", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(

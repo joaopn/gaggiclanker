@@ -353,6 +353,17 @@ async def build_fixture(db: Database) -> Fixture:
     profile_version, _ = await ProfilesRepository(db).ensure_version(
         Profile.model_validate(document), owner=None
     )
+    # The Set brews a profile of its own (a Set has one): a profile-list row owning the version.
+    from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+
+    await ProfileBoardRepository(db).insert(
+        BoardRowWrite(
+            label=profile_version.label,
+            current_version_id=profile_version.id,
+            origin="adopted",
+            on_machine=False,
+        )
+    )
     stored_set = await SetsRepository(db).create(
         SetWrite(
             name="Guji natural on the Niche",

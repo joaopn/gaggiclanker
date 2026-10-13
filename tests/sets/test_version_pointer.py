@@ -9,6 +9,7 @@ tests forge the cases where the three disagree.
 from __future__ import annotations
 
 from gaggiclanker.db.repos.sets import SetVersionPatch, SetVersionWrite, SetWrite
+from tests.profile_rows import another_version
 from tests.sets.conftest import Fixtures, make_profile_version, make_shot
 
 
@@ -61,7 +62,7 @@ async def test_the_pointer_not_the_newest_row_decides_what_is_current(wired: Fix
 
 async def test_automatch_files_a_shot_under_the_version_the_set_is_on(wired: Fixtures) -> None:
     profile = await make_profile_version(wired.db, "Older profile")
-    other = await make_profile_version(wired.db, "Newer profile")
+    other = await another_version(wired.db, profile, description="newer")
     set_id = await _set(wired, profile_version_id=profile)
     first = await wired.sets.current_version(set_id)
     assert first is not None

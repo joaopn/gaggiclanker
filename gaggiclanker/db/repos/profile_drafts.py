@@ -152,14 +152,11 @@ class ProfileDraftRow(BaseModel):
     #: insert numbers with, so the button and the record cannot disagree.
     set_next_minor_label: str | None = None
     set_next_major_label: str | None = None
-    #: The version of this draft's Set that its push recorded, prediction and
-    #: all. NULL when it was pushed without recording it there (or for another
-    #: Set), or not pushed yet. Read through `recorded_version_id`, which the push
-    #: stores: two drafts of one profile that share a device id (the second found
-    #: the first on the machine) each find their own version. A rollback clears the
-    #: device id and the name goes with it.
-    #: That version's name, "v1.3".
+    #: The version of this draft's Set that making it active recorded, prediction and all, by
+    #: name ("v1.3"), and that Set's name. NULL for a draft whose profile has no Set, and for one
+    #: not made active yet. Read through `recorded_version_id`, which the put stores.
     recorded_version_label: str | None = None
+    recorded_set_name: str | None = None
     #: Whether the machine still holds the profile this was drafted from.
     #:
     #: Computed in SQL rather than stored, because it is a fact about *now*: a
@@ -196,12 +193,7 @@ class ProfileDraftRow(BaseModel):
     #: predecessor alone or had none.
     replaced_device_profile_id: str | None = None
     replaced_version_id: int | None = None
-    #: The Set versions that named the removed predecessor and were cleared by its
-    #: removal: the only ones a rollback points at the restored copy.
-    cleared_set_version_ids: JsonList = Field(
-        default=None, validation_alias="cleared_set_version_ids_json"
-    )
-    #: The Set version this push recorded, when it recorded one.
+    #: The Set version making this draft active recorded, when it recorded one.
     recorded_version_id: int | None = None
     #: The draft whose push removed this one's profile from the machine. Such a draft
     #: has nothing left to roll back.
@@ -239,9 +231,9 @@ _SELECT = f"""
            s.name AS set_name,
            {label_sql("cmp")} AS compares_to_version_label,
            (SELECT {label_sql("rv")} FROM set_versions rv
-             WHERE rv.id = d.recorded_version_id
-               AND rv.set_id = d.set_id
-               AND d.pushed_device_profile_id IS NOT NULL) AS recorded_version_label,
+             WHERE rv.id = d.recorded_version_id) AS recorded_version_label,
+           (SELECT rs.name FROM set_versions rv2 JOIN sets rs ON rs.id = rv2.set_id
+             WHERE rv2.id = d.recorded_version_id) AS recorded_set_name,
            CASE
                WHEN d.is_new THEN 1
                WHEN d.base_device_profile_id IS NULL THEN 1
@@ -374,7 +366,6 @@ class ProfileDraftsRepository(Repository):
         pushed_saved: bool | None = None,
         replaced_device_profile_id: str | None = None,
         replaced_version_id: int | None = None,
-        cleared_set_version_ids: list[int] | None = None,
     ) -> ProfileDraftRow | None:
         """Move a draft along, setting only the fields this transition owns.
 
@@ -405,9 +396,6 @@ class ProfileDraftsRepository(Repository):
         if replaced_version_id is not None:
             assignments.append("replaced_version_id = ?")
             params.append(replaced_version_id)
-        if cleared_set_version_ids is not None:
-            assignments.append("cleared_set_version_ids_json = ?")
-            params.append(dumps(cleared_set_version_ids))
         await self.db.execute(
             f"UPDATE profile_drafts SET {', '.join(assignments)} WHERE id = ?",  # noqa: S608 - assignments are literals, values are bound
             [*params, draft_id],
@@ -426,14 +414,14 @@ class ProfileDraftsRepository(Repository):
         await self.db.execute(
             "UPDATE profile_drafts SET pushed_device_profile_id = NULL, pushed_saved = 0, "
             "replaced_device_profile_id = NULL, replaced_version_id = NULL, "
-            "cleared_set_version_ids_json = NULL, recorded_version_id = NULL, "
+            "recorded_version_id = NULL, "
             "outcome_json = COALESCE(?, outcome_json), updated_at = ? WHERE id = ?",
             (None if outcome is None else dumps(outcome), utc_now(), draft_id),
         )
         return await self.get(draft_id)
 
     async def set_recorded_version(self, draft_id: int, version_id: int | None) -> None:
-        """Remember which Set version this draft's push recorded."""
+        """Remember which Set version making this draft active recorded."""
         await self.db.execute(
             "UPDATE profile_drafts SET recorded_version_id = ? WHERE id = ?", (version_id, draft_id)
         )

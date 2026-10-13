@@ -12,13 +12,6 @@ import { ContinueDesigning, DesigningBadge } from "@/components/sets/Designing";
 import { DuplicateDialog } from "@/components/sets/DuplicateDialog";
 import { duplicateButtonId } from "@/components/sets/duplicateIds";
 import { MajorChoice } from "@/components/sets/MajorChoice";
-import {
-  type AutoFilled,
-  fillFromProfile,
-  ProfileTemperature,
-  recipeHint,
-  temperatureNote,
-} from "@/components/sets/NewSetDialog";
 import { PinnedCard } from "@/components/sets/PinnedCard";
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import { RollbackButton } from "@/components/sets/RollbackButton";
@@ -47,11 +40,9 @@ import {
   archiveWords,
   currentVersion,
   grindPatch,
-  sameProfile,
   setSummary,
   trackRecordSentence,
   versionSummary,
-  withoutPinCopies,
 } from "@/lib/sets";
 import { formatDate } from "@/lib/shots";
 import { cn } from "@/lib/utils";
@@ -574,7 +565,6 @@ function NewVersionForm({
   onDone: () => void;
 }) {
   const add = useAddSetVersion();
-  const profiles = useProfileVersions({ limit: 200 });
   const [grind, setGrind] = useState("");
   const [dose, setDose] = useState("");
   const [target, setTarget] = useState("");
@@ -584,19 +574,10 @@ function NewVersionForm({
   // otherwise: this version is a change to that one.
   const current = currentVersion(versions)?.version;
   const [compare, setCompare] = useState(current ? String(current.id) : "");
-  // The profile is the one recipe field that starts *filled*, because leaving a
-  // select blank is not how anybody says "keep the profile I have" — the other
-  // four are numbers, where blank reads as "unchanged" on its own.
-  const inheritedProfile = current?.profile_version_id ? String(current.profile_version_id) : "";
-  const [profile, setProfile] = useState(inheritedProfile);
-  // "Major change": the person's answer once they have given one; until then
-  // the box follows the shared rule — a different *profile* (another entry in
-  // the profile list, not a newer version of the same one) is a major version;
-  // grind, dose, yield and a new version of the same profile are minor ones.
+  // "Major change": the person's answer once they have given one; until then the box is
+  // unticked, because grind, dose and yield are dialling in: minor versions.
   const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
-  const [filled, setFilled] = useState<AutoFilled>({ targetYieldG: null });
   const ids = {
-    profile: useId(),
     grind: useId(),
     dose: useId(),
     target: useId(),
@@ -610,22 +591,7 @@ function NewVersionForm({
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
-  /** The same rule the New Set form uses, through the same helper. */
-  function pickProfile(versionId: string) {
-    const version = (profiles.data?.items ?? []).find((row) => String(row.id) === versionId);
-    const result = fillFromProfile({ targetYieldG: target }, filled, version);
-    setTarget(result.values.targetYieldG);
-    setFilled(result.filled);
-    setProfile(versionId);
-  }
-
-  const fromProfile = recipeHint({ targetYieldG: target }, filled);
-  const chosenProfile = (profiles.data?.items ?? []).find((row) => String(row.id) === profile);
-  const profileIsNew = !sameProfile(
-    { versionId: profile ? Number(profile) : null, entryId: chosenProfile?.profile_entry_id },
-    { versionId: current?.profile_version_id ?? null, entryId: current?.profile_entry_id },
-  );
-  const major = majorChoice ?? profileIsNew;
+  const major = majorChoice ?? false;
 
   return (
     <form
@@ -647,12 +613,6 @@ function NewVersionForm({
                 ? { compares_to_version_id: compare ? Number(compare) : null }
                 : {}),
               origin: "manual",
-              // Untouched means inherited, like every other recipe field here;
-              // changed means sent, including to null when somebody picks
-              // "Any profile" on a version that named one.
-              ...(profile !== inheritedProfile
-                ? { profile_version_id: profile ? Number(profile) : null }
-                : {}),
               ...grindPatch(grind),
               ...(number(dose) ? { dose_g: number(dose) } : {}),
               ...(number(target) ? { target_yield_g: number(target) } : {}),
@@ -675,31 +635,7 @@ function NewVersionForm({
           Fill in only what changed. Anything left blank carries over from the current version.
         </p>
       )}
-      {/* First, because it is the change that goes wrong most quietly: somebody
-          who switched profiles on the machine and did not record it here finds
-          their next shots in "needs a Set", since auto-assignment matches on
-          the profile. */}
-      <Labelled id={ids.profile} label="Profile">
-        <select
-          id={ids.profile}
-          className={FIELD}
-          value={profile}
-          onChange={(event) => pickProfile(event.target.value)}
-        >
-          <option value="">Any profile</option>
-          {withoutPinCopies(profiles.data?.items ?? []).map((version) => (
-            <option key={version.id} value={String(version.id)}>
-              {version.label}
-            </option>
-          ))}
-        </select>
-      </Labelled>
-      <p className="text-muted-foreground text-xs" data-testid="profile-help">
-        Recording a profile here changes nothing on the machine — it says which profile this version
-        was brewed with, so shots pulled with it join the Set on their own. Putting a profile on the
-        machine is done from the Profiles page, by you.
-      </p>
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Labelled id={ids.grind} label="Grind">
           <input
             id={ids.grind}
@@ -726,16 +662,7 @@ function NewVersionForm({
             onChange={(event) => setTarget(event.target.value)}
           />
         </Labelled>
-        <ProfileTemperature version={chosenProfile} />
       </div>
-      <p className="text-muted-foreground text-xs" data-testid="temperature-from-profile">
-        {temperatureNote(chosenProfile)}
-      </p>
-      {fromProfile ? (
-        <p className="text-muted-foreground text-xs" data-testid="version-from-profile">
-          {fromProfile} Change it and it stays yours.
-        </p>
-      ) : null}
       <Labelled id={ids.intent} label="What are you trying?">
         <input
           id={ids.intent}

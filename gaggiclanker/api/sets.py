@@ -84,6 +84,7 @@ from gaggiclanker.db.repos.sets import (
     SetRow,
     SetTrackRecord,
     SetTrends,
+    SetVersionChange,
     SetVersionPatch,
     SetVersionRow,
     SetVersionWrite,
@@ -144,14 +145,12 @@ class SetCreate(BaseModel):
     automatch: bool = True
 
 
-class SetVersionAdd(SetVersionPatch):
+class SetVersionAdd(SetVersionChange):
     """`POST /api/sets/{id}/versions`: the change, and whether it is a major one.
 
     ``major`` is the person's answer to the form's "Major change" box: true
     starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
-    Left out, the shared rule decides — a different profile (another entry of the
-    profile list) is a major; a newer version of the same profile, grind, dose and
-    yield are minor. It is not part of the recipe, so it is split off
+    Left out, it is a minor. It is not part of the recipe, so it is split off
     before the patch reaches the repository. Strictly a boolean: "yes" or 1 is
     a request somebody should look at, not a guess this route makes.
     """
@@ -162,8 +161,7 @@ class SetVersionAdd(SetVersionPatch):
 class ProposalAccept(BaseModel):
     """`POST .../accept`: the person's answer to the card's "Major change" box.
 
-    Optional, as the body itself is: left out, the shared rule decides (a
-    different profile is a major, anything else a minor). The agent's
+    Optional, as the body itself is: left out, it is a minor. The agent's
     suggestion is never the default — it only preselects the box.
     """
 
@@ -338,10 +336,6 @@ class SetProposalDetail(BaseModel):
     #: decides.
     suggest_major: bool = False
     major_reason: str = ""
-    #: What the shared rule says when nobody decides: a change that switches
-    #: profile is a major. The card preselects the box when this or the
-    #: agent's suggestion says major.
-    major_by_default: bool = False
     #: What Accept would name the version as a minor and as a major — the
     #: button says one of them, whichever the box says. Worked out by the same
     #: query the insert numbers with, so the web never numbers anything; both
@@ -556,6 +550,12 @@ def version_refused(exc: VersionRefused) -> AppError:
                 "message": "name the profile it was copied from",
             },
         )
+    if exc.refused in ("profile_has_a_set", "other_profile", "not_the_active_version"):
+        return Conflict(
+            exc.message,
+            code=exc.code,
+            details={"field": "profile_version_id", "message": "a profile has at most one Set"},
+        )
     return Conflict(
         exc.message,
         code=exc.code,
@@ -721,7 +721,6 @@ async def _proposal_detail(
         combined_reason=row.combined_reason,
         suggest_major=row.suggest_major,
         major_reason=row.major_reason,
-        major_by_default=await proposals.default_major(row),
         next_minor_label=names.minor,
         next_major_label=names.major,
         status=row.status,
@@ -1024,8 +1023,7 @@ async def add_version(set_id: int, body: SetVersionAdd, sets: SetsRepoDep) -> JS
     different statements about the coffee.
 
     ``major`` names it: true is the next major, false the next minor, left out
-    the shared rule (a different profile is a major). The answer carries the
-    name it was given (`version_label`).
+    a minor. The answer carries the name it was given (`version_label`).
     """
     # The Set first: a comparison check against a Set that is not there would
     # answer "that is not a version of this Set", which is true and useless
@@ -1147,7 +1145,7 @@ async def accept_proposal(
     is refused. Only a sync a person starts puts the file on the machine.
 
     The body is optional. ``major`` is the card's "Major change" box; left
-    out, the shared rule names the version, never the agent's suggestion.
+    out, it is a minor, never the agent's suggestion.
     """
     major = body.major if body is not None else None
     label = body.profile_label if body is not None else None
@@ -1163,12 +1161,11 @@ async def accept_proposal(
 
         put_profile = put_in_accept
 
-    return await _decided(
-        proposals,
-        await proposals.accept(set_id, proposal_id, major=major, put_profile=put_profile),
-        set_id,
-        proposal_id,
-    )
+    try:
+        accepted = await proposals.accept(set_id, proposal_id, major=major, put_profile=put_profile)
+    except VersionRefused as exc:
+        raise version_refused(exc) from None
+    return await _decided(proposals, accepted, set_id, proposal_id)
 
 
 @router.post(
@@ -1334,18 +1331,21 @@ async def dismiss_outcome_proposal(
     response_model=ApiResponse[SetVersionRow],
     summary="Go back to another version: the Set is on it again, and no version is written",
 )
-async def rollback(set_id: int, body: RollbackWrite, sets: SetsRepoDep) -> JSONResponse:
+async def rollback(
+    set_id: int, body: RollbackWrite, sets: SetsRepoDep, board: BoardServiceDep
+) -> JSONResponse:
     """Move the Set's current version to `to_version_id` and log that it went back.
 
     Nothing is written to the machine and no version is created: the target is
     the Set's current version again, with its prediction, shots and outcome as
     they were, and the next change continues its line (v2.1 back to v1.2, then
-    v1.3). The answer is the version the Set is now on. A Set still being
-    designed has nothing to go back to: 409 `DESIGNING`.
+    v1.3). The Set's profile is put back on the version the target brews, as Make active
+    would do (and refused as it would be). The answer is the version the Set is now on. A Set
+    still being designed has nothing to go back to: 409 `DESIGNING`.
     """
     if await sets.get(set_id) is None:
         raise NotFound(f"No Set {set_id}")
-    return _unwrap(await sets.rollback(set_id, body), set_id, body.to_version_id)
+    return _unwrap(await board.revert_set(set_id, body), set_id, body.to_version_id)
 
 
 @router.put(

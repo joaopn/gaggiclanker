@@ -591,22 +591,6 @@ describe("ProposalCard, major or minor", () => {
     expect(acceptSetProposal).toHaveBeenCalledWith(3, 5, { major: true });
   });
 
-  it("preselects major when the rule says so, and the person can untick it", async () => {
-    const user = setupUser();
-    renderWithQueryClient(
-      <ProposalCard setId={3} proposal={proposal({ major_by_default: true })} />,
-    );
-
-    const box = screen.getByRole("checkbox", { name: "Major change" });
-    expect(box).toBeChecked();
-    expect(screen.getByRole("button", { name: "Accept as v3" })).toBeInTheDocument();
-
-    await user.click(box);
-    await user.click(screen.getByRole("button", { name: "Accept as v2.1" }));
-
-    expect(acceptSetProposal).toHaveBeenCalledWith(3, 5, { major: false });
-  });
-
   it("shows the agent's suggestion of major with its reason, and preselects it", () => {
     renderWithQueryClient(
       <ProposalCard
@@ -1167,39 +1151,6 @@ describe("the next step after an accept", () => {
     expect(step).toHaveTextContent("filed under v2 by themselves");
     // The words are the grind, once: not "set the grinder to 1 and 1".
     expect(step).not.toHaveTextContent("1 and 1");
-  });
-
-  it("says a profile change is selected on the machine, and never that nothing is to be done", () => {
-    renderWithQueryClient(
-      <ProposalCard
-        setId={3}
-        proposal={accepted({
-          changes: [
-            {
-              field: "profile_version_id",
-              label: "Profile",
-              before: "Baseline [AI]",
-              after: "Hotter [AI]",
-              from_profile: false,
-            },
-            {
-              field: "profile_temperature_c",
-              label: "Temperature",
-              before: "93 °C",
-              after: "94 °C",
-              from_profile: true,
-            },
-          ],
-          changed: ["the profile"],
-        })}
-      />,
-    );
-
-    const step = screen.getByTestId("proposal-next-step");
-    expect(step).toHaveTextContent(
-      "Nothing was sent to the machine. Select Hotter [AI] on the machine and brew",
-    );
-    expect(step).not.toHaveTextContent("nothing to push");
   });
 
   it("names every hand step of a change that moves two things", () => {

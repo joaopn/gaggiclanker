@@ -183,9 +183,9 @@ async def test_the_agents_change_for_a_set_to_a_profile_the_app_did_not_make_is_
     board = await get_board(client)
     [proposal] = [p for p in board["proposals"] if p["draft"]["id"] == draft["id"]]
 
-    assert proposal["landing"]["for_set"]["row_id"] == row["id"]
     assert proposal["landing"]["plain"]["row_id"] == row["id"]
-    assert (await put(client, draft, set_id=set_id))["id"] == row["id"]
+    assert proposal["landing"]["plain"]["set"]["id"] == set_id
+    assert (await put(client, draft))["id"] == row["id"]
 
 
 async def test_a_fork_under_another_name_is_a_profile_of_its_own_with_that_name(
@@ -431,11 +431,11 @@ async def test_a_renamed_set_draft_is_a_profile_of_its_own_and_the_firmware_prof
     board = await get_board(client)
     [proposal] = [p for p in board["proposals"] if p["draft"]["id"] == draft["id"]]
     assert draft["draft_label"] == "9 Bar Warm"
-    # Same landing for the Set button and the plain one: a profile of its own.
+    # A profile of its own, which no Set follows.
     assert proposal["landing"]["plain"]["row_id"] is None
-    assert proposal["landing"]["for_set"]["row_id"] is None
+    assert proposal["landing"]["plain"]["set"] is None
 
-    made = await put(client, draft, set_id=set_id)
+    made = await put(client, draft)
 
     assert made["id"] != row["id"] and made["label"] == "9 Bar Warm"
     assert row_for(await get_board(client), BASE_LABEL)["row"]["id"] == row["id"]
@@ -553,5 +553,5 @@ async def test_with_two_profiles_of_one_name_a_sets_draft_goes_to_the_sets_one(
     [set_proposal] = [p for p in board["proposals"] if p["draft"]["id"] == for_set.id]
 
     assert plain_proposal["landing"]["plain"]["row_id"] == first["id"]
-    assert set_proposal["landing"]["for_set"]["row_id"] == twin.id != first["id"]
+    assert set_proposal["landing"]["plain"]["row_id"] == twin.id != first["id"]
     assert (plain["destination_board_id"], for_set.destination_board_id) == (first["id"], twin.id)

@@ -44,7 +44,7 @@ async def test_a_patch_writes_only_the_fields_it_names(repo: ProfileBoardReposit
             origin="adopted",
         )
     )
-    assert row.on_home_screen is True and row.pending_major is None
+    assert row.on_home_screen is True and row.pending_draft_id is None
 
     await repo.update(row.id, BoardRowPatch(on_home_screen=False))
     after = await repo.get(row.id)
@@ -56,10 +56,10 @@ async def test_a_patch_writes_only_the_fields_it_names(repo: ProfileBoardReposit
     )
 
     # Naming a field as None is a write of NULL, not "leave it alone".
-    await repo.update(row.id, BoardRowPatch(device_profile_id=None, pending_major=True))
+    await repo.update(row.id, BoardRowPatch(device_profile_id=None, on_machine=False))
     cleared = await repo.get(row.id)
     assert cleared is not None
-    assert cleared.device_profile_id is None and cleared.pending_major is True
+    assert cleared.device_profile_id is None and cleared.on_machine is False
     assert cleared.device_version_id == 1
 
 

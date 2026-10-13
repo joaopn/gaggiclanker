@@ -32,6 +32,7 @@ from tests.lever_shot import (
     lever_shot,
     without_scale,
 )
+from tests.profile_rows import own_version
 from tests.sets.test_api import data
 
 RAMP_CUP_SHARE = {
@@ -63,6 +64,7 @@ async def file_lever(
         GrinderWrite(name="Constructed", step_unit="numbers")
     )
     sets = SetsRepository(db)
+    await own_version(db, profile.id)
     row = await sets.create(
         SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),

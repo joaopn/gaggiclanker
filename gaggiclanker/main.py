@@ -37,10 +37,8 @@ from gaggiclanker.db.repos.insight_placement import InsightPlacementBuilder
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
 from gaggiclanker.db.repos.patterns import PatternRunsRepository
-from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
 from gaggiclanker.db.repos.profile_list import ProfileListBuilder
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
-from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
@@ -528,23 +526,12 @@ async def _start(app: FastAPI, db: Database) -> None:
     )
 
     # The profile board and its write phase. The phase is handed to each engine the
-    # connection builds; the routes edit the board through the same object. A Set version is
-    # recorded through the draft service's own `attach_to_set`, looked up when it is needed
-    # because that service is built after the connection it uses.
-    async def attach_to_set(
-        draft: ProfileDraftRow, set_id: int, major: bool | None
-    ) -> SetVersionRow | None:
-        version: SetVersionRow | None = await app.state.drafts.attach_to_set(
-            draft, set_id, major=major
-        )
-        return version
-
-    app.state.board = BoardService(db, settings_service, attach=attach_to_set)
+    # connection builds; the routes edit the board through the same object.
+    app.state.board = BoardService(db, settings_service)
     app.state.connection = build_device_connection(app, settings_service, db)
     await app.state.connection.start()
 
-    # App-scoped because it holds the draft model call and records a Set's version once the
-    # board's write phase has put a profile on the machine. It holds no machine connection
+    # App-scoped because it holds the draft model call. It holds no machine connection
     # (a draft reaches the machine only through the board), and it builds and stores drafts
     # through the same proposal object the chat holds, so there is still one place a draft
     # document is made.

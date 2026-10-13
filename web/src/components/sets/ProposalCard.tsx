@@ -174,17 +174,14 @@ function Figure({ label, children }: { label: string; children: React.ReactNode 
  * Accepting records a version and sends nothing to the machine, and "nothing
  * is sent" on its own left a person looking for a push that does not exist
  * after a grind change (and the agent, asked, invented one). So the card says
- * what *is* done instead: the grind, the dose, the yield and the profile are
- * each set at the machine or the grinder. A profile the machine has is only
- * selected there — the agent's tool refuses to propose one it does not have.
- * Read from the same diff the card shows, so the step cannot name a value the
- * accept did not record.
+ * what *is* done instead: the grind, the dose and the yield are each set at the
+ * grinder or the machine. (A change of brew is a draft of the Set's profile, not
+ * a proposal.) Read from the same diff the card shows, so the step cannot name a
+ * value the accept did not record.
  */
 export function handSteps(changes: FieldChange[]): string[] {
   const after = (field: string) => changes.find((change) => change.field === field)?.after;
   const steps: string[] = [];
-  const profile = after("profile_version_id");
-  if (profile) steps.push(`select ${profile} on the machine`);
   // The words win over the number: "2 clicks finer" is what the person dials,
   // and the number is only there when one anchors the words on this grinder.
   const grind = after("grind_setting") ?? after("grind_value");
@@ -206,11 +203,6 @@ function capitalised(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** Whether a change moves the profile: the one change the machine has to be told about. */
-function movesProfile(changes: FieldChange[]): boolean {
-  return changes.some((change) => change.field === "profile_version_id");
-}
-
 /**
  * The line under a waiting change's buttons: what Accept records, what it does
  * not send, and what the person does instead.
@@ -220,10 +212,7 @@ export function acceptHint(changes: FieldChange[]): string {
   const base =
     "Accepting records a new version of this Set. Nothing is sent to the machine either way";
   if (steps.length === 0) return `${base}.`;
-  const push = movesProfile(changes)
-    ? ""
-    : " — the profile stays as it is, so there is nothing to push";
-  return `${base}: to brew it, you ${joinSteps(steps)} yourself${push}.`;
+  return `${base}: to brew it, you ${joinSteps(steps)} yourself — the profile stays as it is, so there is nothing to push.`;
 }
 
 /**
@@ -311,9 +300,7 @@ function Decided({ proposal }: { proposal: SetProposal }) {
             it: without it, a grind change reads as a push that never came. */}
         {steps.length > 0 ? (
           <p data-testid="proposal-next-step">
-            {movesProfile(proposal.changes)
-              ? `Nothing was sent to the machine. ${capitalised(joinSteps(steps))} and brew; shots on that profile are filed under ${version}.`
-              : `Nothing goes to the machine: the profile is unchanged, so there is nothing to push. ${capitalised(joinSteps(steps))} and brew; the next shots on this profile are filed under ${version} by themselves.`}
+            {`Nothing goes to the machine: the profile is unchanged, so there is nothing to push. ${capitalised(joinSteps(steps))} and brew; the next shots on this profile are filed under ${version} by themselves.`}
           </p>
         ) : null}
       </div>
@@ -350,7 +337,7 @@ export function ProposalCard({
   const [note, setNote] = useState("");
   // The person's answer to "Major change", once they have given one. Until
   // then the box shows what the card suggests: major when the agent suggested
-  // it or the shared rule says so (a different profile), minor otherwise.
+  // it, minor otherwise.
   const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
   // The name typed on a first recipe's Name field; `null` until the person touches it.
   const [typedName, setTypedName] = useState<string | null>(null);
@@ -384,7 +371,7 @@ export function ProposalCard({
   const design = shown.kind === "design";
   const refusedForDraft =
     design && decide.variables?.proposalId === proposal.id && draftClosed(decide.error);
-  const major = majorChoice ?? (proposal.suggest_major || proposal.major_by_default);
+  const major = majorChoice ?? proposal.suggest_major;
   const resulting = major ? proposal.next_major_label : proposal.next_minor_label;
 
   // A first recipe approves its profile with it, so the card reads where that profile stands:

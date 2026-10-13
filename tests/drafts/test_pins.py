@@ -19,8 +19,9 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.drafts.copies import ProfileCopier
 from gaggiclanker.drafts.proposals import PinnedCopyName
 from tests.drafts.conftest import BASE_LABEL, base_version_id, data, error
-from tests.drafts.helpers import make_set_on
+from tests.drafts.helpers import make_set_on, make_set_on_a_free_profile
 from tests.drafts.test_board import WRITE_FRAMES, adopted, get_board, pull, row_for
+from tests.profile_rows import own_version
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
 
@@ -30,8 +31,13 @@ Adopted = tuple[FastAPI, httpx.AsyncClient, FakeDevice]
 async def _set_with_version(
     app: FastAPI, client: httpx.AsyncClient, name: str = "Guji"
 ) -> tuple[int, int]:
-    """A Set on the base profile and its v1: (set id, version id)."""
-    set_id = await make_set_on(client, name, await base_version_id(app, BASE_LABEL))
+    """A Set and its v1: (set id, version id). The first is on the base profile; a profile has at
+    most one Set, so any other is on the first profile that has none."""
+    if name == "Guji":
+        base = await own_version(app.state.db, await base_version_id(app, BASE_LABEL))
+        set_id = await make_set_on(client, name, base)
+    else:
+        set_id = await make_set_on_a_free_profile(app, client, name)
     detail = data(await client.get(f"/api/sets/{set_id}"))
     return set_id, int(detail["versions"][0]["version"]["id"])
 
@@ -98,7 +104,6 @@ async def test_a_pin_makes_a_copy_on_the_list_and_answers_with_the_pin_and_the_r
     row = row_for(await get_board(client), name)
     assert row["row"]["id"] == body["board_id"]
     assert (row["on_machine"], row["starred"], row["row"]["origin"]) == (True, True, "draft")
-    assert row["row"]["pending_set_id"] is None
     assert (await get_board(client))["proposals"] == []
 
 
@@ -146,8 +151,9 @@ async def _state(app: FastAPI, client: httpx.AsyncClient, kind: str) -> tuple[in
         return (*(await _set_with_version(app, client)), None)
     if kind == "taken":
         other_set, other_version = await _set_with_version(app, client, "Other")
-        data(await _pin(client, other_set, other_version))
-        return (*(await _set_with_version(app, client, "Second")), None)
+        first = data(await _pin(client, other_set, other_version))["pin"]
+        # Another Set pinned under the name the first pin's copy has.
+        return (*(await _set_with_version(app, client, "Second")), first["name"])
     if kind == "policy":
         await app.state.settings_service.apply({"profilePolicyPressureMaxBar": 7.5})
         return (*(await _set_with_version(app, client)), None)
@@ -359,7 +365,23 @@ async def test_a_name_freed_by_an_unpin_cannot_be_reused_by_another_version_with
     set_id, version_id = await _set_with_version(app, client)
     first = data(await _pin(client, set_id, version_id))["pin"]
     data(await client.post(f"/api/pins/{first['id']}/unpin"))
-    other_set, other_version = await _set_with_version(app, client, "Second")
+    # Another Set that brews the same thing (a Duplicate: a profile of its own, the same brew).
+    bean = data(await client.get(f"/api/sets/{set_id}"))["set"]["bean_id"]
+    made = data(
+        await client.post(
+            f"/api/sets/{set_id}/versions/{version_id}/duplicate",
+            json={
+                "set_name": "Second",
+                "profile_name": "Second profile",
+                "insight_ids": [],
+                "bean_id": bean,
+            },
+        )
+    )["set"]
+    other_set = int(made["id"])
+    other_version = int(
+        data(await client.get(f"/api/sets/{other_set}"))["versions"][0]["version"]["id"]
+    )
     before = await _counts(app)
 
     preview = data(await _preview(client, other_set, other_version, first["name"]))
@@ -400,7 +422,7 @@ async def test_an_ordinary_copy_cannot_land_on_a_pins_copy_even_after_the_unpin(
     assert await _counts(app) == before
 
 
-async def test_the_routes_refuse_a_set_version_that_names_a_copy(adopted: Adopted) -> None:
+async def test_a_new_set_is_refused_the_profile_of_a_pins_copy(adopted: Adopted) -> None:
     app, client, _fake = adopted
     set_id, version_id = await _set_with_version(app, client)
     copy = data(await _pin(client, set_id, version_id))["pin"]["profile_version_id"]
@@ -411,12 +433,8 @@ async def test_the_routes_refuse_a_set_version_that_names_a_copy(adopted: Adopte
         "/api/sets",
         json={"name": "Other", "bean_id": bean["id"], "version": {"profile_version_id": copy}},
     )
-    new_version = await client.post(
-        f"/api/sets/{set_id}/versions", json={"profile_version_id": copy}
-    )
-
-    for refused in (new_set, new_version):
-        assert refused.status_code == 409 and error(refused)["code"] == "PROFILE_IS_A_PIN"
+    # (A new version of a Set has no profile to name: it brews the Set's own.)
+    assert new_set.status_code == 409 and error(new_set)["code"] == "PROFILE_IS_A_PIN"
     assert await _counts(app) == before
 
 
@@ -429,7 +447,12 @@ async def test_a_profile_some_set_version_already_brews_is_not_a_copy_to_pin(
     lookalike, _ = await app.state.board.profiles.ensure_version(
         base.model_copy(update={"label": f"{BASE_LABEL} v1"}), source="draft", owner=None
     )
-    await make_set_on(client, "Brews the lookalike", lookalike.id)
+    await make_set_on(client, "Brews the lookalike", await own_version(app.state.db, lookalike.id))
+    # Its profile is switched off, so the name is free in the list; the Set still brews the copy.
+    await app.state.db.execute(
+        "UPDATE profile_board SET deleted_at = '2026-10-13T10:00:00.000Z' WHERE label = ?",
+        (f"{BASE_LABEL} v1",),
+    )
     before = await _counts(app)
 
     preview = data(await _preview(client, set_id, version_id))

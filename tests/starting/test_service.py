@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL, ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
@@ -336,6 +337,9 @@ async def test_a_profile_that_states_no_temperature_is_redrafted_too(
         Profile.model_validate({**base.profile, "label": "Says nothing", "temperature": 0}),
         owner=None,
     )
+    await ProfileBoardRepository(fixture.db).insert(
+        BoardRowWrite(label="Says nothing", current_version_id=silent.id, origin="adopted")
+    )
     provider.script = [json.dumps(option_with(profile_version_id=silent.id, temperature_c=96.0))]
     run = await _propose(starting, fixture)
     accepted = await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
@@ -587,6 +591,10 @@ async def test_a_draft_with_no_profile_in_the_library_gets_a_synthetic_base(
     """A draft is always derived from a version, because the diff is how it is read."""
     await fixture.db.execute("UPDATE shots SET profile_version_id = NULL")
     await fixture.db.execute("UPDATE set_versions SET profile_version_id = NULL")
+    await fixture.db.execute("DELETE FROM profile_board_versions")
+    await fixture.db.execute("UPDATE profile_versions SET board_id = NULL")
+    await fixture.db.execute("UPDATE sets SET board_id = NULL")
+    await fixture.db.execute("DELETE FROM profile_board")
     await fixture.db.execute("DELETE FROM profile_versions")
     provider.script = [json.dumps(option_with(profile=GOOD_PROFILE))]
 

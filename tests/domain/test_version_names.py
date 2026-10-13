@@ -1,4 +1,4 @@
-"""The version-name rules: the default for each path, the label, the parse.
+"""The version-name rules: the label, the next name, the parse.
 
 Pure, so every case is a line. What the repository does with them on a real
 database is in `tests/sets/test_version_names.py`.
@@ -9,37 +9,10 @@ from __future__ import annotations
 import pytest
 
 from gaggiclanker.domain.sets import (
-    change_is_major,
     next_version_name,
     parse_version_label,
     version_label,
 )
-
-
-@pytest.mark.parametrize(
-    ("path", "profile_changed", "expected"),
-    [
-        # A recipe change (the form, a proposal, a suggestion): a different
-        # profile is a major, grind, dose and yield are dialling in.
-        ("change", True, True),
-        ("change", False, False),
-        # A pushed draft is a tuned copy of a profile: dialling in, whatever it
-        # names.
-        ("draft", True, False),
-        ("draft", False, False),
-    ],
-)
-def test_the_default_for_each_path(path: str, profile_changed: bool, expected: bool) -> None:
-    assert change_is_major(path, profile_changed=profile_changed, major=None) is expected  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize("path", ["change", "draft"])
-@pytest.mark.parametrize("profile_changed", [True, False])
-@pytest.mark.parametrize("major", [True, False])
-def test_the_person_s_answer_wins_in_both_directions(
-    path: str, profile_changed: bool, major: bool
-) -> None:
-    assert change_is_major(path, profile_changed=profile_changed, major=major) is major  # type: ignore[arg-type]
 
 
 def test_the_label_leaves_a_zero_minor_off() -> None:

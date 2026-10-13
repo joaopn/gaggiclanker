@@ -163,15 +163,6 @@ describe("rowStateOf", () => {
   });
 });
 
-describe("a profile made active for a Set", () => {
-  it("says the Set's version is recorded once a sync has put it on the machine", () => {
-    const entry = boardRowView({ row: { pending_set_id: 3 } });
-    expect(rowStateOf(boardView({ rows: [entry] }), entry).notes).toContain(
-      "Once a sync has put it on the machine it is recorded as the next version of its Set.",
-    );
-  });
-});
-
 describe("a version that did not verify", () => {
   it("says it is not tried again and gives the server's reason as a note", () => {
     const entry = boardRowView({ machine: { present: false, holds_current: false } });

@@ -30,10 +30,8 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
-from gaggiclanker.api.deps import BoardServiceDep, DeviceClientDep, ProfilesRepoDep, SetsRepoDep
-from gaggiclanker.api.sets import version_refused
+from gaggiclanker.api.deps import BoardServiceDep, DeviceClientDep, ProfilesRepoDep
 from gaggiclanker.db.repos.profile_board import BoardRow
-from gaggiclanker.db.repos.sets import VersionRefused
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.drafts.board import BoardView, machine_from_mirror
 from gaggiclanker.drafts.board_versions import ConflictView, ProfileVersionsView
@@ -51,10 +49,9 @@ class BoardPut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     draft_id: int
-    #: Record the profile as this Set's next version when a sync puts it on the machine.
-    set_id: int | None = None
-    #: Whether that version is a major one; ``None`` leaves the default for a pushed draft.
-    #: Strict: "yes" is not an answer to a question that decides a version's name.
+    #: Whether the new version of the profile's Set is a major one (when the profile has a Set);
+    #: ``None`` leaves the default, a minor. Strict: "yes" is not an answer to a question that
+    #: decides a version's name.
     major: StrictBool | None = None
     #: The name for a new profile, stored with the approval. Refused for a change to an existing
     #: profile (a name never changes through a version), when empty, and when taken.
@@ -148,24 +145,15 @@ async def get_board(
     status_code=201,
     summary="Make a proposal active: a new version of a profile, or a new profile",
 )
-async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep) -> JSONResponse:
+async def put_on_board(body: BoardPut, board: BoardServiceDep) -> JSONResponse:
     """The next sync puts it on the machine. Nothing is sent to the machine now.
 
-    One action for a proposal: a drafted draft is approved by it. Refused (409) for a draft
-    that is already on the machine, discarded or overtaken, one whose version is already in the
-    list, and for a Set that could no longer be given a
-    version. A proposal continues the live profile with exactly its name, or is a new profile.
+    One action for a proposal: a drafted draft is approved by it. The profile's Set, if it has
+    one, gets a new version naming it in the same transaction. Refused (409) for a draft that is
+    already on the machine, discarded or overtaken, and one whose version is already in the
+    list. A proposal continues the live profile with exactly its name, or is a new profile.
     """
-    if body.set_id is not None:
-        refusal = await sets.design_refusal(body.set_id)
-        if refusal is not None:
-            raise version_refused(VersionRefused(refusal))
-    row = await board.put_draft(
-        body.draft_id,
-        set_id=body.set_id,
-        major=body.major,
-        label=body.label,
-    )
+    row = await board.put_draft(body.draft_id, major=body.major, label=body.label)
     return envelope_response(row.model_dump(mode="json"), status_code=201)
 
 

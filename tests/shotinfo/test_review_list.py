@@ -27,6 +27,7 @@ from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.sync.derive import derive_shot
 from tests.lever_shot import LEVER_PROFILE, TARGET_YIELD_G, lever_shot
+from tests.profile_rows import own_version
 from tests.sets.conftest import make_profile_version
 from tests.sets.test_api import data
 from tests.shotinfo.conftest import PROFILE_204, SLOG, Archive, _without_scale
@@ -163,6 +164,7 @@ async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
         GrinderWrite(name="Constructed", step_unit="numbers")
     )
     sets = SetsRepository(db)
+    await own_version(db, profile.id)
     row = await sets.create(
         SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),

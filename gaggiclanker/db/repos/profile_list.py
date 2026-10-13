@@ -218,7 +218,7 @@ class ProfileListBuilder(Repository):
             await self.db.execute(
                 "UPDATE profile_board SET deleted_at = NULL, on_machine = ?, "
                 "on_home_screen = CASE WHEN ? THEN ? ELSE on_home_screen END, "
-                "pending_draft_id = NULL, pending_set_id = NULL, pending_major = NULL, "
+                "pending_draft_id = NULL, "
                 "failed_version_id = NULL, "
                 "device_profile_id = CASE WHEN ? THEN NULL ELSE device_profile_id END, "
                 "device_version_id = CASE WHEN ? THEN NULL ELSE device_version_id END, "

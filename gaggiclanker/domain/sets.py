@@ -10,9 +10,8 @@ one of them, would be the same rule written twice and kept once.
 The same goes for a version's **name**. A Set version is v<major>.<minor>: a
 dial-in change (grind, dose, yield, a profile draft that tunes a parameter)
 keeps the major and takes the next minor, and a functional change to what the
-profile does starts the next major. Every path that appends a version asks
-:func:`change_is_major` what its default is, and every place that shows one
-asks :func:`version_label` how it reads.
+profile does starts the next major, which only a person says. Every place that
+shows a version asks :func:`version_label` how it reads.
 
 Pure: no database, no FastAPI.
 """
@@ -20,54 +19,14 @@ Pure: no database, no FastAPI.
 from __future__ import annotations
 
 import re
-from typing import Literal
 
 __all__ = [
-    "VersionPath",
-    "change_is_major",
     "grind_value",
     "next_version_name",
     "parse_version_label",
     "set_name",
     "version_label",
 ]
-
-#: Which kind of write is appending a version, for :func:`change_is_major`.
-#:
-#: * ``change`` — a recipe change a person or the agent spelled out: the Add a
-#:   version form, an accepted proposal, an accepted analysis suggestion.
-#: * ``draft`` — a profile draft put on the machine (by the board's sync) and recorded on the Set:
-#:   a tuned copy of a profile, which is dialling in.
-#:
-#: Going back to an earlier version is not a path: a revert writes no version.
-type VersionPath = Literal["change", "draft"]
-
-
-def change_is_major(path: VersionPath, *, profile_changed: bool, major: bool | None) -> bool:
-    """Whether a new version is a major one: the person's answer, else the default.
-
-    The maintainer's rule: a major version is a functional change to what the
-    profile does, and the person has the last word on every card and form.
-    ``major`` is that word, and when it is given it wins in both directions.
-    ``None`` is "nobody said", and then the default for the path applies:
-
-    * a **change** is major exactly when it switches the Set to a different
-      profile: another entry of the profile list, not a newer version of the
-      same profile (:mod:`gaggiclanker.db.repos.profile_identity` says which is
-      which; ``profile_changed`` is its answer). Grind, dose and yield are
-      dialling in.
-    * a pushed **draft** is minor. It is a tuned copy of a profile (a degree of
-      temperature, a longer pre-infusion), which is dialling in too, unless the
-      person marks it major.
-
-    The agent's suggestion is not an input here. It is shown on the card, which
-    preselects the box, and what the person sends is ``major``.
-    """
-    if major is not None:
-        return major
-    if path == "draft":
-        return False
-    return profile_changed
 
 
 def version_label(major: int, minor: int) -> str:

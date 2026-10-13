@@ -38,6 +38,7 @@ from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrit
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
+from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -123,6 +124,8 @@ GOOD_OUTPUT: dict[str, Any] = {
         },
     ],
 }
+
+LIBRARY_LABEL = "Library 18g"
 
 #: A valid profile document an option may carry. Terminates on a volumetric
 #: stop at the yield, which is what the policy and the prompt both require.
@@ -392,6 +395,16 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
     profile_version, _ = await ProfilesRepository(db).ensure_version(
         Profile.model_validate(document), owner=None
     )
+    # What the wizard may offer: a profile no Set has (a profile has at most one Set, so the five
+    # Sets below, which share the version above as they did before that rule, are not it).
+    library, _ = await ProfilesRepository(db).ensure_version(
+        Profile.model_validate({**document, "label": LIBRARY_LABEL}), owner=None
+    )
+    await ProfileBoardRepository(db).insert(
+        BoardRowWrite(
+            label=LIBRARY_LABEL, current_version_id=library.id, origin="adopted", on_machine=False
+        )
+    )
 
     beans = BeansRepository(db)
     sets = SetsRepository(db)
@@ -410,7 +423,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                 grinder_id=grinder_ids[str(entry["grinder"])],
             ),
             SetVersionWrite(
-                profile_version_id=profile_version.id,
+                profile_version_id=None,
                 grind_setting=str(entry["grind"]),
                 grind_value=float(entry["grind"]),
                 dose_g=float(entry["dose"]),
@@ -424,6 +437,12 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
         )
         version_id = stored.current_version_id
         assert version_id is not None
+        # The archive of a database from before a Set had a profile of its own: five Sets name the
+        # one version (the repository would refuse that now, so it is written as it was).
+        await db.execute(
+            "UPDATE set_versions SET profile_version_id = ? WHERE id = ?",
+            (profile_version.id, version_id),
+        )
         versions[str(entry["label"])] = version_id
         set_ids[str(entry["label"])] = stored.id
 
@@ -477,7 +496,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
         grinder_id=niche.id,
         other_grinder_id=mazzer.id,
         new_bean_id=new_bean.id,
-        profile_version_id=profile_version.id,
+        profile_version_id=library.id,
         versions=versions,
         sets=set_ids,
     )

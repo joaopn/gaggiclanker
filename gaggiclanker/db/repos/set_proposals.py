@@ -67,7 +67,6 @@ from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeP
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
-from gaggiclanker.db.repos.profile_identity import same_profile
 from gaggiclanker.db.repos.sets import (
     RECIPE_FIELDS,
     TEXT_MAX,
@@ -78,7 +77,6 @@ from gaggiclanker.db.repos.sets import (
 )
 from gaggiclanker.db.repos.version_names import NextNames, label_sql, next_names
 from gaggiclanker.db.repository import Repository
-from gaggiclanker.domain.sets import change_is_major
 
 log = structlog.get_logger(__name__)
 
@@ -574,29 +572,6 @@ class SetProposalsRepository(Repository):
             return {"profile_label": None, "profile_temperature_c": None}
         return {"profile_label": row["label"], "profile_temperature_c": row["temperature_c"]}
 
-    async def default_major(self, proposal: SetProposalRow) -> bool:
-        """Whether accepting this without saying would record a major version.
-
-        The shared rule (:func:`~gaggiclanker.domain.sets.change_is_major`) on
-        what the change moves against the version it was made to: a different
-        profile (another entry of the profile list, not another version of the
-        same profile) is a major, grind, dose and yield are minor. The agent's
-        suggestion is not part of it — the card shows that separately and the
-        person decides. A first recipe fills version 1 whichever way, so it is
-        never a major of anything.
-        """
-        if proposal.kind == "design" or proposal.patch is None:
-            return False
-        base = await self.sets.get_version(proposal.base_version_id)
-        moves_profile = (
-            "profile_version_id" in proposal.patch.model_fields_set
-            and base is not None
-            and not await same_profile(
-                self.db, proposal.patch.profile_version_id, base.profile_version_id
-            )
-        )
-        return change_is_major("change", profile_changed=moves_profile, major=None)
-
     async def records_a_grade(self, proposal: SetProposalRow) -> bool:
         """Whether accepting this change would record the agent's waiting grade.
 
@@ -874,7 +849,6 @@ class SetProposalsRepository(Repository):
                     _version_patch(proposal, profile_version_id=profile_version_id),
                     keep_proposal=proposal_id,
                     major=major,
-                    path="change",
                 )
                 if version_id is None:  # pragma: no cover - current proved there is a parent
                     return ProposalWriteResult(refused="no_current_version")
@@ -882,6 +856,9 @@ class SetProposalsRepository(Repository):
         except VersionRefused as exc:
             # The refusals an append raises are a design that can no longer be filled and a
             # profile that has become a pin's copy; the transaction above is already undone.
+            # Any other is the caller's to say (the first recipe's profile already has a Set).
+            if exc.refused in ("profile_has_a_set", "other_profile", "not_the_active_version"):
+                raise
             return ProposalWriteResult(
                 refused="profile_is_a_pin"
                 if exc.refused == "profile_is_a_pin"

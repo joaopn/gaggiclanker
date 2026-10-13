@@ -218,9 +218,13 @@ class TestAccepting:
         # Not the parent: the person accepted "graded on its own numbers".
         assert result.version.compares_to_version_id is None
 
-    async def test_a_profile_change_is_recorded_and_nothing_is_sent(self, wired: Fixtures) -> None:
+    async def test_a_patch_naming_a_profile_is_previewed_with_its_label_and_temperature(
+        self, wired: Fixtures
+    ) -> None:
         set_id = await _set(wired)
-        profile_id = await make_profile_version(wired.db, "Hotter [AI]", temperature=94)
+        profile_id = await make_profile_version(
+            wired.db, "Hotter [AI]", temperature=94, owned=False
+        )
         proposals, _ = await _propose(
             wired, set_id, patch=SetVersionPatch(profile_version_id=profile_id)
         )
@@ -234,8 +238,6 @@ class TestAccepting:
         result = await proposals.accept(set_id, waiting.id)
         assert result.version is not None
         assert result.version.profile_version_id == profile_id
-        # A push is what puts a profile on the machine, and nothing here does.
-        assert result.version.pushed_device_profile_id is None
 
     async def test_a_set_that_moved_on_leaves_nothing_to_accept(self, wired: Fixtures) -> None:
         """The Set overtook it, so it is already stale by the time anybody presses."""
@@ -401,7 +403,9 @@ class TestWhatCreateAcceptsAcceptCanApply:
 
     async def test_a_profile_version_that_exists_is_accepted(self, wired: Fixtures) -> None:
         set_id = await _set(wired)
-        profile_id = await make_profile_version(wired.db, "Hotter [AI]", temperature=94)
+        profile_id = await make_profile_version(
+            wired.db, "Hotter [AI]", temperature=94, owned=False
+        )
         _, result = await _propose(
             wired, set_id, patch=SetVersionPatch(profile_version_id=profile_id)
         )

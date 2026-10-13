@@ -63,7 +63,6 @@ export function usePutOnBoard(): UseMutationResult<
   Error,
   {
     draftId: number;
-    setId?: number;
     major?: boolean;
     label?: string;
     /** No toast for the approval itself: the caller starts a sync, which reports itself. */
@@ -83,9 +82,10 @@ export function usePutOnBoard(): UseMutationResult<
     onError: (error, variables) => {
       if (!variables.quietError) toast.error(error.message);
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: () => {
+      // The profile's Set follows it, so the Sets read changes with the board's.
       void invalidateBoardWrites(queryClient);
-      if (variables?.setId !== undefined) void invalidateSets(queryClient);
+      void invalidateSets(queryClient);
     },
   });
 }

@@ -133,11 +133,6 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
       );
     }
   }
-  if (entry.row.pending_set_id != null) {
-    notes.push(
-      "Once a sync has put it on the machine it is recorded as the next version of its Set.",
-    );
-  }
   if (!on && entry.machine.selected && present) {
     notes.push(
       "It is the machine's selected profile: a sync selects another enabled profile first, then removes it.",

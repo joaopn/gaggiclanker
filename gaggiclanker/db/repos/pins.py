@@ -205,12 +205,7 @@ class PinsRepository(Repository):
                 )
             await board.update(
                 row.id,
-                BoardRowPatch(
-                    deleted_at=utc_now(),
-                    pending_draft_id=None,
-                    pending_set_id=None,
-                    pending_major=None,
-                ),
+                BoardRowPatch(deleted_at=utc_now(), pending_draft_id=None),
             )
         return True
 
@@ -226,6 +221,18 @@ class PinsRepository(Repository):
         await self.db.execute(
             "UPDATE set_version_pins SET unpinned_at = ? WHERE id = ? AND unpinned_at IS NULL",
             (utc_now(), pin_id),
+        )
+
+    async def move_to_set_version(
+        self, pin_id: int, set_version_id: int | None, profile_version_id: int
+    ) -> None:
+        """The machine's side of the pin's file was kept: the pin's record names the machine's
+        version (the copy row's active version now) and, when the Set followed, the Set version
+        that was made for it. The row and its name are as they were."""
+        await self.db.execute(
+            "UPDATE set_version_pins SET profile_version_id = ?, "
+            "set_version_id = COALESCE(?, set_version_id) WHERE id = ?",
+            (profile_version_id, set_version_id, pin_id),
         )
 
     async def is_copy(self, profile_version_id: int) -> bool:

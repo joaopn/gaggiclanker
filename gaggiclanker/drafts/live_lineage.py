@@ -39,16 +39,8 @@ class LiveLineage:
         return await self.board.find_live_by_name_key(label)
 
     async def by_set(self, set_id: int) -> BoardRow | None:
-        current = await self.sets.current_version(set_id)
-        if current is None or current.profile_version_id is None:
-            return None
-        found = await self.sets.current_device_profile(set_id)
-        row = None
-        if found is not None:
-            row = await self.board.find_live_by_device(found[0])
-        if row is None:
-            row = await self.board.find_live_by_listed_version(current.profile_version_id)
-        return row
+        found = await self.sets.get(set_id)
+        return None if found is None or found.board_id is None else await self.by_id(found.board_id)
 
     async def base_profile(self, version_id: int) -> BoardRow | None:
         """The live profile this version belongs to: its owner, when it has one and that profile

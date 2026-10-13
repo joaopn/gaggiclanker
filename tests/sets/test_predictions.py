@@ -30,6 +30,7 @@ from gaggiclanker.db.repos.sets import (
     track_record,
 )
 from gaggiclanker.domain.vocab import VERSION_OUTCOMES, VersionOutcome
+from tests.profile_rows import another_version
 from tests.sets.conftest import Fixtures, make_profile_version, make_shot
 
 #: Every field a new version copies from the version it is built on. Named here
@@ -481,7 +482,7 @@ class TestRevert:
         )
         first = await wired.sets.current_version(row.id)
         assert first is not None
-        other = await make_profile_version(wired.db, "Newer profile")
+        other = await another_version(wired.db, profile, description="newer")
         second = await wired.sets.add_version(
             row.id, SetVersionPatch(profile_version_id=other), major=True
         )

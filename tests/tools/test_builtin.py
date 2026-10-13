@@ -542,19 +542,19 @@ async def test_an_ungraded_prediction_blocks_the_next_proposal(
     assert "another shot on the same recipe" in data["detail"]
 
 
-async def test_a_profile_nobody_has_is_refused_where_the_change_is_made(
+async def test_a_proposal_takes_no_profile_a_change_of_brew_is_a_draft(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
-    """Refused at propose time, not discovered when the person presses Accept."""
+    """A Set brews one profile, so a proposal changes the recipe only; a different brew is a
+    draft of that profile, which the person makes active."""
     data = await refuse(
         set_ctx,
         "propose_set_version",
         reason="Switch to the hotter profile.",
-        profile_version_id=987_654,
+        profile_version_id=archive.profile_version_id,
         prediction=PREDICTION,
     )
-    assert "not one this archive knows" in data["detail"]
-    assert "list_profiles" in data["detail"]
+    assert "profile_version_id" in data["detail"]
     assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
 
 
@@ -567,60 +567,6 @@ async def _second_profile(archive: Fixture) -> int:
         Profile.model_validate({**own.profile, "label": "Hotter"}), owner=None
     )
     return version.id
-
-
-async def test_a_profile_not_on_the_machine_is_refused_and_draft_profile_named(
-    set_ctx: ToolContext, archive: Fixture
-) -> None:
-    """Nothing in the app can put an existing version on the machine; only drafts are pushed.
-
-    A Set version naming such a profile is a recipe nobody can brew, and the
-    person finds that out at the machine after pressing Accept.
-    """
-    hotter = await _second_profile(archive)
-
-    data = await refuse(
-        set_ctx,
-        "propose_set_version",
-        reason="Switch to the hotter profile.",
-        profile_version_id=hotter,
-        prediction=PREDICTION,
-    )
-
-    assert f"Profile version {hotter} is not on the machine" in data["detail"]
-    assert "draft_profile" in data["detail"]
-    assert "on_machine" in data["detail"]
-    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
-
-
-async def test_a_profile_on_the_machine_can_be_proposed(
-    set_ctx: ToolContext, archive: Fixture
-) -> None:
-    """The refusal is about the machine, not about changing the profile."""
-    hotter = await _second_profile(archive)
-    profiles = ProfilesRepository(archive.db)
-    await profiles.upsert_device_profile(device_id="hot", version_id=hotter)
-
-    data = await call(
-        set_ctx,
-        "propose_set_version",
-        reason="Switch to the hotter profile.",
-        profile_version_id=hotter,
-        prediction=PREDICTION,
-    )
-    assert data["changed"] == ["the profile"]
-
-    # A profile deleted from the machine since is refused again.
-    await SetProposalsRepository(archive.db).decline(archive.set_id, data["proposal_id"])
-    await profiles.mark_one_deleted("hot")
-    again = await refuse(
-        set_ctx,
-        "propose_set_version",
-        reason="Switch to the hotter profile.",
-        profile_version_id=hotter,
-        prediction=PREDICTION,
-    )
-    assert "is not on the machine" in again["detail"]
 
 
 async def test_list_profiles_says_which_are_on_the_machine(

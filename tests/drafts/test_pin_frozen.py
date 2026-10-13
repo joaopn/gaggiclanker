@@ -1,8 +1,10 @@
 """A pinned copy is frozen: it changes only by unpinning it.
 
 The refusal is server side (409 `PIN_FROZEN`, a sentence naming the pin): the switch, the active
-version, keeping the machine's side of a conflict, and any draft that would continue the copy.
-The star still works, and so does keeping the app's side. The draft refusal lives in the one
+version, and any draft that would continue the copy. The star still works, and so does a
+conflict: an edit made on the machine to the copy's file is asked about like any other, keeping
+the app's side as always, and keeping the machine's side gives the pin's Set a new minor version
+with the machine's brew, which the pin then names. The draft refusal lives in the one
 function that decides where a draft goes, so drafting, the put and the landing the page shows
 cannot disagree.
 """
@@ -10,19 +12,20 @@ cannot disagree.
 from __future__ import annotations
 
 import copy as _copy
+import json
 from typing import Any
 
 import httpx
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.profile_board import BoardRowWrite
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile
 from tests.drafts.conftest import BASE_LABEL, base_version_id, data, error
-from tests.drafts.helpers import make_set_on
 from tests.drafts.test_board import adopted, get_board, pull, row_for
 from tests.drafts.test_pins import _pin, _set_with_version
+from tests.sets.conftest import make_shot
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
 
@@ -69,29 +72,138 @@ async def test_the_star_still_works(adopted: Adopted) -> None:
     assert row_for(await get_board(client), NAME)["starred"] is False
 
 
-async def test_keeping_the_machines_side_of_a_conflict_is_refused_and_keeping_the_apps_works(
-    adopted: Adopted,
-) -> None:
-    app, client, fake = adopted
+async def _edited_on_the_machine(
+    app: FastAPI, client: httpx.AsyncClient, fake: FakeDevice
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """A pinned copy on the machine, edited there: its row and the conflict's content hash."""
     row = await _pinned_row(app, client)
-    row_id = row["row"]["id"]
     await pull(app)  # the copy reaches the machine
     edited = next(p for p in fake.profiles if p["label"] == NAME)
     edited["temperature"] = float(edited.get("temperature", 90)) + 1
     await pull(app)  # the machine's file is not what the app put there: a conflict
-    seen = data(await client.get(f"/api/profile-board/{row_id}/conflict"))
-    body = {"content_hash": seen["machine"]["content_hash"]}
+    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
+    return row, {"content_hash": seen["machine"]["content_hash"]}
 
-    machine = await client.post(
+
+async def test_keeping_the_apps_side_of_a_pinned_files_conflict_works_as_for_any_row(
+    adopted: Adopted,
+) -> None:
+    app, client, fake = adopted
+    row, body = await _edited_on_the_machine(app, client, fake)
+    set_versions = int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_versions"))
+
+    kept = await client.post(
+        f"/api/profile-board/{row['row']['id']}/conflict", json={"keep": "app", **body}
+    )
+
+    assert kept.status_code == 200, kept.text
+    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_versions")) == set_versions
+
+
+async def test_keeping_the_machines_side_of_a_pinned_files_conflict_gives_the_set_a_new_version(
+    adopted: Adopted,
+) -> None:
+    """The Set's profile gets its own version of the machine's brew, made active, so the Set has
+    a new minor version, and the pin names that Set version. The copy keeps the file and the
+    machine's version."""
+    app, client, fake = adopted
+    set_id = int(await app.state.db.fetch_value("SELECT MAX(id) FROM sets") or 0)
+    row, body = await _edited_on_the_machine(app, client, fake)
+    row_id = row["row"]["id"]
+    set_id = int(await app.state.db.fetch_value("SELECT id FROM sets ORDER BY id DESC LIMIT 1"))
+    own = int(await app.state.db.fetch_value("SELECT board_id FROM sets WHERE id = ?", (set_id,)))
+    before = int(
+        await app.state.db.fetch_value(
+            "SELECT current_version_id FROM profile_board WHERE id = ?", (own,)
+        )
+    )
+
+    kept = await client.post(
         f"/api/profile-board/{row_id}/conflict", json={"keep": "machine", **body}
     )
-    app_side = await client.post(
-        f"/api/profile-board/{row_id}/conflict", json={"keep": "app", **body}
+
+    assert kept.status_code == 200, kept.text
+    set_row = data(await client.get(f"/api/sets/{set_id}"))["set"]
+    assert set_row["current_version_label"] == "v1.1"
+    new_version = set_row["current_version_id"]
+    pin = await app.state.db.fetch_one(
+        "SELECT * FROM set_version_pins WHERE board_id = ?", (row_id,)
+    )
+    assert pin is not None and pin["set_version_id"] == new_version and pin["unpinned_at"] is None
+    # ... and it names one version, the one the file holds now (the copy row's active version).
+    assert (
+        pin["profile_version_id"]
+        == row_for(await get_board(client), NAME)["row"]["current_version_id"]
+    )
+    # The Set's profile now brews the machine's brew, under its own name.
+    active = await app.state.db.fetch_one(
+        "SELECT pv.label, pv.board_id, pv.json FROM profile_board b "
+        "JOIN profile_versions pv ON pv.id = b.current_version_id WHERE b.id = ?",
+        (own,),
+    )
+    assert active["board_id"] == own and active["label"] == BASE_LABEL
+    assert json.loads(active["json"])["temperature"] == float(
+        next(p for p in fake.profiles if p["label"] == NAME)["temperature"]
+    )
+    assert (
+        await app.state.db.fetch_value(
+            "SELECT current_version_id FROM profile_board WHERE id = ?", (own,)
+        )
+    ) != before
+    # The copy keeps the file, and the version the file holds.
+    held = row_for(await get_board(client), NAME)
+    assert held["row"]["device_profile_id"] is not None and held["in_conflict"] is False
+    assert held["row"]["current_version_id"] != row["row"]["current_version_id"]
+    assert (
+        await app.state.db.fetch_value(
+            "SELECT board_id FROM profile_versions WHERE id = ?",
+            (held["row"]["current_version_id"],),
+        )
+        == row_id
     )
 
-    assert machine.status_code == 409
-    assert (error(machine)["code"], error(machine)["message"]) == ("PIN_FROZEN", SENTENCE)
-    assert app_side.status_code == 200, app_side.text
+
+async def test_a_shot_on_a_pinned_file_still_in_conflict_stays_in_the_inbox(
+    adopted: Adopted,
+) -> None:
+    """The file was edited and nobody has chosen yet: its version is no pin's, so a shot brewed
+    on it waits, as on any profile in conflict."""
+    app, client, _fake = adopted
+    row, _body = await _edited_on_the_machine(app, client, _fake)
+    machine = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))["machine"]
+    shot = await make_shot(app.state.db, "000778", profile_version_id=machine["version_id"])
+
+    summary = await SetsRepository(app.state.db).match_unfiled([shot])
+
+    assert summary.matched == 0
+    assert (
+        await app.state.db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
+        is None
+    )
+
+
+async def test_a_shot_brewed_on_the_kept_file_files_under_the_pins_new_set_version(
+    adopted: Adopted,
+) -> None:
+    """The file holds the version the person kept; its shots belong to the pin, not the inbox."""
+    app, client, fake = adopted
+    row, body = await _edited_on_the_machine(app, client, fake)
+    row_id = row["row"]["id"]
+    await client.post(f"/api/profile-board/{row_id}/conflict", json={"keep": "machine", **body})
+    held = row_for(await get_board(client), NAME)["row"]
+    pin = await app.state.db.fetch_one(
+        "SELECT * FROM set_version_pins WHERE board_id = ?", (row_id,)
+    )
+    assert pin is not None
+    shot = await make_shot(app.state.db, "000777", profile_version_id=held["current_version_id"])
+
+    summary = await SetsRepository(app.state.db).match_unfiled([shot])
+
+    assert summary.matched == 1
+    assert (
+        await app.state.db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
+        == pin["set_version_id"]
+    )
 
 
 async def test_a_draft_that_would_continue_the_copy_is_refused_and_one_under_another_name_is_new(
@@ -216,57 +328,6 @@ async def test_the_name_check_says_what_the_put_would_say_about_an_unpinned_copy
         f"{NAME} is the name of the copy pinned from Guji v1. "
         "Choose another name for a new profile."
     )
-
-
-async def test_the_name_check_refuses_a_case_variant_the_sets_profile_makes_frozen(
-    adopted: Adopted,
-) -> None:
-    """The sync matches labels exactly, so "x v1" can sit on the list beside the pinned "X v1".
-
-    A Set that brews a version the pinned row lists (the machine's edit of the file, kept) has the
-    pinned row as its profile: a waiting draft of that Set, made from the variant, is first placed
-    on the variant (not frozen) and then, with the Set, on the pinned row. The put refuses it and
-    the name check has to say so too.
-    """
-    app, client, _fake = adopted
-    board = app.state.board
-    set_id, version_id = await _set_with_version(app, client)
-    data(await _pin(client, set_id, version_id))
-    pinned = row_for(await get_board(client), NAME)["row"]
-    base = await board.proposals.base_profile(await base_version_id(app, BASE_LABEL))
-    lower = NAME.lower()
-    variant, _ = await board.profiles.ensure_version(
-        base.model_copy(update={"label": lower, "temperature": 91.0}), source="draft", owner=None
-    )
-    await board.board.insert(
-        BoardRowWrite(label=lower, current_version_id=variant.id, origin="adopted")
-    )
-    edited, _ = await board.profiles.ensure_version(
-        base.model_copy(update={"label": NAME, "temperature": 92.0}), source="draft", owner=None
-    )
-    await board.board.add_version(pinned["id"], edited.id, "edited_on_machine")
-    brewing = await make_set_on(client, "Brews the edit", edited.id)
-    spin, _ = await board.profiles.ensure_version(
-        base.model_copy(update={"label": "Spin-off", "temperature": 89.0}),
-        source="draft",
-        owner=None,
-    )
-    draft = await ProfileDraftsRepository(app.state.db).create(
-        ProfileDraftWrite(
-            base_version_id=variant.id, draft_version_id=spin.id, made_by="edit", set_id=brewing
-        )
-    )
-
-    check = data(
-        await client.post(f"/api/profile-drafts/{draft.id}/name-check", json={"label": lower})
-    )
-    put = await client.post(
-        "/api/profile-board", json={"draft_id": draft.id, "set_id": brewing, "label": lower}
-    )
-
-    assert put.status_code == 409
-    assert (error(put)["code"], error(put)["message"]) == ("PIN_FROZEN", SENTENCE)
-    assert check["refused"] == SENTENCE
 
 
 async def _a_stored_draft_equal_to_the_copy(app: FastAPI, client: httpx.AsyncClient) -> Any:

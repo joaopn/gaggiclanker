@@ -54,6 +54,7 @@ from tests.lever_shot import (
     lever_shot,
     without_scale,
 )
+from tests.profile_rows import own_version
 from tests.sets.conftest import make_shot
 from tests.sets.test_api import data
 from tests.shotinfo.conftest import Archive
@@ -77,6 +78,7 @@ async def lever(tmp_path: Path) -> AsyncIterator[tuple[Database, int, int]]:
         grinder = await GrindersRepository(db).create(
             GrinderWrite(name="Constructed", step_unit="numbers")
         )
+        await own_version(db, profile.id)
         row = await SetsRepository(db).create(
             SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
             SetVersionWrite(
@@ -380,6 +382,7 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
         GrinderWrite(name="Constructed", step_unit="numbers")
     )
     sets = SetsRepository(db)
+    await own_version(db, profile.id)
     row = await sets.create(
         SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),

@@ -1,11 +1,11 @@
-"""What a Set records when a profile reaches the machine for it.
+"""What a Set records when its profile gets a new active version.
 
-A draft put on the board for a Set becomes that Set's next version at the moment the sync puts
-the profile on the machine (``ProfileDraftService.attach_to_set``, the one place a Set version
-is made from a draft): the content-hashed profile version and the device id the firmware
-assigned, the prediction when the draft was made for this very Set, whether the version is a
-minor or a major one, and who proposed it. These were pinned through the staged push; they are
-pinned here through the board, which is how a profile gets there now.
+A draft put on the board becomes the next active version of the profile it is a change to, and
+the profile's Set, if it has one, follows in the same transaction
+(``SetsRepository.follow_profile``, the one place a Set version is made from a profile change):
+the content-hashed profile version, the prediction when the draft was made for this very Set,
+whether the version is a minor or a major one, and who proposed it. The sync that sends the
+profile to the machine records nothing on the Set.
 """
 
 from __future__ import annotations
@@ -17,13 +17,13 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch
 from gaggiclanker.device.fake import FakeDevice
-from tests.drafts.conftest import base_profile, base_version_id, data, error
+from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
+from tests.drafts.helpers import make_set_on, same_name_draft
 from tests.drafts.test_api import a_draft, lower_pressure
-from tests.drafts.test_board import adopted, get_board, pull, put
+from tests.drafts.test_board import adopted, get_board, pull, put, row_for
 from tests.llm.conftest import FakeProvider
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
@@ -31,29 +31,27 @@ __all__ = ["adopted"]  # the fixture, re-exported for this module
 
 @pytest.fixture
 async def a_set(adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice]) -> int:
-    """A Set with one version, so a profile has somewhere to be recorded."""
+    """A Set on the machine's base profile, so a change to that profile has a Set to follow."""
     _app, client, _ = adopted
-    bean = data(await client.post("/api/beans", json={"name": "Draft test", "roaster": "nobody"}))
-    stored = data(
-        await client.post(
-            "/api/sets",
-            json={
-                "name": "Draft baseline",
-                "bean_id": bean["id"],
-                "version": {"dose_g": 18.0, "target_yield_g": 36.0},
-            },
-        )
-    )
-    return int(stored["id"])
+    base = row_for(await get_board(client), BASE_LABEL)
+    return await make_set_on(client, "Draft baseline", base["row"]["current_version_id"])
 
 
 async def another_set(client: httpx.AsyncClient) -> dict[str, Any]:
+    """A Set on a profile of its own, whose chat can argue a change to some other profile."""
+    board = await get_board(client)
+    other = next(r for r in board["rows"] if r["row"]["label"] != BASE_LABEL)
     bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
     return dict(
         data(
             await client.post(
                 "/api/sets",
-                json={"name": "Another coffee", "bean_id": bean["id"], "automatch": False},
+                json={
+                    "name": "Another coffee",
+                    "bean_id": bean["id"],
+                    "automatch": False,
+                    "version": {"profile_version_id": other["row"]["current_version_id"]},
+                },
             )
         )
     )
@@ -68,24 +66,22 @@ async def drafted_for(
     bar: float = 8.0,
     **more: Any,
 ) -> dict[str, Any]:
-    """A draft as a Set's conversation leaves one: its Set and its prediction.
+    """A change to the base profile as a Set's conversation leaves one: its Set and its prediction.
 
     Through `DraftProposals`, which is exactly what the chat tool is handed: the archive and
-    the safety bounds, and nothing that could write to the machine.
+    the safety bounds, and nothing that could write to the machine. It keeps the profile's name,
+    so it is a version of the base profile (and of the base profile's Set).
     """
     profile = await base_profile(app)
     document = lower_pressure(profile, bar)
-    # A second change to the fork keeps its name: a name cannot be taken twice.
-    existing = await ProfileBoardRepository(app.state.db).find_live_by_label(document["label"])
+    document["label"] = profile.label
     row = await app.state.draft_proposals.create_manual(
-        base_version_id=await base_version_id(app)
-        if existing is None
-        else existing.current_version_id,
+        base_version_id=await base_version_id(app),
         document=document,
         change_summary=f"Down to {bar:g} bar.",
         notes="Proposed in chat.",
         set_id=set_id,
-        prediction=prediction,
+        prediction=prediction if set_id is not None else "",
         compares_to_version_id=compares_to_version_id,
         **more,
     )
@@ -111,27 +107,27 @@ async def put_and_sync(
     return await draft_row(client, draft["id"])
 
 
-async def test_a_put_for_a_set_records_both_identities_and_no_prediction_nobody_made(
+async def test_a_put_on_the_sets_profile_records_the_version_at_once_and_no_prediction_nobody_made(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider, a_set: int
 ) -> None:
-    """Opt-in: a person may put a draft on the board without saying the Set now means it.
-
-    When they do say so, the version carries the content-hashed profile version and the device
-    id the firmware assigned, because "what did this Set brew" and "which file on the machine
-    is that" are different questions with different answers.
-    """
+    """The Set follows its profile: no opt-in, and no waiting for the machine."""
     app, client, _ = adopted
-    draft = await a_draft(app, client, provider)
+    draft = await same_name_draft(app, client, provider, BASE_LABEL, 8)
 
-    ended = await put_and_sync(app, client, draft, set_id=a_set)
+    await put(client, draft)
 
-    assert ended["status"] == "pushed"
     version = (await versions_of(client, a_set))[0]
-    assert version["profile_version_id"] == draft["draft_version_id"]
-    assert version["pushed_device_profile_id"] == ended["pushed_device_profile_id"]
+    assert version["version_label"] == "v1.1"
+    assert (
+        version["profile_version_id"] == (await draft_row(client, draft["id"]))["draft_version_id"]
+    )
     assert version["origin"] == "manual"
-    assert version["profile_label"] == "9 Bar Espresso [AI]"
     assert version["prediction"] == "" and version["compares_to_version_id"] is None
+    assert (version["dose_g"], version["target_yield_g"]) == (18.0, 36.0), "carried forward"
+    assert (await draft_row(client, draft["id"]))["recorded_version_label"] == "v1.1"
+    ended = await put_and_sync(app, client, await a_draft(app, client, provider))
+    assert ended["status"] == "pushed"
+    assert len(await versions_of(client, a_set)) == 2, "the sync records nothing on the Set"
 
 
 async def test_a_sets_own_draft_records_its_prediction_on_the_version(
@@ -142,21 +138,19 @@ async def test_a_sets_own_draft_records_its_prediction_on_the_version(
     current_id = (await versions_of(client, a_set))[0]["id"]
     draft = await drafted_for(app, a_set, compares_to_version_id=current_id)
 
-    ended = await put_and_sync(app, client, draft, set_id=a_set)
+    await put(client, draft)
 
-    assert ended["status"] == "pushed"
     version = (await versions_of(client, a_set))[0]
     assert version["prediction"].startswith("Compared to v1")
     assert version["compares_to_version_id"] == current_id
     assert version["compares_to_version_label"] == "v1"
     assert version["profile_version_id"] == draft["draft_version_id"]
-    assert version["pushed_device_profile_id"] == ended["pushed_device_profile_id"]
 
 
 async def test_a_sets_draft_says_which_version_the_put_records_before_and_after(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], a_set: int
 ) -> None:
-    """The card names the version before the put and after the sync, from the archive.
+    """The card names the version before the put and after it, from the archive.
 
     Before: the Set's next number, so the button can say "record it as v1.1". After: the
     version really recorded, so the card claims the prediction landed only when it did,
@@ -166,13 +160,13 @@ async def test_a_sets_draft_says_which_version_the_put_records_before_and_after(
     draft = await drafted_for(app, a_set)
     assert draft["set_next_minor_label"] == "v1.1" and draft["recorded_version_label"] is None
 
-    ended = await put_and_sync(app, client, draft, set_id=a_set)
+    await put(client, draft)
 
-    assert ended["recorded_version_label"] == "v1.1"
-    assert (await draft_row(client, draft["id"]))["set_next_minor_label"] == "v1.2"
+    reread = await draft_row(client, draft["id"])
+    assert reread["recorded_version_label"] == "v1.1" and reread["set_next_minor_label"] == "v1.2"
 
 
-async def test_a_put_for_a_set_records_a_minor_version_unless_marked_major(
+async def test_a_put_records_a_minor_version_unless_marked_major(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], a_set: int
 ) -> None:
     """A tuned copy is dialling in, so it is a minor version by default.
@@ -198,16 +192,16 @@ async def test_a_put_for_a_set_records_a_minor_version_unless_marked_major(
         "v2",
     )
 
-    ended = await put_and_sync(app, client, first, set_id=a_set)
+    await put(client, first)
 
-    assert ended["recorded_version_label"] == "v1.1"
+    assert (await draft_row(client, first["id"]))["recorded_version_label"] == "v1.1"
     second = await drafted_for(app, a_set, bar=7.0, prediction="Compared to v1.1: softer still.")
     reread = await draft_row(client, second["id"])
     assert (reread["set_next_minor_label"], reread["set_next_major_label"]) == ("v1.2", "v2")
 
-    ended = await put_and_sync(app, client, second, set_id=a_set, major=True)
+    await put(client, second, major=True)
 
-    assert ended["recorded_version_label"] == "v2"
+    assert (await draft_row(client, second["id"]))["recorded_version_label"] == "v2"
     assert (await draft_row(client, first["id"]))["recorded_version_label"] == "v1.1"
 
 
@@ -218,7 +212,7 @@ async def test_a_put_refuses_a_major_that_is_not_a_boolean_and_changes_nothing(
     draft = await drafted_for(app, a_set)
 
     response = await client.post(
-        "/api/profile-board", json={"draft_id": draft["id"], "set_id": a_set, "major": "yes"}
+        "/api/profile-board", json={"draft_id": draft["id"], "major": "yes"}
     )
 
     assert response.status_code == 400
@@ -227,13 +221,14 @@ async def test_a_put_refuses_a_major_that_is_not_a_boolean_and_changes_nothing(
     assert all(
         r["row"]["pending_draft_id"] != draft["id"] for r in (await get_board(client))["rows"]
     )
+    assert len(await versions_of(client, a_set)) == 1
 
 
-async def test_a_sets_draft_put_without_its_set_records_nothing_on_it(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], a_set: int
+async def test_a_fork_is_a_new_profile_and_records_nothing_on_any_set(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], a_set: int, provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
-    draft = await drafted_for(app, a_set)
+    draft = await a_draft(app, client, provider)
 
     ended = await put_and_sync(app, client, draft)
 
@@ -241,20 +236,21 @@ async def test_a_sets_draft_put_without_its_set_records_nothing_on_it(
     assert len(await versions_of(client, a_set)) == 1
 
 
-async def test_a_sets_draft_put_for_another_set_records_no_prediction(
+async def test_a_draft_argued_in_another_sets_chat_records_no_prediction_here(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], a_set: int
 ) -> None:
     """The guess was about the other experiment and says nothing about this one."""
     app, client, _ = adopted
     other = await another_set(client)
-    draft = await drafted_for(app, a_set)
+    draft = await drafted_for(app, other["id"])
 
-    ended = await put_and_sync(app, client, draft, set_id=other["id"])
+    await put(client, draft)
 
-    version = (await versions_of(client, other["id"]))[0]
-    assert version["set_id"] == other["id"] and version["version_label"] == "v1.1"
+    version = (await versions_of(client, a_set))[0]
+    assert version["set_id"] == a_set and version["version_label"] == "v1.1"
     assert version["prediction"] == "" and version["compares_to_version_id"] is None
-    assert ended["recorded_version_label"] is None
+    assert (await draft_row(client, draft["id"]))["recorded_version_label"] == "v1.1"
+    assert len(await versions_of(client, other["id"])) == 1
 
 
 async def test_a_draft_without_a_set_has_no_version_to_record(
@@ -274,7 +270,7 @@ async def test_a_prediction_against_a_version_of_another_set_falls_back_to_the_c
     theirs = (await versions_of(client, other["id"]))[0]["id"]
     draft = await drafted_for(app, a_set, compares_to_version_id=theirs)
 
-    await put_and_sync(app, client, draft, set_id=a_set)
+    await put(client, draft)
 
     mine = await versions_of(client, a_set)
     assert mine[0]["compares_to_version_id"] != theirs
@@ -293,18 +289,18 @@ async def test_the_version_a_put_for_the_sets_own_draft_records_says_the_chat_pr
     app, client, _ = adopted
     draft = await drafted_for(app, a_set)
 
-    await put_and_sync(app, client, draft, set_id=a_set)
+    await put(client, draft)
 
     assert (await versions_of(client, a_set))[0]["origin"] == "chat"
 
 
 async def test_a_hand_drafted_put_stays_manual(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider, a_set: int
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], a_set: int
 ) -> None:
     app, client, _ = adopted
-    draft = await a_draft(app, client, provider)
+    draft = await drafted_for(app, None)
 
-    await put_and_sync(app, client, draft, set_id=a_set)
+    await put(client, draft)
 
     assert (await versions_of(client, a_set))[0]["origin"] == "manual"
 
@@ -323,11 +319,13 @@ async def test_a_draft_made_from_an_analysis_before_it_was_retired_stays_an_anal
         "UPDATE profile_drafts SET source_analysis_id = 7 WHERE id = ?", (draft["id"],)
     )
 
-    ended = await put_and_sync(app, client, draft, set_id=a_set)
+    await put(client, draft)
 
     version = (await versions_of(client, a_set))[0]
     assert version["origin"] == "analysis" and version["prediction"].startswith("Compared to v1")
-    assert ended["recorded_version_label"] == version["version_label"]
+    assert (await draft_row(client, draft["id"]))["recorded_version_label"] == version[
+        "version_label"
+    ]
 
 
 async def test_recording_a_version_retires_the_change_waiting_on_the_set(
@@ -346,7 +344,7 @@ async def test_recording_a_version_retires_the_change_waiting_on_the_set(
     assert made.proposal is not None
     draft = await drafted_for(app, a_set)
 
-    await put_and_sync(app, client, draft, set_id=a_set)
+    await put(client, draft)
 
     assert await SetProposalsRepository(app.state.db).waiting(a_set) is None
     assert data(await client.get(f"/api/sets/{a_set}"))["proposal"] is None

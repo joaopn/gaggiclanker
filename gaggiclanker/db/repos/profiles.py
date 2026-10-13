@@ -16,7 +16,6 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.base import JsonObject, utc_now
-from gaggiclanker.db.repos.profile_identity import profile_entry_sql
 from gaggiclanker.db.repository import Repository, row_to_dict
 from gaggiclanker.domain.models import Profile, canonical_profile_json, profile_content_hash
 from gaggiclanker.domain.profile_recipe import profile_recipe
@@ -143,12 +142,6 @@ class ProfileVersionSummary(BaseModel):
     #: out of it is the payload this summary exists to avoid.
     temperature_c: float | None = None
     target_yield_g: float | None = None
-    #: The profile list entry this version belongs to, NULL when it is in none.
-    #: The Add a version form preselects "major" when the version picked is
-    #: another entry's, and minor when it is another version of the same one.
-    #: NULL on two different versions does NOT mean the same profile: a version
-    #: in no entry is the same as itself and as nothing else.
-    profile_entry_id: int | None = None
     #: Set when this version is the copy of a pin (live or since unpinned): the pin, its Set and
     #: the Set version it belongs to. A recipe picker leaves such a version out, because no Set
     #: version names a copy; ``None`` for every other version.
@@ -443,7 +436,6 @@ class ProfilesRepository(Repository):
             f"""
             SELECT v.id, v.content_hash, v.label, v.type, v.utility, v.source, v.created_at,
                    v.json AS document,
-                   {profile_entry_sql("v.id")} AS profile_entry_id,
                    EXISTS (SELECT 1 FROM device_profiles d
                             WHERE d.current_version_id = v.id
                               AND d.deleted_at IS NULL) AS mirrored,

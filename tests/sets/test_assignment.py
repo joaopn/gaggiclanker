@@ -24,6 +24,7 @@ from gaggiclanker.device.fake import FakeDevice, default_notes
 from gaggiclanker.domain.models import SHOT_FLAG_HAS_NOTES, Profile
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.imports.service import ImportService
+from tests.profile_rows import own_version
 from tests.sets.conftest import Fixtures
 from tests.sync.conftest import Archive, archive_for, fixture_slogs
 
@@ -91,6 +92,7 @@ async def _mirror(archive: Archive, device_profile_id: str, label: str) -> int:
 async def _set_naming(archive: Archive, version_id: int) -> int:
     """A Set whose current version names this profile."""
     bean = await BeansRepository(archive.db).create(BeanWrite(name="Ethiopia Guji"))
+    await own_version(archive.db, version_id)
     row = await archive.engine.sets.create(
         SetWrite(name="Guji on the Niche", bean_id=bean.id),
         SetVersionWrite(profile_version_id=version_id, dose_g=18.0, target_yield_g=36.0),
@@ -186,6 +188,7 @@ class TestImporterMatching:
         await ProfilesRepository(wired.db).upsert_device_profile(
             device_id="rV4GhUcSZc", version_id=version_id
         )
+        await own_version(wired.db, version_id)
         created = await wired.sets.create(
             SetWrite(name="Imported archive", bean_id=wired.bean_id),
             SetVersionWrite(profile_version_id=version_id),

@@ -7,13 +7,13 @@ WHAT THEY ASKED FOR
 Goal: "More body than the Niche Set, and keep the blackcurrant."
 Their usual espresso setting on this grinder: 21 (numbers).
 
-THE PROFILE TO FORK: [profile_version 1] Medium 18g 1:2
+THE PROFILE TO FORK: [profile_version 2] Library 18g
 The new profile is derived from this one and gets a name of its own; this one, and every Set that brews it, stays as it is.
 ```json
 {
   "description": "",
   "favorite": false,
-  "label": "Medium 18g 1:2",
+  "label": "Library 18g",
   "phases": [
     {
       "duration": 3.0,
@@ -92,7 +92,7 @@ The new profile is derived from this one and gets a name of its own; this one, a
 }
 ```
 
-This profile version has no signature in force, so its shots are read without one. When the conversation turns to how its shots behave, propose one with propose_signature (profile version 1): what the profile is built to do, in a few expectations, never what one shot did. What you propose is in force at once, every shot on the profile is checked against it, and the person can reject any expectation.
+This profile version has no signature in force, so its shots are read without one. When the conversation turns to how its shots behave, propose one with propose_signature (profile version 2): what the profile is built to do, in a few expectations, never what one shot did. What you propose is in force at once, every shot on the profile is checked against it, and the person can reject any expectation.
 
 A RECIPE IS WAITING FOR THE PERSON
 Recipe: grind 20, 18 g in, 40 g out, 94 °C from its profile, profile Kenya AA body [AI] (profile draft #1). Reason: "A longer bloom and a lower peak for body."
@@ -100,8 +100,8 @@ It has created nothing yet. Talk about this one; a newer propose_initial_recipe 
 
 THIS BEAN'S OTHER SETS (newest first)
 - Set 6: Kenya AA on the Mazzer — on Mazzer Philos, 0 shots.
-  - v1.1: grind 6.5, 20 g in, 44 g out, 93 °C from its profile, profile Medium 18g 1:2 · 0 shots · no rating · outcome open · trying: A touch finer.
-  - v1: grind 7, 20 g in, 44 g out, 93 °C from its profile, profile Medium 18g 1:2 · 0 shots · no rating · outcome no prediction · trying: Same bag, flat burrs.
+  - v1.1: grind 6.5, 20 g in, 44 g out, 93 °C from its profile, profile Library 18g · 0 shots · no rating · outcome open · trying: A touch finer.
+  - v1: grind 7, 20 g in, 44 g out, 93 °C from its profile, profile Library 18g · 0 shots · no rating · outcome no prediction · trying: Same bag, flat burrs.
 - Set 1: Kenya AA on the niche — on Niche Zero, 5 shots.
   - v1: grind 21, 18 g in, 45 g out, 93 °C from its profile, profile Medium 18g 1:2 · 5 shots (0 Keep, 0 Improve, 0 Discard, 5 unlabelled) · mean rating 4.4 · outcome no prediction · trying: Baseline for this bag.
 
@@ -128,7 +128,7 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 2 shots, rating 4/5, ratio 1:1.78, 28 s
 
-THE RULES THAT MATCH (planned style: bloom — the profile to fork (Medium 18g 1:2))
+THE RULES THAT MATCH (planned style: bloom — the profile to fork (Library 18g))
 dial_in_order:
   [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
   [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency).

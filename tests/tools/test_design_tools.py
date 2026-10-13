@@ -31,7 +31,6 @@ from gaggiclanker.db.repos.sets import (
     SetRow,
     SetsRepository,
     SetVersionPatch,
-    SetVersionWrite,
     SetWrite,
 )
 from gaggiclanker.db.schema import create_schema
@@ -450,23 +449,6 @@ async def test_with_an_empty_library_the_base_is_the_synthetic_baseline(
 # -- propose_initial_recipe: what it refuses --------------------------------------
 
 
-async def test_a_profile_the_library_already_has_is_refused_and_nothing_is_left(
-    archive: Fixture,
-) -> None:
-    """Another design's profile is the library's: two Sets on one profile match nothing."""
-    first = await _designed(archive.db, archive.bean_id, archive.grinder_id)
-    assert (await _propose(await _design_ctx(archive.db, first))).ok
-    second = await _designed(archive.db, archive.bean_id, archive.grinder_id)
-    before = await _draft_count(archive.db)
-
-    outcome = await _propose(await _design_ctx(archive.db, second))
-
-    assert not outcome.ok
-    assert "give it its own label or change something" in outcome.data["detail"]
-    assert await _draft_count(archive.db) == before
-    assert await SetProposalsRepository(archive.db).for_set(second.id) == []
-
-
 async def test_a_policy_refusal_is_a_tool_error_and_leaves_nothing(archive: Fixture) -> None:
     row = await _designed(archive.db, archive.bean_id, archive.grinder_id)
     before = await _draft_count(archive.db)
@@ -542,47 +524,3 @@ async def test_a_card_the_repository_refuses_takes_its_draft_with_it(archive: Fi
         if draft.id not in before
     ]
     assert [draft.status for draft in made] == ["discarded"]
-
-
-async def test_a_revision_may_not_keep_a_profile_another_set_has_taken_up(
-    archive: Fixture,
-) -> None:
-    """The design's own earlier profile, once another Set brews it, is the library's."""
-    row = await _designed(archive.db, archive.bean_id, archive.grinder_id)
-    ctx = await _design_ctx(archive.db, row)
-    first = (await _propose(ctx)).data
-    proposals = SetProposalsRepository(archive.db)
-    # While the card waits, a person makes a Set by hand naming its profile.
-    await SetsRepository(archive.db).create(
-        SetWrite(name="By hand", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
-        SetVersionWrite(profile_version_id=first["recipe"]["profile_version_id"]),
-    )
-    drafts_before = await _draft_count(archive.db)
-
-    revised = await _propose(ctx, dose_g=19)
-
-    assert not revised.ok
-    assert "give it its own label or change something" in revised.data["detail"]
-    # Nothing left behind, and the waiting card is as it was.
-    assert await _draft_count(archive.db) == drafts_before
-    listed = await proposals.for_set(row.id)
-    assert [(card.id, card.status) for card in listed] == [(first["proposal_id"], "proposed")]
-    draft = await ProfileDraftsRepository(archive.db).get(first["draft_id"])
-    assert draft is not None and draft.status == "draft"
-
-
-async def test_an_archived_set_on_the_profile_does_not_take_it_up(archive: Fixture) -> None:
-    """An archived Set receives no shots, so it cannot make the matcher ambiguous."""
-    row = await _designed(archive.db, archive.bean_id, archive.grinder_id)
-    ctx = await _design_ctx(archive.db, row)
-    first = (await _propose(ctx)).data
-    sets = SetsRepository(archive.db)
-    finished = await sets.create(
-        SetWrite(name="Finished with", bean_id=archive.bean_id),
-        SetVersionWrite(profile_version_id=first["recipe"]["profile_version_id"]),
-    )
-    await sets.archive(finished.id)
-
-    revised = await _propose(ctx, dose_g=19)
-
-    assert revised.ok, revised.data

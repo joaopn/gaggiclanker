@@ -25,12 +25,15 @@ from tests.starting.test_service import _propose
 
 
 async def _a_lookalike(fixture: Fixture) -> int:
-    """A stored profile version that is the fixture's under another name."""
+    """A profile no Set has that is the fixture's under another name: its active version."""
     profiles = ProfilesRepository(fixture.db)
     original = await profiles.get_version(fixture.profile_version_id)
     assert original is not None and original.profile is not None
     copy, _ = await profiles.ensure_version(
         Profile.model_validate({**original.profile, "label": original.label + " v1"}), owner=None
+    )
+    await ProfileBoardRepository(fixture.db).insert(
+        BoardRowWrite(label=copy.label, current_version_id=copy.id, origin="draft")
     )
     return copy.id
 
@@ -40,12 +43,16 @@ async def _pin_it(fixture: Fixture, copy_id: int) -> int:
     profiles = ProfilesRepository(fixture.db)
     copy = await profiles.get_version(copy_id)
     assert copy is not None
-    row = await ProfileBoardRepository(fixture.db).insert(
-        BoardRowWrite(label=copy.label, current_version_id=copy.id, origin="draft")
-    )
+    owner = await profiles.owner_of(copy.id)
+    if owner is None:
+        owner = (
+            await ProfileBoardRepository(fixture.db).insert(
+                BoardRowWrite(label=copy.label, current_version_id=copy.id, origin="draft")
+            )
+        ).id
     first = await fixture.db.fetch_value("SELECT id FROM set_versions ORDER BY id LIMIT 1")
     pin = await PinsRepository(fixture.db).insert(
-        PinWrite(set_version_id=int(first), board_id=row.id, profile_version_id=copy.id)
+        PinWrite(set_version_id=int(first), board_id=owner, profile_version_id=copy.id)
     )
     return pin.id
 

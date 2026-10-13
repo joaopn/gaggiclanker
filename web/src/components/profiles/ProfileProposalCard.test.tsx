@@ -89,16 +89,17 @@ function forSet(overrides: Record<string, unknown> = {}): DraftStanding {
     draft: draft({
       set_id: 3,
       set_name: "Guji natural",
-      set_next_minor_label: "v1.2",
-      set_next_major_label: "v2",
       prediction: "Sweeter and rounder.",
       compares_to_version_label: "v1.1",
     }),
     landing: {
       draft_id: 1,
       already_on_board_label: null,
-      plain: { row_id: 4, row_label: "9 Bar Espresso" },
-      for_set: { row_id: 4, row_label: "9 Bar Espresso" },
+      plain: {
+        row_id: 4,
+        row_label: "9 Bar Espresso",
+        set: { id: 3, name: "Guji natural", next_minor_label: "v1.2", next_major_label: "v2" },
+      },
     },
     ...overrides,
   });
@@ -289,37 +290,25 @@ describe("a proposal for a Set", () => {
     expect(button).toHaveTextContent("Approve as v2 of Guji natural and sync");
   });
 
-  it("has no secondary button in the chat, and keeps 'without recording it' on the Profiles page", async () => {
+  it("has one Approve, in the chat and on the Profiles page alike", async () => {
     getDraftStanding.mockResolvedValue(forSet());
     const chat = renderCard({ place: "chat" });
     await screen.findByTestId("approve-proposal");
+    expect(screen.queryByTestId("approve-proposal-without-set")).not.toBeInTheDocument();
     chat.unmount();
 
     renderCard({ place: "profiles" });
-    expect(await screen.findByTestId("approve-proposal-without-set")).toHaveTextContent(
-      "Approve without recording it on Guji natural",
-    );
+    await screen.findByTestId("approve-proposal");
+    expect(screen.queryByTestId("approve-proposal-without-set")).not.toBeInTheDocument();
   });
 
-  it("approves without the Set when asked on the Profiles page, and syncs when Writes are on", async () => {
-    const user = setupUser();
-    getDraftStanding.mockResolvedValue(forSet());
-    renderCard({ place: "profiles" });
-
-    await user.click(await screen.findByTestId("approve-proposal-without-set"));
-
-    await waitFor(() => expect(putOnBoard).toHaveBeenCalledTimes(1));
-    expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1 });
-    await waitFor(() => expect(runSync).toHaveBeenCalledTimes(1));
-  });
-
-  it("names the sync on the secondary button, and starts none with Writes off", async () => {
+  it("starts no sync with Writes off", async () => {
     const user = setupUser();
     getDraftStanding.mockResolvedValue(forSet({ writes_enabled: false }));
     renderCard({ place: "profiles" });
 
-    const button = await screen.findByTestId("approve-proposal-without-set");
-    expect(button).toHaveTextContent(/^Approve without recording it on Guji natural$/);
+    const button = await screen.findByTestId("approve-proposal");
+    expect(button).toHaveTextContent(/^Approve as v1\.2 of Guji natural$/);
     await user.click(button);
     await waitFor(() => expect(putOnBoard).toHaveBeenCalledTimes(1));
     expect(runSync).not.toHaveBeenCalled();
@@ -335,7 +324,7 @@ describe("a proposal for a Set", () => {
     await user.click(screen.getByTestId("approve-proposal"));
 
     await waitFor(() => expect(runSync).toHaveBeenCalledTimes(1));
-    expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1, setId: 3, major: true });
+    expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1, major: true });
     expect(tell).toHaveBeenCalledTimes(1);
     expect(tell).toHaveBeenCalledWith("Approved: 9 Bar Espresso [AI] as v2 of Guji natural.");
   });
@@ -687,7 +676,7 @@ describe("a proposal that has been answered", () => {
         draft: draft({
           status: "approved",
           draft_label: "Adaptive Bloom",
-          set_name: "Guji natural",
+          recorded_set_name: "Guji natural",
         }),
         set_version_label: "v1.2",
       }),

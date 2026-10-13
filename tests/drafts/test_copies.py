@@ -57,7 +57,6 @@ async def test_a_copy_is_the_originals_document_under_a_new_name_and_waits_for_n
     row = row_for(board, "Blooming v1.2")
     assert row["row"]["id"] == row_id
     assert (row["on_machine"], row["starred"], row["row"]["origin"]) == (True, True, "draft")
-    assert row["row"]["pending_set_id"] is None and row["row"]["pending_major"] is None
     # The document: the original's, but for the label.
     profiles = ProfilesRepository(app.state.db)
     original = await profiles.get_version(base)
@@ -143,4 +142,3 @@ async def test_a_copy_reaches_the_machine_through_the_ordinary_push(adopted: Ado
     assert "Blooming v1.2" in [p["label"] for p in fake.profiles]
     row = row_for(await get_board(client), "Blooming v1.2")
     assert row["machine"]["holds_current"] and row["row"]["pending_draft_id"] is None
-    assert row["row"]["pending_set_id"] is None

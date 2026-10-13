@@ -32,6 +32,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.sets import SetVersionWrite, SetWrite
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.starting.similar import similar_sets
+from tests.profile_rows import own_version
 from tests.sets.conftest import Fixtures, make_shot
 
 #: The phases every document below carries, so the only thing that differs is
@@ -98,6 +99,7 @@ async def test_every_query_reads_the_temperature_the_way_python_does(
     )
     expected = profile_recipe(json.loads(str(stored))).temperature_c
 
+    await own_version(wired.db, profile_version_id)
     row = await wired.sets.create(
         SetWrite(name=f"Set {name}", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
         SetVersionWrite(profile_version_id=profile_version_id, dose_g=18.0, target_yield_g=36.0),
@@ -146,6 +148,7 @@ async def test_a_profile_that_states_no_temperature_is_not_a_zero_degree_shot(
     chat's views and on a starting-point card at once.
     """
     profile_version_id = await _profile_version(wired.db, "unset", {"temperature": 0})
+    await own_version(wired.db, profile_version_id)
     row = await wired.sets.create(
         SetWrite(name="Says nothing", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
         SetVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),

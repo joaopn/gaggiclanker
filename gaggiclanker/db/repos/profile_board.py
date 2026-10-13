@@ -56,8 +56,6 @@ class BoardRow(BaseModel):
     origin: BoardOrigin
     failed_version_id: int | None = None
     pending_draft_id: int | None = None
-    pending_set_id: int | None = None
-    pending_major: bool | None = None
     #: The version this profile was before its newest one, which going back returns to.
     previous_version_id: int | None = None
     #: The content hash of a machine file a person chose to overrule in a conflict ("keep the
@@ -66,10 +64,6 @@ class BoardRow(BaseModel):
     #: Set by going back: the version that was left (the file holding it goes as a going
     #: back, not as a delayed replacement)...
     back_from_version_id: int | None = None
-    #: ...and the Set version that was its Set's current one at the click and recorded it. That
-    #: Set is not a reason to keep the file, but only while this exact Set version is still the
-    #: Set's current one. Both are cleared once the sync has dealt with the file.
-    back_from_set_version_id: int | None = None
     deleted_at: str | None = None
     created_at: str
     updated_at: str
@@ -88,8 +82,6 @@ class BoardRowWrite(BaseModel):
     on_home_screen: bool = True
     origin: BoardOrigin
     pending_draft_id: int | None = None
-    pending_set_id: int | None = None
-    pending_major: bool | None = None
     #: Where the row's first version came from; it is recorded in the profile's version list.
     version_source: VersionSource = "machine"
 
@@ -108,12 +100,9 @@ class BoardRowPatch(BaseModel):
     origin: BoardOrigin | None = None
     failed_version_id: int | None = None
     pending_draft_id: int | None = None
-    pending_set_id: int | None = None
-    pending_major: bool | None = None
     previous_version_id: int | None = None
     conflict_overruled_hash: str | None = None
     back_from_version_id: int | None = None
-    back_from_set_version_id: int | None = None
     deleted_at: str | None = None
 
 
@@ -128,7 +117,7 @@ _VERSION_COLUMNS = (
 )
 
 #: Columns a patch may name that hold a boolean, stored as 0/1.
-_BOOLEAN_COLUMNS = frozenset({"on_machine", "on_home_screen", "pending_major"})
+_BOOLEAN_COLUMNS = frozenset({"on_machine", "on_home_screen"})
 
 
 class BoardVersion(BaseModel):
@@ -191,15 +180,14 @@ class ProfileBoardRepository(Repository):
     async def clear_pending_if_unchanged(
         self, row_id: int, *, version_id: int, draft_id: int | None
     ) -> bool:
-        """Clear what a pull has just recorded, unless the row moved on while it worked.
+        """Clear what a pull has just marked pushed, unless the row moved on while it worked.
 
         A person may put a newer draft on the profile between the plan and this write; its
-        pending draft and Set must survive, so the clear is conditional on the version and the
-        draft the pull acted on.
+        pending draft must survive, so the clear is conditional on the version and the draft
+        the pull acted on.
         """
         cursor = await self.db.execute(
-            "UPDATE profile_board SET pending_draft_id = NULL, pending_set_id = NULL, "
-            "pending_major = NULL, updated_at = ? "
+            "UPDATE profile_board SET pending_draft_id = NULL, updated_at = ? "
             "WHERE id = ? AND current_version_id = ? AND pending_draft_id IS ?",
             (utc_now(), row_id, version_id, draft_id),
         )
@@ -272,9 +260,8 @@ class ProfileBoardRepository(Repository):
             """
             INSERT INTO profile_board
                 (label, current_version_id, device_profile_id, device_version_id,
-                 on_machine, on_home_screen, origin, pending_draft_id, pending_set_id,
-                 pending_major, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 on_machine, on_home_screen, origin, pending_draft_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 write.label,
@@ -285,8 +272,6 @@ class ProfileBoardRepository(Repository):
                 int(write.on_home_screen),
                 write.origin,
                 write.pending_draft_id,
-                write.pending_set_id,
-                None if write.pending_major is None else int(write.pending_major),
                 now,
                 now,
             ),
@@ -321,7 +306,9 @@ class ProfileBoardRepository(Repository):
         attached to a profile.
 
         * on no profile yet: the profile takes it over (unless it already has a version of
-          that brew, which is then the answer and the ownerless one is left alone);
+          that brew, which is then the answer and the ownerless one is left alone), and with it
+          the one Set with no profile that brews it, when the profile has no Set; if it has one,
+          the version stays the Set's and the profile gets a copy;
         * already this profile's: itself;
         * another profile's: a profile never takes another's version, so it gets its own copy,
           carrying the signature the way a new version of a profile does. A profile that already
@@ -342,10 +329,19 @@ class ProfileBoardRepository(Repository):
             (row_id, found["content_hash"]),
         )
         if found["board_id"] is None and mine is None:
-            await self.db.execute(
-                "UPDATE profile_versions SET board_id = ? WHERE id = ?", (row_id, version_id)
-            )
-            return version_id
+            takes, taker = await self._taken_over_with(row_id, version_id)
+            if takes:
+                await self.db.execute(
+                    "UPDATE profile_versions SET board_id = ? WHERE id = ?", (row_id, version_id)
+                )
+                if taker is not None:
+                    # The Set that brewed this version while no profile had it is this profile's.
+                    await self.db.execute(
+                        "UPDATE sets SET board_id = ? WHERE id = ?", (row_id, taker)
+                    )
+                    await self._settle_the_sets_other_versions(row_id, taker)
+                return version_id
+            # Otherwise the version stays with the Set that names it, and the profile gets its own.
         carries = False
         if mine is not None:
             effective = int(mine)
@@ -375,6 +371,78 @@ class ProfileBoardRepository(Repository):
                 (effective, row_id, version_id),
             )
         return effective
+
+    async def _settle_the_sets_other_versions(self, row_id: int, set_id: int) -> None:
+        """A Set that has just become this profile's: every other version no profile owns that its
+        versions name goes through :meth:`version_for` like any other (taken over, or the profile
+        gets a copy of its own that the Set's versions then name), so all of the Set's versions
+        are the profile's."""
+        loose = await self.db.fetch_all(
+            "SELECT DISTINCT v.profile_version_id AS id FROM set_versions v "
+            "JOIN profile_versions pv ON pv.id = v.profile_version_id "
+            "WHERE v.set_id = ? AND pv.board_id IS NULL ORDER BY v.profile_version_id",
+            (set_id,),
+        )
+        for entry in loose:
+            old = int(entry["id"])
+            mine = await self.version_for(row_id, old)
+            if mine != old:
+                await self.db.execute(
+                    "UPDATE set_versions SET profile_version_id = ? "
+                    "WHERE set_id = ? AND profile_version_id = ?",
+                    (mine, set_id, old),
+                )
+            await self.add_version(row_id, mine, "edit")
+        # The Set brews what its profile has active: a version taken over while the profile had
+        # another active (one it listed without making active) is followed from.
+        active = await self.db.fetch_value(
+            "SELECT current_version_id FROM profile_board WHERE id = ?", (row_id,)
+        )
+        if active is not None:
+            # Imported here: the Sets repository reads this one's neighbours.
+            from gaggiclanker.db.repos.sets import SetsRepository
+
+            await SetsRepository(self.db).follow_profile(row_id, int(active))
+
+    async def _taken_over_with(self, row_id: int, version_id: int) -> tuple[bool, int | None]:
+        """Whether this profile may take over the ownerless version, and the Set that goes with
+        it. A version no Set names is simply taken. One a Set with no profile names (the first
+        recipe a design was filled with, an authored starting point, a file a Set started on while
+        the list had none) is taken together with that Set, when the profile has no other Set and
+        the Set brews no version another profile owns, and only through the Set's current version.
+        Anything else leaves the version with the Set and the profile gets a copy of its own."""
+        named = await self.db.fetch_all(
+            "SELECT DISTINCT set_id FROM set_versions WHERE profile_version_id = ?", (version_id,)
+        )
+        if not named:
+            return True, None
+        if len(named) > 1:
+            return False, None
+        set_id = int(named[0]["set_id"])
+        owned = await self.db.fetch_value("SELECT board_id FROM sets WHERE id = ?", (set_id,))
+        busy = await self.db.fetch_value(
+            "SELECT 1 FROM sets WHERE board_id = ? AND id != ?", (row_id, set_id)
+        )
+        elsewhere = await self.db.fetch_value(
+            "SELECT 1 FROM set_versions v JOIN profile_versions pv ON pv.id = v.profile_version_id "
+            "WHERE v.set_id = ? AND pv.board_id IS NOT NULL AND pv.board_id != ? LIMIT 1",
+            (set_id, row_id),
+        )
+        if busy or elsewhere or (owned is not None and owned != row_id):
+            return False, None
+        if owned is not None:
+            return True, None
+        # A Set with no profile is taken only through its current version, as its profile is
+        # decided everywhere else: a profile that takes over a version the Set named earlier gets
+        # a copy of its own, and the version stays the Set's.
+        current = await self.db.fetch_value(
+            "SELECT v.profile_version_id FROM sets s JOIN set_versions v "
+            "ON v.id = s.current_version_id WHERE s.id = ?",
+            (set_id,),
+        )
+        if current != version_id:
+            return False, None
+        return True, set_id
 
     async def add_version(
         self,

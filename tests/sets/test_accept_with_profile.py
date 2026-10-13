@@ -45,7 +45,7 @@ async def _designed(app: FastAPI) -> SetRow:
 async def _card(app: FastAPI, row: SetRow, *, new: bool = True, name: str = "Soft Bloom") -> Any:
     """A first-recipe card whose profile is a draft (a new profile unless ``new`` is false)."""
     db = app.state.db
-    base = await make_profile_version(db, "Library profile")
+    base = await make_profile_version(db, "Library profile", owned=False)
     document = dict(await _document_of(db, base))
     document["label"] = name if new else "Library profile"
     document["temperature"] = float(document["temperature"]) + 1
@@ -132,8 +132,9 @@ async def test_accepting_with_a_name_records_version_1_and_puts_the_profile_unde
     assert profile_line(next(i for i in listed if i["id"] == proposal.id)["changes"]) == (
         "Gentle Bloom"
     )
-    # Version 1 is filled in place and appends nothing, and the put records nothing on the Set.
-    assert board.pending_set_id is None
+    # Version 1 is filled in place and appends nothing, and the Set's profile is the new one.
+    assert (await SetsRepository(app.state.db).get(row.id)).board_id == board.id  # type: ignore[union-attr]
+    assert len(await SetsRepository(app.state.db).versions(row.id)) == 1
 
 
 async def test_accepting_without_a_name_puts_the_draft_under_its_own_name(
@@ -150,7 +151,7 @@ async def test_accepting_without_a_name_puts_the_draft_under_its_own_name(
     assert stored is not None and stored.status == "approved"
     assert stored.draft_version_id == draft.draft_version_id, "no rename, no new version"
     board = await ProfileBoardRepository(app.state.db).find_live_by_label("Soft Bloom")
-    assert board is not None and board.on_machine is True and board.pending_set_id is None
+    assert board is not None and board.on_machine is True
     assert (body["profile_draft_id"], body["profile_row_id"]) == (draft.id, board.id)
     assert body["version"]["profile_version_id"] == draft.draft_version_id
 
@@ -230,6 +231,10 @@ async def test_a_version_made_active_since_is_not_undone_by_the_accept(
     assert body["profile_draft_id"] == draft.id and body["profile_row_id"] == row_id
     stored = await ProfileDraftsRepository(app.state.db).get(draft.id)
     assert stored is not None and stored.status == status
+    # The Set brews what its profile has active: version 1 is the card's, and it followed.
+    current = await SetsRepository(app.state.db).current_version(row.id)
+    assert current is not None and current.profile_version_id == later
+    assert current.version_label == "v1.1"
 
 
 async def test_a_continuation_design_after_a_later_version_is_active_does_not_go_back(
@@ -250,6 +255,8 @@ async def test_a_continuation_design_after_a_later_version_is_active_does_not_go
     board = await ProfileBoardRepository(app.state.db).get(row_id)
     assert board is not None and board.current_version_id == later
     assert data(accepted)["version"]["profile_version_id"] == draft.draft_version_id
+    current = await SetsRepository(app.state.db).current_version(row.id)
+    assert current is not None and current.profile_version_id == later
 
 
 async def test_the_answer_names_the_proposals_draft_when_the_row_has_no_pending_one(
@@ -260,9 +267,7 @@ async def test_the_answer_names_the_proposals_draft_when_the_row_has_no_pending_
     put = await app.state.board.put_draft(draft.id)
     await ProfileDraftsRepository(app.state.db).set_status(draft.id, "pushed")
     # The sync clears the row's pending draft once the profile is on the machine.
-    await ProfileBoardRepository(app.state.db).update(
-        put.id, BoardRowPatch(pending_draft_id=None, pending_set_id=None, pending_major=None)
-    )
+    await ProfileBoardRepository(app.state.db).update(put.id, BoardRowPatch(pending_draft_id=None))
 
     body = data(await _accept(client, row, proposal))
 

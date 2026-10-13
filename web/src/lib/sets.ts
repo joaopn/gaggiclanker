@@ -80,25 +80,6 @@ export function logItems(versions: SetVersionDetail[], reverts: SetRevertRow[]):
   return items;
 }
 
-/** A profile version and the profile-list entry that holds it, as the API serves both. */
-export interface ProfileRef {
-  versionId: number | null;
-  entryId: number | null | undefined;
-}
-
-/**
- * Whether two profile versions are one profile, the rule the server applies
- * (`same_profile`): the same version is, nothing differs from any profile, and
- * two versions are one profile only when the profile list holds them in the
- * same entry. A version in no entry is its own profile. This decides only which
- * way the Major change box starts; the names come from the server.
- */
-export function sameProfile(left: ProfileRef, right: ProfileRef): boolean {
-  if (left.versionId === right.versionId) return true;
-  if (left.versionId === null || right.versionId === null) return false;
-  return left.entryId != null && left.entryId === right.entryId;
-}
-
 // ── recipes ──────────────────────────────────────────────────────────
 
 /** A dose and a target yield as a ratio, when both are known. */

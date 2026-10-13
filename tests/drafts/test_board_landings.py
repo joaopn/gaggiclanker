@@ -62,7 +62,7 @@ async def test_two_variants_of_a_profile_of_yours_with_labels_of_their_own_each_
         found = landing(board, draft)
         assert found["plain"]["row_id"] is None
         assert found["plain"]["revives_label"] is None
-        assert found["for_set"] is None and found["already_on_board_label"] is None
+        assert found["already_on_board_label"] is None
 
 
 async def test_the_second_of_two_new_drafts_with_one_name_is_refused_once_the_first_is_a_profile(
@@ -192,12 +192,10 @@ async def test_a_set_draft_renamed_onto_a_name_that_became_a_profile_is_refused_
     found = landing(await get_board(client), renamed)
 
     sentence = taken_name_sentence("Second")
-    assert found["plain"]["refused"] == found["for_set"]["refused"]
     assert found["plain"]["refused"] == person_taken_sentence("Second")
-    assert found["plain"]["row_id"] is None and found["for_set"]["row_id"] is None
-    for body in ({}, {"set_id": set_id}):
-        refused = await client.post("/api/profile-board", json={"draft_id": renamed["id"], **body})
-        assert refused.status_code == 409 and error(refused)["message"] == sentence
+    assert found["plain"]["row_id"] is None
+    refused = await client.post("/api/profile-board", json={"draft_id": renamed["id"]})
+    assert refused.status_code == 409 and error(refused)["message"] == sentence
     assert second["id"] in [r["row"]["id"] for r in (await get_board(client))["rows"]]
     labels = [r["row"]["label"] for r in (await get_board(client))["rows"]]
     assert len(labels) == len(set(labels))
@@ -286,7 +284,7 @@ async def test_the_landing_is_what_a_put_then_does(
     assert said["row_id"] == put_row["id"] == row["id"]
 
 
-async def test_a_set_draft_lands_by_the_sets_current_version_when_recorded_for_it(
+async def test_a_set_draft_lands_on_the_profile_the_set_brews_and_the_landing_names_the_set(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
@@ -300,8 +298,13 @@ async def test_a_set_draft_lands_by_the_sets_current_version_when_recorded_for_i
 
     found = landing(await get_board(client), draft)
 
-    # A fork named like the app's profile the Set brews: it continues that profile, for the Set
-    # or not, because that is the profile with exactly its name.
+    # A fork named like the app's profile the Set brews: it continues that profile, because that
+    # is the profile with exactly its name, and the landing says whose Set follows it.
     assert found["plain"]["row_id"] == row["id"]
-    assert found["for_set"]["row_id"] == row["id"]
-    assert (await put(client, draft, set_id=set_id))["id"] == row["id"]
+    assert found["plain"]["set"] == {
+        "id": set_id,
+        "name": "Landing set",
+        "next_minor_label": "v1.1",
+        "next_major_label": "v2",
+    }
+    assert (await put(client, draft))["id"] == row["id"]

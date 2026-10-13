@@ -65,6 +65,7 @@ from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
+from tests.profile_rows import another_version
 from tests.sets.conftest import make_pin, make_profile_version
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "set-chat-context.txt"
@@ -1361,7 +1362,12 @@ async def test_a_version_with_no_profile_says_so(experiment: Experiment) -> None
 
 
 async def _other_profile_version(experiment: Experiment) -> SetVersionRow:
-    other = await make_profile_version(experiment.db, "Lever ramp", temperature=92.0)
+    other = await another_version(
+        experiment.db,
+        await _own_profile_version(experiment),
+        description="Lever ramp",
+        temperature=92.0,
+    )
     version = await SetsRepository(experiment.db).add_version(
         experiment.set_id,
         SetVersionPatch(
@@ -1385,8 +1391,8 @@ async def test_a_compared_version_on_another_profile_adds_that_profile_once(
         experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
     )
 
-    assert rendered.count('"label":"Lever ramp"') == 1
-    assert rendered.count('"label":"Classic 9 bar"') == 1
+    assert rendered.count('"description":"Lever ramp"') == 1
+    assert rendered.count('"label":"Classic 9 bar"') == 2, "one document for each version"
     assert rendered.count("as stored (compact JSON") == 2
     assert f"THE PROFILE {version.version_label} BREWS\n" in rendered
     assert (
@@ -1394,7 +1400,7 @@ async def test_a_compared_version_on_another_profile_adds_that_profile_once(
         in rendered
     )
     # Its own profile first, the compared one after it.
-    assert rendered.index('"label":"Lever ramp"') < rendered.index('"label":"Classic 9 bar"')
+    assert rendered.index('"description":"Lever ramp"') < rendered.index('"label":"Classic 9 bar"')
 
 
 async def test_a_compared_version_on_the_same_profile_adds_nothing(experiment: Experiment) -> None:

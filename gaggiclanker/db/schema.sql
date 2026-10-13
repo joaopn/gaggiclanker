@@ -207,10 +207,11 @@ CREATE TABLE sets (
     name       TEXT    NOT NULL,
     bean_id    INTEGER NOT NULL REFERENCES beans(id),
     grinder_id INTEGER REFERENCES grinders(id),
-    -- Two flags, because they mean two things. `automatch`: this Set is a candidate when a shot
-    -- is filed by profile; any number of Sets may be (a kitchen with several grinders has several
-    -- coffees loaded at once, so "the current Set" has no answer). `archived`: the lifecycle, the
-    -- bag is finished with and the Set receives no shots. Neither is "active".
+    -- Two flags, because they mean two things. `automatch`: shots brewed on this Set's profile are
+    -- filed here (any number of Sets may say yes: a kitchen with several grinders has several
+    -- coffees loaded at once, and each Set has a profile of its own, so "the current Set" has no
+    -- answer). `archived`: the lifecycle, the bag is finished with and the Set receives no shots.
+    -- Neither is "active".
     automatch     INTEGER NOT NULL DEFAULT 0,
     created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     archived INTEGER NOT NULL DEFAULT 0,
@@ -220,9 +221,16 @@ CREATE TABLE sets (
     -- Where this Set's first recipe came from, when it was started as a copy of another Set's
     -- version: the "copied from" note, display only (nothing reads it as evidence). Cleared if
     -- that version's Set is discarded, which leaves the note without its link.
-    copied_from_version_id INTEGER REFERENCES set_versions(id) ON DELETE SET NULL
+    copied_from_version_id INTEGER REFERENCES set_versions(id) ON DELETE SET NULL,
+    -- The Set's profile: the one profile whose versions every version of this Set brews, and that
+    -- no other Set has. NULL only while the Set is being designed, and for an old Set that never
+    -- named a profile. Every version of the Set names a version this profile owns
+    -- (`profile_versions.board_id`), which no constraint can say across two tables: the one place
+    -- a Set version is written checks it.
+    board_id INTEGER REFERENCES profile_board(id)
 ) STRICT;
 CREATE INDEX idx_sets_bean ON sets(bean_id);
+CREATE UNIQUE INDEX idx_sets_profile ON sets(board_id) WHERE board_id IS NOT NULL;
 
 CREATE TABLE shot_judgements (
     shot_id                 INTEGER PRIMARY KEY REFERENCES shots(id) ON DELETE CASCADE,
@@ -326,7 +334,6 @@ CREATE TABLE profile_drafts (
     pushed_saved INTEGER NOT NULL DEFAULT 0,
     replaced_device_profile_id TEXT,
     replaced_version_id INTEGER,
-    cleared_set_version_ids_json TEXT,
     recorded_version_id INTEGER,
     replaced_by_draft_id INTEGER,
     outcome_json TEXT,
@@ -743,8 +750,8 @@ CREATE INDEX idx_shots_set_version     ON shots(set_version_id);
 --     removed by a pull.
 --   * failed_version_id: a version whose copy did not read back as sent and could not be taken
 --     off the machine again. Not tried again until the row's version changes.
---   * pending_draft_id / pending_set_id / pending_major: what the person asked for when they put
---     the draft on the board, kept until the pull that puts it on the machine records it.
+--   * pending_draft_id: the draft the person put on the board, kept until the sync that puts it
+--     on the machine marks it pushed.
 --   * deleted_at: a tombstone; the machine's copy is removed by the next pull.
 CREATE TABLE profile_board (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -756,15 +763,11 @@ CREATE TABLE profile_board (
     origin             TEXT    NOT NULL CHECK (origin IN ('adopted', 'draft')),
     failed_version_id  INTEGER REFERENCES profile_versions(id),
     pending_draft_id   INTEGER REFERENCES profile_drafts(id) ON DELETE SET NULL,
-    pending_set_id     INTEGER REFERENCES sets(id) ON DELETE SET NULL,
-    pending_major      INTEGER CHECK (pending_major IN (0, 1)),
     deleted_at         TEXT,
     created_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     previous_version_id INTEGER REFERENCES profile_versions(id),
     back_from_version_id INTEGER REFERENCES profile_versions(id),
-    back_from_set_version_id INTEGER
-    REFERENCES set_versions(id) ON DELETE SET NULL,
     on_machine INTEGER NOT NULL DEFAULT 1
     CHECK (on_machine IN (0, 1)),
     conflict_overruled_hash TEXT
@@ -917,7 +920,6 @@ CREATE TABLE set_versions (
                               ('held', 'partly_held', 'failed', 'inconclusive')),
     outcome_note         TEXT    NOT NULL DEFAULT '',
     outcome_at           TEXT,
-    pushed_device_profile_id TEXT,
     created_at           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     version_major        INTEGER NOT NULL DEFAULT 0,
     version_minor        INTEGER NOT NULL DEFAULT 0
@@ -1355,4 +1357,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;

@@ -155,27 +155,14 @@ async def test_the_form_defaults_a_grind_dose_or_yield_change_to_minor(wired: Fi
     assert await _add(wired.sets, set_id, grind_setting="21") == "v1.1"
     assert await _add(wired.sets, set_id, dose_g=18.5) == "v1.2"
     assert await _add(wired.sets, set_id, target_yield_g=40) == "v1.3"
-    # Sending the same profile is not a change of profile.
-    assert await _add(wired.sets, set_id, profile_version_id=profile) == "v1.4"
-
-
-async def test_the_form_defaults_a_different_profile_to_major(wired: Fixtures) -> None:
-    house = await make_profile_version(wired.db, "House")
-    other = await make_profile_version(wired.db, "Turbo")
-    set_id = await _set(wired, house)
-
-    assert await _add(wired.sets, set_id, profile_version_id=other) == "v2"
-    # "Any profile" is a different profile too.
-    assert await _add(wired.sets, set_id, profile_version_id=None) == "v3"
 
 
 async def test_an_explicit_answer_wins_in_both_directions(wired: Fixtures) -> None:
     house = await make_profile_version(wired.db, "House")
-    other = await make_profile_version(wired.db, "Turbo")
     set_id = await _set(wired, house)
 
     assert await _add(wired.sets, set_id, major=True, grind_setting="21") == "v2"
-    assert await _add(wired.sets, set_id, major=False, profile_version_id=other) == "v2.1"
+    assert await _add(wired.sets, set_id, major=False, grind_setting="22") == "v2.1"
 
 
 async def _proposal(
@@ -195,26 +182,15 @@ async def _proposal(
 
 
 @pytest.mark.parametrize(
-    ("change", "major", "label"),
-    [
-        ({"grind_setting": "21"}, None, "v1.1"),
-        ("profile", None, "v2"),
-        ({"grind_setting": "21"}, True, "v2"),
-        ("profile", False, "v1.1"),
-    ],
+    ("major", "label"),
+    [(None, "v1.1"), (False, "v1.1"), (True, "v2")],
 )
-async def test_an_accepted_proposal_follows_the_rule_unless_the_person_says(
-    wired: Fixtures, change: object, major: bool | None, label: str
+async def test_an_accepted_proposal_is_a_minor_unless_the_person_says(
+    wired: Fixtures, major: bool | None, label: str
 ) -> None:
     house = await make_profile_version(wired.db, "House")
-    other = await make_profile_version(wired.db, "Turbo")
     set_id = await _set(wired, house)
-    patch = {"profile_version_id": other} if change == "profile" else change
-    assert isinstance(patch, dict)
-    proposals, proposal_id = await _proposal(wired, set_id, **patch)
-    stored = await proposals.get(set_id, proposal_id)
-    assert stored is not None
-    assert await proposals.default_major(stored) is (change == "profile")
+    proposals, proposal_id = await _proposal(wired, set_id, grind_setting="21")
 
     accepted = await proposals.accept(set_id, proposal_id, major=major)
 
@@ -243,7 +219,6 @@ async def test_the_agent_s_suggestion_is_not_the_default(wired: Fixtures) -> Non
         True,
         "The agent thinks this grind is a new direction for the Set.",
     )
-    assert await proposals.default_major(result.proposal) is False
 
     accepted = await proposals.accept(set_id, result.proposal.id)
 

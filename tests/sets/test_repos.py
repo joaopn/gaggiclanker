@@ -24,6 +24,7 @@ from gaggiclanker.db.repos.sets import (
     SetWrite,
     version_changes,
 )
+from tests.profile_rows import another_version
 from tests.sets.conftest import Fixtures, make_profile_version, make_shot
 
 
@@ -167,7 +168,7 @@ class TestSets:
         firmware writes 0 for "not set", which is not a 0 °C shot).
         """
         hot = await make_profile_version(wired.db, "9 Bar Espresso", temperature=94)
-        silent = await make_profile_version(wired.db, "Says nothing", temperature=0)
+        silent = await another_version(wired.db, hot, temperature=0)
 
         with pytest.raises(ValidationError):
             SetVersionWrite.model_validate({"target_temperature_c": 93})
@@ -198,8 +199,8 @@ class TestSets:
         no line at all.
         """
         cool = await make_profile_version(wired.db, "9 Bar Espresso", temperature=93)
-        hot = await make_profile_version(wired.db, "9 Bar Espresso hotter", temperature=94)
-        same_heat = await make_profile_version(wired.db, "A different shape", temperature=94)
+        hot = await another_version(wired.db, cool, temperature=94)
+        same_heat = await another_version(wired.db, cool, temperature=94, description="shape")
 
         row = await _new_set(wired, profile_version_id=cool, dose_g=18.0)
         await wired.sets.add_version(

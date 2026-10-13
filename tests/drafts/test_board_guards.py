@@ -19,7 +19,6 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
-from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.drafts import board as board_module
@@ -37,7 +36,7 @@ from tests.drafts.helpers import (
     kinds,
     make_set_on,
     same_name_draft,
-    set_device_ids,
+    set_version_ids,
     tombstone,
 )
 from tests.drafts.test_board import (
@@ -325,26 +324,6 @@ async def test_a_copy_that_does_not_verify_and_cannot_be_removed_is_not_retried_
 # ── a draft on the board is not pushed by hand ──────────────────────
 
 
-async def test_a_draft_turned_down_after_it_went_on_the_board_is_pushed_but_not_recorded(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    base = row_for(await get_board(client), BASE_LABEL)
-    set_id = await make_set_on(client, "Declined", base["row"]["current_version_id"])
-    draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    await put(client, draft, set_id=set_id)
-    discarded = await client.post(f"/api/profile-drafts/{draft['id']}/discard", json={})
-    assert discarded.status_code == 200
-    before = await set_device_ids(app, set_id)
-
-    run = await pull(app)
-
-    assert run.status == "ok", run.error
-    assert await set_device_ids(app, set_id) == before, "no second Set version"
-    row = row_for(await get_board(client), APP_LABEL)["row"]
-    assert row["pending_draft_id"] is None and row["pending_set_id"] is None
-
-
 async def test_the_draft_row_says_the_pull_saved_the_file(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
@@ -614,26 +593,6 @@ async def test_a_deleted_copy_edited_between_the_read_and_the_delete_is_not_dest
     assert [i["detail"] for i in summary_of(run)["left"]] == ["changed on the display since"]
 
 
-async def test_a_draft_already_pushed_by_another_path_is_not_recorded_on_the_set_again(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    base = row_for(await get_board(client), BASE_LABEL)
-    set_id = await make_set_on(client, "Once", base["row"]["current_version_id"])
-    draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    await put(client, draft, set_id=set_id)
-    # Something else has already pushed it (a second process, an older client).
-    await ProfileDraftsRepository(app.state.db).set_status(
-        draft["id"], "pushed", pushed_device_profile_id="elsewhere"
-    )
-    before = await set_device_ids(app, set_id)
-
-    run = await pull(app)
-
-    assert run.status == "ok", run.error
-    assert await set_device_ids(app, set_id) == before
-
-
 # ── a later put replaces the file an earlier one made ───────────────
 
 
@@ -735,11 +694,11 @@ async def test_a_persons_profile_ending_in_the_app_label_is_continued_like_any_o
     mine_row = row_for(await get_board(client), STAGED)
     assert mine_row["row"]["origin"] == "adopted"
 
-    set_id = await make_set_on(client, "OnMine", mine_row["row"]["current_version_id"])
+    await make_set_on(client, "OnMine", mine_row["row"]["current_version_id"])
     plain = await same_name_draft(app, client, provider, STAGED, 7)
     for_set = await same_name_draft(app, client, provider, STAGED, 6)
     on_plain = await put(client, plain)
-    on_set = await put(client, for_set, set_id=set_id)
+    on_set = await put(client, for_set)
 
     assert on_plain["id"] == on_set["id"] == mine_row["row"]["id"]
     run = await pull(app)
@@ -901,7 +860,7 @@ async def test_a_deleted_copy_a_set_brews_is_removed_all_the_same(
     assert [i["device_id"] for i in summary_of(run)["removed"]] == [file]
     assert file not in ids(fake)
     assert (await get_board(client))["pending_removals"] == []
-    assert file not in await set_device_ids(app, set_id)
+    assert len(await set_version_ids(app, set_id)) == 1
 
 
 async def test_versions_the_policy_refuses_do_not_use_up_the_three_failure_stop(

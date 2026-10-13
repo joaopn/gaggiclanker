@@ -80,16 +80,17 @@ describe("every board mutation refreshes everything it changes", () => {
 
     await result.current.mutateAsync({ draftId: 1 });
 
-    for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
-    // No Set named, no Set record to refresh.
-    expect(keys).not.toContainEqual([...queryKeys.sets.all]);
+    // The profile's Set follows it, so the Sets are read again too.
+    for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
+      await waitFor(() => expect(keys).toContainEqual([...key]));
+    }
   });
 
-  it("putting a draft on the board for a Set also refreshes the Sets", async () => {
+  it("putting a draft on the board with the major choice refreshes the same things", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => usePutOnBoard());
     const keys = spyOn(queryClient);
 
-    await result.current.mutateAsync({ draftId: 1, setId: 3, major: true });
+    await result.current.mutateAsync({ draftId: 1, major: true });
 
     for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
       await waitFor(() => expect(keys).toContainEqual([...key]));
@@ -168,7 +169,7 @@ describe("every board mutation refreshes everything it changes", () => {
 });
 
 describe("a put refreshes where each proposal stands", () => {
-  it("marks a cached standing read stale, whether or not the put carried a name or a Set", async () => {
+  it("marks a cached standing read stale, whether or not the put carried a name", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => usePutOnBoard());
     // The test client collects a query nobody observes at once; these are kept to be inspected.
     queryClient.setQueryDefaults(queryKeys.drafts.all, { gcTime: Number.POSITIVE_INFINITY });
@@ -176,7 +177,7 @@ describe("a put refreshes where each proposal stands", () => {
     queryClient.setQueryData(queryKeys.drafts.standing(8), { state: "waiting" });
     expect(queryClient.getQueryState(queryKeys.drafts.standing(7))?.isInvalidated).toBe(false);
 
-    await result.current.mutateAsync({ draftId: 7, setId: 3, major: false, label: "Gentle Bloom" });
+    await result.current.mutateAsync({ draftId: 7, major: false, label: "Gentle Bloom" });
 
     await waitFor(() =>
       expect(queryClient.getQueryState(queryKeys.drafts.standing(7))?.isInvalidated).toBe(true),
@@ -185,7 +186,7 @@ describe("a put refreshes where each proposal stands", () => {
     expect(queryClient.getQueryState(queryKeys.drafts.standing(8))?.isInvalidated).toBe(true);
   });
 
-  it("sends the name the person typed, and the Set only when it records one", async () => {
+  it("sends the name the person typed", async () => {
     const { result } = renderHookWithQueryClient(() => usePutOnBoard());
 
     await result.current.mutateAsync({ draftId: 7, label: "Gentle Bloom" });

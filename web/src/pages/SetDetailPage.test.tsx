@@ -137,28 +137,10 @@ beforeEach(() => {
   rollbackSet.mockResolvedValue(setDetail().versions[0].version);
   getSignature.mockResolvedValue(signatureNone);
   getSignatureOverrides.mockResolvedValue({ items: [] });
+  // The design brief names the profile it forks by label.
   getProfileVersions.mockResolvedValue({
-    items: [
-      {
-        id: 7,
-        label: "9 Bar Espresso",
-        target_yield_g: 36,
-        temperature_c: 93,
-        profile_entry_id: 1,
-      },
-      { id: 8, label: "Turbo", target_yield_g: 45, temperature_c: 90, profile_entry_id: 2 },
-      // A newer version of the same list entry as 7: the same profile.
-      {
-        id: 9,
-        label: "9 Bar Espresso (tuned)",
-        target_yield_g: 36,
-        temperature_c: 92,
-        profile_entry_id: 1,
-      },
-      // In no list entry: its own profile, so a different one from 7.
-      { id: 10, label: "Loose", target_yield_g: 36, temperature_c: 92, profile_entry_id: null },
-    ],
-    total: 4,
+    items: [{ id: 7, label: "9 Bar Espresso", target_yield_g: 36, temperature_c: 93 }],
+    total: 1,
   });
 });
 
@@ -328,66 +310,18 @@ describe("SetDetailPage", () => {
     expect(patch).not.toHaveProperty("compares_to_version_id");
   });
 
-  it("preselects the current version's profile and sends nothing when it is untouched", async () => {
+  it("names the version it will record, and the person's tick makes it a major", async () => {
     const user = setupUser();
     renderWithQueryClient(<SetDetailPage />);
 
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    // The fixture's current version brews with profile version 7.
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
-    await user.type(screen.getByLabelText("What are you trying?"), "one finer");
-    await user.type(screen.getByLabelText("Grind"), "20");
-    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
-
-    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
-    // Untouched means inherited, like every other recipe field on this form.
-    expect(addSetVersion.mock.calls[0][1]).not.toHaveProperty("profile_version_id");
-  });
-
-  it("records a change of profile, and says it changes nothing on the machine", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
-
-    // The one rule this help text protects: only a person puts a profile on the board, and only
-    // from the Profiles page.
-    expect(screen.getByTestId("profile-help")).toHaveTextContent("changes nothing on the machine");
-    expect(screen.getByTestId("profile-help")).toHaveTextContent("Profiles page");
-
-    await user.selectOptions(screen.getByLabelText("Profile"), "8");
-    await user.type(screen.getByLabelText("What are you trying?"), "switched to the turbo");
-    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
-
-    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
-    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: 8 });
-    // Nothing on this path goes near a draft, the board or the machine.
-    expect(putOnBoard).not.toHaveBeenCalled();
-    expect(createProfileDraft).not.toHaveBeenCalled();
-  });
-
-  it("names the version it will record, and marks a change of profile major", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
     const box = screen.getByRole("checkbox", { name: "Major change" });
-    // The profile is the current one, so the rule says minor: v2 → v2.1.
+    // Grind, dose and yield are dialling in: v2 → v2.1.
     expect(box).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Record it as v2.1" })).toBeInTheDocument();
     expect(screen.getByTestId("major-choice-result")).toHaveTextContent("v2.1");
 
-    // A different profile is a major version by default…
-    await user.selectOptions(screen.getByLabelText("Profile"), "8");
-    expect(box).toBeChecked();
-    expect(screen.getByRole("button", { name: "Record it as v3" })).toBeInTheDocument();
-    // …and back again when the profile goes back.
-    await user.selectOptions(screen.getByLabelText("Profile"), "7");
-    expect(box).not.toBeChecked();
-
-    // The person has the last word: a grind change marked major.
+    // The person has the last word.
     await user.type(screen.getByLabelText("Grind"), "20");
     await user.click(box);
     expect(screen.getByRole("button", { name: "Record it as v3" })).toBeInTheDocument();
@@ -398,33 +332,18 @@ describe("SetDetailPage", () => {
     expect(addSetVersion.mock.calls[0][1]).toMatchObject({ grind_setting: "20", major: true });
   });
 
-  it("starts the Major change box by the profile's list entry, not by its version", async () => {
+  it("offers no profile to choose: a Set brews its own, and a different brew is a draft of it", async () => {
     const user = setupUser();
     renderWithQueryClient(<SetDetailPage />);
 
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
-    const box = screen.getByRole("checkbox", { name: "Major change" });
 
-    // Another version of the same profile is not a new profile: minor.
-    await user.selectOptions(screen.getByLabelText("Profile"), "9");
-    expect(box).not.toBeChecked();
-    expect(screen.getByRole("button", { name: "Record it as v2.1" })).toBeInTheDocument();
-    // A different list entry is: major.
-    await user.selectOptions(screen.getByLabelText("Profile"), "8");
-    expect(box).toBeChecked();
-    // A version in no entry is its own profile: major too.
-    await user.selectOptions(screen.getByLabelText("Profile"), "10");
-    expect(box).toBeChecked();
-
-    // The person's toggle wins over the default, on the same entry as well.
-    await user.selectOptions(screen.getByLabelText("Profile"), "9");
-    await user.click(box);
-    expect(box).toBeChecked();
-    await user.type(screen.getByLabelText("What are you trying?"), "a bigger rethink");
-    await user.click(screen.getByRole("button", { name: "Record it as v3" }));
+    expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("What are you trying?"), "one finer");
+    await user.type(screen.getByLabelText("Grind"), "20");
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
-    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: 9, major: true });
+    expect(addSetVersion.mock.calls[0][1]).not.toHaveProperty("profile_version_id");
   });
 
   it("marks the version the Set is on, and reads the current one from the flag", async () => {
@@ -439,71 +358,6 @@ describe("SetDetailPage", () => {
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
     // The form's "compared to" starts on the current version, v1, not the newest.
     await waitFor(() => expect(screen.getByLabelText("Compared to")).toHaveValue("21"));
-  });
-
-  it("leaves a pin's copy out of the Add a version profile picker", async () => {
-    getProfileVersions.mockResolvedValue({
-      items: [
-        { id: 7, label: "9 Bar Espresso", target_yield_g: 36, temperature_c: 93, pin: null },
-        {
-          id: 11,
-          label: "9 Bar Espresso v1.2",
-          target_yield_g: 36,
-          temperature_c: 93,
-          pin: { pin_id: 5, set_id: 3, set_version_id: 21 },
-        },
-        // The copy of a pin that was taken off: still a copy, still not offered.
-        {
-          id: 12,
-          label: "Turbo v1.1",
-          target_yield_g: 45,
-          temperature_c: 90,
-          pin: { pin_id: 6, set_id: 4, set_version_id: 30 },
-        },
-      ],
-      total: 3,
-    });
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await screen.findByRole("option", { name: "9 Bar Espresso" });
-
-    const options = within(screen.getByLabelText("Profile")).getAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual(["Any profile", "9 Bar Espresso"]);
-  });
-
-  it("starts the box on a changed profile when the current version is in no list entry", async () => {
-    const detail = setDetail();
-    detail.versions[0].version = {
-      ...detail.versions[0].version,
-      profile_version_id: 10,
-      profile_entry_id: null,
-    };
-    getSet.mockResolvedValue(detail);
-    getProfileVersions.mockResolvedValue({
-      items: [
-        { id: 10, label: "Loose", target_yield_g: 36, temperature_c: 92, profile_entry_id: null },
-        {
-          id: 11,
-          label: "Other loose",
-          target_yield_g: 36,
-          temperature_c: 92,
-          profile_entry_id: null,
-        },
-      ],
-      total: 2,
-    });
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("10"));
-    const box = screen.getByRole("checkbox", { name: "Major change" });
-    expect(box).not.toBeChecked();
-    // Two profiles that no list entry holds are two profiles.
-    await user.selectOptions(screen.getByLabelText("Profile"), "11");
-    expect(box).toBeChecked();
   });
 
   it("reads the header and the Discuss link from the current version, not the newest", async () => {
@@ -535,89 +389,6 @@ describe("SetDetailPage", () => {
         name: "Go back to v2, the last version with Keep shots",
       }),
     ).toBeInTheDocument();
-  });
-
-  it("sends the person's minor on a change of profile they unticked", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
-    await user.selectOptions(screen.getByLabelText("Profile"), "8");
-    await user.click(screen.getByRole("checkbox", { name: "Major change" }));
-    // Their answer sticks when the profile moves again.
-    await user.selectOptions(screen.getByLabelText("Profile"), "7");
-    await user.selectOptions(screen.getByLabelText("Profile"), "8");
-    expect(screen.getByRole("checkbox", { name: "Major change" })).not.toBeChecked();
-    await user.type(screen.getByLabelText("What are you trying?"), "a tuned copy");
-    await user.click(screen.getByRole("button", { name: "Record it as v2.1" }));
-
-    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
-    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: 8, major: false });
-  });
-
-  it("carries the new profile's target yield across, without overwriting a typed one", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
-
-    await user.selectOptions(screen.getByLabelText("Profile"), "8");
-    expect(screen.getByLabelText("Target yield (g)")).toHaveValue("45");
-    expect(screen.getByTestId("version-from-profile")).toHaveTextContent("from Turbo");
-
-    // Typed by hand: the next profile must not take it back.
-    const yieldField = screen.getByLabelText("Target yield (g)");
-    await user.clear(yieldField);
-    await user.type(yieldField, "50");
-    await user.selectOptions(screen.getByLabelText("Profile"), "7");
-
-    expect(screen.getByLabelText("Target yield (g)")).toHaveValue("50");
-    expect(screen.queryByTestId("version-from-profile")).not.toBeInTheDocument();
-  });
-
-  it("shows the profile's temperature where the Temperature field used to be", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
-
-    // Read-only: it is read out with its own name, and there is no field to
-    // type one into.
-    expect(screen.queryByRole("textbox", { name: "Temperature (°C)" })).not.toBeInTheDocument();
-    const cell = () => screen.getByRole("group", { name: "Temperature (°C)" });
-    expect(cell()).toHaveTextContent("93 °C");
-    expect(screen.getByTestId("temperature-from-profile")).toHaveTextContent(
-      "The machine brews at the temperature 9 Bar Espresso states.",
-    );
-
-    // Switching the profile switches the temperature with it, which is the
-    // only way a version's temperature ever changes.
-    await user.selectOptions(screen.getByLabelText("Profile"), "8");
-    expect(cell()).toHaveTextContent("90 °C");
-
-    await user.type(screen.getByLabelText("What are you trying?"), "the turbo, cooler");
-    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
-
-    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
-    expect(addSetVersion.mock.calls[0][1]).not.toHaveProperty("target_temperature_c");
-  });
-
-  it("can take the profile off a version entirely", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
-
-    await user.selectOptions(screen.getByLabelText("Profile"), "");
-    await user.type(screen.getByLabelText("What are you trying?"), "any profile now");
-    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
-
-    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
-    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: null });
   });
 
   it("leads with the track record once something has been graded", async () => {
@@ -719,25 +490,22 @@ describe("SetDetailPage", () => {
     renderWithQueryClient(<SetDetailPage />);
 
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
     await user.type(screen.getByLabelText("Grind"), "20");
     await user.type(screen.getByLabelText("What are you trying?"), "half typed");
 
-    // The Set goes back to v1, which names another profile; the page refetches.
+    // The Set goes back to v1; the page refetches.
     const back = setDetail();
     back.versions[0].version = { ...back.versions[0].version, is_current: false };
     back.versions[1].version = {
       ...back.versions[1].version,
       is_current: true,
       profile_version_id: 8,
-      profile_entry_id: 2,
     };
     getSet.mockResolvedValue(back);
     await user.click(screen.getByRole("button", { name: "Go back to this version" }));
     await user.click(screen.getByRole("button", { name: "Go back to v1" }));
 
-    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("8"));
-    expect(screen.getByLabelText("Grind")).toHaveValue("");
+    await waitFor(() => expect(screen.getByLabelText("Grind")).toHaveValue(""));
     expect(screen.getByLabelText("What are you trying?")).toHaveValue("");
   });
 

@@ -55,7 +55,7 @@ async def _design(client: httpx.AsyncClient, kit: dict[str, int], **over: Any) -
 async def test_a_design_is_a_set_with_an_empty_version_1_and_its_conversation(
     app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
 ) -> None:
-    fork = await make_profile_version(app.state.db, "Fork me")
+    fork = await make_profile_version(app.state.db, "Fork me", owned=False)
 
     created = await _design(
         client, kit, fork_profile_version_id=fork, usual_grind="21", goal="More body."
@@ -168,8 +168,8 @@ async def test_discarding_anything_else_is_refused_with_its_own_code(
 async def _card(app: FastAPI, set_id: int, thread_id: int) -> tuple[int, int, int]:
     """An initial recipe waiting on a design: the proposal, its draft and its profile."""
     db = app.state.db
-    base = await make_profile_version(db, "Library")
-    drafted = await make_profile_version(db, "Designed [AI]", temperature=94)
+    base = await make_profile_version(db, "Library", owned=False)
+    drafted = await make_profile_version(db, "Designed [AI]", temperature=94, owned=False)
     draft = await ProfileDraftsRepository(db).create(
         ProfileDraftWrite(base_version_id=base, draft_version_id=drafted)
     )

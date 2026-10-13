@@ -71,7 +71,9 @@ async def wired(db: Database) -> Fixtures:
     )
 
 
-async def make_profile_version(db: Database, label: str, temperature: float | None = None) -> int:
+async def make_profile_version(
+    db: Database, label: str, temperature: float | None = None, *, owned: bool = True
+) -> int:
     """A stored profile version with this label, through the real repository.
 
     Built from a shipped fixture rather than hand-written JSON so that the row
@@ -93,6 +95,18 @@ async def make_profile_version(db: Database, label: str, temperature: float | No
         document["temperature"] = temperature
     profile = Profile.model_validate(document)
     version, _ = await ProfilesRepository(db).ensure_version(profile, owner=None)
+    if owned:
+        # A Set starts on a profile's active version, so the profile is on the list.
+        from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+
+        await ProfileBoardRepository(db).insert(
+            BoardRowWrite(
+                label=profile.label,
+                current_version_id=version.id,
+                origin="adopted",
+                on_machine=False,
+            )
+        )
     return version.id
 
 

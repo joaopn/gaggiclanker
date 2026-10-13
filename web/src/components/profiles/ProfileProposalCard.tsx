@@ -43,10 +43,7 @@ export const syncKeyOf = (draftId: number) => `draft-${draftId}`;
  * person's to choose. The put's own landing says so (the Set's when the proposal is for one).
  */
 export function landsOnNewProfile(standing: DraftStanding): boolean {
-  const { draft, landing } = standing;
-  const target =
-    draft.set_id != null && landing?.for_set != null ? landing.for_set : landing?.plain;
-  return (target?.row_id ?? null) === null;
+  return (standing.landing?.plain.row_id ?? null) === null;
 }
 
 /**
@@ -207,13 +204,15 @@ function Waiting({
   const proposedName = draft.draft_label ?? "";
   const stopChanges = stopConditionChangesOf(draft);
   const clamps = clampChangesOf(draft);
+  // The Set of the profile this lands on follows it with a version of its own.
+  const landingSet = landing?.plain.set ?? null;
   const forSet =
-    draft.set_id != null && draft.set_name != null && landing?.for_set != null
+    landingSet !== null
       ? {
-          id: draft.set_id,
-          name: draft.set_name,
-          minorLabel: draft.set_next_minor_label ?? null,
-          majorLabel: draft.set_next_major_label ?? null,
+          id: landingSet.id,
+          name: landingSet.name,
+          minorLabel: landingSet.next_minor_label,
+          majorLabel: landingSet.next_major_label,
         }
       : null;
   // A proposal that would be a profile of its own: its name is the person's to choose.
@@ -227,9 +226,7 @@ function Waiting({
   const { trimmed, checking } = name;
   // The server's sentence for the name as proposed, from the landing: shown at once, until the
   // check of what is in the field answers.
-  const landingSentence = isNew
-    ? ((forSet !== null ? landing?.for_set : landing?.plain)?.refused ?? null)
-    : null;
+  const landingSentence = isNew ? (landing?.plain.refused ?? null) : null;
   const proposedUnchanged = trimmed === proposedName.trim();
   const checkProblem = name.problem ?? (proposedUnchanged && checking ? landingSentence : null);
   // A refusal of the put, for the name that was on screen when it was sent: shown under the field
@@ -261,10 +258,6 @@ function Waiting({
       : isNew && trimmed && nameProblem === null
         ? `Approve${sync} — add “${trimmed}”`
         : `Approve${sync}`;
-  const approveWithoutSet =
-    place === "profiles" && forSet !== null
-      ? `Approve without recording it on ${forSet.name}${sync}`
-      : null;
 
   // A press that has succeeded is answered for good: the card is about to become the answered
   // card, and the moments before the standing is read again must not offer a second press.
@@ -274,14 +267,14 @@ function Waiting({
   const answering = put.isPending || discard.isPending || answered;
   const approveBlocked = answering || nameProblem !== null || checking;
 
-  const approve = async (recordOnSet: boolean) => {
+  const approve = async () => {
     if (acting.current) return;
     acting.current = true;
     try {
       const row = await attempt(() =>
         put.mutateAsync({
           draftId: draft.id,
-          ...(recordOnSet && forSet !== null ? { setId: forSet.id, major } : {}),
+          ...(forSet !== null ? { major } : {}),
           ...(isNew ? { label: trimmed } : {}),
           // The card says it is syncing, and the sync's own notification follows; a refusal is
           // shown by the card, under the name or under the buttons.
@@ -306,7 +299,7 @@ function Waiting({
         approvedProfileMessage({
           name: isNew ? trimmed : proposedName,
           forSet:
-            recordOnSet && forSet !== null && setLabel !== null
+            forSet !== null && setLabel !== null
               ? { versionLabel: setLabel, setName: forSet.name }
               : null,
           newVersion: !isNew,
@@ -443,29 +436,12 @@ function Waiting({
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             if (approveBlocked) return;
-            void approve(true);
+            void approve();
           }}
         >
           <Check className="size-3.5" aria-hidden="true" />
           {approveWords}
         </Button>
-
-        {approveWithoutSet !== null ? (
-          <Button
-            size="sm"
-            variant="outline"
-            aria-disabled={approveBlocked}
-            data-testid="approve-proposal-without-set"
-            className={cn(WRAP_BUTTON, "aria-disabled:opacity-50")}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              if (approveBlocked) return;
-              void approve(false);
-            }}
-          >
-            {approveWithoutSet}
-          </Button>
-        ) : null}
 
         <Button
           size="sm"
@@ -640,8 +616,8 @@ function Answered({
   );
   const [curveOpen, setCurveOpen] = useState(false);
   const recorded =
-    standing.set_version_label && draft.set_name
-      ? ` → ${standing.set_version_label} of ${draft.set_name}`
+    standing.set_version_label && draft.recorded_set_name
+      ? ` → ${standing.set_version_label} of ${draft.recorded_set_name}`
       : "";
   // "Approved as Gentle Bloom (proposed as Soft Bloom)": only when the person changed the name.
   // Only when the name it was proposed under differs from the stored one: exact, after trimming

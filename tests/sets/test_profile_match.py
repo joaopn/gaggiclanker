@@ -21,6 +21,7 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.imports.service import ImportService
+from tests.profile_rows import another_version, own_version
 from tests.sets.conftest import Fixtures, make_profile_version, make_shot
 from tests.sets.test_assignment import (
     _device_profile_ids,
@@ -37,6 +38,8 @@ async def _set_on(
     wired: Fixtures, name: str, profile_version_id: int | None, *, automatch: bool = True
 ) -> int:
     """A Set whose current version names this profile, offered to the matcher."""
+    if profile_version_id is not None:
+        await own_version(wired.db, profile_version_id)
     row = await wired.sets.create(
         SetWrite(name=name, bean_id=wired.bean_id),
         SetVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),
@@ -73,34 +76,17 @@ class TestProfileMatch:
         assert match.set_version_id == await _current(wired, mine)
         assert await _filed(wired, shot_id) == match.set_version_id
 
-    async def test_two_sets_on_the_profile_is_ambiguous(self, wired: Fixtures) -> None:
+    async def test_an_archived_set_does_not_match(self, wired: Fixtures) -> None:
         profile = await make_profile_version(wired.db, "Adaptive v2")
-        await _set_on(wired, "Guji", profile)
-        await _set_on(wired, "Kenya", profile)
-        shot_id = await make_shot(wired.db, "000501", profile_version_id=profile)
-
-        match = await wired.sets.profile_match(
-            shot_id, profile_version_id=profile, device_profile_id=""
-        )
-
-        assert match.outcome == "ambiguous"
-        assert await _filed(wired, shot_id) is None
-
-    async def test_an_archived_set_neither_matches_nor_makes_it_ambiguous(
-        self, wired: Fixtures
-    ) -> None:
-        profile = await make_profile_version(wired.db, "Adaptive v2")
-        finished = await _set_on(wired, "Finished bag", profile)
-        await wired.sets.archive(finished)
-        live = await _set_on(wired, "Guji", profile)
+        bag = await _set_on(wired, "Guji", profile)
         shot_id = await make_shot(wired.db, "000502", profile_version_id=profile)
 
         match = await wired.sets.profile_match(
             shot_id, profile_version_id=profile, device_profile_id=""
         )
-        assert match.set_version_id == await _current(wired, live)
+        assert match.set_version_id == await _current(wired, bag)
 
-        await wired.sets.archive(live)
+        await wired.sets.archive(bag)
         second = await make_shot(wired.db, "000503", profile_version_id=profile)
         after = await wired.sets.profile_match(
             second, profile_version_id=profile, device_profile_id=""
@@ -108,15 +94,8 @@ class TestProfileMatch:
         assert after.outcome == "unmatched"
         assert await _filed(wired, second) is None
 
-    async def test_a_set_the_matcher_is_not_offered_neither_matches_nor_blocks(
-        self, wired: Fixtures
-    ) -> None:
-        """`automatch` off means "not mine to file", not "file it here last".
-
-        It has to be both: a Set out of the running that still made its profile
-        ambiguous would stop the Set that *is* in the running from collecting
-        anything.
-        """
+    async def test_a_set_the_matcher_is_not_offered_does_not_match(self, wired: Fixtures) -> None:
+        """`automatch` off means "not mine to file"."""
         profile = await make_profile_version(wired.db, "Adaptive v2")
         resting = await _set_on(wired, "Bag in the cupboard", profile, automatch=False)
         shot_id = await make_shot(wired.db, "000510", profile_version_id=profile)
@@ -127,20 +106,12 @@ class TestProfileMatch:
         assert match.outcome == "unmatched"
         assert await _filed(wired, shot_id) is None
 
-        live = await _set_on(wired, "Bag in the hopper", profile)
+        await wired.sets.set_automatch(resting, True)
         second = await make_shot(wired.db, "000511", profile_version_id=profile)
         after = await wired.sets.profile_match(
             second, profile_version_id=profile, device_profile_id=""
         )
-        assert after.set_version_id == await _current(wired, live)
-
-        # And it comes back into the running when the flag goes on, which is
-        # what makes the two Sets ambiguous from then on.
-        await wired.sets.set_automatch(resting, True)
-        third = await make_shot(wired.db, "000512", profile_version_id=profile)
-        assert (
-            await wired.sets.profile_match(third, profile_version_id=profile, device_profile_id="")
-        ).outcome == "ambiguous"
+        assert after.set_version_id == await _current(wired, resting)
 
     async def test_a_set_that_names_no_profile_is_not_configured_for_this_one(
         self, wired: Fixtures
@@ -160,21 +131,22 @@ class TestProfileMatch:
         assert match.set_version_id == await _current(wired, mine)
 
     async def test_only_the_current_version_counts(self, wired: Fixtures) -> None:
-        """A Set that moved on to another profile no longer brews this one."""
+        """A Set that moved on to a newer version of its profile no longer brews the older one."""
         old = await make_profile_version(wired.db, "Adaptive v2")
-        new = await make_profile_version(wired.db, "Adaptive v3")
+        new = await another_version(wired.db, old, description="v3")
         moved = await _set_on(wired, "Guji", old)
         await wired.sets.add_version(moved, SetVersionPatch(profile_version_id=new, intent="v3"))
-        stayed = await _set_on(wired, "Kenya", old)
         shot_id = await make_shot(wired.db, "000505", profile_version_id=old)
 
         match = await wired.sets.profile_match(
             shot_id, profile_version_id=old, device_profile_id=""
         )
+        assert match.outcome == "unmatched"
 
-        # Not ambiguous: only one Set brews `old` today, and the shot goes to
-        # that Set's current version, not to the other's history.
-        assert match.set_version_id == await _current(wired, stayed)
+        current = await make_shot(wired.db, "000506", profile_version_id=new)
+        assert (
+            await wired.sets.profile_match(current, profile_version_id=new, device_profile_id="")
+        ).set_version_id == await _current(wired, moved)
 
     async def test_the_device_profile_id_stands_in_until_the_mirror_catches_up(
         self, wired: Fixtures
@@ -223,33 +195,29 @@ class TestProfileMatch:
         assert match.outcome == "unmatched"
         assert await _filed(wired, shot_id) == by_hand
         summary = await wired.sets.match_unfiled([shot_id])
-        assert summary.model_dump() == {"matched": 0, "ambiguous": 0, "unmatched": 0}
+        assert summary.model_dump() == {"matched": 0, "unmatched": 0, "ambiguous": 0}
         assert await _filed(wired, shot_id) == by_hand
 
 
 class TestMatchUnfiled:
     async def test_every_waiting_shot_is_offered_and_counted(self, wired: Fixtures) -> None:
         single = await make_profile_version(wired.db, "Adaptive v2")
-        shared = await make_profile_version(wired.db, "9 Bar Espresso")
         lonely = await make_profile_version(wired.db, "Blooming")
         mine = await _set_on(wired, "Guji", single)
-        await _set_on(wired, "Kenya", shared)
-        await _set_on(wired, "Brazil", shared)
 
         matched = [
             await make_shot(wired.db, "000600", profile_version_id=single),
             await make_shot(wired.db, "000601", profile_version_id=single),
         ]
-        ambiguous = await make_shot(wired.db, "000602", profile_version_id=shared)
         no_set = await make_shot(wired.db, "000603", profile_version_id=lonely)
         unknown = await make_shot(wired.db, "000604")
 
         summary = await wired.sets.match_unfiled()
 
-        assert summary.model_dump() == {"matched": 2, "ambiguous": 1, "unmatched": 2}
+        assert summary.model_dump() == {"matched": 2, "unmatched": 2, "ambiguous": 0}
         for shot_id in matched:
             assert await _filed(wired, shot_id) == await _current(wired, mine)
-        for shot_id in (ambiguous, no_set, unknown):
+        for shot_id in (no_set, unknown):
             assert await _filed(wired, shot_id) is None
 
     async def test_quarantined_shots_are_left_alone(self, wired: Fixtures) -> None:
@@ -266,7 +234,7 @@ class TestMatchUnfiled:
             [],
         )
         summary = await wired.sets.match_unfiled()
-        assert summary.model_dump() == {"matched": 0, "ambiguous": 0, "unmatched": 0}
+        assert summary.model_dump() == {"matched": 0, "unmatched": 0, "ambiguous": 0}
         assert await _filed(wired, shot_id) is None
 
     async def test_a_discarded_shot_is_left_unless_named(self, wired: Fixtures) -> None:
@@ -284,7 +252,7 @@ class TestMatchUnfiled:
 
         summary = await wired.sets.match_unfiled()
 
-        assert summary.model_dump() == {"matched": 1, "ambiguous": 0, "unmatched": 0}
+        assert summary.model_dump() == {"matched": 1, "unmatched": 0, "ambiguous": 0}
         assert await _filed(wired, kept) == await _current(wired, guji)
         assert await _filed(wired, discarded) is None
 
@@ -322,21 +290,6 @@ class TestIngest:
         assert result.shot_id is not None
         assert await _filed(wired, result.shot_id) == await _current(wired, mine)
 
-    async def test_an_import_waits_when_two_sets_brew_the_profile(self, wired: Fixtures) -> None:
-        version_id = await make_profile_version(wired.db, "Gratus 16:32 trad")
-        await ProfilesRepository(wired.db).upsert_device_profile(
-            device_id="rV4GhUcSZc", version_id=version_id
-        )
-        await _set_on(wired, "Imported archive", version_id)
-        await _set_on(wired, "Same profile, other bag", version_id)
-
-        result = await ImportService(wired.db).import_shot(
-            (FIXTURES / "exports" / "shot-129.json").read_bytes(), filename="shot-129.json"
-        )
-
-        assert result.shot_id is not None
-        assert await _filed(wired, result.shot_id) is None
-
 
 class TestSync:
     async def test_each_pulled_shot_goes_to_the_set_that_brews_its_profile(
@@ -358,6 +311,7 @@ class TestSync:
                 second = await _mirror(archive, other, "9 Bar Espresso")
                 bean = await BeansRepository(archive.db).create(BeanWrite(name="Kenya AA"))
                 sets = archive.engine.sets
+                await own_version(archive.db, second)
                 on_other = await sets.create(
                     SetWrite(name="Kenya", bean_id=bean.id),
                     SetVersionWrite(profile_version_id=second),
@@ -401,7 +355,7 @@ class TestApi:
         response = await client.post("/api/shots/profile-match", json={})
 
         assert response.status_code == 200, response.text
-        assert response.json()["data"] == {"matched": 1, "ambiguous": 0, "unmatched": 1}
+        assert response.json()["data"] == {"matched": 1, "unmatched": 1, "ambiguous": 0}
         detail = (await client.get(f"/api/shots/{shot_id}")).json()["data"]
         assert detail["shot"]["set_version_id"] is not None
 

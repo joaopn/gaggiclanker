@@ -662,7 +662,7 @@ export async function getProfileBoard(live = false): Promise<BoardView> {
  */
 export async function putOnBoard(body: {
   draftId: number;
-  setId?: number;
+  /** Whether the new version of the profile's Set (if it has one) is a major one. */
   major?: boolean;
   /** A new profile's name as the person typed it; absent keeps the proposed one. */
   label?: string;
@@ -671,9 +671,7 @@ export async function putOnBoard(body: {
     method: "POST",
     body: JSON.stringify({
       draft_id: body.draftId,
-      set_id: body.setId ?? null,
-      // Only with a Set: a profile that records nothing names no version.
-      ...(body.setId !== undefined && body.major !== undefined ? { major: body.major } : {}),
+      ...(body.major !== undefined ? { major: body.major } : {}),
       ...(body.label !== undefined ? { label: body.label } : {}),
     }),
   });

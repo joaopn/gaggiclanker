@@ -17,7 +17,6 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch
-from tests.sets.conftest import make_profile_version
 from tests.sets.test_api import data, error
 
 PREDICTION = "Compared to v1: two to four seconds longer and less sour."
@@ -71,15 +70,6 @@ class TestTheForm:
         version = data(await client.post(f"/api/sets/{set_id}/versions", json={"major": True}))
         assert (version["grind_setting"], version["dose_g"]) == ("22", 18.0)
         assert "major" not in version
-
-    async def test_a_different_profile_is_a_major_by_default(
-        self, client: httpx.AsyncClient, app: FastAPI, set_id: int
-    ) -> None:
-        profile = await make_profile_version(app.state.db, "Turbo")
-        version = data(
-            await client.post(f"/api/sets/{set_id}/versions", json={"profile_version_id": profile})
-        )
-        assert version["version_label"] == "v2"
 
     @pytest.mark.parametrize("value", ["yes", 2, [True], {"major": True}])
     async def test_anything_but_a_boolean_is_refused(
@@ -155,22 +145,12 @@ class TestTheCard:
         assert proposal["major_reason"] == (
             "A finer grind this far changes what the Set is aiming at."
         )
-        # A grind change is a minor by the rule, whatever the agent suggests.
-        assert proposal["major_by_default"] is False
+        # A grind change is a minor unless the person says, whatever the agent suggests.
         assert (proposal["next_minor_label"], proposal["next_major_label"]) == ("v1.1", "v2")
         assert proposal["base_version_label"] == "v1"
         assert proposal["compares_to_version_label"] == "v1"
         listed = data(await client.get(f"/api/sets/{set_id}/proposals"))["items"][0]
         assert listed["next_major_label"] == "v2"
-
-    async def test_a_profile_change_is_a_major_by_the_rule(
-        self, client: httpx.AsyncClient, app: FastAPI, set_id: int
-    ) -> None:
-        profile = await make_profile_version(app.state.db, "Turbo")
-        await _propose(app, set_id, patch=SetVersionPatch(profile_version_id=profile))
-        proposal = data(await client.get(f"/api/sets/{set_id}"))["proposal"]
-        assert proposal["major_by_default"] is True
-        assert proposal["suggest_major"] is False
 
     @pytest.mark.parametrize(
         ("body", "label"),

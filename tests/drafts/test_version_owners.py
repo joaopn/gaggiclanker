@@ -501,6 +501,9 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
                 "duplicate",
                 "display_file",
                 "twin_drafts",
+                "set_on_a_profile",
+                "set_version",
+                "set_revert",
             ]
         )
         counter += 1
@@ -585,6 +588,27 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
             )
         elif operation == "twin_drafts":
             await _twin_drafts(app, client, f"Twin{counter}")
+        elif operation == "set_on_a_profile" and row is not None:
+            # A profile that has a Set is refused (a 409), and one that has none gets one.
+            await _set_on(client, f"W{counter}", row["row"]["current_version_id"])
+        elif operation in ("set_version", "set_revert"):
+            sets = await db_sets(app)
+            if sets:
+                chosen = rng.choice(sets)
+                if operation == "set_version":
+                    await client.post(
+                        f"/api/sets/{chosen}/versions",
+                        json={"grind_setting": str(counter), "intent": "walk"},
+                    )
+                else:
+                    versions = [
+                        v["version"]
+                        for v in data(await client.get(f"/api/sets/{chosen}"))["versions"]
+                    ]
+                    await client.post(
+                        f"/api/sets/{chosen}/rollback",
+                        json={"to_version_id": rng.choice(versions)["id"], "note": "walk"},
+                    )
         elif operation == "display_file":
             file = copy.deepcopy(fake.profiles[0])
             file.update(id=f"disp{counter}", label=f"Display {counter}", temperature=88.0 + counter)
@@ -592,6 +616,11 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
         await assert_versions_owned(app.state.db)
     await pull(app)
     await assert_versions_owned(app.state.db)
+
+
+async def db_sets(app: FastAPI) -> list[int]:
+    rows = await app.state.db.fetch_all("SELECT id FROM sets WHERE designing = 0 ORDER BY id")
+    return [int(r["id"]) for r in rows]
 
 
 async def _twin_drafts(app: FastAPI, client: httpx.AsyncClient, name: str) -> None:
@@ -702,8 +731,6 @@ async def test_a_new_recipe_is_refused_a_brew_a_sets_current_version_already_nam
 async def test_the_profile_of_a_change_not_yet_put_is_its_destination_though_it_lists_nothing(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
-    from gaggiclanker.db.repos.profile_identity import profile_entry_id
-
     app, client, _ = adopted
     row = row_for(await get_board(client), BASE_LABEL)["row"]
     change = await same_name_draft(app, client, provider, BASE_LABEL, 7)
@@ -712,7 +739,7 @@ async def test_the_profile_of_a_change_not_yet_put_is_its_destination_though_it_
         (change["draft_version_id"],),
     )
     assert listed == 0
-    assert await profile_entry_id(app.state.db, change["draft_version_id"]) == row["id"]
+    assert change["destination_board_id"] == row["id"]
 
 
 async def test_a_base_held_only_by_the_file_a_live_profile_stands_on_belongs_to_that_profile(

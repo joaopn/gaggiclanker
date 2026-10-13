@@ -68,7 +68,6 @@ from pydantic import (
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
-from gaggiclanker.db.repos.profile_identity import profile_entry_sql, same_profile
 from gaggiclanker.db.repos.shots import NEEDS_SET_SQL
 from gaggiclanker.db.repos.version_names import (
     label_sql,
@@ -78,7 +77,7 @@ from gaggiclanker.db.repos.version_names import (
 )
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.ratio import brew_ratio
-from gaggiclanker.domain.sets import VersionPath, change_is_major, version_label
+from gaggiclanker.domain.sets import version_label
 from gaggiclanker.domain.slog import FIELD_DEFS
 from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.domain.vocab import (
@@ -106,6 +105,7 @@ __all__ = [
     "SetShotRow",
     "SetTrackRecord",
     "SetTrends",
+    "SetVersionChange",
     "SetVersionPatch",
     "SetVersionRow",
     "SetVersionWrite",
@@ -200,18 +200,19 @@ class SetVersionWrite(BaseModel):
     origin_analysis_id: int | None = None
 
 
-class SetVersionPatch(BaseModel):
-    """The body of `POST /api/sets/{id}/versions`: only what changed.
+class SetVersionChange(BaseModel):
+    """What a person or an agent may change on a Set version: only what changed.
 
     Every field is optional *and* "not sent" is distinguishable from "sent as
     null", which is the whole point — omitting `dose_g` inherits the parent's
     dose, sending `null` clears it. That is what ``exclude_unset`` in
-    :meth:`SetsRepository.add_version` reads.
+    :meth:`SetsRepository.add_version` reads. There is no profile among them: a Set
+    brews one profile, and a different brew is a new version of that profile, which the
+    Set follows (:meth:`SetsRepository.follow_profile`).
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    profile_version_id: int | None = None
     grind_setting: str | None = Field(default=None, max_length=100)
     grind_value: float | None = Field(default=None, ge=0, le=10000)
     dose_g: float | None = Field(default=None, gt=0, le=100)
@@ -231,10 +232,16 @@ class SetVersionPatch(BaseModel):
     compares_to_version_id: int | None = None
     origin: SetVersionOrigin = "manual"
     origin_analysis_id: int | None = None
-    #: The profile id the firmware assigned when this version's profile was
-    #: pushed. Not inherited by the next version: it names a file on
-    #: the display, and a version that changed the grind did not push anything.
-    pushed_device_profile_id: str | None = Field(default=None, max_length=31)
+
+
+class SetVersionPatch(SetVersionChange):
+    """A version to append: the change, and the profile version it brews when that moved.
+
+    Only the code that makes a Set follow its profile (and a design's first recipe) names a
+    profile version; nothing a person or an agent sends does.
+    """
+
+    profile_version_id: int | None = None
 
 
 class SetVersionRow(BaseModel):
@@ -255,12 +262,6 @@ class SetVersionRow(BaseModel):
     #: not "the newest": it is read off the Set's pointer.
     is_current: bool = False
     profile_version_id: int | None = None
-    #: The profile list entry this version's profile belongs to, NULL when it is
-    #: in none (then it is a profile of its own). Two versions with the same
-    #: entry are the same profile. NULL on two different versions is NOT "the
-    #: same profile": a version in no entry is the same as itself and as nothing
-    #: else, so compare ids first and entries second.
-    profile_entry_id: int | None = None
     #: The profile's label, joined in. A version that names a profile the mirror
     #: has since dropped still has its id; the label is then NULL.
     profile_label: str | None = None
@@ -278,11 +279,6 @@ class SetVersionRow(BaseModel):
     intent: str = ""
     origin: SetVersionOrigin = "manual"
     origin_analysis_id: int | None = None
-    #: Where this version's profile lives on the machine, when a draft push put
-    #: it there. NULL for every version whose profile was authored on the
-    #: display, and NULL again the moment somebody deletes it from there — a
-    #: device id is the machine's to own.
-    pushed_device_profile_id: str | None = None
     #: What this version was expected to do differently, in the person's words.
     #: Empty is the common case and means exactly that: nobody committed to a
     #: guess, so there is nothing here to be right or wrong about.
@@ -437,6 +433,9 @@ type VersionRefusal = Literal[
     "design_has_versions",
     "design_has_shots",
     "profile_is_a_pin",
+    "profile_has_a_set",
+    "other_profile",
+    "not_the_active_version",
 ]
 
 #: Why a Set being designed cannot take the write asked of it. The last two
@@ -468,6 +467,11 @@ _DESIGN_REFUSALS: dict[str, str] = {
         "That profile is the frozen copy of a pinned version. A Set version names the profile the "
         "copy was made from, never the copy"
     ),
+    "profile_has_a_set": "That profile already has a Set",
+    "other_profile": "A Set brews one profile: that profile version belongs to another",
+    "not_the_active_version": (
+        "A Set starts on a profile's active version: pick a profile that has no Set"
+    ),
 }
 
 
@@ -483,9 +487,9 @@ class VersionRefused(Exception):
     the caller turns it into its status.
     """
 
-    def __init__(self, refused: VersionRefusal) -> None:
+    def __init__(self, refused: VersionRefusal, message: str | None = None) -> None:
         self.refused: VersionRefusal = refused
-        self.message = _DESIGN_REFUSALS.get(refused, refused)
+        self.message = message or _DESIGN_REFUSALS.get(refused, refused)
         super().__init__(self.message)
 
     @property
@@ -587,6 +591,11 @@ class SetRow(BaseModel):
     version_count: int = 0
     shot_count: int = 0
     profile_version_id: int | None = None
+    #: The Set's profile: the one profile whose versions every version of the Set brews, and that
+    #: no other Set has. ``None`` while the Set is being designed, and for an old Set that never
+    #: named a profile.
+    board_id: int | None = None
+    #: The profile's name (the version's, for a Set with no profile row).
     profile_label: str | None = None
     #: Where this Set's first recipe was copied from, when it was started as a copy of another
     #: Set's version. Display only: it is never read as evidence, never handed to an agent
@@ -1072,7 +1081,7 @@ _SET_SELECT = f"""
            COALESCE({label_sql("cur")}, '') AS current_version_label,
            {state_sql("cur")},
            cur.profile_version_id AS profile_version_id,
-           pv.label AS profile_label,
+           COALESCE(pb.label, pv.label) AS profile_label,
            cfs.id AS copied_from_set_id,
            cfs.name AS copied_from_set_name,
            {label_sql("cf")} AS copied_from_version_label,
@@ -1087,6 +1096,7 @@ _SET_SELECT = f"""
     -- moves the Set back onto an older version without writing a new one.
     LEFT JOIN set_versions cur ON cur.id = s.current_version_id
     LEFT JOIN profile_versions pv ON pv.id = cur.profile_version_id
+    LEFT JOIN profile_board pb ON pb.id = s.board_id
     LEFT JOIN set_versions cf ON cf.id = s.copied_from_version_id
     LEFT JOIN sets cfs ON cfs.id = cf.set_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
@@ -1107,7 +1117,6 @@ _VERSION_SELECT = f"""
            {label_sql("cmp")} AS compares_to_version_label,
            {label_sql("res")} AS restores_version_label,
            {label_sql("par")} AS parent_version_label,
-           {profile_entry_sql("v.profile_version_id")} AS profile_entry_id,
            (cs.current_version_id = v.id) AS is_current,
            (SELECT COUNT(*) FROM shots sh WHERE sh.set_version_id = v.id) AS shot_count
     FROM set_versions v
@@ -1125,7 +1134,12 @@ class SetsRepository(Repository):
     # ── sets ─────────────────────────────────────────────────────────
 
     async def create(
-        self, spec: SetWrite, version: SetVersionWrite, *, automatch: bool = True
+        self,
+        spec: SetWrite,
+        version: SetVersionWrite,
+        *,
+        automatch: bool = True,
+        from_a_draft: bool = False,
     ) -> SetRow:
         """Create a Set and its first version, atomically.
 
@@ -1141,7 +1155,9 @@ class SetsRepository(Repository):
         tells them apart by profile.
         """
         async with self.db.transaction():
-            set_id = await self.create_in_transaction(spec, version, automatch=automatch)
+            set_id = await self.create_in_transaction(
+                spec, version, automatch=automatch, from_a_draft=from_a_draft
+            )
         stored = await self.get(set_id)
         if stored is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("the set vanished between write and read")
@@ -1154,6 +1170,7 @@ class SetsRepository(Repository):
         *,
         automatch: bool = True,
         copied_from_version_id: int | None = None,
+        from_a_draft: bool = False,
     ) -> int:
         """:meth:`create` inside a transaction the caller already holds; returns the Set's id.
 
@@ -1162,11 +1179,34 @@ class SetsRepository(Repository):
         this. ``copied_from_version_id`` is the "copied from" note, written with the row.
         """
         now = utc_now()
+        # The Set's profile is the profile its first version brews; a profile that has a Set
+        # already is refused (a bag on the same profile is a Duplicate, which copies it).
+        board_id = await self._owner_of(version.profile_version_id)
+        if board_id is not None:
+            await self._refuse_a_taken_profile(board_id)
+            active = await self.db.fetch_value(
+                "SELECT current_version_id FROM profile_board WHERE id = ?", (board_id,)
+            )
+            if active != version.profile_version_id and not from_a_draft:
+                raise VersionRefused("not_the_active_version")
+        elif version.profile_version_id is not None:
+            # A version no profile has yet is the starting point's own: the draft it made, which
+            # the Set brews until the draft is put (and the profile that takes it over is the
+            # Set's). Nobody else names it, and no other path starts a Set on one (nor on a
+            # version of a profile that is not its active one, which a draft's is until it is put).
+            # The same holds for the version of a machine file the list has not adopted (Writes
+            # off never adopts any): the Set has no profile until the list takes the file over.
+            if await self.db.fetch_value(
+                "SELECT 1 FROM set_versions WHERE profile_version_id = ? LIMIT 1",
+                (version.profile_version_id,),
+            ) or not (from_a_draft or await self._is_an_unadopted_file(version.profile_version_id)):
+                raise VersionRefused("not_the_active_version")
         cursor = await self.db.execute(
             """
             INSERT INTO sets (name, bean_id, grinder_id, archived, automatch, created_at,
-                              copied_from_version_id)
-            VALUES (:name, :bean_id, :grinder_id, 0, :automatch, :created_at, :copied_from)
+                              copied_from_version_id, board_id)
+            VALUES (:name, :bean_id, :grinder_id, 0, :automatch, :created_at, :copied_from,
+                    :board_id)
             """,
             {
                 "name": spec.name,
@@ -1175,6 +1215,7 @@ class SetsRepository(Repository):
                 "automatch": int(automatch),
                 "created_at": now,
                 "copied_from": copied_from_version_id,
+                "board_id": board_id,
             },
         )
         set_id = int(cursor.lastrowid or 0)
@@ -1184,6 +1225,17 @@ class SetsRepository(Repository):
         values.update(_prediction_values(version.prediction, None, now=now))
         await self._insert_version(set_id, None, values, now, major=True)
         return set_id
+
+    async def _is_an_unadopted_file(self, profile_version_id: int) -> bool:
+        """The version a machine file holds, as the last sync read it, that no profile stands on."""
+        return bool(
+            await self.db.fetch_value(
+                "SELECT 1 FROM device_profiles d WHERE d.current_version_id = ? "
+                "AND d.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM profile_board b "
+                "WHERE b.device_profile_id = d.device_id AND b.deleted_at IS NULL) LIMIT 1",
+                (profile_version_id,),
+            )
+        )
 
     async def create_design(self, spec: SetWrite, brief: DesignBrief) -> SetRow:
         """Create a Set to be designed in its conversation, atomically.
@@ -1354,7 +1406,6 @@ class SetsRepository(Repository):
         patch: SetVersionPatch,
         *,
         major: bool | None = None,
-        path: VersionPath = "change",
     ) -> SetVersionRow | None:
         """Append a version: the current one, with the sent fields changed.
 
@@ -1363,7 +1414,7 @@ class SetsRepository(Repository):
         the same parent or the same name.
         """
         async with self.db.transaction():
-            version_id = await self.append_version(set_id, patch, major=major, path=path)
+            version_id = await self.append_version(set_id, patch, major=major)
         return None if version_id is None else await self.get_version(version_id)
 
     async def append_version(
@@ -1373,7 +1424,6 @@ class SetsRepository(Repository):
         *,
         keep_proposal: int | None = None,
         major: bool | None = None,
-        path: VersionPath = "change",
     ) -> int | None:
         """The append itself, inside a transaction the caller already holds.
 
@@ -1398,10 +1448,10 @@ class SetsRepository(Repository):
         raises :class:`VersionRefused` and the caller's transaction rolls back.
 
         **Its name** is the current version's major and the next minor, or the
-        next major: ``major`` is the person's answer when they gave one, and
-        ``None`` asks :func:`~gaggiclanker.domain.sets.change_is_major` for the
-        default of ``path`` — the one rule every path shares. A design filled
-        in place keeps its v1.
+        next major: ``major`` is the person's answer when they gave one, and a minor
+        when nobody said (a major is a functional change to what the profile does,
+        which only a person or an agent's suggestion the person accepts says). A
+        design filled in place keeps its v1.
 
         Returns the new version's id — version 1's own when it was filled — or
         ``None`` when the Set has no current version to build on.
@@ -1424,14 +1474,6 @@ class SetsRepository(Repository):
         values["intent"] = patch.intent
         values["origin"] = patch.origin
         values["origin_analysis_id"] = patch.origin_analysis_id
-        values["pushed_device_profile_id"] = patch.pushed_device_profile_id
-        if patch.pushed_device_profile_id is None:
-            # A version that keeps the profile (a grind, dose or yield change, an accepted
-            # proposal) keeps brewing it where it already is on the machine. Not stated
-            # would mean a Set whose profile is still on the display reads as having none.
-            values["pushed_device_profile_id"] = await self.device_profile_of(
-                set_id, values["profile_version_id"], same_as=parent.profile_version_id
-            )
         # Omitted is "against the version I changed from"; an explicit null
         # is "against nothing". `sent` is what tells them apart.
         compares_to = (
@@ -1443,13 +1485,7 @@ class SetsRepository(Repository):
             parent.id,
             values,
             now,
-            major=change_is_major(
-                path,
-                profile_changed=not await same_profile(
-                    self.db, values["profile_version_id"], parent.profile_version_id
-                ),
-                major=major,
-            ),
+            major=bool(major),
             keep_proposal=keep_proposal,
         )
 
@@ -1488,6 +1524,7 @@ class SetsRepository(Repository):
         backstop). ``major`` is already decided by the caller's rule.
         """
         await self._refuse_a_pins_copy(values.get("profile_version_id"))
+        await self._refuse_another_profile(set_id, values.get("profile_version_id"))
         numbers = await next_numbers(self.db, set_id, major=major)
         payload: dict[str, Any] = {
             "set_id": set_id,
@@ -1497,7 +1534,6 @@ class SetsRepository(Repository):
             "intent": values.get("intent", ""),
             "origin": values.get("origin", "manual"),
             "origin_analysis_id": values.get("origin_analysis_id"),
-            "pushed_device_profile_id": values.get("pushed_device_profile_id"),
             "prediction": values.get("prediction", ""),
             "compares_to_version_id": values.get("compares_to_version_id"),
             "prediction_at": values.get("prediction_at"),
@@ -1524,6 +1560,47 @@ class SetsRepository(Repository):
             major=major,
         )
         return version_id
+
+    async def _owner_of(self, profile_version_id: int | None) -> int | None:
+        """The profile a version belongs to; ``None`` for no version or one no profile has."""
+        if profile_version_id is None:
+            return None
+        owner = await self.db.fetch_value(
+            "SELECT board_id FROM profile_versions WHERE id = ?", (profile_version_id,)
+        )
+        return None if owner is None else int(owner)
+
+    async def set_of_profile(self, board_id: int) -> tuple[int, str] | None:
+        """The Set this profile belongs to, as ``(id, name)``; ``None`` for a profile with none."""
+        row = await self.db.fetch_one("SELECT id, name FROM sets WHERE board_id = ?", (board_id,))
+        return None if row is None else (int(row["id"]), str(row["name"]))
+
+    async def _refuse_a_taken_profile(self, board_id: int) -> None:
+        """A profile has at most one Set: say whose it is, and what to do instead."""
+        taken = await self.set_of_profile(board_id)
+        if taken is None:
+            return
+        label = await self.db.fetch_value(
+            "SELECT label FROM profile_board WHERE id = ?", (board_id,)
+        )
+        raise VersionRefused(
+            "profile_has_a_set",
+            f"{label} belongs to {taken[1]}. Duplicate {taken[1]} to start a new one on a copy.",
+        )
+
+    async def _refuse_another_profile(self, set_id: int, profile_version_id: int | None) -> None:
+        """Every version of a Set brews a version its profile owns (nothing else keeps the rule,
+        since no constraint spans the two tables): checked at the one place a version is written.
+        A Set with no profile may name only a version that no profile owns."""
+        if profile_version_id is None:
+            return
+        row = await self.db.fetch_one(
+            "SELECT pv.board_id AS owner, s.board_id AS mine "
+            "FROM profile_versions pv, sets s WHERE pv.id = ? AND s.id = ?",
+            (profile_version_id, set_id),
+        )
+        if row is not None and row["owner"] != row["mine"]:
+            raise VersionRefused("other_profile")
 
     async def _refuse_a_pins_copy(self, profile_version_id: int | None) -> None:
         """No Set version names a pin's copy: the copy belongs to the pinned version for ever, and
@@ -1562,6 +1639,14 @@ class SetsRepository(Repository):
             if field in sent:
                 values[field] = sent[field]
         await self._refuse_a_pins_copy(values["profile_version_id"])
+        # The first recipe gives the Set its profile (a profile that has a Set is refused).
+        owner = await self._owner_of(values["profile_version_id"])
+        if owner is not None:
+            await self._refuse_a_taken_profile(owner)
+            await self.db.execute(
+                "UPDATE sets SET board_id = ? WHERE id = ?", (owner, current.set_id)
+            )
+        await self._refuse_another_profile(current.set_id, values["profile_version_id"])
         await self.db.execute(
             """
             UPDATE set_versions
@@ -1573,7 +1658,6 @@ class SetsRepository(Repository):
                    intent = :intent,
                    origin = :origin,
                    origin_analysis_id = :origin_analysis_id,
-                   pushed_device_profile_id = :pushed_device_profile_id,
                    prediction = '',
                    compares_to_version_id = NULL,
                    prediction_at = NULL
@@ -1584,13 +1668,20 @@ class SetsRepository(Repository):
                 "intent": patch.intent,
                 "origin": patch.origin,
                 "origin_analysis_id": patch.origin_analysis_id,
-                "pushed_device_profile_id": patch.pushed_device_profile_id,
                 "id": current.id,
             },
         )
         await self.db.execute("UPDATE sets SET designing = 0 WHERE id = ?", (current.set_id,))
         await self._retire_waiting(current.set_id, now, keep_proposal=keep_proposal)
         log.info("set_design_filled", set_id=current.set_id, set_version_id=current.id)
+        if owner is not None:
+            # The card may name a version its profile has moved on from (a later change was put
+            # before the card was accepted): the Set follows to what the profile has active.
+            active = await self.db.fetch_value(
+                "SELECT current_version_id FROM profile_board WHERE id = ?", (owner,)
+            )
+            if active is not None and active != values["profile_version_id"]:
+                await self.follow_profile(owner, int(active), keep_proposal=keep_proposal)
         return current.id
 
     async def _retire_waiting(
@@ -1761,7 +1852,7 @@ class SetsRepository(Repository):
         ``version`` in the result is the version the Set is now on.
         """
         now = utc_now()
-        async with self.db.transaction():
+        async with nullcontext() if self.db.in_transaction else self.db.transaction():
             if await self.db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,)):
                 return VersionWriteResult(refused="designing")
             current = await self._current_version_row(set_id)
@@ -1960,114 +2051,61 @@ class SetsRepository(Repository):
         line = live_line(self.to_models(VersionLink, rows), current)
         return next((version_id for version_id in line[1:] if version_id in kept), None)
 
-    async def clear_pushed_device_profile(self, device_id: str) -> list[int]:
-        """Forget a device id in every Set version that names it. Returns their ids.
-
-        Called when the machine's copy is removed. The version keeps its
-        `profile_version_id` — what it brewed is a historical fact and does not
-        change — but it must stop naming a file that is not there, or a later
-        "select the profile this Set wants" would select whatever inherits that
-        id next. The ids come back so a rollback can point exactly those versions
-        at the copy it puts back.
-        """
-        if not device_id:
-            return []
-        rows = await self.db.fetch_all(
-            "SELECT id FROM set_versions WHERE pushed_device_profile_id = ? ORDER BY id",
-            (device_id,),
-        )
-        ids = [int(row["id"]) for row in rows]
-        if ids:
-            placeholders = ", ".join("?" * len(ids))
-            await self.db.execute(
-                "UPDATE set_versions SET pushed_device_profile_id = NULL "  # noqa: S608 - placeholders are generated, the ids are bound
-                f"WHERE id IN ({placeholders})",
-                ids,
-            )
-        return ids
-
-    async def restore_pushed_device_profile(self, version_ids: list[int], device_id: str) -> int:
-        """Point the Set versions a replace cleared at the copy just put back.
-
-        A rollback that brings a replaced profile back gives it a new device id
-        (the firmware always assigns one). Only the versions the replace itself
-        cleared are repointed: another Set's version of the same content that never
-        named a device profile did not have one before and has none now.
-        """
-        if not device_id or not version_ids:
-            return 0
-        placeholders = ", ".join("?" * len(version_ids))
-        cursor = await self.db.execute(
-            "UPDATE set_versions SET pushed_device_profile_id = ? "  # noqa: S608 - placeholders are generated, the ids are bound
-            f"WHERE id IN ({placeholders}) AND pushed_device_profile_id IS NULL",
-            [device_id, *version_ids],
-        )
-        return cursor.rowcount
-
-    async def device_profile_of(
-        self, set_id: int, profile_version_id: int | None, *, same_as: int | None = None
-    ) -> str | None:
-        """Where a Set's profile is on the machine: the latest version naming it there.
-
-        Looks back through the Set's versions, newest first, for one with this stored
-        profile and a device id, because a grind or yield change or an
-        accepted proposal appends a version with no device id of its own while the
-        profile is still where the last push put it. ``same_as`` restricts the answer to
-        a version that keeps that profile (``None`` there means no restriction).
-        """
-        if profile_version_id is None:
-            return None
-        if same_as is not None and same_as != profile_version_id:
-            return None
-        row = await self.db.fetch_one(
-            "SELECT pushed_device_profile_id FROM set_versions "
-            "WHERE set_id = ? AND profile_version_id = ? AND pushed_device_profile_id IS NOT NULL "
-            "ORDER BY created_at DESC, id DESC LIMIT 1",
-            (set_id, profile_version_id),
-        )
-        return None if row is None else str(row["pushed_device_profile_id"])
-
-    async def current_device_profile(self, set_id: int) -> tuple[str, int] | None:
-        """The profile the Set's current version brews, as ``(device id, stored version id)``."""
-        current = await self._current_version_row(set_id)
-        if current is None or current.profile_version_id is None:
-            return None
-        device_id = await self.device_profile_of(set_id, current.profile_version_id)
-        return None if device_id is None else (device_id, current.profile_version_id)
-
-    async def sets_currently_using(
-        self, device_id: str, profile_version_id: int | None, *, excluding: int | None = None
-    ) -> list[str]:
-        """Names of the Sets whose current version brews this profile.
-
-        By device id **or** by stored profile version: a Set that picked the profile from
-        the library, or whose latest version is a grind change, names no device id and
-        still brews it. Except ``excluding``: the Set the caller is acting for, whose own
-        version is expected to name it. What a Set's current version names is what it
-        brews with, so another Set's profile is not the caller's to delete.
-        """
-        rows = await self.db.fetch_all(
-            "SELECT s.id AS id, s.name AS name FROM sets s "
-            "JOIN set_versions v ON v.id = s.current_version_id "
-            "WHERE v.pushed_device_profile_id = ? OR v.profile_version_id = ? ORDER BY s.id",
-            (device_id, profile_version_id),
-        )
-        return [str(row["name"]) for row in rows if excluding is None or row["id"] != excluding]
-
-    async def current_brews(self) -> list[tuple[int, str, int | None, str | None]]:
-        """What every live Set brews right now: ``(set id, name, profile version, device id)``.
+    async def current_brews(self) -> list[tuple[int, str, int | None]]:
+        """What every live Set brews right now: ``(set id, name, profile version)``.
 
         The Set's current version, archived Sets left out: a warning about a profile a Set no
-        longer uses would only be noise. Either column may be ``None`` (a grind-only version
-        names no device id; a Set with no profile names no version).
+        longer uses would only be noise. The version is ``None`` for a Set with no profile.
         """
         rows = await self.db.fetch_all(
-            "SELECT s.id AS id, s.name AS name, v.profile_version_id AS pv, "
-            "v.pushed_device_profile_id AS dev FROM sets s "
+            "SELECT s.id AS id, s.name AS name, v.profile_version_id AS pv FROM sets s "
             "JOIN set_versions v ON v.id = s.current_version_id "
             "WHERE s.archived = 0 ORDER BY s.id"
         )
-        return [(int(r["id"]), str(r["name"]), r["pv"], r["dev"]) for r in rows]
+        return [(int(r["id"]), str(r["name"]), r["pv"]) for r in rows]
+
+    async def follow_profile(
+        self,
+        board_id: int,
+        profile_version_id: int,
+        *,
+        major: bool | None = None,
+        origin: SetVersionOrigin = "manual",
+        origin_analysis_id: int | None = None,
+        intent: str | None = None,
+        prediction: str = "",
+        compares_to_version_id: int | None = None,
+        keep_proposal: int | None = None,
+    ) -> SetVersionRow | None:
+        """A profile has a new active version: its Set gets a new version naming it.
+
+        The one place a Set follows its profile, called in the same transaction as every change
+        of a profile's active version (a put, Make active, keeping the machine's side of a
+        conflict). Grind, dose and yield come from the Set's current version, and so does the
+        intent unless one is given; the version is a minor unless ``major`` says otherwise. A
+        prediction and the version it is compared to travel together (a draft argued in this
+        Set's chat). ``None`` when the profile has no Set, or the Set's current version names the
+        version already.
+        """
+        found = await self.set_of_profile(board_id)
+        if found is None:
+            return None
+        parent = await self._current_version_row(found[0])
+        if parent is None or parent.profile_version_id == profile_version_id:
+            return None
+        fields: dict[str, Any] = {
+            "profile_version_id": profile_version_id,
+            "origin": origin,
+            "origin_analysis_id": origin_analysis_id,
+            "intent": parent.intent if intent is None else intent,
+            "prediction": prediction,
+        }
+        if prediction:
+            fields["compares_to_version_id"] = compares_to_version_id
+        version_id = await self.append_version(
+            found[0], SetVersionPatch(**fields), major=major, keep_proposal=keep_proposal
+        )
+        return None if version_id is None else await self.get_version(version_id)
 
     async def get_version(self, version_id: int) -> SetVersionRow | None:
         row = await self.db.fetch_one(f"{_VERSION_SELECT} WHERE v.id = ?", (version_id,))
