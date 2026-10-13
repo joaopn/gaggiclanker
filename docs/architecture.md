@@ -134,10 +134,8 @@ prediction and a shot labelled Keep or Improve before it can be recorded, and
 can be changed or cleared for ever after. `set_versions` carries all three and
 the comment on it in `db/schema.sql` says which is which. **A version has a
 name and nothing else of the kind**: `version_major`.`version_minor` is what every screen, prompt and tool shows ("v1.1"), an identifier like a
-tag, numbered by `_insert_version` in the insert's own transaction from one rule,
-`domain/sets.py::change_is_major` — the person's answer if given, else a
-different profile (another entry of the profile list, `db/repos/profile_identity.py`;
-not a newer version of the same profile) is major and a pushed draft is minor —
+tag, numbered by `_insert_version` in the insert's own transaction from one rule
+(the person's answer if given, else minor; a Set has one profile, so no version switches profiles; `SetsRepository.follow_profile` is the one function that appends a Set version because its profile moved) —
 with `db/repos/version_names.py` serving the next names a button promises from
 the same arithmetic. There is no ordinal: the order
 versions were made in is `created_at` (the row id only breaks a tie), and the
@@ -317,7 +315,7 @@ the name is the profile's, and a following change takes it out of the hash.
 
 A draft is a change to one profile or a new profile with a name of its own, decided once when it
 is made and stored on it (`profile_drafts.new_profile`, `destination_board_id`, `label`). A change
-goes to the profile its base belongs to (a Set's profile first when it has that name) and carries
+goes to the profile its base belongs to and carries
 that profile's own name; one drafted before its profile was on the list stores no destination and
 goes to whichever profile owns its base when it is read. A new profile carries the name it was
 asked for, and the agent's draft tool asks for one with `new_profile_name`. The document's label
@@ -449,7 +447,7 @@ accepting a proposal itself — goes through
 `SetsRepository._insert_version` (or, on a Set being designed, the fill of its
 version 1), and that is where a waiting proposal of the same Set is marked
 `stale`, in the same transaction, with the proposal being accepted as the one
-exception. A revert (`SetsRepository.rollback`, which writes no version) does the same. A retired initial recipe takes its unsent profile draft with it. The alternative was describing that state rather
+exception. A revert (`BoardService.revert_set`, which writes no Set version: it makes that version's profile version the profile's active one) does the same. A retired initial recipe takes its unsent profile draft with it. The alternative was describing that state rather
 than removing it: a row still saying `proposed` tells the next conversation's
 opening context that the Set is somewhere it is not, and leaves the person an
 Accept button whose only possible answer is a 409. The staleness check inside

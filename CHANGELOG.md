@@ -13,6 +13,44 @@ database.
 
 ## [Unreleased]
 
+### A Set has one profile
+
+- **Changed: a Set has exactly one profile, and follows it.** A profile belongs to at most one
+  Set. New Set takes only a profile with no Set (a taken one is refused, with the advice to
+  Duplicate the Set and start on a copy; the picker lists the profiles the Profiles page shows
+  with no Set, each by its active version, and the machine files no profile stands on yet, which
+  is all there is while Writes are off: such a Set has its profile once the list adopts the
+  file), Add a version has no profile choice (a Set that has
+  none, a design or an old Set, picks one there), and a Set chat's
+  profile draft is always a change to the Set's own profile. Whenever the Set's profile gets a new
+  active version (a change put on the list, Make active, Keep the machine's after an edit on the
+  machine, or a pinned profile's edit kept from the machine), the Set records a new minor version
+  in the same step; making an older Set version current makes its profile version active without
+  adding a version. A shot is filed under the one Set that brews its profile, so the matcher has
+  no ambiguous outcome any more. A pinned profile in conflict now offers both sides; keeping the
+  machine's gives the Set's profile its own version of that brew, and the pin then names the new
+  Set version, and the pin names the machine's version. Going back to an older Set version moves
+  its profile back too (the next sync puts it on the machine). Putting a draft for a Set is gone:
+  the Set follows the put.
+- **Database change, carried forward at the next start.** What changes: a Set gains the profile
+  it brews, with a unique index, and the columns that recorded a pending Set recording at the
+  next sync, the pushed device profile of a Set version and the cleared Set versions of a draft
+  are dropped. Whether rows carry forward: all of them do, because a Set's profile is the one its
+  versions already name. Where two Sets shared a profile, the Set whose current version brews the
+  profile's active version (else the newest Set) keeps it, and the other gets a copy of the
+  profile, versions and signatures, named "profile — Set", switched off and unstarred (each copied
+  version carries that profile's name, so switching the copy on puts it on the machine under its
+  own name); its shots keep their versions and nothing on the machine changes. Of several Sets
+  that had no profile and shared one version no profile owns, the keeper keeps it and the others
+  get a copy of their own. Among Sets sharing a profile, one that is not archived keeps it before
+  one that is. A Set across several profiles is
+  pointed at its current version's profile; a Set that never named a profile stays without one.
+  A recording that was waiting for the next sync is made if its Set is the one it was drafted
+  for, and dropped otherwise. A Set whose current
+  version brews an older version than its profile has active gets one new minor version naming the
+  active one, so a Set always records what the machine brews. What you do: nothing, then switch on any copy you want on the
+  machine.
+
 ### A profile now owns its versions
 
 - **Changed: a profile version now belongs to one profile, and a draft is either a change to

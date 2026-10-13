@@ -103,8 +103,8 @@ pages, in the order the sidebar lists them:
 | Page | `g` | What it is |
 | --- | --- | --- |
 | **Chat** | `g c` | The tool-using conversation, with a badge per Set above it. A badge lists that Set's conversations; New there starts one already pointed at that Set. |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard, and **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves the Discard ones out of the list; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The import drop zone is here; Sync is in the top bar, on every page. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
-| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Edit a copy**. A version the agent proposed sits above them as the proposal card (below): marked **Proposed**, with **Approve and sync** (**Approve** with Writes off) and **Decline**, and **Approve without recording it on** its Set when it has one; a proposed new profile is a row of its own, with its Name field. A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard, and **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves the Discard ones out of the list; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The import drop zone is here; Sync is in the top bar, on every page. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
+| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Edit a copy**. A version the agent proposed sits above them as the proposal card (below): marked **Proposed**, with **Approve and sync** (**Approve** with Writes off) and **Decline**; a proposed new profile is a row of its own, with its Name field. A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. Each coffee exports as a JSON file, and **Import JSON** reads one back: the file's id updates that coffee with the fields it carries, anything else adds a new one. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
@@ -127,11 +127,13 @@ same cards on the Device page.
 
 A Set page is a record of experiments, one per version. A version's recipe is
 five things: the **profile** version, the grind as text and as a number, the
-dose and the target yield. A change of profile is recorded by hand from **Change something** on the Set page, or on
-its own when a proposal is made active for that Set and a sync puts it on the machine.
-Recording one there sends nothing to the machine — that is still the Profiles page, and still you — but it
-is what keeps the next shots landing in the Set, because a shot joins its Set by
-the profile it was pulled with.
+dose and the target yield. A Set has exactly one profile, and follows it: whenever the profile gets a new active version
+(a change approved, **Make active** on the Profiles page, the machine's side kept after an edit
+there) the Set records a new version naming it, in the same step. **Change something** on the
+Set page has no profile to choose, except for a Set that has none (one being designed, or an old
+one that never named a profile), which takes a profile no Set has. That is also what keeps the
+next shots landing in the Set, because a shot joins the one Set that brews the profile it was
+pulled with. To start a bag on a copy of a Set's profile, Duplicate the Set.
 
 **The brew temperature is not one of the five**, and there is nowhere to type
 one: the machine heats to what the profile says, so a number written on a Set
@@ -154,13 +156,14 @@ the yield, a profile draft that only tunes a parameter such as a degree of
 temperature — is a **minor** version: it keeps the major and takes the next
 minor (v1.2 → v1.3). A functional change to what the profile does is a **major**
 version: the next whole number (v1.2 → v2). You decide which, with the **Major
-change** box on the Add a version form, on a change card before you accept it,
-and on a draft's put for its Set; each button names the version it will record
-("Accept as v1.3", "Accept as v2"). The box starts where the rule puts it:
-switching to a different profile — another entry of the profile list, not a
-newer version of the same profile — is major, and everything else (a newer
-version of the same profile, a proposal made active for the Set) is minor. The
-agent may suggest major on its card, with its reason
+change** box on the Add a version form and on a change card before you accept it; each
+button names the version it will record ("Accept as v1.3", "Accept as v2"). The box
+starts off, so the version is a minor one. A Set has one profile for good, so a new
+version never switches profiles. A Set
+follows its profile: a profile version put, made active or kept from the machine for
+the Set's profile becomes a new minor version of the Set in the same step, and
+making an older Set version current makes its profile version the active one without
+adding a version. The agent may suggest major on its card, with its reason
 beside the box, but the box is yours. Versions recorded before this existed
 keep their numbers: v3 is still v3. Everywhere a version is named — the log,
 the chat, the agent's context and tools, the shots table — it is by this name.
@@ -278,9 +281,10 @@ the next free minor if that is taken), and the next major is the highest major
 plus one. When the current version has shots you want to improve on and none you
 kept, the page offers the way back to the nearest version behind it, on the line
 it was made from, that you did keep shots from.
-**Going back writes nothing to the machine**, even when that version names a
-different profile: putting that profile back on the machine stays a separate,
-deliberate act.
+**Going back changes the machine, by the usual route.** The Set's profile goes back to what
+that version brews (it becomes the profile's active version), and the next sync puts it on
+the machine if the profile is switched on and writes are on. A Set has one profile, so going
+back never moves it to another one.
 
 Each version's shot count is a link into the shots list narrowed to **that
 version**, not to the whole Set: the Keep / Improve / Discard counts beside it
@@ -314,10 +318,9 @@ Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
 nothing. A profile a conversation proposes is a proposal card in that conversation (and inside
 its profile on the Profiles page), which you approve yourself: **Approve and sync** with Writes
-on, **Approve** with Writes off. When it was proposed in a Set's conversation, the button
-records it as that Set's next version with its prediction once it reaches the machine; on the
-Profiles page the button **Approve without recording it on** the Set approves it without
-touching the Set.
+on, **Approve** with Writes off. A profile that has a Set is that Set's profile: approving a
+change to it makes it the profile's active version and records it as the Set's next version
+in the same step (with the prediction, when it was proposed in the Set's conversation).
 
 The machine is a buffer, not an archive: when its storage runs low its own
 firmware deletes its oldest shots, whether or not this box has them. That is
@@ -978,8 +981,8 @@ A profile change is a change to the recipe too — the temperature and the
 pressure curve are as much of it as the grind — so a draft proposed inside a
 Set's conversation carries a prediction and obeys the same rules. It still lands
 on the Profiles page as a proposal inside its profile: you read the diff and make it active
-(one click, which approves it), and the prediction is recorded on the Set when the sync puts
-the proposal you made active for that Set on the machine.
+(one click, which approves it), and the Set records the new version, with the prediction, in
+the same step.
 
 A conversation in **General** is the other way round: the whole archive,
 read-only. It runs SQL over the curated views, compares shots across Sets and
@@ -1065,8 +1068,7 @@ so an item a later release adds arrives at its default.
 how this conversation's version turned out (`propose_outcome`), waiting for you
 to accept, record another outcome or dismiss; one change to this Set, waiting
 for you, with the prediction that makes it gradable (the grind, the dose, the
-yield or the profile: a temperature change is a profile change, and the tool
-says so); an insight about this Set stored **unconfirmed** that reaches no
+yield; a profile change is a separate card, drafted for the Set's own profile); an insight about this Set stored **unconfirmed** that reaches no
 future prompt until you add it (naming the shots and versions it rests on, and the added
 insight it replaces, if any); the deletion of one added insight, waiting for you to
 delete or keep it; and a
@@ -1095,15 +1097,14 @@ While the Set is being designed the agent is told what you asked for, the
 profile to fork in full, how this bean went in your other Sets, similar Sets on
 this grinder and the matching rules; it asks what it needs and then proposes
 **the initial recipe** with `propose_initial_recipe`: a profile of its own
-(never a copy of one in the library — two Sets on one profile make the shot
-matcher ambiguous) plus grind, dose and yield, as one card you accept or
+(a Set has one profile, and no other Set brews it) plus grind, dose and yield, as one card you accept or
 decline. The profile starts from the one you picked to fork, or, when you
 picked none, from nothing: the agent writes it whole, and never builds on a
 profile of yours you did not choose. A newer card replaces the waiting one. Accepting fills
 version 1 in place and ends the design conversation: the agent is told, and
 tells you to talk version 1's shots through in a new conversation (Discuss in chat on
 the Set page opens one rather than the design); its profile is approved with the card, so the
-card's **Accept and sync** is the whole way to the machine. Writing a version by hand, or making a proposal active for the Set, ends the design
+card's **Accept and sync** is the whole way to the machine. Writing a version by hand, which must name a profile no Set has, ends the design
 the same way. A design nobody brewed anything under can be discarded
 (`DELETE /api/sets/{id}/design`).
 
@@ -1116,8 +1117,10 @@ held in the tab.
 
 ### A starting point for a new coffee
 
-**New Set** is one form: the bean, a name, the grinder, the profile version, the
-recipe and an optional intent. Picking a profile fills the target yield from its
+**New Set** is one form: the bean, a name, the grinder, the profile, the
+recipe and an optional intent. The profile is one no Set has, by the version it has active; while
+Writes are off the list holds none, and the machine's own files stand in (the Set has its
+profile once the list adopts the file). Picking a profile fills the target yield from its
 largest volumetric stop, never over a number you typed, and shows the
 temperature it brews at beside the recipe — that one is the profile's to state,
 not yours to type.

@@ -61,7 +61,8 @@ SUFFIXES = {".py", ".ts", ".tsx", ".yaml", ".sql", ".md"}
 
 
 def _files() -> list[Path]:
-    found: list[Path] = []
+    # The README and the architecture and safety notes describe the same pieces.
+    found: list[Path] = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
     for base in ("gaggiclanker", "web/src", "tests"):
         for path in sorted((ROOT / base).rglob("*")):
             if (
