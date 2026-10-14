@@ -55,6 +55,17 @@ database.
   rename); the machine gets the name at the next sync with Writes on. Renaming a profile that is
   in a conflict about its name alone keeps the app's side of that conflict. Only a person renames:
   no chat or MCP tool does.
+- **Added: renaming, and what the sync does with names, on the Profiles page and the shot page.**
+  An open profile shows its name with a Rename button that opens a Name field (Enter renames,
+  Escape cancels, a refusal is shown under the field); a pinned copy has it too. A row says "Will
+  be renamed on the machine at the next sync" after a rename, and after a sync that took the name
+  somebody gave the profile at the machine it says "Renamed on the machine from <name> at the sync
+  of <time>" under "On the machine" until the next sync. A name the machine gave that another
+  profile has, or a name changed on both sides, is a line with its two choices on the row (Keep
+  <name> or Rename to …, Keep <name> or Keep <other name>); a conflict about the brew keeps the
+  side-by-side panel, which now names the profile on each side. A shot's page names its profile as
+  it is called now, linked to it, and, when the machine called it something else at the time, what
+  it was brewed as.
 - Database: no change.
 
 ### A Set has one profile

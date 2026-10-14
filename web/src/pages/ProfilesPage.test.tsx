@@ -1177,7 +1177,9 @@ describe("a conflict", () => {
     await open(user);
 
     const dropdown = screen.getByTestId("profile-dropdown");
-    const first = dropdown.firstElementChild as HTMLElement;
+    // The profile's name and Rename come first; the conflict opens above everything else.
+    const [name, first] = Array.from(dropdown.children) as HTMLElement[];
+    expect(name).toHaveTextContent("9 Bar Espresso");
     expect(first).toHaveAttribute("data-testid", "conflict-panel");
   });
 
@@ -1324,7 +1326,7 @@ describe("links into the page", () => {
     );
     renderWithQueryClient(<ProfilesPage />, { initialEntries: ["/profiles#row-7"] });
 
-    const li = (await screen.findByText("Blooming v1.2")).closest("li") as HTMLElement;
+    const li = (await screen.findAllByText("Blooming v1.2"))[0]?.closest("li") as HTMLElement;
     expect(await within(li).findByTestId("profile-dropdown")).toBeInTheDocument();
     expect(li).toHaveAttribute("data-open", "yes");
     const other = (await screen.findByText("9 Bar Espresso")).closest("li") as HTMLElement;

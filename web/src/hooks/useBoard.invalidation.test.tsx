@@ -3,6 +3,7 @@ import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   usePutOnBoard,
+  useRenameProfile,
   useResolveConflict,
   useResumeBoard,
   useSetActiveVersion,
@@ -19,6 +20,7 @@ vi.mock("sonner", () => ({
 
 const {
   putOnBoard,
+  renameBoardProfile,
   setBoardOnMachine,
   setBoardStarred,
   setBoardActiveVersion,
@@ -26,6 +28,7 @@ const {
   resumeBoard,
 } = vi.hoisted(() => ({
   putOnBoard: vi.fn(),
+  renameBoardProfile: vi.fn(),
   setBoardOnMachine: vi.fn(),
   setBoardStarred: vi.fn(),
   setBoardActiveVersion: vi.fn(),
@@ -35,6 +38,7 @@ const {
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   putOnBoard,
+  renameBoardProfile,
   setBoardOnMachine,
   setBoardStarred,
   setBoardActiveVersion,
@@ -47,6 +51,7 @@ const row = { id: 4, label: "9 Bar Espresso [AI]" };
 beforeEach(() => {
   vi.clearAllMocks();
   putOnBoard.mockResolvedValue(row);
+  renameBoardProfile.mockResolvedValue(row);
   setBoardOnMachine.mockResolvedValue(row);
   setBoardStarred.mockResolvedValue(row);
   setBoardActiveVersion.mockResolvedValue(row);
@@ -156,6 +161,30 @@ describe("every board mutation refreshes everything it changes", () => {
     ).rejects.toThrow();
     // The board holds the conflict query: a stale refusal re-reads what the machine has now.
     await waitFor(() => expect(keys).toContainEqual([...queryKeys.board.all]));
+  });
+
+  it("renaming a profile refreshes everything that shows its name: the board, the Sets and the shots", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useRenameProfile());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ rowId: 4, label: "Blooming milk" });
+
+    for (const key of [...BOARD_WRITES, queryKeys.sets.all, queryKeys.shots.all]) {
+      await waitFor(() => expect(keys).toContainEqual([...key]));
+    }
+    expect(renameBoardProfile).toHaveBeenCalledWith(4, "Blooming milk");
+  });
+
+  it("a refused rename still refreshes, and the refusal is the caller's to show", async () => {
+    renameBoardProfile.mockRejectedValue(new Error("There is already a profile called X."));
+    const { result, queryClient } = renderHookWithQueryClient(() => useRenameProfile());
+    const keys = spyOn(queryClient);
+
+    await expect(result.current.mutateAsync({ rowId: 4, label: "X" })).rejects.toThrow();
+
+    await waitFor(() => expect(keys).toContainEqual([...queryKeys.board.all]));
+    const { toast } = await import("sonner");
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it("resuming a paused board", async () => {

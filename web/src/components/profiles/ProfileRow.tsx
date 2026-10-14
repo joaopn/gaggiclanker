@@ -2,15 +2,17 @@ import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { BoardProposal, BoardRowView, BoardView } from "@/api/types";
+import { NameConflictActions } from "@/components/profiles/NameConflictActions";
 import { PinnedPanel } from "@/components/profiles/PinnedPanel";
 import { ProfileDropdown } from "@/components/profiles/ProfileDropdown";
+import { RenameProfile } from "@/components/profiles/RenameProfile";
 import { StateLine } from "@/components/profiles/StateLine";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useSetOnMachine, useSetStarred } from "@/hooks/useBoard";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
-import { rowStateOf, selectedSuccessorSentence } from "@/lib/board";
+import { nameConflictOf, rowStateOf, selectedSuccessorSentence } from "@/lib/board";
 import { profileHeadline } from "@/lib/profileInfo";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +45,10 @@ export function ProfileRow({
   const onMachine = useSetOnMachine();
   const starred = useSetStarred();
   const [confirming, setConfirming] = useState(false);
+  // The Name field, opened by the open profile's Rename or by a name conflict's "Rename to …".
+  const [renaming, setRenaming] = useState(false);
   const state = rowStateOf(view, entry);
+  const nameConflict = nameConflictOf(entry);
   const set = entry.set ?? null;
   const selected = entry.machine.selected === true;
   const pin = entry.pin ?? null;
@@ -61,6 +66,15 @@ export function ProfileRow({
     }
     send(next);
   };
+
+  const rename = (
+    <RenameProfile
+      rowId={row.id}
+      name={row.label}
+      editing={renaming}
+      onEditingChange={setRenaming}
+    />
+  );
 
   return (
     <li
@@ -163,6 +177,19 @@ export function ProfileRow({
         </div>
       </div>
 
+      {nameConflict ? (
+        <div className="px-3 pb-3 pl-9">
+          <NameConflictActions
+            entry={entry}
+            conflict={nameConflict}
+            onRenameTo={() => {
+              setRenaming(true);
+              if (!open) onToggle();
+            }}
+          />
+        </div>
+      ) : null}
+
       {confirming ? (
         <div className="px-3 pb-3">
           <ConfirmStrip
@@ -192,9 +219,9 @@ export function ProfileRow({
 
       {open ? (
         pin ? (
-          <PinnedPanel entry={entry} pin={pin} />
+          <PinnedPanel entry={entry} pin={pin} rename={rename} />
         ) : (
-          <ProfileDropdown entry={entry} />
+          <ProfileDropdown entry={entry} rename={rename} />
         )
       ) : null}
     </li>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   boardSummaryOf,
+  nameConflictOf,
   previewCounts,
   previewLine,
   rowStateOf,
@@ -341,5 +342,86 @@ describe("selectedSuccessorSentence", () => {
     expect(selectedSuccessorSentence()).toBe(
       "It is the profile the machine has selected: the next sync selects another enabled profile first, then removes this one. With no other profile on, it stays on the machine.",
     );
+  });
+});
+
+describe("names on a row", () => {
+  const conflicted = (conflict: Record<string, unknown>, label = "Blooming") =>
+    boardRowView({
+      row: { label },
+      in_conflict: true,
+      conflict: {
+        device_id: "9bar",
+        content_hash: "h",
+        short_hash: "h",
+        machine_name: "Espresso",
+        name_only: true,
+        ...conflict,
+      } as never,
+    });
+
+  it("tells a taken name from a name renamed on both sides, and neither from a brew conflict", () => {
+    expect(nameConflictOf(conflicted({ machine_name_held_by: "Espresso" }))).toMatchObject({
+      kind: "taken",
+      appName: "Blooming",
+      machineName: "Espresso",
+      contentHash: "h",
+    });
+    expect(nameConflictOf(conflicted({ machine_name: "Blooming latte" }))?.kind).toBe("both");
+    expect(nameConflictOf(conflicted({ name_only: false }))).toBeNull();
+    expect(nameConflictOf(boardRowView())).toBeNull();
+  });
+
+  it("words each state in the sketches' sentences", () => {
+    const taken = conflicted({ machine_name_held_by: "Espresso" });
+    expect(rowStateOf(boardView({ rows: [taken] }), taken)).toMatchObject({
+      text: "Renamed on the machine to Espresso, which another profile is called",
+      tone: "warn",
+    });
+    const both = conflicted({ machine_name: "Blooming latte" }, "Blooming milk");
+    expect(rowStateOf(boardView({ rows: [both] }), both).text).toBe(
+      "Renamed here to Blooming milk and on the machine to Blooming latte",
+    );
+    const brew = conflicted({ name_only: false });
+    expect(rowStateOf(boardView({ rows: [brew] }), brew).text).toBe(
+      "Edited outside the app: choose a side",
+    );
+  });
+
+  it("says a planned rename is a rename, and any other push is a push", () => {
+    const renamed = boardRowView({
+      planned: [
+        boardAction({
+          row_id: 1,
+          reason: "renamed",
+          detail: "Will be renamed on the machine at the next sync",
+        }),
+      ],
+    });
+    expect(rowStateOf(boardView({ rows: [renamed] }), renamed)).toMatchObject({
+      text: "Will be renamed on the machine at the next sync",
+      tone: "info",
+    });
+    const superseded = boardRowView({
+      planned: [boardAction({ row_id: 1, reason: "superseded" })],
+    });
+    expect(rowStateOf(boardView({ rows: [superseded] }), superseded).text).toBe(
+      "Will be put on the machine at the next sync",
+    );
+  });
+
+  it("puts the rename note under On the machine, and only there", () => {
+    const entry = boardRowView({
+      renamed_on_machine: { from_name: "Blooming", at: "2026-10-12T14:02:00Z" },
+    });
+    const state = rowStateOf(boardView({ rows: [entry] }), entry);
+    expect(state.text).toBe("On the machine");
+    expect(state.notes).toHaveLength(1);
+    expect(state.notes[0]).toMatch(/^Renamed on the machine from Blooming at the sync of .+\.$/);
+    const planned = boardRowView({
+      renamed_on_machine: { from_name: "Blooming", at: "2026-10-12T14:02:00Z" },
+      planned: [boardAction({ row_id: 1, reason: "superseded" })],
+    });
+    expect(rowStateOf(boardView({ rows: [planned] }), planned).notes).toEqual([]);
   });
 });

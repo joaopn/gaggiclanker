@@ -783,6 +783,14 @@ export async function setBoardActiveVersion(rowId: number, versionId: number): P
   });
 }
 
+/** Rename a profile; the next sync gives the machine's file the name. */
+export async function renameBoardProfile(rowId: number, label: string): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-board/${rowId}/name`, {
+    method: "PUT",
+    body: JSON.stringify({ label }),
+  });
+}
+
 /** A profile's versions, newest first, and the proposals that would join them. */
 export async function getBoardVersions(rowId: number): Promise<ProfileVersionsView> {
   return fetchApi<ProfileVersionsView>(`/profile-board/${rowId}/versions`);

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import type { BoardRowPin, BoardRowView } from "@/api/types";
 import { UnpinConfirm } from "@/components/pins/UnpinConfirm";
 import { ConflictPanel } from "@/components/profiles/ConflictPanel";
 import { ProfileCurve } from "@/components/profiles/ProfileCurve";
 import { Button } from "@/components/ui/button";
+import { nameConflictOf } from "@/lib/board";
 import { hasCurve } from "@/lib/profileCurve";
 
 type Json = Record<string, unknown>;
@@ -14,7 +15,7 @@ type Json = Record<string, unknown>;
  *
  * It has one version for ever and is changed only by unpinning, so there is no version list, no
  * Make active, no Edit a copy and no signature card, only the curve of the copy, what it is, and
- * Unpin. (Its version list can still grow, when the machine's file is edited or a file of the
+ * Unpin, and Rename (a pin freezes what the copy brews, not what it is called). (Its version list can still grow, when the machine's file is edited or a file of the
  * same name is imported, but its active version never changes, so the active curve is all there
  * is to draw.) A conflict shows the conflict panel with "Keep the app's" alone: keeping the
  * machine's side would make the copy something the Set version never was. A copy whose round
@@ -22,7 +23,15 @@ type Json = Record<string, unknown>;
  *
  * Duplicate as a new Set (which goes to the Set page with its dialog open) and Unpin sit side by side.
  */
-export function PinnedPanel({ entry, pin }: { entry: BoardRowView; pin: BoardRowPin }) {
+export function PinnedPanel({
+  entry,
+  pin,
+  rename,
+}: {
+  entry: BoardRowView;
+  pin: BoardRowPin;
+  rename: ReactNode;
+}) {
   const [confirming, setConfirming] = useState(false);
   const profile = entry.active_version.profile as Json;
   // What the link lists: every shot brewed on the copy. The pin's own count is the shots filed
@@ -31,7 +40,11 @@ export function PinnedPanel({ entry, pin }: { entry: BoardRowView; pin: BoardRow
   const shots = `${brewed} ${brewed === 1 ? "shot" : "shots"}`;
   return (
     <div className="min-w-0 space-y-3 border-border border-t p-3" data-testid="pinned-panel">
-      {entry.in_conflict ? <ConflictPanel rowId={entry.row.id} pinned /> : null}
+      {rename}
+
+      {entry.in_conflict && nameConflictOf(entry) === null ? (
+        <ConflictPanel rowId={entry.row.id} pinned />
+      ) : null}
 
       <p className="text-sm" data-testid="pinned-frozen">
         Frozen: this copy of {pin.original_label ?? "a profile"} belongs to {pin.version_label} of{" "}

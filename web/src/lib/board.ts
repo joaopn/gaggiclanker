@@ -1,4 +1,5 @@
 import type { BoardAction, BoardRowView, BoardView, SyncRunRow } from "@/api/types";
+import { formatTime } from "@/lib/shots";
 
 /**
  * The profile list in the words a person reads.
@@ -67,6 +68,31 @@ export function holdsAFile(view: BoardView, entry: BoardRowView): boolean {
 }
 
 /**
+ * A conflict about the name alone: the machine's brew is the profile's own, and only the name
+ * differs. `taken`: somebody renamed it at the machine to another profile's name. `both`: it was
+ * renamed here and at the machine since the last sync. Anything else, including a conflict about
+ * the brew (which keeps the side-by-side panel), is `null`.
+ */
+export type NameConflict = {
+  kind: "taken" | "both";
+  appName: string;
+  machineName: string;
+  /** The machine's file as the list saw it: what the conflict route is answered with. */
+  contentHash: string;
+};
+
+export function nameConflictOf(entry: BoardRowView): NameConflict | null {
+  const conflict = entry.conflict;
+  if (!entry.in_conflict || !conflict || !conflict.name_only || !conflict.machine_name) return null;
+  return {
+    kind: conflict.machine_name_held_by ? "taken" : "both",
+    appName: entry.row.label,
+    machineName: conflict.machine_name,
+    contentHash: conflict.content_hash,
+  };
+}
+
+/**
  * Where one profile of the list stands on the machine, and what the next sync will do.
  *
  * The server plans (`planned`, `reports`); this only words it. The order says the most
@@ -84,7 +110,17 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
   const remove = planned.find((a) => a.kind === "remove");
   let state: RowState;
 
-  if (entry.in_conflict) {
+  const nameConflict = nameConflictOf(entry);
+  if (nameConflict) {
+    state = {
+      text:
+        nameConflict.kind === "taken"
+          ? `Renamed on the machine to ${nameConflict.machineName}, which another profile is called`
+          : `Renamed here to ${nameConflict.appName} and on the machine to ${nameConflict.machineName}`,
+      tone: "warn",
+      notes,
+    };
+  } else if (entry.in_conflict) {
     state = { text: "Edited outside the app: choose a side", tone: "warn", notes };
     notes.push("A sync does nothing for this profile until you choose.");
   } else if (report) {
@@ -98,9 +134,23 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
           ? { text: "On the machine, switched off: the next sync removes it", tone: "warn", notes }
           : { text: "Not on the machine", tone: "ok", notes };
   } else if (push) {
-    state = { text: "Will be put on the machine at the next sync", tone: "info", notes };
+    // A push that only saves the profile's name over its file says so in the server's words.
+    state = {
+      text:
+        push.reason === "renamed" && push.detail
+          ? push.detail
+          : "Will be put on the machine at the next sync",
+      tone: "info",
+      notes,
+    };
   } else if (entry.machine.holds_current) {
     state = { text: "On the machine", tone: "ok", notes };
+    const renamed = entry.renamed_on_machine;
+    if (renamed) {
+      notes.push(
+        `Renamed on the machine from ${renamed.from_name} at the sync of ${formatTime(renamed.at)}.`,
+      );
+    }
   } else if (present) {
     state = { text: "On the machine, but not this version", tone: "warn", notes };
   } else if (holdsAFile(view, entry)) {

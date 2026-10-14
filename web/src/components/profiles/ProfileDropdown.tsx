@@ -1,5 +1,5 @@
 import { FilePen } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import type { BoardRowView, ListedVersion, ProfileVersionsView } from "@/api/types";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBoardVersions, useSetActiveVersion } from "@/hooks/useBoard";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
-import { sourceWords } from "@/lib/board";
+import { nameConflictOf, sourceWords } from "@/lib/board";
 import { hasCurve } from "@/lib/profileCurve";
 import { formatTime } from "@/lib/shots";
 
@@ -31,14 +31,15 @@ type Json = Record<string, unknown>;
  * Nothing here writes to the machine. A version made active, and an edited copy once it is made
  * active, reach the machine on the next sync.
  */
-export function ProfileDropdown({ entry }: { entry: BoardRowView }) {
+export function ProfileDropdown({ entry, rename }: { entry: BoardRowView; rename: ReactNode }) {
   const rowId = entry.row.id;
   const versions = useBoardVersions(rowId, true);
   const [editing, setEditing] = useState<ListedVersion | null>(null);
 
   if (versions.isPending) {
     return (
-      <div className="space-y-2 p-3" data-testid="dropdown-loading">
+      <div className="space-y-2 border-border border-t p-3" data-testid="dropdown-loading">
+        {rename}
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-16 w-full" />
       </div>
@@ -46,9 +47,12 @@ export function ProfileDropdown({ entry }: { entry: BoardRowView }) {
   }
   if (versions.isError || !versions.data) {
     return (
-      <p className="p-3 text-muted-foreground text-sm" role="alert" data-testid="dropdown-error">
-        The versions could not be read right now.
-      </p>
+      <div className="space-y-2 border-border border-t p-3">
+        {rename}
+        <p className="text-muted-foreground text-sm" role="alert" data-testid="dropdown-error">
+          The versions could not be read right now.
+        </p>
+      </div>
     );
   }
   const view = versions.data;
@@ -56,7 +60,10 @@ export function ProfileDropdown({ entry }: { entry: BoardRowView }) {
 
   return (
     <div className="min-w-0 space-y-3 border-border border-t p-3" data-testid="profile-dropdown">
-      {entry.in_conflict ? <ConflictPanel rowId={rowId} /> : null}
+      {rename}
+
+      {/* A conflict about the name alone is answered on the row's line; the panel is for a brew. */}
+      {entry.in_conflict && nameConflictOf(entry) === null ? <ConflictPanel rowId={rowId} /> : null}
 
       {hasCurve(activeProfile) ? (
         <div data-testid="active-curve">

@@ -102,7 +102,8 @@ export function diffProfiles(base: Json | null, draft: Json | null): FieldChange
     if (!same(base[field], draft[field])) {
       changes.push({
         path: field,
-        label: field,
+        // The document's `label` is the profile's name: a conflict puts the two names side by side.
+        label: field === "label" ? "name" : field,
         before: renderValue(base[field]),
         after: renderValue(draft[field]),
       });

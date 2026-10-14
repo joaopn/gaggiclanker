@@ -320,3 +320,30 @@ async def test_renaming_a_profile_whose_file_has_an_older_brew_and_a_taken_name_
     assert write_frames(fake) == ["req:profiles:save"]
     assert file_called(fake, file) == "Answered by a rename"
     assert (await own_row(client, "Answered by a rename"))["machine"]["holds_current"]
+
+
+# ── what reads the name ──────────────────────────────────────────────
+
+
+async def test_the_sets_the_pickers_and_the_version_list_show_the_new_name(
+    adopted: Adopted,
+) -> None:
+    from tests.drafts.test_pins import _set_with_version
+
+    app, client, _fake = adopted
+    set_id, _version_id = await _set_with_version(app, client)
+    free = next(r for r in (await get_board(client))["rows"] if r["set"] is None)
+    brewing = next(r for r in (await get_board(client))["rows"] if r["set"] is not None)
+    await rename(client, brewing["row"]["id"], "Renamed brewing profile")
+    await rename(client, free["row"]["id"], "Renamed free profile")
+
+    sets = data(await client.get("/api/sets"))
+    assert "Renamed brewing profile" in str(sets) and BASE_LABEL not in str(sets)
+    detail = data(await client.get(f"/api/sets/{set_id}"))
+    assert "Renamed brewing profile" in str(detail) and BASE_LABEL not in str(detail)
+    choices = [i["label"] for i in data(await client.get("/api/sets/profile-choices"))["items"]]
+    assert "Renamed free profile" in choices and free["row"]["label"] not in choices
+    listed = data(await client.get("/api/profile-versions"))["items"]
+    names = {i["board_id"]: i["profile_name"] for i in listed}
+    assert names[free["row"]["id"]] == "Renamed free profile"
+    assert names[brewing["row"]["id"]] == "Renamed brewing profile"

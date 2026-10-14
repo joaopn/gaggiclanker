@@ -12,6 +12,7 @@ import {
   getBoardVersions,
   getProfileBoard,
   putOnBoard,
+  renameBoardProfile,
   resolveBoardConflict,
   resumeBoard,
   setBoardActiveVersion,
@@ -19,7 +20,7 @@ import {
   setBoardStarred,
 } from "@/api/client";
 import type { BoardRow, BoardView, ConflictView, ProfileVersionsView } from "@/api/types";
-import { invalidateBoardWrites, invalidateSets } from "@/lib/invalidate";
+import { invalidateBoardWrites, invalidateSets, invalidateShots } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -141,6 +142,28 @@ export function useSetActiveVersion(): UseMutationResult<
   });
 }
 
+/**
+ * Rename a profile. Nothing is sent to the machine; the next sync with Writes on gives its file the
+ * name. The name is the profile's, so every screen that shows it is stale: the board, the Sets that
+ * brew the profile and the shots filed under it (their lists and their pages). The refusal is
+ * shown by the caller where it belongs (under the Name field), never as a toast.
+ */
+export function useRenameProfile(): UseMutationResult<
+  BoardRow,
+  Error,
+  { rowId: number; label: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, label }) => renameBoardProfile(rowId, label),
+    onSettled: () => {
+      void invalidateBoardWrites(queryClient);
+      void invalidateSets(queryClient);
+      void invalidateShots(queryClient);
+    },
+  });
+}
+
 /** A profile's versions and proposals; read only while its dropdown is open. */
 export function useBoardVersions(
   rowId: number,
@@ -173,12 +196,32 @@ export function useBoardConflict(
 export function useResolveConflict(): UseMutationResult<
   BoardRow,
   Error,
-  { rowId: number; keep: "app" | "machine"; contentHash: string }
+  {
+    rowId: number;
+    keep: "app" | "machine";
+    contentHash: string;
+    /** The conflict is about the name alone: the toast then speaks of the name, not a version. */
+    nameOnly?: boolean;
+  }
 > {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ rowId, keep, contentHash }) => resolveBoardConflict(rowId, keep, contentHash),
-    onSuccess: (row, variables) =>
+    onSuccess: (row, variables) => {
+      if (variables.nameOnly) {
+        toast.success(
+          variables.keep === "machine"
+            ? `${row.label} keeps the name the machine gave it`
+            : `${row.label} keeps its name`,
+          {
+            description:
+              variables.keep === "machine"
+                ? "Nothing is sent to the machine."
+                : "The next sync gives the machine's file that name.",
+          },
+        );
+        return;
+      }
       toast.success(
         variables.keep === "machine"
           ? `${row.label} keeps the machine's version`
@@ -189,7 +232,8 @@ export function useResolveConflict(): UseMutationResult<
               ? "The machine's version is now the active one. Nothing is sent to the machine."
               : nextSyncWords(row),
         },
-      ),
+      );
+    },
     onError: (error) => {
       if (!isStaleConflict(error)) toast.error(error.message);
     },
