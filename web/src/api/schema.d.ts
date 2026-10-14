@@ -1348,6 +1348,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile-board/{row_id}/name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a profile
+         * @description Person-only. Writes the profile's name and nothing else (no version, draft, Set or
+         *     signature), so it works with Writes off and on a pinned row; the next sync with Writes on gives
+         *     the machine's file the new name. Refused with 422 for an empty name and 409 for one another
+         *     live profile has (case ignored); the same name changes nothing. For a profile in a conflict
+         *     about its name alone it also keeps the app's side of that conflict. No chat or MCP tool
+         *     reaches it.
+         */
+        put: operations["put_name_api_profile_board__row_id__name_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-board/{row_id}/on-machine": {
         parameters: {
             query?: never;
@@ -5629,12 +5654,22 @@ export interface components {
             /** Started */
             started: boolean;
         };
+        /** RenameBody */
+        gaggiclanker__api__chat__RenameBody: {
+            /** Title */
+            title: string;
+        };
         /**
          * ReloadData
          * @description ``{"changed": 4}`` — how many rows the re-seed touched.
          */
         gaggiclanker__api__knowledge__ReloadData: {
             [key: string]: number;
+        };
+        /** RenameBody */
+        gaggiclanker__api__profile_board__RenameBody: {
+            /** Label */
+            label: string;
         };
         /**
          * ReloadData
@@ -7308,11 +7343,6 @@ export interface components {
              * @default
              */
             reason: string;
-        };
-        /** RenameBody */
-        RenameBody: {
-            /** Title */
-            title: string;
         };
         /** ResetData */
         ResetData: {
@@ -10580,7 +10610,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RenameBody"];
+                "application/json": components["schemas"]["gaggiclanker__api__chat__RenameBody"];
             };
         };
         responses: {
@@ -12123,6 +12153,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ConflictBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_name_api_profile_board__row_id__name_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["gaggiclanker__api__profile_board__RenameBody"];
             };
         };
         responses: {

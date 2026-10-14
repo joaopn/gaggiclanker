@@ -267,6 +267,9 @@ class Judgement:
     outcome: Literal["record", "take_name", "conflict"]
     #: The live profile that has the machine's name, when that is why it is a conflict.
     holder: BoardRow | None = None
+    #: A conflict about the name alone: the file's brew is one the profile has had (the active one
+    #: or an older one), so only the name is in question.
+    name_only: bool = False
 
 
 async def judge_file(
@@ -305,13 +308,13 @@ async def judge_file(
         return (
             Judgement("record")
             if document == row.conflict_overruled_hash
-            else Judgement("conflict")
+            else Judgement("conflict", name_only=True)
         )
     holder = await board.find_live_by_name_key(seen.name, excluding=row.id)
     if holder is not None:
         if document == row.conflict_overruled_hash:
             return Judgement("record")
-        return Judgement("conflict", holder)
+        return Judgement("conflict", holder, name_only=True)
     return Judgement("take_name")
 
 

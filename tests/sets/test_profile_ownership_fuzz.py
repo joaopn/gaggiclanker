@@ -3,7 +3,7 @@
 (routes, services, sync engine) against a fake machine. Each seed is one run of random steps (new
 Sets, new versions, adoption, puts, Make active, a file leaving and returning, a profile listing a
 Set's file without making it active, a file renamed on the display, a profile renamed in the app
-(through the repository, as the rename route will) and the person keeping a side of the
+(through the rename route) and the person keeping a side of the
 conflicts that come of it); after every step the ownership and Set invariants are asserted, a
 profile never moves off a file the machine still holds, no two live profiles share a name, a
 rename makes no version, and a new shot on each Set's current version (linked, and by the machine
@@ -20,7 +20,6 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.repos.lineage import name_key
-from gaggiclanker.db.repos.profile_board import BoardRowPatch
 from gaggiclanker.device.fake import build_fake_device
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app, seed_settings
@@ -217,8 +216,10 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                         f"{step}: display renames {f['id']} to {f['label']} + sync -> {run.status}"
                     )
                 elif op == "app_rename":
-                    # The profile is renamed in the app (nothing is sent until a sync with the
-                    # switch on): a rename is no version, and the names stay unique.
+                    # The profile is renamed in the app through the rename route (nothing is sent
+                    # until a sync with the switch on): a rename is no version, the names stay
+                    # unique (a name another profile has is refused), and the machine hears
+                    # nothing now.
                     rows = await db.fetch_all(
                         "SELECT id, label FROM profile_board WHERE deleted_at IS NULL"
                     )
@@ -226,13 +227,24 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                         continue
                     row = rnd.choice(rows)
                     name = f"{row['label'].split(' ^')[0]} ^{rnd.randrange(4)}"
-                    if await app.state.board.board.find_live_by_name_key(name, excluding=row["id"]):
-                        continue
+                    if rnd.random() < 0.2:
+                        # Somebody else's name, in any case: refused, and nothing changes.
+                        name = str(rnd.choice(rows)["label"]).swapcase()
+                    holder = await app.state.board.board.find_live_by_name_key(
+                        name, excluding=row["id"]
+                    )
                     count = await db.fetch_value("SELECT COUNT(*) FROM profile_versions")
-                    await app.state.board.board.update(row["id"], BoardRowPatch(label=name))
-                    log.append(f"{step}: app renames {row['label']} to {name}")
+                    fake.ws_requests.clear()
+                    r = await client.put(
+                        f"/api/profile-board/{row['id']}/name", json={"label": name}
+                    )
+                    log.append(f"{step}: app renames {row['label']} to {name} -> {r.status_code}")
+                    if r.status_code != (409 if holder else 200):
+                        raise Failed(f"the rename answered {r.status_code}: {r.text}")
                     if await db.fetch_value("SELECT COUNT(*) FROM profile_versions") != count:
                         raise Failed("a rename wrote a version")
+                    if [t for t in fake.ws_requests if t in WRITE_FRAMES]:
+                        raise Failed("a rename wrote to the machine")
                 elif op == "keep_machine":
                     board = data(await client.get("/api/profile-board"))
                     held = [r for r in board["rows"] if r["in_conflict"]]

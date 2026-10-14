@@ -443,6 +443,8 @@ class _MirrorConflict:
     recorded_name: str | None = None
     #: The live profile that has the machine's name (a conflict about the name alone).
     holder: BoardRow | None = None
+    #: The conflict is about the name alone: the file's brew is one the profile has had.
+    name_only: bool = False
 
 
 @dataclass
@@ -659,6 +661,7 @@ class BoardService:
             document_hash=document,
             recorded_name=None if recorded is None else recorded.name,
             holder=judged.holder,
+            name_only=judged.name_only,
         )
 
     async def conflict(self, row_id: int) -> ConflictView | None:
@@ -715,17 +718,9 @@ class BoardService:
                     "The machine's file changed since you looked at it; look at it again.",
                     details={"reason": "stale_conflict"},
                 )
-            # A conflict about the name alone: the machine's brew is one the profile has had.
-            known = {machine_active.content_hash} | await self.board.listed_brews(row.id)
-            if row.device_version_id is not None:
-                recorded = await self.profiles.get_version(row.device_version_id)
-                if recorded is not None:
-                    known.add(recorded.content_hash)
-            if (
-                keep == "machine"
-                and row.device_version_id is not None
-                and machine.version.content_hash in known
-            ):
+            # A conflict about the name alone: the machine's brew is one the profile has had (the
+            # one rule, :func:`judge_file`, which also says so on the board and for a rename).
+            if keep == "machine" and row.device_version_id is not None and machine.name_only:
                 return await self._take_the_machines_name(row, machine)
             # A brew the profile never had is recorded as a version (the file's, so nothing is
             # lost).
@@ -1510,6 +1505,38 @@ class BoardService:
         updated = await self.board.update(row.id, BoardRowPatch(on_machine=on))
         assert updated is not None
         return updated
+
+    async def rename(self, row_id: int, label: str) -> BoardRow:
+        """Give a profile another name. The next sync puts it on the machine; nothing is sent now.
+
+        A person's act (no tool, MCP client or agent renames). It writes the profile's name and
+        nothing else: no version, draft, Set or signature row, so it works with the switch off,
+        and on a pinned row (a pin freezes what the copy brews, not what it is called). The name
+        is checked as the list checks every name: not empty, and not another live profile's
+        (case and surrounding space ignored, so a change of case alone is a rename). The same
+        name is a no-op. When the profile is in a conflict about its name alone (the machine's
+        brew is one the profile has had), renaming is the person's answer for the app's side, so
+        the app's side of that conflict is kept in the same transaction.
+        """
+        name = label.strip()
+        if not name:
+            raise Unprocessable("A profile needs a name")
+        async with self.db.transaction():
+            row = await self._live_row(row_id)
+            if name == row.label:
+                return row
+            holder = await self.board.find_live_by_name_key(name, excluding=row.id)
+            if holder is not None:
+                raise Conflict(
+                    person_taken_sentence(holder.label), details={"reason": "duplicate_label"}
+                )
+            patch = BoardRowPatch(label=name)
+            machine = await self._mirror_conflict(row)
+            if machine is not None and machine.name_only:
+                patch = BoardRowPatch(label=name, conflict_overruled_hash=machine.document_hash)
+            updated = await self.board.update(row.id, patch)
+            assert updated is not None
+            return updated
 
     async def set_active_version(self, row_id: int, version_id: int) -> BoardRow:
         """Make one of a profile's versions its active one. The next sync puts it on the machine.

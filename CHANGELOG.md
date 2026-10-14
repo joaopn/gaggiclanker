@@ -48,6 +48,13 @@ database.
   written for that profile until you choose a side. Before, any name difference on a profile's file
   was a conflict. A brew the profile never had is still a conflict, and covers the name. The
   conflict view carries the names in play (the app's, the machine's, the one last recorded).
+- **Added: a profile can be renamed** (`PUT /api/profile-board/{id}/name`). It changes the
+  profile's name and nothing else: no version, draft, Set or pin is written, a pinned copy can be
+  renamed too (a pin freezes the brew, not the name), and it works with Writes off. An empty name
+  is refused, and so is a name another profile has (case ignored; changing only the case is a
+  rename); the machine gets the name at the next sync with Writes on. Renaming a profile that is
+  in a conflict about its name alone keeps the app's side of that conflict. Only a person renames:
+  no chat or MCP tool does.
 - Database: no change.
 
 ### A Set has one profile

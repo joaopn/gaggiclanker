@@ -10,8 +10,9 @@ and with no machine at all. What a route that reads the machine does is read.
 * ``POST`` puts an approved draft on the board: a new version of the profile it descends from,
   or a new profile.
 * ``PUT .../on-machine`` switches a profile on or off the machine and ``PUT .../starred`` stars
-  it (the machine's home-screen carousel); ``PUT .../active-version`` makes one of its versions
-  the active one (any version: there is no separate going back); ``GET .../versions`` lists its
+  it (the machine's home-screen carousel); ``PUT .../name`` renames it; ``PUT .../active-version``
+  makes one of its versions the active one (any version: there is no separate going back);
+  ``GET .../versions`` lists its
   versions and the proposals that would join them; ``GET`` and ``POST .../conflict`` show and
   settle a profile whose file was edited outside the app. The next sync does what they say.
 
@@ -74,6 +75,13 @@ class StarredBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     starred: StrictBool
+
+
+class RenameBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: The profile's new name, as long as the Approve field's.
+    label: str = Field(max_length=200)
 
 
 class ActiveVersionBody(BaseModel):
@@ -179,6 +187,22 @@ async def put_on_machine(row_id: int, body: OnMachineBody, board: BoardServiceDe
     Writes switch off it is only stored. Nothing is sent to the machine here. No chat or MCP
     tool reaches it."""
     row = await board.set_on_machine(row_id, body.on)
+    return envelope_response(row.model_dump(mode="json"))
+
+
+@router.put(
+    "/{row_id}/name",
+    response_model=ApiResponse[BoardRow],
+    summary="Rename a profile",
+)
+async def put_name(row_id: int, body: RenameBody, board: BoardServiceDep) -> JSONResponse:
+    """Person-only. Writes the profile's name and nothing else (no version, draft, Set or
+    signature), so it works with Writes off and on a pinned row; the next sync with Writes on gives
+    the machine's file the new name. Refused with 422 for an empty name and 409 for one another
+    live profile has (case ignored); the same name changes nothing. For a profile in a conflict
+    about its name alone it also keeps the app's side of that conflict. No chat or MCP tool
+    reaches it."""
+    row = await board.rename(row_id, body.label)
     return envelope_response(row.model_dump(mode="json"))
 
 
