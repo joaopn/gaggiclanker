@@ -98,7 +98,9 @@ async def get_profile(
     if version is None:  # pragma: no cover - the join in the summary guarantees it
         raise NotFound(f"Profile {device_id!r} points at a version that is not stored")
     return envelope_response(
-        ProfileDetailData(profile=summary, version=version).model_dump(mode="json")
+        ProfileDetailData(profile=summary, version=await profiles.served(version)).model_dump(
+            mode="json"
+        )
     )
 
 
@@ -144,4 +146,4 @@ async def get_profile_version(version_id: int, profiles: ProfilesRepoDep) -> JSO
     version = await profiles.get_version(version_id)
     if version is None:
         raise NotFound(f"No profile version {version_id}")
-    return envelope_response(version.model_dump(mode="json"))
+    return envelope_response((await profiles.served(version)).model_dump(mode="json"))

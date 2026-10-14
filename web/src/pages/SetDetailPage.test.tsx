@@ -141,9 +141,17 @@ beforeEach(() => {
   rollbackSet.mockResolvedValue(setDetail().versions[0].version);
   getSignature.mockResolvedValue(signatureNone);
   getSignatureOverrides.mockResolvedValue({ items: [] });
-  // The design brief names the profile it forks by label.
+  // The design brief names the profile it forks by the profile's name.
   getProfileVersions.mockResolvedValue({
-    items: [{ id: 7, label: "9 Bar Espresso", target_yield_g: 36, temperature_c: 93 }],
+    items: [
+      {
+        id: 7,
+        label: "9 Bar Espresso (first stored)",
+        profile_name: "9 Bar Espresso",
+        target_yield_g: 36,
+        temperature_c: 93,
+      },
+    ],
     total: 1,
   });
 });

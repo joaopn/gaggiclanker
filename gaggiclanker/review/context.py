@@ -50,7 +50,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.pins import judged_profile_version
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.domain.metric_language import CHANNELS, OPS
@@ -247,10 +247,13 @@ async def build_review_input(
     profile_label = ""
     profile: dict[str, Any] | None = None
     if facts.shot.profile_version_id is not None:
-        stored = await ProfilesRepository(db).get_version(facts.shot.profile_version_id)
+        profiles = ProfilesRepository(db)
+        stored = await profiles.get_version(facts.shot.profile_version_id)
         if stored is not None:
-            profile_label = stored.label
-            profile = stored.profile
+            # The profile's name and its document under it: the label first stored with the
+            # version may be an older name of the profile.
+            profile_label = await profiles.name_of(stored)
+            profile = stored_document(stored, profile_label)
 
     expectations: list[ExpectationAsked] = []
     confirmed = 0
@@ -291,6 +294,7 @@ async def build_review_input(
         summary=readable_summary(facts),
         duration_s=None if duration is None else round(duration, 2),
         profile_name=facts.shot.profile_label or facts.shot.profile_name_on_device,
+        label=facts.shot.profile_label or "",
     )
 
     signals = signal_tokens(facts, verdict)

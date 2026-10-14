@@ -1481,8 +1481,8 @@ async def test_a_profile_with_words_beyond_ascii_is_shown_as_stored(tmp_path: Pa
         column = await db.fetch_value(
             "SELECT json FROM profile_versions WHERE id = ?", (version_id,)
         )
-        assert stored_document_json(stored) == column
-        assert "Café crème 「試」" in stored_document_json(stored)
+        assert stored_document_json(stored, stored.label) == column
+        assert "Café crème 「試」" in stored_document_json(stored, stored.label)
     finally:
         await db.close()
 

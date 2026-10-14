@@ -41,10 +41,12 @@ async def test_a_patch_writes_only_the_fields_it_names(repo: ProfileBoardReposit
             current_version_id=1,
             device_profile_id="abc",
             device_version_id=1,
+            device_label="P",
             origin="adopted",
         )
     )
     assert row.on_home_screen is True and row.pending_draft_id is None
+    assert row.device_label == "P"
 
     await repo.update(row.id, BoardRowPatch(on_home_screen=False))
     after = await repo.get(row.id)

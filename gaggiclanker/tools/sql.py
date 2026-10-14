@@ -94,6 +94,7 @@ VIEW_BASE_TABLES: frozenset[str] = frozenset(
         "beans",
         "grinders",
         "profile_versions",
+        "profile_board",
     }
 )
 

@@ -43,12 +43,11 @@ from gaggiclanker.chat.context import _OUTCOMES, _cut, _plural, _quote, _recipe,
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
+from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow, document_for
 from gaggiclanker.db.repos.set_proposals import SetProposalRow, SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetRow, SetsRepository, SetVersionRow, VersionLabelCounts
 from gaggiclanker.domain.models import (
     PhaseKind,
-    Profile,
     ProfileType,
     PumpTarget,
     TargetOperator,
@@ -122,9 +121,10 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
     if fork is not None and fork.profile:
         # The profile they asked to fork is the strongest statement of the kind
         # of shot they are after, stronger than what another bean brewed.
-        verdict = detect_style(fork.profile)
+        fork_name = await ProfilesRepository(db).name_of(fork)
+        verdict = detect_style(fork.profile, label=fork_name)
         if verdict.style not in ("unknown", "utility"):
-            style, style_reason = verdict.style, f"the profile to fork ({fork.label})"
+            style, style_reason = verdict.style, f"the profile to fork ({fork_name})"
     _signals, rules = await starting_rules(
         db,
         SetContext(
@@ -139,7 +139,10 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
     lines: list[str] = []
     lines += _heading(row, bean, grinder)
     lines += ["", *_brief(row, grinder)]
-    lines += ["", *_fork_block(fork)]
+    lines += [
+        "",
+        *_fork_block(fork, "" if fork is None else await ProfilesRepository(db).name_of(fork)),
+    ]
     if fork is not None and fork.profile:
         # What the profile to fork is for, as it stands in force: the new profile is
         # derived from it, so its intent is the strongest statement of what to keep.
@@ -212,7 +215,7 @@ def _brief(row: SetRow, grinder: GrinderRow | None) -> list[str]:
     ]
 
 
-def _fork_block(fork: ProfileVersionRow | None) -> list[str]:
+def _fork_block(fork: ProfileVersionRow | None, fork_name: str) -> list[str]:
     """The profile to fork, whole, in the shape the machine stores it."""
     if fork is None or not fork.profile:
         return [
@@ -222,9 +225,9 @@ def _fork_block(fork: ProfileVersionRow | None) -> list[str]:
             "from a profile in their library.",
             *_document_shape(),
         ]
-    document = Profile.model_validate(fork.profile).to_device()
+    document = document_for(fork, fork_name).to_device()
     return [
-        f"THE PROFILE TO FORK: [profile_version {fork.id}] {fork.label}",
+        f"THE PROFILE TO FORK: [profile_version {fork.id}] {fork_name}",
         "The new profile is derived from this one and gets a name of its own; this one, and "
         "the Set that brews it, stays as it is.",
         "```json",

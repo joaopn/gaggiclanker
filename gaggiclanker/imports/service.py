@@ -58,7 +58,7 @@ from gaggiclanker.domain.exports import (
     shot_export_to_slog,
     slog_to_raw,
 )
-from gaggiclanker.domain.models import document_hash
+from gaggiclanker.domain.models import brew_hash
 from gaggiclanker.domain.slog import SlogError
 from gaggiclanker.sync.derive import derive_shot, rederive_shots
 
@@ -120,7 +120,8 @@ class ImportResult(BaseModel):
     #: The 6-digit padded device id, when the file was a shot.
     device_id: str | None = None
     profile_version_id: int | None = None
-    #: The profile's label, when the file was a profile.
+    #: The file's own name, when the file was a profile: the name the profile has on the list, or
+    #: the one it is listed under.
     label: str | None = None
     #: True when the shot was stored with bytes we could not read. It is in the
     #: archive and it is not a working shot; both halves matter.
@@ -645,9 +646,12 @@ class ImportService:
 
         results: list[ImportResult] = []
         for profile in profiles:
-            # A file whose profile is stored already (a version of some profile, or loose) is
-            # not stored again; one that is new belongs to no profile until the list takes it.
-            stored = await self.profiles.find_stored_version(document_hash(profile))
+            # A file is stored already when the live profile called what the file is called has
+            # a version of its brew; the same brew under another name is a profile of its own
+            # (it belongs to none until the list takes it).
+            stored = await self.profiles.find_version_of_profile_named(
+                brew_hash(profile), profile.label
+            )
             if stored is not None:
                 version, created = stored, False
             else:
@@ -657,14 +661,14 @@ class ImportService:
                     source=IMPORT_SOURCE,
                     device_json=dumps(profile.to_device()),
                 )
-            await self._list_imported(version)
+            await self._list_imported(version, profile.label)
             results.append(
                 ImportResult(
                     filename=filename,
                     kind="profile",
                     status="created" if created else "skipped",
                     profile_version_id=version.id,
-                    label=version.label,
+                    label=profile.label,
                     message=(
                         f"profile version {version.id}"
                         if created
@@ -673,17 +677,18 @@ class ImportService:
                 )
             )
             log.info(
-                "profile_imported", version_id=version.id, label=version.label, created=created
+                "profile_imported", version_id=version.id, label=profile.label, created=created
             )
         return results
 
-    async def _list_imported(self, version: ProfileVersionRow) -> None:
+    async def _list_imported(self, version: ProfileVersionRow, name: str) -> None:
         """Make an imported profile show up in the profile list.
 
         The list is what the Profiles page shows, so a version that no profile has had is
-        invisible there. One that carries the label of a live profile becomes one of that
+        invisible there. One whose file is called what a live profile is called becomes one of that
         profile's versions (not active: a person chooses); any other becomes a profile of its
-        own, **off**, so importing a file never changes what a sync does to the machine. Reading
+        own, called what the file is called, **off**, so importing a file never changes what a
+        sync does to the machine. Reading
         and then writing in one transaction keeps a second import of the same file from making
         a second profile.
         """
@@ -692,13 +697,13 @@ class ImportService:
         async with self.db.transaction():
             if await self.board.find_live_by_listed_version(version.id) is not None:
                 return
-            same = await self.board.find_live_by_label(version.label)
+            same = await self.board.find_live_by_label(name)
             if same is not None:
                 await self.board.add_version(same.id, version.id, "import")
                 return
             await self.board.insert(
                 BoardRowWrite(
-                    label=version.label,
+                    label=name,
                     current_version_id=version.id,
                     on_machine=False,
                     origin="adopted",

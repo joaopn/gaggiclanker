@@ -166,6 +166,7 @@ const versions: ProfileVersionListData = {
       // and the table's rows share a document, and a test that cannot tell
       // them apart is testing neither.
       label: "Nine Bar (mirrored)",
+      profile_name: "Nine Bar (mirrored)",
       type: "standard",
       utility: false,
       source: "device",
@@ -178,6 +179,7 @@ const versions: ProfileVersionListData = {
       id: 9,
       content_hash: "99887766",
       label: "Cremina v2 (imported)",
+      profile_name: "Cremina v2 (imported)",
       type: "pro",
       utility: false,
       source: "import",

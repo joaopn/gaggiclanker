@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from gaggiclanker.db.repos.profile_board import BoardRow
-from gaggiclanker.domain.models import document_hash
+from gaggiclanker.domain.models import brew_hash
 from gaggiclanker.domain.profile_policy import PolicyChange, outside_bounds_sentence
 from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.proposals import PreparedDraft
@@ -108,7 +108,7 @@ class ProfileCopier:
             base_version_id=base_version_id,
             prepared=prepared,
             name=prepared.profile.label,
-            content_hash=document_hash(prepared.profile),
+            content_hash=brew_hash(prepared.profile),
         )
 
     async def put(self, copy: PreparedCopy, *, carry_signature: bool) -> BoardRow:

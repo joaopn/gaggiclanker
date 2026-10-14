@@ -29,6 +29,7 @@ PACKAGE = "gaggiclanker.db.upgrades"
 FROZEN_CHECKSUMS = {
     0: "4b718f3fa512a6b5575c54325fcbf8ff388787a9cf88cdd2eee5ea25e18b79aa",
     1: "6a38b720f0ef88994909847769a071d6d15c76edf7ec06e2b7c36711da18682d",
+    2: "96fa548a8df15905172da557db1decceedab5e5ad6f94472403d999e7f05cc5f",
 }
 
 

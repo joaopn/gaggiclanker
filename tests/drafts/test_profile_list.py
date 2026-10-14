@@ -370,27 +370,34 @@ async def test_a_file_attached_in_a_sync_is_left_alone_in_that_sync_when_off(
     ]
 
 
-async def test_making_a_version_active_is_refused_when_its_name_is_taken(
+async def test_making_a_version_active_changes_only_the_active_version_not_the_name(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
     mine = await app_row(app, client, fake, provider, 8)
-    # The profile once had another name (an older version carries it), and another profile has
-    # taken that name since: the older version cannot come back without two sharing one.
+    # The profile's older version was first stored under another name, which another profile has
+    # since taken. A version is what the profile brews and the name is the profile's: making it
+    # active renames nothing and so cannot make two profiles share a name.
     other = await put(client, await variant_draft(app, client, "Old name", 6))
     taken = data(await client.get(f"/api/profile-versions/{other['current_version_id']}"))
     document = {**taken["profile"], "phases": taken["profile"]["phases"]}
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**document, "label": "Old name", "id": None}), owner=None
+        Profile.model_validate({**document, "label": "Old name", "temperature": 91, "id": None}),
+        owner=None,
     )
-    await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
+    board = ProfileBoardRepository(app.state.db)
+    own = await board.version_for(mine["id"], version.id)
+    await board.add_version(mine["id"], own, "edit")
 
-    refused = await client.put(
-        f"/api/profile-board/{mine['id']}/active-version", json={"version_id": version.id}
+    made = await client.put(
+        f"/api/profile-board/{mine['id']}/active-version", json={"version_id": own}
     )
 
-    assert refused.status_code == 409
-    assert error(refused)["details"]["reason"] == "duplicate_label"
+    assert made.status_code == 200, made.text
+    assert data(made)["current_version_id"] == own
+    assert data(made)["label"] == mine["label"]
+    labels = [r["row"]["label"] for r in (await get_board(client))["rows"]]
+    assert labels.count("Old name") == 1 and labels.count(mine["label"]) == 1
 
 
 async def test_keeping_the_machines_side_is_refused_when_its_name_is_taken(
@@ -416,39 +423,18 @@ async def test_keeping_the_machines_side_is_refused_when_its_name_is_taken(
     assert other["row"]["id"] != row["row"]["id"]
 
 
-async def test_making_a_version_active_is_refused_when_its_name_differs_only_in_case(
+async def test_a_version_first_stored_under_the_profiles_own_name_in_other_capitals_is_made_active(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    app, client, fake = adopted
-    mine = await app_row(app, client, fake, provider, 8)
-    await put(client, await variant_draft(app, client, "Old name", 6))
-    base = await ProfilesRepository(app.state.db).get_version(mine["current_version_id"])
-    assert base is not None and base.profile is not None
-    version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**base.profile, "label": "OLD NAME ", "id": None}), owner=None
-    )
-    await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
-
-    refused = await client.put(
-        f"/api/profile-board/{mine['id']}/active-version", json={"version_id": version.id}
-    )
-
-    assert refused.status_code == 409
-    assert error(refused)["details"]["reason"] == "duplicate_label"
-
-
-async def test_a_version_of_the_same_profile_differing_only_in_case_is_not_refused_against_it(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    # The taken-name check leaves out the profile being changed: its own older version, named
-    # with other capitals, is not "already in the list" because of the profile itself.
     app, client, fake = adopted
     mine = await app_row(app, client, fake, provider, 8)
     base = await ProfilesRepository(app.state.db).get_version(mine["current_version_id"])
     assert base is not None and base.profile is not None
     version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**base.profile, "label": mine["label"].upper(), "id": None}),
-        owner=None,
+        Profile.model_validate(
+            {**base.profile, "label": mine["label"].upper(), "temperature": 91, "id": None}
+        ),
+        owner=mine["id"],
     )
     await ProfileBoardRepository(app.state.db).add_version(mine["id"], version.id, "edit")
 
@@ -456,8 +442,9 @@ async def test_a_version_of_the_same_profile_differing_only_in_case_is_not_refus
         f"/api/profile-board/{mine['id']}/active-version", json={"version_id": version.id}
     )
 
-    assert made.status_code == 200
+    assert made.status_code == 200, made.text
     assert data(made)["current_version_id"] == version.id
+    assert data(made)["label"] == mine["label"]
 
 
 async def test_keeping_the_machines_side_is_refused_when_its_name_differs_only_in_case(

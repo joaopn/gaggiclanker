@@ -25,7 +25,14 @@ CREATE TABLE settings (
 --     never takes another profile's version, it gets its own copy of the same brew. NULL while the
 --     version is on no profile (a draft for a new profile, an imported file, a machine file that
 --     has not joined the list, the empty baseline); the profile it lands on takes it over.
---     Unique by content per profile, and among the versions that have none.
+--     Unique by brew per profile; among the versions that have none, unique by brew **and
+--     label**: a version on no profile has no profile name, so the document it came as (its
+--     name included) is what it is.
+--   * content_hash: the brew hash, the canonical document without its name. A version is what its
+--     profile brews; the name is the profile's (`profile_board.label`).
+--   * label: the name the document had when this version was first stored. For a version on a
+--     profile it is history, never the profile's name; for one on none it is part of what the
+--     version is (and its name when no draft or file names it).
 CREATE TABLE profile_versions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     content_hash TEXT    NOT NULL,
@@ -45,7 +52,7 @@ CREATE TABLE profile_versions (
 CREATE UNIQUE INDEX idx_profile_versions_owned
     ON profile_versions(board_id, content_hash) WHERE board_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_profile_versions_unowned
-    ON profile_versions(content_hash) WHERE board_id IS NULL;
+    ON profile_versions(content_hash, label) WHERE board_id IS NULL;
 CREATE INDEX idx_profile_versions_board ON profile_versions(board_id);
 
 CREATE TABLE shot_samples (
@@ -743,6 +750,9 @@ CREATE INDEX idx_shots_set_version     ON shots(set_version_id);
 --     there, and the stored version its content was then. NULL when the machine holds nothing
 --     for the row yet, or when the app let go of the file. No foreign key on the device id,
 --     like every device id, since it names a file that can be gone.
+--   * device_label: the name that file had when `device_version_id` was recorded, so that a file
+--     read later is compared with exactly what was recorded (its brew and its name). The mirror's
+--     own `device_profiles.label` is the name the file has now, rewritten by every sync.
 --   * on_home_screen: the machine's favourite star; a profile off it stays on the machine and
 --     leaves the carousel.
 --   * origin: `adopted` is a profile the person made, taken from the machine as it was (a pull
@@ -770,7 +780,8 @@ CREATE TABLE profile_board (
     back_from_version_id INTEGER REFERENCES profile_versions(id),
     on_machine INTEGER NOT NULL DEFAULT 1
     CHECK (on_machine IN (0, 1)),
-    conflict_overruled_hash TEXT
+    conflict_overruled_hash TEXT,
+    device_label TEXT
 ) STRICT;
 CREATE INDEX idx_profile_board_version ON profile_board(current_version_id);
 CREATE INDEX idx_profile_board_device ON profile_board(device_profile_id);
@@ -934,7 +945,8 @@ CREATE UNIQUE INDEX idx_set_versions_name
 -- changing. A pin is a record, not a state of the profile-list row: the row is an ordinary app
 -- profile, and the pin says which Set version it belongs to.
 --   * profile_version_id: the copy, the pinned version's profile under the pin's name. A different
---     profile version from the original because the label is in the content hash. UNIQUE: a copy
+--     profile version from the original because a version belongs to one profile (the copy is the
+--     pin's profile's own version of the same brew). UNIQUE: a copy
 --     names exactly one Set version for ever, so a shot brewed on it files under that version even
 --     after the pin is gone, and no other version can claim the same copy.
 --   * board_id: the profile-list row that carries the copy (tombstoned when unpinned, brought
@@ -1111,7 +1123,7 @@ SELECT b.id AS bean_id,
 
 CREATE VIEW v_profiles AS
 SELECT pv.id AS profile_version_id,
-       pv.label,
+       COALESCE(pb.label, pv.label) AS label,
        pv.type,
        pv.utility,
        pv.source,
@@ -1119,6 +1131,7 @@ SELECT pv.id AS profile_version_id,
        pv.created_at,
        (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = pv.id) AS shot_count
   FROM profile_versions pv
+  LEFT JOIN profile_board pb ON pb.id = pv.board_id
  WHERE NOT (pv.label = 'Empty baseline'
             AND json_extract(pv.json, '$.description') =
                 'An empty baseline, created because the archive held no profile to diff a new draft against.');
@@ -1166,7 +1179,7 @@ SELECT v.id AS set_version_id,
            || CASE WHEN par.version_minor > 0 THEN '.' || par.version_minor ELSE '' END
            AS parent_version_label,
        v.profile_version_id,
-       pv.label AS profile_label,
+       COALESCE(pb.label, pv.label) AS profile_label,
        v.grind_setting,
        v.grind_value,
        v.dose_g,
@@ -1191,6 +1204,7 @@ SELECT v.id AS set_version_id,
   JOIN sets st ON st.id = v.set_id
   LEFT JOIN set_versions par ON par.id = v.parent_version_id
   LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
+  LEFT JOIN profile_board pb ON pb.id = pv.board_id
   LEFT JOIN set_versions cmp ON cmp.id = v.compares_to_version_id
   LEFT JOIN set_versions res ON res.id = v.restores_version_id;
 
@@ -1201,7 +1215,7 @@ SELECT s.id                                        AS shot_id,
        s.duration_ms,
        s.duration_ms / 1000.0                      AS duration_s,
        s.profile_version_id,
-       pv.label                                    AS profile_label,
+       COALESCE(pb.label, pv.label)                AS profile_label,
        s.profile_name_on_device,
        COALESCE(s.final_weight_g, s.index_volume_g) AS volume_g,
        s.index_avg_temp_c                          AS avg_temp_c,
@@ -1249,6 +1263,7 @@ SELECT s.id                                        AS shot_id,
        s.synced_at
   FROM shots s
   LEFT JOIN profile_versions pv ON pv.id = s.profile_version_id
+  LEFT JOIN profile_board pb    ON pb.id = pv.board_id
   LEFT JOIN set_versions sv     ON sv.id = s.set_version_id
   LEFT JOIN sets st             ON st.id = sv.set_id
   LEFT JOIN beans b             ON b.id = st.bean_id
@@ -1357,4 +1372,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;

@@ -124,6 +124,8 @@ def _document(label: str) -> Any:
 
     document = profile_fixture("docs-medium-18g")
     document["label"] = label
+    # A version is what is brewed, whatever it is called: the description makes two names two brews.
+    document["description"] = label
     return Profile.model_validate(document)
 
 

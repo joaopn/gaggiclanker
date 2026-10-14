@@ -32,6 +32,7 @@ from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.domain.models import (
     Profile,
+    brew_hash,
     canonical_document_json,
     document_hash,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "CHANGED_SINCE",
     "GONE",
     "NO_SUCCESSOR",
+    "FileContent",
     "MachineState",
     "Placed",
     "Removal",
@@ -57,6 +59,26 @@ CHANGED_SINCE = "changed on the display since"
 #: naming a file that is gone, and no other profile is there to take the selection.
 NO_SUCCESSOR = "selected on the machine and no other profile is on the machine to select instead"
 GONE = "no longer on the machine"
+
+
+@dataclass(frozen=True, slots=True)
+class FileContent:
+    """What a machine file holds, as the sync compares it: what it brews and what it is called.
+
+    A version is what its profile brews and the name is the profile's, so a file is the same as
+    what the app expects of it only when **both** match. Every comparison the board plan makes
+    between a file and a version, a recorded file or a known brew goes through :meth:`of` and
+    equality, so there is one rule for it. (The guard before a removal stays a comparison of the
+    whole document, :func:`~gaggiclanker.domain.models.document_hash`.)
+    """
+
+    brew: str
+    name: str
+
+    @classmethod
+    def of(cls, profile: Profile) -> FileContent:
+        """The file as the machine serves it."""
+        return cls(brew_hash(profile), profile.label)
 
 
 @dataclass

@@ -265,7 +265,7 @@ async def test_another_profiles_version_becomes_a_copy_that_is_this_profiles_own
     board, profiles = await _repo(app)
     version, _ = await profiles.ensure_version(_profile("Shared"), owner=None)
     first = await _row(app, board, "First", version.id)
-    other = await profiles.ensure_version(_profile("Placeholder"), owner=None)
+    other = await profiles.ensure_version(_profile("Placeholder", bar=8.5), owner=None)
     second = await _row(app, board, "Second", other[0].id)
     await board.update(second, BoardRowPatch(previous_version_id=version.id))
 
@@ -308,7 +308,7 @@ async def test_the_copy_carries_the_signature_in_force_with_carry_quietly(
         [ExpectationInput(tier="critical", kind="reached", phase=first_phase)],
         reason="why",
     )
-    second_start, _ = await profiles.ensure_version(_profile("Elsewhere"), owner=None)
+    second_start, _ = await profiles.ensure_version(_profile("Elsewhere", bar=8.4), owner=None)
     second = await _row(app, board, "Signed too", second_start.id)
 
     copy_id = await board.version_for(second, version.id)
@@ -324,7 +324,7 @@ async def test_listing_a_version_goes_through_version_for(adopted: Adopted) -> N
     board, profiles = await _repo(app)
     version, _ = await profiles.ensure_version(_profile("Listed"), owner=None)
     first = await _row(app, board, "Listed", version.id)
-    start, _ = await profiles.ensure_version(_profile("Start"), owner=None)
+    start, _ = await profiles.ensure_version(_profile("Start", bar=8.3), owner=None)
     second = await _row(app, board, "Listed copy", start.id)
     assert await board.add_version(second, version.id, "edit") is True
     listed = [v.version_id for v in await board.list_versions(second)]

@@ -21,6 +21,7 @@ from gaggiclanker.db.upgrade import UpgradeReport, upgrade_database_file
 from gaggiclanker.db.upgrades import STEPS, frozen_schema_sql, level_002
 
 NOW = datetime(2026, 10, 13, 12, 0, 0, tzinfo=UTC)
+LEVEL_TWO = schema.describe_sql(frozen_schema_sql(2))
 
 
 class Level1:
@@ -154,10 +155,12 @@ class Level1:
     def upgrade(self) -> UpgradeReport:
         self.conn.commit()
         self.conn.close()
+        # This step alone, onto the schema it produced: the steps after it have their own tests.
         report = upgrade_database_file(
             self.path,
             self.path.parent,
-            steps=STEPS,
+            steps=STEPS[:2],
+            expected=LEVEL_TWO,
             now=NOW,
         )
         assert report is not None
@@ -217,7 +220,7 @@ def test_the_result_is_the_schema_file_and_every_row_is_still_there(db: Level1) 
 
     assert report.to_level == 2
     conn = sqlite3.connect(db.path)
-    assert schema.schema_differences(conn) == []
+    assert schema.schema_differences(conn, LEVEL_TWO) == []
     conn.close()
     for table, count in before.items():
         assert db.one(f"SELECT COUNT(*) FROM {table}") == count, table  # noqa: S608
@@ -788,7 +791,7 @@ def test_a_failing_check_leaves_the_database_untouched(
     from gaggiclanker.db.upgrade import UpgradeRefused
 
     with pytest.raises(UpgradeRefused):
-        upgrade_database_file(db.path, db.path.parent, steps=STEPS, now=NOW)
+        upgrade_database_file(db.path, db.path.parent, steps=STEPS[:2], expected=LEVEL_TWO, now=NOW)
     conn = sqlite3.connect(db.path)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM profile_board").fetchone()[0] == 1

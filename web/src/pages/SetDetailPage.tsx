@@ -374,7 +374,7 @@ function DesignBrief({ brief }: { brief: SetRow["design_brief"] }) {
   const forkLabel =
     forkId === null
       ? null
-      : ((profiles.data?.items ?? []).find((item) => item.id === forkId)?.label ??
+      : ((profiles.data?.items ?? []).find((item) => item.id === forkId)?.profile_name ??
         `profile version #${forkId}`);
   return (
     <dl className="mb-2 space-y-1 text-sm" data-testid="design-brief">

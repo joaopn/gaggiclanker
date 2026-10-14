@@ -33,6 +33,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from gaggiclanker.db.repos.base import JsonList, JsonObject, dumps, utc_now
+from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.version_names import label_sql, next_names
 from gaggiclanker.db.repository import Repository
 
@@ -227,7 +228,7 @@ class ProfileDraftRow(BaseModel):
 
 _SELECT = f"""
     SELECT d.*,
-           CASE WHEN d.is_new THEN NULL ELSE base.label END AS base_label,
+           CASE WHEN d.is_new THEN NULL ELSE {version_name_sql("base")} END AS base_label,
            s.name AS set_name,
            {label_sql("cmp")} AS compares_to_version_label,
            (SELECT {label_sql("rv")} FROM set_versions rv
@@ -261,7 +262,7 @@ class ProfileDraftsRepository(Repository):
     async def create(self, write: ProfileDraftWrite) -> ProfileDraftRow:
         now = utc_now()
         cursor = await self.db.execute(
-            """
+            f"""
             INSERT INTO profile_drafts
                 (base_version_id, draft_version_id, label, destination_board_id, new_profile,
                  source_analysis_id, source_suggestion_id,
@@ -270,9 +271,10 @@ class ProfileDraftsRepository(Repository):
                  stop_condition_changes_json, clamp_changes_json, notes, status,
                  made_by, created_at, updated_at)
             VALUES (?, ?,
-                    COALESCE(?, (SELECT label FROM profile_versions WHERE id = ?), ''),
+                    COALESCE(?, (SELECT {version_name_sql("nv")} FROM profile_versions nv
+                                  WHERE nv.id = ?), ''),
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
-            """,
+            """,  # noqa: S608 - the one interpolation is a constant SQL expression
             (
                 write.base_version_id,
                 write.draft_version_id,

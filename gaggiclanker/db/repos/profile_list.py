@@ -211,6 +211,12 @@ class ProfileListBuilder(Repository):
                 "SELECT device_id, favorite FROM device_profiles WHERE deleted_at IS NULL"
             )
         }
+        # The name each file has: the name of the document recorded when a profile comes to stand
+        # on it here.
+        file_names = {
+            str(r["device_id"]): str(r["label"])
+            for r in await self.db.fetch_all("SELECT device_id, label FROM device_profiles")
+        }
         for row in revived:
             file = row.device_profile_id
             clear_file = file is not None and file in claimed
@@ -222,11 +228,13 @@ class ProfileListBuilder(Repository):
                 "failed_version_id = NULL, "
                 "device_profile_id = CASE WHEN ? THEN NULL ELSE device_profile_id END, "
                 "device_version_id = CASE WHEN ? THEN NULL ELSE device_version_id END, "
+                "device_label = CASE WHEN ? THEN NULL ELSE device_label END, "
                 "updated_at = ? WHERE id = ?",
                 (
                     int(held_now),
                     int(held_now),
                     int(live_files.get(file or "", True)),
+                    int(clear_file),
                     int(clear_file),
                     int(clear_file),
                     utc_now(),
@@ -367,9 +375,16 @@ class ProfileListBuilder(Repository):
             file, version_id, favorite = held_by[row_id]
             await self.db.execute(
                 "UPDATE profile_board SET on_machine = 1, on_home_screen = ?, "
-                "current_version_id = ?, device_profile_id = ?, device_version_id = ? "
-                "WHERE id = ?",
-                (int(favorite), version_id, file, version_id, row_id),
+                "current_version_id = ?, device_profile_id = ?, device_version_id = ?, "
+                "device_label = ? WHERE id = ?",
+                (
+                    int(favorite),
+                    version_id,
+                    file,
+                    version_id,
+                    file_names.get(file) or versions[version_id]["label"],
+                    row_id,
+                ),
             )
 
         for row_id in sorted(k for k in groups.members if k > 0):
@@ -387,13 +402,16 @@ class ProfileListBuilder(Repository):
             active = groups.active(key) if hold is None else hold[1]
             created = await self.db.execute(
                 "INSERT INTO profile_board (label, current_version_id, device_profile_id, "
-                "device_version_id, on_machine, on_home_screen, origin, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "device_version_id, device_label, on_machine, on_home_screen, origin, created_at, "
+                "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     versions[active]["label"],
                     active,
                     None if hold is None else hold[0],
                     None if hold is None else hold[1],
+                    None
+                    if hold is None
+                    else (file_names.get(hold[0]) or versions[hold[1]]["label"]),
                     int(hold is not None),
                     1 if hold is None else int(hold[2]),
                     "draft" if versions[active]["source"] == "draft" else "adopted",

@@ -118,7 +118,7 @@ export function ShotFilters({
             <option value="">Any profile</option>
             {versions.map((version) => (
               <option key={version.id} value={String(version.id)}>
-                {version.label}
+                {version.profile_name}
               </option>
             ))}
           </select>

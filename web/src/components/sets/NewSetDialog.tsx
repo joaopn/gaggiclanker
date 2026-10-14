@@ -194,7 +194,7 @@ export type AutoFilled = Record<RecipeKey, { value: string; from: string } | nul
 export function fillFromProfile(
   draft: Pick<Draft, RecipeKey>,
   filled: AutoFilled,
-  version: Pick<ProfileVersionSummary, "label" | "target_yield_g"> | undefined,
+  version: Pick<ProfileVersionSummary, "profile_name" | "target_yield_g"> | undefined,
 ): { values: Pick<Draft, RecipeKey>; filled: AutoFilled } {
   const values = { targetYieldG: draft.targetYieldG };
   const next = { ...filled };
@@ -208,7 +208,7 @@ export function fillFromProfile(
     const current = values[key];
     if (current === "" || current === filled[key]?.value) {
       values[key] = String(number);
-      next[key] = { value: values[key], from: version.label };
+      next[key] = { value: values[key], from: version.profile_name };
     } else {
       // Typed by hand: it is the person's now, whatever filled it before.
       next[key] = null;
@@ -251,9 +251,9 @@ export function temperatureNote(version: ProfileVersionSummary | undefined): str
     "here, or draft one on the Profiles page.";
   if (!version) return `The brew temperature comes from the profile. ${change}`;
   if (!version.temperature_c) {
-    return `${version.label} states no brew temperature, so there is none to record. ${change}`;
+    return `${version.profile_name} states no brew temperature, so there is none to record. ${change}`;
   }
-  return `The machine brews at the temperature ${version.label} states. ${change}`;
+  return `The machine brews at the temperature ${version.profile_name} states. ${change}`;
 }
 
 export function NewSetDialog({
@@ -571,7 +571,7 @@ export function NewSetDialog({
           onOpenChange={setDesignOpen}
           beanChosen={Boolean(draft.beanId)}
           grinderChosen={Boolean(draft.grinderId)}
-          forkLabel={chosenProfile?.label ?? null}
+          forkLabel={chosenProfile?.profile_name ?? null}
           defaultName={
             // Only while nothing is typed: a typed name is sent as it is.
             draft.name.trim() ? null : designName(chosenBean?.name, chosenGrinder?.name)

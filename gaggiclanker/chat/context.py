@@ -394,16 +394,18 @@ async def _profile_text(
             "This version names no profile, so no shot is filed under it automatically: "
             "only a person files one here, whatever profile it was pulled on."
         ]
-    stored = await ProfilesRepository(db).get_version(profile_version_id)
+    profiles = ProfilesRepository(db)
+    stored = await profiles.get_version(profile_version_id)
     if stored is None or not stored.profile:
         return [
             f"Profile version {profile_version_id} ({label or 'unlabelled'}) has no stored "
             "document in the archive."
         ]
+    # The profile's name, not the label the document was first stored with.
+    name = await profiles.name_of(stored)
     return [
-        f"Profile version {stored.id}, {stored.label}, as stored "
-        "(compact JSON, every field it stores):",
-        stored_document_json(stored),
+        f"Profile version {stored.id}, {name}, as stored (compact JSON, every field it stores):",
+        stored_document_json(stored, name),
     ]
 
 

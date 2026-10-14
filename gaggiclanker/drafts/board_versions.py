@@ -51,6 +51,8 @@ class ActiveVersion(BaseModel):
 
     version_id: int
     short_hash: str
+    #: The profile's name (the row's): a version is what the profile brews, and the name is the
+    #: profile's, so this is never the name the version's document was first stored with.
     label: str
     type: str
     utility: bool = False
@@ -71,6 +73,7 @@ class ListedVersion(BaseModel):
 
     version_id: int
     short_hash: str
+    #: The profile's name (the row's), whatever this version's document was first stored with.
     label: str
     type: str
     created_at: str

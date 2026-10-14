@@ -15,7 +15,7 @@ import httpx
 from fastapi import FastAPI
 
 from gaggiclanker.device.fake import FakeDevice
-from tests.drafts.conftest import BASE_LABEL, base_version_id, data, error
+from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
 from tests.drafts.helpers import (
     assert_versions_owned,
     draft_of,
@@ -242,11 +242,11 @@ async def test_a_copy_is_a_draft_for_a_new_profile_and_its_version_belongs_to_th
     await assert_versions_owned(app.state.db)
 
 
-async def _renamed_by_an_older_version(
+async def _older_version_made_active(
     app: FastAPI, client: httpx.AsyncClient, provider: FakeProvider
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """A change drafted, then its profile renamed by making an older version, called something
-    else, the active one. Returns the profile row and the draft."""
+    """A change drafted, then an older version of its profile, whose document was first stored
+    under another name, made the active one. Returns the profile row and the draft."""
     from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
     from gaggiclanker.db.repos.profiles import ProfilesRepository
     from gaggiclanker.domain.models import Profile
@@ -268,44 +268,68 @@ async def _renamed_by_an_older_version(
     return row, draft
 
 
+async def test_making_an_older_version_active_keeps_the_profiles_name(
+    adopted: Adopted, provider: FakeProvider
+) -> None:
+    app, client, _ = adopted
+    row, _ = await _older_version_made_active(app, client, provider)
+
+    after = row_for(await get_board(client), BASE_LABEL)["row"]
+
+    assert after["id"] == row["id"] and after["label"] == BASE_LABEL
+    assert after["current_version_id"] != row["current_version_id"]
+    # What is shown of that version is the profile's name, not the one it was first stored with.
+    version = data(await client.get(f"/api/profile-versions/{after['current_version_id']}"))
+    assert version["label"] == BASE_LABEL and version["profile"]["label"] == BASE_LABEL
+
+
 async def test_a_put_never_renames_the_profile_it_changes(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
-    row, draft = await _renamed_by_an_older_version(app, client, provider)
+    row, draft = await _older_version_made_active(app, client, provider)
     rows_before = len(data(await client.get("/api/profile-board"))["rows"])
 
     landed = await put(client, draft)
 
-    assert landed["id"] == row["id"] and landed["label"] == "Old name"
+    assert landed["id"] == row["id"] and landed["label"] == BASE_LABEL
     assert len(data(await client.get("/api/profile-board"))["rows"]) == rows_before
-    # The document is rebuilt under the profile's current name; the draft names that version.
+    # The document is the profile's name over the draft's brew; nothing was stored for a name.
     version = data(await client.get(f"/api/profile-versions/{landed['current_version_id']}"))
-    assert version["profile"]["label"] == "Old name"
+    assert version["profile"]["label"] == BASE_LABEL
     stored = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
     assert (stored["draft_version_id"], stored["draft_label"]) == (
-        landed["current_version_id"],
-        "Old name",
+        draft["draft_version_id"],
+        BASE_LABEL,
     )
+    assert landed["current_version_id"] == draft["draft_version_id"]
     await assert_versions_owned(app.state.db)
 
 
-async def test_a_put_into_a_renamed_profile_is_not_refused_when_another_took_its_old_name(
+async def test_the_profile_keeps_its_name_so_no_other_profile_can_take_it(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
-    row, draft = await _renamed_by_an_older_version(app, client, provider)
-    other = await put(client, await manual_draft(app, client, "Adaptive v2", BASE_LABEL, 6.3))
-    assert other["label"] == BASE_LABEL and other["id"] != row["id"]
+    await _older_version_made_active(app, client, provider)
 
-    landed = await put(client, draft)
+    taken = await client.post(
+        "/api/profile-drafts",
+        json={
+            "base_version_id": await base_version_id(app, "Adaptive v2"),
+            "profile": {
+                **(await base_profile(app, "Adaptive v2")).model_dump(
+                    mode="json", exclude={"annotations", "id"}
+                ),
+                "label": BASE_LABEL,
+            },
+            "change_summary": "manual",
+        },
+    )
 
-    assert landed["id"] == row["id"] and landed["label"] == "Old name"
-    labels = [r["row"]["label"] for r in data(await client.get("/api/profile-board"))["rows"]]
-    assert labels.count(BASE_LABEL) == 1
+    assert taken.status_code == 409, taken.text
 
 
-async def test_the_signature_in_force_follows_a_change_onto_the_version_rebuilt_under_the_new_name(
+async def test_the_signature_in_force_stays_with_the_version_a_change_lands_on(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     from gaggiclanker.domain.signature import ExpectationInput
@@ -321,12 +345,12 @@ async def test_the_signature_in_force_follows_a_change_onto_the_version_rebuilt_
         [ExpectationInput(tier="critical", kind="reached", phase=first_phase)],
         reason="why",
     )
-    row, draft = await _renamed_by_an_older_version(app, client, provider)
+    row, draft = await _older_version_made_active(app, client, provider)
     assert await signatures.count_in_force(draft["draft_version_id"]) == 1
 
     landed = await put(client, draft)
 
-    assert landed["current_version_id"] != draft["draft_version_id"]
+    assert landed["current_version_id"] == draft["draft_version_id"]
     assert await signatures.count_in_force(landed["current_version_id"]) == 1
 
 

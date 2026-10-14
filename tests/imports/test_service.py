@@ -204,10 +204,26 @@ async def test_an_imported_profile_joins_the_profile_list_off_and_once(
     assert [v.source for v in await board.list_versions(rows[0].id)] == ["import"]
 
 
-async def test_importing_a_version_a_profile_already_has_makes_no_second_profile(
+async def test_importing_a_file_whose_name_a_profile_still_has_adds_no_second_profile(
     service: ImportService, db: Database
 ) -> None:
-    """A version belongs to one profile, even when that profile has been renamed since."""
+    """The file is skipped when the live profile with its exact name has a version of its brew."""
+    from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
+
+    board = ProfileBoardRepository(db)
+    await service.import_files(files(PROFILE_FIXTURE))
+    again = await service.import_files(files(PROFILE_FIXTURE))
+
+    assert [r.label for r in await board.list_rows()] == ["Cremina v2"]
+    assert [item.status for item in again.items] == ["skipped"]
+
+
+async def test_importing_a_known_brew_under_another_name_lists_a_profile_of_its_own(
+    service: ImportService, db: Database
+) -> None:
+    """A version is what a profile brews and the name is the profile's: a file with the brew of
+    a profile that has since been renamed is that name's own profile, off, with a version of
+    its own that the first profile does not lose."""
     from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
 
     board = ProfileBoardRepository(db)
@@ -215,9 +231,23 @@ async def test_importing_a_version_a_profile_already_has_makes_no_second_profile
     (row,) = await board.list_rows()
     await board.update(row.id, BoardRowPatch(label="Renamed since"))
 
-    await service.import_files(files(PROFILE_FIXTURE))
+    result = await service.import_files(files(PROFILE_FIXTURE))
 
-    assert [r.label for r in await board.list_rows()] == ["Renamed since"]
+    rows = await board.list_rows()
+    assert [(r.label, r.on_machine) for r in rows] == [
+        ("Renamed since", False),
+        ("Cremina v2", False),
+    ]
+    assert result.items[0].label == "Cremina v2"
+    first, second = rows
+    assert first.current_version_id != second.current_version_id
+    owners = {
+        r.id: await db.fetch_value(
+            "SELECT board_id FROM profile_versions WHERE id = ?", (r.current_version_id,)
+        )
+        for r in rows
+    }
+    assert owners == {first.id: first.id, second.id: second.id}
 
 
 async def test_an_imported_profile_with_a_listed_label_is_a_version_of_it_not_active(

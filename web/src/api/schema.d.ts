@@ -4294,6 +4294,8 @@ export interface components {
             current_version_id: number;
             /** Deleted At */
             deleted_at?: string | null;
+            /** Device Label */
+            device_label?: string | null;
             /** Device Profile Id */
             device_profile_id?: string | null;
             /** Device Version Id */
@@ -7128,6 +7130,8 @@ export interface components {
              */
             mirrored: boolean;
             pin?: components["schemas"]["VersionPin"] | null;
+            /** Profile Name */
+            profile_name: string;
             set?: components["schemas"]["VersionSet"] | null;
             /**
              * Shot Count

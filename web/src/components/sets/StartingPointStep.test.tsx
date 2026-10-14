@@ -47,6 +47,7 @@ function profileVersion(overrides: Partial<ProfileVersionSummary>): ProfileVersi
     target_yield_g: 36,
     is_active: true,
     ...overrides,
+    profile_name: overrides.profile_name ?? overrides.label ?? "9 Bar Espresso",
   };
 }
 

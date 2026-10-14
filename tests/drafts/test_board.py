@@ -1012,6 +1012,7 @@ async def test_a_copy_that_another_board_profile_already_stands_on_is_never_shar
                 current_version_id=version.id,
                 device_profile_id=name,
                 device_version_id=version.id,
+                device_label=label,
                 origin="draft",
             )
         )

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.lineage import name_key
@@ -49,6 +49,12 @@ class BoardRow(BaseModel):
     current_version_id: int
     device_profile_id: str | None = None
     device_version_id: int | None = None
+    #: The name of the document recorded for the file: what the file was called when the app
+    #: recorded what it holds (a push: the profile's name; a recording of the file as it is: the
+    #: file's own). With the recorded version's brew it is "what the app last saw this file
+    #: hold", which is what a file read now is compared with. ``None`` exactly when
+    #: ``device_version_id`` is.
+    device_label: str | None = None
     #: Whether a sync should put the profile on the machine (or take it off). Independent of
     #: ``on_home_screen``, which is shown as "Starred" and only applies while it is on.
     on_machine: bool = True
@@ -78,12 +84,20 @@ class BoardRowWrite(BaseModel):
     current_version_id: int
     device_profile_id: str | None = None
     device_version_id: int | None = None
+    #: Required with ``device_version_id`` and absent without it.
+    device_label: str | None = None
     on_machine: bool = True
     on_home_screen: bool = True
     origin: BoardOrigin
     pending_draft_id: int | None = None
     #: Where the row's first version came from; it is recorded in the profile's version list.
     version_source: VersionSource = "machine"
+
+    @model_validator(mode="after")
+    def _recorded_name_goes_with_the_recorded_version(self) -> BoardRowWrite:
+        if (self.device_version_id is None) != (self.device_label is None):
+            raise ValueError("device_label is written with device_version_id, and only with it")
+        return self
 
 
 class BoardRowPatch(BaseModel):
@@ -95,6 +109,9 @@ class BoardRowPatch(BaseModel):
     current_version_id: int | None = None
     device_profile_id: str | None = None
     device_version_id: int | None = None
+    #: The name of the document recorded, written with ``device_version_id`` (see the write
+    #: model); cleared with it.
+    device_label: str | None = None
     on_machine: bool | None = None
     on_home_screen: bool | None = None
     origin: BoardOrigin | None = None
@@ -104,6 +121,24 @@ class BoardRowPatch(BaseModel):
     conflict_overruled_hash: str | None = None
     back_from_version_id: int | None = None
     deleted_at: str | None = None
+
+    @model_validator(mode="after")
+    def _recorded_name_goes_with_the_recorded_version(self) -> BoardRowPatch:
+        """What is recorded for a file is recorded with the name of the document, by the writer
+        that knows it; clearing the version clears the name."""
+        if "device_version_id" in self.model_fields_set:
+            if self.device_version_id is None:
+                if self.device_label is not None:
+                    raise ValueError(
+                        "device_label cannot be set while device_version_id is cleared"
+                    )
+                object.__setattr__(self, "device_label", None)
+                self.model_fields_set.add("device_label")
+            elif self.device_label is None:
+                raise ValueError("device_version_id is written with the name of the document")
+        elif "device_label" in self.model_fields_set:
+            raise ValueError("device_label is written with device_version_id, and only with it")
+        return self
 
 
 #: The columns of a profile-list row that name one of its versions. A row only names versions it
@@ -161,19 +196,21 @@ class ProfileBoardRepository(Repository):
         row = await self.db.fetch_one("SELECT * FROM profile_board WHERE id = ?", (row_id,))
         return self.to_model(BoardRow, row)
 
-    async def find_deleted_with_file(self, content_hash: str) -> BoardRow | None:
-        """A deleted app row whose active version has this content and whose machine file the
-        pull has not dealt with.
+    async def find_deleted_with_file(self, content_hash: str, name: str) -> BoardRow | None:
+        """A deleted app row called ``name`` whose active version has this brew and whose
+        machine file the pull has not dealt with.
 
         Putting the same profile back on the board while its old file is still waiting
         (a Set may be brewing it) revives that row instead of pushing a second identical copy.
+        It is the same profile only under the same name: a new profile that brews what a
+        deleted one brewed is a profile of its own.
         """
         row = await self.db.fetch_one(
             "SELECT b.* FROM profile_board b "
             "JOIN profile_versions cv ON cv.id = b.current_version_id "
-            "WHERE cv.content_hash = ? AND b.deleted_at IS NOT NULL "
+            "WHERE cv.content_hash = ? AND b.label = ? AND b.deleted_at IS NOT NULL "
             "AND b.device_profile_id IS NOT NULL AND b.origin = 'draft' ORDER BY b.id LIMIT 1",
-            (content_hash,),
+            (content_hash, name),
         )
         return self.to_model(BoardRow, row)
 
@@ -193,12 +230,19 @@ class ProfileBoardRepository(Repository):
         )
         return cursor.rowcount > 0
 
-    async def find_live_by_version(self, version_id: int) -> BoardRow | None:
-        """The live row whose current version is this one, if any."""
+    async def find_live_by_version(
+        self, version_id: int, *, named: str | None = None
+    ) -> BoardRow | None:
+        """The live row whose current version is this one, if any.
+
+        ``named`` keeps only a row with exactly that name: a version is what a profile brews, so
+        a draft's version can be another profile's (two new profiles with one brew share the
+        version until each lands), and "the draft is on the board" means the profile it is called.
+        """
         row = await self.db.fetch_one(
             "SELECT * FROM profile_board WHERE current_version_id = ? AND deleted_at IS NULL "
-            "ORDER BY id LIMIT 1",
-            (version_id,),
+            "AND (? IS NULL OR label = ?) ORDER BY id LIMIT 1",
+            (version_id, named, named),
         )
         return self.to_model(BoardRow, row)
 
@@ -259,15 +303,16 @@ class ProfileBoardRepository(Repository):
         cursor = await self.db.execute(
             """
             INSERT INTO profile_board
-                (label, current_version_id, device_profile_id, device_version_id,
+                (label, current_version_id, device_profile_id, device_version_id, device_label,
                  on_machine, on_home_screen, origin, pending_draft_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 write.label,
                 write.current_version_id,
                 write.device_profile_id,
                 write.device_version_id,
+                write.device_label,
                 int(write.on_machine),
                 int(write.on_home_screen),
                 write.origin,
@@ -483,12 +528,16 @@ class ProfileBoardRepository(Repository):
         )
         return self.to_model(BoardVersion, row)
 
-    async def find_live_by_listed_version(self, version_id: int) -> BoardRow | None:
-        """The first live profile that has had this version, if any."""
+    async def find_live_by_listed_version(
+        self, version_id: int, *, named: str | None = None
+    ) -> BoardRow | None:
+        """The first live profile that has had this version, if any (``named``: and is called
+        exactly that, see :meth:`find_live_by_version`)."""
         row = await self.db.fetch_one(
             "SELECT b.* FROM profile_board b JOIN profile_board_versions v ON v.board_id = b.id "
-            "WHERE v.version_id = ? AND b.deleted_at IS NULL ORDER BY b.id LIMIT 1",
-            (version_id,),
+            "WHERE v.version_id = ? AND b.deleted_at IS NULL AND (? IS NULL OR b.label = ?) "
+            "ORDER BY b.id LIMIT 1",
+            (version_id, named, named),
         )
         return self.to_model(BoardRow, row)
 
@@ -504,8 +553,8 @@ class ProfileBoardRepository(Repository):
         )
         return {int(r["v"]): int(r["n"]) for r in rows}
 
-    async def listed_hashes(self, board_id: int) -> set[str]:
-        """The content hashes of the versions this profile has had, but not the ones only found on
+    async def listed_brews(self, board_id: int) -> set[str]:
+        """The brew hashes of the versions this profile has had, but not the ones only found on
         the machine's file (``edited_on_machine``): those are what a conflict is about, and
         recording one must not make the conflict go away."""
         rows = await self.db.fetch_all(
@@ -516,8 +565,8 @@ class ProfileBoardRepository(Repository):
         )
         return {str(r["h"]) for r in rows}
 
-    async def live_version_hashes(self) -> dict[str, list[int]]:
-        """Content hash -> the live profiles (by id) that have had a version with it."""
+    async def live_version_brews(self) -> dict[str, list[int]]:
+        """Brew hash -> the live profiles (by id) that have had a version with it."""
         rows = await self.db.fetch_all(
             "SELECT pv.content_hash AS h, v.board_id AS b FROM profile_board_versions v "
             "JOIN profile_board b ON b.id = v.board_id AND b.deleted_at IS NULL "

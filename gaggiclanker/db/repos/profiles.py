@@ -1,11 +1,13 @@
 """`profile_versions` and `device_profiles` — the mirror of `/p/` on the machine.
 
 Two tables because a profile has two independent identities. What it *brews* is
-the canonical JSON and its sha256, and that is immutable: edit a phase and you
-have a new version, not a changed one. Where it *lives* is the device id, and
+the canonical JSON without its name and that JSON's sha256, and that is immutable: edit a
+phase and you have a new version, not a changed one. Where it *lives* is the device id, and
 that is mutable — it gains and loses the favourite star, moves position, is
 selected, is deleted. Putting the second lot in the hash would make every
-profile appear to change the moment somebody starred it.
+profile appear to change the moment somebody starred it. The name is neither: it belongs to
+the profile (``profile_board.label``), and a document that carries it is built by
+:func:`document_for`.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.base import JsonObject, utc_now
 from gaggiclanker.db.repository import Repository, row_to_dict
-from gaggiclanker.domain.models import Profile, canonical_document_json, document_hash
+from gaggiclanker.domain.models import Profile, brew_hash, canonical_document_json
 from gaggiclanker.domain.profile_recipe import profile_recipe
 
 __all__ = [
@@ -30,9 +32,11 @@ __all__ = [
     "ProfileVersionSummary",
     "ProfilesRepository",
     "VersionPin",
+    "document_for",
     "not_synthetic_sql",
     "stored_document",
     "stored_document_json",
+    "version_name_sql",
 ]
 
 
@@ -56,21 +60,59 @@ def not_synthetic_sql(alias: str) -> str:
     )
 
 
-def stored_document(version: ProfileVersionRow) -> dict[str, Any]:
-    """The version's stored canonical document: the `json` column, decoded, nothing added.
+def version_name_sql(alias: str) -> str:
+    """The name to show for the profile version ``alias`` is: a SQL expression.
 
-    What the chat is shown and what `draft_profile` merges its patch into, so a
-    document the agent copies from what it read is the document a draft starts from.
-    It is the canonical form (keys sorted, device-owned fields and firmware defaults
-    absent), not a re-rendering in the machine's shape: no `favorite`, no `selected`,
-    no `temperature: 0` the author never wrote.
+    A version belongs to a profile and the profile's name is ``profile_board.label``; a version
+    that belongs to none yet is called what its draft calls it, else what the machine file that
+    holds it is called, else the name its document had when it was first stored. Every reader
+    that shows a version's name asks this (or :meth:`ProfilesRepository.name_of`, which is the
+    same rule), so the stored label is never read for a name unless nothing else names it.
     """
-    return dict(version.profile or {})
+    return (
+        f"COALESCE((SELECT b.label FROM profile_board b WHERE b.id = {alias}.board_id), "  # noqa: S608 - the alias is a constant chosen by the caller
+        f"(SELECT d.label FROM profile_drafts d "
+        f"WHERE d.draft_version_id = {alias}.id AND d.label <> '' ORDER BY d.id DESC LIMIT 1), "
+        # A live file's name first (no ORDER BY: it would put a sort into every list query).
+        f"(SELECT f.label FROM device_profiles f "
+        f"WHERE f.current_version_id = {alias}.id AND f.label <> '' AND f.deleted_at IS NULL "
+        f"LIMIT 1), "
+        f"(SELECT f.label FROM device_profiles f "
+        f"WHERE f.current_version_id = {alias}.id AND f.label <> '' LIMIT 1), "
+        f"{alias}.label)"
+    )
 
 
-def stored_document_json(version: ProfileVersionRow) -> str:
-    """:func:`stored_document` as compact JSON, byte for byte the `json` column's text."""
-    return json.dumps(stored_document(version), separators=(",", ":"), ensure_ascii=False)
+def document_for(version: ProfileVersionRow, name: str) -> Profile:
+    """The profile document of ``version`` carrying ``name``: the one place a document is built
+    from a stored version.
+
+    A version is what its profile brews; the name is the profile's. Every document bound for
+    the machine, the editor, an export or the agent is this, with the owner's current name (a
+    new profile's draft: the draft's), because the label inside the stored document is only the
+    name it had when it was first stored.
+    """
+    if not version.profile:  # pragma: no cover - the column is NOT NULL
+        raise ValueError(f"profile version {version.id} has no document")
+    return Profile.model_validate({**version.profile, "label": name})
+
+
+def stored_document(version: ProfileVersionRow, name: str) -> dict[str, Any]:
+    """The version's stored canonical document under ``name``: the `json` column, decoded, with
+    the label the caller names and nothing else added.
+
+    What the chat is shown and what `draft_profile` merges its patch into, so a document the
+    agent copies from what it read is the document a draft starts from. It is the canonical
+    form (keys sorted, device-owned fields and firmware defaults absent), not a re-rendering
+    in the machine's shape: no `favorite`, no `selected`, no `temperature: 0` the author never
+    wrote. Built from :func:`document_for`'s inputs: same version, same name.
+    """
+    return {**(version.profile or {}), "label": name}
+
+
+def stored_document_json(version: ProfileVersionRow, name: str) -> str:
+    """:func:`stored_document` as compact JSON."""
+    return json.dumps(stored_document(version, name), separators=(",", ":"), ensure_ascii=False)
 
 
 class ProfileVersionRow(BaseModel):
@@ -82,6 +124,8 @@ class ProfileVersionRow(BaseModel):
     content_hash: str
     #: The profile this version belongs to, or ``None`` while it is on none.
     board_id: int | None = None
+    #: The name the document had when this version was first stored. The profile's name is
+    #: ``profile_board.label`` of ``board_id`` (a version is what the profile brews).
     label: str
     type: str
     utility: bool = False
@@ -129,7 +173,13 @@ class ProfileVersionSummary(BaseModel):
 
     id: int
     content_hash: str
+    #: The name this version's document had when it was first stored: history, not the
+    #: profile's name (that is ``profile_name``).
     label: str
+    #: What the profile this version belongs to is called now (``profile_board.label``); for a
+    #: version that belongs to none, what its draft or its machine file calls it, else
+    #: ``label``. What a picker shows.
+    profile_name: str
     type: str
     utility: bool = False
     #: `device` (mirrored off the machine), `import` (a file someone loaded), or
@@ -239,15 +289,18 @@ class ProfilesRepository(Repository):
         engine reports as "a profile changed" — a profile the machine serves
         every fifteen minutes must not look like news every fifteen minutes.
 
-        The label is *not* part of the hash's input beyond being a field of the
-        canonical JSON, so renaming a profile does create a new version. That is
-        deliberate for now: the name is what the shot header records and what the user
-        recognises. It is the profile's name that is meant to leave the hash, and a following
-        change takes it out, so nothing outside this class may rely on a version's label being
-        part of its identity.
+        A version of a profile is what it brews, found by the brew hash, which leaves the name
+        out: the same brew under another name is the same version. The name is the profile's
+        (``profile_board.label``); the label stored with a version is only the name its document
+        had when it was first stored, and nothing may read it as the profile's name
+        (:func:`document_for` builds the document with the profile's). A version on **no**
+        profile has no profile name, so it stays the document it came as: found by its brew and
+        the label it is stored under.
         """
-        content_hash = document_hash(profile)
-        existing = await self.find_version(content_hash, owner=owner)
+        content_hash = brew_hash(profile)
+        existing = await self.find_version(
+            content_hash, owner=owner, label=profile.label if owner is None else None
+        )
         if existing is not None:
             if device_json is not None and json.loads(device_json) != existing.device_profile:
                 # Same profile, textually different device document (a firmware
@@ -291,27 +344,32 @@ class ProfilesRepository(Repository):
         A file a profile stands on holds that profile's version of its content. A file no
         profile stands on (an extra copy of a profile's file, one put back after a reset while
         the list was paused, one made on the display) holds the stored version with that content
-        when exactly one profile owns one, so nothing is inserted and nothing is news; it holds a
-        version that belongs to none only when no profile, or several, own that content.
+        when exactly one profile owns one **and is called what the file is called**, so nothing is
+        inserted and nothing is news; otherwise it holds the version on no profile that is its
+        brew under its own name (a copy made on the display under another name is not that
+        profile's version: it is the document it came as).
         """
         owner = await self.standing_profile(device_id)
         if owner is None:
-            content_hash = document_hash(profile)
+            content_hash = brew_hash(profile)
             owned = await self.db.fetch_all(
-                "SELECT * FROM profile_versions WHERE content_hash = ? AND board_id IS NOT NULL",
-                (content_hash,),
+                "SELECT pv.* FROM profile_versions pv JOIN profile_board b ON b.id = pv.board_id "
+                "WHERE pv.content_hash = ? AND b.label = ?",
+                (content_hash, profile.label),
             )
             if len(owned) == 1:
                 return ProfileVersionRow.model_validate(dict(owned[0])), False
         return await self.ensure_version(profile, owner=owner, device_json=device_json)
 
     async def find_version(
-        self, content_hash: str, *, owner: int | None
+        self, content_hash: str, *, owner: int | None, label: str | None = None
     ) -> ProfileVersionRow | None:
-        """The version with this content that belongs to ``owner`` (``None``: to no profile)."""
+        """The version with this brew that belongs to ``owner``; for ``owner=None`` (a version on
+        no profile) the one stored under ``label`` as well, since those are unique by both."""
         row = await self.db.fetch_one(
-            "SELECT * FROM profile_versions WHERE content_hash = ? AND board_id IS ?",
-            (content_hash, owner),
+            "SELECT * FROM profile_versions WHERE content_hash = ? AND board_id IS ? "
+            "AND (? IS NULL OR label = ?)",
+            (content_hash, owner, label, label),
         )
         return self.to_model(ProfileVersionRow, row)
 
@@ -377,14 +435,35 @@ class ProfilesRepository(Repository):
         )
         return version.id
 
-    async def find_stored_version(self, content_hash: str) -> ProfileVersionRow | None:
-        """A version with this content that belongs to any profile or to none: whether a profile
-        document is stored at all, not whose it is. The oldest is the answer."""
+    async def find_version_of_profile_named(
+        self, content_hash: str, name: str
+    ) -> ProfileVersionRow | None:
+        """A version with this brew that the live profile called exactly ``name`` has, if there is
+        one: whether a file with that name and brew is already a profile's (the importer's skip).
+        The same brew under another name is not: it is a profile of its own."""
         row = await self.db.fetch_one(
-            "SELECT * FROM profile_versions WHERE content_hash = ? ORDER BY id LIMIT 1",
-            (content_hash,),
+            "SELECT pv.* FROM profile_board b "
+            "JOIN profile_versions pv ON pv.board_id = b.id "
+            "WHERE b.label = ? AND b.deleted_at IS NULL AND pv.content_hash = ? "
+            "ORDER BY pv.id LIMIT 1",
+            (name, content_hash),
         )
         return self.to_model(ProfileVersionRow, row)
+
+    async def served(self, version: ProfileVersionRow) -> ProfileVersionRow:
+        """The version as people and clients are shown it: its ``label`` and its ``profile``
+        under the name of the profile it belongs to (see :meth:`name_of`), not the name the
+        document happened to be first stored with."""
+        name = await self.name_of(version)
+        return version.model_copy(update={"label": name, "profile": stored_document(version, name)})
+
+    async def name_of(self, version: ProfileVersionRow) -> str:
+        """The name to show for this version (see :func:`version_name_sql`)."""
+        found = await self.db.fetch_value(
+            f"SELECT {version_name_sql('pv')} FROM profile_versions pv WHERE pv.id = ?",  # noqa: S608 - constant fragment
+            (version.id,),
+        )
+        return str(found) if found is not None else version.label
 
     async def find_version_by_label(self, label: str) -> ProfileVersionRow | None:
         """The version a name stands for.
@@ -439,7 +518,8 @@ class ProfilesRepository(Repository):
         )
         rows = await self.db.fetch_all(
             f"""
-            SELECT v.id, v.content_hash, v.label, v.type, v.utility, v.source, v.created_at,
+            SELECT v.id, v.content_hash, v.label, {version_name_sql("v")} AS profile_name,
+                   v.type, v.utility, v.source, v.created_at,
                    v.json AS document,
                    EXISTS (SELECT 1 FROM device_profiles d
                             WHERE d.current_version_id = v.id

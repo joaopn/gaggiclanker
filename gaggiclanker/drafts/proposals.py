@@ -40,8 +40,8 @@ from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftsRepository,
     ProfileDraftWrite,
 )
-from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
-from gaggiclanker.domain.models import Profile, document_hash
+from gaggiclanker.db.repos.profiles import ProfilesRepository, document_for
+from gaggiclanker.domain.models import Profile, brew_hash
 from gaggiclanker.domain.profile_policy import (
     PolicyBounds,
     PolicyChange,
@@ -66,7 +66,6 @@ __all__ = [
     "PinnedCopyName",
     "PreparedDraft",
     "TakenName",
-    "profile_from_version",
     "schema_errors",
 ]
 
@@ -266,12 +265,13 @@ class DraftProposals:
         base = await self.profiles.get_version(base_version_id)
         if base is None:
             raise NotFound(f"No profile version {base_version_id}")
+        base_name = await self.profiles.name_of(base)
         destination = await change_destination(
             LiveLineage(self.db),
             base_version_id=base_version_id,
-            base_label=base.label,
+            base_label=base_name,
         )
-        return base.label if destination is None else destination.label
+        return base_name if destination is None else destination.label
 
     async def editor_name(self, base_version_id: int, label: str) -> str | None:
         """What a hand-edited document is: ``None`` for a change to the base's profile (its label
@@ -283,10 +283,12 @@ class DraftProposals:
         return label
 
     async def pinned_copy_of(self, document: Profile) -> PinnedCopyName | None:
-        """The refusal for a document that is exactly the copy of a pin (live or unpinned), else
-        ``None``. One function for the constructor and the name check."""
+        """The refusal for a document that is exactly the copy of a pin (live or unpinned): the
+        copy's brew under the name of the profile that carries it. Else ``None``. A change that
+        goes back to the pinned brew under the original's name is not the copy. One function for
+        the constructor and the name check."""
         pins = PinsRepository(self.db)
-        record = await pins.by_copy_content(document_hash(document))
+        record = await pins.by_copy_content(brew_hash(document), document.label)
         detail = None if record is None else await pins.detail(record.id)
         if detail is None:
             return None
@@ -455,25 +457,13 @@ class DraftProposals:
         return row
 
     async def base_profile(self, version_id: int) -> Profile:
-        """The stored version a draft is derived from, or a 404."""
+        """The stored version a draft is derived from, as a document under its profile's name
+        (a version with no profile: the name its draft, its file or its first document gave it),
+        or a 404."""
         version = await self.profiles.get_version(version_id)
         if version is None:
             raise NotFound(f"No profile version {version_id}")
-        return profile_from_version(version)
-
-
-def profile_from_version(version: ProfileVersionRow) -> Profile:
-    """The stored canonical document, back as a :class:`Profile`.
-
-    The canonical form drops `id`, `favorite` and `selected` and collapses the
-    firmware's default transition, all of which are optional on the model — so
-    it re-validates without help. It is also the right starting point for a
-    diff: two profiles compared in canonical form differ only where they brew
-    differently.
-    """
-    if not version.profile:  # pragma: no cover - the column is NOT NULL
-        raise Unprocessable(f"Profile version {version.id} has no document")
-    return Profile.model_validate(version.profile)
+        return document_for(version, await self.profiles.name_of(version))
 
 
 def schema_errors(exc: ValidationError) -> list[str]:

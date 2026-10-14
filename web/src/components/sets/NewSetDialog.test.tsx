@@ -66,6 +66,7 @@ function profileVersion(overrides: Partial<ProfileVersionSummary>): ProfileVersi
     is_active: true,
     set: null,
     ...overrides,
+    profile_name: overrides.profile_name ?? overrides.label ?? "9 Bar Espresso",
   };
 }
 
@@ -488,7 +489,7 @@ describe("NewSetDialog", () => {
 describe("fillFromProfile", () => {
   const empty = { targetYieldG: "" };
   const none = { targetYieldG: null };
-  const nineBar = { label: "9 Bar", target_yield_g: 36 };
+  const nineBar = { profile_name: "9 Bar", target_yield_g: 36 };
 
   it("fills an empty field and remembers what it filled", () => {
     expect(fillFromProfile(empty, none, nineBar)).toEqual({
@@ -503,7 +504,7 @@ describe("fillFromProfile", () => {
   });
 
   it("gives a decimal back as the profile wrote it", () => {
-    const lever = { label: "Lever", target_yield_g: 36.5 };
+    const lever = { profile_name: "Lever", target_yield_g: 36.5 };
     expect(fillFromProfile(empty, none, lever).values.targetYieldG).toBe("36.5");
   });
 });

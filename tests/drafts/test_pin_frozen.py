@@ -331,13 +331,17 @@ async def test_the_name_check_says_what_the_put_would_say_about_an_unpinned_copy
 
 
 async def _a_stored_draft_equal_to_the_copy(app: FastAPI, client: httpx.AsyncClient) -> Any:
-    """A pin, and a waiting draft made before it whose document is exactly the pin's copy."""
+    """A pin, and a waiting draft made before it for a new profile with the copy's name and brew."""
     set_id, version_id = await _set_with_version(app, client)
     made = data(await _pin(client, set_id, version_id))["pin"]
     base = await base_version_id(app, BASE_LABEL)
     draft = await ProfileDraftsRepository(app.state.db).create(
         ProfileDraftWrite(
-            base_version_id=base, draft_version_id=made["profile_version_id"], made_by="edit"
+            base_version_id=base,
+            draft_version_id=made["profile_version_id"],
+            label=NAME,
+            new_profile=True,
+            made_by="edit",
         )
     )
     return made, draft

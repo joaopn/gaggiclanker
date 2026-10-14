@@ -331,7 +331,7 @@ phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; ended by Volume
 [Identity and status]
 Date and time: 2026-03-03 08:25
 Set version: v1 of Set 1
-Profile as brewed: Medium 18g 1:2
+Profile: Medium 18g 1:2
 Machine's shot number: 000106
 [Outcome]
 Shot time: 24.0 s

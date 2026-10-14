@@ -88,7 +88,8 @@ class DuplicateRecipe(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: The profile the version brews; ``None`` for a version that names no profile (an older Set's).
+    #: The name of the profile the version brews; ``None`` for a version that names no profile
+    #: (an older Set's).
     profile_label: str | None = None
     grind_setting: str | None = None
     grind_value: float | None = None

@@ -43,7 +43,11 @@ from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.machines import MachineRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository, not_synthetic_sql
+from gaggiclanker.db.repos.profiles import (
+    ProfilesRepository,
+    not_synthetic_sql,
+    version_name_sql,
+)
 from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
@@ -385,11 +389,12 @@ async def planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, s
         version = await profiles.get_version(entry.profile_version_id)
         if version is None or not version.profile:
             continue
-        verdict = detect_style(version.profile, dose_g=entry.dose_g)
+        name = await profiles.name_of(version)
+        verdict = detect_style(version.profile, dose_g=entry.dose_g, label=name)
         if verdict.style not in ("unknown", "utility"):
             return verdict.style, (
                 f"the profile of the closest similar Set "
-                f"({entry.set_name} {entry.version_label}, {version.label})"
+                f"({entry.set_name} {entry.version_label}, {name})"
             )
     return DEFAULT_STYLE, "nothing comparable has been brewed on this kit yet"
 
@@ -404,7 +409,7 @@ async def profile_candidates(db: Database) -> list[ProfileCandidate]:
     """
     rows = await db.fetch_all(
         f"""
-        SELECT pv.id, pv.label, pv.json,
+        SELECT pv.id, {version_name_sql("pv")} AS label, pv.json,
                (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = pv.id) AS shot_count
           FROM profile_board b
           JOIN profile_versions pv ON pv.id = b.current_version_id

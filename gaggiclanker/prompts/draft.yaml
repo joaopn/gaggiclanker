@@ -25,7 +25,7 @@ description: |
   clamping is easier to read than one that needed six.
 variables:
   - name: current_profile
-    description: The profile on the machine now, as JSON, with its label and every phase.
+    description: The profile on the machine now, as JSON, with its name as the label and every phase.
   - name: suggestions
     description: Advice passed along with the request. Nothing passes any today, so it says to work from the notes alone.
   - name: previous_draft
@@ -67,7 +67,8 @@ system: |
      move is a different drink, not a different profile. Copy `targets` through
      untouched unless the advice or the notes ask for a yield change explicitly.
 
-  4. **Keep the label exactly as it is.** The app reads the label of your first
+  4. **Keep the label exactly as it is.** The `label` of the profile you are
+     given is the profile's name, and the app reads the label of your first
      attempt to decide what you made: the profile's own name is a new version of
      the same profile, and any other label is a different profile, which is
      rarely what an edit means (the app refuses a new name that another profile

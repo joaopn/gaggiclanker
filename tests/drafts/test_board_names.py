@@ -122,12 +122,14 @@ async def test_a_file_matches_the_row_of_its_exact_name_and_not_the_other_one(
     assert attached[marked_row] == "p3"
 
 
-async def test_a_file_carrying_the_marker_still_joins_the_row_that_holds_its_content(
+async def test_a_file_carrying_the_marker_is_a_profile_of_its_own_whatever_the_history_holds(
     writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
-    """The state the old equivalence served: a profile's stored history holds a version whose
-    name carries the marker, and the machine holds that file under a new id. Content finds the
-    profile; the name never had to."""
+    """A profile's stored history holds a brew, and the machine holds a file with that brew under
+    a different name ("X [AI]") and a new id. A file is its brew **and** its name, so it is not
+    that profile's file: it joins the list as a profile of its own. (A file with a profile's brew
+    under an older name of it is a name-only difference, which the sync reads as a new file until
+    a file is matched by its id.)"""
     app, client = writes_on
     await pull(app)
     row = row_for(await get_board(client), fake_device.profiles[0]["label"])["row"]
@@ -148,10 +150,10 @@ async def test_a_file_carrying_the_marker_still_joins_the_row_that_holds_its_con
     found = await pull(app)
 
     board = await get_board(client)
-    assert len(board["rows"]) == rows
+    assert len(board["rows"]) == rows + 1
     [joined] = [i for i in summary_of(found)["adopted"] if i["device_id"] == "gone"]
-    assert joined["reason"] == "attached"
-    assert row_for(board, row["label"])["machine"]["device_id"] == "gone"
+    assert joined["reason"] == "unseen"
+    assert row_for(board, f"{row['label']} [AI]")["machine"]["device_id"] == "gone"
 
 
 async def test_a_never_seen_file_with_a_marker_is_not_a_conflict_on_the_profile_without_one(

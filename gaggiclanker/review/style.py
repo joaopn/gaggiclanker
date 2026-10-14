@@ -96,8 +96,13 @@ def detect_style(
     summary: dict[str, Any] | None = None,
     duration_s: float | None = None,
     profile_name: str = "",
+    label: str = "",
 ) -> StyleVerdict:
     """Classify a shot. ``profile`` is the profile document it was brewed with.
+
+    ``label`` is the profile's name (the profile list's, not whatever the stored document was
+    first called): the words a person chose for it say the style as the phase names do. The
+    document's own ``label`` is never read.
 
     ``profile_name`` is the name the shot's own `.slog` header recorded — the
     one thing every shot has, even one whose profile the mirror never captured.
@@ -114,7 +119,7 @@ def detect_style(
         verdict = _from_profile(profile, dose_g)
         if verdict is not None:
             return verdict
-        named = _from_phase_names(profile)
+        named = _from_phase_names(profile, label)
         if named is not None:
             return named
     named = _from_name(profile_name)
@@ -342,14 +347,13 @@ def _decline(phases: list[dict[str, Any]]) -> tuple[float, float] | None:
 # ── tier 2: what the author called the phases ─────────────────────────
 
 
-def _from_phase_names(profile: dict[str, Any]) -> StyleVerdict | None:
+def _from_phase_names(profile: dict[str, Any], name: str) -> StyleVerdict | None:
     haystack = " ".join(
         str(phase.get("name", "")).lower()
         for phase in profile.get("phases", [])
         if isinstance(phase, dict)
     )
-    label = str(profile.get("label", "")).lower()
-    return _keyword_verdict(f"{label} {haystack}", "a phase or the label")
+    return _keyword_verdict(f"{name.lower()} {haystack}", "a phase or the label")
 
 
 def _from_name(profile_name: str) -> StyleVerdict | None:

@@ -942,7 +942,10 @@ async def get_profile(ctx: ToolContext, args: GetProfileInput) -> GetProfileOutp
             f"No profile version {args.profile_version_id}. list_profiles lists the ones "
             "this archive has."
         )
-    document = stored_document(version)
+    # Under the profile's own name: the label the document was first stored with may be an
+    # older name of it.
+    name = await ProfilesRepository(ctx.db).name_of(version)
+    document = stored_document(version, name)
     facts = profile_recipe(document)
     shot_count: int | None = None
     if ctx.scope.kind != "set":
@@ -955,7 +958,7 @@ async def get_profile(ctx: ToolContext, args: GetProfileInput) -> GetProfileOutp
         )
     return GetProfileOutput(
         profile_version_id=version.id,
-        label=version.label,
+        label=name,
         type=version.type,
         utility=version.utility,
         source=version.source,
@@ -1801,7 +1804,9 @@ async def propose_signature(
     in_force = await service.count_in_force(args.profile_version_id)
     return ProposeSignatureOutput(
         profile_version_id=args.profile_version_id,
-        profile_label=version.label if version is not None else "",
+        profile_label=await ProfilesRepository(ctx.db).name_of(version)
+        if version is not None
+        else "",
         proposed=[
             ProposedExpectation(
                 id=row.id,
@@ -2106,7 +2111,9 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
             + "."
         )
 
-    document = _merge(dict(version.profile or {}), args.patch)
+    document = _merge(
+        stored_document(version, await ProfilesRepository(ctx.db).name_of(version)), args.patch
+    )
     carried: DraftSignature | None = None
     if args.signature:
         # Validated before anything is stored, against the phases the draft will have, so a
@@ -2387,7 +2394,7 @@ async def propose_initial_recipe(
         if fork is None or not fork.profile:  # pragma: no cover - checked by the design route
             raise ValueError(f"The profile to fork, version {fork_id}, is gone.")
         base_id = fork_id
-        document = _merge(dict(fork.profile), args.profile.patch)
+        document = _merge(stored_document(fork, await profiles.name_of(fork)), args.profile.patch)
     else:
         # Written from zero: the document is the patch and nothing else. The
         # empty baseline is only the base a draft must have; the draft is marked new, so the

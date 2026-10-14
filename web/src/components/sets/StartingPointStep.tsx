@@ -387,7 +387,7 @@ function OptionCard({
         ) : option.profile_version_id ? (
           <>
             Profile: the one you already have (
-            {profile?.label ?? `version ${option.profile_version_id}`}).
+            {profile?.profile_name ?? `version ${option.profile_version_id}`}).
             {stagesDraft(option, profile) ? (
               <span data-testid="option-stages-draft"> {draftSentence(option, profile)}</span>
             ) : null}

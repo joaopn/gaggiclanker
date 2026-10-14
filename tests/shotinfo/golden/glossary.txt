@@ -13,7 +13,7 @@ The first line says whether the shot was read against a signature in force (`sig
 - Set version [base]: The version of the Set the shot is filed under, and that Set's id: which recipe it was brewed on. A shot in no Set says so.
 - Label [base]: The person's verdict on the shot. Keep: this is what good tastes like here (the target). Improve: what is being worked on. Discard: the shot went wrong rather than the recipe (a knocked cup, a bad puck), so it is not evidence. A shot nobody labelled says not labelled.
 - Counted [base]: Whether the shot's numbers count towards the Set's spread and a prediction's evidence. Not counted when it is quarantined (the file never parsed, so its numbers are whatever the header held), stopped early (its time measures the interruption) or discarded. Read such a shot, but never average it.
-- Profile as brewed [base]: The profile the machine actually ran, by its label, or by the name the machine reported when the archive holds no copy of it.
+- Profile [base]: The profile the shot was brewed on, by the name the profile has now (a profile renamed since shows its new name), or by the name the machine logged when the archive holds no copy of it.
 - Machine's shot number [base]: The number the espresso machine itself gave the shot, as its own history shows it. Not the id to cite: that is the shot id.
 
 [Outcome]

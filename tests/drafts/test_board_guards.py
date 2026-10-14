@@ -107,14 +107,15 @@ async def test_a_deleted_rows_removal_never_takes_the_file_a_live_row_would_hold
     # The live row has let go of its file (a refusal once released it), and a deleted row
     # stands on that file with the same content: the live row must not take it back.
     await app.state.db.execute(
-        "UPDATE profile_board SET device_profile_id = NULL, device_version_id = NULL WHERE id = ?",
+        "UPDATE profile_board SET device_profile_id = NULL, device_version_id = NULL, "
+        "device_label = NULL WHERE id = ?",
         (first["row"]["id"],),
     )
     await app.state.db.execute(
         "INSERT INTO profile_board (label, current_version_id, device_profile_id, "
-        "device_version_id, origin, deleted_at) VALUES ('Old', ?, ?, ?, 'draft', "
+        "device_version_id, device_label, origin, deleted_at) VALUES ('Old', ?, ?, ?, ?, 'draft', "
         "'2026-10-01T00:00:00.000Z')",
-        (version, file, version),
+        (version, file, version, APP_LABEL),
     )
 
     run = await pull(app)

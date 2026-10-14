@@ -77,9 +77,9 @@ async def make_profile_version(
     """A stored profile version with this label, through the real repository.
 
     Built from a shipped fixture rather than hand-written JSON so that the row
-    is one the parser and the content hash both accept — two versions here
-    differ by their label, which is enough to make them two versions
-    (`ProfilesRepository.ensure_version` explains why a rename counts).
+    is one the parser and the content hash both accept. A version is what a profile brews,
+    whatever it is called, so two labels alone would be one version: the label is also the
+    document's description, which is what makes two labels two brews.
 
     ``temperature`` is what the document brews at, which is where a Set
     version's temperature comes from: 0 is the firmware's "not set", so passing
@@ -91,6 +91,7 @@ async def make_profile_version(
         ).read_text()
     )
     document["label"] = label
+    document["description"] = label
     if temperature is not None:
         document["temperature"] = temperature
     profile = Profile.model_validate(document)

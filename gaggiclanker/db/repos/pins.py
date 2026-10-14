@@ -2,7 +2,7 @@
 
 A pin is a **record**, not a state of the profile-list row. It names the Set version, the row that
 carries the copy and the copy itself: the pinned version's profile under the pin's name, a
-profile version of its own because the label is part of the content hash. The copy belongs to one
+profile version of its own because a version belongs to one profile. The copy belongs to one
 Set version for ever (``profile_version_id`` is unique), so a shot brewed on it files under that
 version even after the pin is gone, and no other version can claim it.
 
@@ -23,6 +23,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 
@@ -73,8 +74,9 @@ class PinDetail(PinRow):
     version_label: str
     #: The profile the pinned version brews (the original, the one that judges the pin's shots).
     original_version_id: int | None = None
+    #: The original profile's name (its owner's).
     original_label: str | None = None
-    #: The name the copy has on the machine (the profile-list row's label).
+    #: The name the copy has on the machine (the label of the profile-list row that carries it).
     name: str
     #: Shots filed under the pinned version whose profile is the copy.
     shot_count: int = 0
@@ -84,17 +86,17 @@ _DETAIL_SELECT = f"""
     SELECT p.*, v.set_id AS set_id, s.name AS set_name, s.archived AS set_archived,
            {label_sql("v")} AS version_label,
            v.profile_version_id AS original_version_id,
-           opv.label AS original_label,
-           cpv.label AS name,
+           {version_name_sql("opv")} AS original_label,
+           cb.label AS name,
            (SELECT COUNT(*) FROM shots sh
              WHERE sh.set_version_id = p.set_version_id
                AND sh.profile_version_id = p.profile_version_id) AS shot_count
     FROM set_version_pins p
     JOIN set_versions v ON v.id = p.set_version_id
     JOIN sets s ON s.id = v.set_id
-    JOIN profile_versions cpv ON cpv.id = p.profile_version_id
+    JOIN profile_board cb ON cb.id = p.board_id
     LEFT JOIN profile_versions opv ON opv.id = v.profile_version_id
-"""  # noqa: S608 - the only interpolation is the version label expression, a constant
+"""  # noqa: S608 - the only interpolations are constant SQL expressions
 
 
 class PinsRepository(Repository):
@@ -123,13 +125,15 @@ class PinsRepository(Repository):
         )
         return self.to_model(PinRow, row)
 
-    async def by_copy_content(self, content_hash: str) -> PinRow | None:
-        """The pin record, live or not, whose copy has exactly this content (the first)."""
+    async def by_copy_content(self, content_hash: str, name: str) -> PinRow | None:
+        """The pin record, live or not, whose copy is this brew under this name (the first): the
+        copy's version brews it and the row that carries the copy is called ``name``."""
         row = await self.db.fetch_one(
             "SELECT p.* FROM set_version_pins p "
             "JOIN profile_versions pv ON pv.id = p.profile_version_id "
-            "WHERE pv.content_hash = ? ORDER BY p.id LIMIT 1",
-            (content_hash,),
+            "JOIN profile_board b ON b.id = p.board_id "
+            "WHERE pv.content_hash = ? AND b.label = ? ORDER BY p.id LIMIT 1",
+            (content_hash, name),
         )
         return self.to_model(PinRow, row)
 
@@ -238,15 +242,19 @@ class PinsRepository(Repository):
     async def is_copy(self, profile_version_id: int) -> bool:
         return await self.by_copy(profile_version_id) is not None
 
-    async def set_version_naming_content(self, content_hash: str) -> tuple[str, str] | None:
-        """The Set and version name of a Set version that brews a profile version with this
-        content, if any (the first). A brew a Set version names can never become a pin's copy."""
+    async def set_version_naming_content(
+        self, content_hash: str, name: str
+    ) -> tuple[str, str] | None:
+        """The Set and version name of a Set version that brews this brew on a profile called
+        ``name``, if any (the first). A profile a Set version brews can never become a pin's
+        copy."""
         row = await self.db.fetch_one(
             f"SELECT s.name AS set_name, {label_sql('v')} AS version_label "  # noqa: S608
             "FROM set_versions v JOIN sets s ON s.id = v.set_id "
             "JOIN profile_versions pv ON pv.id = v.profile_version_id "
-            "WHERE pv.content_hash = ? ORDER BY v.id LIMIT 1",
-            (content_hash,),
+            f"WHERE pv.content_hash = ? AND {version_name_sql('pv')} = ? "
+            "ORDER BY v.id LIMIT 1",
+            (content_hash, name),
         )
         return None if row is None else (str(row["set_name"]), str(row["version_label"]))
 

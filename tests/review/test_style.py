@@ -113,11 +113,9 @@ def test_allonge_needs_a_dose_to_be_a_ratio() -> None:
 
 def test_phase_names_are_the_fallback() -> None:
     """A profile whose numbers say nothing, but whose author did."""
-    unreadable: dict[str, Any] = {
-        "label": "Turbo experiment",
-        "phases": [{"name": "go", "pump": None}],
-    }
-    verdict = detect_style(unreadable)
+    unreadable: dict[str, Any] = {"phases": [{"name": "go", "pump": None}]}
+    # The profile's name is the profile list's, passed in; the document's own label is not read.
+    verdict = detect_style(unreadable, label="Turbo experiment")
     assert verdict.style == "turbo"
     assert verdict.tier == "phase_names"
 

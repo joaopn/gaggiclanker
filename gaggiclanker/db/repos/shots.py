@@ -21,6 +21,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gaggiclanker.db.repos.base import JsonList, JsonObject, JsonText, utc_now
+from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
@@ -210,6 +211,8 @@ class ShotListRow(BaseModel):
     profile_version_id: int | None = None
     profile_id_on_device: str = ""
     profile_name_on_device: str = ""
+    #: The name of the profile the shot's version belongs to now (``version_name_sql``); what
+    #: the machine called it when the shot was pulled is ``profile_name_on_device``.
     profile_label: str | None = None
     final_weight_g: float | None = None
     volume_g: float | None = None
@@ -404,7 +407,7 @@ HAS_SCALE_SQL = """
 _LIST_COLUMNS = f"""
     s.id, s.device_id, s.source, s.started_at, s.start_epoch, s.duration_ms,
     s.profile_version_id, s.profile_id_on_device, s.profile_name_on_device,
-    v.label AS profile_label,
+    {version_name_sql("v")} AS profile_label,
     s.final_weight_g,
     COALESCE(s.final_weight_g, s.index_volume_g) AS volume_g,
     s.index_rating, s.index_avg_temp_c, s.index_max_pressure_bar, s.index_avg_flow_ml_s,

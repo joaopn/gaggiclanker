@@ -55,7 +55,7 @@ import structlog
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
 from gaggiclanker.db.repos.sets import (
     SetRow,
     SetsRepository,
@@ -629,7 +629,10 @@ class StartingPointService:
                     ),
                 },
             )
-        document = {**version.profile, "temperature": option.temperature_c}
+        # Under the profile's own name: the label stored with the version may be an older name
+        # of it, and a draft under another name than its base's profile's is a new profile.
+        name = await ProfilesRepository(self.db).name_of(version)
+        document = {**stored_document(version, name), "temperature": option.temperature_c}
         # The same `clamp` and the same bounds `create_manual` is about to
         # apply, so this is what the stored draft will brew at.
         clamped, _ = clamp(Profile.model_validate(document), await self.drafts.bounds())

@@ -1222,7 +1222,10 @@ class SyncEngine:
             )
             relinked += await self.shots.link_unlinked_by_device_profile(profile.id, version.id)
             seen.append(profile.id)
-            if created or existing is None or existing.current_version_id != version.id:
+            # A file renamed on the display holds the same version (a version is what it brews),
+            # but the machine's list changed, which is news.
+            renamed = existing is not None and existing.label != profile.label
+            if created or existing is None or existing.current_version_id != version.id or renamed:
                 update.profiles_changed += 1
                 await self.runs.add_event(
                     "profile_changed",

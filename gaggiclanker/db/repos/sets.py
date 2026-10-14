@@ -68,6 +68,7 @@ from pydantic import (
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.shots import NEEDS_SET_SQL
 from gaggiclanker.db.repos.version_names import (
     label_sql,
@@ -264,8 +265,9 @@ class SetVersionRow(BaseModel):
     #: not "the newest": it is read off the Set's pointer.
     is_current: bool = False
     profile_version_id: int | None = None
-    #: The profile's label, joined in. A version that names a profile the mirror
-    #: has since dropped still has its id; the label is then NULL.
+    #: The profile's name, joined in (``version_name_sql``: the name of the profile that owns
+    #: the version, never the name the version's document was first stored with). A version that
+    #: names a profile the mirror has since dropped still has its id; the label is then NULL.
     profile_label: str | None = None
     grind_setting: str | None = None
     grind_value: float | None = None
@@ -609,7 +611,8 @@ class SetRow(BaseModel):
     #: no other Set has. ``None`` while the Set is being designed, and for an old Set that never
     #: named a profile.
     board_id: int | None = None
-    #: The profile's name (the version's, for a Set with no profile row).
+    #: The profile's name (the Set's profile row; for a Set with no profile, what the current
+    #: version is called: ``version_name_sql``).
     profile_label: str | None = None
     #: Where this Set's first recipe was copied from, when it was started as a copy of another
     #: Set's version. Display only: it is never read as evidence, never handed to an agent
@@ -1100,7 +1103,7 @@ _SET_SELECT = f"""
            COALESCE({label_sql("cur")}, '') AS current_version_label,
            {state_sql("cur")},
            cur.profile_version_id AS profile_version_id,
-           COALESCE(pb.label, pv.label) AS profile_label,
+           COALESCE(pb.label, {version_name_sql("pv")}) AS profile_label,
            cfs.id AS copied_from_set_id,
            cfs.name AS copied_from_set_name,
            {label_sql("cf")} AS copied_from_version_label,
@@ -1124,7 +1127,7 @@ _SET_SELECT = f"""
 #: Joined rather than looked up by the caller, because the shot page is handed
 #: one version and has no list to resolve it against.
 _VERSION_SELECT = f"""
-    SELECT v.*, pv.label AS profile_label,
+    SELECT v.*, {version_name_sql("pv")} AS profile_label,
            -- The brew temperature, out of the profile's own document: the
            -- firmware's 0 means "not set", which is the same rule
            -- `profile_recipe` applies to the same field. Read here rather than

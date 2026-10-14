@@ -56,6 +56,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.vocab import ROAST_LEVELS
@@ -143,6 +144,8 @@ class SimilarSet(BaseModel):
     profile_temperature_c: float | None = None
     ratio: float | None = None
     profile_version_id: int | None = None
+    #: The profile's name (``version_name_sql``): its owner's, else what a draft or a machine
+    #: file calls it, else the name its document was first stored with.
     profile_label: str | None = None
 
     outcome: SimilarOutcome = SimilarOutcome()
@@ -201,7 +204,7 @@ SELECT v.id                                         AS set_version_id,
              AND json_extract(pv.json, '$.temperature') > 0
             THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
        v.profile_version_id,
-       pv.label                                     AS profile_label,
+       {version_name_sql("pv")}                     AS profile_label,
        s.name                                       AS set_name,
        s.grinder_id,
        g.name                                       AS grinder_name,

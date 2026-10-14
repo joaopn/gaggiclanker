@@ -36,7 +36,7 @@ from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.domain.models import (
     Profile,
@@ -307,8 +307,14 @@ class ProfileDraftService:
         return ProfileDraftDetail(
             draft=draft,
             is_new=draft.is_new,
-            base_profile=None if draft.is_new or base is None else base.profile,
-            draft_profile=drafted.profile if drafted else None,
+            base_profile=None
+            if draft.is_new or base is None
+            else stored_document(base, await self.profiles.name_of(base)),
+            draft_profile=stored_document(
+                drafted, draft.draft_label or await self.profiles.name_of(drafted)
+            )
+            if drafted
+            else None,
         )
 
     # ── internals ────────────────────────────────────────────────────
@@ -334,8 +340,10 @@ class ProfileDraftService:
         if parent is not None and parent.draft_version_id is not None:
             version = await self.profiles.get_version(parent.draft_version_id)
             if version is not None:
+                named = parent.draft_label or await self.profiles.name_of(version)
                 previous = (
-                    f"{parent.change_summary}\n\n{json.dumps(version.profile, indent=2)}"
+                    f"{parent.change_summary}\n\n"
+                    f"{json.dumps(stored_document(version, named), indent=2)}"
                     if version.profile
                     else parent.change_summary
                 )

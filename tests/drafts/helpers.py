@@ -234,9 +234,13 @@ async def assert_versions_owned(db: Any) -> None:
     * a version a profile lists is that profile's;
     * a profile's active version is one it lists;
     * a profile's own columns name only versions it owns;
-    * no profile holds one brew twice, and no two versions on no profile share a brew;
+    * no profile holds one brew twice, and no two versions on no profile share a brew and a label;
+    * every stored hash is the brew hash of the stored document (a version is what it brews);
+    * a profile records the name of its file's document exactly when it records the file's version;
     * a file the mirror holds holds a version of the profile standing on it.
     """
+    from gaggiclanker.domain.models import Profile, brew_hash
+
     unowned = await db.fetch_all(
         "SELECT pbv.board_id, pbv.version_id, pv.board_id AS owner FROM profile_board_versions pbv "
         "JOIN profile_versions pv ON pv.id = pbv.version_id WHERE pv.board_id IS NOT pbv.board_id"
@@ -261,9 +265,16 @@ async def assert_versions_owned(db: Any) -> None:
     assert [dict(r) for r in unlisted] == [], "a profile's active version is not one of its own"
     twice = await db.fetch_all(
         "SELECT board_id, content_hash, COUNT(*) AS n FROM profile_versions "
-        "GROUP BY board_id, content_hash HAVING n > 1"
+        "GROUP BY board_id, content_hash, CASE WHEN board_id IS NULL THEN label END HAVING n > 1"
     )
     assert [dict(r) for r in twice] == [], "a brew is held twice by one profile"
+    for stored in await db.fetch_all("SELECT id, json, content_hash FROM profile_versions"):
+        live = brew_hash(Profile.model_validate(json.loads(stored["json"])))
+        assert stored["content_hash"] == live, f"version {stored['id']} is not under its brew hash"
+    unnamed = await db.fetch_all(
+        "SELECT id FROM profile_board WHERE (device_version_id IS NULL) != (device_label IS NULL)"
+    )
+    assert [dict(r) for r in unnamed] == [], "a recorded file has no name, or a name with no file"
     wrong_file = await db.fetch_all(
         "SELECT d.device_id, pv.board_id AS owner, b.id AS standing "
         "FROM device_profiles d JOIN profile_versions pv ON pv.id = d.current_version_id "

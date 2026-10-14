@@ -72,6 +72,8 @@ from gaggiclanker.db.repos.profiles import (
     SYNTHETIC_BASE_LABEL,
     ProfilesRepository,
     ProfileVersionRow,
+    document_for,
+    stored_document,
 )
 from gaggiclanker.db.repos.sets import LiveSet, RollbackWrite, SetsRepository, VersionWriteResult
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
@@ -109,6 +111,7 @@ from gaggiclanker.drafts.live_lineage import LiveLineage
 from gaggiclanker.drafts.machine import (
     CHANGED_SINCE,
     NO_SUCCESSOR,
+    FileContent,
     MachineState,
     Placed,
     Removal,
@@ -118,11 +121,9 @@ from gaggiclanker.drafts.machine import (
 )
 from gaggiclanker.drafts.proposals import (
     DraftProposals,
-    DraftTarget,
     PinFrozen,
     PinnedCopyName,
     TakenName,
-    profile_from_version,
     schema_errors,
 )
 from gaggiclanker.drafts.standing import RowFacts, StandingState, classify
@@ -417,6 +418,16 @@ class BoardView(BaseModel):
 
 
 @dataclass
+class _MirrorConflict:
+    """The machine's side of a conflict: the version its brew is, the name the file has, and the
+    hash of the document (brew and name) the person is shown and answers about."""
+
+    version: ProfileVersionRow
+    name: str
+    document_hash: str
+
+
+@dataclass
 class _Destination:
     """What a put of one draft would do: continue ``row``, bring ``revived`` back, or add."""
 
@@ -483,7 +494,7 @@ class BoardService:
         the push and "make active" all ask this one question.
         """
         try:
-            profile = profile_from_version(version)
+            profile = document_for(version, await self.profiles.name_of(version))
             _, changes = enforce(profile, await self.proposals.bounds())
         except (ProfileRejected, Unprocessable, ValidationError) as exc:
             return str(exc)
@@ -525,13 +536,13 @@ class BoardService:
                     active_version=ActiveVersion(
                         version_id=plan.version.id,
                         short_hash=short_hash(plan.version.content_hash),
-                        label=plan.version.label,
+                        label=plan.row.label,
                         type=plan.version.type,
                         utility=plan.version.utility,
                         source=entry.source if entry is not None else "machine",
                         created_at=plan.version.created_at,
                         shots_brewed=counts.get(plan.version.id, 0),
-                        profile=plan.version.profile,
+                        profile=stored_document(plan.version, plan.row.label),
                     ),
                     set=_set_brewing(brews.get(plan.row.id)),
                     in_conflict=plan.conflict_file is not None,
@@ -575,7 +586,11 @@ class BoardService:
     async def _conflict_summary(self, plan: RowPlan) -> ConflictSummary | None:
         if plan.conflict_file is None or plan.conflict_hash is None:
             return None
-        stored = await self.profiles.find_version(plan.conflict_hash, owner=plan.row.id)
+        stored = (
+            None
+            if plan.conflict_brew is None
+            else await self.profiles.find_version(plan.conflict_brew, owner=plan.row.id)
+        )
         return ConflictSummary(
             device_id=plan.conflict_file,
             version_id=None if stored is None else stored.id,
@@ -583,12 +598,13 @@ class BoardService:
             short_hash=short_hash(plan.conflict_hash),
         )
 
-    async def _mirror_conflict(self, row: BoardRow) -> ProfileVersionRow | None:
-        """The machine's version of a profile's file when it is in conflict, from the mirror.
+    async def _mirror_conflict(self, row: BoardRow) -> _MirrorConflict | None:
+        """The machine's file of a profile when it is in conflict, from the mirror.
 
-        The same rule the plan applies to a read of the machine: content that is neither what
-        the profile last recorded for the file, nor its active version, nor a version it has had
-        (the ones only found on the file excepted), nor what a person already overruled.
+        The same rule the plan applies to a read of the machine: a file (brew and name) that is
+        neither what the profile last recorded for it, nor its active version under its name,
+        nor a brew it has had under its name (the ones only found on the file excepted), nor what
+        a person already overruled.
         """
         if row.device_profile_id is None:
             return None
@@ -599,16 +615,17 @@ class BoardService:
         active = await self.profiles.get_version(row.current_version_id)
         if version is None or active is None:  # pragma: no cover - foreign keys
             return None
-        recorded = (
-            None
-            if row.device_version_id is None
-            else await self.profiles.get_version(row.device_version_id)
-        )
-        known = {active.content_hash, row.conflict_overruled_hash}
-        if recorded is not None:
-            known.add(recorded.content_hash)
-        known |= await self.board.listed_hashes(row.id)
-        return None if version.content_hash in known else version
+        file = FileContent(version.content_hash, mirrored.label)
+        document = document_hash(document_for(version, mirrored.label))
+        known = {FileContent(active.content_hash, row.label)}
+        if row.device_version_id is not None:
+            recorded = await self.profiles.get_version(row.device_version_id)
+            if recorded is not None:
+                known.add(FileContent(recorded.content_hash, row.device_label or ""))
+        known |= {FileContent(brew, row.label) for brew in await self.board.listed_brews(row.id)}
+        if file in known or document == row.conflict_overruled_hash:
+            return None
+        return _MirrorConflict(version=version, name=mirrored.label, document_hash=document)
 
     async def conflict(self, row_id: int) -> ConflictView | None:
         """Both sides of a profile's conflict, or ``None`` when it has none."""
@@ -622,14 +639,14 @@ class BoardService:
             label=row.label,
             machine=ConflictSummary(
                 device_id=row.device_profile_id,
-                version_id=machine.id,
-                content_hash=machine.content_hash,
-                short_hash=short_hash(machine.content_hash),
+                version_id=machine.version.id,
+                content_hash=machine.document_hash,
+                short_hash=short_hash(machine.document_hash),
             ),
-            machine_profile=machine.profile,
+            machine_profile=stored_document(machine.version, machine.name),
             app_version_id=active.id,
             app_short_hash=short_hash(active.content_hash),
-            app_profile=active.profile,
+            app_profile=stored_document(active, row.label),
         )
 
     async def resolve_conflict(
@@ -637,15 +654,15 @@ class BoardService:
     ) -> BoardRow:
         """A person's choice in a conflict. Sends nothing to the machine.
 
-        ``machine``: the machine's version becomes the active one and the profile stands on that
-        file; nothing will be pushed, and the profile's Set follows (a new minor version naming
-        it). A pin's copy is no exception: its Set's profile gets its own version of the machine's
-        brew, made active the same way, and the pin then names the Set's new version while the
-        copy keeps the file and the machine's version. ``app``: that exact machine content is
-        overruled (so the same file is not flagged again) and the next sync replaces the file
-        with the active version, its removal guarded by a fresh load against that content.
-        Refused when there is no conflict, or when the machine's content is no longer the one the
-        person saw.
+        ``machine``: the file becomes what the profile is (its brew is the active version, and
+        the profile takes the file's name); nothing will be pushed, and the profile's Set follows
+        (a new minor version naming it). A pin's copy is no exception: its Set's profile gets its
+        own version of the machine's brew, made active the same way, and the pin then names the
+        Set's new version while the copy keeps the file and the machine's version. ``app``: that
+        exact machine document (brew and name) is overruled, so the same file is not flagged
+        again, and the next sync replaces the file with the active version, its removal guarded
+        by a fresh load against that document. Refused when there is no conflict, or when the
+        machine's file is no longer the one the person saw.
         """
         async with self.db.transaction():
             row = await self._live_row(row_id)
@@ -654,20 +671,22 @@ class BoardService:
                 raise Conflict(
                     f"{row.label} has no conflict to resolve.", details={"reason": "no_conflict"}
                 )
-            if machine.content_hash != content_hash:
+            if machine.document_hash != content_hash:
                 raise Conflict(
                     "The machine's file changed since you looked at it; look at it again.",
                     details={"reason": "stale_conflict"},
                 )
-            kept = await self.board.version_for(row.id, machine.id)
+            # The brew is the profile's own already when the difference is only the name; a
+            # brew it never had is recorded as a version (the file's, so nothing is lost).
+            kept = await self.board.version_for(row.id, machine.version.id)
             await self.board.add_version(row.id, kept, "edited_on_machine")
             if keep == "app":
                 updated = await self.board.update(
-                    row.id, BoardRowPatch(conflict_overruled_hash=machine.content_hash)
+                    row.id, BoardRowPatch(conflict_overruled_hash=machine.document_hash)
                 )
             else:
-                if machine.label != row.label:
-                    holder = await self.board.find_live_by_name_key(machine.label, excluding=row.id)
+                if machine.name != row.label:
+                    holder = await self.board.find_live_by_name_key(machine.name, excluding=row.id)
                     if holder is not None:
                         raise Conflict(
                             f"The list already has {holder.label}; rename or switch off that one "
@@ -677,10 +696,11 @@ class BoardService:
                 updated = await self.board.update(
                     row.id,
                     BoardRowPatch(
-                        label=machine.label,
+                        label=machine.name,
                         current_version_id=kept,
                         previous_version_id=row.current_version_id,
                         device_version_id=kept,
+                        device_label=machine.name,
                         conflict_overruled_hash=None,
                         failed_version_id=None,
                         back_from_version_id=None,
@@ -696,7 +716,7 @@ class BoardService:
             return updated
 
     async def _pinned_machine_side(
-        self, pin: PinDetail, machine: ProfileVersionRow, machine_version_id: int
+        self, pin: PinDetail, machine: _MirrorConflict, machine_version_id: int
     ) -> None:
         """A pin's file was edited on the machine and the person kept that: the Set's profile gets
         its own version of the machine's brew (under its own name), made active like any other,
@@ -709,7 +729,7 @@ class BoardService:
         )
         if target is None:  # pragma: no cover - a pin needs a Set that brews a profile
             return
-        document = Profile.model_validate({**(machine.profile or {}), "label": target.label})
+        document = document_for(machine.version, target.label)
         mine, created = await self.profiles.ensure_version(document, owner=target.id)
         if created:
             await self.signatures.carry_quietly(target.current_version_id, mine.id)
@@ -774,8 +794,7 @@ class BoardService:
     ) -> PinnedCopyName | None:
         """Whether this version's document under ``name`` (as the constructor would store it,
         clamped) is the copy of a pin."""
-        candidate = Profile.model_validate({**(version.profile or {}), "label": name})
-        clamped, _ = clamp(candidate, await self.proposals.bounds())
+        clamped, _ = clamp(document_for(version, name), await self.proposals.bounds())
         return await self.proposals.pinned_copy_of(clamped.for_new_device_profile(label=name))
 
     async def standing(self, draft_id: int, machine: MachineState, *, host: str) -> DraftStanding:
@@ -794,8 +813,11 @@ class BoardService:
         )
         computed = await self.plans.compute(machine, host=host)
         writes_enabled = bool(await self.settings.get("deviceWritesEnabled"))
+        name = None if version is None else await self._draft_name(draft, version)
         listed = (
-            None if version is None else await self.board.find_live_by_listed_version(version.id)
+            None
+            if version is None
+            else await self.board.find_live_by_listed_version(version.id, named=name)
         )
         plan = (
             None
@@ -818,7 +840,7 @@ class BoardService:
         existing = (
             None
             if version is None or draft.status != "draft"
-            else await self.board.find_live_by_version(version.id)
+            else await self.board.find_live_by_version(version.id, named=name)
         )
         last = (await self.runs.last_runs()).get("profiles")
         sync_failed_since = (
@@ -850,10 +872,14 @@ class BoardService:
                         if row is None
                         else await self.profiles.get_version(row.current_version_id)
                     )
-                    active_profile = None if current is None else current.profile
+                    active_profile = (
+                        None
+                        if current is None or row is None
+                        else stored_document(current, row.label)
+                    )
         return DraftStanding(
             draft=draft,
-            profile=None if version is None else version.profile,
+            profile=None if name is None or version is None else stored_document(version, name),
             active_profile=active_profile,
             landing=landing,
             state=found.state,
@@ -881,7 +907,13 @@ class BoardService:
             landing = by_draft.get(draft.id)
             if landing is None or landing.already_on_board_label is not None:
                 continue
-            if await self.board.find_live_by_listed_version(draft.draft_version_id) is not None:
+            own = await self.profiles.get_version(draft.draft_version_id)
+            if own is not None and (
+                await self.board.find_live_by_listed_version(
+                    own.id, named=await self._draft_name(draft, own)
+                )
+                is not None
+            ):
                 continue
             found.append(BoardProposal(draft=draft, row_id=landing.plain.row_id, landing=landing))
         return found
@@ -914,7 +946,7 @@ class BoardService:
                 ListedVersion(
                     version_id=version.id,
                     short_hash=short_hash(version.content_hash),
-                    label=version.label,
+                    label=row.label,
                     type=version.type,
                     created_at=version.created_at,
                     added_at=by_id[version.id].added_at,
@@ -926,7 +958,7 @@ class BoardService:
                     set=_set_brewing(
                         brewing if brewing and brewing.brewing_version_id == version.id else None
                     ),
-                    profile=version.profile,
+                    profile=stored_document(version, row.label),
                     previous_version_id=None if older is None else older.version_id,
                 )
             )
@@ -941,7 +973,9 @@ class BoardService:
             proposed.append(
                 ProposedVersion(
                     draft=proposal.draft,
-                    profile=document.profile,
+                    profile=stored_document(
+                        document, await self._draft_name(proposal.draft, document)
+                    ),
                     compared_to_version_id=row.current_version_id,
                 )
             )
@@ -981,7 +1015,9 @@ class BoardService:
         version = await self.profiles.get_version(draft.draft_version_id)
         if version is None:
             return None
-        existing = await self.board.find_live_by_version(version.id)
+        existing = await self.board.find_live_by_version(
+            version.id, named=await self._draft_name(draft, version)
+        )
         if existing is not None:
             # Its document is on the board already (this draft's own row, or another
             # draft that made the same document): nothing to put.
@@ -1040,11 +1076,12 @@ class BoardService:
                 else await lookup.by_id(draft.destination_board_id)
             ),
             base_version_id=base_id,
-            base_label=None if base is None else base.label,
+            base_label=None if base is None else await self.profiles.name_of(base),
         )
+        name = await self._draft_name(draft, version)
         placed = await place_draft(
             lookup,
-            label=draft.draft_label or version.label,
+            label=name,
             destination=destination,
             base_version_id=base_id,
         )
@@ -1057,20 +1094,24 @@ class BoardService:
         # A draft made before the pin can end up exactly equal to the pin's copy; a put would
         # then list a live row on a profile version that belongs to the pin. The constructor
         # refuses this for a new draft (`prepare`); a stored one meets the same function here.
-        pinned = await self.proposals.pinned_copy_of(profile_from_version(version))
+        pinned = await self.proposals.pinned_copy_of(document_for(version, placed.name))
         if pinned is not None:
             return _Destination(refused=pinned.person, pinned_copy=pinned)
         if placed.owner is not None:
             return _Destination(row=placed.owner)
-        return _Destination(revived=await self._revivable(version))
+        return _Destination(revived=await self._revivable(version, placed.name))
 
-    async def _revivable(self, version: ProfileVersionRow) -> BoardRow | None:
-        """The deleted row a put of this version would bring back, if there is one.
+    async def _draft_name(self, draft: ProfileDraftRow, version: ProfileVersionRow) -> str:
+        """What the draft is called: its own stored name, else the name the version carries."""
+        return draft.draft_label or await self.profiles.name_of(version)
+
+    async def _revivable(self, version: ProfileVersionRow, name: str) -> BoardRow | None:
+        """The deleted row called ``name`` a put of this version would bring back, if there is one.
 
         One function for the put and for the read of where a put lands. A deleted row whose
         file a live row now stands on is not revivable: a new row, never two on one file.
         """
-        revived = await self.board.find_deleted_with_file(version.content_hash)
+        revived = await self.board.find_deleted_with_file(version.content_hash, name)
         if (
             revived is not None
             and revived.device_profile_id is not None
@@ -1133,7 +1174,12 @@ class BoardService:
             raise Unprocessable("That profile was already approved; its name cannot change here.")
         if draft.draft_version_id is None:
             return None
-        return await self.board.find_live_by_listed_version(draft.draft_version_id)
+        listed = await self.profiles.get_version(draft.draft_version_id)
+        if listed is None:  # pragma: no cover - a foreign key guarantees it
+            return None
+        return await self.board.find_live_by_listed_version(
+            listed.id, named=await self._draft_name(draft, listed)
+        )
 
     async def put_in_transaction(
         self,
@@ -1169,12 +1215,24 @@ class BoardService:
         version = await self.profiles.get_version(draft.draft_version_id)
         if version is None:  # pragma: no cover - a foreign key guarantees it
             raise NotFound(f"No profile version {draft.draft_version_id}")
-        if await self.board.find_live_by_version(version.id) is not None:
+        # "Already in the list" is about this draft's own landing: a version is what a profile
+        # brews, so another profile that brews the same thing is not this draft being put twice.
+        if (
+            await self.board.find_live_by_version(
+                version.id, named=await self._draft_name(draft, version)
+            )
+            is not None
+        ):
             raise Conflict("That profile version is already in the list.")
 
         if label is not None:
             draft, version = await self._rename(draft, version, label)
-            if await self.board.find_live_by_version(version.id) is not None:
+            if (
+                await self.board.find_live_by_version(
+                    version.id, named=await self._draft_name(draft, version)
+                )
+                is not None
+            ):
                 raise Conflict("That profile version is already in the list.")
 
         dest = await self._destination(draft, version)
@@ -1182,17 +1240,13 @@ class BoardService:
             raise PinFrozen(dest.refused)
         if dest.pinned_copy is not None:
             raise dest.pinned_copy
+        name = (await self._draft_name(draft, version)).strip()
         if dest.refused is not None:
-            raise TakenName((draft.draft_label or version.label).strip())
-        name = (draft.draft_label or version.label).strip()
+            raise TakenName(name)
+        # A change is a version of its profile under the profile's own name: the document the
+        # machine gets is built from the profile's name and the version's brew, so nothing is
+        # stored for a name.
         row = dest.row
-        if row is not None and version.label != row.label:
-            # A change is stored under its profile's current name, whatever the profile was
-            # called when the draft was made. While a version's content includes its name that
-            # is a version of its own; the draft names it.
-            draft, version = await self._under_name(draft, version, row)
-            if await self.board.find_live_by_version(version.id) is not None:
-                raise Conflict("That profile version is already in the list.")
         if draft.status == "draft":
             await self.drafts.set_status(draft.id, "approved")
         pending = BoardRowPatch(pending_draft_id=draft.id)
@@ -1319,10 +1373,10 @@ class BoardService:
         :meth:`DraftProposals.prepare`, the constructor of every draft document, so the schema,
         the clamp and the check apply as they did at drafting.
 
-        While a version's content still includes its name, the renamed document is a version of
-        its own and the draft names it; once the name leaves the content the rebuilt document is
-        the very version the draft had and nothing here stores anything. All inside the caller's
-        transaction.
+        A version on no profile is the document it came as, name included, so the rebuilt document
+        is the version of that brew under the new name (stored if it is new) and the draft names
+        it; the expectations in force follow. Once the profile lands, its version is its brew and
+        the name is the profile's. All inside the caller's transaction.
         """
         if (await self._destination(draft, version)).row is not None:
             raise Unprocessable("A change to an existing profile keeps its name")
@@ -1330,7 +1384,7 @@ class BoardService:
         if not name:
             raise Unprocessable("A profile needs a name")
         try:
-            candidate = Profile.model_validate({**(version.profile or {}), "label": name})
+            candidate = document_for(version, name)
         except ValidationError as exc:
             raise Unprocessable(
                 "That is not a valid profile name", details={"schema_errors": schema_errors(exc)}
@@ -1354,36 +1408,6 @@ class BoardService:
         current = await self.drafts.get(draft.id)
         assert current is not None
         return current, renamed
-
-    async def _under_name(
-        self,
-        draft: ProfileDraftRow,
-        version: ProfileVersionRow,
-        row: BoardRow,
-    ) -> tuple[ProfileDraftRow, ProfileVersionRow]:
-        """A change's document under the name its profile has now, through the constructor.
-
-        The schema, the clamp and the check apply as at drafting. The expectations in force on
-        the version follow it. The draft then names the rebuilt version and the profile's name.
-        """
-        candidate = Profile.model_validate({**(version.profile or {}), "label": row.label})
-        base = await self.proposals.base_profile(draft.base_version_id)
-        prepared = await self.proposals.prepare(
-            draft.base_version_id,
-            base,
-            candidate,
-            inherit=DraftTarget(row.id, row.label, new_profile=False),
-            is_new=draft.is_new,
-        )
-        rebuilt, _ = await self.profiles.ensure_version(
-            prepared.profile, owner=row.id, source="draft"
-        )
-        if rebuilt.id != version.id:
-            await self.signatures.carry_quietly(version.id, rebuilt.id)
-        await self.drafts.set_draft_version(draft.id, rebuilt.id, label=row.label)
-        current = await self.drafts.get(draft.id)
-        assert current is not None
-        return current, rebuilt
 
     async def resume(self) -> None:
         """Let the next sync write again after it paused for a suspected machine reset.
@@ -1416,11 +1440,11 @@ class BoardService:
 
         Any version the profile has had will do, an older one included (the sync pushes it and
         removes the file the profile stood on). The profile's Set follows in the same
-        transaction: it gets a new minor version naming the version made active. Refused, each
-        with its own sentence, for a version that is not this profile's, the synthetic baseline,
-        a version outside the safety bounds as they are now, and a name another profile already
-        has. Making the version that is already active active again clears a failed
-        verification, so the sync tries it again.
+        transaction: it gets a new minor version naming the version made active. The profile
+        keeps its name: only its active version changes. Refused, each with its own sentence,
+        for a version that is not this profile's, the synthetic baseline, and a version outside
+        the safety bounds as they are now. Making the version that is already active active
+        again clears a failed verification, so the sync tries it again.
         """
         async with self.db.transaction():
             row = await self._live_row(row_id)
@@ -1484,14 +1508,6 @@ class BoardService:
                 f"That version cannot go on the machine: {refusal}.",
                 details={"reason": "policy"},
             )
-        if version.label != row.label:
-            holder = await self.board.find_live_by_name_key(version.label, excluding=row.id)
-            if holder is not None:
-                raise Conflict(
-                    f"The list already has {holder.label}; rename or switch off that one "
-                    f"before making this version of {row.label} active.",
-                    details={"reason": "duplicate_label"},
-                )
         return version
 
     async def _make_active(self, row: BoardRow, version: ProfileVersionRow) -> BoardRow:
@@ -1505,7 +1521,6 @@ class BoardService:
         updated = await self.board.update(
             row.id,
             BoardRowPatch(
-                label=version.label,
                 current_version_id=version.id,
                 previous_version_id=row.current_version_id,
                 back_from_version_id=None,
@@ -1728,6 +1743,7 @@ class BoardService:
                 BoardRowPatch(
                     device_profile_id=device_id,
                     device_version_id=None if action.reason == "conflict" else version.id,
+                    device_label=None if action.reason == "conflict" else profile.label,
                 ),
             )
             assert updated is not None
@@ -1736,13 +1752,15 @@ class BoardService:
         # yet and is the new profile's from now on.
         version, _ = await self.profiles.ensure_version(profile, owner=None)
         # A file this app saved itself is the app's own profile (information only).
-        ours = await self._saved_by_the_app(device_id, version.content_hash, host=phase.host)
+        ours = await self._saved_by_the_app(device_id, document_hash(profile), host=phase.host)
         row = await self.board.insert(
             BoardRowWrite(
-                label=version.label,
+                # Called what the file is called, whatever the stored version was first called.
+                label=profile.label,
                 current_version_id=version.id,
                 device_profile_id=device_id,
                 device_version_id=version.id,
+                device_label=profile.label,
                 on_machine=True,
                 on_home_screen=profile.favorite,
                 origin="draft" if ours else "adopted",
@@ -1770,7 +1788,9 @@ class BoardService:
         # version is attached, or copied, to it first).
         kept = await self.board.version_for(row.id, version.id)
         added = await self.board.add_version(row.id, kept, "edited_on_machine")
-        await self.board.update(row.id, BoardRowPatch(device_version_id=kept))
+        await self.board.update(
+            row.id, BoardRowPatch(device_version_id=kept, device_label=served.label)
+        )
         phase.summary.recorded.append(
             BoardSummaryItem(
                 row_id=row.id,
@@ -1867,7 +1887,11 @@ class BoardService:
         ):
             await self.board.update(
                 row.id,
-                BoardRowPatch(device_profile_id=new_id, device_version_id=plan.version.id),
+                BoardRowPatch(
+                    device_profile_id=new_id,
+                    device_version_id=plan.version.id,
+                    device_label=row.label,
+                ),
             )
             # A file the row has just come to stand on (one that held its content already, or
             # a copy of it) holds the row's own version of that content, not the loose one the
@@ -1973,7 +1997,7 @@ class BoardService:
         if refusal is not None:
             await self._row_failed(phase, action, "policy", refusal, counts_as_device_failure=False)
             return None
-        clamped = profile_from_version(plan.version)
+        clamped = document_for(plan.version, plan.row.label)
         # `place` reuses any file holding the content, and a file another board profile
         # stands on is not this row's to share: two rows on one file would have the next
         # replace of one remove the other's profile. It is shown the machine without them,
@@ -2034,14 +2058,14 @@ class BoardService:
         phase.failures_in_a_row = 0
         item = BoardSummaryItem(
             row_id=plan.row.id,
-            label=plan.version.label,
+            label=plan.row.label,
             device_id=placed.device_id,
             reason=action.reason,
             detail="an identical profile was already on the machine" if placed.reused else "",
             reused=placed.reused,
         )
         phase.summary.pushed.append(item)
-        message = f"Put {plan.version.label} on the machine as {placed.device_id}."
+        message = f"Put {plan.row.label} on the machine as {placed.device_id}."
         await self._event(
             phase,
             EVENT_PUSHED,
@@ -2260,6 +2284,8 @@ class BoardService:
                 favorite=bool(action.on),
                 selected=existing.selected,
                 position=existing.position,
+                # The name the file has: what the sync read, else what the mirror already says.
+                label=served.label if served is not None else existing.label,
             )
         if served is not None:
             served.favorite = bool(action.on)
@@ -2350,7 +2376,7 @@ class BoardService:
             verification=None
             if served is None
             else {
-                "sent": profile_from_version(plan.version).to_device(),
+                "sent": document_for(plan.version, row.label).to_device(),
                 "loaded": served.to_device(),
             },
             outcome=outcome,
@@ -2473,14 +2499,9 @@ async def machine_from_mirror(profiles: ProfilesRepository) -> MachineState:
         version = await profiles.get_version(summary.current_version_id)
         if version is None:  # pragma: no cover - a foreign key guarantees it
             continue
-        profile = profile_from_version(version)
         # Each file's document is built with the name the file has, which the mirror stored with it.
-        profile = profile.model_copy(
-            update={
-                "label": summary.label or profile.label,
-                "favorite": summary.favorite,
-                "selected": summary.selected,
-            }
+        profile = document_for(version, summary.label or version.label).model_copy(
+            update={"favorite": summary.favorite, "selected": summary.selected}
         )
         state.profiles[summary.device_id] = profile
     return state

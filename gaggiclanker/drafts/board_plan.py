@@ -16,11 +16,12 @@ included): a profile that is **on** is pushed with its active version, whoever m
 that is **off** is taken off the machine. What stands between a profile and its removal is not
 who made it but whether the app has *seen* what the file holds:
 
-* the file holds what was recorded for it, or **content the profile has had** (somebody put an
-  older version back on the display): that is no conflict. It is recorded as what the file
-  holds (a summary line), and the profile is handled as usual: a profile that is on has its
-  active version put beside it and the file removed, after a fresh load that must match what
-  was just recorded; one that is off has the file removed the same way;
+* the file holds what was recorded for it, or **content the profile has had** (a brew it has
+  had, under its current name: somebody put an older version back on the display): that is no
+  conflict. It is recorded as what the file holds (a summary line), and the profile is handled
+  as usual: a profile that is on has its active version put beside it and the file removed,
+  after a fresh load that must match what was just recorded; one that is off has the file
+  removed the same way;
 * the file holds **content the profile never had** (edited on the display, or a never-seen file
   carrying the profile's name): that is a **conflict**. The content is kept as a version
   (``edited_on_machine``, not active), nothing at all is done for that profile until a person
@@ -31,9 +32,11 @@ who made it but whether the app has *seen* what the file holds:
   new profile that is on and starred as the machine has it. A second file for a profile that
   already has one is reported, not touched.
 
-**What counts as the machine "holding" a profile**: a file with exactly the row's active
-canonical content, under any id, that no other row stands on (a deleted row's file is still
-standing until the sync has dealt with it) and no earlier row of this same plan took.
+**What counts as the machine "holding" a profile**: a file with exactly the row's active brew
+and the profile's name (a file is compared as :class:`~gaggiclanker.drafts.machine.FileContent`,
+brew and name, never by either alone), under any id, that no other row stands on (a deleted
+row's file is still standing until the sync has dealt with it) and no earlier row of this same
+plan took.
 
 **The selected profile.** Switching off the profile the machine has selected selects the first
 profile that is on (list order, never a utility profile) first, then removes it; with no other
@@ -58,7 +61,7 @@ from pydantic import BaseModel, ConfigDict
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.domain.models import Profile, document_hash
-from gaggiclanker.drafts.machine import NO_SUCCESSOR, MachineState
+from gaggiclanker.drafts.machine import NO_SUCCESSOR, FileContent, MachineState
 
 __all__ = [
     "ANOTHER_ROW",
@@ -179,7 +182,10 @@ class RowPlan:
     #: for it nor holds as a version. The write phase does nothing for it until a person chooses
     #: a side. ``conflict_file`` is that file, ``conflict_hash`` the content it holds.
     conflict_file: str | None = None
+    #: The document hash of the file in conflict (its brew and its name: what the conflict route
+    #: is told) and its brew hash (to find the version the sync keeps for it).
     conflict_hash: str | None = None
+    conflict_brew: str | None = None
 
 
 @dataclass
@@ -302,7 +308,10 @@ class PlanBuilder:
                 versions[version_id] = found
             return versions[version_id]
 
-        hashes = {device_id: document_hash(p) for device_id, p in machine.profiles.items()}
+        # A file is its brew and its name; the document hash is what a removal's guard and a
+        # conflict's choice are told (the exact bytes the machine holds).
+        files = {device_id: FileContent.of(p) for device_id, p in machine.profiles.items()}
+        docs = {device_id: document_hash(p) for device_id, p in machine.profiles.items()}
         # Every file a row stands on is spoken for, deleted rows' included: the sync has not
         # removed those yet, and a live row taking one would have it removed under it.
         claimed = {row.device_profile_id: row.id for row in rows if row.device_profile_id}
@@ -323,33 +332,34 @@ class PlanBuilder:
             computed.rows.append(plan)
             old_id = row.device_profile_id
             if old_id is not None and old_id in machine.unreadable:
-                plan.report = _report(row, current.label, "unreadable", old_id, UNREADABLE)
+                plan.report = _report(row, row.label, "unreadable", old_id, UNREADABLE)
                 continue
+            expected = FileContent(current.content_hash, row.label)
             if row.on_machine:
-                held = _held(row, current.content_hash, machine, hashes, claimed, assigned)
+                held = _held(row, expected, machine, files, claimed, assigned)
                 plan.held = held
                 if held is not None:
                     assigned.add(held)
-            recorded_hash = await self._recorded_hash(row)
-            if (
-                old_id is not None
-                and old_id in machine.profiles
-                and hashes[old_id] != recorded_hash
-            ):
-                seen = hashes[old_id]
-                if seen == current.content_hash or seen in await self.board.listed_hashes(row.id):
-                    # Content the profile has had: recorded as what the file holds.
+            recorded = await self._recorded(row)
+            if old_id is not None and old_id in machine.profiles and files[old_id] != recorded:
+                seen = files[old_id]
+                if seen == expected or (
+                    seen.name == row.label and seen.brew in await self.board.listed_brews(row.id)
+                ):
+                    # Content the profile has had (a brew it has had, under its name):
+                    # recorded as what the file holds.
                     plan.edited_file = old_id
-                elif seen != row.conflict_overruled_hash:
-                    plan.conflict_file, plan.conflict_hash = old_id, seen
+                elif docs[old_id] != row.conflict_overruled_hash:
+                    plan.conflict_file, plan.conflict_hash = old_id, docs[old_id]
+                    plan.conflict_brew = seen.brew
                 # else: a person chose the app's side for this very content; it is replaced
 
         # Files nothing stands on and no profile holds: the app has never seen them.
-        listed = await self.board.live_version_hashes()
+        listed = await self.board.live_version_brews()
         listed_here: dict[int, set[str]] = {}
-        for content_hash, row_ids in listed.items():
+        for brew, row_ids in listed.items():
             for row_id in row_ids:
-                listed_here.setdefault(row_id, set()).add(content_hash)
+                listed_here.setdefault(row_id, set()).add(brew)
         unseen = [
             i
             for i in sorted(machine.profiles)
@@ -358,7 +368,7 @@ class PlanBuilder:
         joining: dict[str, str] = {}
         for device_id in unseen:
             profile = machine.profiles[device_id]
-            match = _match_row(live, listed, hashes[device_id], profile.label)
+            match = _match_row(live, listed, files[device_id])
             if match is not None:
                 target = by_row[match.id]
                 if (
@@ -369,11 +379,12 @@ class PlanBuilder:
                     # (A profile whose last push did not verify and whose bad copy could not be
                     # removed owns that copy: it is no conflict, only a leftover.)
                     computed.extras.append(_extra(device_id, profile.label, match.label))
-                elif hashes[device_id] not in listed_here.get(match.id, set()):
+                elif files[device_id].brew not in listed_here.get(match.id, set()):
                     # Its name, but content this profile never had: the machine's side of a
                     # conflict, not something to attach silently.
                     target.attached = device_id
-                    target.conflict_file, target.conflict_hash = device_id, hashes[device_id]
+                    target.conflict_file, target.conflict_hash = device_id, docs[device_id]
+                    target.conflict_brew = files[device_id].brew
                     computed.adopt.append(
                         BoardAction(
                             kind="adopt",
@@ -430,7 +441,7 @@ class PlanBuilder:
                 or not plan.row.on_machine
             ):
                 continue
-            await self._plan_on(plan, machine, hashes, host, live_claims)
+            await self._plan_on(plan, machine, docs, host, live_claims)
         for plan in computed.rows:
             if (
                 plan.report is not None
@@ -439,7 +450,7 @@ class PlanBuilder:
                 or plan.row.on_machine
             ):
                 continue
-            await self._plan_off(plan, computed.rows, machine, hashes, live_claims)
+            await self._plan_off(plan, computed.rows, machine, docs, live_claims)
 
         for row in rows:
             if row.deleted_at is None or not row.device_profile_id:
@@ -453,9 +464,9 @@ class PlanBuilder:
             old = machine.profiles.get(old_id)
             if old is None:
                 continue
-            recorded_hash = await self._recorded_hash(row)
-            plan_d.expected_hash = hashes[old_id]
-            if hashes[old_id] != recorded_hash:
+            recorded = await self._recorded(row)
+            plan_d.expected_hash = docs[old_id]
+            if files[old_id] != recorded:
                 plan_d.edited_file = old_id
                 plan_d.action = BoardAction(
                     kind="leave",
@@ -490,7 +501,7 @@ class PlanBuilder:
         self,
         plan: RowPlan,
         machine: MachineState,
-        hashes: dict[str, str],
+        docs: dict[str, str],
         host: str,
         live_claims: dict[str, set[int]],
     ) -> None:
@@ -502,7 +513,7 @@ class PlanBuilder:
         if held is None and row.failed_version_id == row.current_version_id:
             plan.report = _report(
                 row,
-                current.label,
+                row.label,
                 "did_not_verify",
                 None,
                 "this version did not read back as sent, so it is not tried again until another "
@@ -512,17 +523,17 @@ class PlanBuilder:
         if held is None and self.policy is not None:
             refusal = await self.policy(current)
             if refusal is not None:
-                plan.report = _report(row, current.label, "policy", None, f"not pushed: {refusal}")
+                plan.report = _report(row, row.label, "policy", None, f"not pushed: {refusal}")
                 return
         if held is None:
             plan.push = BoardAction(
                 kind="push",
                 row_id=row.id,
-                label=current.label,
+                label=row.label,
                 reason="missing" if old is None else "superseded",
             )
         if old_id is not None and old is not None and old_id != held:
-            plan.pred_hash = hashes[old_id]
+            plan.pred_hash = docs[old_id]
             plan.pred = _removal(
                 row,
                 old_id,
@@ -533,17 +544,17 @@ class PlanBuilder:
             )
         if held is not None:
             if machine.profiles[held].favorite != row.on_home_screen:
-                plan.home = _home(row, current.label, held, row.on_home_screen)
+                plan.home = _home(row, row.label, held, row.on_home_screen)
         elif not row.on_home_screen:
             # The firmware stars every profile it saves; the list says this one is not starred.
-            plan.home = _home(row, current.label, None, False)
+            plan.home = _home(row, row.label, None, False)
 
     async def _plan_off(
         self,
         plan: RowPlan,
         rows: list[RowPlan],
         machine: MachineState,
-        hashes: dict[str, str],
+        docs: dict[str, str],
         live_claims: dict[str, set[int]],
     ) -> None:
         """A profile that is off: its file goes. Its star is remembered, never applied."""
@@ -552,7 +563,7 @@ class PlanBuilder:
         old = machine.profiles.get(old_id) if old_id else None
         if old_id is None or old is None:
             return
-        plan.pred_hash = hashes[old_id]
+        plan.pred_hash = docs[old_id]
         plan.successor_row_id = _successor_row(rows, exclude=row.id)
         plan.pred = _removal(
             row,
@@ -563,11 +574,15 @@ class PlanBuilder:
             selected_without_successor=old.selected and plan.successor_row_id is None,
         )
 
-    async def _recorded_hash(self, row: BoardRow) -> str | None:
+    async def _recorded(self, row: BoardRow) -> FileContent | None:
+        """What the app last recorded its file as holding: the recorded version's brew under the
+        name of the document recorded (``None`` when nothing is recorded)."""
         if row.device_version_id is None:
             return None
         recorded = await self.profiles.get_version(row.device_version_id)
-        return None if recorded is None else recorded.content_hash
+        if recorded is None:  # pragma: no cover - a foreign key guarantees it
+            return None
+        return FileContent(recorded.content_hash, row.device_label or "")
 
 
 #: What a file the machine listed and then could not load is reported as.
@@ -669,39 +684,41 @@ def _has_file(plan: RowPlan, machine: MachineState) -> bool:
 
 
 def _match_row(
-    live: list[BoardRow], listed: dict[str, list[int]], content_hash: str, label: str
+    live: list[BoardRow], listed: dict[str, list[int]], file: FileContent
 ) -> BoardRow | None:
     """The live profile a file the app has never seen belongs to: its content, else its name.
 
-    By content first (the file is a version the profile has had), then by exact label; the
-    lowest row id when several fit, so the same inputs always choose the same profile. "Bloom"
-    and "Bloom [AI]" are two names: nothing here treats a trailing marker as noise.
+    By content first (the file is a brew the profile has had, under the profile's name), then by
+    exact name; the lowest row id when several fit, so the same inputs always choose the same
+    profile. "Bloom" and "Bloom [AI]" are two names: nothing here treats a trailing marker as
+    noise. A file with a profile's brew under another name is not that profile's.
     """
-    ids = set(listed.get(content_hash, []))
+    ids = set(listed.get(file.brew, []))
     for row in live:
-        if row.id in ids:
+        if row.id in ids and row.label == file.name:
             return row
     for row in live:
-        if row.label == label:
+        if row.label == file.name:
             return row
     return None
 
 
 def _held(
     row: BoardRow,
-    content_hash: str,
+    expected: FileContent,
     machine: MachineState,
-    hashes: dict[str, str],
+    files: dict[str, FileContent],
     claimed: dict[str, int],
     assigned: set[str],
 ) -> str | None:
-    """The file holding the row's active content: its own first, else any unspoken-for one."""
+    """The file holding the row's active content (its brew under its name): its own first, else
+    any unspoken-for one."""
     own = row.device_profile_id
-    if own is not None and own not in assigned and hashes.get(own) == content_hash:
+    if own is not None and own not in assigned and files.get(own) == expected:
         return own
     for device_id in sorted(machine.profiles):
         if (
-            hashes[device_id] == content_hash
+            files[device_id] == expected
             and device_id not in assigned
             and claimed.get(device_id, row.id) == row.id
         ):

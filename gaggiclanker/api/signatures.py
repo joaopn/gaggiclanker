@@ -107,6 +107,7 @@ class SignatureData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     profile_version_id: int
+    #: The profile's name, not the name this version's document was first stored with.
     profile_label: str
     #: The profile's phase names, in order: what an expectation's phase is one of.
     phases: list[str]
@@ -202,7 +203,7 @@ async def _signature(
     rows = await signatures.for_version(version_id)
     return SignatureData(
         profile_version_id=version_id,
-        profile_label=version.label,
+        profile_label=await profiles.name_of(version),
         phases=profile_phase_names(version.profile) or [],
         confirmed=sum(1 for r in rows if r.status == "confirmed"),
         not_in_force=sum(1 for r in rows if r.status == "proposed"),

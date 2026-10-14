@@ -67,6 +67,7 @@ from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeP
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.sets import (
     RECIPE_FIELDS,
     TEXT_MAX,
@@ -544,13 +545,13 @@ class SetProposalsRepository(Repository):
         if version.profile_version_id is None:
             return {"profile_label": None, "profile_temperature_c": None}
         row = await self.db.fetch_one(
-            """
-            SELECT label,
+            f"""
+            SELECT {version_name_sql("pv")} AS label,
                    CASE WHEN json_type(json, '$.temperature') IN ('integer', 'real')
                          AND json_extract(json, '$.temperature') > 0
                         THEN json_extract(json, '$.temperature') END AS temperature_c
-              FROM profile_versions WHERE id = ?
-            """,
+              FROM profile_versions pv WHERE id = ?
+            """,  # noqa: S608 - the one interpolation is a constant SQL expression
             (version.profile_version_id,),
         )
         if row is None:

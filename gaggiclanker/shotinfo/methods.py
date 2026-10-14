@@ -38,7 +38,7 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "set_version": "archive.set_version@1",
         "label": "judgement.decision@1",
         "counted": "archive.counted@1",
-        "profile_as_brewed": "archive.profile_label@1",
+        "profile_as_brewed": "archive.profile_label@2",
         "machine_shot_number": "archive.device_id@1",
         "shot_time": "header.duration@1",
         "yield": "header.final_weight@1",

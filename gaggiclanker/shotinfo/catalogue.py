@@ -1072,11 +1072,12 @@ def _items() -> tuple[Item, ...]:
         Item(
             key="profile_as_brewed",
             group=identity,
-            name="Profile as brewed",
-            label="Profile as brewed",
+            name="Profile",
+            label="Profile",
             meaning=(
-                "The profile the machine actually ran, by its label, or by the name the machine "
-                "reported when the archive holds no copy of it."
+                "The profile the shot was brewed on, by the name the profile has now (a profile "
+                "renamed since shows its new name), or by the name the machine logged when the "
+                "archive holds no copy of it."
             ),
             default_tier="base",
             shot=lambda f: f.shot.profile_label or f.shot.profile_name_on_device or None,

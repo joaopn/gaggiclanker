@@ -171,7 +171,7 @@ async def test_a_database_from_before_the_list_boots_with_its_changes_still_chan
     db = Database(env.database_path)
     await db.connect()
     await create_schema(db)
-    from gaggiclanker.domain.models import Profile, canonical_document_json, document_hash
+    from gaggiclanker.domain.models import Profile, brew_hash, canonical_document_json
     from tests.drafts.conftest import profile_fixture
 
     for vid, source, temperature in ((1, "device", 93), (2, "draft", 91)):
@@ -181,11 +181,12 @@ async def test_a_database_from_before_the_list_boots_with_its_changes_still_chan
         await db.execute(
             "INSERT INTO profile_versions (id, content_hash, label, type, json, source) "
             "VALUES (?, ?, 'Espresso', 'pro', ?, ?)",
-            (vid, document_hash(profile), canonical_document_json(profile), source),
+            (vid, brew_hash(profile), canonical_document_json(profile), source),
         )
     await db.execute(
         "INSERT INTO profile_board (id, label, current_version_id, device_profile_id, "
-        "device_version_id, origin) VALUES (1, 'Espresso', 1, 'f1', 1, 'adopted')"
+        "device_version_id, device_label, origin) "
+        "VALUES (1, 'Espresso', 1, 'f1', 1, 'Espresso', 'adopted')"
     )
     await db.execute(
         "INSERT INTO profile_drafts (id, base_version_id, draft_version_id, label, status) "

@@ -12,7 +12,7 @@ Date and time: 2026-04-03 12:06
 Set version: v1 of Set 1
 Label: Keep
 Counted: counted
-Profile as brewed: Amigo Alturas Bloom [AI]
+Profile: Amigo Alturas Bloom [AI]
 Machine's shot number: 000204
 [Outcome]
 Shot time: 47.8 s

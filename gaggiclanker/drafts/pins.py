@@ -174,7 +174,9 @@ class PinService:
         else:
             found.name = found.copy.name
             owner = await self._owner_of(found.copy)
-            brewed_by = await self.pins.set_version_naming_content(found.copy.content_hash)
+            brewed_by = await self.pins.set_version_naming_content(
+                found.copy.content_hash, found.copy.name
+            )
             held = (
                 None
                 if owner is None or owner.set_version_id == version.id
@@ -200,7 +202,7 @@ class PinService:
 
     async def _owner_of(self, copy: PreparedCopy) -> PinRow | None:
         """The pin record, live or not, whose copy has exactly this content."""
-        return await self.pins.by_copy_content(copy.content_hash)
+        return await self.pins.by_copy_content(copy.content_hash, copy.name)
 
     async def preview(self, set_id: int, version_id: int, label: str | None) -> PinPreview:
         found = await self.inspect(set_id, version_id, label)

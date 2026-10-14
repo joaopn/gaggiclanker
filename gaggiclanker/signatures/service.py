@@ -209,7 +209,11 @@ class SignatureService:
         judged = await judged_profile_version(self.db, profile_version_id)
         if judged != profile_version_id:
             original = await self.profiles.get_version(judged)
-            name = original.label if original is not None else f"profile version {judged}"
+            name = (
+                await self.profiles.name_of(original)
+                if original is not None
+                else f"profile version {judged}"
+            )
             raise SignatureRefused(f"A pin is judged by {name}'s signature.")
 
     async def phase_names(self, profile_version_id: int) -> list[str] | None:

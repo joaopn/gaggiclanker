@@ -564,7 +564,10 @@ async def _second_profile(archive: Fixture) -> int:
     own = await profiles.get_version(archive.profile_version_id)
     assert own is not None and isinstance(own.profile, dict)
     version, _ = await profiles.ensure_version(
-        Profile.model_validate({**own.profile, "label": "Hotter"}), owner=None
+        Profile.model_validate(
+            {**own.profile, "label": "Hotter", "temperature": float(own.profile["temperature"]) + 1}
+        ),
+        owner=None,
     )
     return version.id
 
