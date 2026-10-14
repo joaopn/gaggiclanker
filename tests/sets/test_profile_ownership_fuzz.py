@@ -2,7 +2,8 @@
 """A randomised driver over the Writes-off path and what follows it, through the real app
 (routes, services, sync engine) against a fake machine. Each seed is one run of random steps (new
 Sets, new versions, adoption, puts, Make active, a file leaving and returning, a profile listing a
-Set's file without making it active); after every step the ownership and Set invariants are
+Set's file without making it active, a file renamed on the display and the person keeping the
+machine's side of that conflict); after every step the ownership and Set invariants are
 asserted and a new shot on each Set's current version (linked, and by the machine file that holds
 it) must file under that Set. A small fixed set of seeds keeps it to seconds."""
 
@@ -21,6 +22,7 @@ from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app, seed_settings
 from tests.drafts.conftest import FIXTURES, data
 from tests.drafts.helpers import assert_sets_follow_their_profiles, assert_versions_owned
+from tests.drafts.test_board import WRITE_FRAMES
 from tests.sets.conftest import make_shot
 
 SEEDS = range(12)
@@ -105,6 +107,11 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                         "sync",
                         "list_inactive",
                         "list_inactive",
+                        "display_rename",
+                        "display_rename",
+                        "keep_machine",
+                        "keep_machine",
+                        "keep_machine",
                     ]
                 if not writes:
                     ops += ["hide_file"]
@@ -167,6 +174,51 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                     async with db.transaction():
                         await app.state.board.board.add_version(row["id"], target["pv"], "machine")
                     log.append(f"{step}: row {row['id']} lists {target['name']}'s file version")
+                elif op == "display_rename":
+                    # The display renames a file (the brew is the same, the name is not): the
+                    # profile standing on it is in conflict at the next sync, and the version it
+                    # holds is still the profile's own.
+                    standing = await db.fetch_all(
+                        "SELECT b.device_profile_id d FROM profile_board b WHERE b.deleted_at IS NULL "
+                        "AND b.device_profile_id IS NOT NULL"
+                    )
+                    names = {str(r["d"]) for r in standing}
+                    live = [p for p in fake.profiles if p["id"] in names]
+                    if not live:
+                        continue
+                    f = rnd.choice(live)
+                    f["label"] = f"{f['label'].split(' ~')[0]} ~{rnd.randrange(3)}"
+                    run = await eng.sync_profiles(trigger="test")
+                    log.append(
+                        f"{step}: display renames {f['id']} to {f['label']} + sync -> {run.status}"
+                    )
+                elif op == "keep_machine":
+                    board = data(await client.get("/api/profile-board"))
+                    held = [r for r in board["rows"] if r["in_conflict"]]
+                    if not held:
+                        continue
+                    row = rnd.choice(held)
+                    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
+                    side = rnd.choice(["machine", "machine", "app"])
+                    fake.ws_requests.clear()
+                    r = await client.post(
+                        f"/api/profile-board/{row['row']['id']}/conflict",
+                        json={"keep": side, "content_hash": seen["machine"]["content_hash"]},
+                    )
+                    log.append(f"{step}: keep {side} on {row['row']['label']} -> {r.status_code}")
+                    if r.status_code >= 500:
+                        raise Failed(f"500 on conflict: {r.text}")
+                    if [t for t in fake.ws_requests if t in WRITE_FRAMES]:
+                        raise Failed("resolving a conflict wrote to the machine")
+                    if side == "machine" and r.status_code < 300:
+                        got = data(r)
+                        file = next(
+                            (p for p in fake.profiles if p["id"] == got["device_profile_id"]), None
+                        )
+                        if file is not None and file["label"] != got["label"]:
+                            raise Failed(
+                                f"the machine's side kept: the profile is {got['label']!r}, the file {file['label']!r}"
+                            )
                 elif op == "hide_file":
                     if len(fake.profiles) > 2:
                         f = fake.profiles.pop(rnd.randrange(len(fake.profiles)))
