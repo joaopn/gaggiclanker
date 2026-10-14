@@ -239,6 +239,13 @@ class SyncRepository(Repository):
         )
         return self.to_models(SyncEventRow, rows)
 
+    async def run_events(self, run_id: int, kind: str) -> list[SyncEventRow]:
+        """The events of one kind a run wrote, oldest first."""
+        rows = await self.db.fetch_all(
+            "SELECT * FROM sync_events WHERE run_id = ? AND kind = ? ORDER BY id", (run_id, kind)
+        )
+        return self.to_models(SyncEventRow, rows)
+
     async def trim_events(self, keep: int = EVENT_RETENTION) -> int:
         """Drop everything but the newest ``keep`` events."""
         cursor = await self.db.execute(

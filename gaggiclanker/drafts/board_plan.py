@@ -196,6 +196,12 @@ class RowPlan:
     #: is told) and its brew hash (to find the version the sync keeps for it).
     conflict_hash: str | None = None
     conflict_brew: str | None = None
+    #: The name the file in conflict has, and the live profile that has that name when that is why
+    #: it is a conflict.
+    conflict_name: str | None = None
+    conflict_holder: str | None = None
+    #: The conflict is about the name alone (see :class:`Judgement`).
+    conflict_name_only: bool = False
 
 
 @dataclass
@@ -421,6 +427,9 @@ class PlanBuilder:
                 if judged.outcome == "conflict":
                     plan.conflict_file, plan.conflict_hash = old_id, docs[old_id]
                     plan.conflict_brew = files[old_id].brew
+                    plan.conflict_name = files[old_id].name
+                    plan.conflict_holder = None if judged.holder is None else judged.holder.label
+                    plan.conflict_name_only = judged.name_only
                 else:
                     # Content the profile has had, or a person's choice of the app's side for
                     # this very file: recorded as what the file holds.

@@ -131,6 +131,13 @@ class ConflictSummary(BaseModel):
     version_id: int | None = None
     content_hash: str
     short_hash: str
+    #: What the file is called at the machine, and the live profile that has that name when that is
+    #: why the profile is in conflict (the machine's name is taken).
+    machine_name: str = ""
+    machine_name_held_by: str | None = None
+    #: Whether the machine's brew is one the profile has had (the active one or an older one), so
+    #: the conflict is about the name alone and a person's choice is a choice of name.
+    name_only: bool = False
 
 
 class ConflictView(BaseModel):

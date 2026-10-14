@@ -4400,6 +4400,7 @@ export interface components {
              * @default 0
              */
             proposed_versions: number;
+            renamed_on_machine?: components["schemas"]["RenamedOnMachine"] | null;
             row: components["schemas"]["BoardRow"];
             set?: components["schemas"]["SetBrewing"] | null;
             /**
@@ -4803,6 +4804,18 @@ export interface components {
             content_hash: string;
             /** Device Id */
             device_id: string;
+            /**
+             * Machine Name
+             * @default
+             */
+            machine_name: string;
+            /** Machine Name Held By */
+            machine_name_held_by?: string | null;
+            /**
+             * Name Only
+             * @default false
+             */
+            name_only: boolean;
             /** Short Hash */
             short_hash: string;
             /** Version Id */
@@ -7343,6 +7356,16 @@ export interface components {
              * @default
              */
             reason: string;
+        };
+        /**
+         * RenamedOnMachine
+         * @description The note a profile carries after a sync took the name its file was given at the machine.
+         */
+        RenamedOnMachine: {
+            /** At */
+            at: string;
+            /** From Name */
+            from_name: string;
         };
         /** ResetData */
         ResetData: {

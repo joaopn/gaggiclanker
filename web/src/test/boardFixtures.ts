@@ -174,6 +174,8 @@ export function conflictView(overrides: Partial<ConflictView> = {}): ConflictVie
       version_id: 31,
       content_hash: "feedface00",
       short_hash: "feedface",
+      machine_name: "9 Bar Espresso",
+      name_only: false,
     },
     machine_profile: profileWith(7),
     app_version_id: 7,

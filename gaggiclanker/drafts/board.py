@@ -145,6 +145,7 @@ __all__ = [
     "BoardView",
     "DraftStanding",
     "NameCheck",
+    "RenamedOnMachine",
     "machine_from_mirror",
 ]
 
@@ -256,6 +257,16 @@ class BoardRowPin(BaseModel):
     shot_count: int = 0
 
 
+class RenamedOnMachine(BaseModel):
+    """The note a profile carries after a sync took the name its file was given at the machine."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: What the profile was called before, and when the sync that took the new name ran.
+    from_name: str
+    at: str
+
+
 class BoardRowView(BaseModel):
     """A board row, its machine state and what the next sync would do about it."""
 
@@ -286,6 +297,10 @@ class BoardRowView(BaseModel):
     #: Set when this row carries the frozen copy of a pinned Set version: it has one version for
     #: ever, no switch, and changes only by unpinning. ``None`` for every other profile.
     pin: BoardRowPin | None = None
+    #: Set while the latest profile sync is the one that took the machine's name for this profile
+    #: (and the profile still has that name): "Renamed on the machine from <from_name> at the sync
+    #: of <at>". The next sync clears it.
+    renamed_on_machine: RenamedOnMachine | None = None
 
 
 class LandingSet(BaseModel):
@@ -547,6 +562,7 @@ class BoardService:
         brews = await self.sets.live_sets_by_profile()
         counts = await self.board.shot_counts([p.version.id for p in computed.rows])
         pinned = await PinsRepository(self.db).live_for_boards(p.row.id for p in computed.rows)
+        renamed = await self._renamed_on_machine()
         rows: list[BoardRowView] = []
         for plan in computed.rows:
             entry = await self.board.get_version_entry(plan.row.id, plan.version.id)
@@ -575,6 +591,7 @@ class BoardService:
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),
                     pin=_row_pin(pinned.get(plan.row.id)),
+                    renamed_on_machine=_renamed_note(renamed.get(plan.row.id), plan.row.label),
                 )
             )
         preview = None
@@ -609,6 +626,25 @@ class BoardService:
             proposals=proposals,
         )
 
+    async def _renamed_on_machine(self) -> dict[int, tuple[RenamedOnMachine, str]]:
+        """What the latest profile sync took from the machine's names: per profile, the note and
+        the name it took. Read from that run's ``profile_renamed_on_machine`` events, so a note
+        stays until the next sync and no longer."""
+        run = (await self.runs.last_runs()).get("profiles")
+        if run is None:
+            return {}
+        found: dict[int, tuple[RenamedOnMachine, str]] = {}
+        for event in await self.runs.run_events(run.id, EVENT_RENAMED_ON_MACHINE):
+            try:
+                data = json.loads(event.data_json or "{}")
+                found[int(data["row_id"])] = (
+                    RenamedOnMachine(from_name=str(data["from"]), at=event.at),
+                    str(data["to"]),
+                )
+            except (ValueError, KeyError, TypeError):  # pragma: no cover - written by _take_name
+                continue
+        return found
+
     async def _conflict_summary(self, plan: RowPlan) -> ConflictSummary | None:
         if plan.conflict_file is None or plan.conflict_hash is None:
             return None
@@ -622,6 +658,9 @@ class BoardService:
             version_id=None if stored is None else stored.id,
             content_hash=plan.conflict_hash,
             short_hash=short_hash(plan.conflict_hash),
+            machine_name=plan.conflict_name or "",
+            machine_name_held_by=plan.conflict_holder,
+            name_only=plan.conflict_name_only,
         )
 
     async def _mirror_conflict(self, row: BoardRow) -> _MirrorConflict | None:
@@ -679,6 +718,9 @@ class BoardService:
                 version_id=machine.version.id,
                 content_hash=machine.document_hash,
                 short_hash=short_hash(machine.document_hash),
+                machine_name=machine.name,
+                machine_name_held_by=None if machine.holder is None else machine.holder.label,
+                name_only=machine.name_only,
             ),
             machine_profile=stored_document(machine.version, machine.name),
             app_version_id=active.id,
@@ -2803,6 +2845,13 @@ def _row_pin(pin: PinDetail | None) -> BoardRowPin | None:
         original_version_id=pin.original_version_id,
         shot_count=pin.shot_count,
     )
+
+
+def _renamed_note(
+    found: tuple[RenamedOnMachine, str] | None, label: str
+) -> RenamedOnMachine | None:
+    """The note, unless the profile has been renamed again since the sync that took the name."""
+    return found[0] if found is not None and found[1] == label else None
 
 
 def _machine_state(plan: RowPlan, machine: MachineState) -> BoardMachineState:
