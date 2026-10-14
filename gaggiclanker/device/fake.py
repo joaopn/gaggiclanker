@@ -761,8 +761,11 @@ class FakeDevice:
         * an **absent or empty id gets a generated one**, which is the only way
           a caller learns the id of what it just wrote;
         * a save carrying an **existing id overwrites** that file — the upsert
-          this client refuses to perform, reproduced here so a test can prove
-          it never reaches the wire;
+          this client performs only over a profile's own file, behind a fresh
+          load that shows what the archive recorded. The star, the selection and
+          the startup setting are kept for that id (they are not in the file);
+          an unknown id creates the file (the client never sends one) and is
+          not starred, since only a generated id counts as new;
         * a **new** profile is auto-favourited (`ProfileManager.cpp:186-188`),
           so a push puts an unreviewed draft on the machine's home screen unless
           somebody unstars it.

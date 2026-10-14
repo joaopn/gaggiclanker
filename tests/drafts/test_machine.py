@@ -29,6 +29,7 @@ from gaggiclanker.drafts.machine import (
     CHANGED_SINCE,
     GONE,
     NO_SUCCESSOR,
+    overwrite,
     place,
     read_machine,
     remove_profile,
@@ -176,6 +177,212 @@ async def test_place_refused_with_writes_off_sends_nothing_and_is_audited(
 
     with pytest.raises(DeviceError):
         await place(client, await app_profile(app, "Off", 8), machine)
+
+    assert writes(fake_device, mark) == []
+    assert kinds(await audit(app), "profile_save")[-1][2] == "refused"
+
+
+# ── overwrite ────────────────────────────────────────────────────────
+
+
+async def own_file(app: Any, fake: FakeDevice, name: str = "Own") -> tuple[Profile, str]:
+    """A profile the app saved, selected and starred on the machine, and its id."""
+    client = app.state.connection.client
+    machine = await read_machine(client)
+    first = await place(client, await app_profile(app, name, 8), machine)
+    assert first.problem is None and first.served is not None
+    await client.select_profile(first.device_id)
+    return first.served, first.device_id
+
+
+async def test_overwrite_saves_over_the_same_id_and_keeps_the_star_and_the_selection(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, _ = writes_on
+    client = app.state.connection.client
+    recorded, device_id = await own_file(app, fake_device)
+    fake_device.device_settings["startupProfile"] = device_id
+    machine = await read_machine(client)
+    newer = await app_profile(app, "Own", 7)
+    count = len(fake_device.profiles)
+    mark = len(fake_device.ws_requests)
+
+    placed = await overwrite(
+        client,
+        newer,
+        machine,
+        device_id=device_id,
+        expected_hash=document_hash(recorded),
+        recorded=recorded,
+    )
+
+    assert placed.problem is None and placed.device_id == device_id
+    assert placed.served is not None and document_hash(placed.served) == document_hash(newer)
+    assert machine.profiles[device_id] is placed.served
+    assert len(fake_device.profiles) == count
+    assert writes(fake_device, mark) == ["req:profiles:save"], "one save and nothing else"
+    assert fake_device.selected_profile_id == device_id
+    assert device_id in fake_device.favorite_profile_ids
+    assert fake_device.device_settings["startupProfile"] == device_id
+
+
+async def test_overwrite_never_saves_over_a_file_that_changed_since_it_was_recorded(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, _ = writes_on
+    client = app.state.connection.client
+    recorded, device_id = await own_file(app, fake_device)
+    edit_on_display(fake_device, device_id, temperature=91)
+    mark = len(fake_device.ws_requests)
+
+    placed = await overwrite(
+        client,
+        await app_profile(app, "Own", 7),
+        await read_machine(client),
+        device_id=device_id,
+        expected_hash=document_hash(recorded),
+        recorded=recorded,
+    )
+
+    assert placed.problem == "changed" and placed.error == CHANGED_SINCE
+    assert writes(fake_device, mark) == []
+    assert next(p for p in fake_device.profiles if p["id"] == device_id)["temperature"] == 91
+
+
+async def test_overwrite_guards_against_an_edit_made_between_its_read_and_its_save(
+    writes_on: Live, fake_device: FakeDevice, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The client's own guard is the last word: the display is edited after overwrite's load."""
+    app, _ = writes_on
+    client = app.state.connection.client
+    recorded, device_id = await own_file(app, fake_device)
+    real = GaggimateClient.load_profile
+    loads: list[str] = []
+
+    async def edit_after_first_load(self: GaggimateClient, profile_id: str) -> Profile:
+        loaded = await real(self, profile_id)
+        loads.append(profile_id)
+        if len(loads) == 1:
+            edit_on_display(fake_device, device_id, temperature=91)
+        return loaded
+
+    monkeypatch.setattr(GaggimateClient, "load_profile", edit_after_first_load)
+
+    with pytest.raises(DeviceError) as caught:
+        await overwrite(
+            client,
+            await app_profile(app, "Own", 7),
+            await read_machine_before(client, real),
+            device_id=device_id,
+            expected_hash=document_hash(recorded),
+            recorded=recorded,
+        )
+
+    assert "changed on the display" in str(caught.value)
+    assert next(p for p in fake_device.profiles if p["id"] == device_id)["temperature"] == 91
+    assert kinds(await audit(app), "profile_save")[-1] == ("profile_save", device_id, "refused")
+
+
+async def test_a_failed_read_back_puts_the_recorded_document_back_under_a_second_guard(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, _ = writes_on
+    client = app.state.connection.client
+    recorded, device_id = await own_file(app, fake_device)
+    machine = await read_machine(client)
+    stores = iter([lambda stored: {**stored, "temperature": 80}])
+
+    def mutate_once(stored: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return next(stores)(stored)
+        except StopIteration:
+            return stored
+
+    fake_device.mutate_on_save = mutate_once
+    mark = len(fake_device.ws_requests)
+
+    placed = await overwrite(
+        client,
+        await app_profile(app, "Own", 7),
+        machine,
+        device_id=device_id,
+        expected_hash=document_hash(recorded),
+        recorded=recorded,
+    )
+
+    assert placed.problem == "mismatch" and placed.repaired is True
+    assert writes(fake_device, mark) == ["req:profiles:save", "req:profiles:save"]
+    held = next(p for p in fake_device.profiles if p["id"] == device_id)
+    assert document_hash(Profile.model_validate(held)) == document_hash(recorded)
+    assert machine.profiles[device_id].label == recorded.label
+
+
+async def test_a_repair_that_fails_too_is_said_and_the_file_is_left_as_the_machine_has_it(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, _ = writes_on
+    client = app.state.connection.client
+    recorded, device_id = await own_file(app, fake_device)
+    fake_device.mutate_on_save = lambda stored: {**stored, "temperature": 80}
+    machine = await read_machine(client)
+
+    placed = await overwrite(
+        client,
+        await app_profile(app, "Own", 7),
+        machine,
+        device_id=device_id,
+        expected_hash=document_hash(recorded),
+        recorded=recorded,
+    )
+
+    assert placed.problem == "mismatch" and placed.repaired is False
+    assert "could not be put back" in placed.error
+    assert len(fake_device.profiles) == len(machine.profiles)
+
+
+async def test_the_read_back_compares_the_name_as_well_as_the_brew(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    """A machine that stores the right brew under another name did not store what was sent."""
+    app, _ = writes_on
+    client = app.state.connection.client
+    recorded, device_id = await own_file(app, fake_device)
+    fake_device.mutate_on_save = lambda stored: {**stored, "label": "Stored under another name"}
+
+    placed = await overwrite(
+        client,
+        await app_profile(app, "Own", 7),
+        await read_machine(client),
+        device_id=device_id,
+        expected_hash=document_hash(recorded),
+        recorded=recorded,
+    )
+
+    assert placed.problem == "mismatch"
+    assert placed.verification is not None
+    sent, loaded = (placed.verification[k] for k in ("sent_canonical", "loaded_canonical"))
+    assert {k for k in sent if sent[k] != loaded.get(k)} == {"label"}, "only the name differs"
+
+
+async def test_overwrite_with_writes_off_sends_nothing_and_is_audited(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, _ = writes_on
+    client = app.state.connection.client
+    recorded, device_id = await own_file(app, fake_device)
+    machine = await read_machine(client)
+    await app.state.settings_service.apply({"deviceWritesEnabled": False})
+    mark = len(fake_device.ws_requests)
+
+    with pytest.raises(DeviceError):
+        await overwrite(
+            client,
+            await app_profile(app, "Own", 7),
+            machine,
+            device_id=device_id,
+            expected_hash=document_hash(recorded),
+            recorded=recorded,
+        )
 
     assert writes(fake_device, mark) == []
     assert kinds(await audit(app), "profile_save")[-1][2] == "refused"

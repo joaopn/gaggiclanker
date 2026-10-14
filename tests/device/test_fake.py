@@ -7,9 +7,11 @@ of the suite silently relies on.
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 import httpx
+from websockets.asyncio.client import connect
 
 from gaggiclanker.device.fake import (
     DEFAULT_IDENTITY,
@@ -146,3 +148,71 @@ async def test_a_brew_ends_with_a_saved_shot() -> None:
     # reads the first, the device's own list reads the second, and a shot that
     # disagrees with itself looks like a sync bug.
     assert parse_slog(saved.slog_bytes).header.profile_name == saved.entry.profile_name
+
+
+async def _frame(fake: FakeDevice, tp: str, **payload: Any) -> dict[str, Any]:
+    """One request frame on a socket of this test's own, and the machine's answer to it."""
+    async with connect(f"ws://{fake.address}/ws") as socket:
+        await socket.send(json.dumps({"tp": tp, "rid": "r1", **payload}))
+        while True:
+            reply = json.loads(await socket.recv())
+            if reply.get("rid") == "r1":
+                return cast(dict[str, Any], reply)
+
+
+async def test_a_save_with_an_existing_id_rewrites_that_file_and_keeps_its_star_and_selection() -> (
+    None
+):
+    """`ProfileManager::saveProfile` upserts on the id: only a new one is starred, and the
+    selection and the startup setting stay where they were."""
+    device = build_fake_device(None)
+    device.profiles = [{"id": "aaa", "label": "First", "temperature": 90, "phases": []}]
+    device.favorite_profile_ids = {"aaa"}
+    device.selected_profile_id = "aaa"
+    device.device_settings["startupProfile"] = "aaa"
+    await device.start()
+    try:
+        reply = await _frame(
+            device,
+            "req:profiles:save",
+            profile={"id": "aaa", "label": "Renamed", "temperature": 92, "phases": []},
+        )
+    finally:
+        await device.stop()
+
+    assert reply["profile"]["id"] == "aaa" and reply["profile"]["label"] == "Renamed"
+    assert [p["label"] for p in device.profiles] == ["Renamed"]
+    assert device.favorite_profile_ids == {"aaa"}
+    assert device.selected_profile_id == "aaa"
+    assert device.device_settings["startupProfile"] == "aaa"
+    assert reply["profile"]["selected"] is True and reply["profile"]["favorite"] is True
+
+
+async def test_a_save_with_an_unknown_id_creates_that_file_without_starring_it() -> None:
+    """The firmware writes `/p/<id>.json` whatever the id; only a generated id is "new"."""
+    device = build_fake_device(None)
+    device.profiles = [{"id": "aaa", "label": "First", "phases": []}]
+    await device.start()
+    try:
+        reply = await _frame(
+            device, "req:profiles:save", profile={"id": "zzz", "label": "Made up", "phases": []}
+        )
+    finally:
+        await device.stop()
+
+    assert reply["profile"]["id"] == "zzz"
+    assert sorted(p["id"] for p in device.profiles) == ["aaa", "zzz"]
+    assert "zzz" not in device.favorite_profile_ids
+
+
+async def test_a_save_without_an_id_gets_a_generated_one_and_a_star() -> None:
+    device = build_fake_device(None)
+    await device.start()
+    try:
+        reply = await _frame(
+            device, "req:profiles:save", profile={"label": "Brand new", "phases": []}
+        )
+    finally:
+        await device.stop()
+
+    assert reply["profile"]["id"] and reply["profile"]["id"] in device.favorite_profile_ids

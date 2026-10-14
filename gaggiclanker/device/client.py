@@ -718,29 +718,30 @@ class GaggimateClient:
     # decides whether a *document* is fit to send lives above this layer
     # (`gaggiclanker/domain/profile_policy.py` and the draft service); what is
     # enforced here is narrower and absolute: writes are off unless somebody
-    # turned them on, a save never overwrites, and a delete only ever removes a
-    # profile this box created.
+    # turned them on, and a save over an existing file or a delete needs a fresh load that
+    # shows exactly what the archive recorded for it.
 
-    async def save_profile(self, profile: Profile) -> Profile:
-        """Store ``profile`` on the machine as a **new** profile. Returns it.
+    async def save_profile(self, profile: Profile, *, expected_hash: str | None = None) -> Profile:
+        """Store ``profile`` on the machine. Returns it as the firmware serialised it.
 
-        The returned profile is the firmware's own serialisation of what it
-        stored, carrying the id `generateShortID()` assigned — which is the only
-        way to learn that id, and the document the round-trip check compares
-        against.
+        Without an id this creates a **new** profile. The returned profile carries the id
+        `generateShortID()` assigned, which is the only way to learn it, and is the document the
+        round-trip check compares against.
 
-        **It cannot overwrite.** `ProfileManager::saveProfile` upserts on the
-        file `/p/<id>.json`, so a save carrying an existing id replaces somebody
-        else's profile; a profile that arrives here with an id is therefore
-        refused outright rather than silently stripped, because a caller that
-        passed one meant something by it and quietly doing something else is how
-        you lose a profile somebody spent an evening on.
+        **A save carrying an id overwrites that file**, because `ProfileManager::saveProfile`
+        upserts on `/p/<id>.json`, so it is allowed only together with ``expected_hash``, and
+        only under the one guard a delete has: a fresh load of that id, immediately before the
+        save, must hash to ``expected_hash`` (what the archive recorded for the file). A file
+        somebody edited on the display since is never saved over, and the refusal is audited. An
+        id without a hash, or a hash without an id, is refused outright: a caller that passed
+        one meant something by it, and quietly doing something else is how you lose a profile
+        somebody spent an evening on.
 
-        Two things the firmware does on its own, worth knowing before reading
-        the result back: a new profile is **auto-favourited**
-        (`ProfileManager.cpp:186-188`), and `selected`/`favorite` are re-stamped
-        from NVS on every load. Neither is part of what a profile brews, and
-        :func:`canonical_document_json` drops all three.
+        Two things the firmware does on its own, worth knowing before reading the result back:
+        a new profile is **auto-favourited** (`ProfileManager.cpp:186-188`) and a save over an
+        existing id keeps its star, its selection and the startup setting where they were; and
+        `selected`/`favorite` are re-stamped from NVS on every load. Neither is part of what a
+        profile brews, and :func:`canonical_document_json` drops all three.
         """
         write = PendingWrite(
             kind="profile_save",
@@ -748,22 +749,36 @@ class GaggimateClient:
             device_id=profile.id,
             payload_hash=payload_hash(canonical_document_json(profile)),
         )
-        if profile.id is not None:
+        if (profile.id is None) != (expected_hash is None):
             refusal = DeviceWriteRefused(
-                f"save_profile creates new profiles only, and this one carries the id "
-                f"{profile.id!r}. Saving with an existing id overwrites that profile on the "
-                "machine; build a fresh document with Profile.for_new_device_profile()."
+                "save_profile creates a new profile (no id, no expected_hash) or saves over a "
+                "file whose recorded content is given (an id together with expected_hash); "
+                f"this call had id {profile.id!r} and "
+                + ("an expected_hash." if expected_hash is not None else "no expected_hash.")
             )
-            # Audited like every other refusal. "Something tried to overwrite a
-            # profile" is exactly the row a person wants to find later, and a
-            # refusal that leaves no trace is the one kind nobody can debug.
+            # Audited like every other refusal. "Something tried to overwrite a profile" is
+            # exactly the row a person wants to find later, and a refusal that leaves no
+            # trace is the one kind nobody can debug.
             await self._record(write, "refused", str(refusal))
             raise refusal
+        if profile.id is not None and expected_hash is not None:
+            # The gate first, before the read: a save the switch forbids puts no frame on the wire,
+            # and `load_profile` is a frame.
+            await self._authorize(write)
+            fresh = await self.load_profile(profile.id)
+            if document_hash(fresh) != expected_hash:
+                refusal = DeviceWriteRefused(
+                    f"Profile {profile.id!r} no longer holds what was last recorded for it: it "
+                    "changed on the display. It was left as it is."
+                )
+                await self._gate.record(write, result="refused", error=str(refusal))
+                raise refusal
         body = profile.to_device()
         message = await self._write(
             write,
             "req:profiles:save",
             id_from_response=_saved_profile_id,
+            authorized=profile.id is not None,
             profile=body,
         )
         served = message.get("profile")

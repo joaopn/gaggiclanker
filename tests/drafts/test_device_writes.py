@@ -117,25 +117,106 @@ async def test_a_new_profile_is_auto_favourited_by_the_firmware(
     assert stored.id not in fake_device.favorite_profile_ids
 
 
-async def test_a_save_refuses_a_profile_that_already_has_an_id(
+async def test_a_save_with_an_id_and_no_recorded_content_is_refused(
     writes_on: tuple[FastAPI, object], fake_device: FakeDevice
 ) -> None:
-    """The upsert this client will not perform.
+    """The upsert is never performed on a guess.
 
-    `saveProfile` writes `/p/<id>.json`, so a save carrying somebody else's id
-    replaces their profile. Refused before the gate is even consulted, and
-    nothing reaches the machine.
+    `saveProfile` writes `/p/<id>.json`, so a save carrying somebody's id replaces their
+    profile. Without the content the archive recorded for that file there is nothing to
+    guard it with: refused before the gate is even consulted, and nothing reaches the machine.
     """
     app, _ = writes_on
     existing = await base_profile(app)
-    with_id = existing.model_copy(update={"id": "9bar"})
-    before = len(fake_device.profiles)
+    with_id = existing.model_copy(update={"id": "9bar", "label": "Overwritten"})
+    before = [dict(profile) for profile in fake_device.profiles]
 
     with pytest.raises(DeviceWriteRefused) as caught:
         await app.state.connection.client.save_profile(with_id)
 
-    assert "creates new profiles only" in str(caught.value)
-    assert len(fake_device.profiles) == before
+    assert "no expected_hash" in str(caught.value)
+    assert fake_device.profiles == before
+    assert "req:profiles:save" not in fake_device.ws_requests
+
+
+async def test_a_recorded_content_without_an_id_is_refused(
+    writes_on: tuple[FastAPI, object], fake_device: FakeDevice
+) -> None:
+    app, _ = writes_on
+    new = await a_new_profile(app)
+
+    with pytest.raises(DeviceWriteRefused):
+        await app.state.connection.client.save_profile(new, expected_hash="anything")
+
+    assert "req:profiles:save" not in fake_device.ws_requests
+    assert ("profile_save", "refused", None) in await audit(app)
+
+
+async def test_a_save_over_a_file_that_holds_what_was_recorded_overwrites_it_in_place(
+    writes_on: tuple[FastAPI, object], fake_device: FakeDevice
+) -> None:
+    """The one save over an existing id: the file keeps its id, its star and its selection."""
+    app, _ = writes_on
+    client = app.state.connection.client
+    stored = await client.save_profile(await a_new_profile(app))
+    device_id = stored.id or ""
+    await client.select_profile(device_id)
+    fake_device.device_settings["startupProfile"] = device_id
+    count = len(fake_device.profiles)
+    favorites = set(fake_device.favorite_profile_ids)
+
+    renamed = stored.model_copy(update={"label": "Renamed in place"})
+    served = await client.save_profile(renamed, expected_hash=document_hash(stored))
+
+    assert served.id == device_id
+    assert served.label == "Renamed in place"
+    assert len(fake_device.profiles) == count
+    assert fake_device.selected_profile_id == device_id
+    assert fake_device.favorite_profile_ids == favorites
+    assert fake_device.device_settings["startupProfile"] == device_id
+    assert ("profile_save", "ok", device_id) in await audit(app)
+
+
+async def test_a_save_over_a_file_edited_since_it_was_recorded_is_refused_and_audited(
+    writes_on: tuple[FastAPI, object], fake_device: FakeDevice
+) -> None:
+    """The delete's guard, for the save: an edit made at the machine is never saved over."""
+    app, _ = writes_on
+    client = app.state.connection.client
+    stored = await client.save_profile(await a_new_profile(app))
+    recorded = document_hash(stored)
+    for profile in fake_device.profiles:
+        if profile["id"] == stored.id:
+            profile["label"] = "Renamed by hand"
+    fake_device.ws_requests.clear()
+
+    with pytest.raises(DeviceWriteRefused) as caught:
+        await client.save_profile(
+            stored.model_copy(update={"label": "The app's name"}), expected_hash=recorded
+        )
+
+    assert "changed on the display" in str(caught.value)
+    assert "req:profiles:save" not in fake_device.ws_requests
+    assert next(p for p in fake_device.profiles if p["id"] == stored.id)["label"] == (
+        "Renamed by hand"
+    )
+    assert ("profile_save", "refused", stored.id) in await audit(app)
+
+
+async def test_a_save_over_a_file_the_gate_refuses_never_reads_the_machine_either(
+    live: tuple[FastAPI, object], fake_device: FakeDevice
+) -> None:
+    app, _ = live  # writes are off in this fixture
+    fake_device.hang_requests.add("req:profiles:load")
+    existing = await base_profile(app)
+
+    with pytest.raises(DeviceWriteRefused) as caught:
+        await app.state.connection.client.save_profile(
+            existing.model_copy(update={"id": "9bar"}), expected_hash="whatever"
+        )
+
+    assert "switched off" in str(caught.value)
+    assert ("profile_save", "refused", "9bar") in await audit(app)
 
 
 async def test_what_comes_back_from_a_save_round_trips_to_the_same_canonical_form(
@@ -242,7 +323,7 @@ async def test_a_delete_the_gate_refuses_never_reads_the_machine_either(
     assert ("profile_delete", "refused", "9bar") in await audit(app)
 
 
-async def test_a_save_that_would_overwrite_is_audited_as_a_refusal(
+async def test_a_save_that_would_overwrite_without_the_guard_is_audited_as_a_refusal(
     writes_on: tuple[FastAPI, object],
 ) -> None:
     """The row a person goes looking for: something tried to overwrite a profile.
