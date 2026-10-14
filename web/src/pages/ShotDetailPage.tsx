@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, Download } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowUpRight, Download } from "lucide-react";
 import { useEffect } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { shotRawUrl } from "@/api/client";
@@ -137,6 +137,7 @@ export function ShotDetailPage() {
       />
 
       <ShotFacts
+        profile={<ShotProfile row={row} />}
         facts={[
           ["Duration", served("shot_time")],
           ["Yield", served("yield")],
@@ -207,12 +208,67 @@ function BackLink() {
   );
 }
 
-function ShotFacts({ facts }: { facts: Array<[string, string]> }) {
+/**
+ * The profile this shot was brewed with, by its name now, linked to it. When the machine called it
+ * something else at the time (the profile was renamed since), the server serves `brewed_as` and it
+ * follows in words: it is what the shot's own header recorded. The page never compares names itself
+ * (the header holds only 47 bytes of a name). A shot with no profile has only what the machine called it.
+ */
+function ShotProfile({
+  row,
+}: {
+  row: {
+    profile_label?: string | null;
+    profile_name_on_device: string;
+    profile_version_id?: number | null;
+    brewed_as?: string | null;
+  };
+}) {
+  const current = row.profile_label || null;
+  if (current === null) {
+    return (
+      <span data-testid="shot-profile">{row.profile_name_on_device || "unknown profile"}</span>
+    );
+  }
+  return (
+    <span data-testid="shot-profile" className="break-words">
+      {row.profile_version_id ? (
+        <Link
+          to={`/profiles#version-${row.profile_version_id}`}
+          className="inline-flex items-center gap-0.5 underline underline-offset-2"
+          data-testid="shot-profile-link"
+        >
+          {current}
+          <ArrowUpRight className="size-3.5 shrink-0" aria-hidden="true" />
+        </Link>
+      ) : (
+        current
+      )}
+      {row.brewed_as ? (
+        <span className="text-muted-foreground" data-testid="shot-brewed-as">
+          {` (brewed as "${row.brewed_as}")`}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function ShotFacts({
+  facts,
+  profile,
+}: {
+  facts: Array<[string, string]>;
+  profile: React.ReactNode;
+}) {
   return (
     <dl
       className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-border bg-card/40 p-3 sm:grid-cols-4"
       data-testid="shot-facts"
     >
+      <div className="col-span-full">
+        <dt className="text-muted-foreground text-xs">Profile</dt>
+        <dd className="text-sm">{profile}</dd>
+      </div>
       {facts.map(([label, value]) => (
         <div key={label}>
           <dt className="text-muted-foreground text-xs">{label}</dt>

@@ -26,6 +26,7 @@ from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.signature import ShotChecks, check_key
+from gaggiclanker.domain.slog import shot_header_name
 from gaggiclanker.domain.vocab import Decision
 from gaggiclanker.domain.warnings import shot_warnings
 from gaggiclanker.review.reading import ChecksBlock, ReviewBlock, Served, review_key, serve_review
@@ -197,6 +198,20 @@ class ShotSetBadge(BaseModel):
     version_label: str
 
 
+def brewed_as(label: str | None, name_on_device: str) -> str | None:
+    """The name a shot was brewed under, when the profile is not called that now.
+
+    ``None`` for a shot in no profile and for a name that is only the current one as the shot
+    header holds it. The firmware cuts the name at exactly 47 bytes, and a character straddling
+    the cut is decoded as U+FFFD, so a trailing replacement character is not part of the name.
+    """
+    if label is None or not name_on_device:
+        return None
+    if name_on_device.rstrip("\ufffd") == shot_header_name(label):
+        return None
+    return name_on_device
+
+
 class ShotListRow(BaseModel):
     """A row of `GET /api/shots`: enough to draw a line in a table, no curve."""
 
@@ -257,6 +272,18 @@ class ShotListRow(BaseModel):
     set_version_id: int | None = None
     set_badge: ShotSetBadge | None = None
     synced_at: str
+
+    #: What the machine called the profile when the shot was brewed, when that is not what the
+    #: profile is called now: ``profile_name_on_device``, unless it is just the current name as the
+    #: shot header records it (cut to 47 bytes), which is no news. ``None`` for a shot in no profile
+    #: (the name on the machine is then all there is) and for a profile never renamed. Always
+    #: derived from the two names, never read from a row.
+    brewed_as: str | None = None
+
+    @model_validator(mode="after")
+    def _derive_brewed_as(self) -> ShotListRow:
+        self.brewed_as = brewed_as(self.profile_label, self.profile_name_on_device)
+        return self
 
     @model_validator(mode="before")
     @classmethod

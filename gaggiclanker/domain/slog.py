@@ -282,8 +282,9 @@ def _decode_cstring(raw: bytes) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def _encode_cstring(text: str, size: int) -> bytes:
-    """NUL-terminated UTF-8, truncated on a character boundary."""
+def _cut_utf8(text: str, size: int) -> bytes:
+    """``text`` as UTF-8 cut to fit a NUL-terminated field of ``size`` bytes, on a character
+    boundary."""
     raw = text.encode("utf-8")[: size - 1]
     while raw:
         try:
@@ -292,7 +293,22 @@ def _encode_cstring(text: str, size: int) -> bytes:
             raw = raw[:-1]
             continue
         break
-    return raw.ljust(size, b"\x00")
+    return raw
+
+
+def _encode_cstring(text: str, size: int) -> bytes:
+    """NUL-terminated UTF-8, truncated on a character boundary."""
+    return _cut_utf8(text, size).ljust(size, b"\x00")
+
+
+#: The shot header's profile name field: 48 bytes, so a name of at most 47.
+PROFILE_NAME_FIELD = 48
+
+
+def shot_header_name(name: str) -> str:
+    """A profile's name as the machine writes it into a shot's header: UTF-8, cut to 47 bytes on a
+    character boundary. What a shot recorded for a profile that has never been renamed."""
+    return _cut_utf8(name, PROFILE_NAME_FIELD).decode("utf-8")
 
 
 def parse_slog(data: bytes, shot_id: str | None = None) -> Slog:
@@ -517,7 +533,7 @@ def encode_slog(slog: Slog) -> bytes:
         header.duration_ms,
         header.start_epoch,
         _encode_cstring(header.profile_id, 32),
-        _encode_cstring(header.profile_name, 48),
+        _encode_cstring(header.profile_name, PROFILE_NAME_FIELD),
         _clamp_u16(header.final_weight_g, WEIGHT_SCALE),
     )
 

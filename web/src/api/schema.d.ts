@@ -8566,6 +8566,8 @@ export interface components {
         ShotDetailRow: {
             /** Brew Delay Ms */
             brew_delay_ms?: number | null;
+            /** Brewed As */
+            brewed_as?: string | null;
             /**
              * Deleted On Device
              * @default false
@@ -8818,6 +8820,8 @@ export interface components {
          *     and never changes with a review; the review is what the model wrote.
          */
         ShotListItem: {
+            /** Brewed As */
+            brewed_as?: string | null;
             checks: components["schemas"]["ChecksBlock"];
             /**
              * Deleted On Device

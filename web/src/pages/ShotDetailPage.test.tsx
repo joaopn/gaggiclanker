@@ -184,6 +184,59 @@ describe("ShotDetailPage header", () => {
     expect(facts).toHaveTextContent("imported file");
   });
 
+  describe("the profile line", () => {
+    it("names the profile as it is called now, linked to it, and what the machine called it then", async () => {
+      getShot.mockResolvedValue(
+        detail({
+          profile_label: "Blooming milk",
+          profile_name_on_device: "Blooming",
+          brewed_as: "Blooming",
+          profile_version_id: 7,
+        }),
+      );
+      renderShot();
+
+      const line = await screen.findByTestId("shot-profile");
+      expect(line).toHaveTextContent('Blooming milk (brewed as "Blooming")');
+      expect(within(line).getByTestId("shot-profile-link")).toHaveAttribute(
+        "href",
+        "/profiles#version-7",
+      );
+      expect(within(screen.getByTestId("shot-facts")).getByText("Profile")).toBeInTheDocument();
+    });
+
+    it("is the current name alone when the server serves no brewed-as, a cut name included", async () => {
+      getShot.mockResolvedValue(
+        detail({
+          profile_label: "Blooming milk for the weekend, 18 g in, 40 g out, slow",
+          profile_name_on_device: "Blooming milk for the weekend, 18 g in, 40 g out",
+          brewed_as: null,
+          profile_version_id: 7,
+        }),
+      );
+      renderShot();
+
+      const line = await screen.findByTestId("shot-profile");
+      expect(line).toHaveTextContent(/^Blooming milk for the weekend, 18 g in, 40 g out, slow$/);
+      expect(screen.queryByTestId("shot-brewed-as")).not.toBeInTheDocument();
+    });
+
+    it("is what the machine called it when the shot is in no profile", async () => {
+      getShot.mockResolvedValue(
+        detail({
+          profile_label: null,
+          profile_name_on_device: "Old profile",
+          profile_version_id: null,
+        }),
+      );
+      renderShot();
+
+      const line = await screen.findByTestId("shot-profile");
+      expect(line).toHaveTextContent(/^Old profile$/);
+      expect(screen.queryByTestId("shot-profile-link")).not.toBeInTheDocument();
+    });
+  });
+
   it("offers both downloads", async () => {
     renderShot();
 
