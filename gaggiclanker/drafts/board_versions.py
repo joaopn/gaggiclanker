@@ -145,3 +145,12 @@ class ConflictView(BaseModel):
     app_version_id: int
     app_short_hash: str
     app_profile: JsonObject
+    #: The names in play, so a name-only conflict can be put in a sentence: what the profile is
+    #: called here, what the file is called at the machine, and what the app last recorded the file
+    #: as called (the name both sides started from; ``None`` when nothing was recorded).
+    app_name: str
+    machine_name: str
+    recorded_name: str | None = None
+    #: When the machine's name is another live profile's, that profile's name; keeping the machine's
+    #: side is then refused until that one is renamed or switched off.
+    machine_name_held_by: str | None = None

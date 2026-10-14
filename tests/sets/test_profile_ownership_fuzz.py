@@ -2,10 +2,12 @@
 """A randomised driver over the Writes-off path and what follows it, through the real app
 (routes, services, sync engine) against a fake machine. Each seed is one run of random steps (new
 Sets, new versions, adoption, puts, Make active, a file leaving and returning, a profile listing a
-Set's file without making it active, a file renamed on the display and the person keeping the
-machine's side of that conflict); after every step the ownership and Set invariants are
-asserted and a new shot on each Set's current version (linked, and by the machine file that holds
-it) must file under that Set. A small fixed set of seeds keeps it to seconds."""
+Set's file without making it active, a file renamed on the display, a profile renamed in the app
+(through the repository, as the rename route will) and the person keeping a side of the
+conflicts that come of it); after every step the ownership and Set invariants are asserted, a
+profile never moves off a file the machine still holds, no two live profiles share a name, a
+rename makes no version, and a new shot on each Set's current version (linked, and by the machine
+file that holds it) must file under that Set. A small fixed set of seeds keeps it to seconds."""
 
 from __future__ import annotations
 
@@ -17,6 +19,8 @@ from typing import Any
 
 import pytest
 
+from gaggiclanker.db.repos.lineage import name_key
+from gaggiclanker.db.repos.profile_board import BoardRowPatch
 from gaggiclanker.device.fake import build_fake_device
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app, seed_settings
@@ -34,13 +38,30 @@ class Failed(AssertionError):
     pass
 
 
-async def check(app: Any, client: Any, fake: Any, log: list[str]) -> None:
+async def check(
+    app: Any, client: Any, fake: Any, log: list[str], seen_files: dict[int, str]
+) -> None:
     db = app.state.db
     try:
         await assert_versions_owned(db)
         await assert_sets_follow_their_profiles(db)
     except AssertionError as exc:
         raise Failed(f"invariant: {exc}") from None
+    live = await db.fetch_all(
+        "SELECT id, label, device_profile_id FROM profile_board WHERE deleted_at IS NULL"
+    )
+    names = [name_key(r["label"]) for r in live]
+    if len(names) != len(set(names)):
+        raise Failed(f"two live profiles share a name: {sorted(r['label'] for r in live)}")
+    on_machine = {str(p["id"]) for p in fake.profiles}
+    for r in live:
+        now, before = r["device_profile_id"], seen_files.get(r["id"])
+        if before is not None and now != before and before in on_machine:
+            raise Failed(
+                f"{r['label']} moved off {before}, which the machine still holds, to {now}"
+            )
+        if now is not None:
+            seen_files[r["id"]] = now
     shared = await db.fetch_all(
         "SELECT v.profile_version_id pv, COUNT(DISTINCT s.id) n FROM sets s "
         "JOIN set_versions v ON v.id = s.current_version_id "
@@ -88,6 +109,7 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
         env = EnvSettings(DATA_DIR=str(data_dir), LOG_LEVEL="warning", LOG_JSON=True)  # type: ignore[call-arg]
         await seed_settings(env, gaggimateHost=fake.address, gaggimateTimeoutSeconds=5)
         hidden: list[dict[str, Any]] = []
+        seen_files: dict[int, str] = {}
         async with running_app(env) as (app, client):
             assert await app.state.connection.client.wait_connected(5.0)
             eng = app.state.connection.engine
@@ -109,6 +131,8 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                         "list_inactive",
                         "display_rename",
                         "display_rename",
+                        "app_rename",
+                        "app_rename",
                         "keep_machine",
                         "keep_machine",
                         "keep_machine",
@@ -192,6 +216,23 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                     log.append(
                         f"{step}: display renames {f['id']} to {f['label']} + sync -> {run.status}"
                     )
+                elif op == "app_rename":
+                    # The profile is renamed in the app (nothing is sent until a sync with the
+                    # switch on): a rename is no version, and the names stay unique.
+                    rows = await db.fetch_all(
+                        "SELECT id, label FROM profile_board WHERE deleted_at IS NULL"
+                    )
+                    if not rows:
+                        continue
+                    row = rnd.choice(rows)
+                    name = f"{row['label'].split(' ^')[0]} ^{rnd.randrange(4)}"
+                    if await app.state.board.board.find_live_by_name_key(name, excluding=row["id"]):
+                        continue
+                    count = await db.fetch_value("SELECT COUNT(*) FROM profile_versions")
+                    await app.state.board.board.update(row["id"], BoardRowPatch(label=name))
+                    log.append(f"{step}: app renames {row['label']} to {name}")
+                    if await db.fetch_value("SELECT COUNT(*) FROM profile_versions") != count:
+                        raise Failed("a rename wrote a version")
                 elif op == "keep_machine":
                     board = data(await client.get("/api/profile-board"))
                     held = [r for r in board["rows"] if r["in_conflict"]]
@@ -292,7 +333,7 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                     )
                     if r.status_code >= 500:
                         raise Failed(f"500 on put: {r.text}")
-                await check(app, client, fake, log)
+                await check(app, client, fake, log, seen_files)
     except Failed as exc:
         log.append(f"FAILED: {exc}")
         return log

@@ -1,8 +1,8 @@
 """A version is what its profile brews, and the name is the profile's.
 
-The board plan compares a machine file as its brew and its name, deciding exactly as it did when
-the name was part of the hash; a name-only difference is the same conflict a content difference
-is. Documents bound for the machine, the editor and the agent are built from a version and the
+The board plan compares a machine file as its brew and its name and decides the two separately
+(``test_names_per_file`` has the name rules); a brew the profile never had is a conflict whatever
+the name. Documents bound for the machine, the editor and the agent are built from a version and the
 profile's name. The upgrade's own tests are in ``tests/test_upgrade_level_003.py``.
 """
 
@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
+from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, document_for
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, brew_hash, document_hash
@@ -62,7 +62,8 @@ async def versions(app: FastAPI) -> int:
 async def renamed_on_the_display(
     adopted: Adopted, provider: FakeProvider, new: str = "Renamed on the display"
 ) -> tuple[dict[str, Any], str]:
-    """An app profile whose file the display renamed (same brew), after the sync that sees it."""
+    """An app profile whose file the display renamed (same brew); the sync that sees it gives the
+    profile the machine's name."""
     app, client, fake = adopted
     await app_row(app, client, fake, provider)
     row = row_for(await get_board(client), APP_LABEL)
@@ -72,10 +73,28 @@ async def renamed_on_the_display(
     return row, device_id
 
 
+async def renamed_on_both_sides(
+    adopted: Adopted,
+    provider: FakeProvider,
+    here: str = "Renamed here",
+    there: str = "Renamed there",
+) -> tuple[dict[str, Any], str]:
+    """An app profile renamed in the app (through the repository) and, since the last sync, at the
+    machine too: the sync that sees it asks."""
+    app, client, fake = adopted
+    await app_row(app, client, fake, provider)
+    row = row_for(await get_board(client), APP_LABEL)
+    device_id = row["machine"]["device_id"]
+    await ProfileBoardRepository(app.state.db).update(row["row"]["id"], BoardRowPatch(label=here))
+    rename_on_display(fake, device_id, there)
+    await pull(app)
+    return row, device_id
+
+
 # ── 9: the plan reads a file as its brew and its name ────────────────────
 
 
-async def test_a_file_with_the_profiles_brew_under_another_name_is_a_conflict(
+async def test_a_file_with_the_profiles_brew_under_another_name_gives_the_profile_that_name(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
@@ -83,27 +102,51 @@ async def test_a_file_with_the_profiles_brew_under_another_name_is_a_conflict(
     row = row_for(await get_board(client), APP_LABEL)
     device_id = row["machine"]["device_id"]
     rename_on_display(fake, device_id, "Renamed on the display")
+    before = await versions(app)
     fake.ws_requests.clear()
 
     run = await pull(app)
 
-    assert summary_of(run)["conflicts"] != []
+    assert summary_of(run)["conflicts"] == []
+    assert write_frames(fake) == [], "the machine is not written for a name it gave itself"
+    view = row_for(await get_board(client), "Renamed on the display")
+    assert view["row"]["id"] == row["row"]["id"] and not view["in_conflict"]
+    assert view["row"]["device_label"] == "Renamed on the display"
+    assert await versions(app) == before, "a rename is never a version"
+
+
+async def test_both_sides_renamed_is_a_conflict_over_the_name(
+    adopted: Adopted, provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    row, device_id = await renamed_on_both_sides(adopted, provider)
+    fake.ws_requests.clear()
+
+    run = await pull(app)
+
+    assert [i["label"] for i in summary_of(run)["conflicts"]] == ["Renamed here"]
     assert write_frames(fake) == []
-    view = row_for(await get_board(client), APP_LABEL)
+    view = row_for(await get_board(client), "Renamed here")
     assert view["in_conflict"] and view["planned"] == []
     assert view["conflict"]["content_hash"] == file_hash(fake, device_id)
     seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
     # What the conflict is told is the document hash of the machine's file: its brew and its name.
     assert seen["machine"]["content_hash"] == file_hash(fake, device_id)
-    assert seen["machine_profile"]["label"] == "Renamed on the display"
-    assert seen["app_profile"]["label"] == APP_LABEL
+    assert seen["machine_profile"]["label"] == "Renamed there"
+    assert seen["app_profile"]["label"] == "Renamed here"
+    assert (seen["app_name"], seen["machine_name"], seen["recorded_name"]) == (
+        "Renamed here",
+        "Renamed there",
+        APP_LABEL,
+    )
+    assert seen["machine_name_held_by"] is None
 
 
 async def test_keeping_the_machines_name_makes_no_version_and_takes_the_files_name(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
-    row, _device_id = await renamed_on_the_display(adopted, provider)
+    row, _device_id = await renamed_on_both_sides(adopted, provider)
     seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
     before = await versions(app)
 
@@ -112,9 +155,9 @@ async def test_keeping_the_machines_name_makes_no_version_and_takes_the_files_na
     assert kept.status_code == 200, kept.text
     assert await versions(app) == before
     body = data(kept)
-    assert body["label"] == "Renamed on the display"
+    assert body["label"] == "Renamed there"
     assert body["current_version_id"] == row["row"]["current_version_id"]
-    assert body["device_label"] == "Renamed on the display"
+    assert body["device_label"] == "Renamed there"
     fake.ws_requests.clear()
     run = await pull(app)
     assert summary_of(run)["conflicts"] == [] and write_frames(fake) == []
@@ -131,6 +174,7 @@ async def test_keeping_the_machines_name_is_refused_when_a_live_profile_has_it(
     rename_on_display(fake, row["machine"]["device_id"], other["row"]["label"].upper())
     await pull(app)
     seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
+    assert seen["machine_name_held_by"] == other["row"]["label"]
 
     refused = await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
 
@@ -139,30 +183,31 @@ async def test_keeping_the_machines_name_is_refused_when_a_live_profile_has_it(
     assert row_for(await get_board(client), APP_LABEL)["in_conflict"]
 
 
-async def test_keeping_the_apps_side_of_a_name_only_conflict_overrules_that_document(
+async def test_keeping_the_apps_side_of_a_name_conflict_saves_the_apps_name_over_the_file(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
-    row, device_id = await renamed_on_the_display(adopted, provider)
+    row, device_id = await renamed_on_both_sides(adopted, provider)
     seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
 
     kept = await resolve(client, row["row"]["id"], "app", seen["machine"]["content_hash"])
 
     assert kept.status_code == 200, kept.text
     assert data(kept)["conflict_overruled_hash"] == file_hash(fake, device_id)
-    assert data(kept)["label"] == APP_LABEL
-    # The next sync replaces the file with the profile under its own name.
+    assert data(kept)["label"] == "Renamed here"
+    fake.ws_requests.clear()
+    # The next sync saves the profile's name over the file, in place, and asks nothing more.
     run = await pull(app)
     assert summary_of(run)["conflicts"] == []
-    labels = [p["label"] for p in fake.profiles]
-    assert APP_LABEL in labels and "Renamed on the display" not in labels
+    assert write_frames(fake) == ["req:profiles:save"]
+    assert [p["label"] for p in fake.profiles if p["id"] == device_id] == ["Renamed here"]
 
 
 async def test_a_stale_conflict_hash_is_refused_after_a_second_rename(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
-    row, device_id = await renamed_on_the_display(adopted, provider)
+    row, device_id = await renamed_on_both_sides(adopted, provider)
     seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
     rename_on_display(fake, device_id, "Renamed again")
     await pull(app)
@@ -183,7 +228,9 @@ async def test_the_file_the_app_pushed_is_the_profiles_name_and_the_recorded_nam
     assert (
         row["device_label"] == APP_LABEL and row["device_version_id"] == row["current_version_id"]
     )
-    # The recorded name is what the app recorded, not the name the mirror has now.
+    # The recorded name is what the app recorded, not the name the mirror has now: renamed on
+    # both sides, the profile is in conflict and the record stays what it was.
+    await ProfileBoardRepository(app.state.db).update(row["id"], BoardRowPatch(label="Mine"))
     rename_on_display(fake, row["device_profile_id"], "Somebody else's name")
     await pull(app)
     again = await ProfileBoardRepository(app.state.db).get(row["id"])
@@ -211,31 +258,27 @@ async def test_content_the_profile_has_had_under_its_name_is_not_a_conflict(
     assert any(r["label"] == APP_LABEL for r in summary_of(run)["recorded"])
 
 
-async def test_an_older_brew_under_an_older_name_is_a_conflict_not_a_silent_replace(
+async def test_a_file_renamed_back_to_an_older_name_of_its_profile_is_a_plain_rename(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
-    """The one accepted difference: the name is the profile's now, so a file with a brew the
-    profile has had under a name it no longer has is a name-only difference like any other."""
+    """The name is the profile's and a file is matched by its id: a machine rename to a name the
+    profile once had is a rename like any other (the name is free, so the profile takes it)."""
     app, client, fake = adopted
     row, device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
-    await pull(app)
     rename_on_display(fake, device_id, APP_LABEL)  # the old name, the same brew
 
     run = await pull(app)
 
-    assert summary_of(run)["conflicts"] != []
-    assert row_for(await get_board(client), "The new name")["in_conflict"]
+    assert summary_of(run)["conflicts"] == []
+    assert not row_for(await get_board(client), APP_LABEL)["in_conflict"]
+    assert row_for(await get_board(client), APP_LABEL)["row"]["id"] == row["row"]["id"]
 
 
 async def test_a_never_seen_file_with_a_known_brew_and_an_older_name_joins_as_a_new_profile(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
-    row, device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
+    _row, device_id = await renamed_on_the_display(adopted, provider, "The new name")
     await pull(app)
     twin = dict(next(p for p in fake.profiles if p["id"] == device_id))
     twin.update({"id": "newfile001", "label": APP_LABEL})
@@ -258,9 +301,7 @@ async def test_a_push_is_the_active_version_under_the_rows_name(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
-    row, _device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
+    _row, _device_id = await renamed_on_the_display(adopted, provider, "The new name")
     await pull(app)
     change = await same_name_draft(app, client, provider, "The new name", 7.7)
     await put(client, change)
@@ -284,8 +325,6 @@ async def test_a_missing_file_is_pushed_under_the_profiles_name_not_the_stored_o
 ) -> None:
     app, client, fake = adopted
     row, device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
     await pull(app)
     version = await ProfilesRepository(app.state.db).get_version(row["row"]["current_version_id"])
     assert version is not None and version.label == APP_LABEL  # as first stored
@@ -333,8 +372,6 @@ async def test_a_version_keeps_the_document_it_was_first_stored_with_and_is_serv
 ) -> None:
     app, client, _fake = adopted
     row, _device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
     version_id = row["row"]["current_version_id"]
 
     stored = json.loads(
@@ -356,8 +393,6 @@ async def test_editing_a_version_stored_under_an_old_name_is_a_change_to_its_pro
 ) -> None:
     _app, client, _fake = adopted
     row, _device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
     version_id = row["row"]["current_version_id"]
     # What the web editor opens: the version as the board serves it, and as the versions route does.
     board_row = row_for(await get_board(client), "The new name")
@@ -384,10 +419,8 @@ async def test_the_agent_is_shown_the_profiles_name_not_the_first_stored_one(
 ) -> None:
     from gaggiclanker.db.repos.profiles import stored_document
 
-    app, client, _fake = adopted
+    app, _client, _fake = adopted
     row, _device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
     profiles = ProfilesRepository(app.state.db)
     version = await profiles.get_version(row["row"]["current_version_id"])
     assert version is not None
@@ -408,8 +441,6 @@ async def test_making_an_older_version_active_keeps_the_name_and_has_no_name_ref
     # The profile was renamed on the display and the machine's name kept: its first version is
     # stored under a name the profile no longer has.
     row, _ = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
     first = row["row"]["current_version_id"]
     change = await same_name_draft(app, client, provider, "The new name", 7.3)
     await put(client, change)
@@ -434,9 +465,7 @@ async def test_a_put_stores_no_version_for_a_name_and_leaves_the_profiles_name(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _fake = adopted
-    row, _device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
+    _row, _device_id = await renamed_on_the_display(adopted, provider, "The new name")
     change = await same_name_draft(app, client, provider, "The new name", 7.7)
     before = await versions(app)
 
@@ -537,9 +566,7 @@ async def test_a_replacing_push_records_the_profiles_name_beside_the_new_version
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _fake = adopted
-    row, _ = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
+    _row, _ = await renamed_on_the_display(adopted, provider, "The new name")
     await pull(app)
     await put(client, await same_name_draft(app, client, provider, "The new name", 7.7))
 
@@ -556,8 +583,6 @@ async def test_a_starred_change_keeps_the_files_own_name_in_the_mirror(
 ) -> None:
     app, client, _fake = adopted
     row, device_id = await renamed_on_the_display(adopted, provider, "The new name")
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
     await pull(app)
     starred = (
         await client.put(f"/api/profile-board/{row['row']['id']}/starred", json={"starred": False})

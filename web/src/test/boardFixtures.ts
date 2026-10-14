@@ -179,6 +179,10 @@ export function conflictView(overrides: Partial<ConflictView> = {}): ConflictVie
     app_version_id: 7,
     app_short_hash: "abcdef01",
     app_profile: profileWith(9),
+    app_name: "9 Bar Espresso",
+    machine_name: "9 Bar Espresso",
+    recorded_name: "9 Bar Espresso",
+    machine_name_held_by: null,
     ...overrides,
   };
 }

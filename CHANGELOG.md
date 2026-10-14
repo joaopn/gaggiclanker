@@ -39,6 +39,15 @@ database.
   content are no longer a conflict. After a machine reset, once you resume, a file with the brew
   of a profile that lost its file (or of any version it has had) is attached to that profile,
   and the next sync saves its active version over it.
+- **Changed: a profile's name and its brew are decided separately on its own file, and a rename
+  goes both ways.** A name only the machine changed (somebody renamed the profile at the machine)
+  is taken by the profile at the next sync, with Writes on or off, with nothing written to the
+  machine and no new version; a name only the app changed is saved over the file at the next sync
+  with Writes on ("Will be renamed on the machine at the next sync"); a name both sides changed,
+  or a machine name that is another profile's, is a conflict like any other, and nothing is
+  written for that profile until you choose a side. Before, any name difference on a profile's file
+  was a conflict. A brew the profile never had is still a conflict, and covers the name. The
+  conflict view carries the names in play (the app's, the machine's, the one last recorded).
 - Database: no change.
 
 ### A Set has one profile

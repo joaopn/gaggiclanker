@@ -98,6 +98,7 @@ from gaggiclanker.drafts.board_plan import (
     DeletedPlan,
     PlanBuilder,
     RowPlan,
+    judge_file,
 )
 from gaggiclanker.drafts.board_versions import (
     ActiveVersion,
@@ -160,6 +161,8 @@ EVENT_LEFT = "board_left"
 EVENT_HOME_SCREEN = "board_home_screen"
 EVENT_FAILED = "board_failed"
 EVENT_PAUSED = "board_paused"
+#: A profile took the name somebody gave its file at the machine (old and new name, row id).
+EVENT_RENAMED_ON_MACHINE = "profile_renamed_on_machine"
 
 #: Three failed profiles in a row mean the machine has gone, not that three profiles are bad.
 MAX_CONSECUTIVE_FAILURES = 3
@@ -195,6 +198,8 @@ class BoardRunSummary(BaseModel):
     conflicts: list[BoardSummaryItem] = Field(default_factory=list)
     #: Content found on a file edited on the display, recorded as a version of its profile.
     recorded: list[BoardSummaryItem] = Field(default_factory=list)
+    #: Profiles that took the name their file was given at the machine (nothing was written).
+    renamed: list[BoardSummaryItem] = Field(default_factory=list)
     pushed: list[BoardSummaryItem] = Field(default_factory=list)
     removed: list[BoardSummaryItem] = Field(default_factory=list)
     #: Files that stay on the machine (still in use, edited since the last sync, the selected
@@ -209,7 +214,13 @@ class BoardRunSummary(BaseModel):
 
     @property
     def changed(self) -> int:
-        return len(self.adopted) + len(self.pushed) + len(self.removed) + len(self.home_screen)
+        return (
+            len(self.adopted)
+            + len(self.renamed)
+            + len(self.pushed)
+            + len(self.removed)
+            + len(self.home_screen)
+        )
 
 
 class BoardMachineState(BaseModel):
@@ -428,6 +439,10 @@ class _MirrorConflict:
     version: ProfileVersionRow
     name: str
     document_hash: str
+    #: The name the app last recorded for the file, if it recorded one.
+    recorded_name: str | None = None
+    #: The live profile that has the machine's name (a conflict about the name alone).
+    holder: BoardRow | None = None
 
 
 @dataclass
@@ -610,10 +625,10 @@ class BoardService:
     async def _mirror_conflict(self, row: BoardRow) -> _MirrorConflict | None:
         """The machine's file of a profile when it is in conflict, from the mirror.
 
-        The same rule the plan applies to a read of the machine: a file (brew and name) that is
-        neither what the profile last recorded for it, nor its active version under its name,
-        nor a brew it has had under its name (the ones only found on the file excepted), nor what
-        a person already overruled.
+        The same rule the plan applies to a read of the machine (:func:`judge_file`): a file
+        that is not what the profile last recorded for it, whose brew the profile never had, or
+        whose name was changed on both sides, or at the machine alone to another live profile's
+        name, and that a person has not already overruled.
         """
         if row.device_profile_id is None:
             return None
@@ -626,15 +641,25 @@ class BoardService:
             return None
         file = FileContent(version.content_hash, mirrored.label)
         document = document_hash(document_for(version, mirrored.label))
-        known = {FileContent(active.content_hash, row.label)}
+        recorded: FileContent | None = None
         if row.device_version_id is not None:
-            recorded = await self.profiles.get_version(row.device_version_id)
-            if recorded is not None:
-                known.add(FileContent(recorded.content_hash, row.device_label or ""))
-        known |= {FileContent(brew, row.label) for brew in await self.board.listed_brews(row.id)}
-        if file in known or document == row.conflict_overruled_hash:
+            held = await self.profiles.get_version(row.device_version_id)
+            if held is not None:
+                recorded = FileContent(held.content_hash, row.device_label or "")
+        if file == recorded:
             return None
-        return _MirrorConflict(version=version, name=mirrored.label, document_hash=document)
+        judged = await judge_file(
+            self.board, row, file, recorded, document, FileContent(active.content_hash, row.label)
+        )
+        if judged.outcome != "conflict":
+            return None
+        return _MirrorConflict(
+            version=version,
+            name=mirrored.label,
+            document_hash=document,
+            recorded_name=None if recorded is None else recorded.name,
+            holder=judged.holder,
+        )
 
     async def conflict(self, row_id: int) -> ConflictView | None:
         """Both sides of a profile's conflict, or ``None`` when it has none."""
@@ -656,6 +681,10 @@ class BoardService:
             app_version_id=active.id,
             app_short_hash=short_hash(active.content_hash),
             app_profile=stored_document(active, row.label),
+            app_name=row.label,
+            machine_name=machine.name,
+            recorded_name=machine.recorded_name,
+            machine_name_held_by=None if machine.holder is None else machine.holder.label,
         )
 
     async def resolve_conflict(
@@ -676,7 +705,8 @@ class BoardService:
         async with self.db.transaction():
             row = await self._live_row(row_id)
             machine = await self._mirror_conflict(row)
-            if machine is None:
+            machine_active = await self.profiles.get_version(row.current_version_id)
+            if machine is None or machine_active is None:
                 raise Conflict(
                     f"{row.label} has no conflict to resolve.", details={"reason": "no_conflict"}
                 )
@@ -685,8 +715,20 @@ class BoardService:
                     "The machine's file changed since you looked at it; look at it again.",
                     details={"reason": "stale_conflict"},
                 )
-            # The brew is the profile's own already when the difference is only the name; a
-            # brew it never had is recorded as a version (the file's, so nothing is lost).
+            # A conflict about the name alone: the machine's brew is one the profile has had.
+            known = {machine_active.content_hash} | await self.board.listed_brews(row.id)
+            if row.device_version_id is not None:
+                recorded = await self.profiles.get_version(row.device_version_id)
+                if recorded is not None:
+                    known.add(recorded.content_hash)
+            if (
+                keep == "machine"
+                and row.device_version_id is not None
+                and machine.version.content_hash in known
+            ):
+                return await self._take_the_machines_name(row, machine)
+            # A brew the profile never had is recorded as a version (the file's, so nothing is
+            # lost).
             kept = await self.board.version_for(row.id, machine.version.id)
             await self.board.add_version(row.id, kept, "edited_on_machine")
             if keep == "app":
@@ -723,6 +765,31 @@ class BoardService:
                     await self._pinned_machine_side(pin, machine, kept)
             assert updated is not None
             return updated
+
+    async def _take_the_machines_name(self, row: BoardRow, machine: _MirrorConflict) -> BoardRow:
+        """Keeping the machine's side of a conflict about the name alone writes only the name.
+
+        The file's brew is one the profile has had, so there is no brew to adopt: the active
+        version, the Set that follows it and a pin stay as they are, and the next sync decides the
+        brew by its own rule (an older brew under the current name is matched and replaced).
+        """
+        holder = await self.board.find_live_by_name_key(machine.name, excluding=row.id)
+        if holder is not None and machine.name != row.label:
+            raise Conflict(
+                f"The list already has {holder.label}; rename or switch off that one first.",
+                details={"reason": "duplicate_label"},
+            )
+        updated = await self.board.update(
+            row.id,
+            BoardRowPatch(
+                label=machine.name,
+                device_version_id=row.device_version_id,
+                device_label=machine.name,
+                conflict_overruled_hash=None,
+            ),
+        )
+        assert updated is not None
+        return updated
 
     async def _pinned_machine_side(
         self, pin: PinDetail, machine: _MirrorConflict, machine_version_id: int
@@ -1570,7 +1637,8 @@ class BoardService:
         pull_shots: Callable[[], Awaitable[bool]],
         shot_announced: Callable[[], bool],
     ) -> bool | None:
-        """The sync's write phase. ``None`` (and nothing read or sent) with the switch off.
+        """The sync's write phase. ``None`` (and nothing read or sent) with the switch off, unless
+        a profile took the name its file was given at the machine (``True``: a read).
 
         Otherwise whether it changed anything, with the summary left on ``update``.
 
@@ -1579,7 +1647,18 @@ class BoardService:
         be noise in the audit a person reads to see what was sent.
         """
         if not await self.settings.get("deviceWritesEnabled"):
-            return None
+            # A name somebody gave a file at the machine is read, not written: the profile takes
+            # it whatever the switch says. Nothing else happens, and the run has no board summary.
+            try:
+                renamed = await self._take_names_from_the_mirror(
+                    client, run_id=run_id, update=update
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.error("board_names_from_the_mirror_failed", exc_info=True)
+                return None
+            return True if renamed else None
         summary = BoardRunSummary()
         try:
             await self._run(client, run_id, update, summary, pull_shots, shot_announced)
@@ -1634,6 +1713,7 @@ class BoardService:
             await self._event(phase, EVENT_PAUSED, computed.paused, None, None)
             return
         await self._join(phase, computed)
+        await self._take_names(phase, computed)
         phase.held = {p.row.id: p.held for p in computed.rows if p.held is not None}
 
         # Profiles that are on first (their saves), then the ones switched off, then the deleted
@@ -1667,6 +1747,86 @@ class BoardService:
             ):
                 await self._apply_home(phase, plan.home)
         await self.board.settle_resume()
+
+    # ── a name given at the machine ──────────────────────────────────
+
+    async def _take_names(self, phase: _Phase, computed: Computed) -> None:
+        """Every profile whose file was renamed at the machine alone takes the machine's name."""
+        for plan in computed.rows:
+            if plan.take_name is not None:
+                item = await self._take_name(plan, run_id=phase.run_id)
+                if item is not None:
+                    phase.summary.renamed.append(item)
+                else:
+                    # Not taken (another profile has the name now): the file is not recorded as
+                    # holding that name either, so the next sync sees the difference and asks.
+                    plan.edited_file = None
+
+    async def _take_name(self, plan: RowPlan, *, run_id: int) -> BoardSummaryItem | None:
+        """The profile takes the name its file has at the machine; nothing is written there.
+
+        A read, so it happens with the switch off as well. The name is free when the plan says so
+        and is checked again here, since the list may have changed in between; the recorded name
+        follows the profile's, so the file and the profile agree. A rename never writes a version.
+        """
+        name = plan.take_name
+        row = plan.row
+        if name is None or row.device_version_id is None:
+            return None
+        async with self.db.transaction():
+            fresh = await self.board.get(row.id)
+            if (
+                fresh is None
+                or fresh.deleted_at is not None
+                or fresh.label != row.label
+                or fresh.device_version_id is None
+                or await self.board.find_live_by_name_key(name, excluding=row.id) is not None
+            ):
+                return None
+            updated = await self.board.update(
+                row.id,
+                BoardRowPatch(
+                    label=name,
+                    device_version_id=fresh.device_version_id,
+                    device_label=name,
+                ),
+            )
+        assert updated is not None
+        plan.row = updated
+        await self.runs.add_event(
+            EVENT_RENAMED_ON_MACHINE,
+            run_id=run_id,
+            device_id=row.device_profile_id,
+            message=f"{row.label} was renamed on the machine to {name}.",
+            data={"row_id": row.id, "from": row.label, "to": name},
+        )
+        return BoardSummaryItem(
+            row_id=row.id,
+            label=name,
+            device_id=row.device_profile_id,
+            reason="renamed_on_machine",
+            detail=f"it took the name the machine gave its file; it was called {row.label}",
+        )
+
+    async def _take_names_from_the_mirror(
+        self, client: GaggimateClient, *, run_id: int, update: SyncRunUpdate
+    ) -> bool:
+        """With the switch off: the same names are taken, from what the sync just mirrored.
+
+        Nothing is read for writing and nothing is sent; the plan is built from the mirror exactly
+        as the page builds it when it cannot reach the machine.
+        """
+        computed = await self.plans.compute(
+            await machine_from_mirror(self.profiles), host=client.host
+        )
+        if computed.paused:
+            return False
+        taken = False
+        for plan in computed.rows:
+            if plan.take_name is not None and await self._take_name(plan, run_id=run_id):
+                update.profiles_changed += 1
+                taken = True
+        return taken
 
     # ── files the app has never seen ─────────────────────────────────
 

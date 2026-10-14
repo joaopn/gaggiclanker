@@ -20,7 +20,7 @@ import pytest
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
 from tests.drafts.conftest import BASE_LABEL, FIXTURES, base_profile, base_version_id, data
 from tests.drafts.helpers import assert_versions_owned, make_set_on, manual_draft
-from tests.drafts.test_board import WRITE_FRAMES, get_board, pull, put, resolve, row_for
+from tests.drafts.test_board import WRITE_FRAMES, get_board, pull, put, row_for
 
 #: The file id the fixture shot 129 was brewed on.
 SHOT_FILE = "rV4GhUcSZc"
@@ -153,11 +153,8 @@ async def test_an_older_brew_under_the_current_name_is_matched_and_replaced(
     file_id = row["machine"]["device_id"]
     file = next(p for p in fake_device.profiles if p["id"] == file_id)
     file["label"] = "9 Bar Y"
-    await pull(app)
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    kept = await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
-    assert kept.status_code == 200
-    await pull(app)
+    await pull(app)  # the profile takes the name the machine gave its file
+    assert row_for(await get_board(client), "9 Bar Y")["row"]["id"] == row["row"]["id"]
     file = next(p for p in fake_device.profiles if p["id"] == file_id)
     file.clear()
     file.update({**copy.deepcopy(original), "id": file_id, "label": "9 Bar Y"})

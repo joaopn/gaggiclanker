@@ -358,7 +358,9 @@ profiles back, with one button.
 **No two profiles in the list share a name.** A proposal that would make a second profile with
 a name the list already has is refused (its panel says the list already has that profile, and
 offers Decline), and a file on the machine with a name the list already has joins as
-"<name> (2)" (the next sync renames the file on the machine).
+"<name> (2)" (the next sync renames the file on the machine). A profile renamed on the machine
+takes the machine's new name at the next sync, with Writes on or off; one renamed in the app has
+its file renamed at the next sync with Writes on; renamed on both sides, it is a conflict.
 
 ### Putting a profile on the machine
 

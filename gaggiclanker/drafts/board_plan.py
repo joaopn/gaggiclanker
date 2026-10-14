@@ -16,16 +16,20 @@ included): a profile that is **on** is pushed with its active version, whoever m
 that is **off** is taken off the machine. What stands between a profile and its removal is not
 who made it but whether the app has *seen* what the file holds:
 
-* the file holds what was recorded for it, or **content the profile has had** (a brew it has
-  had, under its current name: somebody put an older version back on the display): that is no
-  conflict. It is recorded as what the file holds (a summary line), and the profile is handled
-  as usual: a profile that is on has its active version put beside it and the file removed,
-  after a fresh load that must match what was just recorded; one that is off has the file
-  removed the same way;
-* the file holds **content the profile never had** (edited on the display, or a never-seen file
-  carrying the profile's name): that is a **conflict**. The content is kept as a version
+* the file holds what was recorded for it, or **a brew the profile has had** (somebody put an
+  older version back on the display): that is no conflict. It is recorded as what the file holds
+  (a summary line), and the profile is handled as usual: a profile that is on has its active
+  version saved over the file, under a fresh load that must match what was just recorded; one
+  that is off has the file removed the same way;
+* the file holds **a brew the profile never had** (edited on the display): that is a
+  **conflict**, which covers the name too. The content is kept as a version
   (``edited_on_machine``, not active), nothing at all is done for that profile until a person
   keeps one side, and the other profiles sync;
+* **the name is decided apart from the brew** (:func:`judge_file`), with the name the app last
+  recorded for the file as the one both sides started from: only the app changed it, and the sync
+  saves the profile's name over the file; only the machine changed it, and the profile takes the
+  machine's name when it is free (a read: nothing is written, with the switch off as well); both
+  changed it, or the machine's name is another live profile's, and it is a conflict;
 * a file the app **has never seen** (no profile holds its id) is never removed or replaced by the
   sync that finds it: it joins the list as a new profile that is on and starred as the machine
   has it, under its own name (made unique with " (2)" and so on when a live profile has it; the
@@ -70,13 +74,16 @@ __all__ = [
     "EDITED",
     "FINAL_REFUSALS",
     "NO_SUCCESSOR",
+    "RENAMED_AT_NEXT_SYNC",
     "RESET_REASON",
     "BoardAction",
     "BoardPlan",
     "DeletedPlan",
+    "Judgement",
     "PlanBuilder",
     "PolicyCheck",
     "RowPlan",
+    "judge_file",
 ]
 
 type ActionKind = Literal["adopt", "push", "remove", "leave", "home_screen", "report"]
@@ -90,6 +97,9 @@ ANOTHER_ROW = "another profile stands on it"
 #: Why a file that was edited on the display stays this sync: its content is recorded as a
 #: version of its profile now, and the next sync decides.
 EDITED = "edited on the machine since the last sync; recorded as a version, the next sync decides"
+
+#: What a push that only saves the profile's name over its file says it will do.
+RENAMED_AT_NEXT_SYNC = "Will be renamed on the machine at the next sync"
 
 #: Why nothing is done for a profile in conflict.
 CONFLICT = (
@@ -121,9 +131,9 @@ class BoardAction(BaseModel):
     device_id: str | None = None
     #: ``adopt``: ``first_pull``, ``unseen`` (a new profile) or ``attached`` (to ``row_id``, a
     #: profile that lost its file in a reset, by its active brew).
-    #: ``push``: ``missing`` (a new file) or ``superseded`` (a new version over the profile's own
-    #: file). ``remove`` and ``leave``: ``deleted``, ``off`` (switched off) or
-    #: ``edited_on_machine``.
+    #: ``push``: ``missing`` (a new file), ``superseded`` (a new version over the profile's own
+    #: file) or ``renamed`` (only the name is saved over it; ``detail`` says so). ``remove`` and
+    #: ``leave``: ``deleted``, ``off`` (switched off) or ``edited_on_machine``.
     #: ``home_screen``: ``on`` or ``off``. ``report``: ``missing``, ``unreadable`` (the machine
     #: listed it and could not load it), ``did_not_verify`` (this version did not read back last
     #: time), ``policy`` (the active version is outside the safety bounds), ``conflict`` (the
@@ -173,6 +183,9 @@ class RowPlan:
     #: The standing file holds something other than what was recorded for it: the executor
     #: records that content as a version of this profile before it does anything else.
     edited_file: str | None = None
+    #: The name the machine gave the profile's file, which the profile takes (see
+    #: :func:`judge_file`): nothing is written to the machine for it.
+    take_name: str | None = None
     #: A file this sync attaches to the profile. The profile is otherwise left alone this sync.
     attached: str | None = None
     #: The profile is in conflict: a machine file carries content the app has neither recorded
@@ -239,6 +252,67 @@ class Computed:
             d.action for d in self.deleted if d.action is not None and d.action.kind == "report"
         )
         return found
+
+
+@dataclass(frozen=True)
+class Judgement:
+    """What the app makes of a profile's own file that differs from what it recorded for it."""
+
+    #: ``record``: the file holds content the profile has had (or a person chose the app's side of
+    #: exactly this file): it is recorded as what the file holds, and the profile goes on from
+    #: there. ``take_name``: only the machine renamed it, and the name is free: the profile takes
+    #: it. ``conflict``: the brew is content the profile never had, or the name was changed on
+    #: both sides, or the machine's name is another live profile's: nothing is done for the
+    #: profile until a person chooses.
+    outcome: Literal["record", "take_name", "conflict"]
+    #: The live profile that has the machine's name, when that is why it is a conflict.
+    holder: BoardRow | None = None
+
+
+async def judge_file(
+    board: ProfileBoardRepository,
+    row: BoardRow,
+    seen: FileContent,
+    recorded: FileContent | None,
+    document: str,
+    expected: FileContent,
+) -> Judgement:
+    """The one rule for a profile's own file that is not what was recorded for it: the brew and
+    the name are decided separately.
+
+    **The brew**: a brew the profile has had (its active one, the one recorded for the file, or any
+    version it lists) is recorded; one it never had is a conflict, which covers the name too,
+    unless a person chose the app's side of exactly this document (``document`` is the file's
+    document hash).
+
+    **The name**, with ``recorded.name`` (``device_label``) as the last name the app recorded for
+    that file: only the app changed it (the file's name is the recorded one, the profile's is not)
+    is left to the save that follows; only the machine changed it takes the machine's name when it
+    is free, else asks; both changed it asks. A file already called what the profile is called has
+    no name question.
+    """
+    known = {expected.brew} | await board.listed_brews(row.id)
+    if recorded is not None:
+        known.add(recorded.brew)
+    if seen.brew not in known:
+        if document == row.conflict_overruled_hash:
+            return Judgement("record")
+        return Judgement("conflict")
+    if seen.name == row.label or (recorded is not None and seen.name == recorded.name):
+        return Judgement("record")
+    if recorded is None or row.label != recorded.name:
+        # The name was changed on both sides, or nothing says who changed it.
+        return (
+            Judgement("record")
+            if document == row.conflict_overruled_hash
+            else Judgement("conflict")
+        )
+    holder = await board.find_live_by_name_key(seen.name, excluding=row.id)
+    if holder is not None:
+        if document == row.conflict_overruled_hash:
+            return Judgement("record")
+        return Judgement("conflict", holder)
+    return Judgement("take_name")
 
 
 class PlanBuilder:
@@ -336,24 +410,23 @@ class PlanBuilder:
                 plan.report = _report(row, row.label, "unreadable", old_id, UNREADABLE)
                 continue
             expected = FileContent(current.content_hash, row.label)
-            if row.on_machine:
-                plan.held = _held(row, expected, files)
             recorded = await self._recorded(row)
             if old_id is not None and old_id in machine.profiles and files[old_id] != recorded:
-                seen = files[old_id]
-                if seen == expected or (
-                    seen.name == row.label and seen.brew in await self.board.listed_brews(row.id)
-                ):
-                    # Content the profile has had (a brew it has had, under its name):
-                    # recorded as what the file holds.
-                    plan.edited_file = old_id
-                elif docs[old_id] != row.conflict_overruled_hash:
+                judged = await judge_file(
+                    self.board, row, files[old_id], recorded, docs[old_id], expected
+                )
+                if judged.outcome == "conflict":
                     plan.conflict_file, plan.conflict_hash = old_id, docs[old_id]
-                    plan.conflict_brew = seen.brew
+                    plan.conflict_brew = files[old_id].brew
                 else:
-                    # A person chose the app's side for this very content: it is recorded as what
-                    # the file holds (which they saw), and then saved over like any other.
+                    # Content the profile has had, or a person's choice of the app's side for
+                    # this very file: recorded as what the file holds.
                     plan.edited_file = old_id
+                    if judged.outcome == "take_name":
+                        plan.take_name = files[old_id].name
+                        expected = FileContent(current.content_hash, files[old_id].name)
+            if row.on_machine:
+                plan.held = _held(row, expected, files)
 
         # Files no profile holds the id of: the app has never seen them. A file is a profile of its
         # own, whatever it is called and whatever it holds; matching goes by id and by nothing else.
@@ -509,13 +582,16 @@ class PlanBuilder:
                 plan.report = _report(row, row.label, "policy", None, f"not pushed: {refusal}")
                 return
         if held is None:
+            # Its own file is saved over in place; with none, a new file is saved. When the file
+            # already holds the active brew, only the name is saved.
+            renamed = old is not None and FileContent.of(old).brew == current.content_hash
             plan.push = BoardAction(
                 kind="push",
                 row_id=row.id,
                 label=row.label,
-                # Its own file is saved over in place; with none, a new file is saved.
-                reason="missing" if old is None else "superseded",
+                reason="missing" if old is None else "renamed" if renamed else "superseded",
                 device_id=old_id if old is not None else None,
+                detail=RENAMED_AT_NEXT_SYNC if renamed else "",
             )
         if old_id is not None and old is not None:
             # A save over its own file keeps the star where it was (the firmware stars only a

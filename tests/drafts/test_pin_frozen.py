@@ -395,3 +395,51 @@ async def test_a_stored_draft_equal_to_an_unpinned_copy_is_refused_at_the_put(
         )
         == 0
     )
+
+
+async def test_keeping_the_machines_name_in_a_both_sides_name_conflict_touches_nothing_else(
+    adopted: Adopted,
+) -> None:
+    """A conflict about the name alone adopts only the name: the Set's profile, its Set versions
+    and the pin stay exactly as they were."""
+    from gaggiclanker.db.repos.profile_board import BoardRowPatch
+
+    app, client, fake = adopted
+    row = await _pinned_row(app, client)
+    await pull(app)  # the copy reaches the machine
+    row_id = row["row"]["id"]
+    await app.state.board.board.update(row_id, BoardRowPatch(label="Pinned renamed here"))
+    next(p for p in fake.profiles if p["label"] == NAME)["label"] = "Pinned renamed there"
+    await pull(app)
+    seen = data(await client.get(f"/api/profile-board/{row_id}/conflict"))
+    assert (seen["app_name"], seen["machine_name"]) == (
+        "Pinned renamed here",
+        "Pinned renamed there",
+    )
+    db = app.state.db
+
+    async def state() -> tuple[Any, ...]:
+        return (
+            [tuple(r) for r in await db.fetch_all("SELECT * FROM set_versions ORDER BY id")],
+            [tuple(r) for r in await db.fetch_all("SELECT * FROM sets ORDER BY id")],
+            [tuple(r) for r in await db.fetch_all("SELECT * FROM set_version_pins ORDER BY id")],
+            [
+                tuple(r)
+                for r in await db.fetch_all(
+                    "SELECT id, current_version_id, previous_version_id, failed_version_id, "
+                    "pending_draft_id, back_from_version_id FROM profile_board ORDER BY id"
+                )
+            ],
+        )
+
+    before = await state()
+
+    kept = await client.post(
+        f"/api/profile-board/{row_id}/conflict",
+        json={"keep": "machine", "content_hash": seen["machine"]["content_hash"]},
+    )
+
+    assert kept.status_code == 200, kept.text
+    body = data(kept)
+    assert body["label"] == "Pinned renamed there" and body["device_label"] == body["label"]
+    assert await state() == before

@@ -4788,6 +4788,8 @@ export interface components {
          * @description `GET /api/profile-board/{id}/conflict`: both sides, for a side-by-side panel.
          */
         ConflictView: {
+            /** App Name */
+            app_name: string;
             app_profile: components["schemas"]["JsonObject"];
             /** App Short Hash */
             app_short_hash: string;
@@ -4796,7 +4798,13 @@ export interface components {
             /** Label */
             label: string;
             machine: components["schemas"]["ConflictSummary"];
+            /** Machine Name */
+            machine_name: string;
+            /** Machine Name Held By */
+            machine_name_held_by?: string | null;
             machine_profile: components["schemas"]["JsonObject"];
+            /** Recorded Name */
+            recorded_name?: string | null;
             /** Row Id */
             row_id: number;
         };

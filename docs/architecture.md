@@ -327,8 +327,11 @@ current name (a new profile's draft: the draft's); the label stored with a versi
 name it was first stored with. The board plan reads a machine file as its brew and its name
 (`FileContent`) and compares it with the profile's active version under the profile's name, and
 with what the app recorded for the file (`profile_board.device_label`, written beside
-`device_version_id`). A name-only difference is therefore the same conflict as a content
-difference, and what the machine receives is the document it always was.
+`device_version_id`). The brew and the name are decided apart (`judge_file`): a brew the profile
+never had is a conflict, a name only the app changed is saved over the file, a name only the
+machine changed is taken by the profile (a read, with the switch off too), and a name both sides
+changed, or the machine's name being another live profile's, is a conflict. A profile is one machine id
+for good: a sync saves its active version over its own file under a fresh-load guard.
 
 A draft is a change to one profile or a new profile with a name of its own, decided once when it
 is made and stored on it (`profile_drafts.new_profile`, `destination_board_id`, `label`). A change

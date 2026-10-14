@@ -1133,9 +1133,11 @@ async def test_adoption_takes_two_profiles_with_one_label_and_the_next_sync_rena
     assert len([r for r in board["rows"] if r["row"]["label"] == original["label"]]) == 1
     second = row_for(board, f"{original['label']} (2)")["row"]
     assert second["device_profile_id"] == "twin" and second["device_label"] == original["label"]
-    assert [a["reason"] for a in row_for(board, f"{original['label']} (2)")["planned"]] == [
-        "superseded"
-    ]
+    [planned] = row_for(board, f"{original['label']} (2)")["planned"]
+    assert (planned["reason"], planned["detail"]) == (
+        "renamed",
+        "Will be renamed on the machine at the next sync",
+    )
 
     again = await pull(app)
 

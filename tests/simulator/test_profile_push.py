@@ -41,6 +41,7 @@ import websockets
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
+from gaggiclanker.db.repos.profile_board import BoardRowPatch
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.domain.models import (
     Profile,
@@ -704,3 +705,100 @@ async def test_a_wiped_machine_pauses_and_resuming_puts_the_profiles_back(
         # The simulator's files persist between runs: restore them exactly, ids and selection
         # included, whatever happened above.
         await restore_profiles(device, before)
+
+
+async def test_a_profile_keeps_its_id_through_a_rename_a_new_version_and_a_rename_at_the_machine(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
+) -> None:
+    """The whole of a profile's life on one file, against the real firmware.
+
+    A rename made in the app is saved over the file: the same id carries the new name, with its
+    star and its selection unchanged. A new version is saved over the same id again. A rename made
+    at the simulator (a save over that id with another label, as the display does) is taken by
+    the profile at the next sync, and nothing is written. The renames make no version.
+    """
+    app, client = live
+    device = app.state.connection.client
+    created: list[str] = []
+    try:
+        await adopt(app)
+        first = await put_on_board(app, client, provider, await usable_version(app), 8)
+        [pushed] = (await sync(app))["pushed"]
+        file_id = str(pushed["device_id"])
+        created.append(file_id)
+        row_id = first["row"]["id"]
+        await device.select_profile(file_id)
+        before = await device.load_profile(file_id)
+        assert before.favorite and before.selected
+        # The startup profile, set at the machine as a person would (a partial settings update
+        # from this test's own client), stays on the id through every save below.
+        async with httpx.AsyncClient() as machine_ui:
+            posted = await machine_ui.post(
+                f"http://{SIM_HOST}/api/settings", data={"startupProfile": file_id}
+            )
+        assert posted.status_code < 400, posted.text
+        assert (await device.get_settings()).get("startupProfile") == file_id
+        versions = await app.state.db.fetch_value("SELECT COUNT(*) FROM profile_versions")
+
+        # Renamed in the app: the same id carries the new name, star and selection unchanged.
+        in_the_app = with_test_mark("Renamed in the app (sim)")
+        await app.state.board.board.update(row_id, BoardRowPatch(label=in_the_app))
+        summary = await sync(app)
+        [renamed] = summary["pushed"]
+        assert str(renamed["device_id"]) == file_id and renamed["reason"] == "renamed"
+        assert summary["removed"] == [] and summary["writes"] == 1
+        loaded = await device.load_profile(file_id)
+        assert loaded.label == in_the_app
+        assert (loaded.favorite, loaded.selected) == (True, True)
+        assert (await device.get_settings()).get("startupProfile") == file_id
+        assert {p.id for p in await device.list_profiles()} >= {file_id}
+
+        # A new version: the same id again.
+        second = await put_on_board(
+            app, client, provider, first["draft"]["draft_version_id"], 7, label=in_the_app
+        )
+        assert second["row"]["id"] == row_id
+        summary = await sync(app)
+        [pushed] = summary["pushed"]
+        assert str(pushed["device_id"]) == file_id and summary["removed"] == []
+        loaded = await device.load_profile(file_id)
+        assert loaded.label == in_the_app and (loaded.favorite, loaded.selected) == (True, True)
+        assert (await device.get_settings()).get("startupProfile") == file_id
+
+        # Renamed at the simulator, as the display does: the profile takes the name, and nothing
+        # is written.
+        at_the_machine = with_test_mark("Renamed at the simulator")
+        await display_edit(file_id, label=at_the_machine)
+        saves = [
+            r.device_id
+            for r in await DeviceWritesRepository(app.state.db).list_writes(limit=200)
+            if r.kind == "profile_save"
+        ]
+        summary = await sync(app)
+        assert summary["writes"] == 0 and summary["pushed"] == [] and summary["conflicts"] == []
+        assert [i["label"] for i in summary["renamed"]] == [at_the_machine]
+        assert [
+            r.device_id
+            for r in await DeviceWritesRepository(app.state.db).list_writes(limit=200)
+            if r.kind == "profile_save"
+        ] == saves
+        board = data(await client.get("/api/profile-board?live=true"))
+        row = next(r for r in board["rows"] if r["row"]["id"] == row_id)
+        assert row["row"]["label"] == at_the_machine and not row["in_conflict"]
+        assert row["row"]["device_profile_id"] == file_id
+        loaded = await device.load_profile(file_id)
+        assert loaded.label == at_the_machine and (loaded.favorite, loaded.selected) == (True, True)
+        assert (await sync(app))["writes"] == 0, "nothing is left to do"
+        assert (await device.get_settings()).get("startupProfile") == file_id
+
+        # Two renames and two versions, and one more version only for the version (the second
+        # put); a rename is never a version.
+        added = await app.state.db.fetch_value("SELECT COUNT(*) FROM profile_versions")
+        assert int(added) - int(versions) == 1
+    finally:
+        async with httpx.AsyncClient() as machine_ui:
+            await machine_ui.post(f"http://{SIM_HOST}/api/settings", data={"startupProfile": ""})
+        listed = {p.id for p in await device.list_profiles()}
+        for device_id in created:
+            if device_id in listed:
+                await delete_now(device, device_id)

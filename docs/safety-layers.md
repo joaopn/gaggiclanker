@@ -128,22 +128,28 @@ index. A file the app has never seen whose name a live profile has joins the lis
 "<name> (2)" (or the next free number), and the next sync saves that name over the file. Making a
 version active never changes the profile's name.
 
-**Conflicts.** A profile edited outside the app is never overwritten silently. When a machine
-file standing for a profile holds content that is
-neither what the app last recorded for it, nor the profile's active version, nor a version it
-has had **under its current name** (a file is its brew **and** its name, so another name on the
-same brew is content the profile never had; an older brew under the current name is matched, as
-"a file equal to an older version is matched, not a conflict" always said), the profile is **in
-conflict**: the content is kept as a version
-(`edited_on_machine`, not active), the sync does nothing at all for that profile (no push,
-removal, star or selection) and says so, and the others sync as usual. Detection is by
-content, because the firmware keeps a profile's id when it is edited on the display. A person
-chooses (`POST /api/profile-board/{id}/conflict`): the **machine**'s version becomes the active
-one (the brew the profile has already when only the name differs, and then the profile takes
-the file's name) and nothing is pushed, or the **app**'s version is kept, in which case that
-exact machine document is remembered as overruled (it is not flagged again; a further edit is a new conflict)
-and the next sync saves the profile's document over that file under the same guard, recorded as
-what the file holds first. The route refuses a hash that is not the content the person saw.
+**Conflicts.** A profile edited outside the app is never overwritten silently. On a profile's own
+file **the brew and the name are decided separately**. A brew the app has never seen on that file
+(not what it last recorded for it, not the active version, not a version the profile has had)
+puts the profile **in conflict**: the content is kept as a version (`edited_on_machine`, not
+active), the sync does nothing at all for that profile (no save, removal, star or selection) and
+says so, and the others sync as usual. A brew the profile has had is recorded as what the file
+holds and handled as usual (a file equal to an older version is matched, not a conflict).
+Detection is by content, because the firmware keeps a profile's id when it is edited on the
+display. The name is decided with the name the app last recorded for the file
+(`profile_board.device_label`) as the one both sides started from: **only the app** changed it, and
+the next sync saves the profile's document over the file (in place, under the guard); **only the
+machine** changed it, and the profile takes the machine's name when it is free (a read, so with
+the switch off too; nothing is written, no version is made, and the sync records a
+`profile_renamed_on_machine` event); **both** changed it, or the machine's name is another live
+profile's, and it is a conflict like any other, asked with the same route. A person chooses
+(`POST /api/profile-board/{id}/conflict`): the **machine**'s version becomes the active one (the
+brew the profile has already when only the name differs, and then the profile takes the file's
+name, refused while another live profile has it) and nothing is saved, or the **app**'s version is
+kept, in which case that exact machine document is remembered as overruled (it is not flagged
+again; a further edit is a new conflict) and the next sync saves the profile's document over that
+file under the same guard, recorded as what the file holds first. The route refuses a hash that is
+not the content the person saw.
 
 With the switch on, every sync ends by making the machine match the list, in this order:
 
