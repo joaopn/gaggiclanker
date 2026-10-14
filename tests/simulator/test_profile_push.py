@@ -19,8 +19,8 @@ closed the moment the shot is saved, because the firmware allows three clients
 in total and gaggiclanker is already holding one.
 
 Profiles reach the machine the way they do in the app: a draft is put on the profile board and
-the next sync (the board's write phase) saves, verifies and replaces. Nothing here calls the
-write primitives by hand except where a test says it does.
+the next sync (the board's write phase) saves and verifies, over the profile's own file when it
+has one. Nothing here calls the write primitives by hand except where a test says it does.
 
 Device writes are enabled **in this test only**, through the settings service,
 the way a person would. The offline suite never turns them on except in its own
@@ -153,15 +153,20 @@ async def put_on_board(
     provider: FakeProvider,
     base_version_id: int,
     bar: float,
+    *,
+    label: str | None = None,
 ) -> dict[str, Any]:
-    """A real edit to a real profile (one phase's pump pressure), put on the board."""
+    """A real edit to a real profile (one phase's pump pressure), put on the board.
+
+    ``label`` is the name the draft carries: by default a fork of the base's (a profile of its
+    own); a profile's next version carries the profile's own name."""
     base = await ProfilesRepository(app.state.db).get_version(base_version_id)
     assert base is not None and base.profile is not None
     document: dict[str, Any] = dict(base.profile)
     document["phases"] = [dict(phase) for phase in document["phases"]]
     # A fork: the agent writing a profile of its own beside the simulator's (a change that kept
     # the name would be a new version of that profile).
-    document["label"] = with_test_mark(str(document["label"]))
+    document["label"] = with_test_mark(str(document["label"])) if label is None else label
     first = document["phases"][0]
     first["pump"] = (
         {**first["pump"], "pressure": bar}
@@ -319,16 +324,16 @@ async def test_a_generated_draft_is_synced_verified_brewed_and_deleted(
     assert ("profile_delete", "ok") in kinds
 
 
-async def test_a_second_version_replaces_the_first_and_making_the_first_active_restores_it(
+async def test_a_second_version_is_saved_over_the_first_and_making_the_first_active_restores_it(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
-    """Replace and restore against the real firmware: star, selection, delete, save.
+    """Save over and restore against the real firmware: one file, one id, star and selection kept.
 
     The first version is made from the simulator's own profile, which this app did not create,
-    so it is a copy beside it. The second is the next version of that copy, so one sync saves
-    it, moves the star and the selection to it and then deletes the first. Making the first
-    version active again saves it as a new file and removes the second, carrying the selection
-    back: the machine ends with one copy holding the first version.
+    so it is a copy beside it. The second is the next version of that copy, so one sync saves it
+    over the same file: the firmware keeps the star and the selection for an existing id, and
+    nothing is moved or deleted. Making the first version active again saves it over the same file
+    once more: the machine ends with one copy, under the same id, holding the first version.
     """
     app, client = live
     device = app.state.connection.client
@@ -337,20 +342,29 @@ async def test_a_second_version_replaces_the_first_and_making_the_first_active_r
     try:
         first = await put_on_board(app, client, provider, await usable_version(app), 8)
         [pushed] = (await sync(app))["pushed"]
-        first_id = str(pushed["device_id"])
-        created.append(first_id)
+        file_id = str(pushed["device_id"])
+        created.append(file_id)
 
-        await device.select_profile(first_id)
-        second = await put_on_board(app, client, provider, first["draft"]["draft_version_id"], 7)
+        await device.select_profile(file_id)
+        starred = (await device.load_profile(file_id)).favorite
+        assert starred, "the firmware stars a new profile"
+        second = await put_on_board(
+            app,
+            client,
+            provider,
+            first["draft"]["draft_version_id"],
+            7,
+            label=with_test_mark(str(pushed["label"]).removesuffix(TEST_MARK)),
+        )
         assert second["row"]["id"] == first["row"]["id"], "the same profile, its next version"
         summary = await sync(app)
         [pushed] = summary["pushed"]
-        second_id = str(pushed["device_id"])
-        created.append(second_id)
-        assert [item["device_id"] for item in summary["removed"]] == [first_id]
+        assert str(pushed["device_id"]) == file_id, "saved over the same file"
+        assert summary["removed"] == [] and summary["writes"] == 1
         listed = {p.id for p in await device.list_profiles()}
-        assert second_id in listed and first_id not in listed
-        assert (await device.load_profile(second_id)).selected, "the selection moved first"
+        assert file_id in listed and len(listed & set(created)) == 1
+        saved = await device.load_profile(file_id)
+        assert saved.selected and saved.favorite, "the star and the selection stayed on the id"
 
         went = await client.put(
             f"/api/profile-board/{second['row']['id']}/active-version",
@@ -359,19 +373,15 @@ async def test_a_second_version_replaces_the_first_and_making_the_first_active_r
         assert went.status_code == 200, went.text
         summary = await sync(app)
         [pushed] = summary["pushed"]
-        restored_id = str(pushed["device_id"])
-        created.append(restored_id)
-        assert [item["device_id"] for item in summary["removed"]] == [second_id]
-        listed = {p.id for p in await device.list_profiles()}
-        assert restored_id in listed and second_id not in listed
-        restored = await device.load_profile(restored_id)
-        assert restored.selected, "the selection went back with it"
+        assert str(pushed["device_id"]) == file_id and summary["removed"] == []
+        restored = await device.load_profile(file_id)
+        assert restored.selected and restored.favorite
         kept = await ProfilesRepository(app.state.db).get_version(
             first["draft"]["draft_version_id"]
         )
         assert kept is not None and kept.profile is not None
         assert canonical_document_json(restored) == canonical_document_json(
-            Profile.model_validate(kept.profile).for_new_device_profile()
+            Profile.model_validate(kept.profile).for_new_device_profile(label=restored.label)
         )
     finally:
         listed = {p.id for p in await device.list_profiles()}
@@ -380,7 +390,7 @@ async def test_a_second_version_replaces_the_first_and_making_the_first_active_r
                 await delete_now(device, device_id)
 
 
-async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmware(
+async def test_one_sync_pushes_saves_over_and_clears_a_favourite_on_the_real_firmware(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
     """The profile board's write phase against the real firmware, in one sync.
@@ -388,10 +398,10 @@ async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmw
     The first sync here, with the switch on, adopts the simulator's own profiles (nothing
     written). Then a draft goes on the board and a sync saves it; a second draft of that copy
     replaces the first on the board, the person takes it off the home screen, and one sync
-    saves the new version, removes the old one and clears the star the firmware gave the new
-    one. The firmware's own `saveProfile`, `deleteProfile` and favourite handling are what
-    answer, so a quirk the fake lacks (a star that does not clear, a delete that leaves the
-    file) fails here.
+    saves the new version over the same file and clears the star the firmware gave the file when
+    it was new. The firmware's own `saveProfile`, `deleteProfile` and favourite handling are what
+    answer, so a quirk the fake lacks (a star that does not clear, a save that moves the file)
+    fails here.
     """
     app, client = live
     device = app.state.connection.client
@@ -404,7 +414,14 @@ async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmw
         created.append(first_id)
         assert (await device.load_profile(first_id)).favorite, "the firmware stars a new profile"
 
-        second = await put_on_board(app, client, provider, first["draft"]["draft_version_id"], 7)
+        second = await put_on_board(
+            app,
+            client,
+            provider,
+            first["draft"]["draft_version_id"],
+            7,
+            label=str(pushed["label"]),
+        )
         assert second["row"]["id"] == first["row"]["id"], "same profile, next version"
         off = await client.put(
             f"/api/profile-board/{second['row']['id']}/starred", json={"starred": False}
@@ -414,15 +431,14 @@ async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmw
         summary = await sync(app)
 
         [pushed] = summary["pushed"]
-        second_id = str(pushed["device_id"])
-        created.append(second_id)
-        assert [item["device_id"] for item in summary["removed"]] == [first_id]
+        assert str(pushed["device_id"]) == first_id and summary["removed"] == []
         listed = {p.id for p in await device.list_profiles()}
-        assert second_id in listed and first_id not in listed
-        assert not (await device.load_profile(second_id)).favorite, "the star was cleared"
+        assert first_id in listed
+        assert not (await device.load_profile(first_id)).favorite, "the star was cleared"
         rows = await DeviceWritesRepository(app.state.db).list_writes(limit=200)
-        deletes = [r.device_id for r in rows if r.kind == "profile_delete" and r.result == "ok"]
-        assert deletes == [first_id]
+        assert [r.device_id for r in rows if r.kind == "profile_delete"] == []
+        saves = [r.device_id for r in rows if r.kind == "profile_save" and r.result == "ok"]
+        assert saves == [first_id, first_id], "a new file, then the same file saved over"
 
         quiet = await sync(app)
         assert quiet["writes"] == 0, "the next sync has nothing left to do"
@@ -439,9 +455,9 @@ async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmw
 async def display_edit(profile_id: str, **changes: Any) -> None:
     """Edit a profile's file the way the display does: a save under the same id.
 
-    From a throwaway socket of this test's own, because `GaggimateClient` never overwrites a
-    profile (it refuses a save that carries an id), and that is what a person at the machine
-    does. The firmware keeps the id and replaces the content.
+    From a throwaway socket of this test's own, because `GaggimateClient` saves over an id only
+    for a profile's own file, behind a guard that refuses a file it did not record, and the
+    display is not that. The firmware keeps the id and replaces the content.
     """
     async with websockets.connect(f"ws://{SIM_HOST}/ws", max_size=None) as socket:
         await socket.send(json.dumps({"tp": "req:profiles:load", "id": profile_id, "rid": "l"}))
@@ -501,7 +517,7 @@ async def test_a_file_the_app_never_saw_joins_the_list_and_switching_it_off_remo
                 await delete_now(device, str(p.id))
 
 
-async def test_an_older_version_made_active_replaces_the_newer_file_on_the_real_firmware(
+async def test_an_older_version_made_active_is_saved_over_the_newer_file_on_the_real_firmware(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
     app, client = live
@@ -509,10 +525,18 @@ async def test_an_older_version_made_active_replaces_the_newer_file_on_the_real_
     await adopt(app)
     try:
         first = await put_on_board(app, client, provider, await usable_version(app), 8)
-        await sync(app)
-        second = await put_on_board(app, client, provider, first["draft"]["draft_version_id"], 7)
+        [first_pushed] = (await sync(app))["pushed"]
+        second = await put_on_board(
+            app,
+            client,
+            provider,
+            first["draft"]["draft_version_id"],
+            7,
+            label=str(first_pushed["label"]),
+        )
         [pushed] = (await sync(app))["pushed"]
         newer_id = str(pushed["device_id"])
+        assert newer_id == str(first_pushed["device_id"])
         row_id = second["row"]["id"]
         versions = data(await client.get(f"/api/profile-board/{row_id}/versions"))["versions"]
         older = versions[1]
@@ -524,16 +548,16 @@ async def test_an_older_version_made_active_replaces_the_newer_file_on_the_real_
         summary = await sync(app)
 
         [restored] = summary["pushed"]
-        assert [i["device_id"] for i in summary["removed"]] == [newer_id]
-        listed = {p.id for p in await device.list_profiles()}
-        assert str(restored["device_id"]) in listed and newer_id not in listed
+        assert summary["removed"] == []
+        assert str(restored["device_id"]) == newer_id
+        assert newer_id in {p.id for p in await device.list_profiles()}
     finally:
         for p in await device.list_profiles():
             if str(p.label).endswith(TEST_MARK):
                 await delete_now(device, str(p.id))
 
 
-async def test_a_profile_edited_on_the_display_is_a_conflict_and_keeping_the_apps_side_replaces_it(
+async def test_a_profile_edited_on_the_display_is_a_conflict_and_the_apps_side_is_saved_over_it(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
     app, client = live
@@ -563,9 +587,11 @@ async def test_a_profile_edited_on_the_display_is_a_conflict_and_keeping_the_app
         replaced = await sync(app)
 
         [new] = replaced["pushed"]
-        assert [i["device_id"] for i in replaced["removed"]] == [file]
-        listed = {p.id for p in await device.list_profiles()}
-        assert str(new["device_id"]) in listed and file not in listed
+        assert str(new["device_id"]) == file and replaced["removed"] == []
+        saved = await device.load_profile(file)
+        assert float(saved.temperature) == float(seen["app_profile"]["temperature"]), (
+            "the app's version is saved over the display's edit"
+        )
     finally:
         for p in await device.list_profiles():
             if str(p.label).endswith(TEST_MARK):

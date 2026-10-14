@@ -177,7 +177,7 @@ async def test_a_file_nobody_or_several_profiles_own_the_content_of_holds_a_loos
     assert (several.board_id, inserted) == (None, True)
 
 
-async def test_an_extra_copy_of_a_profiles_file_is_not_news_and_keeps_its_shots_filed(
+async def test_a_second_file_with_a_profiles_content_is_not_news_and_holds_its_own_profiles_version(
     adopted: Adopted,
 ) -> None:
     app, client, fake = adopted
@@ -189,11 +189,14 @@ async def test_an_extra_copy_of_a_profiles_file_is_not_news_and_keeps_its_shots_
 
     second = await pull(app)
 
+    twin = row_for(await get_board(client), f"{BASE_LABEL} (2)")["row"]
     held = await app.state.db.fetch_value(
         "SELECT current_version_id FROM device_profiles WHERE device_id = 'extra-copy'"
     )
-    assert held == row["row"]["current_version_id"]
-    assert second.profiles_changed == 0
+    assert twin["device_profile_id"] == "extra-copy"
+    assert held == twin["current_version_id"] != row["row"]["current_version_id"]
+    assert second.profiles_changed == 1, "the one write is the new name saved over its file"
+    assert (await pull(app)).profiles_changed == 0
 
 
 async def test_attaching_a_file_moves_only_that_files_shots_to_the_profiles_version(

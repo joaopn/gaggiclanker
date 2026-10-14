@@ -18,9 +18,6 @@ export function writesLine(enabled: boolean): string {
     : "Writes are off: the machine will follow when they are on.";
 }
 
-/** The server's reason for two live profiles sharing a label. */
-const SHARED_LABEL = "duplicate_label";
-
 export type RowTone = "ok" | "info" | "warn";
 
 export type RowState = {
@@ -55,7 +52,6 @@ const REPORT_WORDS: Record<string, string> = {
   unreadable: "The machine would not give it up to be read",
   did_not_verify: "Did not verify, not tried again",
   policy: "Outside the safety bounds",
-  extra_copy: "The machine holds a second copy",
 };
 
 /**
@@ -83,10 +79,7 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
   const present = entry.machine.present;
   const notes: string[] = [];
   const planned = entry.planned ?? [];
-  const report = view.reports?.find(
-    (r) => r.row_id === id && r.reason !== SHARED_LABEL && r.reason !== "conflict",
-  );
-  const shared = view.reports?.find((r) => r.row_id === id && r.reason === SHARED_LABEL);
+  const report = view.reports?.find((r) => r.row_id === id && r.reason !== "conflict");
   const push = planned.find((a) => a.kind === "push");
   const remove = planned.find((a) => a.kind === "remove");
   let state: RowState;
@@ -117,15 +110,10 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
     state = { text: "Not on the machine", tone: "warn", notes };
   }
 
-  if (shared) notes.push(sentence(shared.detail));
   for (const action of planned) {
     if (action.kind === "leave") {
       notes.push(
         `${action.device_id ? `The copy on the machine (${action.device_id}) stays` : "It stays on the machine"}: ${action.detail || reasonWords(action.reason)}.`,
-      );
-    } else if (action.kind === "remove" && on) {
-      notes.push(
-        `The older copy${action.device_id ? ` (${action.device_id})` : ""} will be removed.`,
       );
     } else if (action.kind === "home_screen" && on) {
       notes.push(

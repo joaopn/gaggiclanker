@@ -34,6 +34,7 @@ __all__ = [
     "Placement",
     "change_destination",
     "destination_now",
+    "free_name",
     "lineage_owner",
     "name_key",
     "person_taken_sentence",
@@ -51,6 +52,19 @@ def name_key(label: str) -> str:
     in the sync stays exact; this is only the guard against two profiles a person cannot tell
     apart.)"""
     return label.strip().casefold()
+
+
+def free_name(label: str, taken: set[str]) -> str:
+    """The name a profile joins the list under: the file's own, or "<name> (2)" and the next free
+    number when a live profile already has it (``taken`` holds the live profiles'
+    :func:`name_key` of each). The result's key is added to ``taken``, so a run of files joining one
+    after another each get a name of their own."""
+    chosen, number = label, 1
+    while name_key(chosen) in taken:
+        number += 1
+        chosen = f"{label.strip()} ({number})"
+    taken.add(name_key(chosen))
+    return chosen
 
 
 def taken_name_sentence(label: str) -> str:

@@ -79,31 +79,28 @@ async def test_place_saves_reads_back_and_leaves_the_machine_holding_the_documen
 
     placed = await place(client, profile, machine)
 
-    assert placed.problem is None and placed.reused is False and placed.served is not None
+    assert placed.problem is None and placed.served is not None
     assert document_hash(placed.served) == document_hash(profile)
     assert placed.device_id in {str(p["id"]) for p in fake_device.profiles}
     assert machine.profiles[placed.device_id] is placed.served, "the state is kept current"
     assert kinds(await audit(app), "profile_save") == [("profile_save", placed.device_id, "ok")]
 
 
-async def test_place_does_not_save_content_the_machine_already_holds(
+async def test_place_saves_a_second_file_with_the_same_content_as_a_file_of_its_own(
     writes_on: Live, fake_device: FakeDevice
 ) -> None:
+    """A file with a profile's content is a profile of its own: nothing is reused."""
     app, _ = writes_on
     client = app.state.connection.client
     machine = await read_machine(client)
     profile = await app_profile(app, "Twice", 8)
     first = await place(client, profile, machine)
-    saves = kinds(await audit(app), "profile_save")
     before = len(fake_device.profiles)
-    mark = len(fake_device.ws_requests)
 
     again = await place(client, profile, await read_machine(client))
 
-    assert again.reused is True and again.device_id == first.device_id
-    assert len(fake_device.profiles) == before
-    assert kinds(await audit(app), "profile_save") == saves
-    assert writes(fake_device, mark) == []
+    assert again.device_id != first.device_id
+    assert len(fake_device.profiles) == before + 1
 
 
 async def test_place_says_when_the_machine_stored_something_else_and_keeps_both_documents(
@@ -419,6 +416,7 @@ async def test_removal_moves_the_star_and_the_selection_before_it_deletes(
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=new_id,
+        carry_favorite=True,
     )
 
     assert removal.removed and removal.favorite_carried and removal.selected_carried
@@ -447,6 +445,7 @@ async def test_the_startup_profile_is_reported_only_when_the_firmware_cleared_it
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=new_id,
+        carry_favorite=True,
     )
 
     assert removal.removed and removal.startup_cleared is startup
@@ -468,6 +467,7 @@ async def test_any_profile_is_removed_whoever_made_it_when_it_holds_what_was_rec
         device_id=default_id,
         expected_hash=document_hash(machine.profiles[default_id]),
         successor=None,
+        carry_favorite=True,
     )
 
     assert removal.removed
@@ -489,6 +489,7 @@ async def test_a_copy_renamed_on_the_display_is_a_changed_copy_and_is_kept(
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=None,
+        carry_favorite=True,
     )
 
     assert not removal.removed and removal.reason == CHANGED_SINCE
@@ -508,6 +509,7 @@ async def test_the_selected_profile_is_never_removed_with_nothing_to_take_the_se
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=None,
+        carry_favorite=True,
     )
 
     assert not removal.removed and removal.reason == NO_SUCCESSOR
@@ -553,6 +555,7 @@ async def test_a_copy_edited_on_the_display_since_is_kept(
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=new_id,
+        carry_favorite=True,
     )
 
     assert not removal.removed and removal.reason == CHANGED_SINCE
@@ -581,6 +584,7 @@ async def test_an_edit_made_while_the_star_moves_is_not_deleted(
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=new_id,
+        carry_favorite=True,
     )
 
     assert not removal.removed and removal.reason == CHANGED_SINCE
@@ -601,6 +605,7 @@ async def test_somebody_elses_claim_keeps_the_file_and_is_the_reason_given(
         expected_hash=document_hash(old),
         successor=new_id,
         blocked="still the current version of the Set 'Other'",
+        carry_favorite=True,
     )
 
     assert not removal.removed and removal.reason == "still the current version of the Set 'Other'"
@@ -619,6 +624,7 @@ async def test_a_profile_under_another_label_is_not_this_replacements_to_remove(
         expected_hash=document_hash(old),
         successor=None,
         expected_label="Some other lineage [AI]",
+        carry_favorite=True,
     )
 
     assert removal.unrelated and not removal.removed
@@ -634,6 +640,7 @@ async def test_a_profile_that_is_not_on_the_machine_is_gone_not_a_failure(
         device_id="nothing01",
         expected_hash="whatever",
         successor=None,
+        carry_favorite=True,
     )
 
     assert removal.gone and removal.reason == GONE and not removal.removed
@@ -655,6 +662,7 @@ async def test_a_failure_between_the_carry_and_the_delete_leaves_both_profiles(
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=new_id,
+        carry_favorite=True,
     )
 
     assert not removal.removed and removal.reason
@@ -675,6 +683,7 @@ async def test_a_removal_the_switch_refuses_mid_way_is_a_reason_not_an_exception
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=new_id,
+        carry_favorite=True,
     )
 
     assert not removal.removed and "switched off" in removal.reason
@@ -699,6 +708,7 @@ async def test_a_copy_that_did_not_verify_is_removed_against_what_the_machine_st
         device_id=placed.device_id,
         expected_hash=document_hash(placed.served),
         successor=None,
+        carry_favorite=True,
     )
 
     assert removal.removed

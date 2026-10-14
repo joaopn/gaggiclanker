@@ -361,7 +361,8 @@ async def test_every_write_path_leaves_every_version_with_its_owner(
     await approve(app, again)
     await assert_versions_owned(db)
 
-    # A file made on the display joins the list; a relocated one is attached to its profile.
+    # A file made on the display joins the list, and so does a relocated one: a file no profile
+    # holds the id of is a profile of its own.
     made = copy.deepcopy(fake.profiles[0])
     made.update(id="display-made", label="Display made", temperature=90.5)
     fake.profiles.append(made)
@@ -372,24 +373,22 @@ async def test_every_write_path_leaves_every_version_with_its_owner(
     fake.profiles = [p for p in fake.profiles if p["id"] != gone] + [relocated]
     await pull(app)
     await assert_versions_owned(db)
-
-    # A file under a profile's name with other content (attached as a conflict), then kept as
-    # the machine's side.
-    made2 = copy.deepcopy(next(p for p in fake.profiles if p["id"] == "relocated"))
-    made2.update(id="outside", temperature=float(made2["temperature"]) + 2)
-    fake.profiles = [p for p in fake.profiles if p["id"] != "relocated"] + [made2]
-    await pull(app)  # the file joins the profile as the machine's side of a conflict
-    await assert_versions_owned(db)
     await pull(app)
     await assert_versions_owned(db)
+
+    # A profile's own file edited on the display (a conflict records it), kept as the machine's
+    # side.
     row = row_for(await get_board(client), BASE_LABEL)
+    await edit_on_display(fake, row["machine"]["device_id"], bump=2)
+    await pull(app)
+    await assert_versions_owned(db)
     seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
     kept = await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
     assert kept.status_code == 200
     await assert_versions_owned(db)
 
     # A profile edited on the display (a conflict records it), then an older version made active.
-    await edit_on_display(fake, "outside", bump=1)
+    await edit_on_display(fake, row["machine"]["device_id"], bump=1)
     await pull(app)
     await assert_versions_owned(db)
     board = await get_board(client)
@@ -404,7 +403,7 @@ async def test_every_write_path_leaves_every_version_with_its_owner(
     await assert_versions_owned(db)
 
 
-async def test_a_file_a_profile_comes_to_stand_on_holds_its_version_and_is_not_news_later(
+async def test_a_file_that_joins_as_a_profile_holds_that_profiles_version_and_is_not_news_later(
     adopted: Adopted,
 ) -> None:
     app, client, fake = adopted
@@ -416,10 +415,12 @@ async def test_a_file_a_profile_comes_to_stand_on_holds_its_version_and_is_not_n
 
     await pull(app)
 
+    joined = row_for(await get_board(client), f"{BASE_LABEL} (2)")["row"]
     held = await app.state.db.fetch_value(
         "SELECT current_version_id FROM device_profiles WHERE device_id = 'relocated'"
     )
-    assert held == person["row"]["current_version_id"]
+    assert held == joined["current_version_id"] != person["row"]["current_version_id"]
+    await pull(app)  # saves the name over the file
     assert (await pull(app)).profiles_changed == 0
     await assert_versions_owned(app.state.db)
 

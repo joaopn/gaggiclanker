@@ -26,17 +26,17 @@ who made it but whether the app has *seen* what the file holds:
   carrying the profile's name): that is a **conflict**. The content is kept as a version
   (``edited_on_machine``, not active), nothing at all is done for that profile until a person
   keeps one side, and the other profiles sync;
-* a file the app **has never seen** (no row stands on it) is never removed or replaced by the
-  sync that finds it: content the profile has had attaches it to that profile, a profile's name
-  with other content is the machine's side of a conflict, and anything else joins the list as a
-  new profile that is on and starred as the machine has it. A second file for a profile that
-  already has one is reported, not touched.
+* a file the app **has never seen** (no profile holds its id) is never removed or replaced by the
+  sync that finds it: it joins the list as a new profile that is on and starred as the machine
+  has it, under its own name (made unique with " (2)" and so on when a live profile has it; the
+  next sync renames the file). The files are matched by id and by nothing else; the one exception
+  is a machine that looks reset, whose profiles lost their files: once a person resumes, a file
+  whose brew is a lost profile's active version attaches to it.
 
-**What counts as the machine "holding" a profile**: a file with exactly the row's active brew
-and the profile's name (a file is compared as :class:`~gaggiclanker.drafts.machine.FileContent`,
-brew and name, never by either alone), under any id, that no other row stands on (a deleted
-row's file is still standing until the sync has dealt with it) and no earlier row of this same
-plan took.
+**What counts as the machine "holding" a profile**: its own file (the id the row stands on) with
+exactly the row's active brew and the profile's name (a file is compared as
+:class:`~gaggiclanker.drafts.machine.FileContent`, brew and name, never by either alone). Another
+file with the same content is a profile of its own.
 
 **The selected profile.** Switching off the profile the machine has selected selects the first
 profile that is on (list order, never a utility profile) first, then removes it; with no other
@@ -58,6 +58,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from gaggiclanker.db.repos.lineage import free_name, name_key
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.domain.models import Profile, document_hash
@@ -70,7 +71,6 @@ __all__ = [
     "FINAL_REFUSALS",
     "NO_SUCCESSOR",
     "RESET_REASON",
-    "SHARED_LABEL",
     "BoardAction",
     "BoardPlan",
     "DeletedPlan",
@@ -97,9 +97,6 @@ CONFLICT = (
     "nothing is done for this profile until you choose which one to keep"
 )
 
-#: The reason of the report for two live profiles with one label.
-SHARED_LABEL = "duplicate_label"
-
 #: What the run records when a sync finds the machine looks reset.
 RESET_REASON = "the machine looks reset (none of the profiles it held is on it); nothing written"
 
@@ -119,18 +116,18 @@ class BoardAction(BaseModel):
     row_id: int | None = None
     label: str
     #: The file on the machine concerned: the one to remove or leave, the one whose star
-    #: changes, the one that joins the list. ``None`` for a push (the machine assigns the id).
+    #: changes, the one that joins the list, the one a push saves over. ``None`` for a push that
+    #: makes a new file (the machine assigns the id).
     device_id: str | None = None
-    #: ``adopt``: ``first_pull``, ``unseen`` (a new profile), ``attached`` (to ``row_id``) or
-    #: ``conflict`` (a file with the name of ``row_id`` but content that profile never had: it is
-    #: attached as the machine's side of a conflict).
-    #: ``push``: ``missing``, ``superseded``, ``edited_on_machine``. ``remove`` and ``leave``:
-    #: ``superseded``, ``deleted``, ``off`` (switched off) or ``edited_on_machine``.
+    #: ``adopt``: ``first_pull``, ``unseen`` (a new profile) or ``attached`` (to ``row_id``, a
+    #: profile that lost its file in a reset, by its active brew).
+    #: ``push``: ``missing`` (a new file) or ``superseded`` (a new version over the profile's own
+    #: file). ``remove`` and ``leave``: ``deleted``, ``off`` (switched off) or
+    #: ``edited_on_machine``.
     #: ``home_screen``: ``on`` or ``off``. ``report``: ``missing``, ``unreadable`` (the machine
     #: listed it and could not load it), ``did_not_verify`` (this version did not read back last
-    #: time), ``policy`` (the active version is outside the safety bounds), ``duplicate_label``
-    #: (another profile has the same label), ``extra_copy`` (a second file for a profile that
-    #: has one), ``conflict`` (the machine's file differs from everything the app knows).
+    #: time), ``policy`` (the active version is outside the safety bounds), ``conflict`` (the
+    #: machine's file differs from everything the app knows).
     reason: str
     #: For ``leave`` and ``report``, why, in words a person reads.
     detail: str = ""
@@ -210,10 +207,6 @@ class Computed:
     adopt: list[BoardAction] = field(default_factory=list)
     rows: list[RowPlan] = field(default_factory=list)
     deleted: list[DeletedPlan] = field(default_factory=list)
-    #: Live profiles sharing a label, said once per profile.
-    labels: list[BoardAction] = field(default_factory=list)
-    #: Second files for a profile that already has one.
-    extras: list[BoardAction] = field(default_factory=list)
 
     def would_do(self) -> list[BoardAction]:
         """Every action, as a sync that is not paused would take it."""
@@ -245,8 +238,6 @@ class Computed:
         found.extend(
             d.action for d in self.deleted if d.action is not None and d.action.kind == "report"
         )
-        found.extend(self.labels)
-        found.extend(self.extras)
         return found
 
 
@@ -319,11 +310,21 @@ class PlanBuilder:
         for row in live:
             if row.device_profile_id:
                 live_claims.setdefault(row.device_profile_id, set()).add(row.id)
-        assigned: set[str] = set()
 
-        computed = Computed(
-            adopted=adoption is not None, paused=adoption.paused_reason if adoption else None
-        )
+        # A machine that looks reset has lost its files, and what a person resumes is what is shown
+        # while it is paused and done once resumed: only then may a file attach to a profile that
+        # lost its own, by its brew.
+        paused = adoption.paused_reason if adoption else None
+        if (
+            paused is None
+            and adoption is not None
+            and not adoption.resume_pending
+            and looks_reset(live, machine)
+        ):
+            paused = RESET_REASON
+        resuming = paused is not None or (adoption is not None and adoption.resume_pending)
+
+        computed = Computed(adopted=adoption is not None, paused=paused)
         by_row: dict[int, RowPlan] = {}
         for row in live:
             current = await version(row.current_version_id)
@@ -336,10 +337,7 @@ class PlanBuilder:
                 continue
             expected = FileContent(current.content_hash, row.label)
             if row.on_machine:
-                held = _held(row, expected, machine, files, claimed, assigned)
-                plan.held = held
-                if held is not None:
-                    assigned.add(held)
+                plan.held = _held(row, expected, files)
             recorded = await self._recorded(row)
             if old_id is not None and old_id in machine.profiles and files[old_id] != recorded:
                 seen = files[old_id]
@@ -352,80 +350,73 @@ class PlanBuilder:
                 elif docs[old_id] != row.conflict_overruled_hash:
                     plan.conflict_file, plan.conflict_hash = old_id, docs[old_id]
                     plan.conflict_brew = seen.brew
-                # else: a person chose the app's side for this very content; it is replaced
+                else:
+                    # A person chose the app's side for this very content: it is recorded as what
+                    # the file holds (which they saw), and then saved over like any other.
+                    plan.edited_file = old_id
 
-        # Files nothing stands on and no profile holds: the app has never seen them.
-        listed = await self.board.live_version_brews()
-        listed_here: dict[int, set[str]] = {}
-        for brew, row_ids in listed.items():
-            for row_id in row_ids:
-                listed_here.setdefault(row_id, set()).add(brew)
+        # Files no profile holds the id of: the app has never seen them. A file is a profile of its
+        # own, whatever it is called and whatever it holds; matching goes by id and by nothing else.
+        # The one exception is a resumed reset, whose profiles lost their files.
         unseen = [
-            i
-            for i in sorted(machine.profiles)
-            if i not in claimed and i not in assigned and i not in machine.unreadable
+            i for i in sorted(machine.profiles) if i not in claimed and i not in machine.unreadable
         ]
-        joining: dict[str, str] = {}
+        taken_names = {name_key(row.label) for row in live}
+        lost = [
+            plan
+            for plan in computed.rows
+            if plan.report is None
+            and plan.row.device_profile_id is not None
+            and plan.row.device_profile_id not in machine.profiles
+        ]
+        # After a resumed reset a profile that lost its file takes a file with its active brew
+        # first (every file, whatever the order of their ids), and only then a file with any brew
+        # it has had: the next sync saves the active version over that one.
+        attaching: dict[str, RowPlan] = {}
+        if resuming:
+            for any_brew in (False, True):
+                for device_id in unseen:
+                    if device_id in attaching:
+                        continue
+                    brew = files[device_id].brew
+                    for plan in lost:
+                        if any(plan is p for p in attaching.values()):
+                            continue
+                        if plan.version.content_hash == brew or (
+                            any_brew and brew in await self.board.listed_brews(plan.row.id)
+                        ):
+                            attaching[device_id] = plan
+                            break
         for device_id in unseen:
             profile = machine.profiles[device_id]
-            match = _match_row(live, listed, files[device_id])
-            if match is not None:
-                target = by_row[match.id]
-                if (
-                    target.attached is not None
-                    or _has_file(target, machine)
-                    or match.failed_version_id is not None
-                ):
-                    # (A profile whose last push did not verify and whose bad copy could not be
-                    # removed owns that copy: it is no conflict, only a leftover.)
-                    computed.extras.append(_extra(device_id, profile.label, match.label))
-                elif files[device_id].brew not in listed_here.get(match.id, set()):
-                    # Its name, but content this profile never had: the machine's side of a
-                    # conflict, not something to attach silently.
-                    target.attached = device_id
-                    target.conflict_file, target.conflict_hash = device_id, docs[device_id]
-                    target.conflict_brew = files[device_id].brew
-                    computed.adopt.append(
-                        BoardAction(
-                            kind="adopt",
-                            row_id=match.id,
-                            label=match.label,
-                            device_id=device_id,
-                            reason="conflict",
-                            detail=CONFLICT,
-                            on=profile.favorite,
-                        )
-                    )
-                else:
+            if resuming:
+                target = attaching.get(device_id)
+                if target is not None:
                     target.attached = device_id
                     computed.adopt.append(
                         BoardAction(
                             kind="adopt",
-                            row_id=match.id,
-                            label=match.label,
+                            row_id=target.row.id,
+                            label=target.row.label,
                             device_id=device_id,
                             reason="attached",
                             detail=(
-                                f"{device_id} holds {profile.label!r}, which is this profile"
+                                f"{device_id} brews what {target.row.label!r} has brewed, and that "
+                                "profile lost its file"
                                 + (
                                     ""
-                                    if match.on_machine
+                                    if target.row.on_machine
                                     else " and it is switched off, so the next sync removes it"
                                 )
                             ),
                             on=profile.favorite,
                         )
                     )
-                continue
-            key = profile.label
-            if key in joining:
-                computed.extras.append(_extra(device_id, profile.label, joining[key]))
-                continue
-            joining[key] = profile.label
+                    continue
             computed.adopt.append(
                 BoardAction(
                     kind="adopt",
-                    label=profile.label,
+                    label=free_name(profile.label, taken_names),
                     device_id=device_id,
                     reason="unseen",
                     on=profile.favorite,
@@ -487,14 +478,6 @@ class PlanBuilder:
                 selected_without_successor=old.selected and plan_d.successor_row_id is None,
             )
 
-        computed.labels = _shared_labels(live)
-        if (
-            computed.paused is None
-            and adoption is not None
-            and not adoption.resume_pending
-            and looks_reset(live, machine)
-        ):
-            computed.paused = RESET_REASON
         return computed
 
     async def _plan_on(
@@ -530,21 +513,15 @@ class PlanBuilder:
                 kind="push",
                 row_id=row.id,
                 label=row.label,
+                # Its own file is saved over in place; with none, a new file is saved.
                 reason="missing" if old is None else "superseded",
+                device_id=old_id if old is not None else None,
             )
-        if old_id is not None and old is not None and old_id != held:
-            plan.pred_hash = docs[old_id]
-            plan.pred = _removal(
-                row,
-                old_id,
-                old,
-                reason="superseded",
-                standing_rows=live_claims.get(old_id, set()) - {row.id},
-                selected_without_successor=False,
-            )
-        if held is not None:
-            if machine.profiles[held].favorite != row.on_home_screen:
-                plan.home = _home(row, row.label, held, row.on_home_screen)
+        if old_id is not None and old is not None:
+            # A save over its own file keeps the star where it was (the firmware stars only a
+            # file it creates), so the star is judged against the file as it is.
+            if old.favorite != row.on_home_screen:
+                plan.home = _home(row, row.label, old_id, row.on_home_screen)
         elif not row.on_home_screen:
             # The firmware stars every profile it saves; the list says this one is not starred.
             plan.home = _home(row, row.label, None, False)
@@ -618,32 +595,6 @@ def _removal(
     )
 
 
-def _shared_labels(live: list[BoardRow]) -> list[BoardAction]:
-    """A report for every live profile that shares its label with another live one.
-
-    The list never makes such a pair (a put or a take that would is refused, and a file the
-    machine holds under a label a profile already has is attached to it), but a database that
-    carries one from before is said, not refused, and nothing is written for the sake of the pair.
-    """
-    by_label: dict[str, list[BoardRow]] = {}
-    for row in live:
-        by_label.setdefault(row.label, []).append(row)
-    return [
-        BoardAction(
-            kind="report",
-            row_id=row.id,
-            label=row.label,
-            device_id=row.device_profile_id,
-            reason=SHARED_LABEL,
-            detail=f"another profile is also called {row.label}; "
-            "rename or remove one of them so each name is used once",
-        )
-        for rows in by_label.values()
-        if len(rows) > 1
-        for row in rows
-    ]
-
-
 def looks_reset(live: list[BoardRow], machine: MachineState) -> bool:
     """Whether none of the files the last sync left (any profile's) is on the machine any more."""
     standing = [r.device_profile_id for r in live if r.device_profile_id]
@@ -665,65 +616,14 @@ def _report(
     )
 
 
-def _extra(device_id: str, label: str, profile_label: str) -> BoardAction:
-    return BoardAction(
-        kind="report",
-        label=label,
-        device_id=device_id,
-        reason="extra_copy",
-        detail=f"{device_id} is another file for {profile_label!r}, which already has one on the "
-        "machine; it was left as it is",
-    )
+def _held(row: BoardRow, expected: FileContent, files: dict[str, FileContent]) -> str | None:
+    """The row's own file when it holds the row's active content (its brew under its name).
 
-
-def _has_file(plan: RowPlan, machine: MachineState) -> bool:
-    """Whether the profile already stands on a file the machine holds."""
-    return plan.held is not None or (
-        plan.row.device_profile_id is not None and plan.row.device_profile_id in machine.profiles
-    )
-
-
-def _match_row(
-    live: list[BoardRow], listed: dict[str, list[int]], file: FileContent
-) -> BoardRow | None:
-    """The live profile a file the app has never seen belongs to: its content, else its name.
-
-    By content first (the file is a brew the profile has had, under the profile's name), then by
-    exact name; the lowest row id when several fit, so the same inputs always choose the same
-    profile. "Bloom" and "Bloom [AI]" are two names: nothing here treats a trailing marker as
-    noise. A file with a profile's brew under another name is not that profile's.
+    A profile is held only by its own file: another file with the same content is a profile of
+    its own.
     """
-    ids = set(listed.get(file.brew, []))
-    for row in live:
-        if row.id in ids and row.label == file.name:
-            return row
-    for row in live:
-        if row.label == file.name:
-            return row
-    return None
-
-
-def _held(
-    row: BoardRow,
-    expected: FileContent,
-    machine: MachineState,
-    files: dict[str, FileContent],
-    claimed: dict[str, int],
-    assigned: set[str],
-) -> str | None:
-    """The file holding the row's active content (its brew under its name): its own first, else
-    any unspoken-for one."""
     own = row.device_profile_id
-    if own is not None and own not in assigned and files.get(own) == expected:
-        return own
-    for device_id in sorted(machine.profiles):
-        if (
-            files[device_id] == expected
-            and device_id not in assigned
-            and claimed.get(device_id, row.id) == row.id
-        ):
-            return device_id
-    return None
+    return own if own is not None and files.get(own) == expected else None
 
 
 def _home(row: BoardRow, label: str, device_id: str | None, on: bool) -> BoardAction:

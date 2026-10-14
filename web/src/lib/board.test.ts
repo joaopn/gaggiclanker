@@ -103,37 +103,16 @@ describe("rowStateOf", () => {
     expect(state.notes).toEqual(["A sync does nothing for this profile until you choose."]);
   });
 
-  it("says a shared label as a note and keeps the profile's own state", () => {
-    const entry = boardRowView({ row: { id: 2 } });
-    const view = boardView({
-      rows: [entry],
-      reports: [
-        boardAction({
-          kind: "report",
-          row_id: 2,
-          reason: "duplicate_label",
-          detail: "another profile is also called Londinium",
-        }),
-      ],
-    });
-    expect(rowStateOf(view, entry)).toMatchObject({
-      text: "On the machine",
-      notes: ["Another profile is also called Londinium."],
-    });
-  });
-
-  it("names the older copy that goes and the star that moves", () => {
+  it("names the star that moves", () => {
     const entry = boardRowView({
       row: { id: 2 },
       machine: { present: true, holds_current: false },
       planned: [
         boardAction({ row_id: 2, reason: "superseded" }),
-        boardAction({ row_id: 2, kind: "remove", device_id: "old1", reason: "superseded" }),
         boardAction({ row_id: 2, kind: "home_screen", on: false }),
       ],
     });
     expect(rowStateOf(boardView({ rows: [entry] }), entry).notes).toEqual([
-      "The older copy (old1) will be removed.",
       "Its star will come off on the machine.",
     ]);
   });
@@ -148,7 +127,6 @@ describe("rowStateOf", () => {
     expect(text("missing")).toBe("Missing from the machine");
     expect(text("did_not_verify")).toBe("Did not verify, not tried again");
     expect(text("policy")).toBe("Outside the safety bounds");
-    expect(text("extra_copy")).toBe("The machine holds a second copy");
     expect(text("unreadable")).toMatch(/would not give/);
   });
 

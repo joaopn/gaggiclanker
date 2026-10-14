@@ -10,34 +10,35 @@ at all.
 **The write phase is the one automatic write this app makes**, and it runs only when the
 `deviceWritesEnabled` switch is on, at the end of the profile pass of a sync, inside the sync
 engine's lock. It does not decide anything the plan has not (:mod:`.board_plan`) and it has
-no machine path of its own: every save is :func:`~gaggiclanker.drafts.machine.place`, every
-removal :func:`~gaggiclanker.drafts.machine.remove_profile`, so the audit, the write gate and
-the one removal guard (a fresh load must hold exactly the content the archive recorded) apply
-as they do to a person's push.
+no machine path of its own: every save is :func:`~gaggiclanker.drafts.machine.place` (a profile
+with no file) or :func:`~gaggiclanker.drafts.machine.overwrite` (a profile's own file), every
+removal :func:`~gaggiclanker.drafts.machine.remove_profile`, so the audit, the write gate and the
+guard (a fresh load must hold exactly the content the archive recorded) apply as they do to a
+person's push.
 
 What a sync does, in order:
 
 1. **The first sync with the switch on** takes the machine's files into the list by the
    rules below and writes nothing; the sync ends there.
-2. **Files it has never seen** join the list (see :mod:`.board_plan`): attached to the profile
-   they belong to, or as a new profile that is on. Nothing is removed in the sync that finds a
-   file.
-3. **Per profile that is on**: push its active version when the machine holds none (the safety
-   policy runs again here, the save-then-load round trip too); then remove the file it stood
-   on before. A round trip that does not match removes the copy just written (the same guarded
-   path), keeps the previous version on the machine and records the failure; that version is
-   not tried again until another is made active. A profile in conflict (a file holding content
-   it never had) is skipped entirely; a file holding an older version of it is recorded and
-   handled as usual.
+2. **Files it has never seen** (no profile holds their id) join the list as new profiles that
+   are on (see :mod:`.board_plan`). Nothing is removed or replaced in the sync that finds a file.
+3. **Per profile that is on**: save its active version when its file does not hold it (the safety
+   policy runs again here, the read-back too). A profile that has a file is saved over that
+   file, in place, after a fresh load shows exactly what the archive recorded for it, so its id,
+   its star, its selection and the startup setting stay; the machine's shots are pulled first,
+   so a shot brewed on the old content is never linked to the new. A profile with no file gets
+   a new one. A read-back that does not match puts the recorded document back, records the
+   failure, and the version is not tried again until another is made active. A profile in
+   conflict (a file holding content it never had) is skipped entirely; a file holding an older
+   version of it is recorded and handled as usual.
 4. **Per profile that is off**: remove its file (the selection moves first to the first profile
    that is on), after the same fresh-load check.
 5. **Per deleted row**: remove its file the same way.
 6. **Stars**, only for profiles that are on, from a fresh read when anything was written above.
 
-A sync that stops halfway leaves every profile old or new: a push is a save then a removal, and
-a failure between them leaves both files on the machine, which the next sync finishes (the row
-still stands on the old file, and the new one is found by its content). Failures are values
-(events, the run's summary, an error count), never an exception out of the sync.
+A save over a file is one frame, so a sync that stops halfway leaves every profile old or new.
+Failures are values (events, the run's summary, an error count), never an exception out of the
+sync.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -115,6 +117,7 @@ from gaggiclanker.drafts.machine import (
     MachineState,
     Placed,
     Removal,
+    overwrite,
     place,
     read_machine,
     remove_profile,
@@ -456,7 +459,13 @@ class _Phase:
     summary: BoardRunSummary
     machine: MachineState
     host: str
+    #: The engine's shot pass, awaited before the first save over a file (see ``_pull_shots``).
+    pull_shots: Callable[[], Awaitable[bool]]
+    #: Whether the machine announced a shot since the last pull.
+    shot_announced: Callable[[], bool]
     failures_in_a_row: int = 0
+    #: ``None`` until the shots were asked for in this sync, then whether that pass completed.
+    shots_pulled: bool | None = None
     #: The file each live row holds in this plan, so one row's push never reuses another's.
     held: dict[int, str] = field(default_factory=dict)
     #: The profiles that gained a file in this sync (a new profile, or a file attached): the
@@ -1553,7 +1562,13 @@ class BoardService:
     # ── the write phase ──────────────────────────────────────────────
 
     async def run(
-        self, client: GaggimateClient, *, run_id: int, update: SyncRunUpdate
+        self,
+        client: GaggimateClient,
+        *,
+        run_id: int,
+        update: SyncRunUpdate,
+        pull_shots: Callable[[], Awaitable[bool]],
+        shot_announced: Callable[[], bool],
     ) -> bool | None:
         """The sync's write phase. ``None`` (and nothing read or sent) with the switch off.
 
@@ -1567,7 +1582,7 @@ class BoardService:
             return None
         summary = BoardRunSummary()
         try:
-            await self._run(client, run_id, update, summary)
+            await self._run(client, run_id, update, summary, pull_shots, shot_announced)
         except asyncio.CancelledError:
             raise
         except DeviceError as exc:
@@ -1594,10 +1609,18 @@ class BoardService:
         log.info("board_phase_failed", step=step, error=str(exc))
 
     async def _run(
-        self, client: GaggimateClient, run_id: int, update: SyncRunUpdate, summary: BoardRunSummary
+        self,
+        client: GaggimateClient,
+        run_id: int,
+        update: SyncRunUpdate,
+        summary: BoardRunSummary,
+        pull_shots: Callable[[], Awaitable[bool]],
+        shot_announced: Callable[[], bool],
     ) -> None:
         machine = await read_machine(client)
-        phase = _Phase(client, run_id, update, summary, machine, client.host)
+        phase = _Phase(
+            client, run_id, update, summary, machine, client.host, pull_shots, shot_announced
+        )
         if await self.board.adoption() is None:
             await self._adopt(phase)
             return
@@ -1613,8 +1636,8 @@ class BoardService:
         await self._join(phase, computed)
         phase.held = {p.row.id: p.held for p in computed.rows if p.held is not None}
 
-        # Profiles that are on first, so a replacement is saved before anything is removed,
-        # then the ones switched off, then the deleted ones.
+        # Profiles that are on first (their saves), then the ones switched off, then the deleted
+        # ones: nothing is removed before every save has been tried.
         for plan in computed.rows:
             if phase.failures_in_a_row >= MAX_CONSECUTIVE_FAILURES:
                 break
@@ -1630,8 +1653,8 @@ class BoardService:
                 break
             await self._apply_deleted(phase, deleted)
 
-        # The stars last, and from a fresh read when anything was written: a replaced
-        # profile's star was carried to its successor, and the firmware stars every save.
+        # The stars last, and from a fresh read when anything was written: the firmware stars
+        # every file it creates, and a star is judged against the file as it is now.
         if summary.writes or summary.pushed or summary.removed:
             machine = await read_machine(client)
             phase.machine = machine
@@ -1677,10 +1700,11 @@ class BoardService:
     async def _join(self, phase: _Phase, computed: Computed, *, first_pull: bool = False) -> None:
         """Take each file the app has never seen into the list. Writes nothing to the machine.
 
-        A file belongs to the profile its content or its name says (it is attached to it: the
-        profile now stands on it) and otherwise becomes a new profile that is on, starred as the
-        machine has it. Either way the profile is left alone for the rest of this sync, so the
-        sync that finds a file never removes or replaces it.
+        A file no profile holds the id of becomes a new profile that is on, starred as the machine
+        has it (the one exception: after a resumed reset, a file with the brew of a profile that
+        lost its file is attached to that profile, which now stands on it). Either way the
+        profile is left alone for the rest of this sync, so the sync that finds a file never
+        removes or replaces it.
         """
         for action in computed.adopt:
             device_id = action.device_id or ""
@@ -1710,7 +1734,7 @@ class BoardService:
                     f"{device_id} ({profile.label}) "
                     + (
                         f"was attached to {row.label}."
-                        if action.reason in ("attached", "conflict")
+                        if action.reason == "attached"
                         else "joined the list as a new profile."
                     ),
                     device_id,
@@ -1719,31 +1743,22 @@ class BoardService:
 
     async def _join_one(self, phase: _Phase, action: BoardAction, profile: Profile) -> BoardRow:
         device_id = action.device_id or ""
-        if action.reason in ("attached", "conflict") and action.row_id is not None:
+        if action.reason == "attached" and action.row_id is not None:
             row = await self.board.get(action.row_id)
             assert row is not None  # the plan read it a moment ago
-            # The file's content, as a version of the profile it is now attached to.
+            # The file's content, as a version of the profile it is now attached to: its active
+            # brew, since that is how the plan matched it.
             version, _ = await self.profiles.ensure_version(profile, owner=row.id)
-            if action.reason == "conflict":
-                # A file new to the machine that stands under this profile's label with content
-                # the profile never had is what the machine now says the profile is: what the
-                # person confirmed about the profile is proposed again for it. An *attached*
-                # file holds content the profile has had, perhaps an older version, and carrying
-                # onto that would run the signature backwards; a profile made on the display, with
-                # no row, carries nothing.
-                await self.signatures.carry_quietly(row.current_version_id, version.id)
             await self.board.add_version(row.id, version.id, "edited_on_machine")
             # The mirror read the file before any profile stood on it: it holds this profile's
             # version of that content from now on.
             await self.profiles.point_file_at(device_id, version.id)
-            # A conflict's file is stood on without being recorded as what the profile last held
-            # there, so the difference stays a difference until a person chooses.
             updated = await self.board.update(
                 row.id,
                 BoardRowPatch(
                     device_profile_id=device_id,
-                    device_version_id=None if action.reason == "conflict" else version.id,
-                    device_label=None if action.reason == "conflict" else profile.label,
+                    device_version_id=version.id,
+                    device_label=profile.label,
                 ),
             )
             assert updated is not None
@@ -1755,8 +1770,10 @@ class BoardService:
         ours = await self._saved_by_the_app(device_id, document_hash(profile), host=phase.host)
         row = await self.board.insert(
             BoardRowWrite(
-                # Called what the file is called, whatever the stored version was first called.
-                label=profile.label,
+                # Called what the file is called unless a live profile has that name (the plan
+                # made it "<name> (2)"), whatever the stored version was first called; the file's
+                # own name is what the archive last recorded for it, so the next sync renames it.
+                label=action.label,
                 current_version_id=version.id,
                 device_profile_id=device_id,
                 device_version_id=version.id,
@@ -1845,7 +1862,7 @@ class BoardService:
     # ── one live row ─────────────────────────────────────────────────
 
     async def _apply_row(self, phase: _Phase, plan: RowPlan) -> None:
-        """A profile that is on: put its active version on the machine, retire what it replaces."""
+        """A profile that is on: put its active version on the machine, over its own file."""
         row = plan.row
         if plan.attached is not None:
             return  # joined this sync: recorded, and otherwise left alone until the next one
@@ -1862,28 +1879,15 @@ class BoardService:
         if plan.push is not None:
             placed = await self._push(phase, plan)
             if placed is None:
-                return  # old stays on the machine, the row stands where it was
+                return  # the file stays as it was, and the row stands where it was
             new_id = placed.device_id
             phase.held[row.id] = new_id
         assert new_id is not None  # a row either holds its content or has just pushed it
 
-        settled = True
-        removal: Removal | None = None
-        if plan.pred is not None and plan.pred.device_id is not None:
-            if plan.pred.kind == "leave":
-                await self._left(phase, plan.pred)
-                settled = False
-            else:
-                removal = await self._remove(
-                    phase,
-                    plan.pred,
-                    expected_hash=plan.pred_hash,
-                    successor=new_id,
-                    row=plan.row,
-                )
-                settled = _is_settled(removal)
-        if settled and (
-            row.device_profile_id != new_id or row.device_version_id != plan.version.id
+        if (
+            row.device_profile_id != new_id
+            or row.device_version_id != plan.version.id
+            or row.device_label != row.label
         ):
             await self.board.update(
                 row.id,
@@ -1893,25 +1897,27 @@ class BoardService:
                     device_label=row.label,
                 ),
             )
-            # A file the row has just come to stand on (one that held its content already, or
-            # a copy of it) holds the row's own version of that content, not the loose one the
-            # mirror stored before any profile stood on it.
+        if row.device_profile_id != new_id:
+            # A file the row has just come to stand on holds the row's own version of that
+            # content, not the loose one the mirror stored before any profile stood on it. A
+            # file saved over in place is not moved: the shots it has were brewed on what it held,
+            # and the mirror takes the new version below.
             await self.profiles.point_file_at(new_id, plan.version.id)
-        if row.back_from_version_id is not None and settled:
+        if row.back_from_version_id is not None:
             # The file was dealt with: the going back is over.
             await self.board.update(
                 row.id,
                 BoardRowPatch(back_from_version_id=None),
             )
         if placed is not None and placed.served is not None:
-            favorite = placed.served.favorite or bool(removal and removal.favorite_carried)
-            selected = placed.served.selected or bool(removal and removal.selected_carried)
             await self._mirror(
-                new_id, placed.served, owner=row.id, favorite=favorite, selected=selected
+                new_id,
+                placed.served,
+                owner=row.id,
+                favorite=placed.served.favorite,
+                selected=placed.served.selected,
             )
-        await self._record(
-            phase, plan, new_id, saved=placed is not None and not placed.reused, removal=removal
-        )
+        await self._record(phase, plan, new_id, saved=placed is not None)
 
     async def _apply_off(self, phase: _Phase, plan: RowPlan) -> None:
         """A profile that is off: take its file off the machine, once the selection has moved."""
@@ -1982,41 +1988,174 @@ class BoardService:
         )
 
     async def _push(self, phase: _Phase, plan: RowPlan) -> Placed | None:
-        """Save the row's current version (unless the machine holds it) and verify it.
+        """Save the row's current version and verify it.
 
         Every version that is pushed here is first run through the schema and the safety
         policy with the bounds as they are now: a profile that was valid when it was drafted
         may not be under the bounds a person has since tightened. A version that fails stays
         off the machine and is reported. ``None`` when it did not land, with the failure
-        recorded; the previous file is then untouched. A copy that was saved but did not
-        verify is removed again through the guarded path, so each retry does not add one.
+        recorded; the file is then as it was. A profile that has a file is saved over it
+        (:meth:`_push_over`); one with none gets a new file (:meth:`_push_new`).
         """
         assert plan.push is not None
-        action = plan.push
         refusal = await self.policy_refusal(plan.version)
         if refusal is not None:
-            await self._row_failed(phase, action, "policy", refusal, counts_as_device_failure=False)
+            await self._row_failed(
+                phase, plan.push, "policy", refusal, counts_as_device_failure=False
+            )
             return None
         clamped = document_for(plan.version, plan.row.label)
-        # `place` reuses any file holding the content, and a file another board profile
-        # stands on is not this row's to share: two rows on one file would have the next
-        # replace of one remove the other's profile. It is shown the machine without them,
-        # deleted rows' files and files other rows hold in this plan included.
-        taken = {
-            other.device_profile_id
-            for other in await self.board.list_rows(include_deleted=True)
-            if other.id != plan.row.id and other.device_profile_id is not None
-        } | {file for row_id, file in phase.held.items() if row_id != plan.row.id}
-        visible = MachineState(
-            profiles={i: p for i, p in phase.machine.profiles.items() if i not in taken}
+        row = await self._fresh(plan.row)
+        if row.device_profile_id is not None and row.device_profile_id in phase.machine.profiles:
+            return await self._push_over(phase, plan, clamped, row.device_profile_id)
+        return await self._push_new(phase, plan, clamped)
+
+    async def _pulled_the_shots(self, phase: _Phase) -> bool:
+        """Whether the machine's shots are pulled as of now, asking when they are not.
+
+        A profile keeps its machine id for good, and a shot is linked to the version its file
+        holds when the shot is read, so the shots are read before anything is saved over a file:
+        once in a sync, and again when the machine announced a shot since. A pull that did not
+        complete stays failed for the rest of the sync.
+        """
+        for _ in range(3):
+            if phase.shots_pulled is None or (phase.shots_pulled and phase.shot_announced()):
+                try:
+                    phase.shots_pulled = await phase.pull_shots()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.warning("board_shots_pull_failed", exc_info=True)
+                    phase.shots_pulled = False
+            if not phase.shots_pulled:
+                return False
+            if not phase.shot_announced():
+                return True
+        return False  # shots keep arriving: not now
+
+    async def _a_shot_is_running(self, phase: _Phase, action: BoardAction, device_id: str) -> bool:
+        """Whether the machine reports a process running; the save is then left for the next sync.
+
+        A shot that is running is not in the index yet, and a save now would link it to the new
+        version when it ends. It is said on the run and is not a device failure.
+        """
+        status = phase.client.last_status
+        if status is None or status.process is None or status.process.a != 1:
+            return False
+        await self._left(
+            phase,
+            action.model_copy(
+                update={
+                    "kind": "leave",
+                    "device_id": device_id,
+                    "reason": "shot_running",
+                    "detail": "the machine is running a shot; saved at the next sync",
+                }
+            ),
         )
+        return True
+
+    async def _push_over(
+        self, phase: _Phase, plan: RowPlan, clamped: Profile, device_id: str
+    ) -> Placed | None:
+        """Save the document over the profile's own file, under the guard.
+
+        What the file must hold is what the archive recorded for it (the recorded version's brew
+        under the name recorded with it), never what the plan read at some other moment. With no
+        record, or with the machine's shots not pulled, nothing is saved.
+        """
+        action = plan.push
+        assert action is not None
+        row = await self._fresh(plan.row)
+        recorded = (
+            None
+            if row.device_version_id is None
+            else await self.profiles.get_version(row.device_version_id)
+        )
+        if recorded is None or row.device_label is None:
+            await self._row_failed(
+                phase,
+                action,
+                "push",
+                "the archive has no record of what the file holds, so it is not saved over",
+                device_id=device_id,
+                counts_as_device_failure=False,
+            )
+            return None
+        if await self._a_shot_is_running(phase, action, device_id):
+            return None
+        if not await self._pulled_the_shots(phase):
+            await self._row_failed(
+                phase,
+                action,
+                "push",
+                "the machine's shots could not be pulled first, so nothing is saved over its file "
+                "in this sync",
+                device_id=device_id,
+                counts_as_device_failure=False,
+            )
+            return None
+        if await self._a_shot_is_running(phase, action, device_id):
+            return None
+        recorded_document = document_for(recorded, row.device_label)
         try:
-            placed = await place(phase.client, clamped, visible)
+            placed = await overwrite(
+                phase.client,
+                clamped,
+                phase.machine,
+                device_id=device_id,
+                expected_hash=document_hash(recorded_document),
+                recorded=recorded_document,
+            )
+        except DeviceError as exc:
+            await self._row_failed(phase, action, "push", str(exc), device_id=device_id)
+            return None
+        phase.summary.writes += placed.saves
+        if placed.problem == "changed":
+            await self._left(
+                phase,
+                action.model_copy(
+                    update={
+                        "kind": "leave",
+                        "device_id": device_id,
+                        "reason": "edited_on_machine",
+                        "detail": placed.error,
+                    }
+                ),
+            )
+            return None
+        if placed.problem is not None:
+            # Not tried again until another version is made active (or this one is made active
+            # again, which asks for a retry): a firmware that cannot round-trip this version
+            # would otherwise be written to and repaired again on every sync.
+            await self.board.update(plan.row.id, BoardRowPatch(failed_version_id=plan.version.id))
+            await self._row_failed(
+                phase,
+                action,
+                "round_trip",
+                f"{placed.error}; "
+                + (
+                    "the recorded document was put back on the file and the previous version stays."
+                    if placed.repaired
+                    else "the file may not hold what was recorded; the next sync reads it again."
+                ),
+                device_id=device_id,
+            )
+            return None
+        await self._supersede_what_stood_behind(row, plan, device_id)
+        await self._pushed(phase, plan, placed)
+        return placed
+
+    async def _push_new(self, phase: _Phase, plan: RowPlan, clamped: Profile) -> Placed | None:
+        """Save a new file for a profile that has none, and verify it."""
+        action = plan.push
+        assert action is not None
+        try:
+            placed = await place(phase.client, clamped, phase.machine)
         except DeviceError as exc:
             await self._row_failed(phase, action, "push", str(exc))
             return None
-        if not placed.reused:
-            phase.summary.writes += 1
+        phase.summary.writes += 1
         if placed.served is not None and placed.problem is None:
             phase.machine.profiles[placed.device_id] = placed.served
         if placed.problem is not None:
@@ -2029,6 +2168,7 @@ class BoardService:
                     device_id=placed.device_id,
                     expected_hash=document_hash(placed.served),
                     successor=None,
+                    carry_favorite=False,
                 )
             else:
                 cleanup = Removal(reason="could not be read back")
@@ -2041,28 +2181,45 @@ class BoardService:
             # would otherwise be written to and cleaned up again on every sync, whether or not
             # the bad copy could be taken off.
             await self.board.update(plan.row.id, BoardRowPatch(failed_version_id=plan.version.id))
+            if not cleanup.removed:
+                # The leftover file is the profile's own now, recorded as what was sent: the next
+                # sync sees content the profile never had on it and asks, instead of adopting a
+                # mangled copy as a profile of its own.
+                await self.board.update(
+                    plan.row.id,
+                    BoardRowPatch(
+                        device_profile_id=placed.device_id,
+                        device_version_id=plan.version.id,
+                        device_label=clamped.label,
+                    ),
+                )
             await self._row_failed(
                 phase,
                 action,
                 "round_trip",
                 f"{placed.error}; "
                 + (
-                    "that copy was removed again and the previous version stays."
+                    "that copy was removed again."
                     if cleanup.removed
-                    else f"that copy could not be removed ({cleanup.reason}); "
-                    "the previous version stays."
+                    else f"that copy could not be removed ({cleanup.reason}); the profile "
+                    "stands on it and the next sync asks."
                 ),
                 device_id=placed.device_id,
             )
             return None
+        await self._pushed(phase, plan, placed)
+        return placed
+
+    async def _pushed(self, phase: _Phase, plan: RowPlan, placed: Placed) -> None:
+        """A save that verified: the run says so."""
+        assert plan.push is not None
+        action = plan.push
         phase.failures_in_a_row = 0
         item = BoardSummaryItem(
             row_id=plan.row.id,
             label=plan.row.label,
             device_id=placed.device_id,
             reason=action.reason,
-            detail="an identical profile was already on the machine" if placed.reused else "",
-            reused=placed.reused,
         )
         phase.summary.pushed.append(item)
         message = f"Put {plan.row.label} on the machine as {placed.device_id}."
@@ -2071,9 +2228,29 @@ class BoardService:
             EVENT_PUSHED,
             message,
             placed.device_id,
-            {"row_id": plan.row.id, "reason": action.reason, "reused": placed.reused},
+            {"row_id": plan.row.id, "reason": action.reason},
         )
-        return placed
+
+    async def _supersede_what_stood_behind(
+        self, row: BoardRow, plan: RowPlan, device_id: str
+    ) -> None:
+        """The drafts that put the file's earlier content there stand behind it no more.
+
+        What a removal did for a replaced file, said of a file saved over: the draft waiting on
+        this profile replaces them, else the newest draft of the version now on the file does,
+        else they are closed.
+        """
+        newer = row.pending_draft_id or await self.drafts.pusher_of_version(plan.version.id)
+        if newer is not None:
+            await self.drafts.supersede_pushed(device_id, by_draft_id=newer)
+        else:
+            await self._retire(
+                device_id,
+                "went_back_over"
+                if row.back_from_version_id is not None
+                and row.device_version_id == row.back_from_version_id
+                else "saved_over",
+            )
 
     async def _remove(
         self,
@@ -2083,7 +2260,7 @@ class BoardService:
         expected_hash: str | None,
         successor: str | None,
         row: BoardRow,
-        carry_favorite: bool = True,
+        carry_favorite: bool,
     ) -> Removal:
         """Remove a file through the one guard and say what happened.
 
@@ -2127,16 +2304,9 @@ class BoardService:
                     device_id, "deleted" if row.deleted_at is not None else "went_back"
                 )
             else:
-                # A replacement that had to wait (the earlier copy stayed for a moment): the
-                # draft that put the current version on the machine replaces the draft behind
-                # this file.
-                newer = await self.drafts.pusher_of_version(row.current_version_id)
-                if newer is not None:
-                    await self.drafts.supersede_pushed(device_id, by_draft_id=newer)
-                else:
-                    # Nothing newer stands behind the profile: the copy is off the machine, so
-                    # its draft is closed as a delete closes it.
-                    await self._retire(device_id, "removed")
+                # The copy is off the machine and nothing stands behind it: its draft is closed
+                # as a delete closes it.
+                await self._retire(device_id, "removed")
             phase.summary.removed.append(
                 BoardSummaryItem(
                     row_id=row.id,
@@ -2168,7 +2338,11 @@ class BoardService:
         return removal
 
     async def _retire(
-        self, device_id: str, how: Literal["went_back", "deleted", "removed", "switched_off"]
+        self,
+        device_id: str,
+        how: Literal[
+            "went_back", "deleted", "removed", "switched_off", "went_back_over", "saved_over"
+        ],
     ) -> None:
         """Close the record of a file removed without a newer draft taking its place.
 
@@ -2182,6 +2356,8 @@ class BoardService:
             "deleted": f"The profile was deleted: {device_id} is off the machine.",
             "removed": f"{device_id} is off the machine and nothing newer stands behind it.",
             "switched_off": f"The profile was switched off: {device_id} is off the machine.",
+            "went_back_over": f"Went back to the previous version: {device_id} was saved over.",
+            "saved_over": f"{device_id} was saved over with another version of the profile.",
         }
         await self.drafts.retire_pushed(
             device_id,
@@ -2317,9 +2493,7 @@ class BoardService:
             label=served.label,
         )
 
-    async def _record(
-        self, phase: _Phase, plan: RowPlan, device_id: str, *, saved: bool, removal: Removal | None
-    ) -> None:
+    async def _record(self, phase: _Phase, plan: RowPlan, device_id: str, *, saved: bool) -> None:
         """Say on the draft that the profile is on the machine.
 
         The draft becomes ``pushed`` exactly as a person's push leaves it. Done at the moment the
@@ -2357,16 +2531,10 @@ class BoardService:
             "startup_profile_cleared": False,
             "lines": lines,
         }
-        replaced = (
-            plan.pred.device_id if plan.pred is not None and removal and removal.removed else None
-        )
-        if replaced:
-            outcome["replaced_device_profile_id"] = replaced
-            lines.append(f"Replaced {replaced}: the previous copy is off the machine.")
-        elif plan.pred is not None and plan.pred.device_id:
-            outcome["kept_device_profile_id"] = plan.pred.device_id
-            outcome["kept_reason"] = plan.pred.detail or (removal.reason if removal else "")
-            lines.append(f"Left {plan.pred.device_id} on the machine: {outcome['kept_reason']}.")
+        if plan.push is not None and plan.push.reason != "missing":
+            lines.append(
+                f"{device_id} is the profile's own file: its earlier version was saved over."
+            )
         served = phase.machine.profiles.get(device_id)
         await self.drafts.set_status(
             draft.id,
@@ -2380,8 +2548,6 @@ class BoardService:
                 "loaded": served.to_device(),
             },
             outcome=outcome,
-            replaced_device_profile_id=replaced,
-            replaced_version_id=row.device_version_id if replaced else None,
         )
         await clear()
 
@@ -2432,7 +2598,6 @@ class BoardService:
 
 #: What each removal reason says in an event.
 _REASON = {
-    "superseded": "a newer version of the profile took its place",
     "deleted": "the profile was deleted",
     "off": "the profile is switched off",
 }

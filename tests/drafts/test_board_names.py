@@ -96,7 +96,7 @@ async def test_a_new_file_does_not_join_the_profile_whose_name_differs_by_the_ma
     assert write_frames(fake_device) == []
 
 
-async def test_a_file_matches_the_row_of_its_exact_name_and_not_the_other_one(
+async def test_a_file_is_a_profile_by_its_id_and_never_the_row_of_its_name(
     writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     app, client = writes_on
@@ -106,8 +106,8 @@ async def test_a_file_matches_the_row_of_its_exact_name_and_not_the_other_one(
     marked_row = row_for(await get_board(client), "Bloom [AI]")["row"]["id"]
     plain_row = row_for(await get_board(client), "Bloom")["row"]["id"]
     # The marked profile's file disappears and comes back under a new id with other content
-    # (the person edited it on the display). It is the marked profile's conflict, never the plain
-    # one's.
+    # (the person edited it on the display). No profile holds that id, so it is a profile of
+    # its own, called what is free: it is neither the marked profile's nor the plain one's.
     fake_device.profiles[:] = [p for p in fake_device.profiles if p["id"] != "p2"]
     fake_device.profiles.append(_file(fake_device, "p3", "Bloom [AI]", 95))
     await ProfileBoardRepository(app.state.db).update(
@@ -119,7 +119,8 @@ async def test_a_file_matches_the_row_of_its_exact_name_and_not_the_other_one(
     board = await get_board(client)
     attached = {r["row"]["id"]: r["machine"]["device_id"] for r in board["rows"] if r["machine"]}
     assert attached[plain_row] == "p1"
-    assert attached[marked_row] == "p3"
+    assert attached[marked_row] not in ("p1", "p2", "p3"), "pushed a file of its own"
+    assert row_for(board, "Bloom [AI] (2)")["machine"]["device_id"] == "p3"
 
 
 async def test_a_file_carrying_the_marker_is_a_profile_of_its_own_whatever_the_history_holds(

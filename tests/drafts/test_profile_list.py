@@ -300,9 +300,9 @@ async def test_a_file_edited_to_an_older_version_is_recorded_and_replaced_when_o
     assert summary["conflicts"] == [], "an older version put back is no conflict"
     assert [i["device_id"] for i in summary["recorded"]] == [file]
     assert [i["reason"] for i in summary["pushed"]] == ["superseded"]
-    assert [i["device_id"] for i in summary["removed"]] == [file]
+    assert summary["removed"] == []
     [only] = ids_labelled(fake, APP_LABEL)
-    assert only != file
+    assert only == file, "the active version is saved over the same file"
 
 
 async def test_a_file_edited_to_an_older_version_is_recorded_and_removed_when_off(
@@ -323,7 +323,7 @@ async def test_a_file_edited_to_an_older_version_is_recorded_and_removed_when_of
     assert ids_labelled(fake, APP_LABEL) == []
 
 
-async def test_a_file_attached_in_a_sync_is_left_alone_in_that_sync_when_on(
+async def test_a_file_the_app_has_never_seen_is_left_alone_in_the_sync_that_finds_it_when_on(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
@@ -334,17 +334,22 @@ async def test_a_file_attached_in_a_sync_is_left_alone_in_that_sync_when_on(
     found = await pull(app)
 
     assert found.status == "ok", found.error
-    assert [i["reason"] for i in summary_of(found)["adopted"]] == ["attached"]
+    assert [(i["reason"], i["label"]) for i in summary_of(found)["adopted"]] == [
+        ("unseen", f"{APP_LABEL} (2)")
+    ]
     assert summary_of(found)["failures"] == []
-    assert write_frames(fake) == [], "the sync that finds a file does nothing else to the profile"
-    assert "older1" in ids(fake)
-    # The next sync treats it like any file: the active version is pushed, this one removed.
+    # The profile whose file is gone is saved as a new one; the file that turned up is a profile
+    # of its own, left as it is in the sync that found it.
+    assert [i["reason"] for i in summary_of(found)["pushed"]] == ["missing"]
+    assert next(p for p in fake.profiles if p["id"] == "older1")["label"] == APP_LABEL
+    # The next sync saves the profile's name over it, in place.
     nxt = await pull(app)
-    assert [i["reason"] for i in summary_of(nxt)["pushed"]] == ["superseded"]
-    assert [i["device_id"] for i in summary_of(nxt)["removed"]] == ["older1"]
+    assert [i["device_id"] for i in summary_of(nxt)["pushed"]] == ["older1"]
+    assert summary_of(nxt)["removed"] == []
+    assert next(p for p in fake.profiles if p["id"] == "older1")["label"] == f"{APP_LABEL} (2)"
 
 
-async def test_a_file_attached_in_a_sync_is_left_alone_in_that_sync_when_off(
+async def test_a_file_the_app_has_never_seen_is_left_alone_in_the_sync_that_finds_it_when_off(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     app, client, fake = adopted
@@ -362,12 +367,11 @@ async def test_a_file_attached_in_a_sync_is_left_alone_in_that_sync_when_off(
     found = await pull(app)
 
     assert found.status == "ok", found.error
-    assert [i["reason"] for i in summary_of(found)["adopted"]] == ["attached"]
+    assert [i["reason"] for i in summary_of(found)["adopted"]] == ["unseen"]
     assert write_frames(fake) == [] and "relocated" in ids(fake)
     nxt = await pull(app)
-    assert [(i["device_id"], i["reason"]) for i in summary_of(nxt)["removed"]] == [
-        ("relocated", "off")
-    ]
+    assert summary_of(nxt)["removed"] == [], "a profile of its own is on, so nothing removes it"
+    assert [i["device_id"] for i in summary_of(nxt)["pushed"]] == ["relocated"]
 
 
 async def test_making_a_version_active_changes_only_the_active_version_not_the_name(
@@ -520,7 +524,7 @@ async def test_the_plan_says_what_resuming_would_do_only_while_paused(
     assert {a.kind for a in paused.would_do} >= {"push", "adopt"}
 
 
-async def test_the_resume_preview_counts_files_that_join_a_profile_that_is_off(
+async def test_the_resume_preview_counts_files_that_join_as_profiles_of_their_own(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     app, client, fake = adopted
@@ -536,7 +540,7 @@ async def test_the_resume_preview_counts_files_that_join_a_profile_that_is_off(
     fake.profiles = [fresh, {**off_doc, "id": "offcopy"}]
     await pull(app)  # paused
     preview = (await get_board(client))["resume_preview"]
-    assert preview["join"] == 2 and preview["remove"] == 1
+    assert preview["join"] == 2 and preview["remove"] == 0
 
     await client.post("/api/profile-board/resume")
     first = summary_of(await pull(app))
@@ -547,11 +551,11 @@ async def test_the_resume_preview_counts_files_that_join_a_profile_that_is_off(
     assert len(first["removed"]) + len(second["removed"]) == preview["remove"]
 
 
-async def test_an_off_profile_whose_file_vanished_keeps_the_file_attached_next_and_loses_it_next(
+async def test_an_off_profile_whose_file_vanished_lets_go_of_it_and_the_file_that_turned_up_is_new(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     """The stale file id is still on the row when an identical file turns up under another id:
-    the sync that attaches it must leave the row standing on it, so the next sync removes it."""
+    the row lets go of what is gone, and the new id is a profile of its own."""
     app, client, fake = adopted
     row = row_for(await get_board(client), BASE_LABEL)
     file = row["machine"]["device_id"]
@@ -561,13 +565,13 @@ async def test_an_off_profile_whose_file_vanished_keeps_the_file_attached_next_a
 
     first = await pull(app)
 
-    assert [i["reason"] for i in summary_of(first)["adopted"]] == ["attached"]
-    standing = row_for(await get_board(client), BASE_LABEL)["row"]["device_profile_id"]
-    assert standing == "moved", "the attach is not undone by the profile's stale file id"
-    second = await pull(app)
-    assert [(i["device_id"], i["reason"]) for i in summary_of(second)["removed"]] == [
-        ("moved", "off")
+    assert [(i["reason"], i["label"]) for i in summary_of(first)["adopted"]] == [
+        ("unseen", f"{BASE_LABEL} (2)")
     ]
+    board = await get_board(client)
+    assert row_for(board, BASE_LABEL)["row"]["device_profile_id"] is None
+    assert row_for(board, f"{BASE_LABEL} (2)")["row"]["device_profile_id"] == "moved"
+    assert summary_of(await pull(app))["removed"] == []
 
 
 async def test_a_profile_switched_off_keeps_its_star_and_nothing_is_sent_for_it(
@@ -621,11 +625,11 @@ async def test_an_upgrade_never_turns_a_profile_made_on_the_display_into_one_the
     assert "disp9" in [str(p["id"]) for p in fake.profiles]
 
 
-async def test_a_file_that_appears_later_for_a_profile_that_is_off_is_announced_as_removed(
+async def test_a_file_that_appears_later_with_an_off_profiles_content_is_a_profile_of_its_own(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
-    """The steady state: the exact-enabled-set rule. The page says "will be removed" on the row
-    once the file is matched, and the sync that matches it names the match in its summary."""
+    """The exact-enabled-set rule: a file no profile holds the id of joins the list on, whatever it
+    holds, so the machine holding it is the list saying so; the off profile stays off."""
     app, client, fake = adopted
     row = row_for(await get_board(client), BASE_LABEL)["row"]
     assert (await on_machine(client, row["id"], False)).status_code == 200
@@ -637,15 +641,15 @@ async def test_a_file_that_appears_later_for_a_profile_that_is_off_is_announced_
     again["id"] = "back1"
     fake.profiles.append(again)
 
-    attach = await pull(app)  # matches the file to the off profile
-    [matched] = summary_of(attach)["adopted"]
-    assert matched["reason"] == "attached"
-    assert "switched off, so the next sync removes it" in matched["detail"]
+    found = await pull(app)
+    [joined] = summary_of(found)["adopted"]
+    assert (joined["reason"], joined["label"]) == ("unseen", f"{BASE_LABEL} (2)")
     shown = row_for(await get_board(client), BASE_LABEL)
-    assert [a["kind"] for a in shown["planned"]] == ["remove"]
+    assert shown["planned"] == [] and shown["on_machine"] is False
 
-    removal = await pull(app)
-    assert [i["device_id"] for i in summary_of(removal)["removed"]] == ["back1"]
+    later = await pull(app)
+    assert summary_of(later)["removed"] == []
+    assert "back1" in [str(p["id"]) for p in fake.profiles]
 
 
 async def test_an_upgrade_keeps_a_profile_the_person_deleted_from_the_old_board(

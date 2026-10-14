@@ -341,13 +341,15 @@ profiles that are **on the machine** in the list on the Profiles page. The first
 switch on takes the machine's profiles into the list as they are (the home screen is each
 profile's star) and writes nothing; the switch's confirmation says so before you turn it on,
 and after that shows what the next sync would do, read from the machine at that moment. From
-then on a sync pushes each profile's active version when the machine lacks it, **removes the
+then on a sync saves each profile's active version over the profile's own file on the machine
+(a profile keeps one file, one id, for good, and its star and selection stay where they are; a
+profile with no file gets one), **removes the
 ones switched off (the firmware's own profiles and ones you made on the display included)**,
 and sets the stars (a profile's **Starred** flag, applied only while it is on the machine). A
 file the app has never seen joins the list, on, and is never touched by the sync that finds
 it. A profile changed on the display is never overwritten silently: it becomes a **conflict**,
 nothing is done for it, and you choose which side to keep (**Keep the app's**: the next sync
-replaces the machine's file; **Keep the machine's**: its content becomes the profile's active
+saves the app's version over the machine's file; **Keep the machine's**: its content becomes the profile's active
 version; either way it is stored as a version). Every removal is guarded by a fresh load that
 must hold exactly what was last recorded. If the machine looks reset (none of the files the
 last sync left is on it), syncs stop writing and the Profiles page asks once whether to put the
@@ -355,8 +357,8 @@ profiles back, with one button.
 
 **No two profiles in the list share a name.** A proposal that would make a second profile with
 a name the list already has is refused (its panel says the list already has that profile, and
-offers Decline), and a second file on the machine with a profile's name is reported and left as
-it is.
+offers Decline), and a file on the machine with a name the list already has joins as
+"<name> (2)" (the next sync renames the file on the machine).
 
 ### Putting a profile on the machine
 

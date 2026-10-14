@@ -303,7 +303,7 @@ async def test_a_missing_file_is_pushed_under_the_profiles_name_not_the_stored_o
     )
 
 
-async def test_a_file_recorded_under_a_name_the_profile_no_longer_has_is_replaced_not_asked_about(
+async def test_a_file_recorded_under_a_name_the_profile_no_longer_has_is_saved_over_not_asked_about(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     """The recorded file is its brew and the name it was recorded under (``device_label``), not the
@@ -322,7 +322,7 @@ async def test_a_file_recorded_under_a_name_the_profile_no_longer_has_is_replace
     assert [x["label"] for x in summary_of(run)["pushed"]] == ["Called this now"]
     labels = [p["label"] for p in fake.profiles]
     assert "Called this now" in labels and APP_LABEL not in labels
-    assert device_id not in [p["id"] for p in fake.profiles]
+    assert device_id in [p["id"] for p in fake.profiles], "the same file, saved over in place"
 
 
 # ── 3: the stored document is what was first stored ──────────────────────

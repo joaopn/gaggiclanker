@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -133,10 +133,23 @@ class BoardWritePhase(Protocol):
     Handed in by the lifespan rather than imported, so this package keeps knowing nothing of
     drafts. ``run`` is called inside the engine's lock at the end of a successful profile
     pass, and does nothing at all (no read, no write) while the writes switch is off.
+
+    ``pull_shots`` is the engine's own shot pass, run inside the same lock, which the write phase
+    awaits before it saves anything over a file the machine already holds: a shot brewed on the
+    old content and not pulled yet would be linked to the new one by the file's id. It says
+    whether the pass completed (the machine served an index and the run ended ok); when it did
+    not, nothing is saved over a file in this sync. ``shot_announced`` says whether the machine
+    announced a shot since that pass, which is a reason to pull again before the next save.
     """
 
     async def run(
-        self, client: GaggimateClient, *, run_id: int, update: SyncRunUpdate
+        self,
+        client: GaggimateClient,
+        *,
+        run_id: int,
+        update: SyncRunUpdate,
+        pull_shots: Callable[[], Awaitable[bool]],
+        shot_announced: Callable[[], bool],
     ) -> bool | None: ...
 
 
@@ -262,6 +275,10 @@ class SyncEngine:
         #: asked for in that window would otherwise miss the shot the person
         #: pressed the button for.
         self._pushed_ids: set[int] = set()
+        #: A shot was announced since the last pass the write phase asked for (see
+        #: :meth:`_pull_shots_before_saving`), and whether the last shot pass read an index.
+        self._announced_since_pull = False
+        self._index_served = False
         #: The last capability flags seen on a status frame, and the selected
         #: profile id. `None` means "we have not seen a state frame", which is a
         #: different fact from "this board has no pressure sensor".
@@ -397,6 +414,7 @@ class SyncEngine:
                 # asks for a pull; this only means the pull they ask for knows
                 # about a shot the index may not list yet.
                 self._pushed_ids.add(shot_id)
+                self._announced_since_pull = True
             case StatusChanged(status=status):
                 self._note_status(status)
             case IdentityChanged():
@@ -541,7 +559,9 @@ class SyncEngine:
         # at status "running" is a run nothing ever closes, and
         # `GET /api/sync/status` would report a sync in progress for ever.
         try:
+            self._index_served = False
             entries = await self._read_index()
+            self._index_served = entries is not None
             listed = entries or {}
             known = await self.shots.known_states()
             update.shots_seen = len(listed)
@@ -1257,7 +1277,13 @@ class SyncEngine:
             # After the mirror, inside the lock the caller holds, and only on a mirror that
             # read the machine: a pass that could not list its profiles returned above. A
             # failure inside it is a value on the run, never an exception out of the pull.
-            if await self.board.run(self.client, run_id=run_id, update=update):
+            if await self.board.run(
+                self.client,
+                run_id=run_id,
+                update=update,
+                pull_shots=self._pull_shots_before_saving,
+                shot_announced=lambda: self._announced_since_pull,
+            ):
                 self._publish(PROFILE_UPDATED_EVENT, {"board": True})
 
         # How many profiles this pass read, so the notification after a sync can say it. Merged
@@ -1277,6 +1303,35 @@ class SyncEngine:
         finished = await self.runs.get_run(run_id)
         assert finished is not None  # written by finish_run above
         return finished
+
+    async def _pull_shots_before_saving(self) -> bool:
+        """The shot pass, inside the lock the profile pass holds, for the write phase.
+
+        A profile keeps one machine id for good and a save over it changes what the id holds, so
+        a shot is linked to the version its file held when the shot is read, not when it was
+        brewed. The write phase calls this before saving over a file. The pass is complete only
+        when the run ended ok and the machine served an index (an index that is missing, as in a
+        rebuild, reads nothing and says nothing about the shots; it counts only when the archive
+        holds no shot at all). A complete pass then links each
+        file's still-unlinked shots to the version the file holds now, before the save changes it.
+        A shot that starts during the save itself is the accepted residue.
+        """
+        self._announced_since_pull = False
+        run = await self._sync_shots(kind="backfill", trigger="before_save")
+        if run.status != "ok":
+            return False
+        if not self._index_served and await self.shots.known_states():
+            # No index says nothing about the shots the machine holds. Only a machine the archive
+            # has never had a shot from has none to mislink.
+            return False
+        linked = 0
+        for file in await self.profiles.list_device_profiles():
+            linked += await self.shots.link_unlinked_by_device_profile(
+                file.device_id, file.current_version_id
+            )
+        if linked:
+            await rederive_shots(self.shots)
+        return True
 
     # ── shared ───────────────────────────────────────────────────────
 

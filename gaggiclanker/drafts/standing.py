@@ -77,8 +77,11 @@ class Standing:
 
 
 #: The ``outcome.action`` a sync records when it closes a pushed draft because its file went off
-#: the machine for good. Such a draft is ``discarded``, but nobody declined it.
-RETIRED_BY_SYNC = frozenset({"went_back", "deleted", "removed", "switched_off"})
+#: the machine for good, or was saved over with another version of the profile and no draft
+#: stands behind that. Such a draft is ``discarded``, but nobody declined it.
+RETIRED_BY_SYNC = frozenset(
+    {"went_back", "deleted", "removed", "switched_off", "went_back_over", "saved_over"}
+)
 
 #: The ``outcome.action`` recorded where the first-recipe paths discard a draft that no person
 #: declined, with the sentence each reads as. The draft was never put on the list.
@@ -106,9 +109,10 @@ def classify(
     is still waiting.
 
     A draft a sync closed because its file went off the machine (switched off, went back,
-    deleted, removed) is ``discarded`` in the database but is not declined: it is read from the
-    board like an approved one, so a version made active again reads as waiting for the next
-    sync, and one that is not active any more reads as replaced. A first recipe's draft that
+    deleted, removed) or was saved over with another version is ``discarded`` in the database but
+    is not declined: it is read from the board like an approved one, so a version made active
+    again reads as waiting for the next sync, and one that is not active any more reads as
+    replaced. A first recipe's draft that
     the design paths discarded (a newer recipe, the Set's first version written another way, the
     Set discarded) records why and reads as replaced; only a discard with no recorded reason is a
     person's decline.

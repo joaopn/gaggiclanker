@@ -72,8 +72,10 @@ an older archive are still listed as history.
 **The board sync is the only path to a write, and it goes through two primitives.**
 It runs only when `deviceWritesEnabled` is on, at the end of the profile pass of a
 sync, inside the sync engine's lock; with the switch off a sync sends nothing and
-reads nothing for writing. It has no machine path of its own: every save is `place`
-(`drafts/machine.py`: no duplicate, read back and compared), every removal
+reads nothing for writing. It has no machine path of its own: every save is `place` (a
+profile with no file: a new file, read back and compared) or `overwrite` (a profile's own
+file: saved over in place under a fresh-load guard against the recorded document, read back and
+compared, the recorded document put back when the read-back fails), every removal
 `remove_profile` (a fresh load, twice, that must hold exactly the content the archive
 recorded for the file; no other profile standing on it; the selection moved first), every star change a gated `favorite_profile`/`unfavorite_profile`, and
 every one leaves its `device_writes` row. Its plan builder (`drafts/board_plan.py`) only
@@ -122,11 +124,12 @@ file.
 **Two live profiles never share a label.** A put that would add a second profile beside one
 with its label, or rename a profile onto a label another holds, is refused, and so is keeping
 the machine's name in a conflict when another profile has it; a transactional check, not a unique
-index, so a database from before the rule that holds such a pair keeps working (the pair is
-reported). Making a version active never changes the profile's name.
+index. A file the app has never seen whose name a live profile has joins the list as
+"<name> (2)" (or the next free number), and the next sync saves that name over the file. Making a
+version active never changes the profile's name.
 
 **Conflicts.** A profile edited outside the app is never overwritten silently. When a machine
-file standing for a profile (or a never-seen file carrying its name) holds content that is
+file standing for a profile holds content that is
 neither what the app last recorded for it, nor the profile's active version, nor a version it
 has had **under its current name** (a file is its brew **and** its name, so another name on the
 same brew is content the profile never had; an older brew under the current name is matched, as
@@ -139,26 +142,28 @@ chooses (`POST /api/profile-board/{id}/conflict`): the **machine**'s version bec
 one (the brew the profile has already when only the name differs, and then the profile takes
 the file's name) and nothing is pushed, or the **app**'s version is kept, in which case that
 exact machine document is remembered as overruled (it is not flagged again; a further edit is a new conflict)
-and the next sync replaces the file under the removal guard. The route refuses a hash that is
-not the content the person saw.
+and the next sync saves the profile's document over that file under the same guard, recorded as
+what the file holds first. The route refuses a hash that is not the content the person saw.
 
 With the switch on, every sync ends by making the machine match the list, in this order:
 
 1. **The first sync with the switch on** takes the machine's files into the list by the rules
    below and writes nothing; the sync ends there.
-2. **Files the app has never seen** (no profile stands on them) join the list. A file whose
-   content is a version of an existing profile, or that fills an existing profile's missing
-   file with content it has had, is attached to it; one carrying a profile's name but other
-   content is the machine's side of a conflict; anything else becomes a new profile, **on**,
-   starred as the machine has it. A second file for a profile that already has one is reported
-   and left. **The sync that finds a file never removes or replaces it.**
-3. **Each profile that is on**, pushed with its active version whoever made it: when the
-   machine holds no file with that content, the version is run through the schema and the
+2. **Files the app has never seen** (no profile holds their id) join the list as new profiles,
+   **on**, starred as the machine has it, under their own names ("<name> (2)" when a live profile
+   has that name). Files are matched to profiles by id and by nothing else: a second file with a
+   profile's content is a profile of its own. The one exception is a machine that looks reset
+   (below): once a person resumes, a file whose brew is the active version of a profile that
+   lost its file is attached to it. **The sync that finds a file never removes or replaces it.**
+3. **Each profile that is on**, pushed with its active version whoever made it: when its file
+   does not hold that content (or it has none), the version is run through the schema and the
    safety policy with the bounds as they are now (a version that fails stays off the machine,
-   the plan says why, and the rest is not blocked), saved, and read back and compared. The file
-   the profile stood on before is then removed under the guard. A round trip that does not
-   match removes the copy just written through the same guarded path and keeps the previous
-   version; if that copy cannot be removed the version is not tried again until another is made
+   the plan says why, and the rest is not blocked), and saved: **over its own file, in place**
+   (the machine's shots are pulled first, so a shot brewed on the old content is not linked to
+   the new; if that pull does not complete nothing is saved over a file in this sync), or as a
+   new file when it has none. It is read back and compared. A round trip that does not match
+   puts the recorded document back on the file (or removes the new file through the guarded
+   path) and keeps the previous version; the version is not tried again until another is made
    active.
 4. **Each profile that is off**: its file is removed under the guard. A Set brewing it does not
    hold it back (switching a profile off, or changing its active version, is the person's
@@ -178,9 +183,8 @@ one button asks once. A person resumes it (`POST /api/profile-board/resume`, a r
 chat or MCP tool reaches it); the next sync then does exactly what was served. An empty list
 (nothing synced yet) is not a reset.
 
-A sync that stops halfway leaves every profile old or new: a push is a save followed by a
-removal, a failure between them leaves both files on the machine, and the next sync finds the
-new one by its content and finishes the removal. Failures are values (events, an error count
+A sync that stops halfway leaves every profile old or new: a push is one save over the file.
+Failures are values (events, an error count
 on the run), and three device failures in a row end the phase. The order of profiles on the
 machine is not synced.
 
@@ -282,56 +286,81 @@ document that comes back has an `id`, a `favorite`, a `selected`, a
 going out did not. `canonical_document_json` drops exactly that set, which is why
 a faithful machine compares equal and an unfaithful one does not.
 
-A mismatch removes the copy just written (through the guarded path below), keeps the
-profile's previous version on the machine, and records the failure on the sync's run with both
-documents' difference; if that copy cannot be removed the version is not tried again until the
-profile changes. "The machine says it saved it" is not the same as "the machine stored what we
+A mismatch is recorded on the sync's run with both documents' difference, and the version is
+not tried again until the profile changes. A save over a profile's own file puts the recorded
+document back on that file (under the same guard, now against what was just written) and says
+whether that worked; a new file that did not verify is removed again through the guarded path
+below. "The machine says it saved it" is not the same as "the machine stored what we
 sent", and the difference is only visible by reading it back.
 
 Two more rules live at this layer rather than in the policy, because they are
-about the machine rather than about the document. A save **never overwrites** (a replace is a new save followed by a guarded delete):
-`saveProfile` upserts on `/p/<id>.json`, so `save_profile` refuses a profile
-carrying an id at all and the firmware generates its own. A delete needs **one
+about the machine rather than about the document. A save **overwrites only the profile's own
+file, after a fresh load shows exactly what the archive recorded for it; a failed read-back puts
+the recorded document back.** `saveProfile` upserts on `/p/<id>.json`, and the firmware keeps a
+profile's star, its selection and the startup setting for an existing id, so a profile that has
+a file is saved over that file (a new version and a new name alike): `save_profile` takes an id
+only together with the content the archive recorded for that file, loads the file fresh
+immediately before the save, and refuses (audited) when it holds anything else; a profile with
+no file gets a new save and the id the firmware assigns becomes its file. A delete needs **one
 proof**, read from the machine and not from the archive: the profile loaded fresh, immediately
 before the delete, must hold exactly the content the archive recorded for it. Who made it
 (the label, the audit of saves) decides nothing: every profile the app has synced is the app's
 to manage. A file holding content the profile never had (edited on the display) is a conflict
-and is never deleted or replaced until a person chooses; one holding an older version of the
+and is never deleted or saved over until a person chooses; one holding an older version of the
 profile is recorded and then handled as usual.
 
-**A sync replaces, going back restores.** The machine is listed and every profile
-loaded again before each write; nothing the archive remembers about it is trusted
-without that read. For a board profile whose current version the machine does not hold,
-the steps, in this order, and any failure before the last one leaves both files on the
-machine:
+**A sync saves over the profile's own file, going back restores.** The machine is listed
+and every profile loaded again before each write; nothing the archive remembers about it is
+trusted without that read. For a board profile whose own file does not hold its current version,
+the steps, in this order:
 
-1. If a file already holds the canonical content, and no other board profile stands on it,
-   nothing is saved and that id is used (two identical profiles are clutter and a needless
-   write).
-2. Save the new version and read it back (layer 3).
-3. Star and select the new file if the one it replaces was starred or selected, so the
-   display looks the same to whoever stands at it.
-4. Remove the file the profile stood on before, and only that one: it goes only when **all**
-   of these hold on a fresh load, read again immediately before the delete: its content is
-   exactly what the archive recorded for it (the one guard), no other live profile stands on
-   it, and it is not the machine's selected profile with nothing to take the selection. A
-   file edited on the display since stays (it is a conflict, see above), and the sync says
-   which.
+1. A profile with **no file** gets a new one: saved and read back (layer 3), and the id the
+   firmware assigns becomes its file. A file that did not verify is removed again under the
+   guard; if it cannot be removed, the profile stands on it, recorded as what was sent, so the
+   next sync sees content the profile never had and asks.
+2. A profile **with a file** is saved over that file, in place. Before the save, in this order:
+   - The machine must not be running a process. A shot that is running is not in the index yet,
+     and the save would link it to the new version when it ends; the save waits for the next
+     sync and the run says so.
+   - The machine's shots are pulled, and pulled again when the machine announced a shot since.
+     The pull is complete only when the run ended ok and the machine served an index (a missing
+     index, as in a rebuild, reads nothing). The one exception is an archive that holds no shot
+     at all, which has none to mislink. When the pull is not complete nothing is saved over a
+     file in this sync.
+   - Each file's shots that the pull stored unlinked are linked to the version the file holds
+     now.
+   - The machine is looked at once more for a running process, right before the save.
+   - The guard: the file loaded fresh must hold exactly what the archive recorded for it (twice,
+     the second inside the client's save). A file edited on the display since stays (it is a
+     conflict, see above), and the sync says which.
+3. The save is read back and compared, name included. A mismatch puts the recorded document back
+   on the same file under a guard against what was just written, and the failure is reported.
 
-The firmware clears its startup-profile setting when that profile is deleted
-(`ProfileManager::deleteProfile`) and this app never writes settings, so the primitive reports
-when that happened. **Going back** is the same sync with the profile's previous version as the
-current one: it is saved again (a new file, since the firmware always assigns an id), the
-newer file is removed under the guards above, and the selection and star go back with it.
-Nothing is restored from a copy kept elsewhere: the earlier version is the archive's stored
-document, and what lands on the machine is checked by the same read-back.
+The firmware keeps the star, the selection and the startup setting for an existing id
+(`ProfileManager::saveProfile` favourites only a file it creates), so a new version or a new name
+is one save and nothing is carried or deleted. A shot is linked to the version its file holds
+when the shot is read; what the pull cannot see is a shot that starts **during the save itself**, or one that
+ends while the machine's connection is down between the pull and the save (no announcement
+reaches the app); those are the residue the app accepts. **Going back** is the same sync with the
+profile's previous version as the current one: it is saved over the same file, checked by the
+same read-back; nothing is restored from a copy kept elsewhere.
+
+A profile that is **switched off** (or a deleted row) has its file removed: it goes only when
+**all** of these hold on a fresh load, read again immediately before the delete: its content is
+exactly what the archive recorded for it (the one guard), no other live profile stands on it,
+and it is not the machine's selected profile with nothing to take the selection (the selection
+moves to the first profile that is on, first). The firmware clears its startup-profile setting
+when that profile is deleted (`ProfileManager::deleteProfile`) and this app never writes
+settings, so the primitive reports when that happened.
 
 **4. A simulator gate in CI.**
 `tests/simulator/test_profile_push.py`: every profile fixture is saved to the
 firmware's `display-sim`, read back and compared, then one drafted profile is
 put on the list, synced to the machine, verified, selected, brewed to completion and
-switched off and synced away; a second version replaces the first and making the first active
-again restores it; and one sync pushes, replaces and clears a star. Everything it creates it
+switched off and synced away; a second version is saved over the first and making the first
+active again restores it, on the same id; one sync pushes, saves over and clears a star; and a
+profile keeps its id, star, selection and startup setting through a rename in the app, a new
+version and a rename at the simulator. Everything it creates it
 deletes. The simulator runs the same parser and the
 same brew code as the device, so what it accepts, the device accepts.
 `scripts/sim.sh test` is what builds and runs it.

@@ -23,7 +23,7 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.drafts import board as board_module
 from gaggiclanker.drafts.board_plan import EDITED
-from gaggiclanker.drafts.machine import place as real_place
+from gaggiclanker.drafts.machine import overwrite as real_overwrite
 from gaggiclanker.drafts.machine import remove_profile as real_remove
 from gaggiclanker.infra.errors import Conflict
 from tests.drafts.conftest import BASE_LABEL, data
@@ -208,13 +208,14 @@ async def test_a_removal_is_refused_while_a_live_row_stands_on_the_file(
     await app_row(app, client, fake, provider, 8)
     old = row_for(await get_board(client), APP_LABEL)
     old_id = old["machine"]["device_id"]
-    await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
+    off = await client.put(f"/api/profile-board/{old['row']['id']}/on-machine", json={"on": False})
+    assert off.status_code == 200, off.text
     claimed: list[int] = []
+    real_still_off = board_module.BoardService._still_off
 
-    async def place_then_claim(*args: Any, **kwargs: Any) -> Any:
-        placed = await real_place(*args, **kwargs)
-        # Another board profile comes to stand on the old file while the pull works (the
-        # schema forbids it now, so the test lifts that to prove the delete guard itself).
+    async def still_off_then_claim(self: Any, row_id: int) -> bool:
+        # Another board profile comes to stand on the file while the pull works (the schema
+        # forbids it now, so the test lifts that to prove the delete guard itself).
         await app.state.db.execute("DROP INDEX IF EXISTS idx_profile_board_live_device")
         await app.state.db.execute(
             "INSERT INTO profile_board (label, current_version_id, device_profile_id, "
@@ -222,10 +223,10 @@ async def test_a_removal_is_refused_while_a_live_row_stands_on_the_file(
             (old["row"]["current_version_id"], old_id, old["row"]["current_version_id"]),
         )
         claimed.append(1)
-        return placed
+        return await real_still_off(self, row_id)
 
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(board_module, "place", place_then_claim)
+    monkeypatch.setattr(board_module.BoardService, "_still_off", still_off_then_claim)
     try:
         run = await pull(app)
     finally:
@@ -336,7 +337,7 @@ async def test_a_machine_that_cannot_round_trip_costs_three_saves_a_sync_not_a_f
     assert [p["id"] for p in fake.profiles] == ["9bar"], "every bad copy was taken off again"
 
 
-async def test_a_copy_that_does_not_verify_and_cannot_be_removed_is_not_retried_each_pull(
+async def test_a_new_file_that_does_not_verify_and_cannot_be_removed_is_not_retried_each_pull(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
@@ -345,32 +346,72 @@ async def test_a_copy_that_does_not_verify_and_cannot_be_removed_is_not_retried_
     fake.error_requests.add("req:profiles:delete")
     first = await pull(app)
     assert first.status == "error"
-    saves = fake.ws_requests.count("req:profiles:save")
-    assert saves == 1
+    assert fake.ws_requests.count("req:profiles:save") == 1
 
+    # The bad copy that could not be taken off is the profile's own file, recorded as what was
+    # sent: the next sync sees content the profile never had on it and asks (as it always did),
+    # and the list gets no profile "(2)" from it.
     for _ in range(2):
         again = await pull(app)
-        assert [i["reason"] for i in summary_of(again)["left"]] == ["did_not_verify"]
-    assert fake.ws_requests.count("req:profiles:save") == saves
+        assert [i["label"] for i in summary_of(again)["conflicts"]] == [APP_LABEL]
+        assert summary_of(again)["pushed"] == [] and summary_of(again)["adopted"] == []
+    board = await get_board(client)
+    assert not [r for r in board["rows"] if r["row"]["label"].endswith("(2)")]
+    assert row_for(board, APP_LABEL)["row"]["device_profile_id"] is not None
 
-    # A changed profile is a new try.
+    # A changed profile is a new try, once the person has chosen: keeping the app's side saves
+    # over the leftover file.
     fake.mutate_on_save = None
     fake.error_requests.clear()
     newer = await put(client, await draft_from(app, client, provider, row, 7))
     assert newer["id"] == row["id"], "the new version continues the same profile"
-    # The bad copy that could not be taken off is a file with this profile's name and content it
-    # never had: a conflict, which a person settles by keeping the app's side.
-    await pull(app)  # attached as the machine's side
-    held = await pull(app)
-    assert [i["label"] for i in summary_of(held)["conflicts"]] == [APP_LABEL]
     seen = data(await client.get(f"/api/profile-board/{row['id']}/conflict"))
-    await client.post(
+    kept = await client.post(
         f"/api/profile-board/{row['id']}/conflict",
         json={"keep": "app", "content_hash": seen["machine"]["content_hash"]},
     )
+    assert kept.status_code == 200, kept.text
     ok = await pull(app)
     assert ok.status == "ok", ok.error
-    assert len(summary_of(ok)["pushed"]) >= 1
+    assert len(summary_of(ok)["pushed"]) == 1
+
+
+async def test_a_version_that_does_not_verify_and_cannot_be_put_back_is_not_retried_each_pull(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    """A profile's own file that the machine mangled twice is a file that holds something the
+    archive never recorded: the next sync asks about it and saves nothing."""
+    app, client, fake = adopted
+    row = await app_row(app, client, fake, provider, 8)
+    await put(client, await draft_from(app, client, provider, row, 7))
+    fake.mutate_on_save = lambda p: {**p, "temperature": float(p.get("temperature", 90)) + 1}
+    fake.ws_requests.clear()
+    first = await pull(app)
+    assert first.status == "error"
+    assert fake.ws_requests.count("req:profiles:save") == 2, "the save and the repair"
+
+    for _ in range(2):
+        again = await pull(app)
+        assert [i["label"] for i in summary_of(again)["conflicts"]] == [APP_LABEL]
+    assert fake.ws_requests.count("req:profiles:save") == 2
+
+    # The person keeps the app's side: the same file is saved over, under the guard.
+    fake.mutate_on_save = None
+    seen = data(await client.get(f"/api/profile-board/{row['id']}/conflict"))
+    kept = await client.post(
+        f"/api/profile-board/{row['id']}/conflict",
+        json={"keep": "app", "content_hash": seen["machine"]["content_hash"]},
+    )
+    assert kept.status_code == 200, kept.text
+    # The version that did not verify waits for the person to ask again.
+    current = row_for(await get_board(client), APP_LABEL)["row"]["current_version_id"]
+    asked = await client.put(
+        f"/api/profile-board/{row['id']}/active-version", json={"version_id": current}
+    )
+    assert asked.status_code == 200, asked.text
+    fixed = await pull(app)
+    assert fixed.status == "ok", fixed.error
+    assert len(summary_of(fixed)["pushed"]) == 1
 
 
 # ── a draft on the board is not pushed by hand ──────────────────────
@@ -427,14 +468,14 @@ async def test_a_draft_put_on_the_profile_during_a_pull_keeps_its_pending_record
     newer = await draft_of(app, client, provider, APP_LABEL, 6)
     await approve(app, newer)
 
-    async def place_then_put_newer(*args: Any, **kwargs: Any) -> Any:
-        placed = await real_place(*args, **kwargs)
+    async def overwrite_then_put_newer(*args: Any, **kwargs: Any) -> Any:
+        placed = await real_overwrite(*args, **kwargs)
         response = await client.post("/api/profile-board", json={"draft_id": newer["id"]})
         assert response.status_code == 201, response.text
         return placed
 
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(board_module, "place", place_then_put_newer)
+    monkeypatch.setattr(board_module, "overwrite", overwrite_then_put_newer)
     try:
         run = await pull(app)
     finally:
@@ -563,11 +604,14 @@ async def test_a_machine_that_lost_every_file_pauses_until_a_person_resumes(
     assert write_frames(fake) == [], "nothing is pushed or removed"
     board = await get_board(client)
     assert board["paused"] and board["pause_recorded"] and board["actions"] == []
-    # What resuming would do is served while paused: every profile is put back, and the one file
-    # the machine came back with joins the list.
+    # What resuming would do is served while paused: every profile is put back, except the one
+    # whose brew the file the machine came back with has (that file is attached to it, by brew
+    # and never by name).
     preview = board["resume_preview"]
-    assert (preview["push"], preview["remove"], preview["join"]) == (rows, 0, 1)
+    assert (preview["push"], preview["remove"], preview["join"]) == (rows - 1, 0, 1)
     assert {"push", "adopt"} <= {a["kind"] for a in preview["lines"]}
+    [attach] = [a for a in preview["lines"] if a["kind"] == "adopt"]
+    assert attach["reason"] == "attached" and attach["device_id"] == "reborn"
     # Still paused on the next pull, even though nothing changed.
     assert summary_of(await pull(app))["paused"] and write_frames(fake) == []
 
@@ -579,6 +623,81 @@ async def test_a_machine_that_lost_every_file_pauses_until_a_person_resumes(
     assert summary_of(after)["paused"] is None
     assert len(summary_of(after)["pushed"]) == preview["push"], "resuming does what was served"
     assert APP_LABEL in [p["label"] for p in fake.profiles]
+    attached = next(
+        r for r in (await get_board(client))["rows"] if r["machine"]["device_id"] == "reborn"
+    )
+    assert attached["row"]["label"] != "Factory default", "the profile keeps its own name"
+    # The file keeps its id: the next sync saves the profile's name over it.
+    fake.ws_requests.clear()
+    await pull(app)
+    assert write_frames(fake) == ["req:profiles:save"]
+    assert (
+        next(p for p in fake.profiles if p["id"] == "reborn")["label"] == attached["row"]["label"]
+    )
+
+
+async def test_a_reset_while_a_new_version_waits_attaches_the_file_of_an_older_version(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    """The file that came back holds a version the profile has had (the new one never reached the
+    machine): it is attached, and the next sync saves the active version over it in place, so no
+    "(2)" profile is made."""
+    app, client, fake = adopted
+    first = await app_row(app, client, fake, provider, 8)
+    old_file = copy.deepcopy(next(p for p in fake.profiles if p["label"] == APP_LABEL))
+    await put(client, await draft_from(app, client, provider, first, 7))
+    fake.profiles = [{**old_file, "id": "reborn-old"}]
+    fake.favorite_profile_ids = set()
+    fake.selected_profile_id = "reborn-old"
+    await pull(app)  # paused
+    preview = (await get_board(client))["resume_preview"]
+    [attach] = [a for a in preview["lines"] if a["kind"] == "adopt"]
+    assert attach["reason"] == "attached" and attach["device_id"] == "reborn-old"
+    await client.post("/api/profile-board/resume")
+
+    found = await pull(app)
+
+    assert ("attached", APP_LABEL) in [
+        (i["reason"], i["label"]) for i in summary_of(found)["adopted"]
+    ]
+    fake.ws_requests.clear()
+    nxt = await pull(app)
+
+    assert [i["device_id"] for i in summary_of(nxt)["pushed"] if i["label"] == APP_LABEL] == [
+        "reborn-old"
+    ]
+    board = await get_board(client)
+    assert not [r for r in board["rows"] if r["row"]["label"].endswith("(2)")]
+    assert row_for(board, APP_LABEL)["machine"]["holds_current"] is True
+
+
+async def test_after_a_reset_the_file_with_the_active_brew_attaches_before_one_with_an_older_brew(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    """Two files of one profile came back, an older brew whose id sorts first and the active one:
+    the active one attaches, whatever the order of the ids, and no "(2)" profile is made of it."""
+    app, client, fake = adopted
+    first = await app_row(app, client, fake, provider, 8)
+    old = copy.deepcopy(next(p for p in fake.profiles if p["label"] == APP_LABEL))
+    await put(client, await draft_from(app, client, provider, first, 7))
+    await pull(app)
+    active = copy.deepcopy(next(p for p in fake.profiles if p["label"] == APP_LABEL))
+    fake.profiles = [{**old, "id": "aaa-old"}, {**active, "id": "zzz-active"}]
+    fake.favorite_profile_ids = set()
+    await pull(app)  # paused
+    await client.post("/api/profile-board/resume")
+
+    run = await pull(app)
+
+    board = await get_board(client)
+    assert row_for(board, APP_LABEL)["row"]["device_profile_id"] == "zzz-active"
+    assert ("attached", APP_LABEL) in [
+        (i["reason"], i["label"]) for i in summary_of(run)["adopted"]
+    ]
+    # The older-brew file is a profile of its own (it is not a copy the profile claims twice).
+    assert [
+        r["row"]["device_profile_id"] for r in board["rows"] if r["row"]["label"].endswith("(2)")
+    ] == ["aaa-old"]
 
 
 async def test_an_empty_list_is_not_a_reset(writes_on: Live, fake_device: FakeDevice) -> None:
@@ -648,7 +767,7 @@ async def test_a_deleted_copy_edited_between_the_read_and_the_delete_is_not_dest
 # ── a later put replaces the file an earlier one made ───────────────
 
 
-async def test_each_put_replaces_the_file_the_one_before_it_made_and_only_that_one(
+async def test_each_put_is_saved_over_the_same_file_and_only_the_newest_is_pushed(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
@@ -657,14 +776,18 @@ async def test_each_put_replaces_the_file_the_one_before_it_made_and_only_that_o
     row = await put(client, await draft_from(app, client, provider, first, 7))
     await pull(app)
     second_file = row_for(await get_board(client), APP_LABEL)["machine"]["device_id"]
+    assert second_file == row_file, "a profile is one file for good"
     # Two more, put before the sync reaches the machine: only the newest is pushed.
     row = await put(client, await draft_from(app, client, provider, row, 6))
     await put(client, await draft_from(app, client, provider, row, 5))
+    fake.ws_requests.clear()
 
     await pull(app)
 
-    assert row_file not in ids(fake) and second_file not in ids(fake)
-    assert len([p for p in fake.profiles if p["label"] == APP_LABEL]) == 1
+    assert write_frames(fake) == ["req:profiles:save"]
+    assert [str(p["id"]) for p in fake.profiles if p["label"] == APP_LABEL] == [row_file]
+    held = next(p for p in fake.profiles if p["id"] == row_file)
+    assert held["phases"][0]["pump"]["pressure"] == 5
 
 
 # ── a file the app itself saved is the app's, wherever it was adopted ──
@@ -698,8 +821,9 @@ async def test_a_copy_the_app_saved_before_adoption_is_continued_by_a_later_draf
 
     assert new["id"] == adopted_row["row"]["id"], "a new version of the same profile"
     assert run.status == "ok", run.error
-    assert "staged1" not in ids(fake_device), "its own earlier copy is replaced, not duplicated"
-    assert len([p for p in fake_device.profiles if p["label"] == STAGED]) == 1
+    assert [str(p["id"]) for p in fake_device.profiles if p["label"] == STAGED] == ["staged1"], (
+        "its own earlier copy is saved over, not duplicated"
+    )
 
 
 async def test_origin_comes_from_the_save_audit_alone_not_from_the_name(
@@ -756,9 +880,8 @@ async def test_a_persons_profile_ending_in_the_app_label_is_continued_like_any_o
     run = await pull(app)
     assert run.status == "ok", run.error
     assert row_for(await get_board(client), STAGED)["row"]["id"] == mine_row["row"]["id"]
-    # The person's file was replaced by the new version under the same name, and nothing else.
-    assert [p["label"] for p in fake_device.profiles].count(STAGED) == 1
-    assert "mine" not in ids(fake_device)
+    # The person's file was saved over by the new version under the same name, and nothing else.
+    assert [str(p["id"]) for p in fake_device.profiles if p["label"] == STAGED] == ["mine"]
 
 
 async def test_a_deleted_copy_the_app_saved_before_adoption_is_removed_under_the_guards(
@@ -884,7 +1007,14 @@ async def test_one_file_deleted_on_the_display_pauses_when_it_was_the_only_one(
     await pull(app)  # adoption: the one profile
     # It is deleted on the display and another one is made: none of the files the last sync
     # left is there, which is indistinguishable from a reset.
-    fake_device.profiles = [{**copy.deepcopy(only), "id": "another", "label": "New"}]
+    fake_device.profiles = [
+        {
+            **copy.deepcopy(only),
+            "id": "another",
+            "label": "New",
+            "temperature": float(only["temperature"]) + 5,
+        }
+    ]
     fake_device.ws_requests.clear()
 
     run = await pull(app)
@@ -935,22 +1065,21 @@ async def test_versions_the_policy_refuses_do_not_use_up_the_three_failure_stop(
 
 
 async def test_a_machine_in_sync_plans_no_actions_even_while_a_report_stands(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
-    person = row_for(await get_board(client), BASE_LABEL)
-    twin = copy.deepcopy(
-        next(p for p in fake.profiles if p["id"] == person["machine"]["device_id"])
-    )
-    twin.update(id="twin", temperature=float(twin["temperature"]) + 1)  # a second file, same name
-    fake.profiles.append(twin)
+    await put(client, await draft_of(app, client, provider, BASE_LABEL, 8))
+    # The temperature was valid when it was drafted; the person has tightened the bound since,
+    # so the profile is reported and not pushed, and the machine otherwise stands as it is.
+    await app.state.settings_service.apply({"profilePolicyTemperatureMaxC": 90})
 
     board = await get_board(client)
 
-    assert board["actions"] == [] or {a["kind"] for a in board["actions"]} == {"adopt"}
-    assert [(r["reason"], r["device_id"]) for r in board["reports"]] == [("extra_copy", "twin")]
+    assert board["actions"] == []
+    assert [(r["reason"], r["label"]) for r in board["reports"]] == [("policy", APP_LABEL)]
+    fake.ws_requests.clear()
     run = await pull(app)
-    assert write_frames(fake) == [] or run.status == "ok"
+    assert write_frames(fake) == []
     assert summary_of(run)["pushed"] == [] and summary_of(run)["removed"] == []
 
 
@@ -1008,14 +1137,20 @@ async def test_putting_a_failed_version_back_tries_it_again(
     await app_row(app, client, fake, provider, 8)
     second = await draft_of(app, client, provider, APP_LABEL, 7)
     await put(client, second)
-    fake.mutate_on_save = lambda p: {**p, "temperature": float(p.get("temperature", 90)) + 1}
-    fake.error_requests.add("req:profiles:delete")
-    await pull(app)  # does not verify, and the copy cannot be removed
+    saves: list[int] = []
+
+    def mutate_the_first_save(stored: dict[str, Any]) -> dict[str, Any]:
+        saves.append(1)
+        if len(saves) > 1:
+            return stored
+        return {**stored, "temperature": float(stored.get("temperature", 90)) + 1}
+
+    fake.mutate_on_save = mutate_the_first_save
+    await pull(app)  # does not verify; the recorded document is put back
     row = row_for(await get_board(client), APP_LABEL)["row"]
     assert row["failed_version_id"] == row["current_version_id"]
     await tombstone(client, row["id"])
     fake.mutate_on_save = None
-    fake.error_requests.clear()
 
     back = await client.post("/api/profile-board", json={"draft_id": second["id"]})
 

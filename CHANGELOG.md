@@ -13,6 +13,34 @@ database.
 
 ## [Unreleased]
 
+### A profile keeps one id on the machine
+
+- **Changed: a sync saves a profile over its own file on the machine, and files are matched by
+  id.** A new version of a profile used to be saved as a second file, with the selection and the
+  star carried over and the old file deleted. Now the profile's own file is saved over, in place:
+  the profile keeps its machine id, and the machine keeps its star, its selection and the startup
+  setting for that id, so a sync writes one save and nothing else for a new version. The save is
+  guarded like a delete: a fresh load immediately before it must show exactly what the app last
+  recorded for the file, so a profile edited at the machine is never saved over (it is a conflict,
+  as before). A read-back that does not match puts the recorded document back on the same file
+  (before, both files stayed on the machine). A profile with no file on the machine gets a new
+  one. A new version is never linked to a shot brewed before it: before a save over a file the
+  sync waits while the machine is running a shot (the profile is saved at the next sync), pulls
+  the machine's shots (and again when it announced one since), links what the pull stored
+  unlinked to the version the file holds now, and saves nothing over a file when that pull did
+  not complete, which includes a machine that served no index while the archive holds shots from it; a shot that starts during the save
+  itself, or ends while the machine's connection is down between the pull and the save, is what
+  this cannot cover.
+- **Changed: a file is a profile by its id, not by what it holds or what it is called.** A file
+  the app has never seen joins the list as a profile of its own, under its own name; when a live
+  profile already has that name it joins as "<name> (2)" (or the next free number) and the next
+  sync saves that name over the file. A second file with a profile's content is therefore a
+  profile, no longer "another file for" it, and files that carry a profile's name with other
+  content are no longer a conflict. After a machine reset, once you resume, a file with the brew
+  of a profile that lost its file (or of any version it has had) is attached to that profile,
+  and the next sync saves its active version over it.
+- Database: no change.
+
 ### A Set has one profile
 
 - **Changed: a Set has exactly one profile, and follows it.** A profile belongs to at most one

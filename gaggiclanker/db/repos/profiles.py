@@ -342,8 +342,8 @@ class ProfilesRepository(Repository):
         """The version a machine file holds, as the mirror stores it: ``(version, inserted)``.
 
         A file a profile stands on holds that profile's version of its content. A file no
-        profile stands on (an extra copy of a profile's file, one put back after a reset while
-        the list was paused, one made on the display) holds the stored version with that content
+        profile stands on (one put back after a reset while the list was paused, one made on the
+        display, a second file with a profile's content) holds the stored version with that content
         when exactly one profile owns one **and is called what the file is called**, so nothing is
         inserted and nothing is news; otherwise it holds the version on no profile that is its
         brew under its own name (a copy made on the display under another name is not that

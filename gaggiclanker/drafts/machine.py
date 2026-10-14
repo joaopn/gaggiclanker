@@ -9,15 +9,14 @@ Four operations, all built on the client's gated writes so the switch, the audit
 guards apply to every one of them:
 
 * :func:`read_machine` lists the profiles and loads each one in full (reads);
-* :func:`place` puts a document on the machine unless a profile with the same canonical
-  content is already there, and verifies what it saved by reading it back;
+* :func:`place` saves a document as a new file and verifies it by reading it back;
 * :func:`overwrite` saves a document over a profile's own file, only when a fresh load shows
   exactly what the archive recorded for it, verifies it by reading it back and, when that fails,
   puts the recorded document back;
 * :func:`remove_profile` takes a profile off the machine, only when it still holds exactly
   what the archive recorded for it (a fresh load, twice: a file edited on the display since
-  the last read is never deleted unseen), and only after the selection (and, for a
-  replacement, the favourite star) has been moved to whatever takes over.
+  the last read is never deleted unseen), and only after the selection (and, when asked, the
+  favourite star) has been moved to whatever takes over.
 
 A failure at any step is a value describing why the profile was kept, never an exception
 that leaves the caller guessing what state the machine is in.
@@ -95,13 +94,6 @@ class MachineState:
     #: leave these alone.
     unreadable: set[str] = field(default_factory=set)
 
-    def id_with_content(self, content_hash: str) -> str | None:
-        """The id of a profile holding exactly this canonical content, under any id."""
-        for device_id, profile in self.profiles.items():
-            if document_hash(profile) == content_hash:
-                return device_id
-        return None
-
 
 async def read_machine(client: GaggimateClient) -> MachineState:
     """List the profiles, then load each: two reads, no writes.
@@ -134,8 +126,6 @@ class Placed:
     device_id: str
     #: What the machine serves for it now. ``None`` only when it could not be read back.
     served: Profile | None
-    #: True when an identical profile was already there and nothing was saved.
-    reused: bool = False
     #: Set when the save could not be verified: the profile is on the machine either way. A
     #: ``changed`` save was never made: the file held something other than what was recorded.
     problem: Literal["unreadable", "mismatch", "changed"] | None = None
@@ -144,19 +134,17 @@ class Placed:
     #: Only for :func:`overwrite` after a failed read-back: the recorded document is back on the
     #: file (read back and equal to what was recorded).
     repaired: bool = False
+    #: Only for :func:`overwrite`: how many save frames went to the machine (the save, and the
+    #: attempt to put the recorded document back).
+    saves: int = 0
 
 
 async def place(client: GaggimateClient, profile: Profile, machine: MachineState) -> Placed:
-    """Save ``profile`` as a new profile unless the machine already holds its content.
+    """Save ``profile`` as a new file and read it back.
 
-    Two identical profiles on a display are clutter with no upside, and a second save
-    also spends a write the safety layers would have to account for. The comparison is on
-    canonical content (the label is part of it), so a renamed copy is a different profile.
+    A file with the same content under another id is a profile of its own, so nothing here looks
+    for one: the machine is only told what to add, and ``machine`` is kept current.
     """
-    existing = machine.id_with_content(document_hash(profile))
-    if existing is not None:
-        return Placed(device_id=existing, served=machine.profiles[existing], reused=True)
-
     stored = await client.save_profile(profile)
     device_id = stored.id or ""
     placed = await _read_back(client, device_id, profile)
@@ -226,6 +214,7 @@ async def overwrite(
     sent = profile.for_new_device_profile().model_copy(update={"id": device_id})
     stored = await client.save_profile(sent, expected_hash=expected_hash)
     placed = await _read_back(client, device_id, sent)
+    placed.saves = 1
     if placed.problem is None and placed.served is not None:
         machine.profiles[device_id] = placed.served
         return placed
@@ -236,6 +225,7 @@ async def overwrite(
             recorded.for_new_device_profile().model_copy(update={"id": device_id}),
             expected_hash=document_hash(written),
         )
+        placed.saves = 2
         again = await _read_back(client, device_id, recorded)
     except DeviceError as exc:
         placed.error += f"; putting the recorded document back failed: {exc}"
@@ -315,7 +305,7 @@ async def remove_profile(
     successor: str | None,
     expected_label: str | None = None,
     blocked: str | None = None,
-    carry_favorite: bool = True,
+    carry_favorite: bool,
 ) -> Removal:
     """Take ``device_id`` off the machine, if and only if it still holds what was recorded.
 
