@@ -128,6 +128,39 @@ async def test_an_edited_label_is_a_new_version(small_archive: Archive) -> None:
     assert old.label != "Renamed by the user"
 
 
+async def test_a_display_rename_of_a_file_a_profile_stands_on_is_a_profile_change(
+    small_archive: Archive,
+) -> None:
+    """The file holds the profile's version (a version is what it brews), so a rename stores no
+    version, but the machine's list changed, which the sync reports."""
+    from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+
+    await small_archive.engine.sync_profiles(trigger="test")
+    target = small_archive.device.profiles[0]
+    mirrored = await small_archive.engine.profiles.get_device_profile(target["id"])
+    assert mirrored is not None
+    await ProfileBoardRepository(small_archive.db).insert(
+        BoardRowWrite(
+            label=str(target["label"]),
+            current_version_id=mirrored.current_version_id,
+            device_profile_id=str(target["id"]),
+            device_version_id=mirrored.current_version_id,
+            device_label=str(target["label"]),
+            origin="adopted",
+        )
+    )
+    before = await _versions(small_archive)
+    target["label"] = "Renamed on the display"
+
+    run = await small_archive.engine.sync_profiles(trigger="test")
+
+    assert run.profiles_changed == 1
+    assert await _versions(small_archive) == before
+    after = await small_archive.engine.profiles.get_device_profile(target["id"])
+    assert after is not None and after.current_version_id == mirrored.current_version_id
+    assert after.label == "Renamed on the display"
+
+
 async def test_an_edited_phase_is_a_new_version(small_archive: Archive) -> None:
     await small_archive.engine.sync_profiles(trigger="test")
     before = await _versions(small_archive)
