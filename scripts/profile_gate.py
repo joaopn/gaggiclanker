@@ -120,6 +120,9 @@ async def round_trip(client: GaggimateClient, profile: Profile) -> tuple[str | N
     """Layer 3. Save, read back, compare. Returns the device id and whether it matched."""
     # The gate's own mark, so a profile it left on a machine is recognisable as its own.
     label = profile.label if profile.label.endswith(GATE_MARK) else f"{profile.label}{GATE_MARK}"
+    # A new file of its own: no id, no recorded content. The client saves over an existing id only
+    # for a profile's own file behind a fresh-load guard, and this script has no record of any
+    # file, so it never overwrites one it did not make.
     sent = profile.for_new_device_profile(label=label)
     stored = await client.save_profile(sent)
     device_id = stored.id
