@@ -51,6 +51,44 @@ database.
   active one, so a Set always records what the machine brews. What you do: nothing, then switch on any copy you want on the
   machine.
 
+### A version is what a profile brews; the name is the profile's
+
+- **Changed: a profile's versions are what it brews, and everything people and the agent read
+  shows the profile's name.** A profile renamed on the display (and kept), or made active under
+  an older name, no longer leaves two versions of one brew: they are one version, and the name
+  is the profile's. **Make active keeps the profile's name** and only changes which version is
+  active (before it also took that version's name, and refused a name another profile had).
+  Names shown for a version, a shot's profile, a Set's profile, a pin's copy or in the profile
+  pickers are the profile's. A version that belongs to **no** profile yet (an imported file, a
+  waiting draft for a new profile, a machine file no profile stands on, a pin's copy, a
+  Duplicate's profile) has no profile name, so it stays the document it came as: the same brew
+  under another name is another version there, as before. What the machine is sent does not
+  change at all, byte for byte, and the sync still treats a file with another name as the same
+  conflict it always did: it compares a file as its brew and its name.
+- **Three differences you may notice** (accepted, because the name is no longer part of a
+  version's identity): a file holding a brew a profile has had under a name it no longer has is
+  now a conflict (it used to be silently replaced, and a never-seen file with such a brew and an
+  older name now joins the list as a profile of its own instead of attaching); a file holding an
+  older brew under the profile's **current** name is now matched and replaced rather than asked
+  about (the rule "a file equal to an older version is matched, not a conflict", which the old
+  identity broke whenever a name had changed); and a shot brewed on a version that was merged
+  into its name-twin now files under the Set that names the surviving version. An imported file
+  with the brew of a profile that is called something else is listed as a profile of its own (it
+  used to be skipped as already stored).
+- **Database change, carried forward at the next start.** What changes: every profile version
+  gets a new identity that leaves its name out (versions of no profile stay unique by brew and
+  name, which their index now says); a profile that is on the machine records the name of the
+  file it last recorded (`device_label`); the profile views show the profile's name. Whether
+  rows carry forward: all of them do except the version rows of one profile that now say the
+  same as another version of the same profile: the lowest id is kept, and everything that named
+  the others (shots, Set versions, drafts, pins, signatures, list entries, sync events, Set
+  proposals, starting-point runs) names it. Chat transcripts keep the ids they were written
+  with. The list entry of a merged pair keeps the earliest date and its source; signatures are
+  joined (the other's expectations are added after the kept one's, except those that are only a
+  carried copy of one already there; a Set version's override and a review claim move with their
+  expectation, and a rejected copy keeps the expectation rejected, for the same reason and time).
+  Each merge is in the start-up log. What you do: nothing; a backup is written first.
+
 ### A profile now owns its versions
 
 - **Changed: a profile version now belongs to one profile, and a draft is either a change to

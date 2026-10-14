@@ -300,7 +300,7 @@ data, rebuilt at boot from what is stored (`DERIVATION_VERSION`).
 
 **A profile version belongs to one profile, and a draft says what it is.**
 `profile_versions.board_id` is the profile-list row a version is a version of, and a version is
-unique by its content within a profile (and among those that belong to none: a draft for a new
+unique by its brew within a profile (and among those that belong to none: a draft for a new
 profile, an imported file, a machine file that has not joined the list, the empty baseline). A
 profile never takes another profile's version. Every path that lists a version on a profile goes
 through one function (`ProfileBoardRepository.version_for`): a version on no profile is taken
@@ -310,8 +310,25 @@ that brew the same thing have two versions (a Duplicate, a pin's copy), "the sam
 the version's owner, and every writer says whose version it stores (`ensure_version` has no
 default for the owner). The sync's mirror stores what a file holds as a version of the profile
 standing on it; a file no profile stands on holds the version exactly one profile owns with its
-content, else one that belongs to none. A version's content hash still includes its name for now;
-the name is the profile's, and a following change takes it out of the hash.
+brew, else one that belongs to none.
+
+**Two hashes, never one.** A version of a profile is what it brews: `brew_hash` is over the
+canonical form without the label and is the version's identity (`profile_versions.content_hash`,
+found by `ensure_version(owner, brew)`), so the same brew under another name is the same version.
+A version on **no** profile has no profile name and is the document it came as: unique by brew and
+its stored label (`idx_profile_versions_unowned`), and a machine file no profile stands on holds
+the owned version only when that profile is called what the file is called, else the loose
+version of its brew under its own name. The name
+is the profile's (`profile_board.label`). Whatever guards or checks the machine is the
+`document_hash`, over the canonical document with its name: the round trip after a save, the
+delete's fresh-load guard, the audit's payload hash and the conflict's `content_hash`. One
+function builds a document from a version, `document_for(version, name)`, with the owner's
+current name (a new profile's draft: the draft's); the label stored with a version is only the
+name it was first stored with. The board plan reads a machine file as its brew and its name
+(`FileContent`) and compares it with the profile's active version under the profile's name, and
+with what the app recorded for the file (`profile_board.device_label`, written beside
+`device_version_id`). A name-only difference is therefore the same conflict as a content
+difference, and what the machine receives is the document it always was.
 
 A draft is a change to one profile or a new profile with a name of its own, decided once when it
 is made and stored on it (`profile_drafts.new_profile`, `destination_board_id`, `label`). A change

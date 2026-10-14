@@ -116,23 +116,29 @@ made on the display is pushed, replaced, starred and removed like one the agent 
 name a profile has says nothing about who made it (the app adds nothing to a name, and "[AI]" in one is
 the person's own choice). What stands between a profile and its removal is whether the app has *seen* what the file holds: the one removal guard is a
 fresh load, immediately before the delete (and again inside the client's `delete_profile`),
-that must hash to the content the archive recorded for that file.
+that must hash (the document hash, name included) to the content the archive recorded for that
+file.
 
 **Two live profiles never share a label.** A put that would add a second profile beside one
-with its label, or rename a profile onto a label another holds, is refused, and so is making
-a version active that would; a transactional check, not a unique index, so a database from
-before the rule that holds such a pair keeps working (the pair is reported).
+with its label, or rename a profile onto a label another holds, is refused, and so is keeping
+the machine's name in a conflict when another profile has it; a transactional check, not a unique
+index, so a database from before the rule that holds such a pair keeps working (the pair is
+reported). Making a version active never changes the profile's name.
 
 **Conflicts.** A profile edited outside the app is never overwritten silently. When a machine
 file standing for a profile (or a never-seen file carrying its name) holds content that is
 neither what the app last recorded for it, nor the profile's active version, nor a version it
-has had, the profile is **in conflict**: the content is kept as a version
+has had **under its current name** (a file is its brew **and** its name, so another name on the
+same brew is content the profile never had; an older brew under the current name is matched, as
+"a file equal to an older version is matched, not a conflict" always said), the profile is **in
+conflict**: the content is kept as a version
 (`edited_on_machine`, not active), the sync does nothing at all for that profile (no push,
 removal, star or selection) and says so, and the others sync as usual. Detection is by
 content, because the firmware keeps a profile's id when it is edited on the display. A person
 chooses (`POST /api/profile-board/{id}/conflict`): the **machine**'s version becomes the active
-one and nothing is pushed, or the **app**'s version is kept, in which case that exact machine
-content is remembered as overruled (it is not flagged again; a further edit is a new conflict)
+one (the brew the profile has already when only the name differs, and then the profile takes
+the file's name) and nothing is pushed, or the **app**'s version is kept, in which case that
+exact machine document is remembered as overruled (it is not flagged again; a further edit is a new conflict)
 and the next sync replaces the file under the removal guard. The route refuses a hash that is
 not the content the person saw.
 
@@ -267,7 +273,9 @@ normalises numbers, so `9` and `9.0` are not reported as a change.
 
 **3. Round-trip verification.**
 After `req:profiles:save`, load the returned id back and compare canonical JSON
-— numbers normalised, firmware-added fields tolerated. `writeProfile` never
+(`canonical_document_json`, the whole document with its name; a version's identity is the brew
+without the name and is not what is compared here) — numbers normalised, firmware-added fields
+tolerated. `writeProfile` never
 echoes what you sent: it parses into a struct and serialises the struct, so the
 document that comes back has an `id`, a `favorite`, a `selected`, a
 `transition.target` and a spelled-out phase `temperature` of 0 that the document
