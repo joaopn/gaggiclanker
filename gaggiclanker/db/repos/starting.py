@@ -11,7 +11,7 @@ The accept is split in two: :meth:`claim` takes the run with
 `UPDATE ... WHERE accepted_option IS NULL` **before** anything is created, and
 :meth:`finish_accept` records what that produced. Two tabs pressing "use the
 recommended one" is an ordinary race, and the loser has to be refused before it
-has made a second Set on the same bag — which is why the guard cannot be the
+has made a second Set on the same bean — which is why the guard cannot be the
 last write of the sequence.
 """
 
@@ -86,7 +86,7 @@ class StartingPointRunRow(BaseModel):
     finished_at: str | None = None
 
 
-#: The joins a reader wants beside the row: which bag and which grinder, by
+#: The joins a reader wants beside the row: which bean and which grinder, by
 #: name. A correlated read rather than a second request, the way `beans` joins
 #: its Set count.
 _SELECT = """
@@ -193,7 +193,7 @@ class StartingPointRunsRepository(Repository):
         the loser gets ``False`` and the caller turns that into a 409.
 
         It used to run last, after the Set existed — which meant two accepts
-        created two Sets for one bag and only the second one was told off. The
+        created two Sets for one bean and only the second one was told off. The
         order is the fix, not the guard.
 
         The ids of what the option produced are filled in afterwards by
@@ -258,7 +258,7 @@ class StartingPointRunsRepository(Repository):
         return None if row is None else self._to_row(row)
 
     async def for_bean(self, bean_id: int, *, limit: int = 20) -> list[StartingPointRunRow]:
-        """This bag's runs, newest first."""
+        """This bean's runs, newest first."""
         rows = await self.db.fetch_all(
             f"{_SELECT} WHERE r.bean_id = ? ORDER BY r.id DESC LIMIT ?", (bean_id, limit)
         )

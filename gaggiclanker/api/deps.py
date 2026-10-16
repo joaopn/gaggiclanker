@@ -315,7 +315,7 @@ def get_starting_point_service(request: Request) -> StartingPointService:
     """The starting-point wizard. App-scoped, for the review service's reason.
 
     It holds the map of runs whose row is being opened right now, which is half
-    of "one run per bag and kit at a time" — the registry's name guard is the
+    of "one run per bean and kit at a time" — the registry's name guard is the
     other half. A per-request copy would make that map empty for every caller
     and two browser tabs would each spend a call on the same question.
     """

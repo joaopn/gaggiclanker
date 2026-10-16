@@ -1,4 +1,4 @@
-"""What this kitchen did last time with a bag like this one, as one SQL statement.
+"""What this kitchen did last time with a bean like this one, as one SQL statement.
 
 This is the evidence half of the starting-point wizard. A starting point built only from the
 rule tier is a textbook answer: correct, general, and silent about the fact
@@ -268,7 +268,7 @@ async def similar_sets(
     exclude_bean_id: int | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[SimilarSet]:
-    """The best few past Set versions to anchor a new bag on.
+    """The best few past Set versions to anchor a new bean on.
 
     ``grinder_id`` is a filter rather than a score term, and deliberately: a
     grind number from a different grinder is not a weaker signal, it is a

@@ -7,7 +7,7 @@ the fields are *for* and never restates their types.
 
 Three options come back, not one. That is gaggimate-mcp's `new-coffee` skill
 and it is the right shape for a
-cold start: nobody knows what this bag wants yet, and a single confident answer
+cold start: nobody knows what this bean wants yet, and a single confident answer
 hides that. `conservative` is the one that will make drinkable coffee,
 `recommended` is the one to actually pull, `adventurous` is the one worth a shot
 if the first two are dull. The three keys are fixed and validated, because the

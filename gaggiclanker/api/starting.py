@@ -39,13 +39,13 @@ router = APIRouter(prefix="/starting-points", tags=["starting-point"])
 
 #: The same bucket size the review route uses, and for the same reason: this
 #: is another route in the API that spends money, and the registry's name
-#: guard only makes a repeat request for the *same* bag idempotent. A loop
+#: guard only makes a repeat request for the *same* bean idempotent. A loop
 #: walking a catalogue of beans is what this bounds.
 STARTING_POINT_RATE_LIMIT = 30
 
 
 class StartingPointRequest(BaseModel):
-    """`POST /api/starting-points`: which bag, on which kit."""
+    """`POST /api/starting-points`: which bean, on which kit."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -96,7 +96,7 @@ class StartingPointAccepted(BaseModel):
     "",
     response_model=ApiResponse[StartingPointRunRow],
     status_code=202,
-    summary="Ask for a starting point for a new bag",
+    summary="Ask for a starting point for a new bean",
     dependencies=[Depends(rate_limit("starting_point", STARTING_POINT_RATE_LIMIT))],
 )
 async def create_starting_point(

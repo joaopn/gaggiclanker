@@ -21,7 +21,7 @@ What is in it, and why each piece earns its tokens:
 * **the rules** for the planned style, the roast and the process, and
 * **a few excerpts**, last and least authoritative.
 
-**The planned style.** Rule selection filters on a shot style, and a bag nobody
+**The planned style.** Rule selection filters on a shot style, and a bean nobody
 has brewed yet has none. Rather than pass `unknown` — which would drop every
 ratio and time rule, the two most useful categories here — the style is taken
 from the best similar Set's profile and falls back to `classic`. That is an
@@ -74,7 +74,7 @@ __all__ = [
 ]
 
 #: The style assumed when nothing has been brewed on this kit that resembles
-#: the new bag. Traditional espresso: the thing somebody who has just opened a
+#: the new bean. Traditional espresso: the thing somebody who has just opened a
 #: bag is most likely trying to make.
 DEFAULT_STYLE = "classic"
 
@@ -85,7 +85,7 @@ CANDIDATE_PROFILES = 12
 
 
 class BeanFacts(BaseModel):
-    """The bag, as the prompt states it."""
+    """The bean, as the prompt states it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -405,7 +405,7 @@ async def profile_candidates(db: Database) -> list[ProfileCandidate]:
 
     Utility profiles are excluded — a backflush is not a starting point — and so is every
     profile that already has a Set: a profile has at most one, so a new Set cannot take it, and
-    a recipe for a second bag on it is a Duplicate of that Set, not a suggestion made here.
+    a recipe for another bean on it is a Duplicate of that Set, not a suggestion made here.
     """
     rows = await db.fetch_all(
         f"""

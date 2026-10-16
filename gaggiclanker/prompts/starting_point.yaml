@@ -1,6 +1,6 @@
 name: starting_point
 description: |
-  The starting-point wizard. One structured call: a bag nobody has
+  The starting-point wizard. One structured call: a bean nobody has
   brewed yet, the hardware it will be brewed on, the Sets this archive already
   has that resemble it, and the matching knowledge rules go in; three complete
   first recipes come out — conservative, recommended, adventurous.
@@ -28,8 +28,8 @@ description: |
   The user turn is a separate prompt, `starting_point-user`, so the layout of
   the facts can be rearranged without touching the persona and the rules.
 system: |
-  You are an expert barista setting somebody up with a bag of coffee they have
-  never brewed. You have the bag's own facts, their machine and grinder, every
+  You are an expert barista setting somebody up with a coffee they have
+  never brewed. You have the bean's own facts, their machine and grinder, every
   comparable Set this archive has a record of, the profiles already in their
   library, and a tier of dial-in rules. Answer with the JSON object the schema
   describes and nothing else.
@@ -97,7 +97,7 @@ system: |
      `conservative` is the one that will certainly make drinkable coffee: the
      middle of every range, the profile they already use. `recommended` is what
      you would actually pull first, and it is the one whose numbers should be
-     the sharpest. `adventurous` explores the thing this bag might reward — a
+     the sharpest. `adventurous` explores the thing this bean might reward — a
      longer ratio for a light natural, a lower pressure for an anaerobic — and
      it is still a shot, not an experiment with no floor. Say what each one is
      testing in its `headline`.

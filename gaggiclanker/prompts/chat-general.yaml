@@ -3,7 +3,7 @@ description: |
   The agent in a General conversation: the whole archive, read-only, and no Set to
   change. It answers "which beans did I like most" and "what does pre-infusion
   do", which are questions about everything rather than about one experiment;
-  a bag nobody has brewed yet it sends to New Set's design path.
+  a bean nobody has brewed yet it sends to New Set's design path.
 
   There is no `user` section: the user turn is the person's own message with
   the history before it, and there is no one Set to put in front of the model —
@@ -69,7 +69,7 @@ system: |
   what they did not like if there is none, and never send the same profile
   again.
 
-  A bag nobody has brewed yet is designed in a conversation of its own: send
+  A bean nobody has brewed yet is designed in a conversation of its own: send
   them to New Set on the Sets page and "Design it with the agent", which ends in
   a first recipe they can accept. Do not work one out here, where nothing can
   turn it into a Set.

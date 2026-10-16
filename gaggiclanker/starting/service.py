@@ -17,7 +17,7 @@ the same three reasons and with the same consequences:
   app's `TaskRegistry` and the route answers 202; the task name
   (`starting_point:<bean>:<grinder>`) is claimed synchronously inside
   `spawn`, so a second tab pressing the button gets the running row rather than
-  a second paid call for the same bag on the same kit.
+  a second paid call for the same bean on the same kit.
 
 **`accept` is where the money is.** It creates the Set and its first version
 with `origin='starting_point'` — the only origin that can appear on a version 1
@@ -116,9 +116,9 @@ RETRY_DELAY_S = 0.5
 
 
 def starting_point_task_name(bean_id: int, grinder_id: int | None) -> str:
-    """The registry name that makes one run per bag-and-grinder an invariant.
+    """The registry name that makes one run per bean-and-grinder an invariant.
 
-    Keyed on the pair rather than on the bean alone: asking about the same bag
+    Keyed on the pair rather than on the bean alone: asking about the same bean
     on a second grinder is a different question with a different answer, and
     refusing it because the first is still running would be wrong. The machine
     is not in the key because there is only one of it.
@@ -447,7 +447,7 @@ class StartingPointService:
         # requests can both see an unaccepted run and both get past it. The
         # guarded UPDATE is atomic, so exactly one of them proceeds to create
         # anything — and the loser is refused before it has made a second Set
-        # for one bag, which is what happens when the guard is the last write
+        # for one bean, which is what happens when the guard is the last write
         # rather than the first.
         if not await self.runs.claim(run_id, option_key):
             return await self._already_accepted(run_id)

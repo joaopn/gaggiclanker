@@ -580,7 +580,7 @@ class SetRow(BaseModel):
     bean_name: str | None = None
     grinder_id: int | None = None
     grinder_name: str | None = None
-    #: Finished with — the bag is gone. An archived Set receives no shots.
+    #: Finished with — the bean is done with. An archived Set receives no shots.
     archived: bool = False
     #: Whether the matcher may file a shot under this Set. Any number of Sets
     #: hold it; archiving clears it.
@@ -1173,7 +1173,7 @@ class SetsRepository(Repository):
         cases.
 
         ``automatch`` defaults to true: a Set is created by somebody who has
-        just put that bag in a hopper, and a new Set that did not collect the
+        just put that bean in a hopper, and a new Set that did not collect the
         shots pulled on its profile would look broken. It takes nothing away
         from any other Set — several coffees are loaded at once and the matcher
         tells them apart by profile.
@@ -1204,7 +1204,7 @@ class SetsRepository(Repository):
         """
         now = utc_now()
         # The Set's profile is the profile its first version brews; a profile that has a Set
-        # already is refused (a bag on the same profile is a Duplicate, which copies it).
+        # already is refused (another bean on the same profile is a Duplicate, which copies it).
         board_id = await self.profile_to_start_on(
             version.profile_version_id, from_a_draft=from_a_draft
         )
@@ -2380,7 +2380,7 @@ class SetsRepository(Repository):
         * **`automatch`** is the Set's own answer to "file shots here". It is
           the only thing the flag means, and a Set with it off is not a
           candidate.
-        * **`archived = 0`**, because a finished bag receives no shots.
+        * **`archived = 0`**, because a finished Set receives no shots.
         * only a Set's **current** version counts: an older one that named the
           profile describes what the Set used to be, and filing today's shot
           there would be filing it under a recipe the Set has moved on from.

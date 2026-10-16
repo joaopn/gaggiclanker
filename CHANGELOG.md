@@ -25,6 +25,12 @@ database.
   when to start, duplicate or archive one. It is open while no Set is being dialled in and closed
   once one is; opening or closing it by hand is remembered in this browser. Nothing changes in
   the database.
+- **Changed: the agent says bean, not bag, for what a Set is about.** The General chat sends "a
+  bean nobody has brewed yet" to New Set's design path, the starting point is asked about a
+  coffee and its bean's facts, and the Set chat names "a new bag of the same bean" among the
+  causes outside the record. The API's summaries for beans and starting points say bean too.
+  "Bag" stays where it means the packaging (what a bag prints, a fresh bag). Nothing changes in
+  the database.
 
 ### The Profiles page names the version a profile's Set is on
 

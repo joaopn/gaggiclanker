@@ -81,9 +81,9 @@ _GRIND_VALUE_MAX = 10000
 
 
 def set_name(bean_name: str | None, grinder_name: str | None) -> str:
-    """ "Ethiopia Guji on the Niche Zero" — the bag and the grinder.
+    """ "Ethiopia Guji on the Niche Zero" — the bean and the grinder.
 
-    The bag alone would collide the day somebody runs the same bean on a second
+    The bean alone would collide the day somebody runs the same bean on a second
     grinder, which is exactly the comparison both paths invite. Capped at the
     200 characters a Set's name may have.
     """

@@ -1,4 +1,4 @@
-"""`/api/beans` — the bags.
+"""`/api/beans` — the coffees.
 
 CRUD plus archive and delete. Archive is how a coffee is retired: a finished
 bag is still the coffee a hundred shots were pulled with, and
@@ -121,7 +121,7 @@ async def delete_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
 @router.post(
     "/{bean_id}/archive",
     response_model=ApiResponse[BeanRow],
-    summary="Hide a finished bag without breaking its Sets",
+    summary="Hide a coffee you no longer buy without breaking its Sets",
 )
 async def archive_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
     row = await beans.set_archived(bean_id, archived=True)
@@ -180,7 +180,7 @@ async def import_bean(body: Annotated[dict[str, Any], Body()], beans: BeansRepoD
 @router.get(
     "/{bean_id}/similar-sets",
     response_model=ApiResponse[SimilarSetsData],
-    summary="Past Set versions that resemble this bag, best first",
+    summary="Past Set versions that resemble this bean, best first",
 )
 async def bean_similar_sets(
     bean_id: int,

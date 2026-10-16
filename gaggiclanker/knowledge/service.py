@@ -119,7 +119,7 @@ class RetrievalContext:
 
     A flat record rather than a review's input, and deliberately so:
     ``gaggiclanker.review`` imports ``gaggiclanker.knowledge``, never the other
-    way round, the starting point builds one from a bag, and the chat
+    way round, the starting point builds one from a bean, and the chat
     will build one of these from a conversation that has no shot in it at all.
     """
 

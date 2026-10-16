@@ -214,7 +214,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Hide a finished bag without breaking its Sets */
+        /** Hide a coffee you no longer buy without breaking its Sets */
         post: operations["archive_bean_api_beans__bean_id__archive_post"];
         delete?: never;
         options?: never;
@@ -230,7 +230,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Past Set versions that resemble this bag, best first
+         * Past Set versions that resemble this bean, best first
          * @description The similar-Set query on its own, for the wizard's first step.
          *
          *     ``grinder_id`` is a filter rather than a hint: a grind number from a
@@ -2971,7 +2971,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Ask for a starting point for a new bag
+         * Ask for a starting point for a new bean
          * @description Queue the work and answer with the `running` row. 202, not 201.
          *
          *     Idempotent per (bean, grinder). A second tab pressing the button
@@ -9312,7 +9312,7 @@ export interface components {
         };
         /**
          * StartingPointRequest
-         * @description `POST /api/starting-points`: which bag, on which kit.
+         * @description `POST /api/starting-points`: which bean, on which kit.
          */
         StartingPointRequest: {
             /** Bean Id */

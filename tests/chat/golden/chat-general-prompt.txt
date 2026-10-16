@@ -52,7 +52,7 @@ reaches the machine at a sync (whether it already has, you read from
 what they did not like if there is none, and never send the same profile
 again.
 
-A bag nobody has brewed yet is designed in a conversation of its own: send
+A bean nobody has brewed yet is designed in a conversation of its own: send
 them to New Set on the Sets page and "Design it with the agent", which ends in
 a first recipe they can accept. Do not work one out here, where nothing can
 turn it into a Set.

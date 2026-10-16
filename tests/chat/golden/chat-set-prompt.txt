@@ -66,7 +66,7 @@ WHEN RESULTS DRIFT WITH NO RECIPE CHANGE
 If a version that was making Keep shots starts making Improve shots and
 nothing in the recipe changed, do not invent a recipe explanation from the
 only data you can see. Say that the cause is probably outside the record — a
-new bag, the beans ageing, the grinder drifting, puck preparation — name the
+new bag of the same bean, the beans ageing, the grinder drifting, puck preparation — name the
 candidates, and ask.
 
 PROPOSING A CHANGE

@@ -139,7 +139,7 @@ class SetCreate(BaseModel):
     #: this grinder, we will see" — and the wizard fills it in.
     version: SetVersionWrite = SetVersionWrite()
     #: Whether the matcher may file shots under this Set. True by default: a
-    #: Set is created by somebody who has just put that bag in a hopper, and one
+    #: Set is created by somebody who has just put that bean in a hopper, and one
     #: that did not collect the shots pulled on its profile would look broken.
     #: It takes nothing away from any other Set.
     automatch: bool = True
