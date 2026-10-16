@@ -161,7 +161,11 @@ async def test_a_set_brewing_a_profile_is_served_and_does_not_block_switching_it
     row = row_for(await get_board(client), BASE_LABEL)
     await make_set_on(client, "Brews it", row["row"]["current_version_id"])
     served = row_for(await get_board(client), BASE_LABEL)["set"]
-    assert (served["name"], served["next_minor_label"]) == ("Brews it", "v1.1")
+    assert (served["name"], served["version_label"], served["next_minor_label"]) == (
+        "Brews it",
+        "v1",
+        "v1.1",
+    )
     others = [r for r in (await get_board(client))["rows"] if r["row"]["label"] != BASE_LABEL]
     assert others and all(r["set"] is None for r in others)
     await on_machine(client, row["row"]["id"], False)

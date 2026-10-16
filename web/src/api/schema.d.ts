@@ -7724,6 +7724,8 @@ export interface components {
             next_minor_label: string;
             /** Set Id */
             set_id: number;
+            /** Version Label */
+            version_label: string;
         };
         /**
          * SetCreate

@@ -40,6 +40,8 @@ class SetBrewing(BaseModel):
 
     set_id: int
     name: str
+    #: The Set's current version's name, "v1.2".
+    version_label: str
     #: What the Set's next version would be called, as a minor.
     next_minor_label: str
 

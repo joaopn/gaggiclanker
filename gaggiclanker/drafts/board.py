@@ -2871,7 +2871,12 @@ def _set_brewing(found: LiveSet | None) -> SetBrewing | None:
     """The profile's Set as the pages show it, or ``None``."""
     if found is None:
         return None
-    return SetBrewing(set_id=found.set_id, name=found.name, next_minor_label=found.next_minor_label)
+    return SetBrewing(
+        set_id=found.set_id,
+        name=found.name,
+        version_label=found.version_label,
+        next_minor_label=found.next_minor_label,
+    )
 
 
 def _is_settled(removal: Removal) -> bool:

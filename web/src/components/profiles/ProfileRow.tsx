@@ -114,7 +114,7 @@ export function ProfileRow({
             </span>
             {pin ? null : (
               <span className="block text-muted-foreground text-xs" data-testid="row-set">
-                {set ? `Set: ${set.name}` : "No Set"}
+                {set ? `Set: ${set.name} ${set.version_label}` : "No Set"}
               </span>
             )}
             <StateLine state={state} />

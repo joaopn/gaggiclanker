@@ -137,7 +137,7 @@ describe("the list", () => {
         rows: [
           row({
             row: { id: 1, label: "With a Set" },
-            set: { set_id: 4, name: "Kenya AA", next_minor_label: "v1.1" },
+            set: { set_id: 4, name: "Kenya AA", version_label: "v1", next_minor_label: "v1.1" },
           }),
           row({ row: { id: 2, label: "Without", device_profile_id: "two" } }),
         ],
@@ -146,7 +146,7 @@ describe("the list", () => {
     renderWithQueryClient(<ProfilesPage />);
 
     const rows = await screen.findAllByTestId("profile-row");
-    expect(within(rows[0]).getByTestId("row-set")).toHaveTextContent("Set: Kenya AA");
+    expect(within(rows[0]).getByTestId("row-set")).toHaveTextContent("Set: Kenya AA v1");
     expect(within(rows[1]).getByTestId("row-set")).toHaveTextContent("No Set");
   });
 
@@ -400,7 +400,12 @@ describe("the two switches", () => {
       boardView({
         rows: [
           row({
-            set: { set_id: 3, name: "Ethiopia washed", next_minor_label: "v1.2" },
+            set: {
+              set_id: 3,
+              name: "Ethiopia washed",
+              version_label: "v1.1",
+              next_minor_label: "v1.2",
+            },
           }),
         ],
       }),
@@ -769,7 +774,16 @@ describe("the dropdown", () => {
     const user = setupUser();
     api.getProfileBoard.mockResolvedValue(
       boardView({
-        rows: [row({ set: { set_id: 3, name: "Ethiopia washed", next_minor_label: "v1.2" } })],
+        rows: [
+          row({
+            set: {
+              set_id: 3,
+              name: "Ethiopia washed",
+              version_label: "v1.1",
+              next_minor_label: "v1.2",
+            },
+          }),
+        ],
       }),
     );
     api.getBoardVersions.mockResolvedValue(versionsView(three()));

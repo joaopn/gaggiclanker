@@ -13,6 +13,12 @@ database.
 
 ## [Unreleased]
 
+### The Profiles page names the version a profile's Set is on
+
+- **Changed: a profile with a Set reads "Set: <name> v1.3", not only the Set's name.** The label
+  is the Set's current version, as a pinned copy already reads "Pinned: <name> v1.2". Nothing
+  changes in the database.
+
 ### A profile keeps one id on the machine
 
 - **Changed: a sync saves a profile over its own file on the machine, and files are matched by

@@ -531,6 +531,8 @@ class LiveSet:
     name: str
     #: The profile version the Set's current version brews.
     brewing_version_id: int | None
+    #: The Set's current version's name, "v1.2".
+    version_label: str
     #: What a change of the profile's active version would make the Set's next version.
     next_minor_label: str
 
@@ -2153,13 +2155,16 @@ class SetsRepository(Repository):
 
     async def live_sets_by_profile(self) -> dict[int, LiveSet]:
         """The Set each profile has, by profile id: archived Sets left out (a warning about a
-        profile a Set no longer uses would only be noise), with the version the Set brews now and
-        what its next minor version would be called."""
+        profile a Set no longer uses would only be noise), with the version the Set brews now, the
+        current version's name and what its next minor version would be called."""
         rows = await self.db.fetch_all(
-            "SELECT s.board_id AS board_id, s.id AS id, s.name AS name, "
-            "v.profile_version_id AS pv FROM sets s "
-            "JOIN set_versions v ON v.id = s.current_version_id "
-            "WHERE s.archived = 0 AND s.board_id IS NOT NULL"
+            f"""
+            SELECT s.board_id AS board_id, s.id AS id, s.name AS name,
+                   v.profile_version_id AS pv, {label_sql("v")} AS version_label
+              FROM sets s
+              JOIN set_versions v ON v.id = s.current_version_id
+             WHERE s.archived = 0 AND s.board_id IS NOT NULL
+            """  # noqa: S608 - the only interpolation is the version label expression, a constant
         )
         found: dict[int, LiveSet] = {}
         for r in rows:
@@ -2168,6 +2173,7 @@ class SetsRepository(Repository):
                 set_id=int(r["id"]),
                 name=str(r["name"]),
                 brewing_version_id=r["pv"],
+                version_label=str(r["version_label"]),
                 next_minor_label=names.minor,
             )
         return found
