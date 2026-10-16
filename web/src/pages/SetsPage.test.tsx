@@ -134,4 +134,69 @@ describe("SetsPage, a Set being designed", () => {
       within(cards[1]).getByRole("button", { name: /Stop filing shots here/ }),
     ).toBeInTheDocument();
   });
+
+  describe("How a Set works", () => {
+    function explainer() {
+      const section = screen.getByTestId("sets-explainer");
+      const button = within(section).getByRole("button", { name: "How a Set works" });
+      const region = document.getElementById(String(button.getAttribute("aria-controls")));
+      return { button, region: region as HTMLElement };
+    }
+
+    it("is open while nothing is being dialled in", async () => {
+      getSets.mockResolvedValue({ items: [] });
+      renderWithQueryClient(<SetsPage />);
+
+      await screen.findByText("No Sets yet");
+      const { button, region } = explainer();
+      expect(button).toHaveAttribute("aria-expanded", "true");
+      expect(region).not.toHaveAttribute("hidden");
+      // Per bean, not per bag: a second bag of the same coffee is the same Set.
+      expect(region).toHaveTextContent("A Set is how you dial in one bean.");
+      expect(region).toHaveTextContent("The Set doesn't copy any of that. It follows the profile.");
+    });
+
+    it("counts only Sets that are not archived as something being dialled in", async () => {
+      getSets.mockResolvedValue({ items: [setRow({ archived: true, automatch: false })] });
+      renderWithQueryClient(<SetsPage />);
+
+      await screen.findAllByTestId("set-card");
+      expect(explainer().button).toHaveAttribute("aria-expanded", "true");
+    });
+
+    it("is closed once a Set exists, and its text is still there to open", async () => {
+      renderWithQueryClient(<SetsPage />);
+
+      await screen.findAllByTestId("set-card");
+      const { button, region } = explainer();
+      expect(button).toHaveAttribute("aria-expanded", "false");
+      // Always rendered, toggled with `hidden`, so aria-controls resolves.
+      expect(region).toHaveAttribute("hidden");
+    });
+
+    it("remembers a choice made by hand, in either direction", async () => {
+      const user = setupUser();
+      const { unmount } = renderWithQueryClient(<SetsPage />);
+      await screen.findAllByTestId("set-card");
+      await user.click(explainer().button);
+      expect(explainer().button).toHaveAttribute("aria-expanded", "true");
+      expect(window.localStorage.getItem("sets.explainer.v1")).toBe("1");
+      unmount();
+
+      renderWithQueryClient(<SetsPage />);
+      await screen.findAllByTestId("set-card");
+      expect(explainer().button).toHaveAttribute("aria-expanded", "true");
+      await user.click(explainer().button);
+      expect(window.localStorage.getItem("sets.explainer.v1")).toBe("0");
+    });
+
+    it("keeps a closed choice even when there are no Sets", async () => {
+      window.localStorage.setItem("sets.explainer.v1", "0");
+      getSets.mockResolvedValue({ items: [] });
+      renderWithQueryClient(<SetsPage />);
+
+      await screen.findByText("No Sets yet");
+      expect(explainer().button).toHaveAttribute("aria-expanded", "false");
+    });
+  });
 });

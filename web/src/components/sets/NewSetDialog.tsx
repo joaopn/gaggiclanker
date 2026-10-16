@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Starting a Set: one form, every manual option on one screen, in the order the
- * question is answered — which bag, what to call it, through which grinder and
+ * question is answered — which bean, what to call it, through which grinder and
  * profile, at what recipe, and what you are trying to find out.
  *
  * One screen rather than steps because there are nine fields and only one of
@@ -108,7 +108,7 @@ export const DESIGN_OPENER = "Help me design this Set.";
  * The name a design gets when none was typed: "<bean> on the <grinder>".
  *
  * The server's rule, said on screen before the press: the grinder is what
- * tells two Sets of one bag apart, and the form's own default (the bag alone)
+ * tells two Sets of one bean apart, and the form's own default (the bean alone)
  * is not what a design is called. Null until both are picked.
  */
 export function designName(
@@ -126,7 +126,7 @@ export function designName(
  *
  * The name only when one was typed: left empty, the server calls it "<bean> on
  * the <grinder>", the name every Set from a suggestion gets, which tells two
- * Sets of one bag on two grinders apart. The profile picker is read as the
+ * Sets of one bean on two grinders apart. The profile picker is read as the
  * one to fork from. The grind, dose, yield and intent are left out on purpose:
  * working those out is what the conversation is for.
  */
@@ -376,8 +376,9 @@ export function NewSetDialog({
         <DialogHeader>
           <DialogTitle>Start a Set</DialogTitle>
           <DialogDescription>
-            A Set is one bag, through one grinder, on the machine. Every change you make to the
-            recipe from here on becomes a version, so the archive can tell you what the change did.
+            A Set is one bean, through one grinder, with a profile of its own. Every change you make
+            to the recipe from here on becomes a version, so the archive can tell you what the
+            change did.
           </DialogDescription>
         </DialogHeader>
 
@@ -406,7 +407,7 @@ export function NewSetDialog({
                 value={draft.beanId}
                 onChange={(event) => set("beanId", event.target.value)}
               >
-                <option value="">Pick a bag</option>
+                <option value="">Pick a bean</option>
                 {(beans.data?.items ?? []).map((bean) => (
                   <option key={bean.id} value={String(bean.id)}>
                     {beanLabel(bean)}

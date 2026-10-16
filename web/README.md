@@ -531,8 +531,8 @@ opened by hand is remembered in `localStorage` under `sidebar.groups.v1` (group
 ids, read behind `try/catch`); one that opened because its page is showing is
 not recorded. A page inside a group keeps its own chord — `navShortcuts()`
 flattens the table for the bindings and the shortcut sheet — and a group may
-have a chord of its own that goes to its `to`. The rows are Chat, Shots, Profiles,
-Brew setup (Sets, Beans, Hardware, Taste wheel) and Settings; no group nests another. A group's children need not share its URL prefix:
+have a chord of its own that goes to its `to`. The rows are Shots, Chat, Sets, Profiles,
+Brew setup (Beans, Hardware, Taste wheel) and Settings; no group nests another. A group's children need not share its URL prefix:
 `/knowledge` is listed under Settings just before Prompts and keeps its own address
 and chord, so every citation link into it still resolves.
 

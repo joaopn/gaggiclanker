@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ContinueDesigning, DesigningBadge } from "@/components/sets/Designing";
 import { NewSetDialog } from "@/components/sets/NewSetDialog";
+import { SetsExplainer } from "@/components/sets/SetsExplainer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,10 +18,13 @@ import { setSummary } from "@/lib/sets";
 /**
  * Every Set, the ones collecting shots first.
  *
- * A card is the identity plus the two facts you act on: how many shots it has
- * collected, and whether new shots on its profile are filed under it. Any
- * number of Sets may be — several grinders means several bags loaded at once —
- * and the matcher tells them apart by the profile a shot was brewed with.
+ * A Set is one bean dialled in on one grinder with a profile of its own, so
+ * the page explains the idea under its header (`SetsExplainer`) rather than
+ * in a subtitle's line. A card is the identity plus the two facts you act on:
+ * how many shots it has collected, and whether new shots on its profile are
+ * filed under it. Any number of Sets may be — several grinders means several
+ * beans loaded at once — and the matcher tells them apart by the profile a
+ * shot was brewed with.
  *
  * A Set still being designed has no recipe to summarise, so its card says so
  * with a badge and offers the way back into the conversation instead.
@@ -38,7 +42,7 @@ export function SetsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Sets"
-        subtitle="One bag, one machine, one grinder — and every recipe you have tried with it."
+        subtitle="One bean on one grinder with its own profile, dialled in one version at a time."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -69,6 +73,8 @@ export function SetsPage() {
         onDraftCreated={() => navigate("/profiles#staged")}
       />
 
+      {sets.isPending ? null : <SetsExplainer dialling={rows.some((row) => !row.archived)} />}
+
       {sets.isPending ? (
         <div className="grid gap-3 md:grid-cols-2">
           <Skeleton className="h-28 w-full" />
@@ -78,7 +84,7 @@ export function SetsPage() {
         <EmptyState
           icon={Layers}
           title="No Sets yet"
-          description="Until a Set exists, every shot lands in the “needs a Set” inbox: the archive has no way to know which bag was in the hopper. Start one and the next shot files itself."
+          description="Until a Set exists, every shot lands in the “needs a Set” inbox, because the archive can’t tell which bean was in the hopper. Start a Set and the next shot brewed on its profile files itself."
           action={
             <Button size="sm" onClick={() => setDialogOpen(true)}>
               New Set

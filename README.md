@@ -94,7 +94,7 @@ while the app is stopped.
 
 ### The pages
 
-The sidebar has five rows: Chat, Shots, Profiles, **Brew setup** (Sets, Beans, Hardware,
+The sidebar has six rows: Shots, Chat, Sets, Profiles, **Brew setup** (Beans, Hardware,
 Taste wheel) and **Settings** (one page per heading, with Knowledge just before Prompts).
 The Device page has no row: the machine status in the top bar opens it from every page. A group opens when you click it, and on its own
 when you are on one of its pages; one you open by hand stays open next time. The
@@ -102,10 +102,10 @@ pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Chat** | `g c` | The tool-using conversation, with a badge per Set above it. A badge lists that Set's conversations; New there starts one already pointed at that Set. |
 | **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard, and **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves the Discard ones out of the list; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The import drop zone is here; Sync is in the top bar, on every page. A shot's page names its profile as it is called now, linked to it, and says what the machine called it when the shot was brewed ("brewed as") when that was another name. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
+| **Chat** | `g c` | The tool-using conversation, with a badge per Set above it. A badge lists that Set's conversations; New there starts one already pointed at that Set. |
+| **Sets** | `g e` | How you dial in one bean: the bean, the grinder, a profile that belongs to the Set alone, and the recipe on top (grind, dose, target yield), versioned. The Set follows its profile, so a new active profile version is a new Set version; the page explains this in **How a Set works**, open while no Set is being dialled in. Each Set has the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two beans on two grinders both collect — and a Set is archived when you have finished with its bean. |
 | **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Edit a copy**. A version the agent proposed sits above them as the proposal card (below): marked **Proposed**, with **Approve and sync** (**Approve** with Writes off) and **Decline**; a proposed new profile is a row of its own, with its Name field. An open profile shows its name with **Rename**, which opens a Name field (Enter renames, Escape cancels; a pinned copy can be renamed too, since a pin freezes what it brews, not what it is called). Only you rename a profile; the machine gets the name at the next sync with Writes on, and a row says so ("Will be renamed on the machine at the next sync") until then. A name given at the machine is taken at the next sync, with a note under **On the machine** until the sync after. Two name conflicts wait for your choice, each as a line on the row: the machine's new name is another profile's (**Keep** your name, which renames it back on the machine, or **Rename to …**), or the name was changed on both sides (**Keep** either). A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
-| **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. Each coffee exports as a JSON file, and **Import JSON** reads one back: the file's id updates that coffee with the fields it carries, anything else adds a new one. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
@@ -133,7 +133,7 @@ there) the Set records a new version naming it, in the same step. **Change somet
 Set page has no profile to choose, except for a Set that has none (one being designed, or an old
 one that never named a profile), which takes a profile no Set has. That is also what keeps the
 next shots landing in the Set, because a shot joins the one Set that brews the profile it was
-pulled with. To start a bag on a copy of a Set's profile, Duplicate the Set.
+pulled with. To try a bean on a copy of a Set's profile, Duplicate the Set.
 
 **The brew temperature is not one of the five**, and there is nowhere to type
 one: the machine heats to what the profile says, so a number written on a Set
@@ -990,7 +990,7 @@ the same step.
 
 A conversation in **General** is the other way round: the whole archive,
 read-only. It runs SQL over the curated views, compares shots across Sets and
-drafts a profile, and sends a bag with no Set yet to New Set's design path — and it
+drafts a profile, and sends a bean with no Set yet to New Set's design path — and it
 cannot change a Set, because a change to a Set is an argument that belongs in
 that Set's own room, where the ledger and the evidence are in front of the
 model. It will tell you which Set's badge to open.
@@ -1084,7 +1084,7 @@ read one shot: `get_shot` its base information, `get_shot_extended` the rest and
 `get_shot_full` both, beside `list_set_shots`, which searches the Set's shots on
 their base information (filters, ranges, a sort, at most ten back).
 **Seventeen in General** — sixteen reads and one proposal, the profile draft. A
-new bag is not worked out there: the General chat sends you to New Set →
+new bean is not worked out there: the General chat sends you to New Set →
 **Design it with the agent**, whose conversation ends in a first recipe you
 accept. **Eight while a Set is being designed** (below). The registry holds
 twenty-three in total: twelve both kinds have, ten that belong to one kind or the
@@ -1161,7 +1161,7 @@ authored a whole profile rather than pointing at one you already have — a prop
 waiting on the **Profiles** page. Nothing is pushed; you make it active. The Beans
 page has the same shortcut for the coffee you are looking at. The chat does not
 ask for starting points: a run it started had nowhere to be taken, and
-designing a Set with the agent (below) is the conversation for a new bag.
+designing a Set with the agent (below) is the conversation for a new bean.
 
 ### Designing a Set with the agent
 

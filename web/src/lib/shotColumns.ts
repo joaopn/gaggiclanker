@@ -46,7 +46,7 @@ export type ColumnSize = { rem: number; min: number; max: number };
  * you thought) and a table whose columns move is a table nobody can read at a
  * glance.
  *
- * The Set leads. A session is read Set by Set — this bag on this grinder, then
+ * The Set leads. A session is read Set by Set — this bean on this grinder, then
  * the next — and an archive scanned for "which shots were the Guji" is scanned
  * down its first column; the time beside it then says where in that bag a shot
  * fell.

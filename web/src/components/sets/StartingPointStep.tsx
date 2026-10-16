@@ -85,7 +85,7 @@ export function StartingPointStep({
     <div className="space-y-3" data-testid="starting-point-step">
       {ready ? null : (
         <p className="text-muted-foreground text-xs">
-          Pick a bag in the form above first — a suggestion with nothing to anchor it could only be
+          Pick a bean in the form above first — a suggestion with nothing to anchor it could only be
           given in general terms.
         </p>
       )}
@@ -225,7 +225,7 @@ function SimilarSets({
   return (
     <div className="space-y-1.5" data-testid="similar-sets">
       <p className="text-muted-foreground text-xs">
-        What you have already brewed on this grinder that resembles this bag:
+        What you have already brewed on this grinder that resembles this bean:
       </p>
       {items.map((item) => (
         <div

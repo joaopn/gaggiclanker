@@ -159,7 +159,7 @@ describe("AppShell", () => {
     expect(brand).toHaveClass("hidden", "sm:inline", "md:hidden");
   });
 
-  it("lists the five rows in order, and nothing else", () => {
+  it("lists the six rows in order, and nothing else", () => {
     renderApp();
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
     // The label span, not the row: the row's text carries the chord too. The
@@ -167,7 +167,7 @@ describe("AppShell", () => {
     // of their own under it.
     const rows = Array.from(nav.querySelectorAll(":scope > a, :scope > div > button"));
     const labels = rows.map((row) => row.querySelector("span")?.textContent?.trim());
-    expect(labels).toEqual(["Chat", "Shots", "Profiles", "Brew setup", "Settings"]);
+    expect(labels).toEqual(["Shots", "Chat", "Sets", "Profiles", "Brew setup", "Settings"]);
   });
 
   describe("the groups", () => {
@@ -188,7 +188,16 @@ describe("AppShell", () => {
       const hrefs = within(brew.list)
         .getAllByRole("link")
         .map((link) => link.getAttribute("href"));
-      expect(hrefs).toEqual(["/sets", "/beans", "/hardware", "/taste-wheel"]);
+      expect(hrefs).toEqual(["/beans", "/hardware", "/taste-wheel"]);
+    });
+
+    it("gives Sets a row of its own, lit on a Set's page with no group opened", () => {
+      renderApp("/sets/3");
+      const current = within(screen.getByTestId("sidebar")).getAllByRole("link", {
+        current: "page",
+      });
+      expect(current.map((link) => link.textContent)).toEqual(["Setsg e"]);
+      expect(groupList("Brew setup").button).toHaveAttribute("aria-expanded", "false");
     });
 
     it("has no row for the device or the sync: the top bar holds both", () => {

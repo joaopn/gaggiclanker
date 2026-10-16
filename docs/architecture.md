@@ -64,7 +64,7 @@ start time, because the machine's counter restarts after its settings are erased
 and a later shot can carry an old number. Grinders stay
 plural, because a kitchen really does have several and a grind number only
 means something on the grinder it was set on — which is also why any number of
-Sets may collect shots at once: several grinders means several bags loaded, and
+Sets may collect shots at once: several grinders means several beans loaded, and
 the archive tells them apart by the profile a shot was brewed with.
 
 ## The layers
@@ -144,7 +144,7 @@ by a revert. A minor is numbered from the current version's major, so after goin
 back to v1.2 it is v1.3 (or the next free minor).
 
 A Set itself carries two booleans, and the comment beside them in `db/schema.sql`
-says why they are two: `archived` is the lifecycle — the bag is finished with,
+says why they are two: `archived` is the lifecycle — the bean is finished with,
 and an archived Set receives no shots — while `automatch` is whether the
 matcher may file a shot under this Set. Any number of Sets carry it. A shot is
 filed when exactly one of them names the profile it was brewed with; none or

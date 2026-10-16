@@ -13,6 +13,19 @@ database.
 
 ## [Unreleased]
 
+### Sets is a row of its own, and its page says what a Set is
+
+- **Changed: the sidebar is Shots, Chat, Sets, Profiles, Brew setup, Settings.** Sets moved out of
+  Brew setup to a row of its own (`g e` as before); Brew setup keeps Beans, Hardware and Taste
+  wheel.
+- **Changed: a Set is one bean, not one bag.** The Sets page's subtitle, its empty state, the New
+  Set dialog and the bean picker said "bag"; a second bag of the same coffee is the same Set.
+- **Added: "How a Set works" on the Sets page.** What a Set names, how it follows its profile (and
+  why it has no temperature of its own), how shots are filed under it, what a version is, and
+  when to start, duplicate or archive one. It is open while no Set is being dialled in and closed
+  once one is; opening or closing it by hand is remembered in this browser. Nothing changes in
+  the database.
+
 ### The Profiles page names the version a profile's Set is on
 
 - **Changed: a profile with a Set reads "Set: <name> v1.3", not only the Set's name.** The label
