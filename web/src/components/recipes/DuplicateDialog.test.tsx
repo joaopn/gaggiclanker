@@ -5,7 +5,7 @@ import { ApiClientError } from "@/api/client";
 import { DuplicateDialog } from "@/components/recipes/DuplicateDialog";
 import { noAnswerSentence } from "@/lib/mutations";
 import { duplicateAnswer, duplicatePreview } from "@/test/duplicateFixtures";
-import { bean, grinder } from "@/test/recipesFixtures";
+import { bean, grinder, vocabulary } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -13,18 +13,22 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getDuplicatePreview, duplicateVersion, getBeans, getGrinders } = vi.hoisted(() => ({
-  getDuplicatePreview: vi.fn(),
-  duplicateVersion: vi.fn(),
-  getBeans: vi.fn(),
-  getGrinders: vi.fn(),
-}));
+const { getDuplicatePreview, duplicateVersion, getBeans, getGrinders, getVocabulary } = vi.hoisted(
+  () => ({
+    getVocabulary: vi.fn(),
+    getDuplicatePreview: vi.fn(),
+    duplicateVersion: vi.fn(),
+    getBeans: vi.fn(),
+    getGrinders: vi.fn(),
+  }),
+);
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getDuplicatePreview,
   duplicateVersion,
   getBeans,
   getGrinders,
+  getVocabulary,
 }));
 
 const V12 = { id: 22, version_label: "v1.2" };
@@ -88,6 +92,7 @@ function field(name: string): HTMLInputElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getVocabulary.mockResolvedValue(vocabulary);
   getDuplicatePreview.mockResolvedValue(duplicatePreview());
   duplicateVersion.mockResolvedValue(duplicateAnswer());
   getBeans.mockResolvedValue({
@@ -483,5 +488,36 @@ describe("one submit at a time", () => {
     expect(duplicateVersion).toHaveBeenCalledTimes(1);
     resolve(duplicateAnswer());
     await screen.findByTestId("where");
+  });
+});
+
+describe("the drink it copies", () => {
+  it("shows the source version's drink and notes, as copied", async () => {
+    const base = duplicatePreview();
+    getDuplicatePreview.mockResolvedValue(
+      duplicatePreview({
+        version_fields: {
+          ...base.version_fields,
+          drink: "cappuccino",
+          drink_notes: "oat milk, ~150 ml",
+        },
+      }),
+    );
+    renderDialog();
+    await ready();
+
+    const drink = screen.getByTestId("duplicate-drink");
+    expect(await within(drink).findByTestId("drink-badge")).toHaveTextContent("Cappuccino");
+    expect(drink).toHaveTextContent("v1.2's; change it later");
+    expect(screen.getByTestId("duplicate-drink-notes")).toHaveTextContent(
+      "Drink notes oat milk, ~150 ml",
+    );
+  });
+
+  it("says nothing of a drink the source states none of", async () => {
+    renderDialog();
+    await ready();
+    expect(screen.queryByTestId("duplicate-drink")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("duplicate-drink-notes")).not.toBeInTheDocument();
   });
 });

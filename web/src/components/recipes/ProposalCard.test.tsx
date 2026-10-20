@@ -1233,3 +1233,103 @@ describe("the next step after an accept", () => {
     );
   });
 });
+
+describe("ProposalCard, the drink", () => {
+  const drinkProposal = () =>
+    proposal({
+      changes: [
+        {
+          field: "target_yield_g",
+          label: "Target yield",
+          before: "40 g",
+          after: "32 g",
+          from_profile: false,
+        },
+        {
+          field: "drink",
+          label: "Drink",
+          before: "Espresso",
+          after: "Cappuccino",
+          from_profile: false,
+        },
+        {
+          field: "drink_notes",
+          label: "Drink notes",
+          before: null,
+          after: "whole milk, 120 ml",
+          from_profile: false,
+        },
+      ],
+      suggest_major: true,
+      major_reason: "the drink changes",
+    });
+
+  it("draws the drink and the notes first, the notes as an addition in the person's words", () => {
+    renderWithQueryClient(<ProposalCard recipeId={3} proposal={drinkProposal()} />);
+    const rows = within(screen.getByTestId("proposal-changes")).getAllByRole("listitem");
+    expect(rows.map((row) => row.dataset.field)).toEqual([
+      "drink",
+      "drink_notes",
+      "target_yield_g",
+    ]);
+    expect(rows[0]).toHaveTextContent("Drink");
+    expect(rows[0]).toHaveTextContent("Espresso");
+    expect(rows[0]).toHaveTextContent("Cappuccino");
+    expect(rows[1]).toHaveTextContent("Notes");
+    expect(rows[1]).toHaveTextContent("+ “whole milk, 120 ml”");
+  });
+
+  it("draws notes removed and notes changed", () => {
+    renderWithQueryClient(
+      <ProposalCard
+        recipeId={3}
+        proposal={proposal({
+          changes: [
+            {
+              field: "drink_notes",
+              label: "Drink notes",
+              before: "oat",
+              after: "whole",
+              from_profile: false,
+            },
+          ],
+        })}
+      />,
+    );
+    const row = screen.getByTestId("proposal-changes").querySelector("li");
+    expect(row).toHaveTextContent("“oat”");
+    expect(row).toHaveTextContent("“whole”");
+  });
+
+  it("draws notes removed as a subtraction", () => {
+    renderWithQueryClient(
+      <ProposalCard
+        recipeId={3}
+        proposal={proposal({
+          changes: [
+            {
+              field: "drink_notes",
+              label: "Drink notes",
+              before: "oat",
+              after: null,
+              from_profile: false,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByTestId("proposal-changes")).toHaveTextContent("− “oat”");
+  });
+
+  it("shows the suggestion as served: the major is chosen, with the served reason", () => {
+    renderWithQueryClient(<ProposalCard recipeId={3} proposal={drinkProposal()} />);
+    expect(screen.getByRole("checkbox", { name: "Major change" })).toBeChecked();
+    // The server's own reason, said as the form says it: no agent said it.
+    expect(screen.getByTestId("major-suggested")).toHaveTextContent(
+      "v3 suggested: the drink changes",
+    );
+    expect(screen.queryByTestId("major-reason")).not.toBeInTheDocument();
+    expect(screen.queryByText(/The agent suggests/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("accept-proposal")).toHaveTextContent("v3");
+  });
+});

@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { RecipeRow, RecipeVersionRow, ShotJudgement } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { DrinkBadge } from "@/components/recipes/DrinkBadge";
 import { Button } from "@/components/ui/button";
 import { useAddRecipeVersion, useAssignShot, useRecipe, useRecipes } from "@/hooks/useRecipes";
 import { attempt } from "@/lib/mutations";
@@ -29,10 +30,13 @@ export function AssignToRecipe({
   shotId,
   recipeVersion,
   judgement,
+  drink = null,
 }: {
   shotId: number;
   recipeVersion: RecipeVersionRow | null | undefined;
   judgement: ShotJudgement | null | undefined;
+  /** The drink of the version the shot is filed under, as the shot serves it. */
+  drink?: string | null;
 }) {
   const recipes = useRecipes();
   const assign = useAssignShot();
@@ -92,6 +96,7 @@ export function AssignToRecipe({
               <span className="font-medium">
                 {assignedRecipe?.name ?? "this Recipe"} {recipeVersion.version_label}
               </span>
+              <DrinkBadge drink={drink} className="mx-1 align-[1px]" />
               <span className="text-muted-foreground"> — {versionSummary(recipeVersion)}</span>
             </>
           ) : (

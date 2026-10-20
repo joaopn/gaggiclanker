@@ -187,6 +187,7 @@ export function ShotDetailPage() {
           shotId={row.id}
           recipeVersion={shot.data.recipe_version}
           judgement={shot.data.judgement}
+          drink={row.recipe_drink}
         />
       </section>
       {notes ? <DeviceNotesCard notes={notes} /> : null}

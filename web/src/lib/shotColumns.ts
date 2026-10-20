@@ -23,6 +23,7 @@ export type ShotColumnId =
   | "review"
   | "rating"
   | "recipe"
+  | "drink"
   | "notes"
   | "decision"
   | "flags";
@@ -81,6 +82,11 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // A Recipe badge says a name and a version; both truncate, and the whole name
   // is on hover. 8rem holds a usual one ("Guji washed v2").
   { id: "recipe", label: "Recipe", size: { rem: 8, min: 4, max: 20 }, narrowHidden: true },
+  // The drink of the version the shot is filed under, as a badge: the longest word ("Cappuccino")
+  // is 5.3rem as measured in headless Chromium with the badge's padding and border, so 6rem
+  // holds it whole. Off by default; a shot filed under no Recipe, or one that states no drink,
+  // has an empty cell. Hidden on a phone like Recipe, whatever the chooser says.
+  { id: "drink", label: "Drink", size: { rem: 6.5, min: 6, max: 12 }, narrowHidden: true },
   // The list's own compact format (`formatListTime`), measured rather than
   // guessed: the widest current-year form of the locales checked is US English
   // ("Dec 24, 11:59 PM"), 7.7rem at text-sm in DejaVu Sans. The day-first

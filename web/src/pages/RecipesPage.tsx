@@ -5,6 +5,7 @@ import type { RecipeRow } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ContinueDesigning, DesigningBadge } from "@/components/recipes/Designing";
+import { DrinkBadge } from "@/components/recipes/DrinkBadge";
 import { NewRecipeDialog } from "@/components/recipes/NewRecipeDialog";
 import { RecipesExplainer } from "@/components/recipes/RecipesExplainer";
 import { Badge } from "@/components/ui/badge";
@@ -106,7 +107,10 @@ function RecipeCard({ row }: { row: RecipeRow }) {
   const automatch = useSetAutomatch();
 
   return (
-    <Card data-testid="recipe-card" data-recipe={row.id} className="gap-3">
+    // `min-w-0`: a grid item will not be narrower than its content by default, and the notes line is
+    // one unbroken line of the person's own words. Without it the card, and then the page, grow to
+    // fit the whole text instead of cutting it with an ellipsis.
+    <Card data-testid="recipe-card" data-recipe={row.id} className="min-w-0 gap-3">
       <CardHeader className="gap-1">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="text-base">
@@ -115,6 +119,7 @@ function RecipeCard({ row }: { row: RecipeRow }) {
             </Link>
           </CardTitle>
           <div className="flex items-center gap-1">
+            <DrinkBadge drink={row.drink ?? (row.designing ? row.design_brief?.drink : null)} />
             {row.designing ? <DesigningBadge /> : null}
             {/* Nothing to match on while designing: version 1 names no profile. */}
             {row.automatch && !row.designing ? (
@@ -145,7 +150,18 @@ function RecipeCard({ row }: { row: RecipeRow }) {
             {row.version_count} version{row.version_count === 1 ? "" : "s"}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        {row.drink_notes ? (
+          // One line: the whole text is on hover. `min-w-0` lets the card's width, not the
+          // text, decide where the ellipsis falls.
+          <p
+            className="min-w-0 truncate text-muted-foreground text-sm"
+            data-testid="recipe-drink-notes"
+            title={row.drink_notes}
+          >
+            {row.drink_notes}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
           {row.designing ? <ContinueDesigning recipe={row} /> : null}
           <Button asChild variant="outline" size="sm">
             <Link to={`/recipes/${row.id}`}>Open</Link>

@@ -1089,3 +1089,36 @@ describe("ShotDetailPage Recipe panel", () => {
     expect(scroll).not.toHaveBeenCalled();
   });
 });
+
+describe("ShotDetailPage, the drink", () => {
+  it("puts the badge beside the Recipe name the shot is filed under", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, recipe_drink: "latte" },
+      judgement: null,
+      recipe_version: version({ id: 3, dose_g: 18, drink: "latte" }),
+    });
+    renderShot();
+    const current = await screen.findByTestId("assign-current");
+    expect(await within(current).findByTestId("drink-badge")).toHaveTextContent("Latte");
+  });
+
+  it("shows none for a shot with no drink stated, or filed under no Recipe", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, recipe_drink: null },
+      judgement: null,
+      recipe_version: version({ id: 3 }),
+    });
+    const first = renderShot();
+    await screen.findByTestId("assign-current");
+    expect(screen.queryByTestId("drink-badge")).not.toBeInTheDocument();
+    first.unmount();
+    cleanup();
+
+    getShot.mockResolvedValue({ ...shot129, judgement: null, recipe_version: null });
+    renderShot();
+    await screen.findByTestId("assign-current");
+    expect(screen.queryByTestId("drink-badge")).not.toBeInTheDocument();
+  });
+});

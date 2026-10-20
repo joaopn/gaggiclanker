@@ -3619,3 +3619,62 @@ describe("ShotsPage Review column", () => {
     expect(runReview).not.toHaveBeenCalled();
   });
 });
+
+describe("ShotsPage Drink column", () => {
+  const filed = { recipe_id: 4, recipe_name: "Kenya AA", version_label: "v2" };
+
+  it("is off by default: the table shows no Drink heading and no badge", async () => {
+    getShots.mockResolvedValue(
+      listData([shot({ recipe_version_id: 9, recipe_badge: filed, recipe_drink: "cappuccino" })]),
+    );
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    expect(screen.queryByTestId("header-drink")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("drink-badge")).not.toBeInTheDocument();
+  });
+
+  it("is listed in the chooser after Recipe, and switching it on shows the badge or nothing", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({ id: 1, recipe_version_id: 9, recipe_badge: filed, recipe_drink: "cappuccino" }),
+        // Filed under a version that states no drink, and unfiled: no badge, and no word for it.
+        shot({ id: 2, recipe_version_id: 9, recipe_badge: filed, recipe_drink: null }),
+        shot({ id: 3, recipe_version_id: null, recipe_badge: null, recipe_drink: null }),
+      ]),
+    );
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(await screen.findByTestId("columns-button"));
+    const order = within(screen.getByTestId("columns-menu"))
+      .getAllByRole("checkbox")
+      .map((box) => box.id.split("-").pop());
+    expect(order.indexOf("drink")).toBe(order.indexOf("recipe") + 1);
+    await user.click(screen.getByRole("checkbox", { name: "Drink" }));
+    await user.keyboard("{Escape}");
+
+    const cells = screen
+      .getAllByTestId("shot-row")
+      .map((row) => row.querySelector('[data-column="drink"]'));
+    expect(cells).toHaveLength(3);
+    expect(within(cells[0] as HTMLElement).getByTestId("drink-badge")).toHaveTextContent(
+      "Cappuccino",
+    );
+    expect(cells[1]).toBeEmptyDOMElement();
+    expect(cells[2]).toBeEmptyDOMElement();
+    // Remembered in this browser only.
+    expect(JSON.parse(window.localStorage.getItem("shots.columns.v1") ?? "[]")).toContain("drink");
+  });
+
+  it("does not sort", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await showColumn(user, "Drink");
+    const heading = await screen.findByTestId("header-drink");
+    expect(heading).toHaveTextContent("Drink");
+    expect(within(heading).queryByRole("button")).not.toBeInTheDocument();
+  });
+});

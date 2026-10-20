@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { useDraftStanding } from "@/hooks/useDrafts";
 import { useDecideProposal } from "@/hooks/useRecipes";
+import { notesVerb } from "@/lib/drinks";
 import { attempt } from "@/lib/mutations";
 import { formatTime } from "@/lib/shots";
 import { syncUnavailableWhy } from "@/lib/sync";
@@ -58,10 +59,53 @@ export type ProposalCardProps = {
   proposedProfileAs?: string | null;
 };
 
+/**
+ * The reason the server gives when a proposal changes the drink and the agent did not suggest a
+ * major version itself (`DRINK_MAJOR_REASON` in the back end). It is the server's own words, not
+ * the agent's, so the card says it as a suggestion of the form's, not "the agent suggests". An
+ * agent's own reason can never equal it: those are at least `PREDICTION_MIN_CHARS` (20)
+ * characters long and this is 17.
+ */
+export const SERVER_DRINK_REASON = "the drink changes";
+
 /** What the log's diff rows say when a side is missing. The same words. */
 function absent(fromProfile: boolean, side: "before" | "after"): string {
   if (fromProfile) return "no temperature stated";
   return side === "before" ? "not set" : "cleared";
+}
+
+/**
+ * The drink and its notes first, as the sketch has them: what the cup is comes before the
+ * numbers that make the shot for it. The server's order is kept for everything else.
+ */
+function drinkFirst(changes: FieldChange[]): FieldChange[] {
+  const rank = (change: FieldChange) =>
+    change.field === "drink" ? 0 : change.field === "drink_notes" ? 1 : 2;
+  return [...changes].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * A change of the drink notes, in the person's words: added as `+ "text"`, removed as
+ * `− "text"`, changed as the old text struck through and the new one after it.
+ */
+function NotesChange({ change }: { change: FieldChange }) {
+  const verb = notesVerb(change);
+  return (
+    <>
+      <span className="shrink-0 text-muted-foreground">Notes</span>
+      {verb === "added" ? (
+        <span className="min-w-0 break-words font-medium">+ “{change.after}”</span>
+      ) : verb === "removed" ? (
+        <span className="min-w-0 break-words line-through opacity-60">− “{change.before}”</span>
+      ) : (
+        <>
+          <span className="min-w-0 break-words line-through opacity-60">“{change.before}”</span>
+          <ArrowRight className="size-3 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words font-medium">“{change.after}”</span>
+        </>
+      )}
+    </>
+  );
 }
 
 /** Where a waiting first recipe's profile can also be answered on its own. */
@@ -491,23 +535,29 @@ export function ProposalCard({
         </>
       ) : proposal.changes.length > 0 ? (
         <ul className="mb-2 flex flex-wrap gap-2" data-testid="proposal-changes">
-          {proposal.changes.map((change) => (
+          {drinkFirst(proposal.changes).map((change) => (
             <li
               key={change.field}
               data-field={change.field}
-              className="inline-flex items-center gap-1 rounded-md bg-background/70 px-2 py-0.5 text-xs"
+              className="inline-flex max-w-full items-center gap-1 rounded-md bg-background/70 px-2 py-0.5 text-xs"
             >
-              <span className="text-muted-foreground">{change.label}</span>
-              <span className="tabular-nums line-through opacity-60">
-                {change.before ?? absent(change.from_profile, "before")}
-              </span>
-              <ArrowRight className="size-3" aria-hidden="true" />
-              <span className="font-medium tabular-nums">
-                {change.after ?? absent(change.from_profile, "after")}
-              </span>
-              {change.from_profile ? (
-                <span className="text-muted-foreground">· from the profile</span>
-              ) : null}
+              {change.field === "drink_notes" ? (
+                <NotesChange change={change} />
+              ) : (
+                <>
+                  <span className="text-muted-foreground">{change.label}</span>
+                  <span className="tabular-nums line-through opacity-60">
+                    {change.before ?? absent(change.from_profile, "before")}
+                  </span>
+                  <ArrowRight className="size-3" aria-hidden="true" />
+                  <span className="font-medium tabular-nums">
+                    {change.after ?? absent(change.from_profile, "after")}
+                  </span>
+                  {change.from_profile ? (
+                    <span className="text-muted-foreground">· from the profile</span>
+                  ) : null}
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -568,7 +618,16 @@ export function ProposalCard({
                 onChange={setMajorChoice}
                 minorLabel={proposal.next_minor_label}
                 majorLabel={proposal.next_major_label}
-                reason={proposal.suggest_major ? proposal.major_reason : ""}
+                reason={
+                  proposal.suggest_major && proposal.major_reason !== SERVER_DRINK_REASON
+                    ? proposal.major_reason
+                    : ""
+                }
+                suggested={
+                  proposal.suggest_major && proposal.major_reason === SERVER_DRINK_REASON
+                    ? SERVER_DRINK_REASON
+                    : ""
+                }
                 disabled={decide.isPending}
               />
             </div>

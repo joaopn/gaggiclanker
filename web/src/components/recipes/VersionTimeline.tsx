@@ -2,6 +2,7 @@ import { ArrowRight, Undo2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { RecipeRevertRow, RecipeVersionDetail, ShotJudgement } from "@/api/types";
+import { DrinkBadge } from "@/components/recipes/DrinkBadge";
 import { PinDialog, pinnedMarkerId } from "@/components/recipes/PinDialog";
 import { VersionActions } from "@/components/recipes/VersionActions";
 import { VersionEvidence } from "@/components/recipes/VersionEvidence";
@@ -13,6 +14,7 @@ import { RatingStars } from "@/components/shots/RatingStars";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
+import { drinkChangeLine } from "@/lib/drinks";
 import {
   currentVersion,
   labelSummary,
@@ -158,276 +160,293 @@ export function VersionTimeline({
 
   // A plain function, not a component: it reads the state above, and a
   // component defined here would remount (and lose an open editor) per render.
-  const renderVersion = (entry: RecipeVersionDetail) => (
-    <li
-      key={entry.version.id}
-      data-testid="version-entry"
-      data-version={entry.version.version_label}
-      data-dead-end={entry.dead_end ? "yes" : "no"}
-      className={cn("rounded-lg border border-border", entry.dead_end && "opacity-60")}
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-border border-b px-3 py-2">
-        <div className="flex items-baseline gap-2">
-          <span className="font-medium text-sm tabular-nums">{entry.version.version_label}</span>
-          {entry.version.id === current ? (
-            <Badge data-testid="current-version">current</Badge>
-          ) : null}
-          {/* Where it grew from: a name only identifies, so the fork
+  const renderVersion = (entry: RecipeVersionDetail) => {
+    // "Drink: Espresso → Cappuccino · notes added": one line for both, not two chips.
+    const drinkLine = drinkChangeLine(entry.changes);
+    return (
+      <li
+        key={entry.version.id}
+        data-testid="version-entry"
+        data-version={entry.version.version_label}
+        data-dead-end={entry.dead_end ? "yes" : "no"}
+        className={cn("rounded-lg border border-border", entry.dead_end && "opacity-60")}
+      >
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-border border-b px-3 py-2">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="font-medium text-sm tabular-nums">{entry.version.version_label}</span>
+            <DrinkBadge drink={entry.version.drink} className="self-center" />
+            {entry.version.id === current ? (
+              <Badge data-testid="current-version">current</Badge>
+            ) : null}
+            {/* Where it grew from: a name only identifies, so the fork
                   history is said here. The first version grew from nothing. */}
-          {entry.version.parent_version_label ? (
-            <span
-              className="shrink-0 whitespace-nowrap text-muted-foreground text-xs"
-              data-testid="version-parent"
-            >
-              from {entry.version.parent_version_label}
+            {entry.version.parent_version_label ? (
+              <span
+                className="shrink-0 whitespace-nowrap text-muted-foreground text-xs"
+                data-testid="version-parent"
+              >
+                from {entry.version.parent_version_label}
+              </span>
+            ) : null}
+            <span className="text-muted-foreground text-sm">
+              {versionSummary(entry.version)}
+              {versionRatio(entry.version) ? ` · ${versionRatio(entry.version)}` : ""}
             </span>
-          ) : null}
-          <span className="text-muted-foreground text-sm">
-            {versionSummary(entry.version)}
-            {versionRatio(entry.version) ? ` · ${versionRatio(entry.version)}` : ""}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {entry.dead_end ? (
-            <Badge
-              variant="outline"
-              data-testid="dead-end"
-              title="The Recipe went back past this version."
-            >
-              dead end
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {entry.dead_end ? (
+              <Badge
+                variant="outline"
+                data-testid="dead-end"
+                title="The Recipe went back past this version."
+              >
+                dead end
+              </Badge>
+            ) : null}
+            {entry.pinned ? (
+              <Badge
+                variant="secondary"
+                data-testid="pinned-marker"
+                id={pinnedMarkerId(entry.version.id)}
+                tabIndex={-1}
+              >
+                <span aria-hidden="true">📌</span> pinned
+              </Badge>
+            ) : null}
+            <Badge variant="ghost" className="text-muted-foreground">
+              {originLabel(entry.version.origin)}
             </Badge>
-          ) : null}
-          {entry.pinned ? (
-            <Badge
-              variant="secondary"
-              data-testid="pinned-marker"
-              id={pinnedMarkerId(entry.version.id)}
-              tabIndex={-1}
-            >
-              <span aria-hidden="true">📌</span> pinned
-            </Badge>
-          ) : null}
-          <Badge variant="ghost" className="text-muted-foreground">
-            {originLabel(entry.version.origin)}
-          </Badge>
-          <span className="text-muted-foreground text-xs">
-            {formatTime(entry.version.created_at)}
-          </span>
+            <span className="text-muted-foreground text-xs">
+              {formatTime(entry.version.created_at)}
+            </span>
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-2 px-3 py-2">
-        {entry.changes.length > 0 ? (
-          <ul className="flex flex-wrap gap-2" data-testid="version-changes">
-            {entry.changes.map((change) =>
-              /* The Recipe brews one profile, so a version that brews another version of it is
-                 said once ("Brew changed"): there is no "Foo → Foo" to show. */
-              change.field === "profile_version_id" &&
-              change.before == null &&
-              change.after == null ? (
+        <div className="space-y-2 px-3 py-2">
+          {entry.changes.length > 0 ? (
+            <ul className="flex flex-wrap gap-2" data-testid="version-changes">
+              {drinkLine ? (
                 <li
-                  key={change.field}
-                  data-testid="brew-changed"
-                  data-field={change.field}
-                  className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 font-medium text-xs"
+                  data-testid="drink-change"
+                  className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 text-xs"
                 >
-                  {change.label}
+                  {drinkLine}
                 </li>
-              ) : (
-                <li
-                  key={change.field}
-                  data-testid={change.from_profile ? "change-from-profile" : "change"}
-                  data-field={change.field}
-                  className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
-                >
-                  <span className="text-muted-foreground">{change.label}</span>
-                  {/* "93 °C → —" reads as a rendering bug. A field that was
+              ) : null}
+              {entry.changes
+                .filter((change) => change.field !== "drink" && change.field !== "drink_notes")
+                .map((change) =>
+                  /* The Recipe brews one profile, so a version that brews another version of it is
+                 said once ("Brew changed"): there is no "Foo → Foo" to show. */
+                  change.field === "profile_version_id" &&
+                  change.before == null &&
+                  change.after == null ? (
+                    <li
+                      key={change.field}
+                      data-testid="brew-changed"
+                      data-field={change.field}
+                      className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 font-medium text-xs"
+                    >
+                      {change.label}
+                    </li>
+                  ) : (
+                    <li
+                      key={change.field}
+                      data-testid={change.from_profile ? "change-from-profile" : "change"}
+                      data-field={change.field}
+                      className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
+                    >
+                      <span className="text-muted-foreground">{change.label}</span>
+                      {/* "93 °C → —" reads as a rendering bug. A field that was
                         set and is now unset is a deliberate change, and the
                         word is what makes it one — except for a change that
                         came with the profile, where nobody cleared anything:
                         the new profile simply does not state the number. */}
-                  <span className="tabular-nums line-through opacity-60">
-                    {change.before ?? absent(change.from_profile, "before")}
-                  </span>
-                  <ArrowRight className="size-3" aria-hidden="true" />
-                  <span className="font-medium tabular-nums">
-                    {change.after ?? absent(change.from_profile, "after")}
-                  </span>
-                  {/* Said in words rather than shown in a colour: this is the
+                      <span className="tabular-nums line-through opacity-60">
+                        {change.before ?? absent(change.from_profile, "before")}
+                      </span>
+                      <ArrowRight className="size-3" aria-hidden="true" />
+                      <span className="font-medium tabular-nums">
+                        {change.after ?? absent(change.from_profile, "after")}
+                      </span>
+                      {/* Said in words rather than shown in a colour: this is the
                         one line in the log with no field behind it on the form,
                         and a reader who cannot see why it is there reads it as
                         a bug. */}
-                  {change.from_profile ? (
-                    <span className="text-muted-foreground">· from the profile</span>
-                  ) : null}
-                </li>
-              ),
-            )}
-          </ul>
-        ) : (
-          <p className="text-muted-foreground text-xs" data-testid="version-baseline">
-            {entry.version.parent_version_id
-              ? "Nothing in the version changed — only the intent."
-              : "The starting point."}
-          </p>
-        )}
-
-        {entry.version.intent ? (
-          <p className="text-sm" data-testid="version-intent">
-            {entry.version.intent}
-          </p>
-        ) : null}
-
-        <div className="space-y-1" data-testid="version-prediction">
-          {entry.version.prediction ? (
-            <p className="text-sm">
-              <span className="text-muted-foreground text-xs">
-                Version prediction
-                {entry.version.compares_to_version_label
-                  ? ` · compared to ${entry.version.compares_to_version_label}`
-                  : ""}
-              </span>
-              <br />
-              {entry.version.prediction}
-            </p>
+                      {change.from_profile ? (
+                        <span className="text-muted-foreground">· from the profile</span>
+                      ) : null}
+                    </li>
+                  ),
+                )}
+            </ul>
           ) : (
-            <p className="text-muted-foreground text-xs">No prediction.</p>
+            <p className="text-muted-foreground text-xs" data-testid="version-baseline">
+              {entry.version.parent_version_id
+                ? "Nothing in the version changed — only the intent."
+                : "The starting point."}
+            </p>
           )}
-          {/* Only while the version has no shots: the server refuses the
-                  write afterwards, so offering the field would be a lie. */}
-          {entry.version.shot_count === 0 ? (
-            editing === entry.version.id ? (
-              <VersionPredictionEditor
-                recipeId={recipeId}
-                version={entry.version}
-                versions={versions}
-                onDone={() => setEditing(null)}
-              />
-            ) : (
-              <PredictionEditorButton
-                version={entry.version}
-                onEdit={() => setEditing(entry.version.id)}
-              />
-            )
+
+          {entry.version.intent ? (
+            <p className="text-sm" data-testid="version-intent">
+              {entry.version.intent}
+            </p>
           ) : null}
-        </div>
 
-        <VersionOverrides
-          recipeId={recipeId}
-          versionId={entry.version.id}
-          profileVersionId={entry.version.profile_version_id ?? null}
-        />
+          <div className="space-y-1" data-testid="version-prediction">
+            {entry.version.prediction ? (
+              <p className="text-sm">
+                <span className="text-muted-foreground text-xs">
+                  Version prediction
+                  {entry.version.compares_to_version_label
+                    ? ` · compared to ${entry.version.compares_to_version_label}`
+                    : ""}
+                </span>
+                <br />
+                {entry.version.prediction}
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-xs">No prediction.</p>
+            )}
+            {/* Only while the version has no shots: the server refuses the
+                  write afterwards, so offering the field would be a lie. */}
+            {entry.version.shot_count === 0 ? (
+              editing === entry.version.id ? (
+                <VersionPredictionEditor
+                  recipeId={recipeId}
+                  version={entry.version}
+                  versions={versions}
+                  onDone={() => setEditing(null)}
+                />
+              ) : (
+                <PredictionEditorButton
+                  version={entry.version}
+                  onEdit={() => setEditing(entry.version.id)}
+                />
+              )
+            ) : null}
+          </div>
 
-        {entry.version.restores_version_label ? (
-          <p className="text-muted-foreground text-xs" data-testid="version-restores">
-            Restores {entry.version.restores_version_label}; its profile went back with it.
-          </p>
-        ) : null}
+          <VersionOverrides
+            recipeId={recipeId}
+            versionId={entry.version.id}
+            profileVersionId={entry.version.profile_version_id ?? null}
+          />
 
-        {/* The room where this change was argued, one click from the log.
+          {entry.version.restores_version_label ? (
+            <p className="text-muted-foreground text-xs" data-testid="version-restores">
+              Restores {entry.version.restores_version_label}; its profile went back with it.
+            </p>
+          ) : null}
+
+          {/* The room where this change was argued, one click from the log.
                 Through the Chat page's open-or-continue link, so it is the
                 same conversation Discuss opens and not a second one. */}
-        <p className="text-xs" data-testid="version-chat">
-          <Link
-            to={`/chat?recipe=${recipeId}&version=${entry.version.id}`}
-            className="text-muted-foreground underline underline-offset-2"
-          >
-            Chat about {entry.version.version_label}
-          </Link>
-        </p>
+          <p className="text-xs" data-testid="version-chat">
+            <Link
+              to={`/chat?recipe=${recipeId}&version=${entry.version.id}`}
+              className="text-muted-foreground underline underline-offset-2"
+            >
+              Chat about {entry.version.version_label}
+            </Link>
+          </p>
 
-        {/* A version an agent proposed was argued somewhere *else*: in the
+          {/* A version an agent proposed was argued somewhere *else*: in the
                 conversation about the version before it. That room holds the
                 reasoning this entry is the result of, and it is a different
                 thread from the one above. */}
-        {entry.chat_thread_id ? (
-          <p className="text-xs" data-testid="version-proposed-in">
-            <Link
-              to={`/chat?thread=${entry.chat_thread_id}`}
-              className="text-muted-foreground underline underline-offset-2"
-            >
-              Proposed in a conversation — read it
-            </Link>
-          </p>
-        ) : null}
+          {entry.chat_thread_id ? (
+            <p className="text-xs" data-testid="version-proposed-in">
+              <Link
+                to={`/chat?thread=${entry.chat_thread_id}`}
+                className="text-muted-foreground underline underline-offset-2"
+              >
+                Proposed in a conversation — read it
+              </Link>
+            </p>
+          ) : null}
 
-        <p className="text-muted-foreground text-xs" data-testid="version-labels">
-          {/* This version's shots, not the whole Recipe's: the count beside
+          <p className="text-muted-foreground text-xs" data-testid="version-labels">
+            {/* This version's shots, not the whole Recipe's: the count beside
                   the link is this version's, and a link that widened to the
                   Recipe would answer a question nobody asked here. */}
-          <Link
-            to={`/shots?recipe=${recipeId}&version=${entry.version.id}`}
-            className="underline underline-offset-2"
-          >
-            {entry.version.shot_count} shot{entry.version.shot_count === 1 ? "" : "s"}
-          </Link>
-          {entry.pinned ? (
-            <span data-testid="pinned-shots"> ({entry.pinned.shot_count} on the pin)</span>
-          ) : null}
-          {labelSummary(entry.labels) ? ` · ${labelSummary(entry.labels)}` : ""}
-        </p>
+            <Link
+              to={`/shots?recipe=${recipeId}&version=${entry.version.id}`}
+              className="underline underline-offset-2"
+            >
+              {entry.version.shot_count} shot{entry.version.shot_count === 1 ? "" : "s"}
+            </Link>
+            {entry.pinned ? (
+              <span data-testid="pinned-shots"> ({entry.pinned.shot_count} on the pin)</span>
+            ) : null}
+            {labelSummary(entry.labels) ? ` · ${labelSummary(entry.labels)}` : ""}
+          </p>
 
-        {entry.shots.length > 0 ? (
-          <ul className="divide-y divide-border" data-testid="version-shots">
-            {entry.shots.map((shot) => {
-              const judgement = judgements[String(shot.id)];
-              return (
-                <li key={shot.id}>
-                  <Link
-                    to={`/shots/${shot.id}`}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm hover:bg-muted/40"
-                  >
-                    <span className="w-40 shrink-0 tabular-nums">
-                      {formatTime(shot.started_at)}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                      {profileName(shot)}
-                    </span>
-                    <span className="tabular-nums">{formatSeconds(shot.duration_ms)}</span>
-                    <CheckBadge checks={shot.checks} />
-                    <RatingStars rating={judgement?.rating ?? shot.rating ?? null} />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="text-muted-foreground text-xs">No shots on this version yet.</p>
-        )}
+          {entry.shots.length > 0 ? (
+            <ul className="divide-y divide-border" data-testid="version-shots">
+              {entry.shots.map((shot) => {
+                const judgement = judgements[String(shot.id)];
+                return (
+                  <li key={shot.id}>
+                    <Link
+                      to={`/shots/${shot.id}`}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm hover:bg-muted/40"
+                    >
+                      <span className="w-40 shrink-0 tabular-nums">
+                        {formatTime(shot.started_at)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                        {profileName(shot)}
+                      </span>
+                      <span className="tabular-nums">{formatSeconds(shot.duration_ms)}</span>
+                      <CheckBadge checks={shot.checks} />
+                      <RatingStars rating={judgement?.rating ?? shot.rating ?? null} />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground text-xs">No shots on this version yet.</p>
+          )}
 
-        {/* Only where there is a prediction to be evidence for. Open by
+          {/* Only where there is a prediction to be evidence for. Open by
                 default on the one entry that is still a live question: a
                 prediction nobody has graded, on a version with shots to grade
                 it with. */}
-        {entry.evidence ? (
-          <VersionEvidence
-            evidence={entry.evidence}
-            versionLabel={entry.version.version_label}
-            defaultOpen={entry.version.outcome_state === "open" && entry.evidence.this.shots > 0}
+          {entry.evidence ? (
+            <VersionEvidence
+              evidence={entry.evidence}
+              versionLabel={entry.version.version_label}
+              defaultOpen={entry.version.outcome_state === "open" && entry.evidence.this.shots > 0}
+            />
+          ) : null}
+
+          <VersionOutcomeControl
+            recipeId={recipeId}
+            version={entry.version}
+            gradable={entry.labels.keep + entry.labels.improve > 0}
+            proposed={entry.outcome_proposal ?? null}
           />
-        ) : null}
 
-        <VersionOutcomeControl
-          recipeId={recipeId}
-          version={entry.version}
-          gradable={entry.labels.keep + entry.labels.improve > 0}
-          proposed={entry.outcome_proposal ?? null}
-        />
-
-        {/* The one row of version buttons, for every version: what applies to this one. A
+          {/* The one row of version buttons, for every version: what applies to this one. A
             version that is already pinned has no pin button: the card above the log is where
             its pin is undone. */}
-        <VersionActions
-          recipeId={recipeId}
-          entry={entry}
-          current={entry.version.id === current}
-          canPin={canPin(entry)}
-          onPin={() => setPinning(entry.version.id)}
-          onDuplicate={onDuplicate && !designing ? () => onDuplicate(entry.version.id) : undefined}
-        />
-      </div>
-    </li>
-  );
+          <VersionActions
+            recipeId={recipeId}
+            entry={entry}
+            current={entry.version.id === current}
+            canPin={canPin(entry)}
+            onPin={() => setPinning(entry.version.id)}
+            onDuplicate={
+              onDuplicate && !designing ? () => onDuplicate(entry.version.id) : undefined
+            }
+          />
+        </div>
+      </li>
+    );
+  };
 
   // A version can be pinned when the Recipe takes shots, the version names a profile to copy and
   // no live pin holds it. The server refuses the rest in its own words.

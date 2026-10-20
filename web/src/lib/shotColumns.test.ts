@@ -325,6 +325,7 @@ describe("column sizes", () => {
     const widths = Object.fromEntries(SHOT_COLUMNS.map((column) => [column.id, column.size.rem]));
     expect(widths).toEqual({
       recipe: 8,
+      drink: 6.5,
       time: 7.5,
       profile: 9,
       curve: 6,
@@ -337,6 +338,34 @@ describe("column sizes", () => {
       decision: 9.75,
       flags: 9,
     });
+  });
+});
+
+describe("the Drink column", () => {
+  it("is off by default, so a first visit and an upgrade keep the table as it was", () => {
+    expect(DEFAULT_SHOT_COLUMNS).not.toContain("drink");
+    for (const generation of PREVIOUS_DEFAULT_SHOT_COLUMNS)
+      expect(generation).not.toContain("drink");
+    expect(loadShotColumns()).not.toContain("drink");
+  });
+
+  it("is drawn after Recipe, hidden on a phone like Recipe, and a stored choice may switch it on", () => {
+    const ids = SHOT_COLUMNS.map((column) => column.id);
+    expect(ids.indexOf("drink")).toBe(ids.indexOf("recipe") + 1);
+    expect(SHOT_COLUMNS.find((column) => column.id === "drink")?.narrowHidden).toBe(true);
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["drink", "time", "recipe"]));
+    expect(visibleColumns(loadShotColumns()).map((column) => column.id)).toEqual([
+      "recipe",
+      "drink",
+      "time",
+    ]);
+  });
+
+  it("is wide enough for the longest word, with the badge's padding", () => {
+    // "Cappuccino" at text-xs medium plus px-2 and the border is about 5.3rem in Chromium.
+    const size = SHOT_COLUMNS.find((column) => column.id === "drink")?.size;
+    expect(size?.min).toBeGreaterThanOrEqual(5.75);
+    expect(size?.rem).toBeGreaterThanOrEqual(size?.min ?? 0);
   });
 });
 

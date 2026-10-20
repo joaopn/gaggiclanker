@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { ShotListRow, ShotSort } from "@/api/types";
+import { DrinkBadge } from "@/components/recipes/DrinkBadge";
 import { RecipeBadge } from "@/components/recipes/RecipeBadge";
 import { CheckCell } from "@/components/shots/CheckBadge";
 import { CurveChooser } from "@/components/shots/CurveChooser";
@@ -729,6 +730,9 @@ function Cell({
           )}
         </div>
       );
+    case "drink":
+      // Not sortable and not lifted: it is a word, and the row toggles around it.
+      return <DrinkBadge drink={shot.recipe_drink} />;
     case "notes":
       return (
         <span

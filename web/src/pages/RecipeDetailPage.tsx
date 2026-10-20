@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { ContinueDesigning, DesigningBadge } from "@/components/recipes/Designing";
+import { DrinkBadge } from "@/components/recipes/DrinkBadge";
 import { DrinkFields } from "@/components/recipes/DrinkFields";
 import { DuplicateDialog } from "@/components/recipes/DuplicateDialog";
 import { duplicateButtonId } from "@/components/recipes/duplicateIds";
@@ -120,6 +121,11 @@ export function RecipeDetailPage() {
 
   const row = detail.data.recipe;
   const current = currentVersion(detail.data.versions)?.version;
+  // A Recipe still being designed serves no drink until version 1 is filled from the brief; the
+  // brief already holds the one the person chose, so the heading shows that meanwhile.
+  const brief = row.designing ? row.design_brief : null;
+  const headingDrink = row.drink ?? brief?.drink ?? null;
+  const headingNotes = row.drink_notes || brief?.drink_notes || "";
   const duplicating =
     duplicate.versionId === null
       ? undefined
@@ -130,7 +136,16 @@ export function RecipeDetailPage() {
       <BackLink />
       <PageHeader
         title={row.name}
+        titleBadge={<DrinkBadge drink={headingDrink} />}
         subtitle={recipeSummary(row)}
+        detail={
+          headingNotes ? (
+            <p className="break-words" data-testid="recipe-drink-notes">
+              <span className="text-muted-foreground">Drink notes: </span>
+              {headingNotes}
+            </p>
+          ) : null
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {row.designing ? <DesigningBadge /> : null}
@@ -265,8 +280,9 @@ export function RecipeDetailPage() {
         ) : (
           <p className="text-muted-foreground text-sm">
             {row.shot_count} shot{row.shot_count === 1 ? "" : "s"} across {row.version_count}{" "}
-            version{row.version_count === 1 ? "" : "s"}. Changing the grind, the dose or the profile
-            records a new version, so the archive can tell you what the change did.
+            version{row.version_count === 1 ? "" : "s"}. Changing the grind, the dose, the profile,
+            the drink or its notes records a new version, so the archive can tell you what the
+            change did.
           </p>
         )}
         {row.designing ? null : (

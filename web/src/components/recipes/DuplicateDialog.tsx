@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
 import type { DuplicatePreview, RecipeVersionRow } from "@/api/types";
+import { DrinkBadge } from "@/components/recipes/DrinkBadge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -352,6 +353,26 @@ function DuplicateForm({
           ({version.version_label}'s; change it later)
         </span>
       </p>
+
+      {/* What the copy starts with: the source version's drink and notes, copied whole. */}
+      {preview.version_fields.drink ? (
+        <p className="text-sm" data-testid="duplicate-drink">
+          <span className="text-muted-foreground text-xs">Drink </span>
+          <DrinkBadge drink={preview.version_fields.drink} className="align-middle" />{" "}
+          <span className="text-muted-foreground text-xs">
+            ({version.version_label}'s; change it later)
+          </span>
+        </p>
+      ) : null}
+      {preview.version_fields.drink_notes ? (
+        <p className="break-words text-sm" data-testid="duplicate-drink-notes">
+          <span className="text-muted-foreground text-xs">Drink notes </span>
+          {preview.version_fields.drink_notes}{" "}
+          <span className="text-muted-foreground text-xs">
+            ({version.version_label}'s; change it later)
+          </span>
+        </p>
+      ) : null}
 
       {preview.insights.length > 0 ? (
         <InsightsChoice
