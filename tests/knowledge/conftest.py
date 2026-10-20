@@ -1,7 +1,7 @@
 """A database with tier 2 and tier 3 in it, and a tiny corpus to test against.
 
 Two fixtures, because the tests want two different things. `seeded_docs` is the
-**real** shipped corpus — twenty-five documents, thirty thousand words — and it
+**real** shipped corpus — twenty-nine documents, thirty-two thousand words — and it
 is what the search, bound and seeding tests use, because a chunker that behaves
 on hand-written markdown and falls over on the real files would pass a suite
 that only fed it hand-written markdown. `small_docs` is three files written for

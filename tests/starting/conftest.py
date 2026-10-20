@@ -365,7 +365,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
     *app's* own database handle, and reaching into a pytest fixture's wrapped
     coroutine to do that breaks on a pytest upgrade.
 
-    ``seed_knowledge`` is opt-out because chunking the twenty-five shipped
+    ``seed_knowledge`` is opt-out because chunking the twenty-nine shipped
     documents is a couple of hundred milliseconds, and most tests here are about
     SQL or about the service rather than about retrieval.
     """

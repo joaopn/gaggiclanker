@@ -3,7 +3,9 @@
 Every markdown file in this directory (and its subdirectories) is a copy of a
 knowledge file from [gaggimate-mcp](https://github.com/julianleopold/gaggimate-mcp),
 which is MIT-licensed, verbatim except for gaggiclanker's own notes, which are marked
-*gaggiclanker note*, and two files that have passages cut (see "What was trimmed" below). They are shipped here so gaggiclanker's knowledge tier 2
+*gaggiclanker note*, three files that have passages cut or moved out (see "What was
+trimmed" below), and the four drink documents in `drinks/`, which are gaggiclanker's own
+text (see "The drink documents" below). They are shipped here so gaggiclanker's knowledge tier 2
 can be seeded from files in the repository the way the prompts and the rule tier
 are — the copy in the database is the live one, the file is the default, and
 `POST /api/knowledge/docs/{slug}/reset` puts the file's text back.
@@ -64,6 +66,36 @@ resistance bands, the calibration decisions and the label naming decision for
 the bands, and the section that tabulated every band's calibration and the
 channeling risk scoring. "Channeling" as a physical effect in the puck, in any
 document, is untouched: it is not a label.
+
+`MILK_AND_DRINKS.md` has its "Espresso Drinks" section moved out, and one sentence of it
+cut; see the next section.
+
+## The drink documents
+
+`drinks/ESPRESSO.md`, `drinks/AMERICANO.md`, `drinks/CAPPUCCINO.md` and `drinks/LATTE.md` are
+gaggiclanker's own text, written for the model and for a person reading the knowledge base:
+what each drink covers, what the shot has to do in that cup, what that tends to mean for the
+recipe, what tastes wrong and what it usually points to, and how the drink notes matter. Their
+proportions and tendencies come from gaggimate-barista (Charlie Hall, MIT) as gaggimate-mcp
+adapts it, and from common barista practice.
+
+What moved out of `MILK_AND_DRINKS.md`, from its "Espresso Drinks" section, with the table rows
+and sentence unchanged:
+
+* into `drinks/CAPPUCCINO.md`: the "Drink Specifications" rows for the macchiato, cortado,
+  piccolo, cappuccino (traditional and modern) and flat white; the "Drink Format Recommendations"
+  rows for a bright, fruity, delicate shot, a sweet, balanced, medium-bodied one and a
+  clarity-focused one; and the sentence "Extract for the bean's best expression, then match the
+  right drink format."
+* into `drinks/LATTE.md`: the "Drink Specifications" row for the latte and the "Drink Format
+  Recommendations" row for an intense, heavy-bodied, bold shot.
+
+Cut, and not moved: the sentence "Never adjust grind, ratio, pressure, or temperature to 'make
+the shot work in milk.'" The drink documents say the opposite, that what a shot has to do
+depends on the cup it ends up in. `MILK_AND_DRINKS.md` keeps the steaming sections, the milk
+types, the single-boiler workflow and the troubleshooting table, and its opening line now points
+to the Cappuccino and Latte entries. `ESPRESSO_BREWING_BASICS.md` is untouched: it keeps its
+ratio table and shot styles, which `drinks/ESPRESSO.md` names instead of copying.
 
 ## What was left out, and why
 

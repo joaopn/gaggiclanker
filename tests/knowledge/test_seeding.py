@@ -41,7 +41,7 @@ async def test_the_attribution_file_is_not_a_document(seeded_docs: KnowledgeServ
     """It explains provenance; chunking it would put a licence in search results."""
     slugs = {doc.slug for doc in await seeded_docs.docs.list_docs()}
     assert "ATTRIBUTION" not in slugs
-    assert len(slugs) == 25
+    assert len(slugs) == 29
 
 
 async def test_a_second_seed_changes_nothing(small: KnowledgeService, small_dir: Path) -> None:

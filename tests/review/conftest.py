@@ -108,7 +108,7 @@ async def seeded(db: Database) -> Database:
     """A database with the shipped prompts and the whole knowledge base in it.
 
     All three tiers, because the golden prompt carries all three. Seeding the
-    twenty-five documents is a couple of hundred milliseconds of chunking once
+    twenty-nine documents is a couple of hundred milliseconds of chunking once
     per test that asks for it — worth it, because a golden that rendered "no
     reference excerpts were retrieved" would assert nothing about the half of
     this feature that does the retrieving.

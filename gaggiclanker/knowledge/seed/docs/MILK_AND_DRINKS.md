@@ -1,6 +1,6 @@
 # Milk & Drink Preparation
 
-Steaming technique, temperature thresholds, drink specs, and single-boiler workflow for home baristas.
+Steaming technique, temperature thresholds, milk types, and single-boiler workflow for home baristas. What each drink asks of the shot, and the drink specifications, are in the Cappuccino and Latte entries.
 
 *Adapted from [gaggimate-barista](https://github.com/charleshall888/gaggimate-barista) by Charlie Hall.*
 
@@ -89,35 +89,6 @@ Single boiler machines can't brew and steam simultaneously. You need to manage t
 | **Best for** | Most drinks (milk quality matters more) | Straight espresso with a splash |
 
 **Recommended sequence:** Shot first. Espresso degrades more gracefully than steamed milk — a 60-second-old shot still tastes good, but microfoam starts separating after 30 seconds.
-
----
-
-## Espresso Drinks
-
-### Coffee First, Drink Second
-
-Extract for the bean's best expression, then match the right drink format. Never adjust grind, ratio, pressure, or temperature to "make the shot work in milk."
-
-**Drink Format Recommendations**
-
-| Shot Character | Recommended Format | Milk Volume | Why |
-|----------------|-------------------|-------------|-----|
-| Bright, fruity, delicate | Cortado or piccolo | 2-3 oz | Small milk volume preserves acidity and fruit |
-| Sweet, balanced, medium body | Cappuccino or flat white | 4-6 oz | Enough milk to complement without drowning |
-| Intense, heavy body, bold | Latte (if desired) | 8-10 oz | More milk balances intensity |
-| Clarity-focused (turbo/allongé) | Cortado or piccolo | 2-3 oz | Lighter body gets lost in large drinks |
-
-### Drink Specifications
-
-| Drink | Espresso | Milk | Foam | Total Volume | Espresso:Milk | Vessel |
-|-------|----------|------|------|-------------|---------------|--------|
-| Macchiato | 1 oz (single) | 0.5 oz | Dollop of foam | ~2 oz | 1:0.5 | 2-3 oz demitasse |
-| Cortado | 2 oz (double) | 2 oz | Thin microfoam | ~4 oz | 1:1 | 4 oz glass (Gibraltar) |
-| Piccolo | 1 oz (single ristretto) | 2-3 oz | Thin microfoam | ~3.5 oz | 1:2.5 | 3-4 oz glass |
-| Cappuccino (traditional) | 2 oz (double) | 2 oz | 2 oz stiff foam | ~6 oz | 1:1:1 | 5-6 oz ceramic |
-| Cappuccino (modern) | 2 oz (double) | 4 oz | Microfoam throughout | ~6 oz | 1:2 | 6 oz ceramic |
-| Flat white | 2 oz (double) | 4 oz | Very thin microfoam | ~6 oz | 1:2 | 5-6 oz ceramic |
-| Latte | 2 oz (double) | 8-10 oz | Thin foam layer | ~10-12 oz | 1:4-5 | 8-12 oz glass or ceramic |
 
 ---
 

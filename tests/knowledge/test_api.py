@@ -19,7 +19,7 @@ async def _data(response: httpx.Response) -> dict:  # type: ignore[type-arg]
 
 async def test_the_docs_list_carries_counts_but_not_the_markdown(client: httpx.AsyncClient) -> None:
     data = await _data(await client.get("/api/knowledge/docs"))
-    assert len(data["items"]) == 25
+    assert len(data["items"]) == 29
     first = data["items"][0]
     assert first["chunk_count"] > 0
     assert first["tokens_estimate"] > 0
