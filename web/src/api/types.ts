@@ -62,6 +62,7 @@ export type MachinePatch = components["schemas"]["MachinePatch"];
 // Recipes, beans, grinders and the judgement. Every one of these is a real
 // pydantic model on the server, so none of them is retyped here.
 export type Vocabulary = components["schemas"]["Vocabulary"];
+export type Drink = components["schemas"]["Drink"];
 export type FlavorNode = components["schemas"]["FlavorNode"];
 export type FlavorPicks = components["schemas"]["FlavorPicks"];
 export type ShotInformation = components["schemas"]["ShotInformation"];

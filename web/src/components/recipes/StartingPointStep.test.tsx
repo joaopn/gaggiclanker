@@ -87,6 +87,8 @@ function render(props: Partial<Parameters<typeof StartingPointStep>[0]> = {}) {
       grindUnit="numbers"
       usualGrind="22"
       doseHint="18"
+      drink="espresso"
+      drinkNotes=""
       onUsualGrindChange={() => {}}
       runId={undefined}
       onRunStarted={() => {}}
@@ -142,6 +144,8 @@ describe("StartingPointStep", () => {
         grinder_id: 1,
         usual_grind: "22",
         dose_hint_g: 18,
+        drink: "espresso",
+        drink_notes: "",
       }),
     );
     // The row is the handle: the caller holds the id and the step follows it.

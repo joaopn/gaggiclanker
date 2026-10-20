@@ -8,7 +8,14 @@ import {
   followName,
   NewRecipeDialog,
 } from "@/components/recipes/NewRecipeDialog";
-import { bean, grinder, recipeRow, startingPointRun, version } from "@/test/recipesFixtures";
+import {
+  bean,
+  grinder,
+  recipeRow,
+  startingPointRun,
+  version,
+  vocabulary,
+} from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -17,6 +24,7 @@ vi.mock("sonner", () => ({
 }));
 
 const {
+  getVocabulary,
   getBeans,
   getGrinders,
   getMachines,
@@ -31,6 +39,7 @@ const {
   previewProfileDraft,
   duplicateProfile,
 } = vi.hoisted(() => ({
+  getVocabulary: vi.fn(),
   getBeans: vi.fn(),
   getGrinders: vi.fn(),
   getMachines: vi.fn(),
@@ -47,6 +56,7 @@ const {
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
+  getVocabulary,
   getBeans,
   getGrinders,
   getMachines,
@@ -90,6 +100,7 @@ function choice(id: number, label: string): ProfileChoice {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getVocabulary.mockResolvedValue(vocabulary);
   getBeans.mockResolvedValue({ items: [bean()] });
   getGrinders.mockResolvedValue({ items: [grinder()] });
   getMachines.mockResolvedValue({
@@ -668,6 +679,112 @@ describe("NewRecipeDialog", () => {
         "Target yield 36 g from 9 Bar Espresso.",
       );
     });
+  });
+});
+
+describe("NewRecipeDialog, the drink", () => {
+  it("offers the server's drinks in a native select, Espresso preselected, with its covers line under it", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<NewRecipeDialog open onOpenChange={() => {}} />);
+
+    const select = (await screen.findByLabelText("Drink")) as HTMLSelectElement;
+    expect(select.tagName).toBe("SELECT");
+    await screen.findByRole("option", { name: "Latte" });
+    expect(
+      within(select)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(vocabulary.drinks.map((drink) => drink.label));
+    expect(select.value).toBe("espresso");
+    expect(screen.getByTestId("drink-covers")).toHaveTextContent(
+      "the shot as it comes out, any ratio",
+    );
+
+    // The line under the select follows the selection.
+    await user.selectOptions(select, "cappuccino");
+    expect(screen.getByTestId("drink-covers")).toHaveTextContent(
+      "a little milk: macchiato, cortado, flat white, cappuccino",
+    );
+    expect(select).toHaveAccessibleDescription(/a little milk/);
+  });
+
+  it("carries each drink's covers line on its option as a title", async () => {
+    renderWithQueryClient(<NewRecipeDialog open onOpenChange={() => {}} />);
+    const select = await screen.findByLabelText("Drink");
+    await screen.findByRole("option", { name: "Latte" });
+    const titles = within(select)
+      .getAllByRole("option")
+      .map((option) => option.getAttribute("title"));
+    expect(titles).toEqual(vocabulary.drinks.map((drink) => drink.covers));
+  });
+
+  it("has a Drink notes field with its hint", async () => {
+    renderWithQueryClient(<NewRecipeDialog open onOpenChange={() => {}} />);
+    const notes = await screen.findByLabelText("Drink notes");
+    expect(notes).toHaveAccessibleDescription(
+      "How the drink is made around the shot. Later versions keep it until you change it.",
+    );
+  });
+
+  it("sends the chosen drink and notes to POST /api/recipes", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<NewRecipeDialog open onOpenChange={() => {}} />);
+    await pickBean();
+    await pickProfile("7");
+    await user.selectOptions(screen.getByLabelText("Drink"), "latte");
+    await user.type(screen.getByLabelText("Drink notes"), "  oat milk, ~150 ml ");
+    await user.click(screen.getByRole("button", { name: "Start the Recipe" }));
+
+    await waitFor(() => expect(createRecipe).toHaveBeenCalled());
+    expect(createRecipe.mock.calls[0][0].version).toEqual(
+      expect.objectContaining({ drink: "latte", drink_notes: "oat milk, ~150 ml" }),
+    );
+  });
+
+  it("sends Espresso and no notes when the person touched neither", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<NewRecipeDialog open onOpenChange={() => {}} />);
+    await pickBean();
+    await pickProfile("7");
+    await user.click(screen.getByRole("button", { name: "Start the Recipe" }));
+    await waitFor(() => expect(createRecipe).toHaveBeenCalled());
+    expect(createRecipe.mock.calls[0][0].version).toEqual(
+      expect.objectContaining({ drink: "espresso", drink_notes: "" }),
+    );
+  });
+
+  it("sends them to the design brief too", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<NewRecipeDialog open initialBeanId={1} onOpenChange={() => {}} />);
+    await screen.findByRole("option", { name: "Niche Zero" });
+    await user.selectOptions(screen.getByLabelText("Grinder"), "1");
+    await user.selectOptions(await screen.findByLabelText("Drink"), "americano");
+    await user.type(screen.getByLabelText("Drink notes"), "90 ml of hot water");
+    await user.click(screen.getByTestId("design-with-agent"));
+    await user.click(screen.getByTestId("start-designing"));
+
+    await waitFor(() => expect(designRecipe).toHaveBeenCalled());
+    expect(designRecipe.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ drink: "americano", drink_notes: "90 ml of hot water" }),
+    );
+  });
+
+  it("hands them to the starting point", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<NewRecipeDialog open initialBeanId={1} onOpenChange={() => {}} />);
+    await screen.findByRole("option", { name: "Niche Zero" });
+    await user.selectOptions(screen.getByLabelText("Grinder"), "1");
+    await user.selectOptions(await screen.findByLabelText("Drink"), "cappuccino");
+    await user.type(screen.getByLabelText("Drink notes"), "whole milk");
+    await user.click(screen.getByTestId("suggest-starting-point"));
+    const ask = await screen.findByTestId("ask-for-suggestions");
+    await waitFor(() => expect(ask).toBeEnabled());
+    await user.click(ask);
+
+    await waitFor(() => expect(createStartingPoint).toHaveBeenCalled());
+    expect(createStartingPoint.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ drink: "cappuccino", drink_notes: "whole milk" }),
+    );
   });
 });
 

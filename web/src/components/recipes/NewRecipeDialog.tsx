@@ -2,12 +2,14 @@ import { ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type {
+  Drink,
   ProfileVersionSummary,
   RecipeCreate,
   RecipeDesignCreate,
   TakenProfileChoice,
 } from "@/api/types";
 import { DuplicateProfileDialog } from "@/components/drafts/DuplicateProfileDialog";
+import { DrinkFields } from "@/components/recipes/DrinkFields";
 import { StartingPointStep } from "@/components/recipes/StartingPointStep";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +23,7 @@ import { useProfileVersion, useProfileVersions } from "@/hooks/useArchive";
 import { useBeans, useGrinders } from "@/hooks/useCatalog";
 import { useSendChatMessage } from "@/hooks/useChat";
 import { useCreateRecipe, useProfileChoices, useStartDesign } from "@/hooks/useRecipes";
+import { DEFAULT_DRINK } from "@/lib/drinks";
 import { attempt } from "@/lib/mutations";
 import { beanLabel, beanScaleLabels } from "@/lib/recipes";
 import { cn } from "@/lib/utils";
@@ -75,6 +78,10 @@ type Draft = {
   doseG: string;
   targetYieldG: string;
   intent: string;
+  /** The drink the Recipe is for, one of the server's values. Required, Espresso to begin with. */
+  drink: Drink;
+  /** How the drink is made around the shot, in the person's words; may be empty. */
+  drinkNotes: string;
   /**
    * The name the dialog filled in by itself, or "" when it has not. While the
    * name field still holds exactly this, nobody has typed in it, so a new bean
@@ -106,6 +113,8 @@ const EMPTY: Draft = {
   doseG: "",
   targetYieldG: "",
   intent: "",
+  drink: DEFAULT_DRINK,
+  drinkNotes: "",
   autoName: "",
   usualGrind: "",
   goal: "",
@@ -181,9 +190,8 @@ export function toDesignBody(draft: Draft): RecipeDesignCreate {
     grind_setting: draft.grindSetting.trim(),
     dose_g: toNumber(draft.doseG),
     target_yield_g: toNumber(draft.targetYieldG),
-    // The dialog's Drink row arrives with the screens; until then a new Recipe is an Espresso one.
-    drink: "espresso",
-    drink_notes: "",
+    drink: draft.drink,
+    drink_notes: draft.drinkNotes.trim(),
   };
 }
 
@@ -205,9 +213,8 @@ export function toCreateBody(draft: Draft): RecipeCreate {
       dose_g: toNumber(draft.doseG),
       target_yield_g: toNumber(draft.targetYieldG),
       intent: draft.intent,
-      // The dialog's Drink row arrives with the screens; until then a new Recipe is an Espresso one.
-      drink: "espresso",
-      drink_notes: "",
+      drink: draft.drink,
+      drink_notes: draft.drinkNotes.trim(),
       // The starting point is not an experiment against anything, so it
       // states no prediction; one is added from the Recipe page when it is.
       prediction: "",
@@ -651,6 +658,15 @@ export function NewRecipeDialog({
             </p>
           ) : null}
 
+          {/* The drink is the Recipe's, not the form's: the suggestion and the design below read
+              the same two fields, so they sit in the form and are not asked for again. */}
+          <DrinkFields
+            drink={draft.drink}
+            onDrinkChange={(value) => set("drink", value as Drink)}
+            notes={draft.drinkNotes}
+            onNotesChange={(value) => set("drinkNotes", value)}
+          />
+
           <Labelled id={ids.intent} label="What are you trying? (optional)">
             <input
               id={ids.intent}
@@ -680,6 +696,8 @@ export function NewRecipeDialog({
           grindUnit={chosenGrinder?.step_unit ?? "clicks"}
           usualGrind={draft.usualGrind}
           doseHint={draft.doseG}
+          drink={draft.drink}
+          drinkNotes={draft.drinkNotes}
           onUsualGrindChange={(value) => set("usualGrind", value)}
           runId={runId}
           onRunStarted={setRunId}

@@ -1,4 +1,4 @@
-import type { FieldChange, Vocabulary } from "@/api/types";
+import type { Drink, FieldChange, Vocabulary } from "@/api/types";
 
 /**
  * A drink's word, from the server's vocabulary (`GET /api/vocab`).
@@ -44,3 +44,9 @@ export function drinkChangeLine(changes: FieldChange[]): string | null {
   if (notes) parts.push(`notes ${notesVerb(notes)}`);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
+
+/** The drink a new Recipe starts with in the dialog: Espresso, the shot as it comes out. */
+export const DEFAULT_DRINK: Drink = "espresso";
+
+/** The longest a version's drink notes may be, as the server caps them. */
+export const DRINK_NOTES_MAX = 500;

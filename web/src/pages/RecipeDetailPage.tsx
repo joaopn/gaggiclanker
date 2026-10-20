@@ -2,13 +2,14 @@ import { AlertTriangle, Archive, ArrowLeft, Coffee, GitBranch, Trash2, Undo2 } f
 import { useId, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
-import type { RecipeDetailData, RecipeRow } from "@/api/types";
+import type { Drink, RecipeDetailData, RecipeRow } from "@/api/types";
 import { RecipeTrendChart } from "@/components/charts/RecipeTrendChart";
 import { DiscussButton } from "@/components/chat/DiscussButton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { ContinueDesigning, DesigningBadge } from "@/components/recipes/Designing";
+import { DrinkFields } from "@/components/recipes/DrinkFields";
 import { DuplicateDialog } from "@/components/recipes/DuplicateDialog";
 import { duplicateButtonId } from "@/components/recipes/duplicateIds";
 import { MajorChoice } from "@/components/recipes/MajorChoice";
@@ -555,10 +556,18 @@ function BackLink() {
 /**
  * A new version: only the fields you changed, plus what you are trying.
  *
- * Every field starts empty rather than prefilled with the current recipe, and
+ * The numbers start empty rather than prefilled with the current version, and
  * that is the whole design of the endpoint showing through: an omitted field
  * inherits the parent's value, so a form prefilled with the current values
- * would record all five as changed and the timeline's diff would say nothing.
+ * would record every number as changed and the timeline's diff would say nothing.
+ *
+ * **The drink and its notes are the exception: they start filled** with the current version's,
+ * because "empty keeps the value" cannot say "remove the notes". What is sent is still only what
+ * differs from the current version, so an untouched field changes nothing. Another drink
+ * switches the major box on and says why; the person can switch it back. Notes alone suggest
+ * nothing, and clearing them sends an empty string. A version that states no drink offers "Not
+ * stated", and the drink is then sent only if one is picked (never as null: the server refuses
+ * a drink once stated being unstated).
  */
 function NewVersionForm({
   recipeId,
@@ -599,6 +608,11 @@ function NewVersionForm({
   // The current version, which is what "compared to" means unless somebody says
   // otherwise: this version is a change to that one.
   const current = currentVersion(versions)?.version;
+  // Filled with the current version's, unlike the numbers: see above. "" is a drink not stated.
+  const currentDrink = current?.drink ?? "";
+  const currentNotes = current?.drink_notes ?? "";
+  const [drink, setDrink] = useState(currentDrink);
+  const [drinkNotes, setDrinkNotes] = useState(currentNotes);
   const [compare, setCompare] = useState(current ? String(current.id) : "");
   // "Major change": the person's answer once they have given one; until then the box is
   // unticked, because grind, dose and yield are dialling in: minor versions.
@@ -618,7 +632,12 @@ function NewVersionForm({
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
+  // Another drink is a major change; nothing is suggested for the notes alone.
+  const drinkChanged = drink !== "" && drink !== currentDrink;
   const major = majorChoice ?? false;
+  // Only a changed value is sent. Whitespace around notes is the server's to strip, so it is not
+  // a change either.
+  const notesChanged = drinkNotes.trim() !== currentNotes.trim();
 
   return (
     <form
@@ -644,6 +663,9 @@ function NewVersionForm({
               ...grindPatch(grind),
               ...(number(dose) ? { dose_g: number(dose) } : {}),
               ...(number(target) ? { target_yield_g: number(target) } : {}),
+              // Nothing while designing: version 1 takes the drink from the brief whatever is sent.
+              ...(!designing && drinkChanged ? { drink: drink as Drink } : {}),
+              ...(!designing && notesChanged ? { drink_notes: drinkNotes.trim() } : {}),
               // What the box shows is what is sent. Nothing while designing:
               // the recipe fills version 1 either way.
               ...(designing ? {} : { major }),
@@ -709,6 +731,25 @@ function NewVersionForm({
           />
         </Labelled>
       </div>
+      {/* While designing, version 1 takes the drink from the brief the Recipe was started with,
+          so a field here would promise what the server then ignores. */}
+      {designing ? null : (
+        <DrinkFields
+          drink={drink}
+          onDrinkChange={(value) => {
+            setDrink(value);
+            // Another drink is a major change, and putting the old one back puts the choice back
+            // to unsaid; either way the box stays the person's.
+            setMajorChoice(value !== "" && value !== currentDrink ? true : null);
+          }}
+          notes={drinkNotes}
+          onNotesChange={setDrinkNotes}
+          unstated={currentDrink === ""}
+          drinkHint="Shows the current drink; pick another to change it."
+          notesHint="Shows the current notes; edit them, or clear to remove."
+          disabled={add.isPending}
+        />
+      )}
       <Labelled id={ids.intent} label="What are you trying?">
         <input
           id={ids.intent}
@@ -758,6 +799,7 @@ function NewVersionForm({
           onChange={setMajorChoice}
           minorLabel={nextMinorLabel}
           majorLabel={nextMajorLabel}
+          suggested={drinkChanged ? "the drink changes" : ""}
           disabled={add.isPending}
         />
       )}

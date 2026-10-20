@@ -1,5 +1,6 @@
 import { Sparkles } from "lucide-react";
 import type {
+  Drink,
   ProfileVersionSummary,
   SimilarRecipe,
   StartingPointOption,
@@ -51,6 +52,8 @@ export function StartingPointStep({
   grinderId,
   usualGrind,
   doseHint,
+  drink,
+  drinkNotes,
   onUsualGrindChange,
   runId,
   onRunStarted,
@@ -61,6 +64,9 @@ export function StartingPointStep({
   grinderId: number | null;
   usualGrind: string;
   doseHint: string;
+  /** The dialog's Drink and Drink notes: what the suggestion is for. */
+  drink: Drink;
+  drinkNotes: string;
   onUsualGrindChange: (value: string) => void;
   runId: number | undefined;
   onRunStarted: (runId: number) => void;
@@ -133,9 +139,8 @@ export function StartingPointStep({
               grinder_id: grinderId,
               usual_grind: usualGrind.trim(),
               dose_hint_g: toNumber(doseHint),
-              // The dialog's Drink row arrives with the screens; until then the Recipe is Espresso.
-              drink: "espresso",
-              drink_notes: "",
+              drink,
+              drink_notes: drinkNotes.trim(),
               model: "",
             }),
           );

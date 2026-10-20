@@ -16,6 +16,7 @@ export function MajorChoice({
   minorLabel,
   majorLabel,
   reason = "",
+  suggested = "",
   disabled = false,
 }: {
   checked: boolean;
@@ -26,6 +27,11 @@ export function MajorChoice({
   majorLabel: string;
   /** The agent's reason for suggesting a major version, when it suggested one. */
   reason?: string;
+  /**
+   * What the form itself noticed that suggests a major version ("the drink changes"). The form
+   * says it, not an agent: the box is still the person's and they can switch it back.
+   */
+  suggested?: string;
   disabled?: boolean;
 }) {
   const id = useId();
@@ -45,13 +51,19 @@ export function MajorChoice({
         <span>Major change</span>
       </label>
       <p id={helpId} className="text-muted-foreground text-xs" data-testid="major-choice-help">
-        A functional change to what the profile does is a major change; a new grind, dose or yield,
-        or a tuned copy of the profile, is a minor one. This records{" "}
+        A functional change to what the profile does, or a change of drink, is a major change; a new
+        grind, dose or yield, or a tuned copy of the profile, is a minor one. This records{" "}
         <span className="font-medium text-foreground" data-testid="major-choice-result">
           {checked ? majorLabel : minorLabel}
         </span>
         {checked ? ` rather than ${minorLabel}.` : ` rather than ${majorLabel}.`}
       </p>
+      {suggested ? (
+        <p className="text-xs" data-testid="major-suggested">
+          <span className="font-medium tabular-nums">{majorLabel}</span>{" "}
+          <span className="text-muted-foreground">suggested: {suggested}</span>
+        </p>
+      ) : null}
       {reason ? (
         <p className="text-xs" data-testid="major-reason">
           <span className="text-muted-foreground">The agent suggests a major version: </span>“
