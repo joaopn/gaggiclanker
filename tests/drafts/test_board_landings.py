@@ -185,7 +185,7 @@ async def test_a_set_draft_renamed_onto_a_name_that_became_a_profile_is_refused_
     )
     second = await app_row(app, client, fake, provider, 7, name="Second")
     await app.state.db.execute(
-        "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, renamed["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, renamed["id"])
     )
     await approve(app, renamed)
 
@@ -292,7 +292,7 @@ async def test_a_set_draft_lands_on_the_profile_the_set_brews_and_the_landing_na
     set_id = await make_set_on(client, "Landing set", row["current_version_id"])
     draft = await draft_of(app, client, provider, BASE_LABEL, 7)
     await app.state.db.execute(
-        "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, draft["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
     )
     await approve(app, draft)
 

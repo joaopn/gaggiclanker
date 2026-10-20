@@ -104,25 +104,25 @@ class _Model(BaseModel):
 EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
     (
         "The ten most recent shots in one Set, newest first",
-        "SELECT shot_id, started_at, set_version_label, volume_g, ratio, rating\n"
-        "  FROM v_shots WHERE set_id = 3 ORDER BY started_at DESC LIMIT 10",
+        "SELECT shot_id, started_at, recipe_version_label, volume_g, ratio, rating\n"
+        "  FROM v_shots WHERE recipe_id = 3 ORDER BY started_at DESC LIMIT 10",
     ),
     (
         "Average yield, ratio and rating per version of a Set, the version with the earliest shot "
         "first",
-        "SELECT set_version_label, COUNT(*) AS shots,\n"
+        "SELECT recipe_version_label, COUNT(*) AS shots,\n"
         "       ROUND(AVG(volume_g), 1) AS avg_yield_g,\n"
         "       ROUND(AVG(ratio), 2) AS avg_ratio,\n"
         "       ROUND(AVG(rating), 2) AS avg_rating\n"
-        "  FROM v_shots WHERE set_id = 3\n"
-        " GROUP BY set_version_id, set_version_label ORDER BY MIN(started_at)",
+        "  FROM v_shots WHERE recipe_id = 3\n"
+        " GROUP BY recipe_version_id, recipe_version_label ORDER BY MIN(started_at)",
     ),
     (
         "The claims of a Set's shots that nobody rejected, with the fault word and the phase "
         "they are about",
         "SELECT s.shot_id, c.fault, c.window_text, c.text\n"
         "  FROM v_shots s JOIN v_review_claims c ON c.shot_id = s.shot_id AND c.kind = 'claim'\n"
-        " WHERE s.set_id = 3 AND c.fault IS NOT NULL\n"
+        " WHERE s.recipe_id = 3 AND c.fault IS NOT NULL\n"
         " ORDER BY s.started_at DESC LIMIT 20",
     ),
     (
@@ -160,11 +160,11 @@ SCHEMA_NOTES = (
     "temperature the profile states — a Set version records none of its own, so two "
     "versions differ in temperature only when they name different versions of the profile. "
     "A Set version "
-    "is named v<major>.<minor>: version_label (set_version_label in v_shots) is the name to "
+    "is named v<major>.<minor>: version_label (recipe_version_label in v_shots) is the name to "
     "say, 'v1.1'; version_major and version_minor are its parts. A name is an identifier, "
     "not a position: v1.2 may have been made after v2, so sort versions by created_at and "
-    "never infer order from the name. is_current (v_set_versions) and current_version_label "
-    "(v_sets) say which version a Set is on, and parent_version_label which one a version "
+    "never infer order from the name. is_current (v_recipe_versions) and current_version_label "
+    "(v_recipes) say which version a Set is on, and parent_version_label which one a version "
     "was made from. v_review_claims holds every claim of a shot's newest finished review "
     "that a person did not reject (the fault word, the window it is about, its text and the "
     "numbers behind it); v_reviews says how many claims a review kept and how many a person "

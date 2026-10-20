@@ -305,7 +305,7 @@ def test_serves_early_check_refuses_a_database_that_differs_at_the_latest_level(
     from gaggiclanker.__main__ import _refuse_foreign_database
 
     conn = sqlite3.connect(env.database_path)
-    conn.executescript(schema.schema_sql() + "\nALTER TABLE sets ADD COLUMN surprise TEXT;")
+    conn.executescript(schema.schema_sql() + "\nALTER TABLE recipes ADD COLUMN surprise TEXT;")
     conn.close()
     with pytest.raises(SystemExit) as exit_:
         _refuse_foreign_database(env)
@@ -323,7 +323,7 @@ async def test_an_older_database_in_the_wrong_state_reaches_the_upgrades_own_ref
 
     await database_one_level_behind(env)
     conn = sqlite3.connect(env.database_path)
-    conn.execute("ALTER TABLE sets ADD COLUMN surprise TEXT")
+    conn.execute("ALTER TABLE recipes ADD COLUMN surprise TEXT")
     conn.close()
     aim_at_next_level(monkeypatch, steps_to_next())
     monkeypatch.setattr(schema, "check_database_file", behind_check(schema))
@@ -343,7 +343,7 @@ async def test_an_older_database_in_the_wrong_state_reaches_the_upgrades_own_ref
     assert "different version" not in err and "Delete it to start fresh" not in err
     refused = next(e for e in fake.events if e["event"] == "database_upgrade_refused")
     assert refused["db_level"] == LATEST
-    assert "unexpected column sets.surprise" in refused["differences"]
+    assert "unexpected column recipes.surprise" in refused["differences"]
     assert not any(e["event"] == "database_schema_differs" for e in fake.events)
     assert digest(path) == before
     assert sorted(p.name for p in path.parent.iterdir()) == names

@@ -146,7 +146,7 @@ async def manual_draft(
 async def set_version_ids(app: FastAPI, set_id: int) -> list[int]:
     """The ids of a Set's versions, oldest first."""
     rows = await app.state.db.fetch_all(
-        "SELECT id FROM set_versions WHERE set_id = ? ORDER BY created_at, id", (set_id,)
+        "SELECT id FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id", (set_id,)
     )
     return [int(row["id"]) for row in rows]
 
@@ -196,8 +196,8 @@ async def make_set_on_a_free_profile(app: FastAPI, client: httpx.AsyncClient, na
     row = await app.state.db.fetch_one(
         "SELECT b.current_version_id AS version FROM profile_board b "
         "WHERE b.deleted_at IS NULL "
-        "AND NOT EXISTS (SELECT 1 FROM sets s WHERE s.board_id = b.id) "
-        "AND NOT EXISTS (SELECT 1 FROM set_version_pins p WHERE p.board_id = b.id) "
+        "AND NOT EXISTS (SELECT 1 FROM recipes s WHERE s.board_id = b.id) "
+        "AND NOT EXISTS (SELECT 1 FROM recipe_version_pins p WHERE p.board_id = b.id) "
         "ORDER BY b.id"
     )
     assert row is not None, "every live profile has a Set"
@@ -299,20 +299,21 @@ async def assert_sets_follow_their_profiles(db: Any) -> None:
       active: the Set follows its profile (a revert makes the profile follow the Set).
     """
     foreign = await db.fetch_all(
-        "SELECT v.id, v.set_id, pv.board_id AS owner, s.board_id AS mine FROM set_versions v "
-        "JOIN sets s ON s.id = v.set_id JOIN profile_versions pv ON pv.id = v.profile_version_id "
+        "SELECT v.id, v.recipe_id, pv.board_id AS owner, s.board_id AS mine FROM recipe_versions v "
+        "JOIN recipes s ON s.id = v.recipe_id JOIN profile_versions pv ON pv.id = "
+        "v.profile_version_id "
         "WHERE pv.board_id IS NOT s.board_id"
     )
     assert [dict(r) for r in foreign] == [], "a Set version brews another profile's version"
     shared = await db.fetch_all(
-        "SELECT board_id, COUNT(*) AS n FROM sets WHERE board_id IS NOT NULL "
+        "SELECT board_id, COUNT(*) AS n FROM recipes WHERE board_id IS NOT NULL "
         "GROUP BY board_id HAVING n > 1"
     )
     assert [dict(r) for r in shared] == [], "a profile has two Sets"
     behind = await db.fetch_all(
         "SELECT s.id AS set_id, cur.profile_version_id AS brews, b.current_version_id AS active "
-        "FROM sets s JOIN profile_board b ON b.id = s.board_id "
-        "JOIN set_versions cur ON cur.id = s.current_version_id "
+        "FROM recipes s JOIN profile_board b ON b.id = s.board_id "
+        "JOIN recipe_versions cur ON cur.id = s.current_version_id "
         "WHERE s.designing = 0 AND cur.profile_version_id IS NOT b.current_version_id"
     )
     assert [dict(r) for r in behind] == [], "a Set does not brew its profile's active version"

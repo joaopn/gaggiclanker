@@ -23,6 +23,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.renamed_keys import STARTING_OUTPUT, from_stored, to_stored
 from gaggiclanker.db.repository import Repository
 
 __all__ = [
@@ -172,7 +173,9 @@ class StartingPointRunsRepository(Repository):
                 "output_json": (
                     None
                     if output is None
-                    else json.dumps(output, separators=(",", ":"), sort_keys=True)
+                    else json.dumps(
+                        to_stored(output, STARTING_OUTPUT), separators=(",", ":"), sort_keys=True
+                    )
                 ),
                 "usage_json": (None if usage is None else json.dumps(usage, separators=(",", ":"))),
                 "error": error,
@@ -214,7 +217,7 @@ class StartingPointRunsRepository(Repository):
     async def release(self, run_id: int) -> None:
         """Undo a claim whose work then failed. Only ever an unfinished one.
 
-        The `accepted_set_id IS NULL` guard is what makes this safe to call from
+        The `accepted_recipe_id IS NULL` guard is what makes this safe to call from
         an exception handler: a claim that did produce a Set is never withdrawn,
         whatever went wrong afterwards, because the Set is real and the row has
         to keep pointing at it.
@@ -223,7 +226,7 @@ class StartingPointRunsRepository(Repository):
             """
             UPDATE starting_point_runs
                SET accepted_option = NULL, accepted_at = NULL
-             WHERE id = ? AND accepted_set_id IS NULL
+             WHERE id = ? AND accepted_recipe_id IS NULL
             """,
             (run_id,),
         )
@@ -240,8 +243,8 @@ class StartingPointRunsRepository(Repository):
         await self.db.execute(
             """
             UPDATE starting_point_runs
-               SET accepted_set_id = :set_id,
-                   accepted_set_version_id = :set_version_id,
+               SET accepted_recipe_id = :set_id,
+                   accepted_recipe_version_id = :set_version_id,
                    accepted_draft_id = :draft_id
              WHERE id = :id
             """,
@@ -286,6 +289,6 @@ class StartingPointRunsRepository(Repository):
     def _to_row(self, row: Any) -> StartingPointRunRow:
         data = dict(row)
         data["input"] = _decode(data.pop("input_json", None)) or {}
-        data["output"] = _decode(data.pop("output_json", None))
+        data["output"] = from_stored(_decode(data.pop("output_json", None)), STARTING_OUTPUT)
         data["usage"] = _decode(data.pop("usage_json", None))
         return StartingPointRunRow.model_validate(data)

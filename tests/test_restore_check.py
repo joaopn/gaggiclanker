@@ -181,7 +181,7 @@ def _only_other_tables(tmp_path: Path) -> Callable[[Path], Path]:
 
 
 def _extra_column(good: Path) -> Path:
-    return edit(good, "ALTER TABLE sets ADD COLUMN surprise TEXT;")
+    return edit(good, "ALTER TABLE recipes ADD COLUMN surprise TEXT;")
 
 
 def _changed_view(good: Path) -> Path:

@@ -1116,20 +1116,20 @@ _SET_SELECT = f"""
            cfs.id AS copied_from_set_id,
            cfs.name AS copied_from_set_name,
            {label_sql("cf")} AS copied_from_version_label,
-           (SELECT COUNT(*) FROM set_versions v WHERE v.set_id = s.id) AS version_count,
+           (SELECT COUNT(*) FROM recipe_versions v WHERE v.recipe_id = s.id) AS version_count,
            (SELECT COUNT(*) FROM shots sh
-             JOIN set_versions v2 ON v2.id = sh.set_version_id
-            WHERE v2.set_id = s.id) AS shot_count
-    FROM sets s
+             JOIN recipe_versions v2 ON v2.id = sh.recipe_version_id
+            WHERE v2.recipe_id = s.id) AS shot_count
+    FROM recipes s
     JOIN beans b ON b.id = s.bean_id
     LEFT JOIN grinders g ON g.id = s.grinder_id
     -- The current version is the Set's pointer, not the newest row: a revert
     -- moves the Set back onto an older version without writing a new one.
-    LEFT JOIN set_versions cur ON cur.id = s.current_version_id
+    LEFT JOIN recipe_versions cur ON cur.id = s.current_version_id
     LEFT JOIN profile_versions pv ON pv.id = cur.profile_version_id
     LEFT JOIN profile_board pb ON pb.id = s.board_id
-    LEFT JOIN set_versions cf ON cf.id = s.copied_from_version_id
-    LEFT JOIN sets cfs ON cfs.id = cf.set_id
+    LEFT JOIN recipe_versions cf ON cf.id = s.copied_from_version_id
+    LEFT JOIN recipes cfs ON cfs.id = cf.recipe_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 #: The self-joins resolve a row id into the version *name* a reader sees.
@@ -1149,13 +1149,13 @@ _VERSION_SELECT = f"""
            {label_sql("res")} AS restores_version_label,
            {label_sql("par")} AS parent_version_label,
            (cs.current_version_id = v.id) AS is_current,
-           (SELECT COUNT(*) FROM shots sh WHERE sh.set_version_id = v.id) AS shot_count
-    FROM set_versions v
-    JOIN sets cs ON cs.id = v.set_id
-    LEFT JOIN set_versions par ON par.id = v.parent_version_id
+           (SELECT COUNT(*) FROM shots sh WHERE sh.recipe_version_id = v.id) AS shot_count
+    FROM recipe_versions v
+    JOIN recipes cs ON cs.id = v.recipe_id
+    LEFT JOIN recipe_versions par ON par.id = v.parent_version_id
     LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
-    LEFT JOIN set_versions cmp ON cmp.id = v.compares_to_version_id
-    LEFT JOIN set_versions res ON res.id = v.restores_version_id
+    LEFT JOIN recipe_versions cmp ON cmp.id = v.compares_to_version_id
+    LEFT JOIN recipe_versions res ON res.id = v.restores_version_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
@@ -1217,7 +1217,7 @@ class SetsRepository(Repository):
         )
         cursor = await self.db.execute(
             """
-            INSERT INTO sets (name, bean_id, grinder_id, archived, automatch, created_at,
+            INSERT INTO recipes (name, bean_id, grinder_id, archived, automatch, created_at,
                               copied_from_version_id, board_id)
             VALUES (:name, :bean_id, :grinder_id, 0, :automatch, :created_at, :copied_from,
                     :board_id)
@@ -1268,7 +1268,7 @@ class SetsRepository(Repository):
             # machine file the list has not adopted (Writes off never adopts any), in either case
             # one no Set names yet. The Set has no profile until the list takes the file over.
             if await self.db.fetch_value(
-                "SELECT 1 FROM set_versions WHERE profile_version_id = ? LIMIT 1",
+                "SELECT 1 FROM recipe_versions WHERE profile_version_id = ? LIMIT 1",
                 (profile_version_id,),
             ) or not (from_a_draft or await self._is_an_unadopted_file(profile_version_id)):
                 raise VersionRefused("not_the_active_version")
@@ -1320,9 +1320,9 @@ class SetsRepository(Repository):
         of its own and is not to be copied."""
         rows = await self.db.fetch_all(
             "SELECT b.current_version_id AS id, b.label AS label, s.id AS set_id, "
-            "s.name AS set_name FROM profile_board b JOIN sets s ON s.board_id = b.id "
+            "s.name AS set_name FROM profile_board b JOIN recipes s ON s.board_id = b.id "
             "WHERE b.deleted_at IS NULL "
-            "AND NOT EXISTS (SELECT 1 FROM set_version_pins p "
+            "AND NOT EXISTS (SELECT 1 FROM recipe_version_pins p "
             "WHERE p.profile_version_id = b.current_version_id) "
             "ORDER BY b.label COLLATE NOCASE, b.id"
         )
@@ -1349,7 +1349,7 @@ class SetsRepository(Repository):
         async with self.db.transaction():
             cursor = await self.db.execute(
                 """
-                INSERT INTO sets (name, bean_id, grinder_id, archived, automatch,
+                INSERT INTO recipes (name, bean_id, grinder_id, archived, automatch,
                                   designing, design_brief, created_at)
                 VALUES (:name, :bean_id, :grinder_id, 0, 1, 1, :design_brief, :created_at)
                 """,
@@ -1381,11 +1381,11 @@ class SetsRepository(Repository):
         row = await self.db.fetch_one(
             """
             SELECT s.designing,
-                   (SELECT COUNT(*) FROM set_versions v WHERE v.set_id = s.id) AS versions,
+                   (SELECT COUNT(*) FROM recipe_versions v WHERE v.recipe_id = s.id) AS versions,
                    (SELECT COUNT(*) FROM shots sh
-                      JOIN set_versions v2 ON v2.id = sh.set_version_id
-                     WHERE v2.set_id = s.id) AS shots
-              FROM sets s WHERE s.id = ?
+                      JOIN recipe_versions v2 ON v2.id = sh.recipe_version_id
+                     WHERE v2.recipe_id = s.id) AS shots
+              FROM recipes s WHERE s.id = ?
             """,
             (set_id,),
         )
@@ -1417,7 +1417,7 @@ class SetsRepository(Repository):
         now = utc_now()
         async with self.db.transaction():
             designing = await self.db.fetch_value(
-                "SELECT designing FROM sets WHERE id = ?", (set_id,)
+                "SELECT designing FROM recipes WHERE id = ?", (set_id,)
             )
             if designing is None:
                 return "no_set"
@@ -1427,14 +1427,14 @@ class SetsRepository(Repository):
             if refusal is not None:
                 return refusal
             drafts = await self.db.fetch_all(
-                "SELECT draft_id FROM set_version_proposals "
-                "WHERE set_id = ? AND draft_id IS NOT NULL ORDER BY id",
+                "SELECT draft_id FROM recipe_version_proposals "
+                "WHERE recipe_id = ? AND draft_id IS NOT NULL ORDER BY id",
                 (set_id,),
             )
             await ProfileDraftsRepository(self.db).discard_unsent(
-                [int(row["draft_id"]) for row in drafts], now=now, why="set_discarded"
+                [int(row["draft_id"]) for row in drafts], now=now, why="recipe_discarded"
             )
-            await self.db.execute("DELETE FROM sets WHERE id = ?", (set_id,))
+            await self.db.execute("DELETE FROM recipes WHERE id = ?", (set_id,))
         log.info("set_design_discarded", set_id=set_id)
         return None
 
@@ -1470,7 +1470,9 @@ class SetsRepository(Repository):
         row = await self.get(set_id)
         if row is None or (wanted and row.archived):
             return None
-        await self.db.execute("UPDATE sets SET automatch = ? WHERE id = ?", (int(wanted), set_id))
+        await self.db.execute(
+            "UPDATE recipes SET automatch = ? WHERE id = ?", (int(wanted), set_id)
+        )
         return await self.get(set_id)
 
     async def archive(self, set_id: int) -> SetRow | None:
@@ -1482,7 +1484,7 @@ class SetsRepository(Repository):
         """
         async with nullcontext() if self.db.in_transaction else self.db.transaction():
             cursor = await self.db.execute(
-                "UPDATE sets SET archived = 1, automatch = 0 WHERE id = ?", (set_id,)
+                "UPDATE recipes SET archived = 1, automatch = 0 WHERE id = ?", (set_id,)
             )
             if cursor.rowcount == 0:
                 return None
@@ -1552,7 +1554,9 @@ class SetsRepository(Repository):
         parent = await self._current_version_row(set_id)
         if parent is None:
             return None
-        designing = await self.db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,))
+        designing = await self.db.fetch_value(
+            "SELECT designing FROM recipes WHERE id = ?", (set_id,)
+        )
         if designing:
             refusal = await self.design_refusal(set_id)
             if refusal is not None:
@@ -1594,7 +1598,7 @@ class SetsRepository(Repository):
         if board is None:
             return
         if (
-            await self.db.fetch_value("SELECT board_id FROM sets WHERE id = ?", (set_id,))
+            await self.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (set_id,))
             is not None
         ):
             return
@@ -1606,7 +1610,7 @@ class SetsRepository(Repository):
         # every version no profile owns that the Set names is settled for it: taken over, or the
         # profile gets a copy of its own that the Set's versions then name. The new version, which
         # names the profile's own, is written by the caller; nothing is followed from here.
-        await self.db.execute("UPDATE sets SET board_id = ? WHERE id = ?", (board, set_id))
+        await self.db.execute("UPDATE recipes SET board_id = ? WHERE id = ?", (board, set_id))
         await ProfileBoardRepository(self.db).settle_a_sets_versions(board, set_id, follow=False)
 
     async def _insert_version(
@@ -1661,15 +1665,15 @@ class SetsRepository(Repository):
         }
         for field in RECIPE_FIELDS:
             payload[field] = values.get(field)
-        columns = ", ".join(payload)
+        columns = ", ".join("recipe_id" if name == "set_id" else name for name in payload)
         placeholders = ", ".join(f":{name}" for name in payload)
         cursor = await self.db.execute(
-            f"INSERT INTO set_versions ({columns}) VALUES ({placeholders})",  # noqa: S608 - keys are the literal payload above
+            f"INSERT INTO recipe_versions ({columns}) VALUES ({placeholders})",  # noqa: S608 - keys are the literal payload above
             payload,
         )
         version_id = int(cursor.lastrowid or 0)
         await self.db.execute(
-            "UPDATE sets SET current_version_id = ? WHERE id = ?", (version_id, set_id)
+            "UPDATE recipes SET current_version_id = ? WHERE id = ?", (version_id, set_id)
         )
         await self._retire_waiting(set_id, now, keep_proposal=keep_proposal)
         log.info(
@@ -1692,7 +1696,9 @@ class SetsRepository(Repository):
 
     async def set_of_profile(self, board_id: int) -> tuple[int, str] | None:
         """The Set this profile belongs to, as ``(id, name)``; ``None`` for a profile with none."""
-        row = await self.db.fetch_one("SELECT id, name FROM sets WHERE board_id = ?", (board_id,))
+        row = await self.db.fetch_one(
+            "SELECT id, name FROM recipes WHERE board_id = ?", (board_id,)
+        )
         return None if row is None else (int(row["id"]), str(row["name"]))
 
     async def taken_sentence(self, board_id: int) -> str | None:
@@ -1720,7 +1726,7 @@ class SetsRepository(Repository):
             return
         row = await self.db.fetch_one(
             "SELECT pv.board_id AS owner, s.board_id AS mine "
-            "FROM profile_versions pv, sets s WHERE pv.id = ? AND s.id = ?",
+            "FROM profile_versions pv, recipes s WHERE pv.id = ? AND s.id = ?",
             (profile_version_id, set_id),
         )
         if row is not None and row["owner"] != row["mine"]:
@@ -1769,12 +1775,12 @@ class SetsRepository(Repository):
         owner = await self.profile_to_start_on(values["profile_version_id"], from_a_draft=True)
         if owner is not None:
             await self.db.execute(
-                "UPDATE sets SET board_id = ? WHERE id = ?", (owner, current.set_id)
+                "UPDATE recipes SET board_id = ? WHERE id = ?", (owner, current.set_id)
             )
         await self._refuse_another_profile(current.set_id, values["profile_version_id"])
         await self.db.execute(
             """
-            UPDATE set_versions
+            UPDATE recipe_versions
                SET profile_version_id = :profile_version_id,
                    grind_setting = :grind_setting,
                    grind_value = :grind_value,
@@ -1796,7 +1802,7 @@ class SetsRepository(Repository):
                 "id": current.id,
             },
         )
-        await self.db.execute("UPDATE sets SET designing = 0 WHERE id = ?", (current.set_id,))
+        await self.db.execute("UPDATE recipes SET designing = 0 WHERE id = ?", (current.set_id,))
         await self._retire_waiting(current.set_id, now, keep_proposal=keep_proposal)
         log.info("set_design_filled", set_id=current.set_id, set_version_id=current.id)
         if owner is not None:
@@ -1824,8 +1830,8 @@ class SetsRepository(Repository):
         params = {"set_id": set_id, "now": now, "keep": keep_proposal}
         drafts = await self.db.fetch_all(
             """
-            SELECT draft_id FROM set_version_proposals
-             WHERE set_id = :set_id
+            SELECT draft_id FROM recipe_version_proposals
+             WHERE recipe_id = :set_id
                AND status = 'proposed'
                AND draft_id IS NOT NULL
                AND (:keep IS NULL OR id != :keep)
@@ -1834,13 +1840,13 @@ class SetsRepository(Repository):
             params,
         )
         await ProfileDraftsRepository(self.db).discard_unsent(
-            [int(row["draft_id"]) for row in drafts], now=now, why="set_written_otherwise"
+            [int(row["draft_id"]) for row in drafts], now=now, why="recipe_written_otherwise"
         )
         await self.db.execute(
             """
-            UPDATE set_version_proposals
+            UPDATE recipe_version_proposals
                SET status = 'stale', decided_at = :now
-             WHERE set_id = :set_id
+             WHERE recipe_id = :set_id
                AND status = 'proposed'
                AND (:keep IS NULL OR id != :keep)
             """,
@@ -1891,7 +1897,7 @@ class SetsRepository(Repository):
             values = _prediction_values(spec.prediction, compares_to, now=now)
             await self.db.execute(
                 """
-                UPDATE set_versions
+                UPDATE recipe_versions
                    SET prediction = :prediction,
                        compares_to_version_id = :compares_to_version_id,
                        prediction_at = :prediction_at
@@ -1937,7 +1943,7 @@ class SetsRepository(Repository):
             return VersionWriteResult(refused="nothing_to_grade")
         await self.db.execute(
             """
-            UPDATE set_versions
+            UPDATE recipe_versions
                SET outcome = :outcome, outcome_note = :note, outcome_at = :now
              WHERE id = :id
             """,
@@ -1952,7 +1958,7 @@ class SetsRepository(Repository):
             if version is None:
                 return VersionWriteResult(refused="no_version")
             await self.db.execute(
-                "UPDATE set_versions SET outcome = NULL, outcome_note = '', outcome_at = NULL "
+                "UPDATE recipe_versions SET outcome = NULL, outcome_note = '', outcome_at = NULL "
                 "WHERE id = ?",
                 (version_id,),
             )
@@ -1978,7 +1984,7 @@ class SetsRepository(Repository):
         """
         now = utc_now()
         async with nullcontext() if self.db.in_transaction else self.db.transaction():
-            if await self.db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,)):
+            if await self.db.fetch_value("SELECT designing FROM recipes WHERE id = ?", (set_id,)):
                 return VersionWriteResult(refused="designing")
             current = await self._current_version_row(set_id)
             if current is None:
@@ -1989,11 +1995,12 @@ class SetsRepository(Repository):
             if target.id == current.id:
                 return VersionWriteResult(refused="current_version")
             await self.db.execute(
-                "UPDATE sets SET current_version_id = ? WHERE id = ?", (target.id, set_id)
+                "UPDATE recipes SET current_version_id = ? WHERE id = ?", (target.id, set_id)
             )
             await self.db.execute(
-                "INSERT INTO set_version_reverts "
-                "(set_id, from_version_id, to_version_id, note, created_at) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO recipe_version_reverts "
+                "(recipe_id, from_version_id, to_version_id, note, created_at) VALUES (?, ?, ?, "
+                "?, ?)",
                 (set_id, current.id, target.id, spec.note.strip(), now),
             )
             await self._retire_waiting(set_id, now)
@@ -2009,14 +2016,14 @@ class SetsRepository(Repository):
         """Every time this Set went back, newest first, each version by its name."""
         rows = await self.db.fetch_all(
             f"""
-            SELECT r.id, r.set_id, r.from_version_id,
+            SELECT r.id, r.recipe_id, r.from_version_id,
                    {label_sql("f")} AS from_version_label,
                    r.to_version_id, {label_sql("t")} AS to_version_label,
                    r.note, r.created_at
-              FROM set_version_reverts r
-              JOIN set_versions f ON f.id = r.from_version_id
-              JOIN set_versions t ON t.id = r.to_version_id
-             WHERE r.set_id = ?
+              FROM recipe_version_reverts r
+              JOIN recipe_versions f ON f.id = r.from_version_id
+              JOIN recipe_versions t ON t.id = r.to_version_id
+             WHERE r.recipe_id = ?
              ORDER BY r.created_at DESC, r.id DESC
             """,  # noqa: S608 - the interpolation is the label expression, the id is bound
             (set_id,),
@@ -2027,13 +2034,13 @@ class SetsRepository(Repository):
         """Every revert that put the Set back on this version, oldest first."""
         rows = await self.db.fetch_all(
             f"""
-            SELECT r.id, r.set_id, r.from_version_id,
+            SELECT r.id, r.recipe_id, r.from_version_id,
                    {label_sql("f")} AS from_version_label,
                    r.to_version_id, {label_sql("t")} AS to_version_label,
                    r.note, r.created_at
-              FROM set_version_reverts r
-              JOIN set_versions f ON f.id = r.from_version_id
-              JOIN set_versions t ON t.id = r.to_version_id
+              FROM recipe_version_reverts r
+              JOIN recipe_versions f ON f.id = r.from_version_id
+              JOIN recipe_versions t ON t.id = r.to_version_id
              WHERE r.to_version_id = ?
              ORDER BY r.created_at, r.id
             """,  # noqa: S608 - the interpolation is the label expression, the id is bound
@@ -2076,7 +2083,7 @@ class SetsRepository(Repository):
         Set's" is how they come to disagree.
         """
         row = await self.db.fetch_one(
-            f"{_VERSION_SELECT} WHERE v.id = ? AND v.set_id = ?", (version_id, set_id)
+            f"{_VERSION_SELECT} WHERE v.id = ? AND v.recipe_id = ?", (version_id, set_id)
         )
         return self.to_model(SetVersionRow, row)
 
@@ -2088,7 +2095,8 @@ class SetsRepository(Repository):
         Set's version.
         """
         row = await self.db.fetch_one(
-            f"{_VERSION_SELECT} WHERE v.set_id = ? AND v.version_major = ? AND v.version_minor = ?",
+            f"{_VERSION_SELECT} WHERE v.recipe_id = ? AND v.version_major = ? AND v.version_minor "
+            f"= ?",
             (set_id, major, minor),
         )
         return self.to_model(SetVersionRow, row)
@@ -2108,7 +2116,7 @@ class SetsRepository(Repository):
                 """
                 SELECT COUNT(*) FROM shots s
                 JOIN shot_judgements j ON j.shot_id = s.id
-                WHERE s.set_version_id = ? AND j.decision IN ('keep', 'improve')
+                WHERE s.recipe_version_id = ? AND j.decision IN ('keep', 'improve')
                 """,
                 (version_id,),
             )
@@ -2119,16 +2127,16 @@ class SetsRepository(Repository):
         """How every version's shots were labelled, in one grouped pass."""
         rows = await self.db.fetch_all(
             """
-            SELECT sh.set_version_id AS version_id,
+            SELECT sh.recipe_version_id AS version_id,
                    SUM(j.decision = 'keep') AS keep,
                    SUM(j.decision = 'improve') AS improve,
                    SUM(j.decision = 'discard') AS discard,
                    SUM(j.decision IS NULL) AS unlabelled
             FROM shots sh
-            JOIN set_versions v ON v.id = sh.set_version_id
+            JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
-            WHERE v.set_id = ?
-            GROUP BY sh.set_version_id
+            WHERE v.recipe_id = ?
+            GROUP BY sh.recipe_version_id
             """,
             (set_id,),
         )
@@ -2154,21 +2162,21 @@ class SetsRepository(Repository):
         a thing somebody said, not a thing a shot count implies.
         """
         current = await self.db.fetch_value(
-            "SELECT current_version_id FROM sets WHERE id = ?", (set_id,)
+            "SELECT current_version_id FROM recipes WHERE id = ?", (set_id,)
         )
         rows = await self.db.fetch_all(
-            "SELECT id, set_id, parent_version_id, restores_version_id "
-            "FROM set_versions WHERE set_id = ?",
+            "SELECT id, recipe_id, parent_version_id, restores_version_id "
+            "FROM recipe_versions WHERE recipe_id = ?",
             (set_id,),
         )
         kept = {
             int(row["id"])
             for row in await self.db.fetch_all(
                 """
-                SELECT DISTINCT sh.set_version_id AS id FROM shots sh
+                SELECT DISTINCT sh.recipe_version_id AS id FROM shots sh
                   JOIN shot_judgements j ON j.shot_id = sh.id
-                  JOIN set_versions v ON v.id = sh.set_version_id
-                 WHERE v.set_id = ? AND j.decision = 'keep'
+                  JOIN recipe_versions v ON v.id = sh.recipe_version_id
+                 WHERE v.recipe_id = ? AND j.decision = 'keep'
                 """,
                 (set_id,),
             )
@@ -2184,8 +2192,8 @@ class SetsRepository(Repository):
             f"""
             SELECT s.board_id AS board_id, s.id AS id, s.name AS name,
                    v.profile_version_id AS pv, {label_sql("v")} AS version_label
-              FROM sets s
-              JOIN set_versions v ON v.id = s.current_version_id
+              FROM recipes s
+              JOIN recipe_versions v ON v.id = s.current_version_id
              WHERE s.archived = 0 AND s.board_id IS NOT NULL
             """  # noqa: S608 - the only interpolation is the version label expression, a constant
         )
@@ -2273,14 +2281,14 @@ class SetsRepository(Repository):
             return set()
         placeholders = ", ".join("?" * len(wanted))
         rows = await self.db.fetch_all(
-            "SELECT id, set_id, parent_version_id, restores_version_id "  # noqa: S608 - placeholders are generated, the ids are bound
-            f"FROM set_versions WHERE set_id IN ({placeholders})",
+            "SELECT id, recipe_id, parent_version_id, restores_version_id "  # noqa: S608 - placeholders are generated, the ids are bound
+            f"FROM recipe_versions WHERE recipe_id IN ({placeholders})",
             wanted,
         )
         pointers = {
             int(row["id"]): row["current_version_id"]
             for row in await self.db.fetch_all(
-                f"SELECT id, current_version_id FROM sets WHERE id IN ({placeholders})",  # noqa: S608 - placeholders are generated, the ids are bound
+                f"SELECT id, current_version_id FROM recipes WHERE id IN ({placeholders})",  # noqa: S608 - placeholders are generated, the ids are bound
                 wanted,
             )
         }
@@ -2295,14 +2303,14 @@ class SetsRepository(Repository):
     async def versions(self, set_id: int) -> list[SetVersionRow]:
         """Every version of a Set, newest made first — the order the timeline reads in."""
         rows = await self.db.fetch_all(
-            f"{_VERSION_SELECT} WHERE v.set_id = ? ORDER BY v.created_at DESC, v.id DESC",
+            f"{_VERSION_SELECT} WHERE v.recipe_id = ? ORDER BY v.created_at DESC, v.id DESC",
             (set_id,),
         )
         return self.to_models(SetVersionRow, rows)
 
     async def _current_version_row(self, set_id: int) -> SetVersionRow | None:
         row = await self.db.fetch_one(
-            f"{_VERSION_SELECT} WHERE v.id = cs.current_version_id AND v.set_id = ?", (set_id,)
+            f"{_VERSION_SELECT} WHERE v.id = cs.current_version_id AND v.recipe_id = ?", (set_id,)
         )
         return self.to_model(SetVersionRow, row)
 
@@ -2328,8 +2336,8 @@ class SetsRepository(Repository):
             # one path around it.
             exists = await self.db.fetch_value(
                 """
-                SELECT 1 FROM set_versions v
-                JOIN sets s ON s.id = v.set_id
+                SELECT 1 FROM recipe_versions v
+                JOIN recipes s ON s.id = v.recipe_id
                 WHERE v.id = ? AND s.archived = 0
                 """,
                 (version_id,),
@@ -2337,7 +2345,7 @@ class SetsRepository(Repository):
             if exists is None:
                 return False
         cursor = await self.db.execute(
-            "UPDATE shots SET set_version_id = ?, updated_at = ? WHERE id = ?",
+            "UPDATE shots SET recipe_version_id = ?, updated_at = ? WHERE id = ?",
             (version_id, utc_now(), shot_id),
         )
         return cursor.rowcount > 0
@@ -2368,8 +2376,8 @@ class SetsRepository(Repository):
         """File a shot that has no Set yet. Never moves one that has."""
         cursor = await self.db.execute(
             """
-            UPDATE shots SET set_version_id = ?, updated_at = ?
-            WHERE id = ? AND set_version_id IS NULL
+            UPDATE shots SET recipe_version_id = ?, updated_at = ?
+            WHERE id = ? AND recipe_version_id IS NULL
             """,
             (version_id, utc_now(), shot_id),
         )
@@ -2386,9 +2394,9 @@ class SetsRepository(Repository):
         """
         found = await self.db.fetch_value(
             """
-            SELECT p.set_version_id FROM set_version_pins p
-            JOIN set_versions v ON v.id = p.set_version_id
-            JOIN sets s ON s.id = v.set_id
+            SELECT p.recipe_version_id FROM recipe_version_pins p
+            JOIN recipe_versions v ON v.id = p.recipe_version_id
+            JOIN recipes s ON s.id = v.recipe_id
             WHERE p.profile_version_id = ? AND s.automatch = 1 AND s.archived = 0
             """,
             (profile_version_id,),
@@ -2414,8 +2422,8 @@ class SetsRepository(Repository):
         """
         found = await self.db.fetch_value(
             """
-            SELECT v.id FROM set_versions v
-            JOIN sets s ON s.id = v.set_id
+            SELECT v.id FROM recipe_versions v
+            JOIN recipes s ON s.id = v.recipe_id
             WHERE s.automatch = 1 AND s.archived = 0
               AND v.profile_version_id = ?
               AND v.id = s.current_version_id
@@ -2482,7 +2490,7 @@ class SetsRepository(Repository):
         else:
             if not shot_ids:
                 return ProfileMatchSummary()
-            sql += "s.set_version_id IS NULL AND s.quarantined = 0"
+            sql += "s.recipe_version_id IS NULL AND s.quarantined = 0"
             sql += f" AND s.id IN ({', '.join('?' for _ in shot_ids)})"
             params.extend(shot_ids)
         rows = await self.db.fetch_all(sql + " ORDER BY s.id", params)
@@ -2547,7 +2555,7 @@ class SetsRepository(Repository):
         rows = await self.db.fetch_all(
             f"""
             SELECT sh.id AS shot_id,
-                   sh.set_version_id AS version_id,
+                   sh.recipe_version_id AS version_id,
                    {label_sql("v")} AS version_label,
                    v.profile_version_id,
                    v.grind_setting,
@@ -2559,9 +2567,9 @@ class SetsRepository(Repository):
                    j.balance,
                    j.decision
             FROM shots sh
-            JOIN set_versions v ON v.id = sh.set_version_id
+            JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
-            WHERE v.set_id = ?
+            WHERE v.recipe_id = ?
               AND sh.quarantined = 0
               AND sh.incomplete = 0
               AND (j.decision IS NULL OR j.decision != 'discard')
@@ -2582,8 +2590,8 @@ class SetsRepository(Repository):
         rows = await self.db.fetch_all(
             """
             SELECT sh.id FROM shots sh
-            JOIN set_versions v ON v.id = sh.set_version_id
-            WHERE v.set_id = ?
+            JOIN recipe_versions v ON v.id = sh.recipe_version_id
+            WHERE v.recipe_id = ?
             """,
             (set_id,),
         )
@@ -2610,7 +2618,7 @@ class SetsRepository(Repository):
         ``until`` are ``YYYY-MM-DD`` days, both inclusive, of the UTC start
         time. Ordered by id, because the order is the caller's to decide.
         """
-        where = ["v.set_id = :set_id"]
+        where = ["v.recipe_id = :set_id"]
         params: dict[str, Any] = {"set_id": set_id}
         if version_id is not None:
             where.append("v.id = :version_id")
@@ -2641,7 +2649,7 @@ class SetsRepository(Repository):
             f"""
             SELECT sh.id
             FROM shots sh
-            JOIN set_versions v ON v.id = sh.set_version_id
+            JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
             WHERE {" AND ".join(where)}
             ORDER BY sh.id
@@ -2670,7 +2678,7 @@ class SetsRepository(Repository):
         constant, so a number here and a number in the evidence table can never
         be two different readings of the same shot.
         """
-        where = ["v.set_id = :set_id"]
+        where = ["v.recipe_id = :set_id"]
         params: dict[str, Any] = {"set_id": set_id, "limit": limit}
         if version_id is not None:
             where.append("v.id = :version_id")
@@ -2681,7 +2689,7 @@ class SetsRepository(Repository):
         rows = await self.db.fetch_all(
             f"""
             SELECT sh.id AS shot_id,
-                   sh.set_version_id AS version_id,
+                   sh.recipe_version_id AS version_id,
                    {label_sql("v")} AS version_label,
                    sh.started_at,
                    sh.quarantined,
@@ -2694,7 +2702,7 @@ class SetsRepository(Repository):
                    j.taste_notes_json,
                    j.aroma_notes_json
             FROM shots sh
-            JOIN set_versions v ON v.id = sh.set_version_id
+            JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
             WHERE {" AND ".join(where)}
             ORDER BY COALESCE(sh.started_at, '') DESC, sh.id DESC
@@ -2728,15 +2736,15 @@ class SetsRepository(Repository):
         """
         rows = await self.db.fetch_all(
             f"""
-            SELECT sh.id AS shot_id, sh.device_id, sh.set_version_id,
+            SELECT sh.id AS shot_id, sh.device_id, sh.recipe_version_id,
                    {label_sql("v")} AS version_label,
                    sh.started_at, sh.duration_ms,
                    j.dose_in_g, j.dose_out_g, j.rating, v.dose_g AS version_dose_g,
                    COALESCE(sh.final_weight_g, sh.index_volume_g) AS volume_g
             FROM shots sh
-            JOIN set_versions v ON v.id = sh.set_version_id
+            JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
-            WHERE v.set_id = ?
+            WHERE v.recipe_id = ?
             ORDER BY COALESCE(sh.started_at, ''), sh.id
             """,  # noqa: S608 - the interpolation is the label expression, the id is bound
             (set_id,),

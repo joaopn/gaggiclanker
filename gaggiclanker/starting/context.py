@@ -192,7 +192,7 @@ class StartingPointContext(BaseModel):
         return {
             "bean_facts": _render_bean(self.bean, self.as_of),
             "hardware_facts": _render_hardware(self.hardware),
-            "similar_sets": render_similar(self.similar),
+            "similar_recipes": render_similar(self.similar),
             "profile_library": render_profiles(self.profiles),
             "planned_style": (
                 f"{self.planned_style} — {self.planned_style_reason}"
@@ -414,9 +414,9 @@ async def profile_candidates(db: Database) -> list[ProfileCandidate]:
           FROM profile_board b
           JOIN profile_versions pv ON pv.id = b.current_version_id
          WHERE b.deleted_at IS NULL AND pv.utility = 0 AND {not_synthetic_sql("pv")}
-           AND NOT EXISTS (SELECT 1 FROM sets s WHERE s.board_id = b.id)
+           AND NOT EXISTS (SELECT 1 FROM recipes s WHERE s.board_id = b.id)
            -- A pin's copy belongs to one Set version for ever and no Set version may name it.
-           AND NOT EXISTS (SELECT 1 FROM set_version_pins p WHERE p.board_id = b.id)
+           AND NOT EXISTS (SELECT 1 FROM recipe_version_pins p WHERE p.board_id = b.id)
          ORDER BY shot_count DESC, pv.id DESC
          LIMIT ?
         """,  # noqa: S608 - the one interpolation is a constant fragment

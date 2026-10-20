@@ -131,6 +131,7 @@ def schema_sql() -> str:
 # Punctuation a space next to means nothing: "a(b, c)" and "a ( b,c )" are the same SQL.
 _TIGHT = frozenset("(),;")
 _QUOTES = {"'": "'", '"': '"', "`": "`", "[": "]"}
+_PLAIN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def normalize_sql(sql: str) -> str:
@@ -140,6 +141,12 @@ def normalize_sql(sql: str) -> str:
     becomes one space, and a space beside ``( ) , ;`` goes. String literals and quoted
     names are kept byte for byte, since a space inside ``'...'`` is data. Case is kept:
     telling a keyword from a name would be a parser.
+
+    One exception to "quoted names are kept": a double-quoted name that is a plain identifier
+    (``"recipes"``) reads as the bare name (``recipes``), because that is how SQLite reads it.
+    ``ALTER TABLE ... RENAME TO`` writes the new table name quoted into every foreign key that
+    refers to it, and a schema file spells the same reference bare. Single-quoted literals are
+    data and are never touched.
     """
     out: list[str] = []
     space = False
@@ -165,7 +172,10 @@ def normalize_sql(sql: str) -> str:
                         continue
                     break
                 end += 1
-            emit(sql[i : end + 1])
+            quoted = sql[i : end + 1]
+            if char == '"' and _PLAIN_NAME.fullmatch(quoted[1:-1]):
+                quoted = quoted[1:-1]
+            emit(quoted)
             i = end + 1
         elif sql.startswith("--", i):
             end = sql.find("\n", i)

@@ -112,8 +112,8 @@ class TestProposing:
         await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
         with pytest.raises(sqlite3.IntegrityError):
             await provenance.db.execute(
-                "INSERT INTO set_insight_deletions "
-                "(set_id, thread_id, insight_id, insight_text, reason) VALUES (?, ?, ?, 'x', ?)",
+                "INSERT INTO recipe_insight_deletions "
+                "(recipe_id, thread_id, insight_id, insight_text, reason) VALUES (?, ?, ?, 'x', ?)",
                 (provenance.set_id, provenance.thread, target, REASON),
             )
 

@@ -38,13 +38,13 @@ async def _a_pinned_set(wired: Fixtures) -> tuple[int, int, int]:
 
 
 async def _version_count(wired: Fixtures) -> int:
-    return int(await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions"))
+    return int(await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions"))
 
 
 async def test_a_new_set_and_a_new_version_cannot_name_a_copy(wired: Fixtures) -> None:
     set_id, _v1, copy = await _a_pinned_set(wired)
     before = await _version_count(wired)
-    sets_before = int(await wired.db.fetch_value("SELECT COUNT(*) FROM sets"))
+    sets_before = int(await wired.db.fetch_value("SELECT COUNT(*) FROM recipes"))
 
     with pytest.raises(VersionRefused) as refused:
         await wired.sets.create(
@@ -56,7 +56,7 @@ async def test_a_new_set_and_a_new_version_cannot_name_a_copy(wired: Fixtures) -
         await wired.sets.add_version(set_id, SetVersionPatch(profile_version_id=copy))
 
     assert await _version_count(wired) == before
-    assert int(await wired.db.fetch_value("SELECT COUNT(*) FROM sets")) == sets_before
+    assert int(await wired.db.fetch_value("SELECT COUNT(*) FROM recipes")) == sets_before
 
 
 async def test_a_design_cannot_fill_version_one_with_a_copy(wired: Fixtures) -> None:

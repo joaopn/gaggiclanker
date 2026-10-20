@@ -131,7 +131,7 @@ async def test_what_an_insight_rests_on_is_told_as_then_and_now(talking: Talking
     version = await world.sets.get(world.a)
     assert version is not None
     await world.db.execute(
-        "UPDATE set_versions SET outcome = 'failed' WHERE id = ?", (version.current_version_id,)
+        "UPDATE recipe_versions SET outcome = 'failed' WHERE id = ?", (version.current_version_id,)
     )
 
     given = await build_patterns_input(world.db)
@@ -143,7 +143,7 @@ async def test_what_an_insight_rests_on_is_told_as_then_and_now(talking: Talking
         if insight.id == talking.a_grinder
     )
     assert line.rests_on == ["v1 held → now failed"]
-    assert "rests on v1 held → now failed" in given.render()["set_insights"]
+    assert "rests on v1 held → now failed" in given.render()["recipe_insights"]
 
 
 async def test_declined_proposals_are_told_with_their_sources(talking: Talking) -> None:
@@ -193,7 +193,7 @@ async def test_archived_sets_are_read_and_designing_ones_are_not(talking: Talkin
 
     assert [item.id for item in given.sets] == [world.a, world.b, world.c]
     assert next(item for item in given.sets if item.id == world.c).archived is True
-    assert "(archived)" in given.render()["set_insights"]
+    assert "(archived)" in given.render()["recipe_insights"]
     assert world.designing not in {item.id for item in given.sets}
 
 

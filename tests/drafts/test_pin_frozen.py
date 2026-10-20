@@ -90,14 +90,16 @@ async def test_keeping_the_apps_side_of_a_pinned_files_conflict_works_as_for_any
 ) -> None:
     app, client, fake = adopted
     row, body = await _edited_on_the_machine(app, client, fake)
-    set_versions = int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_versions"))
+    set_versions = int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipe_versions"))
 
     kept = await client.post(
         f"/api/profile-board/{row['row']['id']}/conflict", json={"keep": "app", **body}
     )
 
     assert kept.status_code == 200, kept.text
-    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_versions")) == set_versions
+    assert (
+        int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipe_versions")) == set_versions
+    )
 
 
 async def test_keeping_the_machines_side_of_a_pinned_files_conflict_gives_the_set_a_new_version(
@@ -107,11 +109,13 @@ async def test_keeping_the_machines_side_of_a_pinned_files_conflict_gives_the_se
     a new minor version, and the pin names that Set version. The copy keeps the file and the
     machine's version."""
     app, client, fake = adopted
-    set_id = int(await app.state.db.fetch_value("SELECT MAX(id) FROM sets") or 0)
+    set_id = int(await app.state.db.fetch_value("SELECT MAX(id) FROM recipes") or 0)
     row, body = await _edited_on_the_machine(app, client, fake)
     row_id = row["row"]["id"]
-    set_id = int(await app.state.db.fetch_value("SELECT id FROM sets ORDER BY id DESC LIMIT 1"))
-    own = int(await app.state.db.fetch_value("SELECT board_id FROM sets WHERE id = ?", (set_id,)))
+    set_id = int(await app.state.db.fetch_value("SELECT id FROM recipes ORDER BY id DESC LIMIT 1"))
+    own = int(
+        await app.state.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (set_id,))
+    )
     before = int(
         await app.state.db.fetch_value(
             "SELECT current_version_id FROM profile_board WHERE id = ?", (own,)
@@ -127,7 +131,7 @@ async def test_keeping_the_machines_side_of_a_pinned_files_conflict_gives_the_se
     assert set_row["current_version_label"] == "v1.1"
     new_version = set_row["current_version_id"]
     pin = await app.state.db.fetch_one(
-        "SELECT * FROM set_version_pins WHERE board_id = ?", (row_id,)
+        "SELECT * FROM recipe_version_pins WHERE board_id = ?", (row_id,)
     )
     assert pin is not None and pin["set_version_id"] == new_version and pin["unpinned_at"] is None
     # ... and it names one version, the one the file holds now (the copy row's active version).
@@ -177,7 +181,7 @@ async def test_a_shot_on_a_pinned_file_still_in_conflict_stays_in_the_inbox(
 
     assert summary.matched == 0
     assert (
-        await app.state.db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
+        await app.state.db.fetch_value("SELECT recipe_version_id FROM shots WHERE id = ?", (shot,))
         is None
     )
 
@@ -192,7 +196,7 @@ async def test_a_shot_brewed_on_the_kept_file_files_under_the_pins_new_set_versi
     await client.post(f"/api/profile-board/{row_id}/conflict", json={"keep": "machine", **body})
     held = row_for(await get_board(client), NAME)["row"]
     pin = await app.state.db.fetch_one(
-        "SELECT * FROM set_version_pins WHERE board_id = ?", (row_id,)
+        "SELECT * FROM recipe_version_pins WHERE board_id = ?", (row_id,)
     )
     assert pin is not None
     shot = await make_shot(app.state.db, "000777", profile_version_id=held["current_version_id"])
@@ -201,7 +205,7 @@ async def test_a_shot_brewed_on_the_kept_file_files_under_the_pins_new_set_versi
 
     assert summary.matched == 1
     assert (
-        await app.state.db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
+        await app.state.db.fetch_value("SELECT recipe_version_id FROM shots WHERE id = ?", (shot,))
         == pin["set_version_id"]
     )
 
@@ -420,9 +424,9 @@ async def test_keeping_the_machines_name_in_a_both_sides_name_conflict_touches_n
 
     async def state() -> tuple[Any, ...]:
         return (
-            [tuple(r) for r in await db.fetch_all("SELECT * FROM set_versions ORDER BY id")],
-            [tuple(r) for r in await db.fetch_all("SELECT * FROM sets ORDER BY id")],
-            [tuple(r) for r in await db.fetch_all("SELECT * FROM set_version_pins ORDER BY id")],
+            [tuple(r) for r in await db.fetch_all("SELECT * FROM recipe_versions ORDER BY id")],
+            [tuple(r) for r in await db.fetch_all("SELECT * FROM recipes ORDER BY id")],
+            [tuple(r) for r in await db.fetch_all("SELECT * FROM recipe_version_pins ORDER BY id")],
             [
                 tuple(r)
                 for r in await db.fetch_all(

@@ -1,4 +1,4 @@
-name: chat-set
+name: chat-recipe
 description: |
   The agent in one Set's conversation: a rigorous experimenter's assistant
   working on one version of one coffee. It is handed the whole experiment

@@ -95,7 +95,7 @@ CHAT_EVENT = "chat.event"
 #: is for — grading an experiment, working out a recipe that does not exist
 #: yet, answering about the archive — and a single prompt would have to be read
 #: with two thirds of it crossed out.
-SET_CHAT_PROMPT = "chat-set"
+SET_CHAT_PROMPT = "chat-recipe"
 DESIGN_CHAT_PROMPT = "chat-design"
 GENERAL_CHAT_PROMPT = "chat-general"
 

@@ -350,7 +350,7 @@ bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medi
 [profile_version 2] Library 18g — 5 phases, 93 °C, used by 0 shots
   shape: Pre-infusion 3s pressure 5; Bloom 7s pump 0%; Pressurise 10s pressure 9 → volumetric gte 20; Ramp down 8s pressure 5 → volumetric gte 36; Hammer 1s pump 100%
 
-=== similar_sets ===
+=== similar_recipes ===
 [set_version 1] Kenya AA on the niche v1 — Kenya AA
   why it is similar: same roast level, same process, same origin
   bean: light, washed, Kenya

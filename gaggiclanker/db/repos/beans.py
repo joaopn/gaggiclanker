@@ -143,7 +143,7 @@ _WRITABLE = (
 #: LEFT JOIN with a GROUP BY would have to repeat every column of `beans` in the
 #: grouping clause for no measurable gain.
 _SELECT = """
-    SELECT b.*, (SELECT COUNT(*) FROM sets s WHERE s.bean_id = b.id) AS set_count
+    SELECT b.*, (SELECT COUNT(*) FROM recipes s WHERE s.bean_id = b.id) AS set_count
     FROM beans b
 """
 
@@ -225,7 +225,9 @@ class BeansRepository(Repository):
             if await self.db.fetch_value("SELECT 1 FROM beans WHERE id = ?", (bean_id,)) is None:
                 return BeanDeletion(found=False, deleted=False)
             set_count = int(
-                await self.db.fetch_value("SELECT COUNT(*) FROM sets WHERE bean_id = ?", (bean_id,))
+                await self.db.fetch_value(
+                    "SELECT COUNT(*) FROM recipes WHERE bean_id = ?", (bean_id,)
+                )
             )
             if set_count > 0:
                 return BeanDeletion(found=True, deleted=False, set_count=set_count)

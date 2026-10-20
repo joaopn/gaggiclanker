@@ -57,10 +57,10 @@ def test_a_comment_or_layout_edit_changes_nothing() -> None:
 @pytest.mark.parametrize(
     ("statement", "expected"),
     [
-        ("ALTER TABLE sets ADD COLUMN extra TEXT", "unexpected column sets.extra"),
-        ("ALTER TABLE sets DROP COLUMN design_brief", "missing column sets.design_brief"),
-        ("DROP INDEX idx_sets_bean", "missing index idx_sets_bean"),
-        ("CREATE INDEX idx_extra ON sets(name)", "unexpected index idx_extra"),
+        ("ALTER TABLE recipes ADD COLUMN extra TEXT", "unexpected column recipes.extra"),
+        ("ALTER TABLE recipes DROP COLUMN design_brief", "missing column recipes.design_brief"),
+        ("DROP INDEX idx_recipes_bean", "missing index idx_recipes_bean"),
+        ("CREATE INDEX idx_extra ON recipes(name)", "unexpected index idx_extra"),
         ("DROP VIEW v_judgements", "missing view v_judgements"),
         ("DROP TRIGGER knowledge_chunks_ai", "missing trigger knowledge_chunks_ai"),
         ("DROP TABLE chat_events", "missing table chat_events"),
@@ -148,9 +148,9 @@ _ONE_FACT = [
     ),
     (
         "index uniqueness",
-        "CREATE UNIQUE INDEX idx_set_versions_name",
-        "CREATE INDEX idx_set_versions_name",
-        "index idx_set_versions_name",
+        "CREATE UNIQUE INDEX idx_recipe_versions_name",
+        "CREATE INDEX idx_recipe_versions_name",
+        "index idx_recipe_versions_name",
     ),
     (
         "an index column order",
@@ -314,14 +314,63 @@ async def test_a_file_with_another_schema_is_refused_and_left_alone(
     db: Database, data_dir: Path
 ) -> None:
     await schema.create_schema(db)
-    await db.execute("ALTER TABLE sets ADD COLUMN surprise TEXT")
+    await db.execute("ALTER TABLE recipes ADD COLUMN surprise TEXT")
     await db.close()
     path = data_dir / "test.db"
     before = path.read_bytes()
     with pytest.raises(schema.SchemaMismatch) as caught:
         schema.check_database_file(path)
-    assert "unexpected column sets.surprise" in caught.value.differences
+    assert "unexpected column recipes.surprise" in caught.value.differences
     assert str(path) in str(caught.value)
     assert "Delete it to start fresh" in str(caught.value)
     assert path.read_bytes() == before
     assert sorted(p.name for p in data_dir.glob("test.db*")) == ["test.db"]
+
+
+# ── a quoted plain name reads as the bare one ────────────────────────────────
+
+
+def test_a_quoted_plain_table_name_equals_the_bare_one() -> None:
+    """``ALTER TABLE ... RENAME TO`` writes ``"recipes"`` into every reference to the table."""
+    assert schema.normalize_sql('REFERENCES "recipes"(id)') == schema.normalize_sql(
+        "REFERENCES recipes(id)"
+    )
+    assert schema.normalize_sql('CREATE TABLE t (a INTEGER REFERENCES "recipes" (id))') == (
+        schema.normalize_sql("CREATE TABLE t (a INTEGER REFERENCES recipes(id))")
+    )
+
+
+def test_a_double_quoted_text_inside_a_string_literal_is_data_and_untouched() -> None:
+    assert schema.normalize_sql("x = '\"x\"'") == "x = '\"x\"'"
+    assert schema.normalize_sql("DEFAULT '\"recipes\"'") == "DEFAULT '\"recipes\"'"
+
+
+def test_a_quoted_name_that_is_not_a_plain_name_stays_quoted() -> None:
+    assert schema.normalize_sql('SELECT "a b" FROM t') == 'SELECT "a b" FROM t'
+    assert schema.normalize_sql('SELECT "1x", "a-b" FROM t') == 'SELECT "1x","a-b" FROM t'
+    assert schema.normalize_sql('"a b"') != schema.normalize_sql("a b")
+
+
+def test_the_schema_file_uses_no_double_quoted_string_as_a_value() -> None:
+    """The unquoting is only sound for SQL that SQLite reads the same way: names, not values."""
+    sql = schema.schema_sql()
+    without_comments = re.sub(r"--[^\n]*", "", sql)
+    without_literals = re.sub(r"'(?:[^']|'')*'", "''", without_comments)
+    assert '"' not in without_literals
+
+
+def test_a_renamed_table_equals_the_schema_file_despite_the_quotes_sqlite_wrote() -> None:
+    """The stored text of a table that refers to a renamed one has the new name quoted."""
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.executescript(
+            "CREATE TABLE old_parent (id INTEGER PRIMARY KEY);"
+            "CREATE TABLE child (id INTEGER PRIMARY KEY, p INTEGER REFERENCES old_parent(id));"
+            "ALTER TABLE old_parent RENAME TO parent;"
+        )
+        stored = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'child'").fetchone()[0]
+        assert '"parent"' in stored
+        fresh = "CREATE TABLE child (id INTEGER PRIMARY KEY, p INTEGER REFERENCES parent(id))"
+        assert schema.normalize_sql(stored) == schema.normalize_sql(fresh)
+    finally:
+        conn.close()

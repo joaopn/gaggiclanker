@@ -140,7 +140,7 @@ class ProfileListBuilder(Repository):
         drafts = [
             dict(r)
             for r in await self.db.fetch_all(
-                "SELECT d.id, d.base_version_id, d.draft_version_id, d.status, d.set_id, "
+                "SELECT d.id, d.base_version_id, d.draft_version_id, d.status, d.recipe_id, "
                 "d.source_analysis_id, d.source_suggestion_id, d.parent_draft_id, d.prediction, "
                 "d.notes, d.change_summary, d.pushed_device_profile_id, d.replaced_version_id, "
                 "d.base_device_profile_id, d.is_new, "

@@ -365,11 +365,11 @@ _SELECT = f"""
            {label_sql("cmp")} AS compares_to_version_label,
            {label_sql("res")} AS resulting_version_label,
            (SELECT cs.current_version_id = p.base_version_id
-              FROM sets cs WHERE cs.id = p.set_id) AS base_is_current
-    FROM set_version_proposals p
-    LEFT JOIN set_versions base ON base.id = p.base_version_id
-    LEFT JOIN set_versions cmp ON cmp.id = p.compares_to_version_id
-    LEFT JOIN set_versions res ON res.id = p.resulting_version_id
+              FROM recipes cs WHERE cs.id = p.recipe_id) AS base_is_current
+    FROM recipe_version_proposals p
+    LEFT JOIN recipe_versions base ON base.id = p.base_version_id
+    LEFT JOIN recipe_versions cmp ON cmp.id = p.compares_to_version_id
+    LEFT JOIN recipe_versions res ON res.id = p.resulting_version_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
@@ -394,14 +394,14 @@ class SetProposalsRepository(Repository):
 
     async def get(self, set_id: int, proposal_id: int) -> SetProposalRow | None:
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.id = ? AND p.set_id = ?", (proposal_id, set_id)
+            f"{_SELECT} WHERE p.id = ? AND p.recipe_id = ?", (proposal_id, set_id)
         )
         return self.to_model(SetProposalRow, row)
 
     async def waiting(self, set_id: int) -> SetProposalRow | None:
         """The one proposal this Set has waiting, if it has one."""
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.set_id = ? AND p.status = 'proposed'", (set_id,)
+            f"{_SELECT} WHERE p.recipe_id = ? AND p.status = 'proposed'", (set_id,)
         )
         return self.to_model(SetProposalRow, row)
 
@@ -413,7 +413,7 @@ class SetProposalsRepository(Repository):
         is the change the conversation is now living with.
         """
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.set_id = ? AND p.status != 'proposed' "
+            f"{_SELECT} WHERE p.recipe_id = ? AND p.status != 'proposed' "
             "ORDER BY p.decided_at DESC, p.id DESC LIMIT 1",
             (set_id,),
         )
@@ -422,7 +422,7 @@ class SetProposalsRepository(Repository):
     async def for_set(self, set_id: int, *, limit: int = 100) -> list[SetProposalRow]:
         """Every proposal this Set has had, newest first."""
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE p.set_id = ? ORDER BY p.id DESC LIMIT ?", (set_id, limit)
+            f"{_SELECT} WHERE p.recipe_id = ? ORDER BY p.id DESC LIMIT ?", (set_id, limit)
         )
         return self.to_models(SetProposalRow, rows)
 
@@ -436,8 +436,8 @@ class SetProposalsRepository(Repository):
         rows = await self.db.fetch_all(
             """
             SELECT resulting_version_id AS version_id, thread_id
-              FROM set_version_proposals
-             WHERE set_id = ? AND status = 'accepted'
+              FROM recipe_version_proposals
+             WHERE recipe_id = ? AND status = 'accepted'
                AND resulting_version_id IS NOT NULL AND thread_id IS NOT NULL
              ORDER BY id
             """,
@@ -454,9 +454,9 @@ class SetProposalsRepository(Repository):
         rows = await self.db.fetch_all(
             """
             SELECT d.draft_version_id AS version_id
-              FROM set_version_proposals p
+              FROM recipe_version_proposals p
               JOIN profile_drafts d ON d.id = p.draft_id
-             WHERE p.set_id = :set_id AND p.kind = 'design' AND d.draft_version_id IS NOT NULL
+             WHERE p.recipe_id = :set_id AND p.kind = 'design' AND d.draft_version_id IS NOT NULL
             """,
             {"set_id": set_id},
         )
@@ -634,7 +634,7 @@ class SetProposalsRepository(Repository):
             if current is None:
                 return ProposalWriteResult(refused="no_current_version")
             designing = bool(
-                await self.db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,))
+                await self.db.fetch_value("SELECT designing FROM recipes WHERE id = ?", (set_id,))
             )
             if designing != (spec.kind == "design"):
                 return ProposalWriteResult(refused="designing" if designing else "not_designing")
@@ -675,7 +675,7 @@ class SetProposalsRepository(Repository):
                 # proposal pointing at somebody else's room would send a reader
                 # to a transcript that says nothing about it.
                 mine = await self.db.fetch_value(
-                    "SELECT 1 FROM chat_threads WHERE id = ? AND set_id = ?",
+                    "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?",
                     (spec.thread_id, set_id),
                 )
                 if mine is None:
@@ -696,8 +696,8 @@ class SetProposalsRepository(Repository):
                 await self._retire(replaced, now, why="newer_recipe")
             cursor = await self.db.execute(
                 """
-                INSERT INTO set_version_proposals
-                    (set_id, thread_id, base_version_id, patch_json, reason, prediction,
+                INSERT INTO recipe_version_proposals
+                    (recipe_id, thread_id, base_version_id, patch_json, reason, prediction,
                      compares_to_version_id, combined_reason, kind, draft_id,
                      suggest_major, major_reason, status, created_at)
                 VALUES (:set_id, :thread_id, :base_version_id, :patch_json, :reason, :prediction,
@@ -779,7 +779,7 @@ class SetProposalsRepository(Repository):
                     # nobody is brewing any more, and quietly applying it to
                     # whatever is current now would be this box deciding what the
                     # agent meant. Recorded as stale so the log says what happened.
-                    await self._retire(proposal, now, why="set_written_otherwise")
+                    await self._retire(proposal, now, why="recipe_written_otherwise")
                     return ProposalWriteResult(
                         refused="stale", proposal=await self.get(set_id, proposal_id)
                     )
@@ -927,7 +927,7 @@ class SetProposalsRepository(Repository):
         """Move a proposal out of `proposed`, inside the caller's transaction."""
         await self.db.execute(
             """
-            UPDATE set_version_proposals
+            UPDATE recipe_version_proposals
                SET status = :status,
                    decline_note = :note,
                    resulting_version_id = :resulting_version_id,

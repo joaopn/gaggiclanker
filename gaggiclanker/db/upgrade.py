@@ -151,6 +151,26 @@ def _violations(conn: sqlite3.Connection) -> Counter[tuple[str, str]]:
     return Counter((str(row[0]), str(row[2])) for row in conn.execute("PRAGMA foreign_key_check"))
 
 
+def _renamed(
+    violations: Counter[tuple[str, str]], steps: Sequence[Step]
+) -> Counter[tuple[str, str]]:
+    """The violations counted before the steps ran, under the table names they will have after.
+
+    A step that renames tables moves a reference that already dangled to a new name, and it
+    must not read as a reference the upgrade broke.
+    """
+    out = violations
+    for step in steps:
+        if not step.renamed_tables:
+            continue
+        moved: Counter[tuple[str, str]] = Counter()
+        for (table, parent), count in out.items():
+            key = (step.renamed_tables.get(table, table), step.renamed_tables.get(parent, parent))
+            moved[key] += count
+        out = moved
+    return out
+
+
 def _verify(
     conn: sqlite3.Connection, expected: dict[str, str], before: Counter[tuple[str, str]]
 ) -> str | None:
@@ -193,7 +213,7 @@ def upgrade_connection(
     try:
         conn.execute("BEGIN IMMEDIATE")
         try:
-            before = _violations(conn)
+            before = _renamed(_violations(conn), pending)
             results = run_steps(conn, steps=steps)
             problem = _verify(conn, want, before)
             if problem is not None:

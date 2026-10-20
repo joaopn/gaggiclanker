@@ -73,7 +73,7 @@ async def test_the_index_is_the_backstop_for_two_sets_on_one_profile(wired: Fixt
     other = await new_set(wired, "Kenya", None)
 
     with pytest.raises(sqlite3.IntegrityError):
-        await wired.db.execute("UPDATE sets SET board_id = ? WHERE id = ?", (board, other.id))
+        await wired.db.execute("UPDATE recipes SET board_id = ? WHERE id = ?", (board, other.id))
     assert first.board_id == board
 
 
@@ -602,7 +602,7 @@ async def test_a_set_on_two_unadopted_files_is_taken_through_its_current_one(
     await assert_sets_follow_their_profiles(wired.db)
     shot = await make_shot(wired.db, "000900", profile_version_id=second)
     assert await wired.sets.profile_match(shot, profile_version_id=second, device_profile_id="b")
-    filed = await wired.db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
+    filed = await wired.db.fetch_value("SELECT recipe_version_id FROM shots WHERE id = ?", (shot,))
     current = await wired.sets.current_version(made.id)
     assert current is not None and filed == current.id
 
@@ -647,7 +647,7 @@ async def test_a_second_set_on_a_shared_loose_version_leaves_the_profile_its_own
         SetVersionWrite(profile_version_id=None),
     )
     await wired.db.execute(
-        "UPDATE set_versions SET profile_version_id = ? WHERE set_id = ?", (shared, other.id)
+        "UPDATE recipe_versions SET profile_version_id = ? WHERE recipe_id = ?", (shared, other.id)
     )
 
     row = await ProfileBoardRepository(wired.db).insert(

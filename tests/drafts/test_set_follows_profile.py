@@ -117,7 +117,7 @@ async def test_a_profile_with_no_set_changes_without_one(
     )
 
     assert response.status_code == 200
-    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM sets")) == 0
+    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipes")) == 0
 
 
 async def test_keeping_the_machines_side_of_a_conflict_gives_the_set_a_version(
@@ -256,7 +256,7 @@ async def test_a_revert_that_the_profile_cannot_follow_moves_nothing(
     assert error(response)["message"].startswith("That version cannot go on the machine")
     assert await _current(client, set_id) == current_before
     assert await set_version_ids(app, set_id) == before
-    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_version_reverts")) == 0
+    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipe_version_reverts")) == 0
     await assert_sets_follow_their_profiles(app.state.db)
 
 

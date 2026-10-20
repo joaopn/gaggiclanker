@@ -217,7 +217,7 @@ async def test_deleting_a_set_takes_its_conversations_with_it(archive: Fixture) 
     assert scoped.thread is not None
     assert general.thread is not None
 
-    await archive.db.execute("DELETE FROM sets WHERE id = ?", (archive.set_id,))
+    await archive.db.execute("DELETE FROM recipes WHERE id = ?", (archive.set_id,))
 
     assert await repo.get_thread(scoped.thread.id) is None
     assert await repo.get_thread(general.thread.id) is not None

@@ -156,10 +156,10 @@ _SELECT = f"""
            v.outcome_note AS version_outcome_note,
            (SELECT COUNT(*) FROM shots s
               JOIN shot_judgements j ON j.shot_id = s.id
-             WHERE s.set_version_id = p.set_version_id
+             WHERE s.recipe_version_id = p.recipe_version_id
                AND j.decision IN ('keep', 'improve')) AS counted_shots_now
-    FROM set_outcome_proposals p
-    JOIN set_versions v ON v.id = p.set_version_id
+    FROM recipe_outcome_proposals p
+    JOIN recipe_versions v ON v.id = p.recipe_version_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
@@ -190,14 +190,14 @@ class OutcomeProposalsRepository(Repository):
 
     async def get(self, set_id: int, proposal_id: int) -> OutcomeProposalRow | None:
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.id = ? AND p.set_id = ?", (proposal_id, set_id)
+            f"{_SELECT} WHERE p.id = ? AND p.recipe_id = ?", (proposal_id, set_id)
         )
         return self.to_model(OutcomeProposalRow, row)
 
     async def waiting_for_version(self, version_id: int) -> OutcomeProposalRow | None:
         """The one grade waiting for this version, if there is one."""
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.set_version_id = ? AND p.status = 'proposed'", (version_id,)
+            f"{_SELECT} WHERE p.recipe_version_id = ? AND p.status = 'proposed'", (version_id,)
         )
         return self.to_model(OutcomeProposalRow, row)
 
@@ -208,7 +208,7 @@ class OutcomeProposalsRepository(Repository):
         its own outcome without a request per row.
         """
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE p.set_id = ? AND p.status = 'proposed'", (set_id,)
+            f"{_SELECT} WHERE p.recipe_id = ? AND p.status = 'proposed'", (set_id,)
         )
         return {row.set_version_id: row for row in self.to_models(OutcomeProposalRow, rows)}
 
@@ -219,7 +219,7 @@ class OutcomeProposalsRepository(Repository):
         once a newer one stood in its place.
         """
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.set_version_id = ? "
+            f"{_SELECT} WHERE p.recipe_version_id = ? "
             "AND p.status IN ('accepted', 'changed', 'dismissed') "
             "ORDER BY p.decided_at DESC, p.id DESC LIMIT 1",
             (version_id,),
@@ -229,7 +229,7 @@ class OutcomeProposalsRepository(Repository):
     async def for_set(self, set_id: int, *, limit: int = 100) -> list[OutcomeProposalRow]:
         """Every grade proposed on this Set, newest first."""
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE p.set_id = ? ORDER BY p.id DESC LIMIT ?", (set_id, limit)
+            f"{_SELECT} WHERE p.recipe_id = ? ORDER BY p.id DESC LIMIT ?", (set_id, limit)
         )
         return self.to_models(OutcomeProposalRow, rows)
 
@@ -260,7 +260,7 @@ class OutcomeProposalsRepository(Repository):
                 return OutcomeResult(refused="nothing_to_grade")
             if spec.thread_id is not None:
                 mine = await self.db.fetch_value(
-                    "SELECT 1 FROM chat_threads WHERE id = ? AND set_id = ?",
+                    "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?",
                     (spec.thread_id, set_id),
                 )
                 if mine is None:
@@ -270,8 +270,8 @@ class OutcomeProposalsRepository(Repository):
                 await self._decide(replaced.id, "superseded", now)
             cursor = await self.db.execute(
                 """
-                INSERT INTO set_outcome_proposals
-                    (set_id, set_version_id, thread_id, outcome, note, counted_shots,
+                INSERT INTO recipe_outcome_proposals
+                    (recipe_id, recipe_version_id, thread_id, outcome, note, counted_shots,
                      status, created_at)
                 VALUES (:set_id, :version_id, :thread_id, :outcome, :note, :counted,
                         'proposed', :now)
@@ -379,7 +379,7 @@ class OutcomeProposalsRepository(Repository):
     ) -> None:
         await self.db.execute(
             """
-            UPDATE set_outcome_proposals
+            UPDATE recipe_outcome_proposals
                SET status = :status,
                    decision_note = :note,
                    recorded_outcome = :recorded,

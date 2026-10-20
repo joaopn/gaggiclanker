@@ -116,7 +116,7 @@ async def test_every_query_reads_the_temperature_the_way_python_does(
 
     # 2 and 3. the two curated views the chat writes SQL over.
     for view, key, value in (
-        ("v_set_versions", "set_version_id", version_id),
+        ("v_recipe_versions", "recipe_version_id", version_id),
         ("v_shots", "shot_id", shot_id),
     ):
         served = await wired.db.fetch_value(
@@ -162,7 +162,7 @@ async def test_a_profile_that_states_no_temperature_is_not_a_zero_degree_shot(
     assert version is not None and version.profile_temperature_c is None
     assert (
         await wired.db.fetch_value(
-            "SELECT profile_temperature_c FROM v_set_versions WHERE set_version_id = ?",
+            "SELECT profile_temperature_c FROM v_recipe_versions WHERE recipe_version_id = ?",
             (version_id,),
         )
         is None

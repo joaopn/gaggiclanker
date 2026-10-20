@@ -66,7 +66,7 @@ async def prompts(tmp_path: Path) -> AsyncIterator[PromptService]:
         (
             SET_CHAT_PROMPT,
             {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER},
-            "chat-set-prompt.txt",
+            "chat-recipe-prompt.txt",
         ),
         (DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER}, "chat-design-prompt.txt"),
         (GENERAL_CHAT_PROMPT, {"shot_fields": FIELDS_MARKER}, "chat-general-prompt.txt"),

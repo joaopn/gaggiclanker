@@ -149,9 +149,9 @@ async def test_a_claim_is_kept_unless_rejected_and_the_views_count_what_is_kept(
 @pytest.mark.parametrize(
     "bad",
     [
-        "INSERT INTO set_insight_deletions (set_id, thread_id, insight_text, reason, status) "
+        "INSERT INTO recipe_insight_deletions (recipe_id, thread_id, insight_text, reason, status) "
         "VALUES (1, 1, 'x', 'too short', 'proposed')",
-        "INSERT INTO set_insight_deletions (set_id, thread_id, insight_text, reason, status) "
+        "INSERT INTO recipe_insight_deletions (recipe_id, thread_id, insight_text, reason, status) "
         "VALUES (1, 1, 'x', 'a reason that is long enough to count', 'retired')",
         "UPDATE knowledge_insights SET replaced = 'maybe'",
     ],
@@ -201,36 +201,37 @@ async def test_a_deleted_run_takes_its_proposals_and_leaves_the_insight_it_wrote
 async def test_deleting_a_set_empties_what_is_its_own(db: Database) -> None:
     await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
     for set_id in (1, 2):
-        await db.execute("INSERT INTO sets (id, name, bean_id) VALUES (?, 'S', 1)", (set_id,))
+        await db.execute("INSERT INTO recipes (id, name, bean_id) VALUES (?, 'S', 1)", (set_id,))
     for vid, set_id, minor in ((1, 1, 0), (2, 1, 1), (3, 2, 0), (4, 2, 1)):
         await db.execute(
-            "INSERT INTO set_versions (id, set_id, version_major, version_minor) "
+            "INSERT INTO recipe_versions (id, recipe_id, version_major, version_minor) "
             "VALUES (?, ?, 1, ?)",
             (vid, set_id, minor),
         )
-    await db.execute("INSERT INTO chat_threads (id, set_id, set_version_id) VALUES (1, 2, 3)")
+    await db.execute("INSERT INTO chat_threads (id, recipe_id, recipe_version_id) VALUES (1, 2, 3)")
     await db.execute("INSERT INTO chat_messages (thread_id, role, content) VALUES (1, 'user', 'x')")
     await db.execute(
-        "INSERT INTO set_version_proposals (set_id, base_version_id) VALUES (2, 4), (1, 1)"
+        "INSERT INTO recipe_version_proposals (recipe_id, base_version_id) VALUES (2, 4), (1, 1)"
     )
     await db.execute(
-        "INSERT INTO set_outcome_proposals (set_id, set_version_id, outcome, note) "
+        "INSERT INTO recipe_outcome_proposals (recipe_id, recipe_version_id, outcome, note) "
         "VALUES (2, 3, 'held', 'a note')"
     )
     await db.execute(
-        "INSERT INTO set_version_reverts (set_id, from_version_id, to_version_id) VALUES (2, 4, 3)"
+        "INSERT INTO recipe_version_reverts (recipe_id, from_version_id, to_version_id) VALUES "
+        "(2, 4, 3)"
     )
-    await db.execute("INSERT INTO knowledge_insights (text, set_id) VALUES ('learned', 2)")
+    await db.execute("INSERT INTO knowledge_insights (text, recipe_id) VALUES ('learned', 2)")
 
-    await db.execute("DELETE FROM sets WHERE id = 2")
+    await db.execute("DELETE FROM recipes WHERE id = 2")
 
     for table, left in (
-        ("set_versions", 2),
+        ("recipe_versions", 2),
         ("chat_threads", 0),
         ("chat_messages", 0),
-        ("set_version_proposals", 1),
-        ("set_outcome_proposals", 0),
-        ("set_version_reverts", 0),
+        ("recipe_version_proposals", 1),
+        ("recipe_outcome_proposals", 0),
+        ("recipe_version_reverts", 0),
         ("knowledge_insights", 0),
     ):
         assert await db.fetch_value(f"SELECT COUNT(*) FROM {table}") == left, table  # noqa: S608
@@ -239,8 +240,10 @@ async def test_deleting_a_set_empties_what_is_its_own(db: Database) -> None:
 
 async def test_a_set_version_name_is_unique_within_its_set(db: Database) -> None:
     await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
-    await db.execute("INSERT INTO sets (name, bean_id) VALUES ('S', 1), ('T', 1)")
-    insert = "INSERT INTO set_versions (set_id, version_major, version_minor) VALUES (?, 1, 1)"
+    await db.execute("INSERT INTO recipes (name, bean_id) VALUES ('S', 1), ('T', 1)")
+    insert = (
+        "INSERT INTO recipe_versions (recipe_id, version_major, version_minor) VALUES (?, 1, 1)"
+    )
     await db.execute(insert, (1,))
     await db.execute(insert, (2,))
     with pytest.raises(sqlite3.IntegrityError):
@@ -249,9 +252,9 @@ async def test_a_set_version_name_is_unique_within_its_set(db: Database) -> None
 
 async def _a_set_with_two_versions_and_two_copies(db: Database) -> None:
     await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
-    await db.execute("INSERT INTO sets (name, bean_id) VALUES ('S', 1)")
+    await db.execute("INSERT INTO recipes (name, bean_id) VALUES ('S', 1)")
     await db.execute(
-        "INSERT INTO set_versions (set_id, version_major, version_minor) "
+        "INSERT INTO recipe_versions (recipe_id, version_major, version_minor) "
         "VALUES (1, 1, 0), (1, 1, 1)"
     )
     for number in (1, 2, 3):
@@ -266,7 +269,8 @@ async def _a_set_with_two_versions_and_two_copies(db: Database) -> None:
 
 
 _PIN = (
-    "INSERT INTO set_version_pins (set_version_id, board_id, profile_version_id, unpinned_at) "
+    "INSERT INTO recipe_version_pins (recipe_version_id, board_id, profile_version_id, "
+    "unpinned_at) "
     "VALUES (?, 1, ?, ?)"
 )
 
@@ -292,10 +296,12 @@ async def test_a_pin_goes_with_its_set_version_and_a_copied_from_note_outlives_i
 ) -> None:
     await _a_set_with_two_versions_and_two_copies(db)
     await db.execute(_PIN, (2, 1, None))
-    await db.execute("INSERT INTO sets (name, bean_id, copied_from_version_id) VALUES ('T', 1, 2)")
-    await db.execute("DELETE FROM sets WHERE id = 1")
-    assert await db.fetch_value("SELECT COUNT(*) FROM set_version_pins") == 0
-    assert await db.fetch_value("SELECT copied_from_version_id FROM sets WHERE id = 2") is None
+    await db.execute(
+        "INSERT INTO recipes (name, bean_id, copied_from_version_id) VALUES ('T', 1, 2)"
+    )
+    await db.execute("DELETE FROM recipes WHERE id = 1")
+    assert await db.fetch_value("SELECT COUNT(*) FROM recipe_version_pins") == 0
+    assert await db.fetch_value("SELECT copied_from_version_id FROM recipes WHERE id = 2") is None
     assert await db.fetch_all("PRAGMA foreign_key_check") == []
 
 
@@ -306,14 +312,14 @@ async def test_the_shot_views_ratio(db: Database) -> None:
     """Yield over dose: the judgement's dose in when entered and the version's otherwise;
     the judgement's dose out when entered and the scale's (else the index's) weight otherwise."""
     await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
-    await db.execute("INSERT INTO sets (name, bean_id) VALUES ('S', 1)")
+    await db.execute("INSERT INTO recipes (name, bean_id) VALUES ('S', 1)")
     await db.execute(
-        "INSERT INTO set_versions (set_id, version_major, dose_g, target_yield_g) "
+        "INSERT INTO recipe_versions (recipe_id, version_major, dose_g, target_yield_g) "
         "VALUES (1, 1, 18.0, 36.0)"
     )
     for number, weight in ((1, 31.5), (2, 31.5), (3, None)):
         await db.execute(
-            "INSERT INTO shots (device_id, raw_slog, set_version_id, final_weight_g, "
+            "INSERT INTO shots (device_id, raw_slog, recipe_version_id, final_weight_g, "
             "synced_at, updated_at) VALUES (?, x'00', 1, ?, 'x', 'x')",
             (f"{number:06d}", weight),
         )
@@ -333,13 +339,13 @@ async def test_the_shot_views_ratio(db: Database) -> None:
 
 async def test_every_view_answers_on_a_populated_database(db: Database) -> None:
     await db.execute("INSERT INTO beans (name, roast_level) VALUES ('Guji', 'light')")
-    await db.execute("INSERT INTO sets (name, bean_id) VALUES ('S', 1)")
+    await db.execute("INSERT INTO recipes (name, bean_id) VALUES ('S', 1)")
     await db.execute(
-        "INSERT INTO set_versions (set_id, version_major, intent) VALUES (1, 1, 'baseline')"
+        "INSERT INTO recipe_versions (recipe_id, version_major, intent) VALUES (1, 1, 'baseline')"
     )
-    await db.execute("UPDATE sets SET current_version_id = 1")
+    await db.execute("UPDATE recipes SET current_version_id = 1")
     await db.execute(
-        "INSERT INTO shots (device_id, raw_slog, set_version_id, synced_at, updated_at) "
+        "INSERT INTO shots (device_id, raw_slog, recipe_version_id, synced_at, updated_at) "
         "VALUES ('000001', x'00', 1, 'x', 'x')"
     )
     await db.execute("INSERT INTO shot_judgements (shot_id, rating) VALUES (1, 5)")
@@ -357,27 +363,27 @@ async def test_the_views_the_chat_reads_answer_through_the_sql_tool(db: Database
     await db.execute(
         "INSERT INTO beans (name, roast_level) VALUES ('Guji', 'light'), ('Decaf', NULL)"
     )
-    await db.execute("INSERT INTO sets (name, bean_id) VALUES ('S', 1)")
+    await db.execute("INSERT INTO recipes (name, bean_id) VALUES ('S', 1)")
     await db.execute(
-        "INSERT INTO set_versions (set_id, version_major, origin, intent) "
+        "INSERT INTO recipe_versions (recipe_id, version_major, origin, intent) "
         "VALUES (1, 1, 'starting_point', 'from the wizard')"
     )
-    await db.execute("UPDATE sets SET current_version_id = 1")
+    await db.execute("UPDATE recipes SET current_version_id = 1")
     await db.execute(
-        "INSERT INTO shots (device_id, raw_slog, set_version_id, synced_at, updated_at) "
+        "INSERT INTO shots (device_id, raw_slog, recipe_version_id, synced_at, updated_at) "
         "VALUES ('000001', x'00', 1, 'x', 'x')"
     )
     await db.execute("INSERT INTO shot_judgements (shot_id, rating) VALUES (1, 5)")
 
     versions = await run_query(
-        db.path, "SELECT origin, intent, version_label, shot_count FROM v_set_versions"
+        db.path, "SELECT origin, intent, version_label, shot_count FROM v_recipe_versions"
     )
     assert versions.rows == [["starting_point", "from the wizard", "v1", 1]]
     beans = await run_query(db.path, "SELECT name, roast_level FROM v_beans ORDER BY bean_id")
     assert beans.rows == [["Guji", "light"], ["Decaf", None]]
-    sets = await run_query(db.path, "SELECT name, bean_name, shot_count FROM v_sets")
+    sets = await run_query(db.path, "SELECT name, bean_name, shot_count FROM v_recipes")
     assert sets.rows == [["S", "Guji", 1]]
-    shots = await run_query(db.path, "SELECT device_id, set_name, rating FROM v_shots")
+    shots = await run_query(db.path, "SELECT device_id, recipe_name, rating FROM v_shots")
     assert shots.rows == [["000001", "S", 5]]
     judgements = await run_query(db.path, "SELECT shot_id, rating FROM v_judgements")
     assert judgements.rows == [[1, 5]]
@@ -387,10 +393,10 @@ async def test_the_views_the_chat_reads_answer_through_the_sql_tool(db: Database
         ("roast_date", "v_beans"),
         ("altitude_m", "v_beans"),
         ("machine_id", "v_shots"),
-        ("machine_id", "v_sets"),
+        ("machine_id", "v_recipes"),
         ("grind_setting", "v_judgements"),
         ("execution_score", "v_shots"),
-        ("version_no", "v_set_versions"),
+        ("version_no", "v_recipe_versions"),
     ):
         with pytest.raises(SqlRefused, match="no such column"):
             await run_query(db.path, f"SELECT {column} FROM {view}")  # noqa: S608
@@ -401,7 +407,7 @@ async def test_a_copied_insight_names_its_original_without_a_foreign_key(db: Dat
     keys = await db.fetch_all("PRAGMA foreign_key_list(knowledge_insights)")
     assert not {"copied_from_insight_id", "copied_from_set_id"} & {key["from"] for key in keys}
     await db.execute(
-        "INSERT INTO knowledge_insights (id, text, copied_from_insight_id, copied_from_set_id) "
+        "INSERT INTO knowledge_insights (id, text, copied_from_insight_id, copied_from_recipe_id) "
         "VALUES (7, 'x', 99, 98)"
     )
     row = await db.fetch_one("SELECT * FROM knowledge_insights")

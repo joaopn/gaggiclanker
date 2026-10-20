@@ -345,8 +345,8 @@ class TestACardFindsItsProposalHoweverOld:
         await client.post(_url(set_id, oldest, "keep"))
         for number in range(120):
             await app.state.db.execute(
-                "INSERT INTO set_insight_deletions "
-                "(set_id, thread_id, insight_text, reason, status) VALUES (?, ?, ?, ?, 'kept')",
+                "INSERT INTO recipe_insight_deletions "
+                "(recipe_id, thread_id, insight_text, reason, status) VALUES (?, ?, ?, ?, 'kept')",
                 (set_id, thread, f"older {number}", REASON),
             )
 

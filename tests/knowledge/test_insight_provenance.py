@@ -528,7 +528,7 @@ class TestOnlyTheDecidingProposalKeepsTheText:
         await provenance.deletions.accept(provenance.set_id, made["waiting"])
 
         assert await rows_containing(provenance.db, "quokka-7731") == [
-            f"set_insight_deletions#{made['waiting']}"
+            f"recipe_insight_deletions#{made['waiting']}"
         ]
         deciding = await provenance.deletions.get(provenance.set_id, made["waiting"])
         assert deciding is not None and deciding.status == "deleted"

@@ -74,7 +74,9 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
     )
     summary = await SetsRepository(app.state.db).match_unfiled([shot])
     assert summary.matched == 1
-    filed = await app.state.db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
+    filed = await app.state.db.fetch_value(
+        "SELECT recipe_version_id FROM shots WHERE id = ?", (shot,)
+    )
     assert filed == created["version"]["id"]
 
 

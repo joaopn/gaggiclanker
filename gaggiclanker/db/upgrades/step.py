@@ -9,8 +9,8 @@ what the step does to a database made before.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 
 __all__ = ["Step", "validate_steps"]
 
@@ -31,6 +31,10 @@ class Step:
     #: Runs on a raw connection inside the upgrade's transaction and returns counts for the
     #: log. It never begins, commits or rolls back, and never sets ``user_version``.
     run: Callable[[sqlite3.Connection], dict[str, int]]
+    #: Old table name -> new table name, for a step that renames tables. The upgrade counts the
+    #: foreign-key violations that already exist by table, so without this a reference that
+    #: dangled before in a renamed table would look like one the step created.
+    renamed_tables: Mapping[str, str] = field(default_factory=dict)
 
 
 def validate_steps(steps: Sequence[Step]) -> tuple[Step, ...]:

@@ -845,7 +845,8 @@ async def test_a_set_version_is_recorded_when_the_draft_is_put_and_the_pull_adds
     after_put = await set_version_ids(app, set_id)
     assert len(after_put) == len(before) + 1, "the Set follows its profile when it is put"
     majors = await app.state.db.fetch_all(
-        "SELECT version_major FROM set_versions WHERE set_id = ? ORDER BY created_at, id", (set_id,)
+        "SELECT version_major FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id",
+        (set_id,),
     )
     assert majors[-1]["version_major"] > majors[-2]["version_major"], "the 'major' answer was kept"
 

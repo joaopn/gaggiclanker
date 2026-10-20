@@ -289,7 +289,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         )
         assert rolled is not None
         await db.execute(
-            "UPDATE set_versions SET restores_version_id = ? WHERE id = ?", (v1, rolled.id)
+            "UPDATE recipe_versions SET restores_version_id = ? WHERE id = ?", (v1, rolled.id)
         )
         v4 = rolled.id
         shot = await _shot(
@@ -520,15 +520,15 @@ async def test_two_reverts_into_one_version_are_told_oldest_first(
     )
     # Forge the log's times: the second revert's row is the older one by id order only.
     rows = await experiment.db.fetch_all(
-        "SELECT id FROM set_version_reverts WHERE to_version_id = ? ORDER BY id",
+        "SELECT id FROM recipe_version_reverts WHERE to_version_id = ? ORDER BY id",
         (experiment.v2,),
     )
     await experiment.db.execute(
-        "UPDATE set_version_reverts SET created_at = '2026-05-02T10:00:00.000Z' WHERE id = ?",
+        "UPDATE recipe_version_reverts SET created_at = '2026-05-02T10:00:00.000Z' WHERE id = ?",
         (rows[0]["id"],),
     )
     await experiment.db.execute(
-        "UPDATE set_version_reverts SET created_at = '2026-05-01T10:00:00.000Z' WHERE id = ?",
+        "UPDATE recipe_version_reverts SET created_at = '2026-05-01T10:00:00.000Z' WHERE id = ?",
         (rows[1]["id"],),
     )
 
@@ -1761,7 +1761,7 @@ async def test_rows_proposed_before_signatures_were_in_force_are_told_as_not_in_
         "UPDATE signature_expectations SET status = 'proposed' WHERE id = ?", (row.id,)
     )
     await db.execute(
-        "INSERT INTO set_version_signature_overrides (set_version_id, expectation_id, "
+        "INSERT INTO recipe_version_signature_overrides (recipe_version_id, expectation_id, "
         "compare_json, status, proposed_by_thread_id) "
         'VALUES (?, ?, \'{"op": "<=", "value": 1.0}\', \'proposed\', ?)',
         (experiment.v5, row.id, thread),

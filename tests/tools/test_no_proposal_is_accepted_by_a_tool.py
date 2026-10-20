@@ -118,7 +118,7 @@ SIGNATURE_STORAGE_NAMES = ("SignatureRepository", "ExpectationWrite", "OverrideW
 #: Raw SQL against the signature tables is refused the same way, by the strings a module holds.
 SIGNATURE_TABLES = (
     "signature_expectations",
-    "set_version_signature_overrides",
+    "recipe_version_signature_overrides",
     "profile_signatures",
 )
 

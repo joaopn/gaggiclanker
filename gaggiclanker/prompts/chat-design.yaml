@@ -3,12 +3,12 @@ description: |
   The agent in the conversation of a Set that is still being designed: a new Set
   with a bean and a grinder and no recipe yet, whose first recipe the agent
   works out with the person and proposes as one card. Chosen instead of
-  `chat-set` for exactly as long as the Set is being designed; the turn after
-  the card is accepted is answered by `chat-set`, in the same conversation,
+  `chat-recipe` for exactly as long as the Set is being designed; the turn after
+  the card is accepted is answered by `chat-recipe`, in the same conversation,
   and that prompt tells the person the design is over and that version 1's
   shots are analysed in a new conversation: one conversation, one version.
 
-  Why a prompt of its own: `chat-set`'s first instruction is to grade the
+  Why a prompt of its own: `chat-recipe`'s first instruction is to grade the
   version's prediction and its central rule is one change at a time, and
   neither means anything for a recipe that does not exist. A version 1 is a
   baseline, so nothing here asks for a prediction.

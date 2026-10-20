@@ -67,11 +67,11 @@ async def test_the_temperature_reported_is_the_profiles(fixture: Fixture) -> Non
         Profile.model_validate({**version.profile, "temperature": 96.0}), owner=None
     )
     await fixture.db.execute(
-        "UPDATE set_versions SET profile_version_id = ? WHERE id = ?",
+        "UPDATE recipe_versions SET profile_version_id = ? WHERE id = ?",
         (hotter.id, fixture.versions["kenya"]),
     )
     await fixture.db.execute(
-        "UPDATE set_versions SET profile_version_id = NULL WHERE id = ?",
+        "UPDATE recipe_versions SET profile_version_id = NULL WHERE id = ?",
         (fixture.versions["guji"],),
     )
 
@@ -81,7 +81,7 @@ async def test_the_temperature_reported_is_the_profiles(fixture: Fixture) -> Non
         Profile.model_validate({**version.profile, "temperature": 0}), owner=None
     )
     await fixture.db.execute(
-        "UPDATE set_versions SET profile_version_id = ? WHERE id = ?",
+        "UPDATE recipe_versions SET profile_version_id = ? WHERE id = ?",
         (unset.id, fixture.versions["sumatra"]),
     )
 
@@ -203,34 +203,34 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     # would change the first one's shot count — so copy the *Set* instead.
     await fixture.db.execute(
         """
-        INSERT INTO sets (name, bean_id, grinder_id, archived, automatch, created_at)
+        INSERT INTO recipes (name, bean_id, grinder_id, archived, automatch, created_at)
         SELECT name || ' (copy)', bean_id, grinder_id, archived, 0, created_at
-          FROM sets WHERE id = ?
+          FROM recipes WHERE id = ?
         """,
         (fixture.sets["kenya"],),
     )
     copy_id = int(await fixture.db.fetch_value("SELECT last_insert_rowid()") or 0)
     await fixture.db.execute(
         """
-        INSERT INTO set_versions (set_id, version_major, profile_version_id, grind_setting,
+        INSERT INTO recipe_versions (recipe_id, version_major, profile_version_id, grind_setting,
                                   grind_value, dose_g, target_yield_g,
                                   intent, origin, created_at)
         SELECT ?, 1, profile_version_id, grind_setting, grind_value, dose_g, target_yield_g,
                intent, origin, created_at
-          FROM set_versions WHERE id = ?
+          FROM recipe_versions WHERE id = ?
         """,
         (copy_id, fixture.versions["kenya"]),
     )
     copy_version = int(await fixture.db.fetch_value("SELECT last_insert_rowid()") or 0)
     await fixture.db.execute(
-        "UPDATE sets SET current_version_id = ? WHERE id = ?", (copy_version, copy_id)
+        "UPDATE recipes SET current_version_id = ? WHERE id = ?", (copy_version, copy_id)
     )
     # Give the copy the same five verdicts on new shots, so the two tie exactly.
     for index in range(5):
         cursor = await fixture.db.execute(
             """
             INSERT INTO shots (device_id, raw_slog, started_at, duration_ms,
-                               set_version_id, synced_at, updated_at)
+                               recipe_version_id, synced_at, updated_at)
             VALUES (?, x'00', '2026-02-20T08:00:00.000Z', 28000, ?,
                     '2026-02-20T08:00:00.000Z', '2026-02-20T08:00:00.000Z')
             """,
@@ -266,7 +266,7 @@ async def test_a_field_the_other_bean_leaves_empty_is_unknown_not_different(
 ) -> None:
     await fixture.db.execute(
         "UPDATE beans SET process = NULL, roast_level = NULL, origin = NULL"
-        " WHERE id = (SELECT bean_id FROM sets WHERE id = ?)",
+        " WHERE id = (SELECT bean_id FROM recipes WHERE id = ?)",
         (fixture.sets["kenya"],),
     )
     rows = await _for_the_new_bag(fixture)
@@ -287,7 +287,7 @@ async def test_the_prompt_never_calls_an_unrecorded_field_different(fixture: Fix
     bare = await BeansRepository(fixture.db).create(BeanWrite(name="Mystery"))
     rendered = (
         await build_context(fixture.db, bean_id=bare.id, grinder_id=fixture.grinder_id, as_of=AS_OF)
-    ).render()["similar_sets"]
+    ).render()["similar_recipes"]
 
     assert "[set_version" in rendered, "the archive's Sets are still offered"
     assert "different" not in rendered
@@ -314,7 +314,7 @@ async def test_one_bean_s_sets_can_be_left_out_altogether(fixture: Fixture) -> N
 async def test_a_quarantined_shot_does_not_count_as_evidence(fixture: Fixture) -> None:
     """Its bytes never parsed, so it has nothing to say about the recipe."""
     await fixture.db.execute(
-        "UPDATE shots SET quarantined = 1 WHERE set_version_id = ?",
+        "UPDATE shots SET quarantined = 1 WHERE recipe_version_id = ?",
         (fixture.versions["guji"],),
     )
     rows = await _for_the_new_bag(fixture)
@@ -332,7 +332,7 @@ async def test_a_decaf_set_never_outranks_a_caffeinated_exact_match(fixture: Fix
     # Make the Guji Set decaf. On attributes it was second (roast only, 3);
     # against a caffeinated bag it now scores 1.
     await fixture.db.execute(
-        "UPDATE beans SET decaf = 1 WHERE id = (SELECT bean_id FROM sets WHERE id = ?)",
+        "UPDATE beans SET decaf = 1 WHERE id = (SELECT bean_id FROM recipes WHERE id = ?)",
         (fixture.sets["guji"],),
     )
     rows = await _for_the_new_bag(fixture)
@@ -362,7 +362,7 @@ async def test_a_decaf_mismatch_is_spelled_out_in_the_prompt(fixture: Fixture) -
     from tests.starting.conftest import AS_OF
 
     await fixture.db.execute(
-        "UPDATE beans SET decaf = 1 WHERE id = (SELECT bean_id FROM sets WHERE id = ?)",
+        "UPDATE beans SET decaf = 1 WHERE id = (SELECT bean_id FROM recipes WHERE id = ?)",
         (fixture.sets["kenya"],),
     )
     context = await build_context(
@@ -371,7 +371,7 @@ async def test_a_decaf_mismatch_is_spelled_out_in_the_prompt(fixture: Fixture) -
         grinder_id=fixture.grinder_id,
         as_of=AS_OF,
     )
-    assert "DECAF MISMATCH" in context.render()["similar_sets"]
+    assert "DECAF MISMATCH" in context.render()["similar_recipes"]
 
 
 async def test_the_mean_ratio_uses_the_version_s_dose_when_no_dose_was_typed(
@@ -381,10 +381,12 @@ async def test_the_mean_ratio_uses_the_version_s_dose_when_no_dose_was_typed(
     await fixture.db.execute("DELETE FROM shot_judgements")
     version = fixture.versions["kenya"]
     await fixture.db.execute(
-        "UPDATE shots SET final_weight_g = 36.0, quarantined = 0 WHERE set_version_id = ?",
+        "UPDATE shots SET final_weight_g = 36.0, quarantined = 0 WHERE recipe_version_id = ?",
         (version,),
     )
-    found = await fixture.db.fetch_one("SELECT dose_g FROM set_versions WHERE id = ?", (version,))
+    found = await fixture.db.fetch_one(
+        "SELECT dose_g FROM recipe_versions WHERE id = ?", (version,)
+    )
     assert found is not None
     dose = found["dose_g"]
     kenya = {row.set_version_id: row for row in await _for_the_new_bag(fixture)}[version]

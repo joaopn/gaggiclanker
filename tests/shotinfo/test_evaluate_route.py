@@ -299,7 +299,7 @@ async def test_an_unknown_shot_is_a_404_and_a_body_that_is_not_an_object_list_a_
 async def test_the_route_reads_and_writes_nothing(app: FastAPI, client: httpx.AsyncClient) -> None:
     shot, _, _ = await file_lever(app)
     db: Database = app.state.db
-    tables = ("shots", "shot_samples", "set_versions", "shot_judgements")
+    tables = ("shots", "shot_samples", "recipe_versions", "shot_judgements")
     counts = [await db.fetch_one(f"SELECT COUNT(*) AS n FROM {t}") for t in tables]  # noqa: S608
     await evaluate(client, shot, [RAMP_CUP_SHARE])
     after = [await db.fetch_one(f"SELECT COUNT(*) AS n FROM {t}") for t in tables]  # noqa: S608

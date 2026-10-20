@@ -431,16 +431,16 @@ _SELECT = f"""
                        'outcome_now', rv.outcome))
               FROM json_each(CASE WHEN json_valid(i.rests_on_json) THEN i.rests_on_json
                                   ELSE '[]' END) e
-              JOIN set_versions rv ON rv.id = json_extract(e.value, '$.set_version_id'))
+              JOIN recipe_versions rv ON rv.id = json_extract(e.value, '$.recipe_version_id'))
                AS rests_on_resolved,
            (SELECT json_group_array(s.id)
               FROM json_each(CASE WHEN json_valid(i.evidence_shot_ids_json)
                                   THEN i.evidence_shot_ids_json ELSE '[]' END) ev
               JOIN shots s ON s.id = ev.value
-              JOIN set_versions sv ON sv.id = s.set_version_id
-             WHERE sv.set_id = i.set_id) AS filed_shots_resolved
+              JOIN recipe_versions sv ON sv.id = s.recipe_version_id
+             WHERE sv.recipe_id = i.recipe_id) AS filed_shots_resolved
       FROM knowledge_insights i
-      LEFT JOIN set_versions v ON v.id = i.set_version_id
+      LEFT JOIN recipe_versions v ON v.id = i.recipe_version_id
 """  # noqa: S608 - the only interpolations are the version label expression, a constant
 
 type InsightProposeRefusal = Literal[
@@ -479,7 +479,7 @@ class InsightsRepository(Repository):
         a Set's own insights are :meth:`own`, and nothing reads both through
         one door by accident.
         """
-        where = ["i.set_id IS NULL", "i.dismissed = 0"]
+        where = ["i.recipe_id IS NULL", "i.dismissed = 0"]
         params: list[Any] = []
         if confirmed is not None:
             where.append("i.confirmed = ?")
@@ -497,7 +497,7 @@ class InsightsRepository(Repository):
         told what happened to it, and nothing else reads them.
         """
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE i.set_id = ? "
+            f"{_SELECT} WHERE i.recipe_id = ? "
             + ("" if include_dismissed else "AND i.dismissed = 0 ")
             + "ORDER BY i.created_at, i.id",
             (set_id,),
@@ -561,7 +561,7 @@ class InsightsRepository(Repository):
         an insight scoped by style belongs on the shot page.
         """
         row = await self.db.fetch_one(
-            "SELECT bean_id, grinder_id FROM sets WHERE id = ?", (set_id,)
+            "SELECT bean_id, grinder_id FROM recipes WHERE id = ?", (set_id,)
         )
         if row is None:
             return None
@@ -584,9 +584,9 @@ class InsightsRepository(Repository):
             """
             INSERT INTO knowledge_insights
                 (scope_json, text, evidence_shot_ids_json, source,
-                 confirmed, created_at, updated_at, confirmed_at, set_id, set_version_id,
+                 confirmed, created_at, updated_at, confirmed_at, recipe_id, recipe_version_id,
                  thread_id, rests_on_json, replaces_id, replaces_text, pattern_run_id,
-                 copied_from_insight_id, copied_from_set_id)
+                 copied_from_insight_id, copied_from_recipe_id)
             VALUES (:scope, :text, :evidence, :source,
                     :confirmed, :now, :now, :confirmed_at, :set_id, :set_version_id,
                     :thread_id, :rests_on, :replaces_id, :replaces_text, :pattern_run_id,
@@ -595,7 +595,7 @@ class InsightsRepository(Repository):
             {
                 "rests_on": dumps(
                     [
-                        {"set_version_id": item.set_version_id, "outcome": item.outcome}
+                        {"recipe_version_id": item.set_version_id, "outcome": item.outcome}
                         for item in insight.rests_on
                     ]
                 ),
@@ -644,7 +644,7 @@ class InsightsRepository(Repository):
             rests_on: list[RestsOn] = []
             for version_id in dict.fromkeys(version_ids):
                 found = await self.db.fetch_one(
-                    "SELECT outcome FROM set_versions WHERE id = ? AND set_id = ?",
+                    "SELECT outcome FROM recipe_versions WHERE id = ? AND recipe_id = ?",
                     (version_id, insight.set_id),
                 )
                 if found is None:
@@ -655,7 +655,7 @@ class InsightsRepository(Repository):
             replaces_text = ""
             if insight.replaces_id is not None:
                 old = await self.db.fetch_one(
-                    "SELECT set_id, text, confirmed, dismissed FROM knowledge_insights "
+                    "SELECT recipe_id, text, confirmed, dismissed FROM knowledge_insights "
                     "WHERE id = ?",
                     (insight.replaces_id,),
                 )
@@ -731,7 +731,7 @@ class InsightsRepository(Repository):
         """
         now = utc_now()
         await self.db.execute(
-            "UPDATE set_insight_deletions SET status = 'stale', decided_at = ? "
+            "UPDATE recipe_insight_deletions SET status = 'stale', decided_at = ? "
             "WHERE insight_id = ? AND status = 'proposed'",
             (now, insight_id),
         )
@@ -756,14 +756,14 @@ class InsightsRepository(Repository):
         """
         now = utc_now()
         row = await self.db.fetch_one(
-            "SELECT set_id, replaces_id FROM knowledge_insights WHERE id = ?", (insight_id,)
+            "SELECT recipe_id, replaces_id FROM knowledge_insights WHERE id = ?", (insight_id,)
         )
         if row is None:
             return False
         replaced: str | None = None
         if row["replaces_id"] is not None:
             old = await self.db.fetch_one(
-                "SELECT set_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
+                "SELECT recipe_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
                 (row["replaces_id"],),
             )
             # Unlink first: the delete below would otherwise mark this very row's
@@ -835,7 +835,7 @@ class InsightsRepository(Repository):
         """
         now = utc_now()
         await self.db.execute(
-            "UPDATE set_insight_deletions SET insight_text = '', "
+            "UPDATE recipe_insight_deletions SET insight_text = '', "
             "status = CASE WHEN status = 'superseded' THEN 'superseded' ELSE 'stale' END, "
             "decided_at = COALESCE(decided_at, ?) "
             "WHERE insight_id = ? AND id IS NOT ?",
@@ -854,13 +854,13 @@ class InsightsRepository(Repository):
         if confirmed is None:
             return int(
                 await self.db.fetch_value(
-                    "SELECT COUNT(*) FROM knowledge_insights WHERE set_id IS NULL"
+                    "SELECT COUNT(*) FROM knowledge_insights WHERE recipe_id IS NULL"
                 )
                 or 0
             )
         return int(
             await self.db.fetch_value(
-                "SELECT COUNT(*) FROM knowledge_insights WHERE set_id IS NULL AND confirmed = ?",
+                "SELECT COUNT(*) FROM knowledge_insights WHERE recipe_id IS NULL AND confirmed = ?",
                 (int(confirmed),),
             )
             or 0

@@ -47,7 +47,7 @@ class Copied:
 
 async def _make(db: Database) -> Copied:
     fixture = await build_fixture(db)
-    await db.execute("UPDATE sets SET name = ? WHERE id = ?", (SOURCE_NAME, fixture.set_id))
+    await db.execute("UPDATE recipes SET name = ? WHERE id = ?", (SOURCE_NAME, fixture.set_id))
     sets = SetsRepository(db)
     async with db.transaction():
         new_id = await sets.create_in_transaction(

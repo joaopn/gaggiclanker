@@ -16,7 +16,7 @@ class BackupStateRepository(Repository):
         """How many shots, Sets and beans the app holds now."""
         return RestoreCounts(
             shots=int(await self.db.fetch_value("SELECT COUNT(*) FROM shots") or 0),
-            sets=int(await self.db.fetch_value("SELECT COUNT(*) FROM sets") or 0),
+            sets=int(await self.db.fetch_value("SELECT COUNT(*) FROM recipes") or 0),
             beans=int(await self.db.fetch_value("SELECT COUNT(*) FROM beans") or 0),
         )
 

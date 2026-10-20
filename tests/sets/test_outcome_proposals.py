@@ -124,7 +124,8 @@ class TestWriting:
         await proposals.create(set_id, version_id, _write())
         with pytest.raises(sqlite3.IntegrityError):
             await wired.db.execute(
-                "INSERT INTO set_outcome_proposals (set_id, set_version_id, outcome, note) "
+                "INSERT INTO recipe_outcome_proposals (recipe_id, recipe_version_id, outcome, "
+                "note) "
                 "VALUES (?, ?, 'held', 'x')",
                 (set_id, version_id),
             )
@@ -358,7 +359,7 @@ class TestWhatReadsAGrade:
     async def test_deleting_the_conversation_leaves_the_proposal(self, wired: Fixtures) -> None:
         set_id, version_id = await _graded_ready(wired)
         cursor = await wired.db.execute(
-            "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES ('v1', ?, ?)",
+            "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES ('v1', ?, ?)",
             (set_id, version_id),
         )
         spec = OutcomeProposalWrite.model_validate(

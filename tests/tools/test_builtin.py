@@ -396,7 +396,7 @@ async def test_a_proposal_records_the_conversation_it_came_from(
 ) -> None:
     """So the experiment log can lead back to where the change was argued."""
     cursor = await archive.db.execute(
-        "INSERT INTO chat_threads (title, set_id) VALUES (?, ?)", ("About v1", archive.set_id)
+        "INSERT INTO chat_threads (title, recipe_id) VALUES (?, ?)", ("About v1", archive.set_id)
     )
     set_ctx.thread_id = int(cursor.lastrowid or 0)
 
@@ -642,7 +642,7 @@ async def test_a_conversation_of_another_set_cannot_be_named_as_the_room(
         SetWrite(name="Another coffee", bean_id=archive.bean_id), SetVersionWrite(dose_g=18)
     )
     cursor = await archive.db.execute(
-        "INSERT INTO chat_threads (title, set_id) VALUES (?, ?)", ("Elsewhere", other.id)
+        "INSERT INTO chat_threads (title, recipe_id) VALUES (?, ?)", ("Elsewhere", other.id)
     )
     set_ctx.thread_id = int(cursor.lastrowid or 0)
 
@@ -760,7 +760,7 @@ async def test_a_set_conversations_profile_draft_changes_the_sets_profile_by_def
     later = await another_version(archive.db, archive.profile_version_id, description="later")
     await archive.db.execute(
         "UPDATE profile_board SET current_version_id = ? "
-        "WHERE id = (SELECT board_id FROM sets WHERE id = ?)",
+        "WHERE id = (SELECT board_id FROM recipes WHERE id = ?)",
         (later, archive.set_id),
     )
     made = await call(
@@ -774,7 +774,7 @@ async def test_a_set_conversations_profile_draft_changes_the_sets_profile_by_def
     assert stored is not None
     assert stored.base_version_id == later != archive.profile_version_id
     assert stored.destination_board_id == await archive.db.fetch_value(
-        "SELECT board_id FROM sets WHERE id = ?", (archive.set_id,)
+        "SELECT board_id FROM recipes WHERE id = ?", (archive.set_id,)
     )
 
 
@@ -799,7 +799,7 @@ async def test_a_set_conversations_profile_draft_cannot_start_from_another_profi
 async def test_a_set_with_no_profile_has_none_to_change(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
-    await archive.db.execute("UPDATE sets SET board_id = NULL WHERE id = ?", (archive.set_id,))
+    await archive.db.execute("UPDATE recipes SET board_id = NULL WHERE id = ?", (archive.set_id,))
     data = await refuse(
         _with_drafts(set_ctx),
         "draft_profile",
@@ -1058,7 +1058,7 @@ async def test_a_recorded_insight_records_the_conversation_that_wrote_it(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
     cursor = await archive.db.execute(
-        "INSERT INTO chat_threads (title, set_id) VALUES ('v1', ?)", (archive.set_id,)
+        "INSERT INTO chat_threads (title, recipe_id) VALUES ('v1', ?)", (archive.set_id,)
     )
     set_ctx.thread_id = int(cursor.lastrowid or 0)
 
@@ -1284,7 +1284,7 @@ async def test_list_profiles_leaves_out_the_copy_of_a_pin(
     row = await ProfileBoardRepository(archive.db).insert(
         BoardRowWrite(label="Hotter", current_version_id=copy, origin="draft")
     )
-    version = await archive.db.fetch_value("SELECT id FROM set_versions ORDER BY id LIMIT 1")
+    version = await archive.db.fetch_value("SELECT id FROM recipe_versions ORDER BY id LIMIT 1")
     pin = await PinsRepository(archive.db).insert(
         PinWrite(set_version_id=int(version), board_id=row.id, profile_version_id=copy)
     )

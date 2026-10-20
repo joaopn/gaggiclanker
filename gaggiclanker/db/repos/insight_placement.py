@@ -105,13 +105,13 @@ class InsightPlacementBuilder(Repository):
         return found
 
     async def _candidate_sets(self) -> list[int]:
-        rows = await self.db.fetch_all("SELECT id FROM sets WHERE designing = 0 ORDER BY id")
+        rows = await self.db.fetch_all("SELECT id FROM recipes WHERE designing = 0 ORDER BY id")
         return [int(row["id"]) for row in rows]
 
     async def _build(self) -> dict[str, int]:
         rows = await self.db.fetch_all(
             "SELECT id FROM knowledge_insights "
-            "WHERE set_id IS NULL AND source IN (?, ?) ORDER BY id",
+            "WHERE recipe_id IS NULL AND source IN (?, ?) ORDER BY id",
             MOVABLE_SOURCES,
         )
         considered = 0
@@ -132,7 +132,7 @@ class InsightPlacementBuilder(Repository):
             # `updated_at` is left alone: the insight keeps its dates, and moving
             # it is not an edit anybody made.
             await self.db.execute(
-                "UPDATE knowledge_insights SET set_id = ?, set_version_id = ? WHERE id = ?",
+                "UPDATE knowledge_insights SET recipe_id = ?, recipe_version_id = ? WHERE id = ?",
                 (set_id, version_id, insight.id),
             )
             moved += 1
@@ -155,9 +155,9 @@ class InsightPlacementBuilder(Repository):
             marks = ", ".join("?" for _ in evidence)
             found = await self.db.fetch_value(
                 f"""
-                SELECT sh.set_version_id FROM shots sh
-                  JOIN set_versions v ON v.id = sh.set_version_id
-                 WHERE v.set_id = ? AND sh.id IN ({marks})
+                SELECT sh.recipe_version_id FROM shots sh
+                  JOIN recipe_versions v ON v.id = sh.recipe_version_id
+                 WHERE v.recipe_id = ? AND sh.id IN ({marks})
                  ORDER BY COALESCE(sh.started_at, '') DESC, sh.id DESC
                  LIMIT 1
                 """,  # noqa: S608 - the placeholders are literal question marks
@@ -167,8 +167,8 @@ class InsightPlacementBuilder(Repository):
                 return int(found)
         found = await self.db.fetch_value(
             """
-            SELECT id FROM set_versions
-             WHERE set_id = ? AND created_at <= ?
+            SELECT id FROM recipe_versions
+             WHERE recipe_id = ? AND created_at <= ?
              ORDER BY created_at DESC, id DESC LIMIT 1
             """,
             (set_id, insight.created_at),

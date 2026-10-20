@@ -114,15 +114,15 @@ async def kitchen(db: Database) -> Kitchen:
 
     # Versions have known dates, so "the version current when it was written" is testable.
     await db.execute(
-        "UPDATE set_versions SET created_at = '2026-01-01T08:00:00.000Z' WHERE id = ?", (a_v1,)
+        "UPDATE recipe_versions SET created_at = '2026-01-01T08:00:00.000Z' WHERE id = ?", (a_v1,)
     )
     await db.execute(
-        "UPDATE set_versions SET created_at = '2026-02-01T08:00:00.000Z' WHERE id = ?",
+        "UPDATE recipe_versions SET created_at = '2026-02-01T08:00:00.000Z' WHERE id = ?",
         (a_v2_row.id,),
     )
     for version_id in (b_v1, c_v1, d_v1):
         await db.execute(
-            "UPDATE set_versions SET created_at = '2026-01-10T08:00:00.000Z' WHERE id = ?",
+            "UPDATE recipe_versions SET created_at = '2026-01-10T08:00:00.000Z' WHERE id = ?",
             (version_id,),
         )
 
@@ -200,7 +200,7 @@ async def _oracle(db: Database, row: dict[str, Any]) -> list[int]:
         return fits
     for candidate in await db.fetch_all(
         "SELECT s.id, s.bean_id, s.grinder_id, b.roast_level, b.process, b.origin "
-        "FROM sets s LEFT JOIN beans b ON b.id = s.bean_id WHERE s.designing = 0 ORDER BY s.id"
+        "FROM recipes s LEFT JOIN beans b ON b.id = s.bean_id WHERE s.designing = 0 ORDER BY s.id"
     ):
         attributes = set_attributes(
             bean_id=candidate["bean_id"],
@@ -215,8 +215,9 @@ async def _oracle(db: Database, row: dict[str, Any]) -> list[int]:
             filed = {
                 int(shot["id"])
                 for shot in await db.fetch_all(
-                    "SELECT sh.id FROM shots sh JOIN set_versions v ON v.id = sh.set_version_id "
-                    "WHERE v.set_id = ?",
+                    "SELECT sh.id FROM shots sh JOIN recipe_versions v ON v.id = "
+                    "sh.recipe_version_id "
+                    "WHERE v.recipe_id = ?",
                     (candidate["id"],),
                 )
             }
@@ -440,7 +441,7 @@ class TestWhereEachOneLands:
             if row["set_id"] is None:
                 continue
             bean = await kitchen.db.fetch_value(
-                "SELECT b.name FROM sets s JOIN beans b ON b.id = s.bean_id WHERE s.id = ?",
+                "SELECT b.name FROM recipes s JOIN beans b ON b.id = s.bean_id WHERE s.id = ?",
                 (row["set_id"],),
             )
             assert str(row["text"]).startswith(str(bean)), row["text"]

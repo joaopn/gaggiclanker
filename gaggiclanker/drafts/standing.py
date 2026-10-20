@@ -87,8 +87,8 @@ RETIRED_BY_SYNC = frozenset(
 #: declined, with the sentence each reads as. The draft was never put on the list.
 OVERTAKEN_DESIGN = {
     "newer_recipe": NEWER_FIRST_RECIPE,
-    "set_written_otherwise": SET_WRITTEN_OTHERWISE,
-    "set_discarded": SET_DISCARDED,
+    "recipe_written_otherwise": SET_WRITTEN_OTHERWISE,
+    "recipe_discarded": SET_DISCARDED,
 }
 
 

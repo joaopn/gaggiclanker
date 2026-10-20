@@ -435,7 +435,7 @@ async def test_without_a_draft_service_an_option_that_needs_one_is_refused(
 
     after = await SetsRepository(fixture.db).list_sets(include_archived=True)
     assert [row.id for row in after] == [row.id for row in before], "nothing was created"
-    versions = await fixture.db.fetch_value("SELECT COUNT(*) FROM set_versions")
+    versions = await fixture.db.fetch_value("SELECT COUNT(*) FROM recipe_versions")
     drafts = await fixture.db.fetch_value("SELECT COUNT(*) FROM profile_drafts")
     assert drafts == 0
 
@@ -445,7 +445,9 @@ async def test_without_a_draft_service_an_option_that_needs_one_is_refused(
     assert reread is not None and reread.accepted_option is None
     taken = await unwired.accept(run.id, "conservative")  # type: ignore[attr-defined]
     assert taken.draft is None
-    assert await fixture.db.fetch_value("SELECT COUNT(*) FROM set_versions") == (versions or 0) + 1
+    assert (
+        await fixture.db.fetch_value("SELECT COUNT(*) FROM recipe_versions") == (versions or 0) + 1
+    )
 
 
 async def test_an_option_that_names_no_profile_stages_nothing(
@@ -590,10 +592,10 @@ async def test_a_draft_with_no_profile_in_the_library_gets_a_synthetic_base(
 ) -> None:
     """A draft is always derived from a version, because the diff is how it is read."""
     await fixture.db.execute("UPDATE shots SET profile_version_id = NULL")
-    await fixture.db.execute("UPDATE set_versions SET profile_version_id = NULL")
+    await fixture.db.execute("UPDATE recipe_versions SET profile_version_id = NULL")
     await fixture.db.execute("DELETE FROM profile_board_versions")
     await fixture.db.execute("UPDATE profile_versions SET board_id = NULL")
-    await fixture.db.execute("UPDATE sets SET board_id = NULL")
+    await fixture.db.execute("UPDATE recipes SET board_id = NULL")
     await fixture.db.execute("DELETE FROM profile_board")
     await fixture.db.execute("DELETE FROM profile_versions")
     provider.script = [json.dumps(option_with(profile=GOOD_PROFILE))]

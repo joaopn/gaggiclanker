@@ -23,7 +23,7 @@ variables:
     description: The coffee — whichever of roast level, process, origin, decaf, the taste scales and the description a person recorded; an empty field is left out.
   - name: hardware_facts
     description: The grinder (its step unit and their usual setting) and the machine.
-  - name: similar_sets
+  - name: similar_recipes
     description: Past Set versions on this hardware that resemble the coffee, with how they went.
   - name: profile_library
     description: Profiles already in the archive, with their shape and how used they are.
@@ -44,7 +44,7 @@ user: |
 
   WHAT THIS KITCHEN HAS ALREADY BREWED THAT RESEMBLES IT — evidence, and it outranks the rules
 
-  {{similar_sets}}
+  {{similar_recipes}}
 
   PROFILES ALREADY IN THE LIBRARY — prefer one of these to authoring a new one
 

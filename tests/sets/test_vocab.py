@@ -54,8 +54,8 @@ CHECKED: list[tuple[str, str, tuple[str, ...]]] = [
     ("beans", "roast_level", ROAST_LEVELS),
     ("grinders", "burr_type", BURR_TYPES),
     ("grinders", "step_unit", STEP_UNITS),
-    ("set_versions", "origin", SET_VERSION_ORIGINS),
-    ("set_versions", "outcome", VERSION_OUTCOMES),
+    ("recipe_versions", "origin", SET_VERSION_ORIGINS),
+    ("recipe_versions", "outcome", VERSION_OUTCOMES),
     ("shot_judgements", "balance", BALANCES),
     ("shot_judgements", "decision", DECISIONS),
     ("flavor_picks", "kind", FLAVOR_PICK_KINDS),
@@ -96,10 +96,10 @@ async def test_a_set_version_has_no_temperature_and_the_vocabulary_agrees(
 
     The temperature has no column because the machine brews at the profile's.
     """
-    schema = await _schema(db, "set_versions")
+    schema = await _schema(db, "recipe_versions")
     assert "target_temperature_c" not in schema
 
-    columns = {str(row["name"]) for row in await db.fetch_all("PRAGMA table_info(set_versions)")}
+    columns = {str(row["name"]) for row in await db.fetch_all("PRAGMA table_info(recipe_versions)")}
     assert {"grind_value", "dose_g", "target_yield_g"} <= columns
 
 

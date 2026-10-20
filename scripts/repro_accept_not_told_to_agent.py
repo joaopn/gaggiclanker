@@ -145,7 +145,7 @@ async def main() -> int:
     if after == design_room:
         bugs.append("Discuss on version 1 reopens the design conversation after the accept")
 
-    design, change = prose("chat-design"), prose("chat-set")
+    design, change = prose("chat-design"), prose("chat-recipe")
     if "becomes the Set's ordinary one" in design:
         bugs.append("the design prompt says the design conversation becomes the Set's own")
     if '"Accepted:"' not in change or "they must start a new conversation" not in change:

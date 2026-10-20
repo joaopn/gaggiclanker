@@ -136,7 +136,7 @@ async def test_the_unique_index_refuses_a_second_copy_of_a_name(wired: Fixtures)
 
     with pytest.raises(sqlite3.IntegrityError):
         await wired.db.execute(
-            "INSERT INTO set_versions (set_id, version_major, version_minor, "
+            "INSERT INTO recipe_versions (recipe_id, version_major, version_minor, "
             "created_at) VALUES (?, 1, 1, 'x')",
             (set_id,),
         )
@@ -260,10 +260,10 @@ async def test_a_revert_continues_the_line_it_went_back_to(wired: Fixtures) -> N
     await add("v1.2", major=False, grind_setting="20")
     await add("v2", major=True, dose_g=19)
     await add("v2.1", major=False, grind_setting="19")
-    rows = await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions")
+    rows = await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions")
 
     await revert("v1.2")
-    assert await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions") == rows
+    assert await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions") == rows
     row = await wired.sets.get(set_id)
     assert row is not None and (row.next_minor_label, row.next_major_label) == ("v1.3", "v3")
     await add("v1.3", major=False, grind_setting="18")
@@ -275,7 +275,7 @@ async def test_a_revert_continues_the_line_it_went_back_to(wired: Fixtures) -> N
     await add("v3", major=True, dose_g=20)
 
     # Row count: one per write that made a version, nothing for the three reverts.
-    assert await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions") == 9
+    assert await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions") == 9
     assert len(await wired.sets.reverts(set_id)) == 3
     # Ancestry is the fork history: v1.3 and v1.4 both came off v1.2.
     for label in ("v1.3", "v1.4"):

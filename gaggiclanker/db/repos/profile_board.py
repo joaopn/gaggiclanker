@@ -382,7 +382,7 @@ class ProfileBoardRepository(Repository):
                 if taker is not None:
                     # The Set that brewed this version while no profile had it is this profile's.
                     await self.db.execute(
-                        "UPDATE sets SET board_id = ? WHERE id = ?", (row_id, taker)
+                        "UPDATE recipes SET board_id = ? WHERE id = ?", (row_id, taker)
                     )
                     await self.settle_a_sets_versions(row_id, taker)
                 return version_id
@@ -425,9 +425,9 @@ class ProfileBoardRepository(Repository):
         gets a copy of its own that the Set's versions then name), so all of the Set's versions
         are the profile's."""
         loose = await self.db.fetch_all(
-            "SELECT DISTINCT v.profile_version_id AS id FROM set_versions v "
+            "SELECT DISTINCT v.profile_version_id AS id FROM recipe_versions v "
             "JOIN profile_versions pv ON pv.id = v.profile_version_id "
-            "WHERE v.set_id = ? AND pv.board_id IS NULL ORDER BY v.profile_version_id",
+            "WHERE v.recipe_id = ? AND pv.board_id IS NULL ORDER BY v.profile_version_id",
             (set_id,),
         )
         for entry in loose:
@@ -435,8 +435,8 @@ class ProfileBoardRepository(Repository):
             mine = await self.version_for(row_id, old)
             if mine != old:
                 await self.db.execute(
-                    "UPDATE set_versions SET profile_version_id = ? "
-                    "WHERE set_id = ? AND profile_version_id = ?",
+                    "UPDATE recipe_versions SET profile_version_id = ? "
+                    "WHERE recipe_id = ? AND profile_version_id = ?",
                     (mine, set_id, old),
                 )
             await self.add_version(row_id, mine, "edit")
@@ -461,20 +461,22 @@ class ProfileBoardRepository(Repository):
         the Set brews no version another profile owns, and only through the Set's current version.
         Anything else leaves the version with the Set and the profile gets a copy of its own."""
         named = await self.db.fetch_all(
-            "SELECT DISTINCT set_id FROM set_versions WHERE profile_version_id = ?", (version_id,)
+            "SELECT DISTINCT recipe_id FROM recipe_versions WHERE profile_version_id = ?",
+            (version_id,),
         )
         if not named:
             return True, None
         if len(named) > 1:
             return False, None
         set_id = int(named[0]["set_id"])
-        owned = await self.db.fetch_value("SELECT board_id FROM sets WHERE id = ?", (set_id,))
+        owned = await self.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (set_id,))
         busy = await self.db.fetch_value(
-            "SELECT 1 FROM sets WHERE board_id = ? AND id != ?", (row_id, set_id)
+            "SELECT 1 FROM recipes WHERE board_id = ? AND id != ?", (row_id, set_id)
         )
         elsewhere = await self.db.fetch_value(
-            "SELECT 1 FROM set_versions v JOIN profile_versions pv ON pv.id = v.profile_version_id "
-            "WHERE v.set_id = ? AND pv.board_id IS NOT NULL AND pv.board_id != ? LIMIT 1",
+            "SELECT 1 FROM recipe_versions v JOIN profile_versions pv ON pv.id = "
+            "v.profile_version_id "
+            "WHERE v.recipe_id = ? AND pv.board_id IS NOT NULL AND pv.board_id != ? LIMIT 1",
             (set_id, row_id),
         )
         if busy or elsewhere or (owned is not None and owned != row_id):
@@ -485,7 +487,7 @@ class ProfileBoardRepository(Repository):
         # decided everywhere else: a profile that takes over a version the Set named earlier gets
         # a copy of its own, and the version stays the Set's.
         current = await self.db.fetch_value(
-            "SELECT v.profile_version_id FROM sets s JOIN set_versions v "
+            "SELECT v.profile_version_id FROM recipes s JOIN recipe_versions v "
             "ON v.id = s.current_version_id WHERE s.id = ?",
             (set_id,),
         )

@@ -47,7 +47,7 @@ async def test_the_pointer_not_the_newest_row_decides_what_is_current(wired: Fix
     assert first is not None
     await wired.sets.add_version(set_id, SetVersionPatch(grind_setting="21"))
     await wired.db.execute(
-        "UPDATE sets SET current_version_id = ? WHERE id = ?", (first.id, set_id)
+        "UPDATE recipes SET current_version_id = ? WHERE id = ?", (first.id, set_id)
     )
 
     current = await wired.sets.current_version(set_id)
@@ -69,7 +69,7 @@ async def test_automatch_files_a_shot_under_the_version_the_set_is_on(wired: Fix
     newer = await wired.sets.add_version(set_id, SetVersionPatch(profile_version_id=other))
     assert newer is not None
     await wired.db.execute(
-        "UPDATE sets SET current_version_id = ? WHERE id = ?", (first.id, set_id)
+        "UPDATE recipes SET current_version_id = ? WHERE id = ?", (first.id, set_id)
     )
 
     shot = await make_shot(wired.db, "000001", profile_version_id=profile)
@@ -92,11 +92,11 @@ async def test_versions_are_ordered_by_when_they_were_made_not_by_id(wired: Fixt
     assert second is not None and third is not None
     # Forge it: the third row was made before the second, whatever its id says.
     await wired.db.execute(
-        "UPDATE set_versions SET created_at = '2000-01-01T00:00:00.000Z' WHERE id = ?",
+        "UPDATE recipe_versions SET created_at = '2000-01-01T00:00:00.000Z' WHERE id = ?",
         (third.id,),
     )
     await wired.db.execute(
-        "UPDATE set_versions SET created_at = '1999-01-01T00:00:00.000Z' WHERE id = ?",
+        "UPDATE recipe_versions SET created_at = '1999-01-01T00:00:00.000Z' WHERE id = ?",
         (first.id,),
     )
 
@@ -115,7 +115,7 @@ async def test_a_prediction_compares_only_to_a_version_made_earlier(wired: Fixtu
     third = await wired.sets.add_version(set_id, SetVersionPatch(grind_setting="20"))
     assert second is not None and third is not None
     await wired.db.execute(
-        "UPDATE set_versions SET created_at = '2000-01-01T00:00:00.000Z' WHERE id = ?",
+        "UPDATE recipe_versions SET created_at = '2000-01-01T00:00:00.000Z' WHERE id = ?",
         (third.id,),
     )
 
@@ -137,7 +137,7 @@ async def test_an_old_roll_back_row_keeps_its_line_and_the_next_version_forks_fr
     set_id = await _set(wired)
     first = await wired.sets.current_version(set_id)
     assert first is not None
-    await db.execute("UPDATE set_versions SET created_at = '2026-01-01T00:00:00.000Z'")
+    await db.execute("UPDATE recipe_versions SET created_at = '2026-01-01T00:00:00.000Z'")
     rows = [
         # id, major, minor, parent, restores, created
         (first.id + 1, 1, 1, first.id, None, "2026-01-02T00:00:00.000Z"),
@@ -146,11 +146,11 @@ async def test_an_old_roll_back_row_keeps_its_line_and_the_next_version_forks_fr
     ]
     for vid, major, minor, parent, restores, created in rows:
         await db.execute(
-            "INSERT INTO set_versions (id, set_id, version_major, version_minor, "
+            "INSERT INTO recipe_versions (id, recipe_id, version_major, version_minor, "
             "parent_version_id, restores_version_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (vid, set_id, major, minor, parent, restores, created),
         )
-    await db.execute("UPDATE sets SET current_version_id = ?", (first.id + 3,))
+    await db.execute("UPDATE recipes SET current_version_id = ?", (first.id + 3,))
 
     assert await wired.sets.dead_end_versions([set_id]) == {first.id + 2}
     added = await wired.sets.add_version(set_id, SetVersionPatch(grind_setting="19"))

@@ -158,7 +158,7 @@ async def test_the_proposal_names_the_conversation_it_came_from(
 ) -> None:
     version = await _predicted_version(archive)
     cursor = await archive.db.execute(
-        "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES ('v', ?, ?)",
+        "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES ('v', ?, ?)",
         (archive.set_id, version.id),
     )
     ctx = _in_version(archive, settings, version, int(cursor.lastrowid or 0))

@@ -381,7 +381,7 @@ async def test_the_set_version_an_approval_is_recorded_as(
     async def for_set(bar: float) -> dict[str, Any]:
         draft = await same_name_draft(app, client, provider, "For a set", bar)
         await app.state.db.execute(
-            "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, draft["id"])
+            "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
         )
         return draft
 

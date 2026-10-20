@@ -188,7 +188,7 @@ class ChatRepository(Repository):
             if isinstance(resolved, str):
                 return ThreadWriteResult(refused=resolved)
             cursor = await self.db.execute(
-                "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES (?, ?, ?)",
+                "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES (?, ?, ?)",
                 (spec.title.strip(), spec.set_id, resolved),
             )
             thread_id = int(cursor.lastrowid or 0)
@@ -220,16 +220,17 @@ class ChatRepository(Repository):
             if isinstance(resolved, str):
                 return ThreadWriteResult(refused=resolved)
             existing = await self.db.fetch_value(
-                "SELECT t.id FROM chat_threads t JOIN sets s ON s.id = t.set_id "
-                "WHERE t.set_version_id = ? AND (s.designing = 1 OR NOT EXISTS ("
-                "  SELECT 1 FROM set_version_proposals p "
+                "SELECT t.id FROM chat_threads t JOIN recipes s ON s.id = t.recipe_id "
+                "WHERE t.recipe_version_id = ? AND (s.designing = 1 OR NOT EXISTS ("
+                "  SELECT 1 FROM recipe_version_proposals p "
                 "  WHERE p.thread_id = t.id AND p.kind = 'design')) "
                 "ORDER BY t.updated_at DESC, t.id DESC LIMIT 1",
                 (resolved,),
             )
             if existing is None:
                 cursor = await self.db.execute(
-                    "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES (?, ?, ?)",
+                    "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES (?, ?, "
+                    "?)",
                     ("", set_id, resolved),
                 )
                 existing = int(cursor.lastrowid or 0)
@@ -532,15 +533,15 @@ class ToolCallsRepository(Repository):
 
 
 _THREAD_SELECT = f"""
-SELECT t.id, t.title, t.set_id, s.name AS set_name,
-       t.set_version_id,
+SELECT t.id, t.title, t.recipe_id, s.name AS set_name,
+       t.recipe_version_id,
        {label_sql("v")} AS set_version_label,
        (SELECT COUNT(*) FROM chat_messages m
          WHERE m.thread_id = t.id AND m.role IN ('user', 'assistant')) AS message_count,
        t.created_at, t.updated_at
   FROM chat_threads t
-  LEFT JOIN sets s ON s.id = t.set_id
-  LEFT JOIN set_versions v ON v.id = t.set_version_id
+  LEFT JOIN recipes s ON s.id = t.recipe_id
+  LEFT JOIN recipe_versions v ON v.id = t.recipe_version_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 _MESSAGE_SELECT = """

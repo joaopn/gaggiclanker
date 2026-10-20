@@ -620,7 +620,7 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
 
 
 async def db_sets(app: FastAPI) -> list[int]:
-    rows = await app.state.db.fetch_all("SELECT id FROM sets WHERE designing = 0 ORDER BY id")
+    rows = await app.state.db.fetch_all("SELECT id FROM recipes WHERE designing = 0 ORDER BY id")
     return [int(r["id"]) for r in rows]
 
 

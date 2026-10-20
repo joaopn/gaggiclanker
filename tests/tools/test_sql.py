@@ -84,10 +84,11 @@ async def test_a_real_query_over_the_views_works(archive: Fixture) -> None:
 async def test_an_aggregate_across_views_works(archive: Fixture) -> None:
     result = await run_query(
         archive.db.path,
-        "SELECT v.set_version_label, COUNT(*) AS n FROM v_shots v GROUP BY v.set_version_label",
+        "SELECT v.recipe_version_label, COUNT(*) AS n FROM v_shots v GROUP BY "
+        "v.recipe_version_label",
     )
 
-    assert result.columns == ["set_version_label", "n"]
+    assert result.columns == ["recipe_version_label", "n"]
     assert result.rows
 
 
@@ -156,7 +157,7 @@ async def test_a_column_less_read_of_a_secret_table_is_refused(
     "statement",
     [
         "SELECT COUNT(*) FROM v_shots",
-        "SELECT EXISTS(SELECT 1 FROM v_sets)",
+        "SELECT EXISTS(SELECT 1 FROM v_recipes)",
         "WITH recent AS (SELECT shot_id FROM v_shots) SELECT COUNT(*) FROM recent",
     ],
 )
@@ -206,7 +207,7 @@ async def test_the_version_view_carries_the_experiment_log(archive: Fixture) -> 
     guesses held" would answer from the intent field, which is what you were
     trying rather than what you expected.
     """
-    result = await run_query(archive.db.path, "SELECT * FROM v_set_versions LIMIT 1")
+    result = await run_query(archive.db.path, "SELECT * FROM v_recipe_versions LIMIT 1")
 
     assert {
         "prediction",
@@ -227,7 +228,7 @@ async def test_the_views_read_the_temperature_off_the_profile(archive: Fixture) 
     says the brew temperature belongs to the profile, which is also the only way
     to answer "did the hotter profile help".
     """
-    versions = await run_query(archive.db.path, "SELECT * FROM v_set_versions LIMIT 1")
+    versions = await run_query(archive.db.path, "SELECT * FROM v_recipe_versions LIMIT 1")
     shots = await run_query(archive.db.path, "SELECT * FROM v_shots LIMIT 1")
 
     for result in (versions, shots):
@@ -244,7 +245,7 @@ async def test_the_views_read_the_temperature_off_the_profile(archive: Fixture) 
     await archive.db.execute(
         "UPDATE profile_versions SET json = json_set(json, '$.temperature', 0)"
     )
-    unset_versions = await run_query(archive.db.path, "SELECT * FROM v_set_versions LIMIT 1")
+    unset_versions = await run_query(archive.db.path, "SELECT * FROM v_recipe_versions LIMIT 1")
     unset_shots = await run_query(archive.db.path, "SELECT * FROM v_shots LIMIT 1")
     assert unset_versions.rows[0][unset_versions.columns.index("profile_temperature_c")] is None
     assert unset_shots.rows[0][unset_shots.columns.index("profile_temperature_c")] is None

@@ -122,7 +122,7 @@ class TestWhatThePageReads:
         assert newer is not None
         # The Set is on v1 again while v1.1 is the version made last.
         await app.state.db.execute(
-            "UPDATE sets SET current_version_id = ? WHERE id = ?", (first, set_id)
+            "UPDATE recipes SET current_version_id = ? WHERE id = ?", (first, set_id)
         )
 
         detail = data(await client.get(f"/api/sets/{set_id}"))

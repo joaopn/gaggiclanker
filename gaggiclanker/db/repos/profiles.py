@@ -530,11 +530,12 @@ class ProfilesRepository(Repository):
                             WHERE b.id = v.board_id AND b.current_version_id = v.id
                               AND b.deleted_at IS NULL) AS is_active,
                    ps.id AS set_id, ps.name AS set_name,
-                   p.id AS pin_id, pv.set_id AS pin_set_id, p.set_version_id AS pin_set_version_id
+                   p.id AS pin_id, pv.recipe_id AS pin_set_id,
+                   p.recipe_version_id AS pin_set_version_id
             FROM profile_versions v
-            LEFT JOIN sets ps ON ps.board_id = v.board_id
-            LEFT JOIN set_version_pins p ON p.profile_version_id = v.id
-            LEFT JOIN set_versions pv ON pv.id = p.set_version_id
+            LEFT JOIN recipes ps ON ps.board_id = v.board_id
+            LEFT JOIN recipe_version_pins p ON p.profile_version_id = v.id
+            LEFT JOIN recipe_versions pv ON pv.id = p.recipe_version_id
             WHERE {clause}
             ORDER BY v.id DESC
             LIMIT ? OFFSET ?
@@ -550,7 +551,7 @@ class ProfilesRepository(Repository):
         """Every profile version that is the copy of a pin, live or since unpinned: none of them
         may be named by a Set version, so none is offered to choose from."""
         rows = await self.db.fetch_all(
-            "SELECT profile_version_id FROM set_version_pins ORDER BY profile_version_id"
+            "SELECT profile_version_id FROM recipe_version_pins ORDER BY profile_version_id"
         )
         return [int(row["profile_version_id"]) for row in rows]
 

@@ -91,14 +91,14 @@ async def _counts(app: FastAPI) -> tuple[int, ...]:
     db = app.state.db
     counts = []
     for table in (
-        "sets",
-        "set_versions",
+        "recipes",
+        "recipe_versions",
         "knowledge_insights",
         "profile_board",
         "profile_drafts",
         "profile_versions",
         "signature_expectations",
-        "set_version_pins",
+        "recipe_version_pins",
     ):
         counts.append(int(await db.fetch_value(f"SELECT COUNT(*) FROM {table}")))  # noqa: S608
     return tuple(counts)
@@ -106,7 +106,7 @@ async def _counts(app: FastAPI) -> tuple[int, ...]:
 
 async def _learned_at(app: FastAPI, insight_id: int, version_id: int | None) -> None:
     await app.state.db.execute(
-        "UPDATE knowledge_insights SET set_version_id = ? WHERE id = ?", (version_id, insight_id)
+        "UPDATE knowledge_insights SET recipe_version_id = ? WHERE id = ?", (version_id, insight_id)
     )
 
 
@@ -215,7 +215,7 @@ async def test_the_preview_answers_404_and_409_like_the_duplicate(adopted: Adopt
         assert (await _preview(client, url_set, url_version)).status_code == 404
         assert (await _duplicate(client, url_set, url_version, bean_id=1)).status_code == 404
 
-    await app.state.db.execute("UPDATE sets SET designing = 1 WHERE id = ?", (set_id,))
+    await app.state.db.execute("UPDATE recipes SET designing = 1 WHERE id = ?", (set_id,))
     preview = await _preview(client, set_id, version_id)
     refused = await _duplicate(client, set_id, version_id)
     assert (preview.status_code, refused.status_code) == (409, 409)
@@ -342,7 +342,7 @@ async def test_duplicating_a_pinned_version_copies_the_profile_it_brews_not_the_
     assert (
         int(
             await app.state.db.fetch_value(
-                "SELECT COUNT(*) FROM set_versions WHERE profile_version_id = ?",
+                "SELECT COUNT(*) FROM recipe_versions WHERE profile_version_id = ?",
                 (pin["profile_version_id"],),
             )
         )
@@ -393,7 +393,7 @@ async def test_the_copy_suggestion_is_a_valid_set_name_at_the_limit(adopted: Ado
     app, client, _fake = adopted
     set_id, version_id = await _set_with_version(app, client)
     long_name = "L" * 199 + "z"
-    await app.state.db.execute("UPDATE sets SET name = ? WHERE id = ?", (long_name, set_id))
+    await app.state.db.execute("UPDATE recipes SET name = ? WHERE id = ?", (long_name, set_id))
 
     suggested = data(await _preview(client, set_id, version_id))["set_name"]
 
@@ -611,7 +611,7 @@ async def test_copied_insights_are_plain_confirmed_rows_with_no_past(adopted: Ad
     await _insight(app, set_id, "Not chosen")
     c = await _insight(app, set_id, "Preinfusion under 6 s channels", source="analysis")
     await app.state.db.execute(
-        "UPDATE knowledge_insights SET set_version_id = ?, evidence_shot_ids_json = '[1, 2]', "
+        "UPDATE knowledge_insights SET recipe_version_id = ?, evidence_shot_ids_json = '[1, 2]', "
         "rests_on_json = ? WHERE id = ?",
         (version_id, f'[{{"set_version_id": {version_id}, "outcome": "held"}}]', a),
     )
@@ -619,7 +619,7 @@ async def test_copied_insights_are_plain_confirmed_rows_with_no_past(adopted: Ad
     made = data(await _duplicate(client, set_id, version_id, insight_ids=[c, a]))["set"]
 
     rows = await app.state.db.fetch_all(
-        "SELECT * FROM knowledge_insights WHERE set_id = ? ORDER BY id", (made["id"],)
+        "SELECT * FROM knowledge_insights WHERE recipe_id = ? ORDER BY id", (made["id"],)
     )
     # In the order the source Set lists them, however the request named them.
     assert [(r["text"], r["source"]) for r in rows] == [
@@ -636,7 +636,7 @@ async def test_copied_insights_are_plain_confirmed_rows_with_no_past(adopted: Ad
     assert (
         int(
             await app.state.db.fetch_value(
-                "SELECT COUNT(*) FROM knowledge_insights WHERE set_id = ?", (set_id,)
+                "SELECT COUNT(*) FROM knowledge_insights WHERE recipe_id = ?", (set_id,)
             )
         )
         == 3
@@ -648,7 +648,7 @@ async def test_copied_insights_are_plain_confirmed_rows_with_no_past(adopted: Ad
     ]
     # Never a conversation's own proposal: no thread wrote them.
     thread_count = await app.state.db.fetch_value(
-        "SELECT COUNT(*) FROM knowledge_insights WHERE set_id = ? AND thread_id IS NOT NULL",
+        "SELECT COUNT(*) FROM knowledge_insights WHERE recipe_id = ? AND thread_id IS NOT NULL",
         (made["id"],),
     )
     assert thread_count == 0
@@ -668,7 +668,7 @@ async def test_no_insights_chosen_copies_none_and_a_repeated_id_copies_one(
         )
     )["set"]
 
-    count = "SELECT COUNT(*) FROM knowledge_insights WHERE set_id = ?"
+    count = "SELECT COUNT(*) FROM knowledge_insights WHERE recipe_id = ?"
     assert int(await app.state.db.fetch_value(count, (none["id"],))) == 0
     assert int(await app.state.db.fetch_value(count, (twice["id"],))) == 1
 
@@ -678,7 +678,7 @@ async def test_no_insights_chosen_copies_none_and_a_repeated_id_copies_one(
 
 async def _copy_flags(app: FastAPI, set_id: int) -> list[Any]:
     rows = await app.state.db.fetch_all(
-        "SELECT copied_from_insight_id FROM knowledge_insights WHERE set_id = ? ORDER BY id",
+        "SELECT copied_from_insight_id FROM knowledge_insights WHERE recipe_id = ? ORDER BY id",
         (set_id,),
     )
     return [row["copied_from_insight_id"] for row in rows]
@@ -686,7 +686,7 @@ async def _copy_flags(app: FastAPI, set_id: int) -> list[Any]:
 
 async def _home_flags(app: FastAPI, set_id: int) -> list[Any]:
     rows = await app.state.db.fetch_all(
-        "SELECT copied_from_set_id FROM knowledge_insights WHERE set_id = ? ORDER BY id",
+        "SELECT copied_from_recipe_id FROM knowledge_insights WHERE recipe_id = ? ORDER BY id",
         (set_id,),
     )
     return [row["copied_from_set_id"] for row in rows]

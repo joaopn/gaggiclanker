@@ -50,8 +50,10 @@ async def test_the_note_is_gone_with_its_source_version(wired: Fixtures) -> None
     version_id, copy_id = await _two_sets(wired)
     # A designed Set that was discarded takes its versions with it; the copy is left without a note.
     source_set = (await wired.sets.get_version(version_id)).set_id  # type: ignore[union-attr]
-    await wired.db.execute("UPDATE sets SET current_version_id = NULL WHERE id = ?", (source_set,))
-    await wired.db.execute("DELETE FROM set_versions WHERE id = ?", (version_id,))
+    await wired.db.execute(
+        "UPDATE recipes SET current_version_id = NULL WHERE id = ?", (source_set,)
+    )
+    await wired.db.execute("DELETE FROM recipe_versions WHERE id = ?", (version_id,))
 
     copy = await wired.sets.get(copy_id)
 

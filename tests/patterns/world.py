@@ -142,7 +142,7 @@ async def build_talking(world: PatternWorld) -> Talking:
     version = await world.sets.get(world.a)
     assert version is not None and version.current_version_id is not None
     await world.db.execute(
-        "UPDATE set_versions SET outcome = 'held' WHERE id = ?", (version.current_version_id,)
+        "UPDATE recipe_versions SET outcome = 'held' WHERE id = ?", (version.current_version_id,)
     )
     a_grinder = await world.insights.insert(
         InsightWrite(

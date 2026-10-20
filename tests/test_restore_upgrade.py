@@ -156,7 +156,7 @@ async def test_a_backup_that_is_not_in_the_state_its_level_left_is_refused(
 ) -> None:
     backup = await a_latest_level_backup(tmp_path)
     conn = sqlite3.connect(backup)
-    conn.execute("ALTER TABLE sets ADD COLUMN surprise TEXT")
+    conn.execute("ALTER TABLE recipes ADD COLUMN surprise TEXT")
     conn.commit()
     conn.close()
     target = env_in(tmp_path / "target")
@@ -182,3 +182,60 @@ async def test_a_backup_from_a_newer_version_is_refused(
         assert response.json()["error"]["code"] == "RESTORE_SCHEMA_DIFFERS"
         assert "newer version of gaggiclanker" in response.json()["error"]["message"]
         assert staged_files(target.data_dir) == []
+
+
+def a_backup_at_level(tmp_path: Path, level: int) -> Path:
+    """A database as the version at ``level`` left it: its frozen schema, a bean and a Set."""
+    path = tmp_path / f"level{level}-backup.db"
+    conn = sqlite3.connect(path, isolation_level=None)
+    try:
+        conn.executescript(frozen_schema_sql(level))
+        conn.execute("INSERT INTO beans (name) VALUES ('From an older version')")
+        conn.execute("INSERT INTO sets (name, bean_id) VALUES ('Older Set', 1)")
+        assert conn.execute("PRAGMA user_version").fetchone() == (level,)
+    finally:
+        conn.close()
+    return path
+
+
+@pytest.mark.parametrize("level", [0, 1, 2, 3])
+async def test_a_backup_from_before_the_rename_is_accepted_and_upgraded_with_its_rows(
+    tmp_path: Path, level: int
+) -> None:
+    """The gate asks for tables a gaggiclanker database has at any level it can upgrade."""
+    backup = a_backup_at_level(tmp_path, level)
+    target = env_in(tmp_path / "target")
+
+    async with running_app(target) as (app, client):
+        no_signal(app)
+        response = await upload(client, backup)
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert data["upgrade_from_level"] == level
+        assert data["in_file"]["beans"] == 1
+        assert data["in_file"]["sets"] == 1
+        applied = await client.post(f"{ROUTE}/{data['token']}/apply")
+        assert applied.status_code == 202, applied.text
+
+    async with running_app(target) as (app, _client):
+        assert await app.state.db.fetch_value("PRAGMA user_version") == LATEST
+        assert await app.state.db.fetch_value("SELECT name FROM recipes") == "Older Set"
+        assert await app.state.db.fetch_value("SELECT name FROM beans") == "From an older version"
+
+
+async def test_a_file_with_neither_the_old_nor_the_new_recipe_table_is_not_ours(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "neither.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE settings (key TEXT); CREATE TABLE shots (id INTEGER);"
+        "CREATE TABLE beans (id INTEGER);"
+    )
+    conn.close()
+    target = env_in(tmp_path / "target")
+    async with running_app(target) as (app, client):
+        no_signal(app)
+        response = await upload(client, path)
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "RESTORE_NOT_A_DATABASE"

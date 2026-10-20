@@ -50,7 +50,7 @@ async def _pin_it(fixture: Fixture, copy_id: int) -> int:
                 BoardRowWrite(label=copy.label, current_version_id=copy.id, origin="draft")
             )
         ).id
-    first = await fixture.db.fetch_value("SELECT id FROM set_versions ORDER BY id LIMIT 1")
+    first = await fixture.db.fetch_value("SELECT id FROM recipe_versions ORDER BY id LIMIT 1")
     pin = await PinsRepository(fixture.db).insert(
         PinWrite(set_version_id=int(first), board_id=owner, profile_version_id=copy.id)
     )
@@ -94,14 +94,14 @@ async def test_accepting_an_option_that_names_a_copy_is_a_409_and_changes_nothin
     # The suggestion was made while the profile was an ordinary one; it is pinned before the
     # person answers.
     await _pin_it(fixture, copy)
-    sets_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM sets"))
+    sets_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes"))
     drafts_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM profile_drafts"))
 
     with pytest.raises(Conflict) as refused:
         await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
 
     assert refused.value.code == "PROFILE_IS_A_PIN"
-    assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM sets")) == sets_before
+    assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes")) == sets_before
     assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM profile_drafts")) == drafts_before
     again = await starting.get(run.id)  # type: ignore[attr-defined]
     assert again.accepted_option is None, "the run stays acceptable"
@@ -136,12 +136,12 @@ async def test_an_authored_option_that_is_exactly_a_copy_answers_the_wizards_409
     assert await PinsRepository(fixture.db).unpin(pin)
     provider.script = [json.dumps(option_with(profile=GOOD_PROFILE))]
     run = await _propose(starting, fixture)
-    sets_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM sets"))
+    sets_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes"))
 
     with pytest.raises(Conflict) as refused:
         await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
 
     assert "belongs to a pinned copy" in refused.value.message
     assert GOOD_PROFILE["label"] in refused.value.message
-    assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM sets")) == sets_before
+    assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes")) == sets_before
     assert (await starting.get(run.id)).accepted_option is None  # type: ignore[attr-defined]

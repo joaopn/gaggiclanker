@@ -145,7 +145,7 @@ async def test_the_sets_version_and_the_major_choice_ride_on_the_put(
     set_id = await make_set_on(client, "One click set", first["current_version_id"])
     newer = await same_name_draft(app, client, provider, "For a set", 7)
     await app.state.db.execute(
-        "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, newer["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, newer["id"])
     )
     await pull(app)
     before = await set_version_ids(app, set_id)
@@ -154,7 +154,8 @@ async def test_the_sets_version_and_the_major_choice_ride_on_the_put(
 
     assert len(await set_version_ids(app, set_id)) == len(before) + 1
     major = await app.state.db.fetch_value(
-        "SELECT version_major FROM set_versions WHERE set_id = ? ORDER BY created_at DESC, id DESC",
+        "SELECT version_major FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at DESC, "
+        "id DESC",
         (set_id,),
     )
     assert major == 2

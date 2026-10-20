@@ -116,7 +116,7 @@ class DeletionResult:
     replaced: InsightDeletionRow | None = None
 
 
-_SELECT = "SELECT d.* FROM set_insight_deletions d"
+_SELECT = "SELECT d.* FROM recipe_insight_deletions d"
 
 
 class InsightDeletionsRepository(Repository):
@@ -130,14 +130,14 @@ class InsightDeletionsRepository(Repository):
 
     async def get(self, set_id: int, proposal_id: int) -> InsightDeletionRow | None:
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE d.id = ? AND d.set_id = ?", (proposal_id, set_id)
+            f"{_SELECT} WHERE d.id = ? AND d.recipe_id = ?", (proposal_id, set_id)
         )
         return self.to_model(InsightDeletionRow, row)
 
     async def for_set(self, set_id: int, *, limit: int = 100) -> list[InsightDeletionRow]:
         """Every deletion proposed on this Set, newest first."""
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE d.set_id = ? ORDER BY d.id DESC LIMIT ?", (set_id, limit)
+            f"{_SELECT} WHERE d.recipe_id = ? ORDER BY d.id DESC LIMIT ?", (set_id, limit)
         )
         return self.to_models(InsightDeletionRow, rows)
 
@@ -155,7 +155,7 @@ class InsightDeletionsRepository(Repository):
     async def waiting_for_set(self, set_id: int) -> list[InsightDeletionRow]:
         """The ones still waiting, for the Set page's line on an insight."""
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE d.set_id = ? AND d.status = 'proposed' ORDER BY d.id", (set_id,)
+            f"{_SELECT} WHERE d.recipe_id = ? AND d.status = 'proposed' ORDER BY d.id", (set_id,)
         )
         return self.to_models(InsightDeletionRow, rows)
 
@@ -185,13 +185,13 @@ class InsightDeletionsRepository(Repository):
         now = utc_now()
         async with self.db.transaction():
             thread = await self.db.fetch_value(
-                "SELECT 1 FROM chat_threads WHERE id = ? AND set_id = ?",
+                "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?",
                 (spec.thread_id, set_id),
             )
             if thread is None:
                 return DeletionResult(refused="bad_thread")
             insight = await self.db.fetch_one(
-                "SELECT set_id, text, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
+                "SELECT recipe_id, text, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
                 (spec.insight_id,),
             )
             if insight is None or (insight["set_id"] is not None and insight["set_id"] != set_id):
@@ -205,8 +205,8 @@ class InsightDeletionsRepository(Repository):
                 await self._decide(waiting.id, "superseded", now)
             cursor = await self.db.execute(
                 """
-                INSERT INTO set_insight_deletions
-                    (set_id, thread_id, insight_id, insight_text, reason, status, created_at)
+                INSERT INTO recipe_insight_deletions
+                    (recipe_id, thread_id, insight_id, insight_text, reason, status, created_at)
                 VALUES (:set_id, :thread_id, :insight_id, :text, :reason, 'proposed', :now)
                 """,
                 {
@@ -234,7 +234,7 @@ class InsightDeletionsRepository(Repository):
                 None
                 if proposal.insight_id is None
                 else await self.db.fetch_one(
-                    "SELECT set_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
+                    "SELECT recipe_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
                     (proposal.insight_id,),
                 )
             )
@@ -282,6 +282,7 @@ class InsightDeletionsRepository(Repository):
 
     async def _decide(self, proposal_id: int, status: InsightDeletionStatus, now: str) -> None:
         await self.db.execute(
-            "UPDATE set_insight_deletions SET status = :status, decided_at = :now WHERE id = :id",
+            "UPDATE recipe_insight_deletions SET status = :status, decided_at = :now WHERE id = "
+            ":id",
             {"status": status, "now": now, "id": proposal_id},
         )

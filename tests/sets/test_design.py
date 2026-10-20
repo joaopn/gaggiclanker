@@ -89,7 +89,7 @@ async def test_a_damaged_brief_reads_as_an_empty_one_rather_than_breaking_the_li
     wired: Fixtures,
 ) -> None:
     row = await designed(wired, goal="Body.")
-    await wired.db.execute("UPDATE sets SET design_brief = 'not json' WHERE id = ?", (row.id,))
+    await wired.db.execute("UPDATE recipes SET design_brief = 'not json' WHERE id = ?", (row.id,))
 
     listed = await wired.sets.list_sets()
 
@@ -192,10 +192,10 @@ async def test_a_design_with_more_than_one_version_refuses_to_be_filled(
 ) -> None:
     """Not reachable through the application; a hand-edited archive can do it."""
     row = await designed(wired)
-    await wired.db.execute("UPDATE sets SET designing = 0 WHERE id = ?", (row.id,))
+    await wired.db.execute("UPDATE recipes SET designing = 0 WHERE id = ?", (row.id,))
     await wired.sets.add_version(row.id, SetVersionPatch(dose_g=18))
     await wired.sets.add_version(row.id, SetVersionPatch(dose_g=19))
-    await wired.db.execute("UPDATE sets SET designing = 1 WHERE id = ?", (row.id,))
+    await wired.db.execute("UPDATE recipes SET designing = 1 WHERE id = ?", (row.id,))
 
     assert await wired.sets.design_refusal(row.id) == "design_has_versions"
     with pytest.raises(VersionRefused):

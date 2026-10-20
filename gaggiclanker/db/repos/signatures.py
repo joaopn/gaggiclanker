@@ -467,7 +467,8 @@ class SignatureRepository(Repository):
             # goes too, in the same transaction. Restoring the expectation does not bring it
             # back (it is the person's call, or the agent's next proposal).
             await self.db.execute(
-                "UPDATE set_version_signature_overrides SET status = 'withdrawn', answered_at = ? "
+                "UPDATE recipe_version_signature_overrides SET status = 'withdrawn', answered_at "
+                "= ? "
                 "WHERE expectation_id = ? AND status IN ('proposed', 'confirmed')",
                 (utc_now(), expectation_id),
             )
@@ -513,21 +514,21 @@ class SignatureRepository(Repository):
 
     async def get_override(self, override_id: int) -> OverrideRow | None:
         row = await self.db.fetch_one(
-            "SELECT * FROM set_version_signature_overrides WHERE id = ?", (override_id,)
+            "SELECT * FROM recipe_version_signature_overrides WHERE id = ?", (override_id,)
         )
         return self.to_model(OverrideRow, row)
 
     async def overrides_for_set_version(
         self, set_version_id: int, *, statuses: Iterable[str] | None = None
     ) -> list[OverrideRow]:
-        where: list[str] = ["set_version_id = ?"]
+        where: list[str] = ["recipe_version_id = ?"]
         params: list[Any] = [set_version_id]
         if statuses is not None:
             wanted = list(statuses)
             where.append(f"status IN ({', '.join('?' * len(wanted))})")
             params.extend(wanted)
         rows = await self.db.fetch_all(
-            f"SELECT * FROM set_version_signature_overrides WHERE {' AND '.join(where)} "  # noqa: S608
+            f"SELECT * FROM recipe_version_signature_overrides WHERE {' AND '.join(where)} "  # noqa: S608
             "ORDER BY id",
             params,
         )
@@ -539,15 +540,15 @@ class SignatureRepository(Repository):
         if not ids:
             return {}
         rows = await self.db.fetch_all(
-            "SELECT * FROM set_version_signature_overrides "  # noqa: S608
-            f"WHERE status = 'confirmed' AND set_version_id IN ({', '.join('?' * len(ids))})",
+            "SELECT * FROM recipe_version_signature_overrides "  # noqa: S608
+            f"WHERE status = 'confirmed' AND recipe_version_id IN ({', '.join('?' * len(ids))})",
             ids,
         )
         return {row.set_version_id: row for row in self.to_models(OverrideRow, rows)}
 
     async def overrides_proposed_in_thread(self, thread_id: int) -> list[OverrideRow]:
         rows = await self.db.fetch_all(
-            "SELECT * FROM set_version_signature_overrides "
+            "SELECT * FROM recipe_version_signature_overrides "
             "WHERE proposed_by_thread_id = ? ORDER BY id",
             (thread_id,),
         )
@@ -569,14 +570,15 @@ class SignatureRepository(Repository):
                 if live.expectation_id != write.expectation_id:
                     raise AnotherOverrideInForce(live.expectation_id)
             await self.db.execute(
-                "UPDATE set_version_signature_overrides SET status = 'withdrawn', answered_at = ? "
-                "WHERE set_version_id = ? AND status IN ('proposed', 'confirmed')",
+                "UPDATE recipe_version_signature_overrides SET status = 'withdrawn', answered_at "
+                "= ? "
+                "WHERE recipe_version_id = ? AND status IN ('proposed', 'confirmed')",
                 (now, write.set_version_id),
             )
             cursor = await self.db.execute(
                 """
-                INSERT INTO set_version_signature_overrides
-                    (set_version_id, expectation_id, compare_json, reason, status,
+                INSERT INTO recipe_version_signature_overrides
+                    (recipe_version_id, expectation_id, compare_json, reason, status,
                      proposed_by_thread_id, proposed_at)
                 VALUES (?, ?, ?, ?, 'confirmed', ?, ?)
                 """,
@@ -600,7 +602,7 @@ class SignatureRepository(Repository):
             if row is None:
                 return OverrideAnswer(refused="no_override")
             cursor = await self.db.execute(
-                "UPDATE set_version_signature_overrides SET status = 'rejected', "
+                "UPDATE recipe_version_signature_overrides SET status = 'rejected', "
                 "reject_reason = ?, answered_at = ? "
                 "WHERE id = ? AND status IN ('confirmed', 'proposed')",
                 (reason.strip(), utc_now(), override_id),
@@ -626,7 +628,7 @@ class SignatureRepository(Repository):
             ):
                 return OverrideAnswer(refused="another_in_force")
             cursor = await self.db.execute(
-                "UPDATE set_version_signature_overrides SET status = 'confirmed', "
+                "UPDATE recipe_version_signature_overrides SET status = 'confirmed', "
                 "reject_reason = '', answered_at = ? WHERE id = ? AND status = 'rejected'",
                 (utc_now(), override_id),
             )
@@ -642,11 +644,11 @@ class SignatureRepository(Repository):
             SELECT st.id AS set_id, st.name AS set_name, st.archived AS archived,
                    sv.id AS version_id, {label_sql("sv")} AS version_label,
                    (st.current_version_id = sv.id) AS is_current
-            FROM set_versions sv
-            JOIN sets st ON st.id = sv.set_id
+            FROM recipe_versions sv
+            JOIN recipes st ON st.id = sv.recipe_id
             WHERE sv.profile_version_id = ?
-              AND sv.id = (SELECT MAX(sv2.id) FROM set_versions sv2
-                            WHERE sv2.set_id = st.id AND sv2.profile_version_id = ?)
+              AND sv.id = (SELECT MAX(sv2.id) FROM recipe_versions sv2
+                            WHERE sv2.recipe_id = st.id AND sv2.profile_version_id = ?)
             ORDER BY st.archived, st.id
             """,  # noqa: S608 - the one interpolation is the version label expression, a constant
             (profile_version_id, profile_version_id),
@@ -655,7 +657,7 @@ class SignatureRepository(Repository):
 
     async def set_of_version(self, set_version_id: int) -> int | None:
         value = await self.db.fetch_value(
-            "SELECT set_id FROM set_versions WHERE id = ?", (set_version_id,)
+            "SELECT recipe_id FROM recipe_versions WHERE id = ?", (set_version_id,)
         )
         return None if value is None else int(value)
 

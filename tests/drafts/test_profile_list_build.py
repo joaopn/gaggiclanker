@@ -52,7 +52,7 @@ async def _draft(
 ) -> None:
     await db.execute(
         "INSERT INTO profile_drafts (id, base_version_id, draft_version_id, status, "
-        "pushed_device_profile_id, replaced_version_id, set_id, is_new) "
+        "pushed_device_profile_id, replaced_version_id, recipe_id, is_new) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (did, base, version, status, pushed, replaced, set_id, int(is_new)),
     )

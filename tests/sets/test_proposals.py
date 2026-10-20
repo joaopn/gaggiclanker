@@ -268,7 +268,7 @@ class TestAccepting:
         assert waiting is not None
         await wired.sets.add_version(set_id, SetVersionPatch(dose_g=19, intent="by hand"))
         await wired.db.execute(
-            "UPDATE set_version_proposals SET status = 'proposed' WHERE id = ?", (waiting.id,)
+            "UPDATE recipe_version_proposals SET status = 'proposed' WHERE id = ?", (waiting.id,)
         )
         revived = await proposals.waiting(set_id)
         assert revived is not None
@@ -354,7 +354,7 @@ class TestTheChatItCameFrom:
         current = await wired.sets.current_version(set_id)
         assert current is not None
         cursor = await wired.db.execute(
-            "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES (?, ?, ?)",
+            "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES (?, ?, ?)",
             ("About v1", set_id, current.id),
         )
         thread_id = int(cursor.lastrowid or 0)
@@ -373,7 +373,7 @@ class TestTheChatItCameFrom:
         current = await wired.sets.current_version(set_id)
         assert current is not None
         cursor = await wired.db.execute(
-            "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES (?, ?, ?)",
+            "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES (?, ?, ?)",
             ("About v1", set_id, current.id),
         )
         thread_id = int(cursor.lastrowid or 0)
@@ -560,7 +560,7 @@ class TestTheConversationAProposalNames:
         mine = await _set(wired)
         theirs = await _set(wired)
         cursor = await wired.db.execute(
-            "INSERT INTO chat_threads (title, set_id) VALUES (?, ?)", ("Elsewhere", theirs)
+            "INSERT INTO chat_threads (title, recipe_id) VALUES (?, ?)", ("Elsewhere", theirs)
         )
         _, result = await _propose(wired, mine, thread_id=int(cursor.lastrowid or 0))
         assert result.refused == "bad_thread"  # type: ignore[attr-defined]
@@ -605,8 +605,8 @@ class TestTheIndexIsTheRealGuard:
         with pytest.raises(sqlite3.IntegrityError):
             await wired.db.execute(
                 """
-                INSERT INTO set_version_proposals
-                    (set_id, base_version_id, patch_json, reason, prediction, status, created_at)
+                INSERT INTO recipe_version_proposals
+                    (recipe_id, base_version_id, patch_json, reason, prediction, status, created_at)
                 VALUES (?, ?, '{"dose_g": 19}', 'second', 'p', 'proposed', '2026-04-01T00:00:00Z')
                 """,
                 (set_id, waiting.base_version_id),
@@ -623,8 +623,8 @@ class TestTheIndexIsTheRealGuard:
 
         await wired.db.execute(
             """
-            INSERT INTO set_version_proposals
-                (set_id, base_version_id, patch_json, reason, prediction, status, created_at)
+            INSERT INTO recipe_version_proposals
+                (recipe_id, base_version_id, patch_json, reason, prediction, status, created_at)
             VALUES (?, ?, '{"dose_g": 19}', 'second', 'p', 'proposed', '2026-04-01T00:00:00Z')
             """,
             (set_id, waiting.base_version_id),
@@ -642,7 +642,7 @@ class TestAProposalNobodyCanRead:
         waiting = await proposals.waiting(set_id)
         assert waiting is not None
         await wired.db.execute(
-            "UPDATE set_version_proposals SET patch_json = ? WHERE id = ?",
+            "UPDATE recipe_version_proposals SET patch_json = ? WHERE id = ?",
             (patch_json, waiting.id),
         )
         return proposals, set_id

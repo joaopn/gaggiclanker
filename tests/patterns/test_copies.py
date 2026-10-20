@@ -180,7 +180,7 @@ class TestWhicheverDuplicateCameFirst:
         d_set, _copy, e_copy, d_own = await self._scenario(world, d_first=d_first)
         e_set = int(
             await world.db.fetch_value(
-                "SELECT set_id FROM knowledge_insights WHERE id = ?", (e_copy,)
+                "SELECT recipe_id FROM knowledge_insights WHERE id = ?", (e_copy,)
             )
         )
         proposal = PatternProposalWrite(
@@ -248,7 +248,7 @@ class TestApproval:
         assert (
             await world.db.fetch_value(
                 "SELECT COUNT(*) FROM knowledge_insights "
-                "WHERE set_id IS NULL AND pattern_run_id IS NOT NULL"
+                "WHERE recipe_id IS NULL AND pattern_run_id IS NOT NULL"
             )
             == 0
         )
@@ -444,7 +444,7 @@ class TestTheProposalFilter:
         dup = await _duplicate(world)
         other = await world.own(world.b, "Light roasts want a coarser grind.")
         await world.db.execute(
-            "UPDATE sets SET bean_id = ? WHERE id = ?", (world.bean_c, dup.d)
+            "UPDATE recipes SET bean_id = ? WHERE id = ?", (world.bean_c, dup.d)
         )  # D is now a dark roast, unlike A and B: the lesson's two home Sets are both light
         given = await build_patterns_input(world.db)
         result = PatternsResult(
@@ -469,7 +469,7 @@ class TestWhatTheModelIsTold:
         dup = await _duplicate(world)
         await world.own(world.c, "Dark roasts want a coarser grind.")
 
-        rendered = (await build_patterns_input(world.db)).render()["set_insights"]
+        rendered = (await build_patterns_input(world.db)).render()["recipe_insights"]
 
         assert f"#{dup.copy} [copy of #{dup.original}]" in rendered
         assert f"#{dup.original} [learned at" in rendered
@@ -481,7 +481,7 @@ class TestWhatTheModelIsTold:
         dup = await _duplicate(world)
         await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
 
-        rendered = (await build_patterns_input(world.db)).render()["set_insights"]
+        rendered = (await build_patterns_input(world.db)).render()["recipe_insights"]
 
         # Copies naming one #N are one lesson, whether #N is listed or not.
         assert f"#{dup.copy} [copy of #{dup.original}]" in rendered

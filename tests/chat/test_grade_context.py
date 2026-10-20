@@ -56,12 +56,12 @@ def _without_blocks(text: str) -> str:
 async def _thread(experiment: Experiment, version_id: int) -> int:
     """The conversation about a version: the one that proposes its insights."""
     found = await experiment.db.fetch_value(
-        "SELECT id FROM chat_threads WHERE set_version_id = ?", (version_id,)
+        "SELECT id FROM chat_threads WHERE recipe_version_id = ?", (version_id,)
     )
     if found is not None:
         return int(found)
     cursor = await experiment.db.execute(
-        "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES ('v', ?, ?)",
+        "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES ('v', ?, ?)",
         (experiment.set_id, version_id),
     )
     return int(cursor.lastrowid or 0)
@@ -247,7 +247,7 @@ class TestProposedInThisConversation:
         mine = await _thread(experiment, experiment.v5)
         other = (
             await experiment.db.execute(
-                "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES ('2', ?, ?)",
+                "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES ('2', ?, ?)",
                 (experiment.set_id, experiment.v5),
             )
         ).lastrowid

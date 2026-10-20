@@ -87,7 +87,11 @@ STAGING_GLOB = f"{STAGING_PREFIX}*"
 
 _TOKEN = re.compile(r"^[0-9a-f]{32}$")
 _SQLITE_HEADER = b"SQLite format 3\x00"
-_CORE_TABLES = ("settings", "shots", "sets", "beans")
+_CORE_TABLES = ("settings", "shots", "beans")
+#: The table that holds the coffees' recipes: ``sets`` in a backup from before level 4 renamed
+#: it, ``recipes`` after. The gate takes either, because the upgrade that follows it is what
+#: carries an older file forward; a file with neither is not ours.
+_RECIPE_TABLES = ("recipes", "sets")
 _CHUNK = 1024 * 1024
 
 
@@ -311,7 +315,7 @@ def _validate_open(
         names = {
             str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
-        if not set(_CORE_TABLES) <= names:
+        if not set(_CORE_TABLES) <= names or not names.intersection(_RECIPE_TABLES):
             raise RestoreRefused("RESTORE_NOT_A_DATABASE", "This is not a gaggiclanker database.")
         if conn.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
             raise RestoreRefused(
@@ -345,7 +349,7 @@ def _validate_open(
             manifest=_read_manifest(conn),
             counts=RestoreCounts(
                 shots=_scalar(conn, "SELECT COUNT(*) FROM shots"),
-                sets=_scalar(conn, "SELECT COUNT(*) FROM sets"),
+                sets=_scalar(conn, "SELECT COUNT(*) FROM recipes"),
                 beans=_scalar(conn, "SELECT COUNT(*) FROM beans"),
             ),
             keys_in_file=keys_in_file,

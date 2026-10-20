@@ -127,7 +127,7 @@ async def give_the_set_its_profile(found: Fixture) -> None:
     """
     from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 
-    if await found.db.fetch_value("SELECT board_id FROM sets WHERE id = ?", (found.set_id,)):
+    if await found.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (found.set_id,)):
         return
     version = await ProfilesRepository(found.db).get_version(found.profile_version_id)
     assert version is not None
@@ -136,7 +136,7 @@ async def give_the_set_its_profile(found: Fixture) -> None:
             label=version.label, current_version_id=version.id, origin="adopted", on_machine=False
         )
     )
-    await found.db.execute("UPDATE sets SET board_id = ? WHERE id = ?", (row.id, found.set_id))
+    await found.db.execute("UPDATE recipes SET board_id = ? WHERE id = ?", (row.id, found.set_id))
 
 
 @dataclass(slots=True)
@@ -588,7 +588,7 @@ async def predict(
 ) -> None:
     """Give the fixture's Set version a prediction (a version with shots refuses one by route)."""
     await fixture.db.execute(
-        "UPDATE set_versions SET prediction = ?, compares_to_version_id = ? WHERE id = ?",
+        "UPDATE recipe_versions SET prediction = ?, compares_to_version_id = ? WHERE id = ?",
         (text, compares_to, fixture.version_id),
     )
 

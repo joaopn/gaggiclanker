@@ -328,7 +328,7 @@ async def _check_scope_exists(db: Database, scope: ToolScope, thread_id: int | N
             )
     if thread_id is not None:
         found = await db.fetch_value(
-            "SELECT 1 FROM chat_threads WHERE id = ? AND set_id = ?", (thread_id, scope.set_id)
+            "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?", (thread_id, scope.set_id)
         )
         if found is None:
             raise SystemExit(

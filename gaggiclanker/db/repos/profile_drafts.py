@@ -231,9 +231,9 @@ _SELECT = f"""
            CASE WHEN d.is_new THEN NULL ELSE {version_name_sql("base")} END AS base_label,
            s.name AS set_name,
            {label_sql("cmp")} AS compares_to_version_label,
-           (SELECT {label_sql("rv")} FROM set_versions rv
+           (SELECT {label_sql("rv")} FROM recipe_versions rv
              WHERE rv.id = d.recorded_version_id) AS recorded_version_label,
-           (SELECT rs.name FROM set_versions rv2 JOIN sets rs ON rs.id = rv2.set_id
+           (SELECT rs.name FROM recipe_versions rv2 JOIN recipes rs ON rs.id = rv2.recipe_id
              WHERE rv2.id = d.recorded_version_id) AS recorded_set_name,
            CASE
                WHEN d.is_new THEN 1
@@ -251,8 +251,8 @@ _SELECT = f"""
            END AS base_is_current
     FROM profile_drafts d
     LEFT JOIN profile_versions base ON base.id = d.base_version_id
-    LEFT JOIN sets s ON s.id = d.set_id
-    LEFT JOIN set_versions cmp ON cmp.id = d.compares_to_version_id
+    LEFT JOIN recipes s ON s.id = d.recipe_id
+    LEFT JOIN recipe_versions cmp ON cmp.id = d.compares_to_version_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
@@ -266,7 +266,7 @@ class ProfileDraftsRepository(Repository):
             INSERT INTO profile_drafts
                 (base_version_id, draft_version_id, label, destination_board_id, new_profile,
                  source_analysis_id, source_suggestion_id,
-                 parent_draft_id, base_device_profile_id, set_id, prediction,
+                 parent_draft_id, base_device_profile_id, recipe_id, prediction,
                  compares_to_version_id, suggest_major, major_reason, is_new, change_summary,
                  stop_condition_changes_json, clamp_changes_json, notes, status,
                  made_by, created_at, updated_at)

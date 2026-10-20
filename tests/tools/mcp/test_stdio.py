@@ -879,7 +879,8 @@ async def _make_thread(data_dir: Path, fixture: Fixture) -> int:
     await db.connect()
     try:
         cursor = await db.execute(
-            "INSERT INTO chat_threads (title, set_id) VALUES (?, ?)", ("About v1", fixture.set_id)
+            "INSERT INTO chat_threads (title, recipe_id) VALUES (?, ?)",
+            ("About v1", fixture.set_id),
         )
         return int(cursor.lastrowid or 0)
     finally:

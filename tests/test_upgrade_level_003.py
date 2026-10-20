@@ -27,6 +27,7 @@ from gaggiclanker.domain.models import (
 )
 
 NOW = datetime(2026, 10, 13, 12, 0, 0, tzinfo=UTC)
+LEVEL_THREE = schema.describe_sql(frozen_schema_sql(3))
 FIXTURES = Path(__file__).parent / "fixtures" / "profiles"
 
 BASE_DOCUMENT: dict[str, Any] = json.loads((FIXTURES / "docs-medium-18g.json").read_text())
@@ -268,7 +269,8 @@ class Level2:
         report = upgrade_database_file(
             self.path,
             self.path.parent,
-            steps=STEPS,
+            steps=STEPS[:3],
+            expected=LEVEL_THREE,
             now=NOW,
         )
         assert report is not None
@@ -339,7 +341,7 @@ def test_the_result_is_the_schema_file_and_every_row_not_merged_is_still_there(
 
     assert report.to_level == 3
     conn = sqlite3.connect(db.path)
-    assert schema.schema_differences(conn) == []
+    assert schema.schema_differences(conn, LEVEL_THREE) == []
     conn.close()
     assert db.one("PRAGMA user_version") == 3
     assert db.rows("PRAGMA foreign_key_check") == []
@@ -662,7 +664,9 @@ def test_two_pins_whose_copies_would_merge_refuse_the_upgrade(db: Level2) -> Non
     from gaggiclanker.db.upgrade import UpgradeRefused
 
     with pytest.raises(UpgradeRefused, match="copies of two different pins"):
-        upgrade_database_file(db.path, db.path.parent, steps=STEPS, now=NOW)
+        upgrade_database_file(
+            db.path, db.path.parent, steps=STEPS[:3], expected=LEVEL_THREE, now=NOW
+        )
     conn = sqlite3.connect(db.path)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
     conn.close()
@@ -816,7 +820,9 @@ def test_a_failed_check_rolls_the_whole_step_back(
     from gaggiclanker.db.upgrade import UpgradeRefused
 
     with pytest.raises(UpgradeRefused):
-        upgrade_database_file(db.path, db.path.parent, steps=STEPS, now=NOW)
+        upgrade_database_file(
+            db.path, db.path.parent, steps=STEPS[:3], expected=LEVEL_THREE, now=NOW
+        )
     conn = sqlite3.connect(db.path)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
     assert conn.execute("SELECT COUNT(*) FROM profile_versions").fetchone()[0] == 2

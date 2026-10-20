@@ -1312,7 +1312,7 @@ class TestProposals:
             f"/api/sets/{created['id']}/versions", json={"dose_g": 19.0, "intent": "by hand"}
         )
         await app.state.db.execute(
-            "UPDATE set_version_proposals SET status = 'proposed' WHERE id = ?", (proposal.id,)
+            "UPDATE recipe_version_proposals SET status = 'proposed' WHERE id = ?", (proposal.id,)
         )
 
         response = await client.post(
@@ -1403,7 +1403,7 @@ class TestProposals:
         created = await _make_set(client, bean_id)
         proposal = await self._propose(app, created["id"])
         await app.state.db.execute(
-            "UPDATE set_version_proposals SET patch_json = ? WHERE id = ?",
+            "UPDATE recipe_version_proposals SET patch_json = ? WHERE id = ?",
             ("not json at all", proposal.id),
         )
 

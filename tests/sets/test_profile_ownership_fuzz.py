@@ -62,16 +62,16 @@ async def check(
         if now is not None:
             seen_files[r["id"]] = now
     shared = await db.fetch_all(
-        "SELECT v.profile_version_id pv, COUNT(DISTINCT s.id) n FROM sets s "
-        "JOIN set_versions v ON v.id = s.current_version_id "
+        "SELECT v.profile_version_id pv, COUNT(DISTINCT s.id) n FROM recipes s "
+        "JOIN recipe_versions v ON v.id = s.current_version_id "
         "WHERE v.profile_version_id IS NOT NULL AND s.archived = 0 AND s.automatch = 1 "
         "GROUP BY v.profile_version_id HAVING n > 1"
     )
     if shared:
         raise Failed(f"two Sets' current versions name one version: {[dict(r) for r in shared]}")
     sets = await db.fetch_all(
-        "SELECT s.id, s.name, s.current_version_id cur, v.profile_version_id pv FROM sets s "
-        "JOIN set_versions v ON v.id = s.current_version_id WHERE v.profile_version_id IS NOT NULL"
+        "SELECT s.id, s.name, s.current_version_id cur, v.profile_version_id pv FROM recipes s "
+        "JOIN recipe_versions v ON v.id = s.current_version_id WHERE v.profile_version_id IS NOT NULL"
     )
     for s in sets:
         linked = await make_shot(db, f"fz{next(_shots):07d}", profile_version_id=s["pv"])
@@ -85,7 +85,7 @@ async def check(
         ]
         await client.post("/api/shots/profile-match", json={"shot_ids": [linked, *by_file]})
         for shot in (linked, *by_file):
-            got = await db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
+            got = await db.fetch_value("SELECT recipe_version_id FROM shots WHERE id = ?", (shot,))
             if got != s["cur"]:
                 raise Failed(
                     f"a shot on Set {s['name']}'s current brew (pv {s['pv']}) filed under {got}, "
@@ -161,7 +161,7 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                         raise Failed(f"500 on new set: {r.text}")
                 elif op == "add":
                     sets = await db.fetch_all(
-                        "SELECT id, name, board_id FROM sets WHERE designing = 0"
+                        "SELECT id, name, board_id FROM recipes WHERE designing = 0"
                     )
                     if not sets:
                         continue
@@ -182,14 +182,14 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                     # A profile lists the version of a file a Set with no profile is on, without
                     # making it active: the Set is taken over through it and follows the profile.
                     loose = await db.fetch_all(
-                        "SELECT s.id, s.name, v.profile_version_id pv FROM sets s "
-                        "JOIN set_versions v ON v.id = s.current_version_id "
+                        "SELECT s.id, s.name, v.profile_version_id pv FROM recipes s "
+                        "JOIN recipe_versions v ON v.id = s.current_version_id "
                         "JOIN profile_versions p ON p.id = v.profile_version_id "
                         "WHERE s.board_id IS NULL AND p.board_id IS NULL"
                     )
                     free = await db.fetch_all(
                         "SELECT b.id FROM profile_board b WHERE b.deleted_at IS NULL "
-                        "AND NOT EXISTS (SELECT 1 FROM sets s WHERE s.board_id = b.id)"
+                        "AND NOT EXISTS (SELECT 1 FROM recipes s WHERE s.board_id = b.id)"
                     )
                     if not loose or not free:
                         continue

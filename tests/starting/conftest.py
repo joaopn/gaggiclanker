@@ -440,7 +440,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
         # The archive of a database from before a Set had a profile of its own: five Sets name the
         # one version (the repository would refuse that now, so it is written as it was).
         await db.execute(
-            "UPDATE set_versions SET profile_version_id = ? WHERE id = ?",
+            "UPDATE recipe_versions SET profile_version_id = ? WHERE id = ?",
             (profile_version.id, version_id),
         )
         versions[str(entry["label"])] = version_id

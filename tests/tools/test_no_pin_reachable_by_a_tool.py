@@ -28,7 +28,7 @@ PIN_WRITERS = (
 )
 #: The pin storage and services, which no tool module may name at all.
 PIN_STORAGE_NAMES = ("PinsRepository", "PinWrite", "PinService", "ProfileCopier")
-PIN_TABLES = ("set_version_pins",)
+PIN_TABLES = ("recipe_version_pins",)
 
 
 def test_the_pin_writers_and_routes_are_where_this_file_thinks_they_are() -> None:

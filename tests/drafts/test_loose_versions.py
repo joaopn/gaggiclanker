@@ -52,7 +52,8 @@ async def shot_filed_under(app: Any, client: Any, device_id: str = "000129") -> 
         return None
     return str(
         await app.state.db.fetch_value(
-            "SELECT st.name FROM set_versions v JOIN sets st ON st.id = v.set_id WHERE v.id = ?",
+            "SELECT st.name FROM recipe_versions v JOIN recipes st ON st.id = v.recipe_id WHERE "
+            "v.id = ?",
             (found["set_version_id"],),
         )
     )
@@ -114,7 +115,7 @@ async def test_an_import_with_a_machine_files_brew_under_another_name_is_not_its
         ("created", "My Import")
     ]
     assert await owner_of(app, loose) is None
-    sets = await app.state.db.fetch_all("SELECT name, board_id FROM sets")
+    sets = await app.state.db.fetch_all("SELECT name, board_id FROM recipes")
     assert [(r["name"], r["board_id"]) for r in sets] == [("Nine set", None)]
     await the_nine_bar_file_brews_shot_129(app, fake_device)
     assert await shot_filed_under(app, client) == "Nine set"
@@ -133,7 +134,7 @@ async def test_a_new_profile_with_a_machine_files_brew_under_another_name_is_its
 
     assert response.status_code == 201, response.text
     assert await owner_of(app, loose) is None
-    sets = await app.state.db.fetch_all("SELECT name, board_id FROM sets")
+    sets = await app.state.db.fetch_all("SELECT name, board_id FROM recipes")
     assert [(r["name"], r["board_id"]) for r in sets] == [("Nine set", None)]
     await the_nine_bar_file_brews_shot_129(app, fake_device)
     assert await shot_filed_under(app, client) == "Nine set"
@@ -184,7 +185,7 @@ async def test_a_pin_of_a_set_version_on_a_machine_files_loose_version(
     assert made.status_code < 300, made.text
     pins = await app.state.db.fetch_all(
         "SELECT p.profile_version_id AS copy, sv.profile_version_id AS original "
-        "FROM set_version_pins p JOIN set_versions sv ON sv.id = p.set_version_id"
+        "FROM recipe_version_pins p JOIN recipe_versions sv ON sv.id = p.recipe_version_id"
     )
     assert [(r["copy"] != r["original"]) for r in pins] == [True]
     assert await owner_of(app, loose) is None
@@ -219,7 +220,7 @@ async def test_a_duplicate_of_a_set_on_a_machine_files_loose_version(
 
     assert made.status_code == 201, made.text
     sets = await app.state.db.fetch_all(
-        "SELECT s.name, b.label FROM sets s LEFT JOIN profile_board b ON b.id = s.board_id "
+        "SELECT s.name, b.label FROM recipes s LEFT JOIN profile_board b ON b.id = s.board_id "
         "ORDER BY s.id"
     )
     assert [(r["name"], r["label"]) for r in sets] == [

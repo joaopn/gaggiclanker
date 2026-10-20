@@ -60,11 +60,11 @@ async def _counts(app: FastAPI) -> tuple[int, ...]:
     db = app.state.db
     counts = []
     for table in (
-        "set_version_pins",
+        "recipe_version_pins",
         "profile_board",
         "profile_drafts",
         "profile_versions",
-        "set_versions",
+        "recipe_versions",
     ):
         counts.append(int(await db.fetch_value(f"SELECT COUNT(*) FROM {table}")))  # noqa: S608
     return tuple(counts)
@@ -164,7 +164,7 @@ async def _state(app: FastAPI, client: httpx.AsyncClient, kind: str) -> tuple[in
         return set_id, version_id, None
     if kind == "designing":
         set_id, version_id = await _set_with_version(app, client)
-        await app.state.db.execute("UPDATE sets SET designing = 1 WHERE id = ?", (set_id,))
+        await app.state.db.execute("UPDATE recipes SET designing = 1 WHERE id = ?", (set_id,))
         return set_id, version_id, None
     if kind == "no_profile":
         bean = data(await client.post("/api/beans", json={"name": "Bare", "roaster": "x"}))
@@ -249,7 +249,7 @@ async def test_two_pins_at_once_make_one_pin_and_the_other_is_refused(adopted: A
     )
 
     assert sorted([first.status_code, second.status_code]) == [200, 409]
-    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_version_pins")) == 1
+    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipe_version_pins")) == 1
     refused = first if first.status_code == 409 else second
     assert error(refused)["code"] == "ALREADY_PINNED"
 
@@ -275,14 +275,15 @@ async def test_a_pin_records_nothing_on_the_set_and_reaches_the_machine(adopted:
     set_id, version_id = await _set_with_version(app, client)
     name = f"{BASE_LABEL} v1"
     pin = data(await _pin(client, set_id, version_id))["pin"]
-    versions_before = int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_versions"))
+    versions_before = int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipe_versions"))
 
     run = await pull(app)
 
     assert run.status == "ok", run.error
     assert name in [p["label"] for p in fake.profiles]
     assert (
-        int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_versions")) == versions_before
+        int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipe_versions"))
+        == versions_before
     )
     row = row_for(await get_board(client), name)
     assert row["machine"]["holds_current"] and row["row"]["id"] == pin["board_id"]
@@ -480,11 +481,11 @@ async def test_archiving_a_set_unpins_every_pin_in_one_step_and_the_sync_takes_t
     archived = data(await client.post(f"/api/sets/{set_id}/archive"))
 
     assert archived["archived"] is True and archived["automatch"] is False
-    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM set_version_pins")) == 2
+    assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipe_version_pins")) == 2
     assert (
         int(
             await app.state.db.fetch_value(
-                "SELECT COUNT(*) FROM set_version_pins WHERE unpinned_at IS NULL"
+                "SELECT COUNT(*) FROM recipe_version_pins WHERE unpinned_at IS NULL"
             )
         )
         == 0

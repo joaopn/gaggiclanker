@@ -358,7 +358,7 @@ async def test_a_row_proposed_before_in_force_signatures_is_no_check_and_can_be_
     # An override proposed in the old way is not in force either.
     (measure,) = await repo.add(version, [_measure()])
     await db.execute(
-        "INSERT INTO set_version_signature_overrides (set_version_id, expectation_id, "
+        "INSERT INTO recipe_version_signature_overrides (recipe_version_id, expectation_id, "
         'compare_json, status) VALUES (?, ?, \'{"op": "<=", "value": 0.2}\', \'proposed\')',
         (set_version, measure.id),
     )

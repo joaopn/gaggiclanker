@@ -171,7 +171,8 @@ async def test_a_put_that_revives_a_row_is_followed_by_the_rows_set(
     v2 = (await put(client, {"id": changed.id}))["current_version_id"]
     await pull(app)
     first = await db.fetch_value(
-        "SELECT id FROM set_versions WHERE set_id = ? ORDER BY created_at, id LIMIT 1", (set_id,)
+        "SELECT id FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id LIMIT 1",
+        (set_id,),
     )
     await tombstone(client, row["id"])
     back = await client.post(f"/api/sets/{set_id}/rollback", json={"to_version_id": first})
@@ -180,8 +181,8 @@ async def test_a_put_that_revives_a_row_is_followed_by_the_rows_set(
     async def named() -> int:
         return int(
             await db.fetch_value(
-                "SELECT v.profile_version_id FROM sets s "
-                "JOIN set_versions v ON v.id = s.current_version_id WHERE s.id = ?",
+                "SELECT v.profile_version_id FROM recipes s "
+                "JOIN recipe_versions v ON v.id = s.current_version_id WHERE s.id = ?",
                 (set_id,),
             )
         )

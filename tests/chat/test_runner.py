@@ -1174,7 +1174,7 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
     assert "its initial recipe was accepted as v1" in set_turn.system
     assert {schema["function"]["name"] for schema in set_turn.tools} == SET_TOOLS
     rows = {row.call_id: row.prompt_name for row in await calls.recent(limit=10)}
-    assert (rows[f"chat-{first}"], rows[f"chat-{second}"]) == ("chat-design", "chat-set")
+    assert (rows[f"chat-{first}"], rows[f"chat-{second}"]) == ("chat-design", "chat-recipe")
 
 
 async def test_a_hand_made_set_that_names_no_profile_is_an_ordinary_set_chat(
@@ -1232,7 +1232,7 @@ async def test_the_usage_row_records_which_prompt_answered_the_turn(
     general_run = await send(runner, tasks, created.thread.id, "what is a 1:2 ratio?")
 
     rows = {row.call_id: row.prompt_name for row in await repo.recent(limit=10)}
-    assert rows[f"chat-{scoped_run}"] == "chat-set"
+    assert rows[f"chat-{scoped_run}"] == "chat-recipe"
     assert rows[f"chat-{general_run}"] == "chat-general"
 
 

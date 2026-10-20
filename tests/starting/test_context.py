@@ -198,7 +198,7 @@ async def test_an_empty_archive_says_so_rather_than_rendering_nothing(
     """A blank block would read as "there is nothing to say"; this says which."""
     await fixture.db.execute("DELETE FROM shots")
     context = await _build(fixture)
-    rendered = context.render()["similar_sets"]  # type: ignore[attr-defined]
+    rendered = context.render()["similar_recipes"]  # type: ignore[attr-defined]
     assert "Nothing comparable" in rendered
 
 
@@ -224,7 +224,8 @@ async def test_the_candidates_are_the_active_versions_of_profiles_with_no_set(
         "SELECT board_id FROM profile_versions WHERE id = ?", (held,)
     )
     await fixture.db.execute(
-        "UPDATE sets SET board_id = ? WHERE id = ?", (held_board, next(iter(fixture.sets.values())))
+        "UPDATE recipes SET board_id = ? WHERE id = ?",
+        (held_board, next(iter(fixture.sets.values()))),
     )
     off = await free_profile_version(fixture.db, "Switched off")
     await fixture.db.execute(

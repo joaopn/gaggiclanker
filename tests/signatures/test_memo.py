@@ -406,13 +406,13 @@ async def test_what_the_shot_is_filed_under_is_part_of_the_key_even_when_the_sho
         return {c.expectation_id: c.status for c in document.checks.items if c.kind == "measure"}  # type: ignore[misc]
 
     assert await statuses() == {by_dose.id: "failed", by_target.id: "failed"}
-    await db.execute("UPDATE set_versions SET dose_g = 22 WHERE id = ?", (first,))
+    await db.execute("UPDATE recipe_versions SET dose_g = 22 WHERE id = ?", (first,))
     assert (await statuses())[by_dose.id] == "held"
-    await db.execute("UPDATE set_versions SET target_yield_g = 400 WHERE id = ?", (first,))
+    await db.execute("UPDATE recipe_versions SET target_yield_g = 400 WHERE id = ?", (first,))
     assert (await statuses())[by_target.id] == "held"
     # Moved to another version with its own dose and target, by a write that leaves the row alone.
     await db.execute(
-        "UPDATE set_versions SET dose_g = 18, target_yield_g = 36 WHERE id = ?", (second,)
+        "UPDATE recipe_versions SET dose_g = 18, target_yield_g = 36 WHERE id = ?", (second,)
     )
-    await db.execute("UPDATE shots SET set_version_id = ? WHERE id = ?", (second, shot))
+    await db.execute("UPDATE shots SET recipe_version_id = ? WHERE id = ?", (second, shot))
     assert await statuses() == {by_dose.id: "failed", by_target.id: "failed"}

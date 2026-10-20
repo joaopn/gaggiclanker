@@ -49,7 +49,7 @@ class GrinderRow(GrinderWrite):
 _WRITABLE = ("name", "model", "burr_type", "step_unit", "notes")
 
 _SELECT = """
-    SELECT g.*, (SELECT COUNT(*) FROM sets s WHERE s.grinder_id = g.id) AS set_count
+    SELECT g.*, (SELECT COUNT(*) FROM recipes s WHERE s.grinder_id = g.id) AS set_count
     FROM grinders g
 """
 

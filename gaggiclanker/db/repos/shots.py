@@ -446,8 +446,8 @@ _LIST_COLUMNS = f"""
     j.rating AS judgement_rating,
     j.notes AS judgement_notes,
     j.decision AS judgement_decision,
-    s.set_version_id,
-    sv.set_id AS badge_set_id,
+    s.recipe_version_id,
+    sv.recipe_id AS badge_set_id,
     st.name AS badge_set_name,
     {label_sql("sv")} AS badge_version_label,
     s.synced_at
@@ -462,7 +462,7 @@ _LIST_COLUMNS = f"""
 #: header's count, the list's filter and the button that files the inbox all
 #: read this one condition, so the three can never disagree on what is waiting.
 NEEDS_SET_SQL = """(
-    s.set_version_id IS NULL AND s.quarantined = 0
+    s.recipe_version_id IS NULL AND s.quarantined = 0
     AND NOT EXISTS (
         SELECT 1 FROM shot_judgements dj WHERE dj.shot_id = s.id AND dj.decision = 'discard'
     )
@@ -477,8 +477,8 @@ _LIST_FROM = """
     LEFT JOIN profile_versions v ON v.id = s.profile_version_id
     LEFT JOIN device_shot_notes n ON n.shot_id = s.id
     LEFT JOIN shot_judgements j ON j.shot_id = s.id
-    LEFT JOIN set_versions sv ON sv.id = s.set_version_id
-    LEFT JOIN sets st ON st.id = sv.set_id
+    LEFT JOIN recipe_versions sv ON sv.id = s.recipe_version_id
+    LEFT JOIN recipes st ON st.id = sv.recipe_id
 """
 
 #: The default sort key. `COALESCE(started_at, '')` rather than `started_at` so
@@ -510,7 +510,7 @@ REVIEW_SORT = "review"
 _REVIEW_COLUMNS = f"""
     s.id, s.final_weight_g, ({HAS_SCALE_SQL}) AS scale_connected, s.final_exit_reason,
     s.duration_ms,
-    s.phases_json, s.profile_version_id, s.set_version_id, s.quarantined, s.updated_at,
+    s.phases_json, s.profile_version_id, s.recipe_version_id, s.quarantined, s.updated_at,
     CASE WHEN s.diagnostics_json IS NOT NULL AND json_valid(s.diagnostics_json)
          THEN json_extract(s.diagnostics_json, '$.metrics') END AS metrics_json,
     CASE WHEN s.diagnostics_json IS NOT NULL AND json_valid(s.diagnostics_json)
@@ -1115,16 +1115,16 @@ class ShotsRepository(Repository):
             where.append("s.profile_version_id = ?")
             params.append(profile_version_id)
         if set_id is not None:
-            where.append("sv.set_id = ?")
+            where.append("sv.recipe_id = ?")
             params.append(set_id)
         if set_version_id is not None:
-            where.append("s.set_version_id = ?")
+            where.append("s.recipe_version_id = ?")
             params.append(set_version_id)
         if needs_set is not None:
             # "Which shots is the archive still waiting for an answer on?" —
             # `NEEDS_SET_SQL` says which, and why quarantined and discarded
             # shots are not among them.
-            where.append(NEEDS_SET_SQL if needs_set else "s.set_version_id IS NOT NULL")
+            where.append(NEEDS_SET_SQL if needs_set else "s.recipe_version_id IS NOT NULL")
         if quarantined is not None:
             where.append("s.quarantined = ?")
             params.append(int(quarantined))

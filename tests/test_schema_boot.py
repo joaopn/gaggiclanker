@@ -63,7 +63,7 @@ async def test_a_database_with_another_schema_is_refused_and_not_touched(
     async with running_app(env):
         pass
     conn = sqlite3.connect(env.database_path)
-    conn.execute("ALTER TABLE sets ADD COLUMN surprise TEXT")
+    conn.execute("ALTER TABLE recipes ADD COLUMN surprise TEXT")
     conn.execute("INSERT INTO beans (name) VALUES ('Precious')")
     conn.commit()
     conn.close()
@@ -76,7 +76,7 @@ async def test_a_database_with_another_schema_is_refused_and_not_touched(
         async with running_app(env):
             pass
 
-    assert refused.value.differences[0] == "unexpected column sets.surprise"
+    assert refused.value.differences[0] == "unexpected column recipes.surprise"
     err = capsys.readouterr().err
     assert err.strip() == (
         f"The database at {path} was made by a different version of gaggiclanker. "
@@ -115,7 +115,7 @@ def test_serving_on_another_versions_database_exits_non_zero_with_one_line(
     from gaggiclanker.__main__ import _refuse_foreign_database
 
     conn = sqlite3.connect(env.database_path)
-    conn.executescript(schema.schema_sql() + "\nALTER TABLE sets ADD COLUMN surprise TEXT;")
+    conn.executescript(schema.schema_sql() + "\nALTER TABLE recipes ADD COLUMN surprise TEXT;")
     conn.close()
     before = _digest(env.database_path)
 

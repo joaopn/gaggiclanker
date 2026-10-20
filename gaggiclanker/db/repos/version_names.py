@@ -49,7 +49,7 @@ def named_dump(row: BaseModel) -> dict[str, Any]:
 
 
 def label_sql(alias: str) -> str:
-    """The SQL for a version's label, off the `set_versions` row called ``alias``.
+    """The SQL for a version's label, off the `recipe_versions` row called ``alias``.
 
     `domain/sets.py::version_label` in SQL: 'v' and the major, plus '.' and the
     minor when the minor is above 0. NULL when the row is NULL (a LEFT JOIN
@@ -94,11 +94,11 @@ def state_sql(current: str) -> str:
     """
     return f"""
            {current}.version_major AS current_major,
-           (SELECT MAX(m.version_minor) FROM set_versions m
-             WHERE m.set_id = {current}.set_id AND m.version_major = {current}.version_major)
+           (SELECT MAX(m.version_minor) FROM recipe_versions m
+             WHERE m.recipe_id = {current}.recipe_id AND m.version_major = {current}.version_major)
                AS current_major_minor_max,
-           (SELECT MAX(h.version_major) FROM set_versions h
-             WHERE h.set_id = {current}.set_id) AS highest_major"""  # noqa: S608 - an alias, never input
+           (SELECT MAX(h.version_major) FROM recipe_versions h
+             WHERE h.recipe_id = {current}.recipe_id) AS highest_major"""  # noqa: S608 - an alias, never input
 
 
 def names_from_state(
@@ -134,8 +134,8 @@ async def _state(db: Database, set_id: int) -> tuple[int, int, int]:
     row = await db.fetch_one(
         f"""
         SELECT {state_sql("cur")}
-          FROM sets s
-          JOIN set_versions cur ON cur.id = s.current_version_id
+          FROM recipes s
+          JOIN recipe_versions cur ON cur.id = s.current_version_id
          WHERE s.id = ?
         """,  # noqa: S608 - the interpolation is the module's own SQL text, the id is bound
         (set_id,),
@@ -168,7 +168,7 @@ async def next_numbers(db: Database, set_id: int, *, major: bool) -> NextNumbers
 
 async def next_names(db: Database, set_id: int) -> NextNames:
     """What the next version of one Set would be called as a minor and as a major."""
-    designing = await db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,))
+    designing = await db.fetch_value("SELECT designing FROM recipes WHERE id = ?", (set_id,))
     current_major, minor_max, major_max = await _state(db, set_id)
     return names_from_state(
         designing=bool(designing),

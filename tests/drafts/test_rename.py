@@ -35,9 +35,9 @@ UNTOUCHED = (
     "profile_drafts",
     "profile_signatures",
     "signature_expectations",
-    "sets",
-    "set_versions",
-    "set_version_pins",
+    "recipes",
+    "recipe_versions",
+    "recipe_version_pins",
     "device_profiles",
     "device_writes",
 )

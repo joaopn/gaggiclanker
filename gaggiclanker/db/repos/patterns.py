@@ -46,6 +46,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     home_sets,
     scope_matches,
 )
+from gaggiclanker.db.repos.renamed_keys import DROPPED, SKIPPED, SOURCES, from_stored, to_stored
 from gaggiclanker.db.repository import Repository
 
 log = structlog.get_logger(__name__)
@@ -233,7 +234,7 @@ class DismissResult:
 
 
 _RUN_COLUMNS = (
-    "id, status, error, provider, model, prompt_name, prompt_version, insights_read, sets_read, "
+    "id, status, error, provider, model, prompt_name, prompt_version, insights_read, recipes_read, "
     "proposals_kept, proposals_dropped, dropped_json, usage_json, llm_call_id, created_at, "
     "finished_at"
 )
@@ -241,7 +242,7 @@ _RUN_COLUMNS = (
 
 def _decode_run(row: Any) -> PatternRunRow:
     payload = dict(zip(row.keys(), tuple(row), strict=True))
-    payload["dropped"] = _loads(payload.pop("dropped_json", "{}"), {})
+    payload["dropped"] = from_stored(_loads(payload.pop("dropped_json", "{}"), {}), DROPPED)
     usage = payload.pop("usage_json", None)
     payload["usage"] = None if usage is None else _loads(usage, None)
     return PatternRunRow.model_validate(payload)
@@ -251,8 +252,8 @@ def _decode_proposal(row: Any) -> PatternProposalRow:
     payload = dict(zip(row.keys(), tuple(row), strict=True))
     scope = _loads(payload.pop("scope_json", "{}"), {})
     payload["scope"] = InsightScope.model_validate(scope)
-    payload["sources"] = _loads(payload.pop("sources_json", "[]"), [])
-    payload["skipped"] = _loads(payload.pop("skipped_json", "[]"), [])
+    payload["sources"] = from_stored(_loads(payload.pop("sources_json", "[]"), []), SOURCES)
+    payload["skipped"] = from_stored(_loads(payload.pop("skipped_json", "[]"), []), SKIPPED)
     return PatternProposalRow.model_validate(payload)
 
 
@@ -271,8 +272,8 @@ async def read_home_sets(db: Database) -> dict[int, int]:
     over what is still there.
     """
     rows = await db.fetch_all(
-        "SELECT i.id, i.set_id, i.copied_from_set_id FROM knowledge_insights i "
-        "JOIN sets s ON s.id = i.set_id "
+        "SELECT i.id, i.recipe_id, i.copied_from_recipe_id FROM knowledge_insights i "
+        "JOIN recipes s ON s.id = i.recipe_id "
         "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
     )
     return home_sets((row["id"], row["set_id"], row["copied_from_set_id"]) for row in rows)
@@ -287,7 +288,7 @@ class PatternRunsRepository(Repository):
             """
             INSERT INTO pattern_runs
                 (status, provider, model, prompt_name, prompt_version, input_json,
-                 insights_read, sets_read, created_at)
+                 insights_read, recipes_read, created_at)
             VALUES ('running', :provider, :model, :prompt_name, :prompt_version, :input_json,
                     :insights_read, :sets_read, :created_at)
             """,
@@ -344,7 +345,9 @@ class PatternRunsRepository(Repository):
                         "run_id": run_id,
                         "text": proposal.text,
                         "scope": dumps(proposal.scope.stated()),
-                        "sources": dumps([item.model_dump() for item in proposal.sources]),
+                        "sources": dumps(
+                            to_stored([item.model_dump() for item in proposal.sources], SOURCES)
+                        ),
                         "replaces_id": proposal.replaces_id,
                         "replaces_text": proposal.replaces_text,
                         "now": now,
@@ -379,7 +382,7 @@ class PatternRunsRepository(Repository):
                 "error": None if outcome.error is None else outcome.error[:ERROR_MAX],
                 "kept": kept,
                 "dropped": dropped,
-                "dropped_json": dumps(dict(sorted(outcome.dropped.items()))),
+                "dropped_json": dumps(to_stored(dict(sorted(outcome.dropped.items())), DROPPED)),
                 "usage_json": None if outcome.usage is None else dumps(outcome.usage),
                 "llm_call_id": outcome.llm_call_id,
                 "provider": outcome.provider,
@@ -452,12 +455,12 @@ class PatternRunsRepository(Repository):
             """
             SELECT s.id, s.name, s.archived, b.name AS bean_name, b.roaster,
                    g.name AS grinder_name
-              FROM sets s
+              FROM recipes s
               LEFT JOIN beans b ON b.id = s.bean_id
               LEFT JOIN grinders g ON g.id = s.grinder_id
              WHERE s.designing = 0
                AND EXISTS (SELECT 1 FROM knowledge_insights i
-                            WHERE i.set_id = s.id AND i.confirmed = 1 AND i.dismissed = 0)
+                            WHERE i.recipe_id = s.id AND i.confirmed = 1 AND i.dismissed = 0)
              ORDER BY s.id
             """
         )
@@ -487,7 +490,7 @@ class PatternRunsRepository(Repository):
         # A copy is the lesson it copies, never a new one, whatever became of the original.
         return int(
             await self.db.fetch_value(
-                "SELECT COUNT(*) FROM knowledge_insights i JOIN sets s ON s.id = i.set_id "
+                "SELECT COUNT(*) FROM knowledge_insights i JOIN recipes s ON s.id = i.recipe_id "
                 "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0 "
                 "AND i.copied_from_insight_id IS NULL "
                 "AND (? IS NULL OR i.confirmed_at > ?)",
@@ -586,7 +589,7 @@ class PatternProposalsRepository(Repository):
                     None
                     if proposal.replaces_id is None
                     else await self.db.fetch_one(
-                        "SELECT set_id FROM knowledge_insights WHERE id = ?",
+                        "SELECT recipe_id FROM knowledge_insights WHERE id = ?",
                         (proposal.replaces_id,),
                     )
                 )
@@ -625,7 +628,7 @@ class PatternProposalsRepository(Repository):
                 {
                     "now": now,
                     "insight_id": general_id,
-                    "skipped": dumps([item.model_dump() for item in skipped]),
+                    "skipped": dumps(to_stored([item.model_dump() for item in skipped], SKIPPED)),
                     "id": proposal_id,
                 },
             )
@@ -663,7 +666,7 @@ class PatternProposalsRepository(Repository):
         the Set whose lesson it replaces, or deleting the source would lose the lesson there.
         """
         row = await self.db.fetch_one(
-            "SELECT set_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
+            "SELECT recipe_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
             (source.insight_id,),
         )
         if row is None or row["set_id"] != source.set_id:

@@ -209,35 +209,35 @@ CREATE TABLE grinders (
     created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
-CREATE TABLE sets (
+CREATE TABLE recipes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT    NOT NULL,
     bean_id    INTEGER NOT NULL REFERENCES beans(id),
     grinder_id INTEGER REFERENCES grinders(id),
-    -- Two flags, because they mean two things. `automatch`: shots brewed on this Set's profile are
-    -- filed here (any number of Sets may say yes: a kitchen with several grinders has several
-    -- coffees loaded at once, and each Set has a profile of its own, so "the current Set" has no
-    -- answer). `archived`: the lifecycle, the bag is finished with and the Set receives no shots.
+    -- Two flags, because they mean two things. `automatch`: shots brewed on this Recipe's profile are
+    -- filed here (any number of Recipes may say yes: a kitchen with several grinders has several
+    -- coffees loaded at once, and each Recipe has a profile of its own, so "the current Recipe" has no
+    -- answer). `archived`: the lifecycle, the bag is finished with and the Recipe receives no shots.
     -- Neither is "active".
     automatch     INTEGER NOT NULL DEFAULT 0,
     created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     archived INTEGER NOT NULL DEFAULT 0,
     designing INTEGER NOT NULL DEFAULT 0,
     design_brief TEXT NOT NULL DEFAULT '{}',
-    current_version_id INTEGER REFERENCES set_versions(id),
-    -- Where this Set's first recipe came from, when it was started as a copy of another Set's
+    current_version_id INTEGER REFERENCES recipe_versions(id),
+    -- Where this Recipe's first version came from, when it was started as a copy of another Recipe's
     -- version: the "copied from" note, display only (nothing reads it as evidence). Cleared if
-    -- that version's Set is discarded, which leaves the note without its link.
-    copied_from_version_id INTEGER REFERENCES set_versions(id) ON DELETE SET NULL,
-    -- The Set's profile: the one profile whose versions every version of this Set brews, and that
-    -- no other Set has. NULL only while the Set is being designed, and for an old Set that never
-    -- named a profile. Every version of the Set names a version this profile owns
+    -- that version's Recipe is discarded, which leaves the note without its link.
+    copied_from_version_id INTEGER REFERENCES recipe_versions(id) ON DELETE SET NULL,
+    -- The Recipe's profile: the one profile whose versions every version of this Recipe brews, and that
+    -- no other Recipe has. NULL only while the Recipe is being designed, and for an old Recipe that never
+    -- named a profile. Every version of the Recipe names a version this profile owns
     -- (`profile_versions.board_id`), which no constraint can say across two tables: the one place
-    -- a Set version is written checks it.
+    -- a Recipe version is written checks it.
     board_id INTEGER REFERENCES profile_board(id)
 ) STRICT;
-CREATE INDEX idx_sets_bean ON sets(bean_id);
-CREATE UNIQUE INDEX idx_sets_profile ON sets(board_id) WHERE board_id IS NOT NULL;
+CREATE INDEX idx_recipes_bean ON recipes(bean_id);
+CREATE UNIQUE INDEX idx_recipes_profile ON recipes(board_id) WHERE board_id IS NOT NULL;
 
 CREATE TABLE shot_judgements (
     shot_id                 INTEGER PRIMARY KEY REFERENCES shots(id) ON DELETE CASCADE,
@@ -312,9 +312,9 @@ CREATE TABLE profile_drafts (
     draft_version_id         INTEGER REFERENCES profile_versions(id),
     source_analysis_id       INTEGER,
     source_suggestion_id     INTEGER,
-    set_id                   INTEGER,
+    recipe_id                INTEGER,
     prediction               TEXT    NOT NULL DEFAULT '',
-    compares_to_version_id   INTEGER REFERENCES set_versions(id) ON DELETE SET NULL,
+    compares_to_version_id   INTEGER REFERENCES recipe_versions(id) ON DELETE SET NULL,
     -- The draft this one refines. A refinement supersedes its parent rather
     -- than editing it, so the advice that produced each attempt stays readable.
     parent_draft_id          INTEGER REFERENCES profile_drafts(id),
@@ -357,7 +357,7 @@ CREATE TABLE profile_drafts (
     -- owns its base version when it is read.
     destination_board_id INTEGER REFERENCES profile_board(id),
     -- What the draft is: 1 a new profile called `label` (asked for by name, written from scratch,
-    -- a copy, a first recipe, or a hand edit under another name), 0 a change to a profile.
+    -- a copy, a first version, or a hand edit under another name), 0 a change to a profile.
     new_profile INTEGER NOT NULL DEFAULT 0 CHECK (new_profile IN (0, 1))
 ) STRICT;
 CREATE INDEX idx_profile_drafts_status ON profile_drafts(status, id DESC);
@@ -457,13 +457,13 @@ CREATE VIRTUAL TABLE knowledge_chunks_fts USING fts5(
 CREATE TABLE chat_threads (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     title          TEXT    NOT NULL DEFAULT '',
-    set_id         INTEGER REFERENCES sets(id) ON DELETE CASCADE,
-    set_version_id INTEGER REFERENCES set_versions(id) ON DELETE CASCADE,
+    recipe_id      INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
+    recipe_version_id INTEGER REFERENCES recipe_versions(id) ON DELETE CASCADE,
     created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 CREATE INDEX idx_chat_threads_updated ON chat_threads(updated_at DESC, id DESC);
-CREATE INDEX idx_chat_threads_version ON chat_threads(set_version_id, updated_at DESC, id DESC);
+CREATE INDEX idx_chat_threads_version ON chat_threads(recipe_version_id, updated_at DESC, id DESC);
 
 CREATE TABLE chat_runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -542,13 +542,13 @@ CREATE TABLE starting_point_runs (
     error             TEXT,
     llm_call_id       TEXT,
     -- Which of the three options was taken, and what it produced. One accept
-    -- per run: the Set exists after the first one, and a second accept would
-    -- silently create a duplicate Set on the same bag.
+    -- per run: the Recipe exists after the first one, and a second accept would
+    -- silently create a duplicate Recipe on the same bag.
     accepted_option   TEXT    CHECK (accepted_option IS NULL OR
                                      accepted_option IN ('conservative', 'recommended',
                                                          'adventurous')),
-    accepted_set_id   INTEGER REFERENCES sets(id) ON DELETE SET NULL,
-    accepted_set_version_id INTEGER,
+    accepted_recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
+    accepted_recipe_version_id INTEGER,
     accepted_draft_id INTEGER REFERENCES profile_drafts(id) ON DELETE SET NULL,
     accepted_at       TEXT,
     created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -601,38 +601,38 @@ CREATE TABLE flavor_picks (
     PRIMARY KEY (kind, note)
 ) STRICT;
 
-CREATE TABLE set_version_proposals (
+CREATE TABLE recipe_version_proposals (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,
-    set_id                 INTEGER NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
+    recipe_id              INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
     thread_id              INTEGER REFERENCES chat_threads(id) ON DELETE SET NULL,
-    base_version_id        INTEGER NOT NULL REFERENCES set_versions(id) ON DELETE CASCADE,
+    base_version_id        INTEGER NOT NULL REFERENCES recipe_versions(id) ON DELETE CASCADE,
     patch_json             TEXT    NOT NULL DEFAULT '{}',
     reason                 TEXT    NOT NULL DEFAULT '',
     prediction             TEXT    NOT NULL DEFAULT '',
-    compares_to_version_id INTEGER REFERENCES set_versions(id) ON DELETE SET NULL,
+    compares_to_version_id INTEGER REFERENCES recipe_versions(id) ON DELETE SET NULL,
     combined_reason        TEXT    NOT NULL DEFAULT '',
-    -- `stale` is the one nobody chooses: a version appended to this Set by any
+    -- `stale` is the one nobody chooses: a version appended to this Recipe by any
     -- other path retires whatever was waiting, because a change argued against
-    -- a recipe that is no longer current is not a question anybody can answer.
+    -- a version that is no longer current is not a question anybody can answer.
     status                 TEXT    NOT NULL DEFAULT 'proposed'
                            CHECK (status IN ('proposed', 'accepted', 'declined', 'stale')),
     -- What the person said when they turned it down. The agent is told about it
     -- in the next conversation, because "not that, I have tried it" is the most
     -- useful sentence a person can write here.
     decline_note           TEXT    NOT NULL DEFAULT '',
-    resulting_version_id   INTEGER REFERENCES set_versions(id) ON DELETE SET NULL,
+    resulting_version_id   INTEGER REFERENCES recipe_versions(id) ON DELETE SET NULL,
     created_at             TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     decided_at             TEXT,
     -- `change` or `design`; checked by the model rather than a CHECK. A design is the whole first
-    -- recipe of a Set being designed (a draft of its own) and owes no prediction.
+    -- version of a Recipe being designed (a draft of its own) and owes no prediction.
     kind TEXT NOT NULL DEFAULT 'change',
     draft_id INTEGER REFERENCES profile_drafts(id) ON DELETE SET NULL,
     suggest_major INTEGER NOT NULL DEFAULT 0 CHECK (suggest_major IN (0, 1)),
     major_reason TEXT NOT NULL DEFAULT ''
 ) STRICT;
-CREATE UNIQUE INDEX idx_set_version_proposals_waiting
-    ON set_version_proposals(set_id) WHERE status = 'proposed';
-CREATE INDEX idx_set_version_proposals_set ON set_version_proposals(set_id, id DESC);
+CREATE UNIQUE INDEX idx_recipe_version_proposals_waiting
+    ON recipe_version_proposals(recipe_id) WHERE status = 'proposed';
+CREATE INDEX idx_recipe_version_proposals_recipe ON recipe_version_proposals(recipe_id, id DESC);
 
 CREATE TABLE shot_info_tiers (
     item_key   TEXT NOT NULL PRIMARY KEY,
@@ -654,8 +654,8 @@ CREATE TABLE knowledge_insights (
     created_at             TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at             TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     confirmed_at           TEXT,
-    set_id INTEGER REFERENCES sets(id) ON DELETE CASCADE,
-    set_version_id INTEGER REFERENCES set_versions(id) ON DELETE SET NULL,
+    recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
+    recipe_version_id INTEGER REFERENCES recipe_versions(id) ON DELETE SET NULL,
     thread_id INTEGER REFERENCES chat_threads(id) ON DELETE SET NULL,
     dismissed INTEGER NOT NULL DEFAULT 0 CHECK (dismissed IN (0, 1)),
     rests_on_json TEXT NOT NULL DEFAULT '[]',
@@ -663,30 +663,30 @@ CREATE TABLE knowledge_insights (
     replaces_text TEXT NOT NULL DEFAULT '',
     replaced TEXT CHECK (replaced IS NULL OR replaced IN ('deleted', 'old_changed')),
     pattern_run_id INTEGER REFERENCES pattern_runs(id) ON DELETE SET NULL,
-    -- Set when the insight was copied to a duplicated Set: the id of the first original (a copy of
+    -- Set when the insight was copied to a duplicated Recipe: the id of the first original (a copy of
     -- a copy names the first). A copy and its original are one lesson, so a reading that weighs
-    -- insights across Sets folds the copy into the original's Set. Deliberately no foreign key: it
+    -- insights across Recipes folds the copy into the original's Recipe. Deliberately no foreign key: it
     -- outlives the original (an approved pattern deletes its sources), and a copy must not start
-    -- counting as a second Set's lesson that day.
+    -- counting as a second Recipe's lesson that day.
     copied_from_insight_id INTEGER,
-    -- The Set the first original was learned in, written with the flag above and carried through a
-    -- copy of a copy: a copy's home Set when insights are weighed across Sets, whatever became of
-    -- the original or its Set. No foreign key, for the same reason.
-    copied_from_set_id INTEGER
+    -- The Recipe the first original was learned in, written with the flag above and carried through a
+    -- copy of a copy: a copy's home Recipe when insights are weighed across Recipes, whatever became of
+    -- the original or its Recipe. No foreign key, for the same reason.
+    copied_from_recipe_id INTEGER
 ) STRICT;
 CREATE INDEX idx_knowledge_insights_confirmed
     ON knowledge_insights(confirmed, created_at, id);
-CREATE INDEX idx_knowledge_insights_set ON knowledge_insights(set_id, created_at, id);
-CREATE INDEX idx_knowledge_insights_version ON knowledge_insights(set_version_id);
+CREATE INDEX idx_knowledge_insights_recipe ON knowledge_insights(recipe_id, created_at, id);
+CREATE INDEX idx_knowledge_insights_version ON knowledge_insights(recipe_version_id);
 CREATE INDEX idx_knowledge_insights_replaces ON knowledge_insights(replaces_id);
 
 CREATE TABLE shots (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id               TEXT    NOT NULL,
     -- No foreign key, on purpose. The reference is enforced in `SetsRepository` (the only code
-    -- that writes the column) and a Set version is never deleted: a Set is archived and its
+    -- that writes the column) and a Recipe version is never deleted: a Recipe is archived and its
     -- versions stay. A row pointing at nothing lists as unassigned rather than disappearing.
-    set_version_id          INTEGER,
+    recipe_version_id       INTEGER,
 
     started_at              TEXT,
     start_epoch             INTEGER NOT NULL DEFAULT 0,
@@ -737,7 +737,7 @@ CREATE INDEX idx_shots_list            ON shots(COALESCE(started_at, '') DESC, i
 CREATE INDEX idx_shots_profile_version ON shots(profile_version_id);
 CREATE INDEX idx_shots_quarantined     ON shots(quarantined);
 CREATE INDEX idx_shots_started         ON shots(started_at DESC);
-CREATE INDEX idx_shots_set_version     ON shots(set_version_id);
+CREATE INDEX idx_shots_recipe_version ON shots(recipe_version_id);
 
 -- The profiles the app means the machine to hold: one row per profile, not per version. A row
 -- names the version that is current, whether the profile belongs on the machine's home screen,
@@ -814,10 +814,10 @@ CREATE TABLE profile_list_build (
     built_at TEXT    NOT NULL
 ) STRICT;
 
-CREATE TABLE set_outcome_proposals (
+CREATE TABLE recipe_outcome_proposals (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    set_id           INTEGER NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
-    set_version_id   INTEGER NOT NULL REFERENCES set_versions(id) ON DELETE CASCADE,
+    recipe_id        INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    recipe_version_id INTEGER NOT NULL REFERENCES recipe_versions(id) ON DELETE CASCADE,
     thread_id        INTEGER REFERENCES chat_threads(id) ON DELETE SET NULL,
     outcome          TEXT    NOT NULL
                      CHECK (outcome IN ('held', 'partly_held', 'failed', 'inconclusive')),
@@ -832,9 +832,9 @@ CREATE TABLE set_outcome_proposals (
     created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     decided_at       TEXT
 ) STRICT;
-CREATE UNIQUE INDEX idx_set_outcome_proposals_waiting
-    ON set_outcome_proposals(set_version_id) WHERE status = 'proposed';
-CREATE INDEX idx_set_outcome_proposals_set ON set_outcome_proposals(set_id, id DESC);
+CREATE UNIQUE INDEX idx_recipe_outcome_proposals_waiting
+    ON recipe_outcome_proposals(recipe_version_id) WHERE status = 'proposed';
+CREATE INDEX idx_recipe_outcome_proposals_recipe ON recipe_outcome_proposals(recipe_id, id DESC);
 
 CREATE TABLE insight_placement_build (
     id       INTEGER PRIMARY KEY CHECK (id = 1),
@@ -842,9 +842,9 @@ CREATE TABLE insight_placement_build (
     moved    INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 
-CREATE TABLE set_insight_deletions (
+CREATE TABLE recipe_insight_deletions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    set_id       INTEGER NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
+    recipe_id    INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
     thread_id    INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
     insight_id   INTEGER REFERENCES knowledge_insights(id) ON DELETE SET NULL,
     insight_text TEXT    NOT NULL,
@@ -854,10 +854,10 @@ CREATE TABLE set_insight_deletions (
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     decided_at   TEXT
 ) STRICT;
-CREATE UNIQUE INDEX idx_set_insight_deletions_waiting
-    ON set_insight_deletions(insight_id) WHERE status = 'proposed';
-CREATE INDEX idx_set_insight_deletions_thread ON set_insight_deletions(thread_id, id);
-CREATE INDEX idx_set_insight_deletions_set ON set_insight_deletions(set_id, id DESC);
+CREATE UNIQUE INDEX idx_recipe_insight_deletions_waiting
+    ON recipe_insight_deletions(insight_id) WHERE status = 'proposed';
+CREATE INDEX idx_recipe_insight_deletions_thread ON recipe_insight_deletions(thread_id, id);
+CREATE INDEX idx_recipe_insight_deletions_recipe ON recipe_insight_deletions(recipe_id, id DESC);
 
 CREATE TABLE pattern_runs (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -870,7 +870,7 @@ CREATE TABLE pattern_runs (
     prompt_version    TEXT    NOT NULL DEFAULT '',
     input_json        TEXT    NOT NULL DEFAULT '{}',
     insights_read     INTEGER NOT NULL DEFAULT 0,
-    sets_read         INTEGER NOT NULL DEFAULT 0,
+    recipes_read      INTEGER NOT NULL DEFAULT 0,
     proposals_kept    INTEGER NOT NULL DEFAULT 0,
     proposals_dropped INTEGER NOT NULL DEFAULT 0,
     dropped_json      TEXT    NOT NULL DEFAULT '{}',
@@ -899,21 +899,21 @@ CREATE TABLE pattern_proposals (
 CREATE INDEX idx_pattern_proposals_run ON pattern_proposals(run_id, id);
 CREATE INDEX idx_pattern_proposals_status ON pattern_proposals(status);
 
-CREATE TABLE set_version_reverts (
+CREATE TABLE recipe_version_reverts (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    set_id           INTEGER NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
-    from_version_id  INTEGER NOT NULL REFERENCES set_versions(id) ON DELETE CASCADE,
-    to_version_id    INTEGER NOT NULL REFERENCES set_versions(id) ON DELETE CASCADE,
+    recipe_id        INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    from_version_id  INTEGER NOT NULL REFERENCES recipe_versions(id) ON DELETE CASCADE,
+    to_version_id    INTEGER NOT NULL REFERENCES recipe_versions(id) ON DELETE CASCADE,
     note             TEXT    NOT NULL DEFAULT '',
     created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
-CREATE INDEX idx_set_version_reverts_set ON set_version_reverts(set_id, created_at);
-CREATE INDEX idx_set_version_reverts_to ON set_version_reverts(to_version_id);
+CREATE INDEX idx_recipe_version_reverts_recipe ON recipe_version_reverts(recipe_id, created_at);
+CREATE INDEX idx_recipe_version_reverts_to ON recipe_version_reverts(to_version_id);
 
-CREATE TABLE set_versions (
+CREATE TABLE recipe_versions (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    set_id               INTEGER NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
-    parent_version_id    INTEGER REFERENCES set_versions(id),
+    recipe_id            INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    parent_version_id    INTEGER REFERENCES recipe_versions(id),
     profile_version_id   INTEGER REFERENCES profile_versions(id),
     grind_setting        TEXT,
     grind_value          REAL,
@@ -924,8 +924,8 @@ CREATE TABLE set_versions (
                          CHECK (origin IN ('manual', 'analysis', 'chat', 'starting_point')),
     origin_analysis_id   INTEGER,
     prediction           TEXT    NOT NULL DEFAULT '',
-    compares_to_version_id INTEGER REFERENCES set_versions(id),
-    restores_version_id  INTEGER REFERENCES set_versions(id),
+    compares_to_version_id INTEGER REFERENCES recipe_versions(id),
+    restores_version_id  INTEGER REFERENCES recipe_versions(id),
     prediction_at        TEXT,
     outcome              TEXT    CHECK (outcome IS NULL OR outcome IN
                               ('held', 'partly_held', 'failed', 'inconclusive')),
@@ -935,34 +935,34 @@ CREATE TABLE set_versions (
     version_major        INTEGER NOT NULL DEFAULT 0,
     version_minor        INTEGER NOT NULL DEFAULT 0
 ) STRICT;
-CREATE INDEX idx_set_versions_parent ON set_versions(parent_version_id);
-CREATE INDEX idx_set_versions_profile ON set_versions(profile_version_id);
-CREATE INDEX idx_set_versions_created ON set_versions(set_id, created_at, id);
-CREATE UNIQUE INDEX idx_set_versions_name
-    ON set_versions(set_id, version_major, version_minor);
+CREATE INDEX idx_recipe_versions_parent ON recipe_versions(parent_version_id);
+CREATE INDEX idx_recipe_versions_profile ON recipe_versions(profile_version_id);
+CREATE INDEX idx_recipe_versions_created ON recipe_versions(recipe_id, created_at, id);
+CREATE UNIQUE INDEX idx_recipe_versions_name
+    ON recipe_versions(recipe_id, version_major, version_minor);
 
--- A pin: one Set version kept on the machine as a profile of its own, frozen, while the Set goes on
+-- A pin: one Recipe version kept on the machine as a profile of its own, frozen, while the Recipe goes on
 -- changing. A pin is a record, not a state of the profile-list row: the row is an ordinary app
--- profile, and the pin says which Set version it belongs to.
+-- profile, and the pin says which Recipe version it belongs to.
 --   * profile_version_id: the copy, the pinned version's profile under the pin's name. A different
 --     profile version from the original because a version belongs to one profile (the copy is the
 --     pin's profile's own version of the same brew). UNIQUE: a copy
---     names exactly one Set version for ever, so a shot brewed on it files under that version even
+--     names exactly one Recipe version for ever, so a shot brewed on it files under that version even
 --     after the pin is gone, and no other version can claim the same copy.
 --   * board_id: the profile-list row that carries the copy (tombstoned when unpinned, brought
 --     back if the same version is pinned again under the same name).
---   * unpinned_at: NULL while the pin is live; at most one live pin per Set version.
-CREATE TABLE set_version_pins (
+--   * unpinned_at: NULL while the pin is live; at most one live pin per Recipe version.
+CREATE TABLE recipe_version_pins (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    set_version_id     INTEGER NOT NULL REFERENCES set_versions(id) ON DELETE CASCADE,
+    recipe_version_id  INTEGER NOT NULL REFERENCES recipe_versions(id) ON DELETE CASCADE,
     board_id           INTEGER NOT NULL REFERENCES profile_board(id),
     profile_version_id INTEGER NOT NULL UNIQUE REFERENCES profile_versions(id),
     pinned_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     unpinned_at        TEXT
 ) STRICT;
-CREATE UNIQUE INDEX idx_set_version_pins_live_version
-    ON set_version_pins(set_version_id) WHERE unpinned_at IS NULL;
-CREATE INDEX idx_set_version_pins_board ON set_version_pins(board_id);
+CREATE UNIQUE INDEX idx_recipe_version_pins_live_version
+    ON recipe_version_pins(recipe_version_id) WHERE unpinned_at IS NULL;
+CREATE INDEX idx_recipe_version_pins_board ON recipe_version_pins(board_id);
 
 CREATE TABLE profile_signatures (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -999,9 +999,9 @@ CREATE UNIQUE INDEX idx_signature_expectations_position
 CREATE INDEX idx_signature_expectations_thread
     ON signature_expectations(proposed_by_thread_id) WHERE proposed_by_thread_id IS NOT NULL;
 
-CREATE TABLE set_version_signature_overrides (
+CREATE TABLE recipe_version_signature_overrides (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    set_version_id        INTEGER NOT NULL REFERENCES set_versions(id) ON DELETE CASCADE,
+    recipe_version_id     INTEGER NOT NULL REFERENCES recipe_versions(id) ON DELETE CASCADE,
     expectation_id        INTEGER NOT NULL REFERENCES signature_expectations(id) ON DELETE CASCADE,
     compare_json          TEXT    NOT NULL,
     reason                TEXT    NOT NULL DEFAULT '',
@@ -1012,8 +1012,8 @@ CREATE TABLE set_version_signature_overrides (
     proposed_at           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     answered_at           TEXT
 ) STRICT;
-CREATE UNIQUE INDEX idx_set_version_signature_overrides_live
-    ON set_version_signature_overrides(set_version_id) WHERE status IN ('proposed', 'confirmed');
+CREATE UNIQUE INDEX idx_recipe_version_signature_overrides_live
+    ON recipe_version_signature_overrides(recipe_version_id) WHERE status IN ('proposed', 'confirmed');
 
 CREATE TABLE shot_reviews (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1032,7 +1032,7 @@ CREATE TABLE shot_reviews (
     -- One sentence. Shown to the person, never served to the chat: a person cannot confirm a
     -- sentence that is not a claim.
     summary            TEXT,
-    -- The Set version's prediction as the model was shown it, or empty.
+    -- The Recipe version's prediction as the model was shown it, or empty.
     prediction_given   TEXT    NOT NULL DEFAULT '',
     rules_used_json    TEXT    NOT NULL DEFAULT '[]',
     excerpts_used_json TEXT    NOT NULL DEFAULT '[]',
@@ -1136,8 +1136,8 @@ SELECT pv.id AS profile_version_id,
             AND json_extract(pv.json, '$.description') =
                 'An empty baseline, created because the archive held no profile to diff a new draft against.');
 
-CREATE VIEW v_sets AS
-SELECT st.id AS set_id,
+CREATE VIEW v_recipes AS
+SELECT st.id AS recipe_id,
        st.name,
        st.archived,
        st.automatch,
@@ -1155,19 +1155,19 @@ SELECT st.id AS set_id,
        'v' || cur.version_major
            || CASE WHEN cur.version_minor > 0 THEN '.' || cur.version_minor ELSE '' END
            AS current_version_label,
-       (SELECT COUNT(*) FROM set_versions v WHERE v.set_id = st.id) AS version_count,
+       (SELECT COUNT(*) FROM recipe_versions v WHERE v.recipe_id = st.id) AS version_count,
        (SELECT COUNT(*) FROM shots s
-          JOIN set_versions v ON v.id = s.set_version_id
-         WHERE v.set_id = st.id) AS shot_count
-  FROM sets st
-  LEFT JOIN set_versions cur ON cur.id = st.current_version_id
+          JOIN recipe_versions v ON v.id = s.recipe_version_id
+         WHERE v.recipe_id = st.id) AS shot_count
+  FROM recipes st
+  LEFT JOIN recipe_versions cur ON cur.id = st.current_version_id
   LEFT JOIN beans b    ON b.id = st.bean_id
   LEFT JOIN grinders g ON g.id = st.grinder_id;
 
-CREATE VIEW v_set_versions AS
-SELECT v.id AS set_version_id,
-       v.set_id,
-       st.name AS set_name,
+CREATE VIEW v_recipe_versions AS
+SELECT v.id AS recipe_version_id,
+       v.recipe_id,
+       st.name AS recipe_name,
        v.version_major,
        v.version_minor,
        'v' || v.version_major
@@ -1199,14 +1199,14 @@ SELECT v.id AS set_version_id,
        v.outcome,
        v.outcome_note,
        v.created_at,
-       (SELECT COUNT(*) FROM shots s WHERE s.set_version_id = v.id) AS shot_count
-  FROM set_versions v
-  JOIN sets st ON st.id = v.set_id
-  LEFT JOIN set_versions par ON par.id = v.parent_version_id
+       (SELECT COUNT(*) FROM shots s WHERE s.recipe_version_id = v.id) AS shot_count
+  FROM recipe_versions v
+  JOIN recipes st ON st.id = v.recipe_id
+  LEFT JOIN recipe_versions par ON par.id = v.parent_version_id
   LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
   LEFT JOIN profile_board pb ON pb.id = pv.board_id
-  LEFT JOIN set_versions cmp ON cmp.id = v.compares_to_version_id
-  LEFT JOIN set_versions res ON res.id = v.restores_version_id;
+  LEFT JOIN recipe_versions cmp ON cmp.id = v.compares_to_version_id
+  LEFT JOIN recipe_versions res ON res.id = v.restores_version_id;
 
 CREATE VIEW v_shots AS
 SELECT s.id                                        AS shot_id,
@@ -1225,16 +1225,16 @@ SELECT s.id                                        AS shot_id,
        s.scale_connected,
        s.incomplete,
        s.quarantined,
-       s.set_version_id,
-       sv.set_id,
-       sv.version_major                            AS set_version_major,
-       sv.version_minor                            AS set_version_minor,
+       s.recipe_version_id,
+       sv.recipe_id,
+       sv.version_major                            AS recipe_version_major,
+       sv.version_minor                            AS recipe_version_minor,
        'v' || sv.version_major
            || CASE WHEN sv.version_minor > 0 THEN '.' || sv.version_minor ELSE '' END
-                                                   AS set_version_label,
-       st.name                                     AS set_name,
+                                                   AS recipe_version_label,
+       st.name                                     AS recipe_name,
        sv.grind_setting,
-       sv.dose_g                                   AS set_dose_g,
+       sv.dose_g                                   AS recipe_dose_g,
        sv.target_yield_g,
        CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
              AND json_extract(pv.json, '$.temperature') > 0
@@ -1264,8 +1264,8 @@ SELECT s.id                                        AS shot_id,
   FROM shots s
   LEFT JOIN profile_versions pv ON pv.id = s.profile_version_id
   LEFT JOIN profile_board pb    ON pb.id = pv.board_id
-  LEFT JOIN set_versions sv     ON sv.id = s.set_version_id
-  LEFT JOIN sets st             ON st.id = sv.set_id
+  LEFT JOIN recipe_versions sv     ON sv.id = s.recipe_version_id
+  LEFT JOIN recipes st             ON st.id = sv.recipe_id
   LEFT JOIN beans b             ON b.id = st.bean_id
   LEFT JOIN grinders g          ON g.id = st.grinder_id
   LEFT JOIN shot_judgements j   ON j.shot_id = s.id;
@@ -1324,7 +1324,7 @@ SELECT j.shot_id,
        j.notes,
        j.updated_at,
        s.started_at,
-       s.set_version_id
+       s.recipe_version_id
   FROM shot_judgements j
   JOIN shots s ON s.id = j.shot_id;
 
@@ -1365,11 +1365,11 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
     ('device_writes', 0),
     ('knowledge_insights', 0),
     ('shots', 0),
-    ('set_versions', 0),
+    ('recipe_versions', 0),
     ('review_claims', 0);
 
 -- The upgrade level of this schema. A new database starts at it, and the comparison treats a
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;

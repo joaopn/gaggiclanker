@@ -83,17 +83,17 @@ class PinDetail(PinRow):
 
 
 _DETAIL_SELECT = f"""
-    SELECT p.*, v.set_id AS set_id, s.name AS set_name, s.archived AS set_archived,
+    SELECT p.*, v.recipe_id AS set_id, s.name AS set_name, s.archived AS set_archived,
            {label_sql("v")} AS version_label,
            v.profile_version_id AS original_version_id,
            {version_name_sql("opv")} AS original_label,
            cb.label AS name,
            (SELECT COUNT(*) FROM shots sh
-             WHERE sh.set_version_id = p.set_version_id
+             WHERE sh.recipe_version_id = p.recipe_version_id
                AND sh.profile_version_id = p.profile_version_id) AS shot_count
-    FROM set_version_pins p
-    JOIN set_versions v ON v.id = p.set_version_id
-    JOIN sets s ON s.id = v.set_id
+    FROM recipe_version_pins p
+    JOIN recipe_versions v ON v.id = p.recipe_version_id
+    JOIN recipes s ON s.id = v.recipe_id
     JOIN profile_board cb ON cb.id = p.board_id
     LEFT JOIN profile_versions opv ON opv.id = v.profile_version_id
 """  # noqa: S608 - the only interpolations are constant SQL expressions
@@ -103,7 +103,7 @@ class PinsRepository(Repository):
     """Reads and writes the pin records."""
 
     async def get(self, pin_id: int) -> PinRow | None:
-        row = await self.db.fetch_one("SELECT * FROM set_version_pins WHERE id = ?", (pin_id,))
+        row = await self.db.fetch_one("SELECT * FROM recipe_version_pins WHERE id = ?", (pin_id,))
         return self.to_model(PinRow, row)
 
     async def detail(self, pin_id: int) -> PinDetail | None:
@@ -113,7 +113,7 @@ class PinsRepository(Repository):
     async def live_for_version(self, set_version_id: int) -> PinRow | None:
         """The version's live pin, if it has one (the unique index allows at most one)."""
         row = await self.db.fetch_one(
-            "SELECT * FROM set_version_pins WHERE set_version_id = ? AND unpinned_at IS NULL",
+            "SELECT * FROM recipe_version_pins WHERE recipe_version_id = ? AND unpinned_at IS NULL",
             (set_version_id,),
         )
         return self.to_model(PinRow, row)
@@ -121,7 +121,7 @@ class PinsRepository(Repository):
     async def by_copy(self, profile_version_id: int) -> PinRow | None:
         """The pin record, live or not, whose copy is this profile version."""
         row = await self.db.fetch_one(
-            "SELECT * FROM set_version_pins WHERE profile_version_id = ?", (profile_version_id,)
+            "SELECT * FROM recipe_version_pins WHERE profile_version_id = ?", (profile_version_id,)
         )
         return self.to_model(PinRow, row)
 
@@ -129,7 +129,7 @@ class PinsRepository(Repository):
         """The pin record, live or not, whose copy is this brew under this name (the first): the
         copy's version brews it and the row that carries the copy is called ``name``."""
         row = await self.db.fetch_one(
-            "SELECT p.* FROM set_version_pins p "
+            "SELECT p.* FROM recipe_version_pins p "
             "JOIN profile_versions pv ON pv.id = p.profile_version_id "
             "JOIN profile_board b ON b.id = p.board_id "
             "WHERE pv.content_hash = ? AND b.label = ? ORDER BY p.id LIMIT 1",
@@ -159,7 +159,7 @@ class PinsRepository(Repository):
     async def live_for_set(self, set_id: int) -> list[PinDetail]:
         """A Set's live pins, newest first."""
         rows = await self.db.fetch_all(
-            f"{_DETAIL_SELECT} WHERE v.set_id = ? AND p.unpinned_at IS NULL "
+            f"{_DETAIL_SELECT} WHERE v.recipe_id = ? AND p.unpinned_at IS NULL "
             "ORDER BY p.pinned_at DESC, p.id DESC",
             (set_id,),
         )
@@ -167,8 +167,8 @@ class PinsRepository(Repository):
 
     async def insert(self, write: PinWrite) -> PinRow:
         cursor = await self.db.execute(
-            "INSERT INTO set_version_pins "
-            "(set_version_id, board_id, profile_version_id, pinned_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO recipe_version_pins "
+            "(recipe_version_id, board_id, profile_version_id, pinned_at) VALUES (?, ?, ?, ?)",
             (write.set_version_id, write.board_id, write.profile_version_id, utc_now()),
         )
         pin = await self.get(int(cursor.lastrowid or 0))
@@ -179,7 +179,7 @@ class PinsRepository(Repository):
     async def revive(self, pin_id: int) -> PinRow:
         """Pin again: the record is live from now on."""
         await self.db.execute(
-            "UPDATE set_version_pins SET unpinned_at = NULL, pinned_at = ? WHERE id = ?",
+            "UPDATE recipe_version_pins SET unpinned_at = NULL, pinned_at = ? WHERE id = ?",
             (utc_now(), pin_id),
         )
         pin = await self.get(pin_id)
@@ -223,7 +223,7 @@ class PinsRepository(Repository):
 
     async def mark_unpinned(self, pin_id: int) -> None:
         await self.db.execute(
-            "UPDATE set_version_pins SET unpinned_at = ? WHERE id = ? AND unpinned_at IS NULL",
+            "UPDATE recipe_version_pins SET unpinned_at = ? WHERE id = ? AND unpinned_at IS NULL",
             (utc_now(), pin_id),
         )
 
@@ -234,8 +234,8 @@ class PinsRepository(Repository):
         version (the copy row's active version now) and, when the Set followed, the Set version
         that was made for it. The row and its name are as they were."""
         await self.db.execute(
-            "UPDATE set_version_pins SET profile_version_id = ?, "
-            "set_version_id = COALESCE(?, set_version_id) WHERE id = ?",
+            "UPDATE recipe_version_pins SET profile_version_id = ?, "
+            "recipe_version_id = COALESCE(?, recipe_version_id) WHERE id = ?",
             (profile_version_id, set_version_id, pin_id),
         )
 
@@ -250,7 +250,7 @@ class PinsRepository(Repository):
         copy."""
         row = await self.db.fetch_one(
             f"SELECT s.name AS set_name, {label_sql('v')} AS version_label "  # noqa: S608
-            "FROM set_versions v JOIN sets s ON s.id = v.set_id "
+            "FROM recipe_versions v JOIN recipes s ON s.id = v.recipe_id "
             "JOIN profile_versions pv ON pv.id = v.profile_version_id "
             f"WHERE pv.content_hash = ? AND {version_name_sql('pv')} = ? "
             "ORDER BY v.id LIMIT 1",
@@ -273,7 +273,7 @@ async def judged_profile_versions(
         return {}
     rows = await db.fetch_all(
         "SELECT p.profile_version_id AS copy, v.profile_version_id AS original "  # noqa: S608
-        "FROM set_version_pins p JOIN set_versions v ON v.id = p.set_version_id "
+        "FROM recipe_version_pins p JOIN recipe_versions v ON v.id = p.recipe_version_id "
         f"WHERE p.profile_version_id IN ({', '.join('?' * len(ids))})",
         ids,
     )

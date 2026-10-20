@@ -106,7 +106,7 @@ class TestProfileMatch:
     async def test_an_archived_set_files_nothing_on_its_pins(self, wired: Fixtures) -> None:
         set_id, _pinned_version, _current, _pin, copy = await _pinned(wired)
         # Archived with the flag still on (archiving clears it; the rule must not lean on that).
-        await wired.db.execute("UPDATE sets SET archived = 1 WHERE id = ?", (set_id,))
+        await wired.db.execute("UPDATE recipes SET archived = 1 WHERE id = ?", (set_id,))
         shot = await make_shot(wired.db, "000906", profile_version_id=copy)
 
         match = await wired.sets.profile_match(shot, profile_version_id=copy, device_profile_id="")

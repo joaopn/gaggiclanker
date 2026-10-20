@@ -178,20 +178,20 @@ def _neighbours(roast_level: str | None) -> tuple[str | None, str | None]:
 #: rather than a `HAVING` somebody could delete.
 _SQL = f"""
 WITH outcomes AS (
-    SELECT sh.set_version_id                       AS version_id,
+    SELECT sh.recipe_version_id                       AS version_id,
            COUNT(*)                                AS shots,
            AVG(j.rating)                           AS mean_rating,
            AVG(sh.duration_ms / 1000.0)            AS mean_duration_s
       FROM shots sh
       LEFT JOIN shot_judgements j ON j.shot_id = sh.id
-     WHERE sh.set_version_id IS NOT NULL
+     WHERE sh.recipe_version_id IS NOT NULL
        -- A quarantined shot never parsed, so it has no duration and
        -- nothing to say about whether the recipe worked.
        AND sh.quarantined = 0
-     GROUP BY sh.set_version_id
+     GROUP BY sh.recipe_version_id
 )
 SELECT v.id                                         AS set_version_id,
-       v.set_id,
+       v.recipe_id,
        {label_sql("v")}                              AS version_label,
        v.created_at,
        v.grind_setting,
@@ -242,9 +242,9 @@ SELECT v.id                                         AS set_version_id,
            (MIN(o.shots, :confidence_shots) * 1.0 / :confidence_shots)
          * (0.4 * COALESCE(o.mean_rating, 0.0)),
        3)                                           AS outcome_score
-  FROM set_versions v
+  FROM recipe_versions v
   JOIN outcomes o ON o.version_id = v.id
-  JOIN sets s     ON s.id = v.set_id
+  JOIN recipes s     ON s.id = v.recipe_id
   JOIN beans b    ON b.id = s.bean_id
   LEFT JOIN grinders g          ON g.id = s.grinder_id
   LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
@@ -323,12 +323,12 @@ async def _mean_ratios(db: Database, version_ids: list[int]) -> dict[int, float]
     marks = ",".join("?" for _ in version_ids)
     rows = await db.fetch_all(
         f"""
-        SELECT sh.set_version_id, j.dose_in_g, j.dose_out_g, v.dose_g AS version_dose_g,
+        SELECT sh.recipe_version_id, j.dose_in_g, j.dose_out_g, v.dose_g AS version_dose_g,
                COALESCE(sh.final_weight_g, sh.index_volume_g) AS volume_g
           FROM shots sh
-          JOIN set_versions v ON v.id = sh.set_version_id
+          JOIN recipe_versions v ON v.id = sh.recipe_version_id
           LEFT JOIN shot_judgements j ON j.shot_id = sh.id
-         WHERE sh.set_version_id IN ({marks}) AND sh.quarantined = 0
+         WHERE sh.recipe_version_id IN ({marks}) AND sh.quarantined = 0
         """,  # noqa: S608 - the placeholders are question marks, the ids are bound
         tuple(version_ids),
     )

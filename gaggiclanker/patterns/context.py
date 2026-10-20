@@ -127,7 +127,7 @@ class PatternsInput(BaseModel):
     def render(self) -> dict[str, str]:
         """The prompt's variables: one rendered block per section."""
         return {
-            "set_insights": _render_sets(self.sets),
+            "recipe_insights": _render_sets(self.sets),
             "general_insights": _render_general(self.general),
             "declined": _render_declined(self.declined),
         }

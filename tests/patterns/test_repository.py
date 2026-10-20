@@ -372,7 +372,7 @@ class TestApproval:
         proposals = PatternProposalsRepository(world.db)
         (waiting,) = await proposals.for_run(await _finished(world, proposal))
         # C's grinder is cleared after the run: the scope no longer reaches it.
-        await world.db.execute("UPDATE sets SET grinder_id = NULL WHERE id = ?", (world.c,))
+        await world.db.execute("UPDATE recipes SET grinder_id = NULL WHERE id = ?", (world.c,))
 
         result = await proposals.approve(waiting.id)
 
@@ -505,7 +505,8 @@ class TestApproval:
         assert result.proposal is not None and result.proposal.insight_id is not None
         general_id = result.proposal.insight_id
         written = await world.db.fetch_one(
-            "SELECT source, set_id, confirmed FROM knowledge_insights WHERE id = ?", (general_id,)
+            "SELECT source, recipe_id, confirmed FROM knowledge_insights WHERE id = ?",
+            (general_id,),
         )
         assert written is not None
         assert (written["source"], written["set_id"], written["confirmed"]) == ("user", None, 1)
@@ -515,7 +516,8 @@ class TestApproval:
         await InsightPlacementBuilder(world.db).build()
 
         after = await world.db.fetch_one(
-            "SELECT set_id, set_version_id FROM knowledge_insights WHERE id = ?", (general_id,)
+            "SELECT recipe_id, recipe_version_id FROM knowledge_insights WHERE id = ?",
+            (general_id,),
         )
         assert after is not None
         assert (after["set_id"], after["set_version_id"]) == (None, None)

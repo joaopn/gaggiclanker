@@ -177,7 +177,7 @@ async def test_the_agents_change_for_a_set_to_a_profile_the_app_did_not_make_is_
     set_id = await make_set_on(client, "Firmware set", row["current_version_id"])
     draft = await same_name_draft(app, client, provider, BASE_LABEL, 7)
     await app.state.db.execute(
-        "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, draft["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
     )
 
     board = await get_board(client)
@@ -425,7 +425,7 @@ async def test_a_renamed_set_draft_is_a_profile_of_its_own_and_the_firmware_prof
         )
     )
     await app.state.db.execute(
-        "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, draft["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
     )
 
     board = await get_board(client)

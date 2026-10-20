@@ -413,14 +413,14 @@ class TestRevert:
         )
         before = await wired.sets.get_version(target.id)
         assert before is not None
-        rows_before = await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions")
+        rows_before = await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions")
 
         result = await wired.sets.rollback(
             set_id, RollbackWrite(to_version_id=target.id, note="that was worse")
         )
 
         assert result.refused is None and result.version is not None
-        assert await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions") == rows_before
+        assert await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions") == rows_before
         row = await wired.sets.get(set_id)
         assert row is not None and row.current_version_id == target.id
         # What the version says is byte for byte what it said, apart from being current.
@@ -534,7 +534,7 @@ class TestTheWayBackOffer:
         await _judged_shot(wired, versions[0].id, "000001", "keep")
         await _judged_shot(wired, versions[1].id, "000002", "keep")
         await wired.db.execute(
-            "UPDATE set_versions SET restores_version_id = ? WHERE id = ?",
+            "UPDATE recipe_versions SET restores_version_id = ? WHERE id = ?",
             (versions[0].id, versions[2].id),
         )
 
@@ -603,7 +603,7 @@ class TestDeadEnds:
         set_id, ids = await self._fork(wired)
         # v2.1 stands for an old roll back of v1: parent v2, restores v1.
         await wired.db.execute(
-            "UPDATE set_versions SET restores_version_id = ? WHERE id = ?",
+            "UPDATE recipe_versions SET restores_version_id = ? WHERE id = ?",
             (ids["v1"], ids["v2.1"]),
         )
 
