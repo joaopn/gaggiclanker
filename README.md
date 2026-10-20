@@ -142,7 +142,12 @@ like the numbers, so each new version keeps them until it changes them (empty no
 away; a drink once stated is never unstated). They are not among the five numbers and play no
 part in what counts as a repeat. A version made before drinks were recorded states no drink,
 which is not Espresso. Changing the drink suggests a major version, and the agent reads the
-drink's knowledge entry whenever it is asked about the Recipe.
+drink's knowledge entry whenever it is asked about the Recipe. New Recipe asks for the drink
+(Espresso to begin with) and the notes; the drink shows as a badge on the Recipe's card, beside
+its name on its page and on every version of the log, and the notes under the page's heading.
+**Change something** starts those two fields filled with the current version's, so that clearing
+the notes can remove them; only what you change is recorded, and another drink ticks Major change
+for you to keep or untick. The shots table has a Drink column, off until you switch it on.
 
 **The brew temperature is not one of the five**, and there is nowhere to type
 one: the machine heats to what the profile says, so a number written on a Recipe

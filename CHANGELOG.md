@@ -21,8 +21,22 @@ database.
   vanilla"). Both belong to the version, and the next version keeps them until someone changes
   them. A new Recipe needs a drink, and so does a suggestion or a design the agent is asked for;
   Duplicate Recipe copies both. Changing the drink is a change like any other, and suggests a
-  major version ("the drink changes"); you still pick. The screens do not offer the choice yet:
-  until they do, a Recipe made from the New Recipe dialog is an Espresso one.
+  major version ("the drink changes"); you still pick.
+- **New: the drink on the screens.** New Recipe has a **Drink** choice, with Espresso chosen to
+  begin with and what each drink covers under it, and a **Drink notes** field; the suggestion and
+  the design use the same two. A Recipe's card, its page heading and each version in the log show
+  the drink as a coloured badge (the word is always printed), and the notes appear under the
+  heading ("Drink notes: …") and as one line on the card, cut at the card's edge with the whole
+  text on hover. The log names a change as "Drink: Espresso → Cappuccino · notes added". **Change
+  something** starts Drink and Drink notes with the current version's values, because an empty
+  field there means "keep it" and could not say "remove the notes": only what you changed is
+  recorded, picking another drink ticks Major change with "suggested: the drink changes" (you can
+  untick it), and clearing the notes removes them. A version that states no drink offers "Not
+  stated", and keeps it unless you pick one. The change card in the chat shows the drink and the
+  notes first, Duplicate Recipe shows what it copies, and the shot page puts the badge beside
+  the Recipe name. The shots table has a **Drink** column, off by default: switch it on in the
+  column chooser (after Recipe). It shows nothing for a shot filed under no Recipe or under a
+  version that states no drink, and hides on a phone like Recipe does.
 - **New: the agent knows the drink.** A Recipe conversation, a design, a starting point and a
   review are told the drink, and are handed the knowledge base's entry for it whole (so an entry
   you edited is the one read). It is kept apart from the retrieved excerpts, which never repeat it.
