@@ -21,8 +21,14 @@ import { cn } from "@/lib/utils";
 
 /**
  * Starting a Set: one form, every manual option on one screen, in the order the
- * question is answered — which bean, what to call it, through which grinder and
- * profile, at what recipe, and what you are trying to find out.
+ * question is answered — what to call it, which bean through which grinder, on
+ * which profile, at what recipe, and what you are trying to find out.
+ *
+ * **The name is the box's first field and starts empty.** It fills itself with
+ * "<bean> on the <grinder>" once both are picked (the server's own default, so
+ * every path names a Set the same way) and follows later picks until somebody
+ * types in it. It is one field for every path in the box: the form and the
+ * design both send what it holds.
  *
  * One screen rather than steps because there are nine fields and only one of
  * them is required. A step list made the bean, the only gate, look like one of
@@ -40,7 +46,7 @@ import { cn } from "@/lib/utils";
  * so the form stands on its own without it.
  *
  * **Designing it with the agent is the third path**, folded the same way. It
- * reads the same bean, name, grinder and profile — the profile as the one to
+ * reads the same name, bean, grinder and profile — the profile as the one to
  * fork from — and adds only what the form lacks: the usual grind and what the
  * person wants from the coffee. It creates a Set with no recipe yet and goes
  * to that Set's own conversation, where the recipe is worked out. Whichever of
@@ -63,6 +69,12 @@ type Draft = {
   doseG: string;
   targetYieldG: string;
   intent: string;
+  /**
+   * The name the dialog filled in by itself, or "" when it has not. While the
+   * name field still holds exactly this, nobody has typed in it, so a new bean
+   * or grinder may rename it; anything else in the field is the person's.
+   */
+  autoName: string;
   /**
    * What they normally grind espresso at. Never sent to `POST /api/sets` — it
    * is an input to the suggestion and the design, not a fact about the Set —
@@ -88,6 +100,7 @@ const EMPTY: Draft = {
   doseG: "",
   targetYieldG: "",
   intent: "",
+  autoName: "",
   usualGrind: "",
   goal: "",
   filled: { targetYieldG: null },
@@ -106,11 +119,11 @@ export const GOAL_MAX = 2000;
 export const DESIGN_OPENER = "Help me design this Set.";
 
 /**
- * The name a design gets when none was typed: "<bean> on the <grinder>".
+ * The name the dialog fills in: "<bean> on the <grinder>".
  *
- * The server's rule, said on screen before the press: the grinder is what
- * tells two Sets of one bean apart, and the form's own default (the bean alone)
- * is not what a design is called. Null until both are picked.
+ * The server's rule (`set_name`), so a Set started from the form, the design
+ * or a suggestion is called the same thing: the grinder is what tells two Sets
+ * of one bean apart. Null until both are picked.
  */
 export function designName(
   beanName: string | undefined,
@@ -123,15 +136,33 @@ export function designName(
 }
 
 /**
+ * The name field after a bean or grinder pick: filled in while nobody has typed in it.
+ *
+ * Empty, or still holding what the dialog put there, it takes "<bean> on the
+ * <grinder>" — and goes back to empty when one of the two is unpicked, since
+ * the old name would then be about kit the Set no longer has. A name the
+ * person typed is never touched. Pure and exported so the rule is testable
+ * without a dialog.
+ */
+export function followName(
+  draft: Pick<Draft, "name" | "autoName">,
+  beanName: string | undefined,
+  grinderName: string | undefined,
+): Pick<Draft, "name" | "autoName"> {
+  if (draft.name !== "" && draft.name !== draft.autoName) return draft;
+  const name = designName(beanName, grinderName) ?? "";
+  return { name, autoName: name };
+}
+
+/**
  * `POST /api/sets/design`, from the same draft the form holds.
  *
- * The name only when one was typed: left empty, the server calls it "<bean> on
- * the <grinder>", the name every Set from a suggestion gets, which tells two
- * Sets of one bean on two grinders apart. The profile picker is read as the
- * one to fork from. The grind, dose and yield go when they are filled in, as
- * the person's own numbers for the agent to keep; empty, they are what the
- * conversation works out. The intent is not sent: the design asks for the goal
- * instead.
+ * The name as the field holds it; emptied by hand, it is left to the server,
+ * which gives the same "<bean> on the <grinder>". The profile picker is read
+ * as the one to fork from. The grind, dose and yield go when they are filled
+ * in, as the person's own numbers for the agent to keep; empty, they are what
+ * the conversation works out. The intent is not sent: the design asks for the
+ * goal instead.
  */
 export function toDesignBody(draft: Draft): SetDesignCreate {
   return {
@@ -301,13 +332,15 @@ export function NewSetDialog({
 
   // A bag handed in by the Beans page shortcut. An effect rather than a
   // `useState` initialiser, because the dialog is mounted once and re-opened
-  // many times — an initialiser would take the first bean it ever saw.
+  // many times — an initialiser would take the first bean it ever saw. Through
+  // `withPick`, so a grinder already picked names the Set as a bean pick does.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `withPick` only looks the names up; the effect is about the handed-in bean, and a list that loads later must not re-run it.
   useEffect(() => {
     if (!open) return;
     setDraft((current) =>
       initialBeanId === undefined || current.beanId
         ? current
-        : { ...current, beanId: String(initialBeanId) },
+        : withPick(current, "beanId", String(initialBeanId)),
     );
   }, [open, initialBeanId]);
   const ids = {
@@ -323,6 +356,18 @@ export function NewSetDialog({
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  /** A bean or grinder pick, and the name that follows it while nobody has typed one. */
+  function withPick(current: Draft, key: "beanId" | "grinderId", value: string): Draft {
+    const next = { ...current, [key]: value };
+    const bean = beans.data?.items.find((item) => String(item.id) === next.beanId);
+    const grinder = grinders.data?.items.find((item) => String(item.id) === next.grinderId);
+    return { ...next, ...followName(next, bean?.name, grinder?.name) };
+  }
+
+  function pick(key: "beanId" | "grinderId", value: string) {
+    setDraft((current) => withPick(current, key, value));
   }
 
   function pickProfile(versionId: string) {
@@ -364,9 +409,13 @@ export function NewSetDialog({
   const chosenGrinder = grinders.data?.items.find(
     (grinder) => String(grinder.id) === draft.grinderId,
   );
-  // The Set's name defaults to the bag's, which is what a person would type
-  // anyway, and stays editable for the case where two Sets share a bean.
-  const name = draft.name || chosenBean?.name || "";
+  // What the form sends when the field was emptied by hand: the server's own
+  // rule, which is the bean alone for pre-ground coffee with no grinder.
+  const name =
+    draft.name.trim() ||
+    designName(chosenBean?.name, chosenGrinder?.name) ||
+    chosenBean?.name.trim() ||
+    "";
 
   const fromProfile = recipeHint(draft, draft.filled);
   const chosenProfile = versions.data?.items.find(
@@ -404,6 +453,16 @@ export function NewSetDialog({
             onCreated?.(row.id);
           }}
         >
+          <Labelled id={ids.name} label="Name">
+            <input
+              id={ids.name}
+              className={FIELD}
+              maxLength={200}
+              value={draft.name}
+              placeholder="Autofilled when bean and grinder are selected"
+              onChange={(event) => set("name", event.target.value)}
+            />
+          </Labelled>
           <div className="grid gap-3 sm:grid-cols-2">
             <Labelled id={ids.bean} label="Bean">
               <select
@@ -411,7 +470,7 @@ export function NewSetDialog({
                 required
                 className={FIELD}
                 value={draft.beanId}
-                onChange={(event) => set("beanId", event.target.value)}
+                onChange={(event) => pick("beanId", event.target.value)}
               >
                 <option value="">Pick a bean</option>
                 {(beans.data?.items ?? []).map((bean) => (
@@ -421,14 +480,20 @@ export function NewSetDialog({
                 ))}
               </select>
             </Labelled>
-            <Labelled id={ids.name} label="Call it">
-              <input
-                id={ids.name}
+            <Labelled id={ids.grinder} label="Grinder">
+              <select
+                id={ids.grinder}
                 className={FIELD}
-                value={name}
-                placeholder="Guji on the Niche"
-                onChange={(event) => set("name", event.target.value)}
-              />
+                value={draft.grinderId}
+                onChange={(event) => pick("grinderId", event.target.value)}
+              >
+                <option value="">Not recorded</option>
+                {(grinders.data?.items ?? []).map((grinder) => (
+                  <option key={grinder.id} value={String(grinder.id)}>
+                    {grinder.name}
+                  </option>
+                ))}
+              </select>
             </Labelled>
           </div>
           {chosenBean ? (
@@ -449,38 +514,21 @@ export function NewSetDialog({
             </p>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Labelled id={ids.grinder} label="Grinder">
-              <select
-                id={ids.grinder}
-                className={FIELD}
-                value={draft.grinderId}
-                onChange={(event) => set("grinderId", event.target.value)}
-              >
-                <option value="">Not recorded</option>
-                {(grinders.data?.items ?? []).map((grinder) => (
-                  <option key={grinder.id} value={String(grinder.id)}>
-                    {grinder.name}
-                  </option>
-                ))}
-              </select>
-            </Labelled>
-            <Labelled id={ids.profile} label="Profile">
-              <select
-                id={ids.profile}
-                className={FIELD}
-                value={draft.profileVersionId}
-                onChange={(event) => pickProfile(event.target.value)}
-              >
-                <option value="">Pick a profile</option>
-                {(choices.data?.items ?? []).map((choice) => (
-                  <option key={choice.profile_version_id} value={String(choice.profile_version_id)}>
-                    {choice.label}
-                  </option>
-                ))}
-              </select>
-            </Labelled>
-          </div>
+          <Labelled id={ids.profile} label="Profile">
+            <select
+              id={ids.profile}
+              className={FIELD}
+              value={draft.profileVersionId}
+              onChange={(event) => pickProfile(event.target.value)}
+            >
+              <option value="">Pick a profile</option>
+              {(choices.data?.items ?? []).map((choice) => (
+                <option key={choice.profile_version_id} value={String(choice.profile_version_id)}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+          </Labelled>
           <p className="text-muted-foreground text-xs" data-testid="new-set-profile-help">
             A profile has one Set, and shots pulled with it join that Set on their own. A profile
             that already has a Set is started on through Duplicate on that Set.
@@ -579,10 +627,6 @@ export function NewSetDialog({
           beanChosen={Boolean(draft.beanId)}
           grinderChosen={Boolean(draft.grinderId)}
           forkLabel={chosenProfile?.profile_name ?? null}
-          defaultName={
-            // Only while nothing is typed: a typed name is sent as it is.
-            draft.name.trim() ? null : designName(chosenBean?.name, chosenGrinder?.name)
-          }
           grindUnit={chosenGrinder?.step_unit ?? "clicks"}
           usualGrind={draft.usualGrind}
           onUsualGrindChange={(value) => set("usualGrind", value)}
@@ -655,7 +699,6 @@ function DesignWithAgent({
   beanChosen,
   grinderChosen,
   forkLabel,
-  defaultName,
   grindUnit,
   usualGrind,
   onUsualGrindChange,
@@ -670,12 +713,6 @@ function DesignWithAgent({
   grinderChosen: boolean;
   /** The profile picked above, read here as the one to fork from. */
   forkLabel: string | null;
-  /**
-   * What the server will call the Set when no name was typed, or null when one
-   * was. The form's "Call it" shows the bag's name, which is the plain form's
-   * default; a design is named after the grinder too.
-   */
-  defaultName: string | null;
   grindUnit: string;
   usualGrind: string;
   onUsualGrindChange: (value: string) => void;
@@ -713,14 +750,9 @@ function DesignWithAgent({
               you: it reads your other Sets on this bean, similar Sets on this grinder and the
               profile you fork, if any, asks what it needs, and proposes a profile of its own with
               the grind, dose and yield as one card. Nothing exists until you accept it. It uses the
-              bean, name and grinder above, and keeps the grind, dose and yield you filled in above
+              name, bean and grinder above, and keeps the grind, dose and yield you filled in above
               — the agent works out whichever you left empty. The intent above is not sent.
             </p>
-            {defaultName ? (
-              <p className="text-sm" data-testid="design-name">
-                Called “{defaultName}” unless you name it above.
-              </p>
-            ) : null}
             <p className="text-sm" data-testid="design-fork">
               <span className="text-muted-foreground">Fork from: </span>
               {forkLabel ?? "no profile picked above — the agent writes a new one from scratch"}

@@ -2,7 +2,12 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileChoice, ProfileVersionSummary } from "@/api/types";
-import { designName, fillFromProfile, NewSetDialog } from "@/components/sets/NewSetDialog";
+import {
+  designName,
+  fillFromProfile,
+  followName,
+  NewSetDialog,
+} from "@/components/sets/NewSetDialog";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { bean, grinder, setRow, startingPointRun, version } from "@/test/setsFixtures";
 
@@ -193,8 +198,8 @@ describe("NewSetDialog", () => {
     // Every manual option is on the first screen: no steps, no Next.
     const form = await screen.findByTestId("new-set-form");
     for (const label of [
+      "Name",
       "Bean",
-      "Call it",
       "Grinder",
       "Profile",
       "Grind",
@@ -226,7 +231,8 @@ describe("NewSetDialog", () => {
     await waitFor(() => expect(createSet).toHaveBeenCalled());
     expect(createSet.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        name: "Ethiopia Guji",
+        // Filled in once the bean and the grinder were both picked.
+        name: "Ethiopia Guji on the Niche Zero",
         bean_id: 1,
         grinder_id: 1,
         // A new Set is what the machine is set up for now, or it would collect
@@ -244,12 +250,79 @@ describe("NewSetDialog", () => {
     );
   });
 
-  it("names the Set after the bag unless told otherwise", async () => {
-    renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+  describe("the name", () => {
+    it("is the first field, empty, and says when it fills itself in", async () => {
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
 
-    await pickBean();
+      const form = await screen.findByTestId("new-set-form");
+      const name = screen.getByLabelText("Name");
+      expect(form.querySelector("input, select")).toBe(name);
+      expect(name).toHaveValue("");
+      expect(name).toHaveAttribute("placeholder", "Autofilled when bean and grinder are selected");
 
-    expect(screen.getByLabelText("Call it")).toHaveValue("Ethiopia Guji");
+      // A bean alone is not enough: the grinder is what tells two Sets of one bean apart.
+      await pickBean();
+      expect(name).toHaveValue("");
+    });
+
+    it("fills in once the bean and the grinder are picked, and follows a new grinder", async () => {
+      const user = setupUser();
+      getGrinders.mockResolvedValue({
+        items: [grinder(), grinder({ id: 2, name: "Mazzer Mini" })],
+      });
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+      await pickGrinder();
+      expect(screen.getByLabelText("Name")).toHaveValue("");
+      await pickBean();
+      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji on the Niche Zero");
+
+      await user.selectOptions(screen.getByLabelText("Grinder"), "2");
+      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji on the Mazzer Mini");
+
+      // Unpicked, the grinder takes its part of the name with it.
+      await user.selectOptions(screen.getByLabelText("Grinder"), "");
+      expect(screen.getByLabelText("Name")).toHaveValue("");
+    });
+
+    it("never replaces a name typed by hand", async () => {
+      const user = setupUser();
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+      await pickBean();
+      await pickGrinder();
+      const name = screen.getByLabelText("Name");
+      await user.clear(name);
+      await user.type(name, "Guji, the long one");
+      await user.selectOptions(screen.getByLabelText("Grinder"), "");
+      await user.selectOptions(screen.getByLabelText("Grinder"), "1");
+
+      expect(name).toHaveValue("Guji, the long one");
+    });
+
+    it("fills in for a bean handed in by the Beans page once a grinder is picked", async () => {
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} initialBeanId={1} />);
+
+      await screen.findByRole("option", { name: /Ethiopia Guji/ });
+      expect(screen.getByLabelText("Name")).toHaveValue("");
+      await pickGrinder();
+
+      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji on the Niche Zero");
+    });
+
+    it("is the bean's name for pre-ground coffee left unnamed", async () => {
+      const user = setupUser();
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+      await pickBean();
+      await pickProfile("7");
+      await user.click(screen.getByRole("button", { name: "Start the Set" }));
+
+      await waitFor(() => expect(createSet).toHaveBeenCalled());
+      expect(createSet.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ name: "Ethiopia Guji", grinder_id: null }),
+      );
+    });
   });
 
   it("says the picked coffee's taste scales that are set, and only those", async () => {
@@ -618,8 +691,8 @@ describe("NewSetDialog, designing it with the agent", () => {
     expect(designSet.mock.calls[0][0]).toEqual({
       bean_id: 1,
       grinder_id: 1,
-      // Not typed, so the server names it "<bean> on the <grinder>".
-      name: null,
+      // What the name field filled in by itself.
+      name: "Ethiopia Guji on the Niche Zero",
       fork_profile_version_id: 7,
       usual_grind: "21",
       goal: "more body, and try a bloom",
@@ -642,7 +715,7 @@ describe("NewSetDialog, designing it with the agent", () => {
     onPage({ initialBeanId: 1 });
 
     await screen.findByRole("option", { name: /Ethiopia Guji/ });
-    await user.type(screen.getByLabelText("Call it"), " bloom trial");
+    await user.type(screen.getByLabelText("Name"), "Ethiopia Guji bloom trial");
     await pickGrinder();
     await openDesign();
     await user.click(screen.getByTestId("start-designing"));
@@ -668,25 +741,18 @@ describe("NewSetDialog, designing it with the agent", () => {
     );
   });
 
-  it("says the name the server will give it, and stops once a name is typed", async () => {
-    const user = setupUser();
+  it("names nothing of its own: the name is the field at the top", async () => {
     onPage({ initialBeanId: 1 });
 
     await screen.findByRole("option", { name: /Ethiopia Guji/ });
-    await openDesign();
-    // No grinder yet: nothing to say, since the name is the bag and the grinder.
-    expect(screen.queryByTestId("design-name")).not.toBeInTheDocument();
-
+    const step = await openDesign();
     await pickGrinder();
-    // "Call it" shows the bag alone, which is the plain form's default; the
-    // design is named after the grinder too, and the section says so.
-    expect(screen.getByLabelText("Call it")).toHaveValue("Ethiopia Guji");
-    expect(screen.getByTestId("design-name")).toHaveTextContent(
-      "Called “Ethiopia Guji on the Niche Zero” unless you name it above.",
-    );
 
-    await user.type(screen.getByLabelText("Call it"), " bloom trial");
-    expect(screen.queryByTestId("design-name")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji on the Niche Zero");
+    expect(step).not.toHaveTextContent(/unless you name it|Called “/);
+    expect(step).toHaveTextContent(
+      "keeps the grind, dose and yield you filled in above — the agent works out whichever you left empty",
+    );
   });
 
   it("keeps the dialog and the draft when the server refuses", async () => {
@@ -729,7 +795,28 @@ describe("NewSetDialog, designing it with the agent", () => {
   });
 });
 
-/** The name a design gets when none is typed: the server's `set_name`, said on screen. */
+describe("followName", () => {
+  it("fills an empty field and remembers what it filled", () => {
+    expect(followName({ name: "", autoName: "" }, "Guji", "Niche")).toEqual({
+      name: "Guji on the Niche",
+      autoName: "Guji on the Niche",
+    });
+  });
+
+  it("follows a new pick while the field holds what it filled, and empties with one unpicked", () => {
+    const filled = { name: "Guji on the Niche", autoName: "Guji on the Niche" };
+    expect(followName(filled, "Guji", "Mazzer").name).toBe("Guji on the Mazzer");
+    expect(followName(filled, "Guji", undefined)).toEqual({ name: "", autoName: "" });
+  });
+
+  it("leaves a typed name alone, even one typed over a filled one", () => {
+    const typed = { name: "Mine", autoName: "Guji on the Niche" };
+    expect(followName(typed, "Guji", "Mazzer")).toBe(typed);
+    expect(followName({ name: "Mine", autoName: "" }, "Guji", "Niche").name).toBe("Mine");
+  });
+});
+
+/** The name the dialog fills in: the server's `set_name`. */
 describe("designName", () => {
   it("trims the bean and the grinder, and keeps the spaces inside them", () => {
     expect(designName("  Ethiopia Guji  ", " Niche Zero ")).toBe("Ethiopia Guji on the Niche Zero");

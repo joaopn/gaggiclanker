@@ -1121,8 +1121,11 @@ held in the tab.
 
 ### A starting point for a new coffee
 
-**New Set** is one form: the bean, a name, the grinder, the profile, the
-recipe and an optional intent. The profile is one no Set has, by the version it has active; while
+**New Set** is one form: a name, the bean, the grinder, the profile, the
+recipe and an optional intent. The name starts empty and fills itself in as
+"<bean> on the <grinder>" once both are picked, following a later pick until
+you type your own; left empty with no grinder, the Set is called after the
+bean. The profile is one no Set has, by the version it has active; while
 Writes are off the list holds none, and the machine's own files stand in (the Set has its
 profile once the list adopts the file). Picking a profile fills the target yield from its
 largest volumetric stop, never over a number you typed, and shows the
@@ -1168,7 +1171,7 @@ designing a Set with the agent (below) is the conversation for a new bean.
 The third path in **New Set** is **Design it with the agent**, folded under the
 form like the suggestion. It is for a new profile rather than a first guess: a
 fork of one you have, or a bean you already brew in another Set. It uses the
-bean, name and grinder from the form, reads the form's profile as the one to
+name, bean and grinder from the form, reads the form's profile as the one to
 fork from, and asks only what the form does not: your usual grind on that
 grinder and what you want from the coffee. The grinder is required here — a
 grind is only a number on one grinder's dial — so pre-ground coffee keeps the
