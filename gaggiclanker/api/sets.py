@@ -193,7 +193,7 @@ class SetDesignCreate(DesignBrief):
     #: design with no grinder has nothing to anchor one on. Pre-ground coffee
     #: keeps the ordinary New Set form and its suggestions.
     grinder_id: int
-    #: Defaults to "<bean> on the <grinder>", the name every new Set from a
+    #: Defaults to "<bean> (<grinder>)", the name every new Set from a
     #: suggestion gets.
     name: str | None = Field(default=None, min_length=1, max_length=200)
 

@@ -16,12 +16,15 @@ database.
 ### New Set's name field, and a design that keeps the numbers you typed
 
 - **Changed: the New Set dialog starts with an empty Name field.** It fills itself in as
-  "<bean> on the <grinder>" once both are picked (its placeholder says so), follows a later bean
-  or grinder pick, and is never replaced once you type in it. This is the name the form and
-  Design it with the agent both send, so the design's "Called … unless you name it above" line
-  is gone. A Set started from the form with a grinder is now called after the bean and the
-  grinder, as designs and suggestions already were; with no grinder and no name typed it is still
-  the bean's name.
+  "<bean> (<grinder>)" once both are picked (its placeholder says so), follows a later bean or
+  grinder pick, and is never replaced once you type in it. This is the name the form and Design
+  it with the agent both send, so the design's "Called … unless you name it above" line is gone.
+  A Set started from the form with a grinder is now called after the bean and the grinder; with
+  no grinder and no name typed it is still the bean's name.
+- **Changed: a Set named for you is "<bean> (<grinder>)"**, such as "Präsident (Red Mignon
+  Specialita)", where it was "<bean> on the <grinder>". That is the name the dialog fills in, the
+  name a design gets when the field is left empty, and the name an accepted suggestion gets.
+  Existing Sets keep the names they have.
 - **Changed: Design it with the agent keeps the grind, dose and yield you filled in.** They were
   not sent before. Each one filled in is stored with the design's brief and the agent is told to
   propose exactly it and work out only what is left empty; the Set page shows them under the

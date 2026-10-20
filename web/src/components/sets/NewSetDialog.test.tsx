@@ -136,7 +136,7 @@ beforeEach(() => {
   getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: 1, items: [] });
   createStartingPoint.mockResolvedValue(startingPointRun({ status: "running", output: null }));
   designSet.mockResolvedValue({
-    set: setRow({ id: 6, name: "Ethiopia Guji on the Niche Zero", designing: true }),
+    set: setRow({ id: 6, name: "Ethiopia Guji (Niche Zero)", designing: true }),
     version: version({ id: 60, set_id: 6, profile_version_id: null, shot_count: 0 }),
     thread_id: 12,
   });
@@ -232,7 +232,7 @@ describe("NewSetDialog", () => {
     expect(createSet.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         // Filled in once the bean and the grinder were both picked.
-        name: "Ethiopia Guji on the Niche Zero",
+        name: "Ethiopia Guji (Niche Zero)",
         bean_id: 1,
         grinder_id: 1,
         // A new Set is what the machine is set up for now, or it would collect
@@ -275,10 +275,10 @@ describe("NewSetDialog", () => {
       await pickGrinder();
       expect(screen.getByLabelText("Name")).toHaveValue("");
       await pickBean();
-      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji on the Niche Zero");
+      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji (Niche Zero)");
 
       await user.selectOptions(screen.getByLabelText("Grinder"), "2");
-      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji on the Mazzer Mini");
+      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji (Mazzer Mini)");
 
       // Unpicked, the grinder takes its part of the name with it.
       await user.selectOptions(screen.getByLabelText("Grinder"), "");
@@ -307,7 +307,7 @@ describe("NewSetDialog", () => {
       expect(screen.getByLabelText("Name")).toHaveValue("");
       await pickGrinder();
 
-      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji on the Niche Zero");
+      expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji (Niche Zero)");
     });
 
     it("is the bean's name for pre-ground coffee left unnamed", async () => {
@@ -692,7 +692,7 @@ describe("NewSetDialog, designing it with the agent", () => {
       bean_id: 1,
       grinder_id: 1,
       // What the name field filled in by itself.
-      name: "Ethiopia Guji on the Niche Zero",
+      name: "Ethiopia Guji (Niche Zero)",
       fork_profile_version_id: 7,
       usual_grind: "21",
       goal: "more body, and try a bloom",
@@ -748,7 +748,7 @@ describe("NewSetDialog, designing it with the agent", () => {
     const step = await openDesign();
     await pickGrinder();
 
-    expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji on the Niche Zero");
+    expect(screen.getByLabelText("Name")).toHaveValue("Ethiopia Guji (Niche Zero)");
     expect(step).not.toHaveTextContent(/unless you name it|Called “/);
     expect(step).toHaveTextContent(
       "keeps the grind, dose and yield you filled in above — the agent works out whichever you left empty",
@@ -798,19 +798,19 @@ describe("NewSetDialog, designing it with the agent", () => {
 describe("followName", () => {
   it("fills an empty field and remembers what it filled", () => {
     expect(followName({ name: "", autoName: "" }, "Guji", "Niche")).toEqual({
-      name: "Guji on the Niche",
-      autoName: "Guji on the Niche",
+      name: "Guji (Niche)",
+      autoName: "Guji (Niche)",
     });
   });
 
   it("follows a new pick while the field holds what it filled, and empties with one unpicked", () => {
-    const filled = { name: "Guji on the Niche", autoName: "Guji on the Niche" };
-    expect(followName(filled, "Guji", "Mazzer").name).toBe("Guji on the Mazzer");
+    const filled = { name: "Guji (Niche)", autoName: "Guji (Niche)" };
+    expect(followName(filled, "Guji", "Mazzer").name).toBe("Guji (Mazzer)");
     expect(followName(filled, "Guji", undefined)).toEqual({ name: "", autoName: "" });
   });
 
   it("leaves a typed name alone, even one typed over a filled one", () => {
-    const typed = { name: "Mine", autoName: "Guji on the Niche" };
+    const typed = { name: "Mine", autoName: "Guji (Niche)" };
     expect(followName(typed, "Guji", "Mazzer")).toBe(typed);
     expect(followName({ name: "Mine", autoName: "" }, "Guji", "Niche").name).toBe("Mine");
   });
@@ -819,7 +819,7 @@ describe("followName", () => {
 /** The name the dialog fills in: the server's `set_name`. */
 describe("designName", () => {
   it("trims the bean and the grinder, and keeps the spaces inside them", () => {
-    expect(designName("  Ethiopia Guji  ", " Niche Zero ")).toBe("Ethiopia Guji on the Niche Zero");
+    expect(designName("  Ethiopia Guji  ", " Niche Zero ")).toBe("Ethiopia Guji (Niche Zero)");
   });
 
   it("caps the name at the 200 characters a Set's name may have", () => {
@@ -828,7 +828,7 @@ describe("designName", () => {
     const name = designName(bean, grinder);
 
     expect(name).toHaveLength(200);
-    expect(name).toBe(`${bean} on the ${grinder}`.slice(0, 200));
+    expect(name).toBe(`${bean} (${grinder})`.slice(0, 200));
   });
 
   it("says nothing until both the bean and the grinder are picked", () => {

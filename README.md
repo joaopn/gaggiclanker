@@ -1123,7 +1123,7 @@ held in the tab.
 
 **New Set** is one form: a name, the bean, the grinder, the profile, the
 recipe and an optional intent. The name starts empty and fills itself in as
-"<bean> on the <grinder>" once both are picked, following a later pick until
+"<bean> (<grinder>)" once both are picked, following a later pick until
 you type your own; left empty with no grinder, the Set is called after the
 bean. The profile is one no Set has, by the version it has active; while
 Writes are off the list holds none, and the machine's own files stand in (the Set has its

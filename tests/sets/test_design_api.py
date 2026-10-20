@@ -69,7 +69,7 @@ async def test_a_design_is_a_set_with_an_empty_version_1_and_its_conversation(
     )
 
     row = created["set"]
-    assert row["name"] == "Kenya AA on the Niche Zero"
+    assert row["name"] == "Kenya AA (Niche Zero)"
     assert row["designing"] is True
     assert row["automatch"] is True
     assert row["design_brief"] == {

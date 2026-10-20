@@ -476,7 +476,7 @@ export function outcomeProposal(overrides: Partial<OutcomeProposal> = {}): Outco
 export function designingSet(overrides: Partial<SetRow> = {}): SetRow {
   return setRow({
     id: 6,
-    name: "Ethiopia Guji on the Niche Zero",
+    name: "Ethiopia Guji (Niche Zero)",
     designing: true,
     design_brief: {
       fork_profile_version_id: 7,

@@ -81,7 +81,7 @@ _GRIND_VALUE_MAX = 10000
 
 
 def set_name(bean_name: str | None, grinder_name: str | None) -> str:
-    """ "Ethiopia Guji on the Niche Zero" — the bean and the grinder.
+    """ "Ethiopia Guji (Niche Zero)" — the bean and the grinder.
 
     The bean alone would collide the day somebody runs the same bean on a second
     grinder, which is exactly the comparison both paths invite. Capped at the
@@ -89,7 +89,7 @@ def set_name(bean_name: str | None, grinder_name: str | None) -> str:
     """
     bean = (bean_name or "New bean").strip()
     grinder = (grinder_name or "").strip()
-    name = f"{bean} on the {grinder}" if grinder else bean
+    name = f"{bean} ({grinder})" if grinder else bean
     return name[:200]
 
 

@@ -149,7 +149,7 @@ async def test_accepting_creates_the_set_with_origin_starting_point(
     assert accepted.set_row.grinder_id == fixture.grinder_id
     # Named after the bag and the grinder: the same bean on a second grinder is
     # exactly the comparison this feature invites.
-    assert accepted.set_row.name == "Kenya Nyeri on the Niche Zero"
+    assert accepted.set_row.name == "Kenya Nyeri (Niche Zero)"
 
     version = accepted.version
     assert version.version_label == "v1"
@@ -681,8 +681,8 @@ async def test_an_empty_library_gets_a_synthetic_base_once(tmp_path: Path) -> No
     assert version is not None and version.label == SYNTHETIC_BASE_LABEL
 
 
-def test_the_default_name_is_the_bag_on_the_grinder() -> None:
-    assert set_name("Ethiopia Guji", "Niche Zero") == "Ethiopia Guji on the Niche Zero"
+def test_the_default_name_is_the_bean_and_its_grinder() -> None:
+    assert set_name("Ethiopia Guji", "Niche Zero") == "Ethiopia Guji (Niche Zero)"
     assert set_name(" Kenya ", None) == "Kenya"
     assert set_name(None, "") == "New bean"
     assert len(set_name("x" * 300, "Niche")) == 200

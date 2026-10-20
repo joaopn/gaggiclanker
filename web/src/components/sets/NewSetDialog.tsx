@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
  * which profile, at what recipe, and what you are trying to find out.
  *
  * **The name is the box's first field and starts empty.** It fills itself with
- * "<bean> on the <grinder>" once both are picked (the server's own default, so
+ * "<bean> (<grinder>)" once both are picked (the server's own default, so
  * every path names a Set the same way) and follows later picks until somebody
  * types in it. It is one field for every path in the box: the form and the
  * design both send what it holds.
@@ -119,7 +119,7 @@ export const GOAL_MAX = 2000;
 export const DESIGN_OPENER = "Help me design this Set.";
 
 /**
- * The name the dialog fills in: "<bean> on the <grinder>".
+ * The name the dialog fills in: "<bean> (<grinder>)".
  *
  * The server's rule (`set_name`), so a Set started from the form, the design
  * or a suggestion is called the same thing: the grinder is what tells two Sets
@@ -132,14 +132,14 @@ export function designName(
   const bean = beanName?.trim();
   const grinder = grinderName?.trim();
   if (!bean || !grinder) return null;
-  return `${bean} on the ${grinder}`.slice(0, 200);
+  return `${bean} (${grinder})`.slice(0, 200);
 }
 
 /**
  * The name field after a bean or grinder pick: filled in while nobody has typed in it.
  *
- * Empty, or still holding what the dialog put there, it takes "<bean> on the
- * <grinder>" — and goes back to empty when one of the two is unpicked, since
+ * Empty, or still holding what the dialog put there, it takes "<bean>
+ * (<grinder>)" — and goes back to empty when one of the two is unpicked, since
  * the old name would then be about kit the Set no longer has. A name the
  * person typed is never touched. Pure and exported so the rule is testable
  * without a dialog.
@@ -158,7 +158,7 @@ export function followName(
  * `POST /api/sets/design`, from the same draft the form holds.
  *
  * The name as the field holds it; emptied by hand, it is left to the server,
- * which gives the same "<bean> on the <grinder>". The profile picker is read
+ * which gives the same "<bean> (<grinder>)". The profile picker is read
  * as the one to fork from. The grind, dose and yield go when they are filled
  * in, as the person's own numbers for the agent to keep; empty, they are what
  * the conversation works out. The intent is not sent: the design asks for the
