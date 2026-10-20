@@ -4890,6 +4890,8 @@ export interface components {
          *     record of what was asked for.
          */
         DesignBrief: {
+            /** Dose G */
+            dose_g?: number | null;
             /** Fork Profile Version Id */
             fork_profile_version_id?: number | null;
             /**
@@ -4897,6 +4899,13 @@ export interface components {
              * @default
              */
             goal: string;
+            /**
+             * Grind Setting
+             * @default
+             */
+            grind_setting: string;
+            /** Target Yield G */
+            target_yield_g?: number | null;
             /**
              * Usual Grind
              * @default
@@ -7756,13 +7765,16 @@ export interface components {
          * SetDesignCreate
          * @description `POST /api/sets/design`: what the design wizard asks, and the brief it stores.
          *
-         *     The brief's own fields — the profile to fork, the usual grind, the goal —
-         *     are inherited from :class:`DesignBrief`, so the route and the stored brief
-         *     cannot disagree about their limits.
+         *     The brief's own fields — the profile to fork, the usual grind, the goal and
+         *     whichever of the grind, dose and yield the form already had filled in — are
+         *     inherited from :class:`DesignBrief`, so the route and the stored brief cannot
+         *     disagree about their limits.
          */
         SetDesignCreate: {
             /** Bean Id */
             bean_id: number;
+            /** Dose G */
+            dose_g?: number | null;
             /** Fork Profile Version Id */
             fork_profile_version_id?: number | null;
             /**
@@ -7770,10 +7782,17 @@ export interface components {
              * @default
              */
             goal: string;
+            /**
+             * Grind Setting
+             * @default
+             */
+            grind_setting: string;
             /** Grinder Id */
             grinder_id: number;
             /** Name */
             name?: string | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
             /**
              * Usual Grind
              * @default

@@ -357,7 +357,8 @@ function discardRefusal(error: Error | null): string | null {
 }
 
 /**
- * What the design was asked for: the profile to fork, the usual grind, the goal.
+ * What the design was asked for: the profile to fork, the usual grind, the goal,
+ * and the grind, dose and yield the person filled in for the agent to keep.
  *
  * The same brief the agent is given on every turn, so the person can see what
  * the conversation is working from without scrolling back to its first
@@ -370,7 +371,14 @@ function DesignBrief({ brief }: { brief: SetRow["design_brief"] }) {
   const forkId = brief?.fork_profile_version_id ?? null;
   const usualGrind = brief?.usual_grind?.trim() ?? "";
   const goal = brief?.goal?.trim() ?? "";
-  if (forkId === null && !usualGrind && !goal) return null;
+  const kept = [
+    brief?.grind_setting?.trim() ? `grind ${brief.grind_setting.trim()}` : "",
+    brief?.dose_g != null ? `${brief.dose_g} g in` : "",
+    brief?.target_yield_g != null ? `${brief.target_yield_g} g out` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  if (forkId === null && !usualGrind && !goal && !kept) return null;
   const forkLabel =
     forkId === null
       ? null
@@ -391,6 +399,14 @@ function DesignBrief({ brief }: { brief: SetRow["design_brief"] }) {
           <dt className="shrink-0 text-muted-foreground">Usual grind</dt>
           <dd className="min-w-0 tabular-nums" data-testid="design-brief-grind">
             {usualGrind}
+          </dd>
+        </div>
+      ) : null}
+      {kept ? (
+        <div className="flex gap-1.5">
+          <dt className="shrink-0 text-muted-foreground">Keeping</dt>
+          <dd className="min-w-0 tabular-nums" data-testid="design-brief-kept">
+            {kept}
           </dd>
         </div>
       ) : null}

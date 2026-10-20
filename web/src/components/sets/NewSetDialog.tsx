@@ -43,9 +43,10 @@ import { cn } from "@/lib/utils";
  * reads the same bean, name, grinder and profile — the profile as the one to
  * fork from — and adds only what the form lacks: the usual grind and what the
  * person wants from the coffee. It creates a Set with no recipe yet and goes
- * to that Set's own conversation, where the recipe is worked out; the form's
- * grind, dose, yield and intent are not sent, because that is what the
- * conversation is for.
+ * to that Set's own conversation, where the recipe is worked out. Whichever of
+ * the form's grind, dose and yield is filled in goes too, as a number the agent
+ * keeps rather than works out: the person already decided it. The intent is
+ * not sent; the design's goal is that path's own question.
  */
 
 const FIELD = cn(
@@ -127,8 +128,10 @@ export function designName(
  * The name only when one was typed: left empty, the server calls it "<bean> on
  * the <grinder>", the name every Set from a suggestion gets, which tells two
  * Sets of one bean on two grinders apart. The profile picker is read as the
- * one to fork from. The grind, dose, yield and intent are left out on purpose:
- * working those out is what the conversation is for.
+ * one to fork from. The grind, dose and yield go when they are filled in, as
+ * the person's own numbers for the agent to keep; empty, they are what the
+ * conversation works out. The intent is not sent: the design asks for the goal
+ * instead.
  */
 export function toDesignBody(draft: Draft): SetDesignCreate {
   return {
@@ -138,6 +141,9 @@ export function toDesignBody(draft: Draft): SetDesignCreate {
     fork_profile_version_id: draft.profileVersionId ? Number(draft.profileVersionId) : null,
     usual_grind: draft.usualGrind.trim(),
     goal: draft.goal.trim(),
+    grind_setting: draft.grindSetting.trim(),
+    dose_g: toNumber(draft.doseG),
+    target_yield_g: toNumber(draft.targetYieldG),
   };
 }
 
@@ -707,8 +713,8 @@ function DesignWithAgent({
               you: it reads your other Sets on this bean, similar Sets on this grinder and the
               profile you fork, if any, asks what it needs, and proposes a profile of its own with
               the grind, dose and yield as one card. Nothing exists until you accept it. It uses the
-              bean, name and grinder above; the grind, dose, yield and intent above are not sent —
-              the agent works those out with you.
+              bean, name and grinder above, and keeps the grind, dose and yield you filled in above
+              — the agent works out whichever you left empty. The intent above is not sent.
             </p>
             {defaultName ? (
               <p className="text-sm" data-testid="design-name">

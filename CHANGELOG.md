@@ -13,6 +13,15 @@ database.
 
 ## [Unreleased]
 
+### Designing a Set keeps the numbers you typed
+
+- **Changed: Design it with the agent keeps the grind, dose and yield you filled in.** They were
+  not sent before. Each one filled in is stored with the design's brief and the agent is told to
+  propose exactly it and work out only what is left empty; the Set page shows them under the
+  brief as "Keeping". The intent is still not sent. Nothing changes in the database: the brief is
+  JSON on the Set, and a design started before reads as having all three left to the agent. The
+  line reaches the agent through its context, so an edited `chat-design` prompt gets it too.
+
 ### Sets is a row of its own, and its page says what a Set is
 
 - **Changed: the sidebar is Shots, Chat, Sets, Profiles, Brew setup, Settings.** Sets moved out of

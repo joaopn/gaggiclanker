@@ -1172,8 +1172,14 @@ bean, name and grinder from the form, reads the form's profile as the one to
 fork from, and asks only what the form does not: your usual grind on that
 grinder and what you want from the coffee. The grinder is required here — a
 grind is only a number on one grinder's dial — so pre-ground coffee keeps the
-plain form and the suggestion. The form's grind, dose, yield and intent are not
-sent: working those out is what the conversation is for.
+plain form and the suggestion. Whichever of the form's grind, dose and yield
+you filled in goes with it, as your decision: the agent proposes exactly those
+numbers, designs the profile around them (a yield you chose is where its last
+phase stops) and works out only what you left empty, changing one of yours
+only when you ask in the conversation. A yield the picked profile filled in
+counts as filled; clear it to leave it to the agent. The intent is not sent:
+the design asks what you want from the coffee instead. The Set page shows the
+numbers it keeps under the brief.
 
 **Start designing** creates the Set with an empty version 1 and takes you to
 that version's conversation, with what you wanted as the first message (or

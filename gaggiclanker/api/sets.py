@@ -182,9 +182,10 @@ class ProposalAccept(BaseModel):
 class SetDesignCreate(DesignBrief):
     """`POST /api/sets/design`: what the design wizard asks, and the brief it stores.
 
-    The brief's own fields — the profile to fork, the usual grind, the goal —
-    are inherited from :class:`DesignBrief`, so the route and the stored brief
-    cannot disagree about their limits.
+    The brief's own fields — the profile to fork, the usual grind, the goal and
+    whichever of the grind, dose and yield the form already had filled in — are
+    inherited from :class:`DesignBrief`, so the route and the stored brief cannot
+    disagree about their limits.
     """
 
     bean_id: int

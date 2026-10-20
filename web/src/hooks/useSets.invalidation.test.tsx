@@ -348,6 +348,7 @@ describe("the Set-side writes invalidate no more than they changed", () => {
       fork_profile_version_id: null,
       usual_grind: "",
       goal: "",
+      grind_setting: "",
     });
 
     await waitFor(() => expect(keys.length).toBe(2));

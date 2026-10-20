@@ -478,7 +478,12 @@ export function designingSet(overrides: Partial<SetRow> = {}): SetRow {
     id: 6,
     name: "Ethiopia Guji on the Niche Zero",
     designing: true,
-    design_brief: { fork_profile_version_id: 7, usual_grind: "22", goal: "more body" },
+    design_brief: {
+      fork_profile_version_id: 7,
+      usual_grind: "22",
+      goal: "more body",
+      grind_setting: "",
+    },
     current_version_id: 60,
     current_version_label: "v1",
     version_count: 1,

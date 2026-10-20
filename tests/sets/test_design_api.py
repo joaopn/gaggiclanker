@@ -59,7 +59,13 @@ async def test_a_design_is_a_set_with_an_empty_version_1_and_its_conversation(
     fork = await make_profile_version(app.state.db, "Fork me", owned=False)
 
     created = await _design(
-        client, kit, fork_profile_version_id=fork, usual_grind="21", goal="More body."
+        client,
+        kit,
+        fork_profile_version_id=fork,
+        usual_grind="21",
+        goal="More body.",
+        grind_setting=" 19 ",
+        dose_g=18,
     )
 
     row = created["set"]
@@ -70,6 +76,10 @@ async def test_a_design_is_a_set_with_an_empty_version_1_and_its_conversation(
         "fork_profile_version_id": fork,
         "usual_grind": "21",
         "goal": "More body.",
+        # What the form already had filled in, kept for the agent; the yield was left empty.
+        "grind_setting": "19",
+        "dose_g": 18.0,
+        "target_yield_g": None,
     }
     version = created["version"]
     assert (version["version_label"], version["profile_version_id"], version["dose_g"]) == (
@@ -115,7 +125,17 @@ async def test_a_grinder_is_required(client: httpx.AsyncClient, kit: dict[str, i
 
 
 @pytest.mark.parametrize(
-    "extra", [{"goal": "x" * 2001}, {"usual_grind": "x" * 101}, {"dose_g": 18}, {"name": ""}]
+    "extra",
+    [
+        {"goal": "x" * 2001},
+        {"usual_grind": "x" * 101},
+        {"grind_setting": "x" * 101},
+        {"dose_g": 0},
+        {"target_yield_g": 501},
+        # The intent is a version's, not the brief's: the design asks for the goal instead.
+        {"intent": "x" * 60},
+        {"name": ""},
+    ],
 )
 async def test_the_body_is_as_strict_as_the_brief(
     client: httpx.AsyncClient, kit: dict[str, int], extra: dict[str, Any]

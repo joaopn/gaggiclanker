@@ -339,4 +339,17 @@ async def test_the_set_rows_carry_the_flag_and_the_brief(
         "fork_profile_version_id": None,
         "usual_grind": "",
         "goal": "Juicy.",
+        "grind_setting": "",
+        "dose_g": None,
+        "target_yield_g": None,
     }
+
+
+def test_a_brief_stored_before_the_recipe_numbers_reads_as_all_three_left_open() -> None:
+    """No upgrade step: the brief is JSON on the row, and a missing number is one nobody chose."""
+    stored = '{"fork_profile_version_id": 7, "usual_grind": "21", "goal": "Juicy."}'
+
+    brief = DesignBrief.model_validate_json(stored)
+
+    assert (brief.usual_grind, brief.goal) == ("21", "Juicy.")
+    assert (brief.grind_setting, brief.dose_g, brief.target_yield_g) == ("", None, None)

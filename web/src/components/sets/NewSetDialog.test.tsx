@@ -599,8 +599,9 @@ describe("NewSetDialog, designing it with the agent", () => {
     await pickBean();
     await pickGrinder();
     await pickProfile("7");
-    // The form's recipe fields: typed, and not the design's to send.
-    await user.type(screen.getByLabelText("Grind"), "22");
+    // The form's recipe fields: the person's own numbers, for the agent to keep. The yield is
+    // the profile's 36 g, which is on screen and so filled in too.
+    await user.type(screen.getByLabelText("Grind"), " 22 ");
     await user.type(screen.getByLabelText("Dose (g)"), "18");
     await user.type(screen.getByLabelText("What are you trying? (optional)"), "baseline");
     await openDesign();
@@ -613,8 +614,7 @@ describe("NewSetDialog, designing it with the agent", () => {
     await user.click(screen.getByTestId("start-designing"));
 
     await waitFor(() => expect(designSet).toHaveBeenCalled());
-    // Exactly these keys: the grind, dose, yield and intent above are what the
-    // conversation works out, so none of them is sent.
+    // Exactly these keys: the intent is not the design's to send.
     expect(designSet.mock.calls[0][0]).toEqual({
       bean_id: 1,
       grinder_id: 1,
@@ -623,6 +623,9 @@ describe("NewSetDialog, designing it with the agent", () => {
       fork_profile_version_id: 7,
       usual_grind: "21",
       goal: "more body, and try a bloom",
+      grind_setting: "22",
+      dose_g: 18,
+      target_yield_g: 36,
     });
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(12, "more body, and try a bloom"),
@@ -651,6 +654,10 @@ describe("NewSetDialog, designing it with the agent", () => {
         name: "Ethiopia Guji bloom trial",
         fork_profile_version_id: null,
         goal: "",
+        // Nothing filled in: the agent works all three out.
+        grind_setting: "",
+        dose_g: null,
+        target_yield_g: null,
       }),
     );
     await waitFor(() =>

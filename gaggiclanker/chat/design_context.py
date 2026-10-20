@@ -45,7 +45,13 @@ from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow, document_for
 from gaggiclanker.db.repos.set_proposals import SetProposalRow, SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetRow, SetsRepository, SetVersionRow, VersionLabelCounts
+from gaggiclanker.db.repos.sets import (
+    DesignBrief,
+    SetRow,
+    SetsRepository,
+    SetVersionRow,
+    VersionLabelCounts,
+)
 from gaggiclanker.domain.models import (
     PhaseKind,
     ProfileType,
@@ -212,7 +218,32 @@ def _brief(row: SetRow, grinder: GrinderRow | None) -> list[str]:
         if brief.usual_grind
         else "Their usual espresso setting on this grinder: NOT GIVEN. Without it, or a Set "
         "below on this same grinder, you have no anchor on its scale.",
+        _chosen(brief, unit),
     ]
+
+
+def _chosen(brief: DesignBrief, unit: str) -> str:
+    """The recipe numbers the person filled in themselves, which the design keeps.
+
+    Said as an instruction and not only as a fact: a number the person typed is
+    their decision, and a card that quietly replaced it would be declined for a
+    reason the agent could have read here. Named when absent too, so "you
+    decide" is as explicit as "keep this".
+    """
+    parts = [
+        f"grind {brief.grind_setting} ({unit})" if brief.grind_setting else "",
+        f"dose {brief.dose_g:g} g" if brief.dose_g is not None else "",
+        f"target yield {brief.target_yield_g:g} g" if brief.target_yield_g is not None else "",
+    ]
+    chosen = ", ".join(part for part in parts if part)
+    if not chosen:
+        return "Recipe numbers they chose: none. The grind, dose and yield are yours to propose."
+    return (
+        f"Recipe numbers they chose: {chosen}. Propose exactly these in the recipe and design "
+        "the profile around them (a yield they chose is where the last phase stops); work out "
+        "only what they left open. Change one of them only if they ask you to in this "
+        "conversation."
+    )
 
 
 def _fork_block(fork: ProfileVersionRow | None, fork_name: str) -> list[str]:

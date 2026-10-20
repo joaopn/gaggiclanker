@@ -841,7 +841,12 @@ describe("SetDetailPage, a Set being designed", () => {
     getSet.mockResolvedValue(
       designingDetail({
         set: designingSet({
-          design_brief: { fork_profile_version_id: null, usual_grind: "", goal: "try a bloom" },
+          design_brief: {
+            fork_profile_version_id: null,
+            usual_grind: "",
+            goal: "try a bloom",
+            grind_setting: "",
+          },
         }),
       }),
     );
@@ -851,13 +856,42 @@ describe("SetDetailPage, a Set being designed", () => {
     expect(within(brief).getByTestId("design-brief-goal")).toHaveTextContent("try a bloom");
     expect(within(brief).queryByTestId("design-brief-fork")).not.toBeInTheDocument();
     expect(within(brief).queryByTestId("design-brief-grind")).not.toBeInTheDocument();
+    expect(within(brief).queryByTestId("design-brief-kept")).not.toBeInTheDocument();
+  });
+
+  it("names the recipe numbers the agent was told to keep, and only those given", async () => {
+    getSet.mockResolvedValue(
+      designingDetail({
+        set: designingSet({
+          design_brief: {
+            fork_profile_version_id: null,
+            usual_grind: "",
+            goal: "",
+            grind_setting: "19",
+            dose_g: null,
+            target_yield_g: 36.5,
+          },
+        }),
+      }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    const brief = await screen.findByTestId("design-brief");
+    expect(within(brief).getByTestId("design-brief-kept")).toHaveTextContent(
+      "grind 19 · 36.5 g out",
+    );
   });
 
   it("shows no brief at all when nothing was asked for", async () => {
     getSet.mockResolvedValue(
       designingDetail({
         set: designingSet({
-          design_brief: { fork_profile_version_id: null, usual_grind: "", goal: "" },
+          design_brief: {
+            fork_profile_version_id: null,
+            usual_grind: "",
+            goal: "",
+            grind_setting: "",
+          },
         }),
       }),
     );

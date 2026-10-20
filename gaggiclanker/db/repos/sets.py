@@ -171,6 +171,13 @@ class DesignBrief(BaseModel):
     usual_grind: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] = ""
     #: "What do you want from it?", in their words.
     goal: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] = ""
+    #: The recipe numbers the person already filled in on the form, each empty when they left it
+    #: to the agent. They are the person's choice, so the design keeps them and works out the
+    #: rest; a brief stored before these existed reads as all three left open, which it was.
+    #: Same limits as a version's recipe, so a kept number can always be accepted.
+    grind_setting: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] = ""
+    dose_g: float | None = Field(default=None, gt=0, le=100)
+    target_yield_g: float | None = Field(default=None, gt=0, le=500)
 
 
 class SetVersionWrite(BaseModel):

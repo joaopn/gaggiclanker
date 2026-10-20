@@ -96,6 +96,8 @@ async def _forked_design(kitchen: Fixture) -> SetRow:
             fork_profile_version_id=kitchen.profile_version_id,
             usual_grind="21",
             goal="More body than the Niche Set, and keep the blackcurrant.",
+            dose_g=18,
+            target_yield_g=40,
         ),
     )
     drafted = await make_profile_version(kitchen.db, "Kenya AA body [AI]", temperature=94)
@@ -173,6 +175,40 @@ async def test_the_library_is_never_offered_as_somewhere_to_start(kitchen: Fixtu
     assert "preinfusion|brew" in fork_block
     assert "```" not in fork_block
     assert "written from zero" not in forked
+
+
+async def test_the_numbers_the_person_chose_are_kept_and_the_rest_left_open(
+    kitchen: Fixture,
+) -> None:
+    """A grind, dose or yield typed on the form is the person's, and the agent must keep it."""
+    sets = SetsRepository(kitchen.db)
+    bean_id = await _bean_of(kitchen, "kenya")
+
+    async def brief_of(brief: DesignBrief) -> str:
+        designed = await sets.create_design(
+            SetWrite(name=f"Kenya {brief!r}", bean_id=bean_id, grinder_id=kitchen.grinder_id),
+            brief,
+        )
+        rendered = await design_context(kitchen.db, designed.id)
+        return rendered.split("WHAT THEY ASKED FOR")[1].split("THE PROFILE TO FORK")[0]
+
+    every = await brief_of(DesignBrief(grind_setting="18", dose_g=18.5, target_yield_g=40))
+    assert (
+        "Recipe numbers they chose: grind 18 (numbers), dose 18.5 g, target yield 40 g. "
+        "Propose exactly these" in every
+    )
+    assert "work out only what they left open" in every
+
+    # Only the ones filled in are named, so an empty field is never read as a zero.
+    some = await brief_of(DesignBrief(target_yield_g=36))
+    assert "Recipe numbers they chose: target yield 36 g. Propose exactly these" in some
+    assert "dose" not in some.split("Recipe numbers they chose:")[1].split(".")[0]
+
+    none = await brief_of(DesignBrief())
+    assert "Recipe numbers they chose: none. The grind, dose and yield are yours to propose." in (
+        none
+    )
+    assert "Propose exactly these" not in none
 
 
 async def test_the_same_archive_renders_the_same_text(kitchen: Fixture) -> None:

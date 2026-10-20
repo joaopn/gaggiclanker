@@ -6,6 +6,7 @@ Nothing has been brewed on it. Its version 1 has no recipe yet: no profile, no g
 WHAT THEY ASKED FOR
 Goal: "More body than the Niche Set, and keep the blackcurrant."
 Their usual espresso setting on this grinder: 21 (numbers).
+Recipe numbers they chose: dose 18 g, target yield 40 g. Propose exactly these in the recipe and design the profile around them (a yield they chose is where the last phase stops); work out only what they left open. Change one of them only if they ask you to in this conversation.
 
 THE PROFILE TO FORK: [profile_version 2] Library 18g
 The new profile is derived from this one and gets a name of its own; this one, and the Set that brews it, stays as it is.
