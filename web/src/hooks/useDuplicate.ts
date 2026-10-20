@@ -6,8 +6,14 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { duplicateVersion, getDuplicatePreview } from "@/api/client";
-import type { DuplicateAnswer, DuplicatePreview, DuplicateRequest } from "@/api/types";
+import { duplicateProfile, duplicateVersion, getDuplicatePreview } from "@/api/client";
+import type {
+  BoardRow,
+  DuplicateAnswer,
+  DuplicatePreview,
+  DuplicateRequest,
+  ProfileDuplicateRequest,
+} from "@/api/types";
 import { invalidateBoardWrites, invalidateKnowledge, invalidateSets } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -59,5 +65,36 @@ export function useDuplicateSet(): UseMutationResult<
       void invalidateBoardWrites(queryClient);
       void invalidateKnowledge(queryClient);
     },
+  });
+}
+
+/**
+ * Duplicate Profile. The write puts one new profile on the list, so it touches the board and
+ * everything its writes reach (the profile mirror, so every profile-versions query) and the
+ * profiles a new Set may start on. No toast on a refusal: the dialog shows the server's sentence
+ * in place.
+ *
+ * The refresh is awaited before the call resolves, so whoever asked (New Set) can select the new
+ * profile at once: the choices and the profile versions already list it.
+ */
+export function useDuplicateProfile(): UseMutationResult<
+  BoardRow,
+  Error,
+  { versionId: number; body: ProfileDuplicateRequest }
+> {
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    Promise.all([
+      invalidateBoardWrites(queryClient),
+      queryClient.invalidateQueries({ queryKey: queryKeys.sets.profileChoices() }),
+    ]).then(() => undefined);
+  return useMutation({
+    mutationFn: ({ versionId, body }) => duplicateProfile(versionId, body),
+    onSuccess: async (row) => {
+      await refresh();
+      toast.success(`Added ${row.label}`);
+    },
+    // A request that got no answer may have written anyway.
+    onError: () => refresh(),
   });
 }

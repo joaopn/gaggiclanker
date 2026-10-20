@@ -14,14 +14,14 @@ type Json = Record<string, unknown>;
  * What a pinned row opens: a frozen copy of a profile that belongs to one Set version.
  *
  * It has one version for ever and is changed only by unpinning, so there is no version list, no
- * Make active, no Edit a copy and no signature card, only the curve of the copy, what it is, and
+ * Make active, no Duplicate Profile and no signature card, only the curve of the copy, what it is, and
  * Unpin, and Rename (a pin freezes what the copy brews, not what it is called). (Its version list can still grow, when the machine's file is edited or a file of the
  * same name is imported, but its active version never changes, so the active curve is all there
  * is to draw.) A conflict shows the conflict panel with "Keep the app's" alone: keeping the
  * machine's side would make the copy something the Set version never was. A copy whose round
  * trip failed has no retry here either: Unpin, then Pin again, is the way.
  *
- * Duplicate as a new Set (which goes to the Set page with its dialog open) and Unpin sit side by side.
+ * Duplicate Set (which goes to the Set page with its dialog open) and Unpin sit side by side.
  */
 export function PinnedPanel({
   entry,
@@ -56,10 +56,10 @@ export function PinnedPanel({
         <Button type="button" size="sm" variant="outline" asChild>
           <Link
             to={`/sets/${pin.set_id}?duplicate=${pin.set_version_id}`}
-            aria-label={`Duplicate as a new Set: ${pin.version_label} of ${pin.set_name}`}
+            aria-label={`Duplicate Set: ${pin.version_label} of ${pin.set_name}`}
             data-testid="pinned-duplicate"
           >
-            Duplicate as a new Set
+            Duplicate Set
           </Link>
         </Button>
         <Button

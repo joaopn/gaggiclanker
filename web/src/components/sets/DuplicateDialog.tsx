@@ -31,7 +31,7 @@ function nameKey(name: string): string {
 }
 
 /**
- * "Duplicate as a new Set": the question the duplicate's own preview answers, and the duplicate.
+ * "Duplicate Set": the question the duplicate's own preview answers, and the duplicate.
  *
  * One dialog for the whole Set page, opened from a version's button, from a line of the Pinned
  * card, or on arrival from the Profiles page. It opens with the preview, which is the server's

@@ -68,11 +68,11 @@ export function VersionActions({
               type="button"
               size="sm"
               variant="outline"
-              aria-label={`Duplicate as a new Set: ${version.version_label}`}
+              aria-label={`Duplicate Set: ${version.version_label}`}
               onClick={onDuplicate}
             >
               <Copy className="size-3.5" aria-hidden="true" />
-              Duplicate as a new Set
+              Duplicate Set
             </Button>
           ) : null}
           {children}

@@ -1,9 +1,9 @@
-import { FilePen } from "lucide-react";
+import { Copy } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import type { BoardRowView, ListedVersion, ProfileVersionsView } from "@/api/types";
+import { DuplicateProfileDialog } from "@/components/drafts/DuplicateProfileDialog";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
-import { ProfileJsonEditor } from "@/components/drafts/ProfileJsonEditor";
 import { ProfileSummary } from "@/components/drafts/ProfileSummary";
 import { ConflictPanel } from "@/components/profiles/ConflictPanel";
 import { ProfileCurve } from "@/components/profiles/ProfileCurve";
@@ -25,11 +25,12 @@ type Json = Record<string, unknown>;
  * What a row opens: a conflict first (it blocks the profile), then the proposals waiting for a
  * person, then the profile's versions, newest first. Each version says when it was added, where
  * it came from, what brewed with it, whether it is the active one (or offers **Make active**),
- * **Edit a copy**, and its information: the first version is shown as a summary because there is
- * nothing before it, every later one as what changed from the version before it in this list.
+ * **Duplicate Profile**, and its information: the first version is shown as a summary because
+ * there is nothing before it, every later one as what changed from the version before it in this
+ * list.
  *
- * Nothing here writes to the machine. A version made active, and an edited copy once it is made
- * active, reach the machine on the next sync.
+ * Nothing here writes to the machine. A version made active, and a duplicate (a new profile,
+ * switched on), reach the machine on the next sync.
  */
 export function ProfileDropdown({ entry, rename }: { entry: BoardRowView; rename: ReactNode }) {
   const rowId = entry.row.id;
@@ -88,7 +89,7 @@ export function ProfileDropdown({ entry, rename }: { entry: BoardRowView; rename
       </ul>
 
       {editing ? (
-        <ProfileJsonEditor
+        <DuplicateProfileDialog
           open
           onOpenChange={(open) => {
             if (!open) setEditing(null);
@@ -238,12 +239,12 @@ function VersionItem({
         <Button
           size="sm"
           variant="ghost"
-          data-testid="edit-a-copy"
-          aria-label={`Edit a copy of the version from ${formatTime(version.added_at)}`}
+          data-testid="duplicate-profile"
+          aria-label={`Duplicate Profile from the version of ${formatTime(version.added_at)}`}
           onClick={onEdit}
         >
-          <FilePen className="size-3.5" aria-hidden="true" />
-          Edit a copy
+          <Copy className="size-3.5" aria-hidden="true" />
+          Duplicate Profile
         </Button>
       </div>
     </li>

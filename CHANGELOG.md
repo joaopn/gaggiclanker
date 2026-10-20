@@ -13,6 +13,23 @@ database.
 
 ## [Unreleased]
 
+### Duplicate Profile, and Duplicate Set
+
+- **Changed: "Edit a copy" on a profile version is now Duplicate Profile.** The dialog is titled
+  "Duplicate <original>" and has a **Name** field of its own, empty and required; the name is set
+  there alone and the JSON no longer carries a `label`. **Save** adds the new profile to the list,
+  switched on (the next sync with Writes on puts it on the machine), instead of leaving a proposal
+  to approve. A duplicate is always a new profile: the original's name, or any other profile's, is
+  refused under the field, so editing a version by hand into a new version of the same profile is
+  no longer offered here. A number the safety policy would move blocks the save.
+- **New: New Set lists the profiles that already have a Set**, after the free ones and with their
+  Set's name, under "Has a Set: picking one duplicates it". Picking one opens Duplicate Profile on
+  its active version; saving the duplicate adds it and selects it in the picker, and the recipe
+  fills from it as from any pick.
+- **Changed: "Duplicate as a new Set" is now Duplicate Set**, on the Set page, the Pinned card and
+  a pinned profile on the Profiles page, so each "Duplicate" says what it copies.
+- Nothing changes in the database.
+
 ### New Set's name field, and a design that keeps the numbers you typed
 
 - **Changed: the New Set dialog starts with an empty Name field.** It fills itself in as

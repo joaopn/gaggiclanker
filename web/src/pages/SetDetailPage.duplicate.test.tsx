@@ -122,7 +122,7 @@ function renderPage(entry = "/sets/3") {
 }
 
 // The visible words first, then the version: the name the Pin button follows too.
-const DUPLICATE = /^Duplicate as a new Set: v/;
+const DUPLICATE = /^Duplicate Set: v/;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -143,15 +143,15 @@ beforeEach(() => {
 });
 
 describe("the buttons", () => {
-  it("offers Duplicate as a new Set once on every version, the current and the pinned ones included", async () => {
+  it("offers Duplicate Set once on every version, the current and the pinned ones included", async () => {
     renderPage();
     await screen.findByTestId("version-timeline");
 
     for (const label of ["v1.3", "v1.2", "v1.1"]) {
       const buttons = within(entryOf(label)).getAllByRole("button", { name: DUPLICATE });
       expect(buttons).toHaveLength(1);
-      expect(buttons[0]).toHaveTextContent("Duplicate as a new Set");
-      expect(buttons[0]).toHaveAccessibleName(`Duplicate as a new Set: ${label}`);
+      expect(buttons[0]).toHaveTextContent("Duplicate Set");
+      expect(buttons[0]).toHaveAccessibleName(`Duplicate Set: ${label}`);
     }
   });
 
@@ -169,7 +169,7 @@ describe("the buttons", () => {
     expect(Array.from(row.children).map((child) => child.textContent?.trim())).toEqual([
       "Go back to this version",
       "Pin to the machine",
-      "Duplicate as a new Set",
+      "Duplicate Set",
     ]);
   });
 
@@ -213,8 +213,8 @@ describe("the buttons", () => {
       within(card)
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["Duplicate as a new Set", "Unpin"]);
-    await user.click(within(card).getByRole("button", { name: "Duplicate as a new Set: v1.2" }));
+    ).toEqual(["Duplicate Set", "Unpin"]);
+    await user.click(within(card).getByRole("button", { name: "Duplicate Set: v1.2" }));
 
     const dialog = await screen.findByTestId("duplicate-dialog");
     expect(dialog).toHaveTextContent("from v1.2");

@@ -80,6 +80,7 @@ import type {
   ProfileDraft,
   ProfileDraftDetail,
   ProfileDraftListData,
+  ProfileDuplicateRequest,
   ProfileListData,
   ProfileMatchSummary,
   ProfileVersionListData,
@@ -1215,6 +1216,21 @@ export async function duplicateVersion(
   body: DuplicateRequest,
 ): Promise<DuplicateAnswer> {
   return fetchApi<DuplicateAnswer>(`/sets/${setId}/versions/${versionId}/duplicate`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Duplicate Profile: a new profile from one version, under `name`, with the document as edited
+ * (left out, the version's own), put on the profile list switched on. Nothing is sent to the
+ * machine now.
+ */
+export async function duplicateProfile(
+  versionId: number,
+  body: ProfileDuplicateRequest,
+): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-versions/${versionId}/duplicate`, {
     method: "POST",
     body: JSON.stringify(body),
   });

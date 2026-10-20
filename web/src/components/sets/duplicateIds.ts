@@ -1,4 +1,4 @@
-/** The id the "Duplicate as a new Set" button of a version carries, so the dialog can give focus back. */
+/** The id the "Duplicate Set" button of a version carries, so the dialog can give focus back. */
 export function duplicateButtonId(versionId: number): string {
   return `duplicate-version-${versionId}`;
 }

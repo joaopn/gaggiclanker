@@ -200,7 +200,7 @@ describe("the timeline's pins", () => {
       within(lone)
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["Duplicate as a new Set"]);
+    ).toEqual(["Duplicate Set"]);
   });
 
   it("offers no pin on a version that names no profile", async () => {

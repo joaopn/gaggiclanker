@@ -1,7 +1,13 @@
 import { ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { ProfileVersionSummary, SetCreate, SetDesignCreate } from "@/api/types";
+import type {
+  ProfileVersionSummary,
+  SetCreate,
+  SetDesignCreate,
+  TakenProfileChoice,
+} from "@/api/types";
+import { DuplicateProfileDialog } from "@/components/drafts/DuplicateProfileDialog";
 import { StartingPointStep } from "@/components/sets/StartingPointStep";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useProfileVersions } from "@/hooks/useArchive";
+import { useProfileVersion, useProfileVersions } from "@/hooks/useArchive";
 import { useBeans, useGrinders } from "@/hooks/useCatalog";
 import { useSendChatMessage } from "@/hooks/useChat";
 import { useCreateSet, useProfileChoices, useStartDesign } from "@/hooks/useSets";
@@ -205,6 +211,11 @@ export function toCreateBody(draft: Draft): SetCreate {
   };
 }
 
+/** A taken profile's option value: kept apart from the version ids a Set may start on. */
+function takenValue(choice: TakenProfileChoice): string {
+  return `taken:${choice.profile_version_id}`;
+}
+
 /** The recipe fields a profile can fill, and what each was last filled with, by which profile.
  *
  * One field, and it used to be two: a profile also states a brew temperature,
@@ -325,6 +336,21 @@ export function NewSetDialog({
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [designOpen, setDesignOpen] = useState(false);
+  // A profile that has a Set, picked to duplicate: Duplicate Profile opens on its active version
+  // once that version's document is read. The draft's own pick is left as it was until the
+  // duplicate is saved, so Cancel leaves the picker where it was.
+  const [duplicating, setDuplicating] = useState<TakenProfileChoice | null>(null);
+  const duplicateSource = useProfileVersion(duplicating?.profile_version_id);
+  // The duplicate just saved, waiting for the profile versions to list it so the recipe fills
+  // from it as from any pick (the save awaits that refresh, so this is one render at most).
+  const [savedPick, setSavedPick] = useState<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `pickProfile` reads the versions this render has; the effect runs when they or the saved pick change.
+  useEffect(() => {
+    if (savedPick === null) return;
+    if (!versions.data?.items.some((item) => String(item.id) === savedPick)) return;
+    pickProfile(savedPick);
+    setSavedPick(null);
+  }, [savedPick, versions.data]);
   // The starting-point run this dialog is following, if any. Held here rather
   // than inside the suggestion section so folding it and opening it again
   // shows the options again instead of an empty form and a second paid call.
@@ -383,6 +409,8 @@ export function NewSetDialog({
     setSuggestOpen(false);
     setDesignOpen(false);
     setRunId(undefined);
+    setDuplicating(null);
+    setSavedPick(null);
   }
 
   async function startDesign() {
@@ -519,7 +547,14 @@ export function NewSetDialog({
               id={ids.profile}
               className={FIELD}
               value={draft.profileVersionId}
-              onChange={(event) => pickProfile(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                const taken = (choices.data?.taken ?? []).find(
+                  (choice) => takenValue(choice) === value,
+                );
+                if (taken) setDuplicating(taken);
+                else pickProfile(value);
+              }}
             >
               <option value="">Pick a profile</option>
               {(choices.data?.items ?? []).map((choice) => (
@@ -527,12 +562,46 @@ export function NewSetDialog({
                   {choice.label}
                 </option>
               ))}
+              {(choices.data?.taken ?? []).length > 0 ? (
+                <optgroup label="Has a Set: picking one duplicates it" data-testid="taken-profiles">
+                  {(choices.data?.taken ?? []).map((choice) => (
+                    <option key={takenValue(choice)} value={takenValue(choice)}>
+                      {choice.label} ({choice.set_name})
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
           </Labelled>
           <p className="text-muted-foreground text-xs" data-testid="new-set-profile-help">
-            A profile has one Set, and shots pulled with it join that Set on their own. A profile
-            that already has a Set is started on through Duplicate on that Set.
+            A profile has one Set, and shots pulled with it join that Set on their own. Picking a
+            profile that already has a Set duplicates it under a new name.
           </p>
+          {duplicating && duplicateSource.isError ? (
+            <p
+              className="text-destructive text-xs"
+              role="alert"
+              data-testid="duplicate-source-error"
+            >
+              {duplicating.label} could not be read. Pick it again to retry.
+            </p>
+          ) : null}
+          {duplicating && duplicateSource.data ? (
+            <DuplicateProfileDialog
+              open
+              onOpenChange={(next) => {
+                if (!next) setDuplicating(null);
+              }}
+              baseVersionId={duplicating.profile_version_id}
+              label={duplicating.label}
+              document={duplicateSource.data.profile as Record<string, unknown>}
+              onSaved={(row) => {
+                const id = String(row.current_version_id);
+                setDraft((current) => ({ ...current, profileVersionId: id }));
+                setSavedPick(id);
+              }}
+            />
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Labelled id={ids.grind} label="Grind">

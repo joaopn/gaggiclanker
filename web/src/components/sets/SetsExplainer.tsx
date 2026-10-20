@@ -76,8 +76,8 @@ export function SetsExplainer({ dialling }: { dialling: boolean }) {
         </p>
         <p>
           <strong className="text-foreground">Starting and finishing.</strong> A new bean means a
-          new Set. To try a bean on a copy of an existing Set's profile, use Duplicate. When you've
-          finished with a bean, archive its Set.
+          new Set. To try a bean on a copy of an existing Set's profile, use Duplicate Set. When
+          you've finished with a bean, archive its Set.
         </p>
       </div>
     </section>

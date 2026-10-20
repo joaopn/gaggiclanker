@@ -126,12 +126,12 @@ describe("a pinned row on the Profiles page", () => {
     // The version list's controls are not here, and its data is never read.
     expect(screen.queryByTestId("version-list")).not.toBeInTheDocument();
     expect(screen.queryByTestId("make-active")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("edit-a-copy")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("duplicate-profile")).not.toBeInTheDocument();
     expect(screen.queryByText("Signature")).not.toBeInTheDocument();
     expect(api.getBoardVersions).not.toHaveBeenCalled();
   });
 
-  it("offers Duplicate as a new Set, which goes to the Set page with the pinned version's dialog to open", async () => {
+  it("offers Duplicate Set, which goes to the Set page with the pinned version's dialog to open", async () => {
     const user = setupUser();
     renderWithQueryClient(<ProfilesPage />);
     await screen.findByText("Blooming v1.2");
@@ -140,13 +140,13 @@ describe("a pinned row on the Profiles page", () => {
     const panel = await screen.findByTestId("pinned-panel");
     const link = within(panel).getByTestId("pinned-duplicate");
 
-    expect(link).toHaveTextContent("Duplicate as a new Set");
-    expect(link).toHaveAccessibleName("Duplicate as a new Set: v1.2 of Ethiopia Guji · Blooming");
+    expect(link).toHaveTextContent("Duplicate Set");
+    expect(link).toHaveAccessibleName("Duplicate Set: v1.2 of Ethiopia Guji · Blooming");
     expect(link).toHaveAttribute("href", "/sets/3?duplicate=22");
     // Beside Unpin, in the panel's one row of actions.
     expect(
       Array.from(within(panel).getByTestId("pinned-actions").children).map((el) => el.textContent),
-    ).toEqual(["Duplicate as a new Set", "Unpin"]);
+    ).toEqual(["Duplicate Set", "Unpin"]);
     // An ordinary row has no such button.
     expect(within(rowNamed("9 Bar Espresso")).queryByTestId("pinned-duplicate")).toBeNull();
   });

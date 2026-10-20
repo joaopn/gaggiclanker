@@ -18,7 +18,7 @@ import { formatDate } from "@/lib/shots";
  * A line says either the pin's facts (once the machine holds the copy) or the profile list's own
  * line for that row (not on the machine yet, Writes off, a failed round trip, a conflict): the
  * words are the Profiles page's, never new ones here. The name links to the Profiles page row.
- * Duplicate as a new Set and Unpin sit beside each other.
+ * Duplicate Set and Unpin sit beside each other.
  */
 export function PinnedCard({
   pins,
@@ -105,10 +105,10 @@ function PinLine({
               type="button"
               size="sm"
               variant="outline"
-              aria-label={`Duplicate as a new Set: ${pin.version_label}`}
+              aria-label={`Duplicate Set: ${pin.version_label}`}
               onClick={() => onDuplicate(pin.set_version_id, duplicatePinButtonId(pin.pin_id))}
             >
-              Duplicate as a new Set
+              Duplicate Set
             </Button>
           ) : null}
           <Button

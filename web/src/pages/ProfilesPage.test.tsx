@@ -50,6 +50,7 @@ const api = vi.hoisted(() => ({
   importFiles: vi.fn(),
   previewProfileDraft: vi.fn(),
   createProfileDraft: vi.fn(),
+  duplicateProfile: vi.fn(),
   getSignature: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -799,16 +800,18 @@ describe("the dropdown", () => {
     await waitFor(() => expect(api.setBoardActiveVersion).toHaveBeenCalledWith(1, 7));
   });
 
-  it("Edit a copy opens the JSON editor on that version", async () => {
+  it("Duplicate Profile opens the duplicate dialog on that version", async () => {
     const user = setupUser();
     api.getBoardVersions.mockResolvedValue(versionsView(three()));
     api.previewProfileDraft.mockResolvedValue({ valid: true, profile: profileWith(8) });
     const versions = await open(user);
 
-    await user.click(within(versions[1] as HTMLElement).getByTestId("edit-a-copy"));
+    const button = within(versions[1] as HTMLElement).getByTestId("duplicate-profile");
+    expect(button).toHaveTextContent("Duplicate Profile");
+    await user.click(button);
 
-    expect(await screen.findByText("Edit a copy of 9 Bar Espresso")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save as a proposal" })).toBeInTheDocument();
+    expect(await screen.findByText("Duplicate 9 Bar Espresso")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   });
 
   it("opens one row at a time", async () => {
@@ -1527,39 +1530,40 @@ describe("what the page leaves out", () => {
   });
 });
 
-describe("Edit a copy", () => {
-  async function openEditor() {
+describe("Duplicate Profile", () => {
+  async function openDialog() {
     const user = setupUser();
     api.getBoardVersions.mockResolvedValue(
       versionsView([listedVersion({ version_id: 7, is_active: true })]),
     );
     api.previewProfileDraft.mockResolvedValue({ valid: true, profile: profileWith(9) });
-    api.createProfileDraft.mockResolvedValue(draft());
+    api.duplicateProfile.mockResolvedValue({ ...row().row, id: 5, label: "Copy of mine" });
     renderWithQueryClient(<ProfilesPage />);
     await user.click(await screen.findByTestId("profile-toggle"));
-    await user.click(await screen.findByTestId("edit-a-copy"));
+    await user.click(await screen.findByTestId("duplicate-profile"));
     return user;
   }
 
-  it("says the copy is a proposed new version of that profile, whoever made it, and that its name is kept", async () => {
-    await openEditor();
+  it("says the duplicate is a new profile, added and switched on", async () => {
+    await openDialog();
 
-    expect(
-      await screen.findByText(/proposed new version of 9 Bar Espresso, not active/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/a changed name makes a profile of its own/)).toBeInTheDocument();
+    expect(await screen.findByText(/A new profile with the name you give it/)).toBeInTheDocument();
+    expect(screen.getByText(/the next sync puts it on the machine/)).toBeInTheDocument();
   });
 
-  it("saves the copy against the version it was opened from, with nothing else naming a profile", async () => {
-    const user = await openEditor();
+  it("adds it from the version it was opened from, never as a proposal", async () => {
+    const user = await openDialog();
 
     await waitFor(() => expect(screen.getByTestId("editor-valid")).toBeInTheDocument());
-    await user.click(screen.getByTestId("save-as-draft"));
+    await user.type(screen.getByTestId("duplicate-profile-name"), "Copy of mine");
+    await user.click(screen.getByTestId("save-duplicate"));
 
-    await waitFor(() => expect(api.createProfileDraft).toHaveBeenCalled());
-    const body = api.createProfileDraft.mock.calls[0]?.[0];
-    expect(body).toMatchObject({ base_version_id: 7 });
-    expect(body).not.toHaveProperty("target_row_id");
+    await waitFor(() => expect(api.duplicateProfile).toHaveBeenCalled());
+    const [versionId, body] = api.duplicateProfile.mock.calls[0] ?? [];
+    expect(versionId).toBe(7);
+    expect(body).toMatchObject({ name: "Copy of mine" });
+    expect(api.createProfileDraft).not.toHaveBeenCalled();
+    expect(api.putOnBoard).not.toHaveBeenCalled();
   });
 });
 

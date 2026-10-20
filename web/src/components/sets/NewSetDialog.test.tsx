@@ -27,6 +27,9 @@ const {
   createStartingPoint,
   designSet,
   sendChatMessage,
+  getProfileVersion,
+  previewProfileDraft,
+  duplicateProfile,
 } = vi.hoisted(() => ({
   getBeans: vi.fn(),
   getGrinders: vi.fn(),
@@ -38,6 +41,9 @@ const {
   createStartingPoint: vi.fn(),
   designSet: vi.fn(),
   sendChatMessage: vi.fn(),
+  getProfileVersion: vi.fn(),
+  previewProfileDraft: vi.fn(),
+  duplicateProfile: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -51,6 +57,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   createStartingPoint,
   designSet,
   sendChatMessage,
+  getProfileVersion,
+  previewProfileDraft,
+  duplicateProfile,
 }));
 
 function profileVersion(overrides: Partial<ProfileVersionSummary>): ProfileVersionSummary {
@@ -187,8 +196,106 @@ describe("NewSetDialog", () => {
       "Switched off",
       "A file",
     ]);
-    expect(screen.getByTestId("new-set-profile-help")).toHaveTextContent("through Duplicate");
+    expect(screen.getByTestId("new-set-profile-help")).toHaveTextContent(
+      "Picking a profile that already has a Set duplicates it under a new name.",
+    );
     expect(screen.queryByText(/Any profile/)).not.toBeInTheDocument();
+  });
+
+  describe("a profile that already has a Set", () => {
+    const TAKEN = { profile_version_id: 30, label: "Lever 6 bar", set_id: 4, set_name: "Kenya" };
+
+    beforeEach(() => {
+      getProfileChoices.mockResolvedValue({
+        items: [choice(7, "9 Bar Espresso")],
+        taken: [TAKEN],
+      });
+      getProfileVersion.mockResolvedValue({
+        id: 30,
+        label: "Lever 6 bar",
+        profile: { label: "Lever 6 bar", type: "pro", phases: [] },
+      });
+      previewProfileDraft.mockResolvedValue({
+        valid: true,
+        schema_errors: [],
+        violations: [],
+        clamp_changes: [],
+        stop_condition_changes: [],
+        profile: {},
+      });
+    });
+
+    it("is offered after the free ones, under a heading saying a pick duplicates it", async () => {
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+      const taken = await screen.findByRole("option", { name: "Lever 6 bar (Kenya)" });
+
+      expect(taken.closest("optgroup")).toHaveAttribute(
+        "label",
+        "Has a Set: picking one duplicates it",
+      );
+      const options = within(screen.getByLabelText("Profile")).getAllByRole("option");
+      expect(options.map((option) => option.textContent)).toEqual([
+        "Pick a profile",
+        "9 Bar Espresso",
+        "Lever 6 bar (Kenya)",
+      ]);
+    });
+
+    it("opens Duplicate Profile on its active version, and Cancel leaves the pick as it was", async () => {
+      const user = setupUser();
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+      await pickProfile("7");
+
+      await user.selectOptions(screen.getByLabelText("Profile"), "taken:30");
+
+      expect(await screen.findByText("Duplicate Lever 6 bar")).toBeInTheDocument();
+      expect(getProfileVersion).toHaveBeenCalledWith(30);
+      expect(screen.getByTestId("duplicate-profile-name")).toHaveValue("");
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      await waitFor(() =>
+        expect(screen.queryByText("Duplicate Lever 6 bar")).not.toBeInTheDocument(),
+      );
+      expect(screen.getByLabelText("Profile")).toHaveValue("7");
+      expect(duplicateProfile).not.toHaveBeenCalled();
+    });
+
+    it("selects the saved duplicate and fills the recipe from it", async () => {
+      const user = setupUser();
+      duplicateProfile.mockImplementation(async () => {
+        // What the server answers once the duplicate is on the list.
+        getProfileChoices.mockResolvedValue({
+          items: [choice(7, "9 Bar Espresso"), choice(41, "Lever for Guji")],
+          taken: [TAKEN],
+        });
+        getProfileVersions.mockResolvedValue({
+          items: [
+            profileVersion({ id: 7, label: "9 Bar Espresso", target_yield_g: 36 }),
+            profileVersion({ id: 41, label: "Lever for Guji", target_yield_g: 40 }),
+          ],
+          total: 2,
+          limit: 200,
+          offset: 0,
+        });
+        return { id: 12, label: "Lever for Guji", current_version_id: 41 };
+      });
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+      await screen.findByRole("option", { name: "Lever 6 bar (Kenya)" });
+
+      await user.selectOptions(screen.getByLabelText("Profile"), "taken:30");
+      await screen.findByTestId("editor-valid");
+      await user.type(screen.getByTestId("duplicate-profile-name"), "Lever for Guji");
+      await user.click(screen.getByTestId("save-duplicate"));
+
+      await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("41"));
+      expect(duplicateProfile).toHaveBeenCalledWith(
+        30,
+        expect.objectContaining({ name: "Lever for Guji" }),
+      );
+      await waitFor(() => expect(screen.getByLabelText("Target yield (g)")).toHaveValue("40"));
+      expect(screen.queryByText("Duplicate Lever 6 bar")).not.toBeInTheDocument();
+    });
   });
 
   it("starts a Set from one screen", async () => {
