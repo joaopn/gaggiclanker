@@ -206,7 +206,7 @@ class TestButton:
                 "name": "Guji",
                 "bean_id": bean.json()["data"]["id"],
                 "automatch": False,
-                "version": {"profile_version_id": original, "dose_g": 18.0},
+                "version": {"drink": "espresso", "profile_version_id": original, "dose_g": 18.0},
             },
         )
         assert created.status_code == 201, created.text

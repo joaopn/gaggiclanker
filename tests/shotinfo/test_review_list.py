@@ -173,7 +173,10 @@ async def test_the_list_and_the_recipe_routes_serve_the_curve_check_and_the_sort
     row = await recipes.create(
         RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         RecipeVersionWrite(
-            profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G
+            drink="espresso",
+            profile_version_id=profile.id,
+            dose_g=18.0,
+            target_yield_g=TARGET_YIELD_G,
         ),
     )
     slog = lever_shot()

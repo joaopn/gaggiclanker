@@ -104,7 +104,7 @@ async def a_recipe(wired: Fixtures) -> tuple[int, int]:
     """A Recipe with one version, and both ids."""
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-        RecipeVersionWrite(dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
     )
     assert row.current_version_id is not None
     return row.id, row.current_version_id
@@ -136,7 +136,7 @@ class TestWhichShotsCount:
         recipe_id, version_id = await a_recipe(wired)
         other = await wired.recipes.create(
             RecipeWrite(name="Kenya on the Niche", bean_id=wired.bean_id),
-            RecipeVersionWrite(dose_g=18.0),
+            RecipeVersionWrite(drink="espresso", dose_g=18.0),
         )
         mine = await store_shot(wired.shots, "000001")
         theirs = await store_shot(wired.shots, "000002")
@@ -416,6 +416,7 @@ class TestTheRecipeDetail:
                         "name": "Guji on the Niche",
                         "bean_id": bean["id"],
                         "version": {
+                            "drink": "espresso",
                             "dose_g": 18.0,
                             "target_yield_g": 36.0,
                             "grind_setting": "22",
@@ -611,7 +612,7 @@ class TestTheRecipeDetail:
                     {
                         "name": "Kenya",
                         "bean_id": bean["id"],
-                        "version": {"dose_g": 18.0, "grind_setting": "22"},
+                        "version": {"drink": "espresso", "dose_g": 18.0, "grind_setting": "22"},
                     },
                 ),
             )

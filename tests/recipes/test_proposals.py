@@ -41,7 +41,7 @@ PREDICTION = "Compared to v1: two to four seconds longer and less sour."
 async def _recipe(wired: Fixtures) -> int:
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     return row.id
 
@@ -149,7 +149,7 @@ class TestProposing:
         recipe_id = await _recipe(wired)
         other = await wired.recipes.create(
             RecipeWrite(name="Another coffee", bean_id=wired.bean_id),
-            RecipeVersionWrite(dose_g=18),
+            RecipeVersionWrite(drink="espresso", dose_g=18),
         )
         theirs = await wired.recipes.current_version(other.id)
         assert theirs is not None

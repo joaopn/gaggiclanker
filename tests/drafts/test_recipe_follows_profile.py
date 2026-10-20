@@ -62,6 +62,30 @@ async def _older_version_of(client: httpx.AsyncClient, row_id: int) -> int:
     return int(next(v["version_id"] for v in listed["versions"] if v["version_id"] != active))
 
 
+async def test_a_recipe_following_its_profile_carries_the_drink_and_the_notes(
+    adopted: Adopted, provider: FakeProvider
+) -> None:
+    app, client, _ = adopted
+    recipe_id, row = await _recipe_on_the_base(app, client)
+    data(
+        await client.post(
+            f"/api/recipes/{recipe_id}/versions",
+            json={"drink": "latte", "drink_notes": "oat milk, 200 ml", "intent": "for milk"},
+        )
+    )
+    await put(client, await same_name_draft(app, client, provider, BASE_LABEL, 7))
+    older = await _older_version_of(client, row["id"])
+
+    response = await client.put(
+        f"/api/profile-board/{row['id']}/active-version", json={"version_id": older}
+    )
+
+    assert response.status_code == 200, response.text
+    made = await _current(client, recipe_id)
+    assert made["profile_version_id"] == older
+    assert (made["drink"], made["drink_notes"]) == ("latte", "oat milk, 200 ml")
+
+
 async def test_making_a_version_active_gives_the_recipe_a_minor_version_naming_it(
     adopted: Adopted, provider: FakeProvider
 ) -> None:

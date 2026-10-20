@@ -38,7 +38,7 @@ async def _graded_ready(
     """A Recipe whose current version has a prediction and ``shots`` Keep shots."""
     row = await wired.recipes.create(
         RecipeWrite(name=name, bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     current = await wired.recipes.current_version(row.id)
     assert current is not None
@@ -155,7 +155,7 @@ class TestWriting:
     async def test_a_version_with_no_prediction_has_nothing_to_grade(self, wired: Fixtures) -> None:
         row = await wired.recipes.create(
             RecipeWrite(name="By hand", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-            RecipeVersionWrite(dose_g=18, target_yield_g=36),
+            RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36),
         )
         current = await wired.recipes.current_version(row.id)
         assert current is not None

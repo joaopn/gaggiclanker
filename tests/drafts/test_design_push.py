@@ -40,7 +40,8 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
     grinder = data(await client.post("/api/grinders", json={"name": "Niche Zero"}))
     created = data(
         await client.post(
-            "/api/recipes/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
+            "/api/recipes/design",
+            json={"bean_id": bean["id"], "grinder_id": grinder["id"], "drink": "espresso"},
         )
     )
     recipe_id = created["recipe"]["id"]
@@ -91,7 +92,8 @@ async def test_accepting_after_the_profile_was_synced_and_a_later_version_made_a
     grinder = data(await client.post("/api/grinders", json={"name": "Niche Zero"}))
     created = data(
         await client.post(
-            "/api/recipes/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
+            "/api/recipes/design",
+            json={"bean_id": bean["id"], "grinder_id": grinder["id"], "drink": "espresso"},
         )
     )
     recipe_id = created["recipe"]["id"]

@@ -585,7 +585,7 @@ async def other_recipe_shot(archive: Fixture) -> int:
     recipes = RecipesRepository(archive.db)
     other = await recipes.create(
         RecipeWrite(name="Another bag", bean_id=archive.bean_id),
-        RecipeVersionWrite(grind_setting="20"),
+        RecipeVersionWrite(drink="espresso", grind_setting="20"),
         automatch=False,
     )
     version = await recipes.current_version(other.id)

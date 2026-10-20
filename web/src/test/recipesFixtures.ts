@@ -31,6 +31,17 @@ import type {
  */
 
 export const vocabulary: Vocabulary = {
+  drinks: [
+    { value: "espresso", label: "Espresso", covers: "the shot as it comes out, any ratio" },
+    { value: "americano", label: "Americano", covers: "topped with hot water (long black too)" },
+    {
+      value: "cappuccino",
+      label: "Cappuccino",
+      covers: "a little milk: macchiato, cortado, flat white, cappuccino",
+    },
+    { value: "latte", label: "Latte", covers: "a lot of milk: latte, iced latte, mocha" },
+    { value: "other", label: "Other", covers: "anything else: tonic, affogato, shakerato" },
+  ],
   roast_levels: [
     { value: "light", label: "light" },
     { value: "medium-light", label: "medium light" },
@@ -288,6 +299,8 @@ export function recipeRow(overrides: Partial<RecipeRow> = {}): RecipeRow {
     created_at: "2026-04-02T00:00:00.000Z",
     current_version_id: 22,
     current_version_label: "v2",
+    drink: null,
+    drink_notes: "",
     next_minor_label: "v2.1",
     next_major_label: "v3",
     version_count: 2,
@@ -326,6 +339,8 @@ export function version(overrides: Partial<RecipeVersionRow> = {}): RecipeVersio
     grind_value: 22,
     dose_g: 18,
     target_yield_g: 36,
+    drink: null,
+    drink_notes: "",
     profile_temperature_c: 93,
     intent: "",
     origin: "manual",
@@ -483,6 +498,7 @@ export function designingRecipe(overrides: Partial<RecipeRow> = {}): RecipeRow {
       usual_grind: "22",
       goal: "more body",
       grind_setting: "",
+      drink_notes: "",
     },
     current_version_id: 60,
     current_version_label: "v1",

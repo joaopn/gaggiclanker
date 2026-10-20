@@ -88,7 +88,7 @@ async def main() -> int:
                             "name": "Kenya on the Niche",
                             "bean_id": bean["id"],
                             "grinder_id": grinder["id"],
-                            "version": {"grind_setting": "14", "dose_g": 18},
+                            "version": {"drink": "espresso", "grind_setting": "14", "dose_g": 18},
                         },
                     )
                 )

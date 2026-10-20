@@ -60,6 +60,7 @@ from pydantic import (
     Field,
     StringConstraints,
     ValidationError,
+    ValidationInfo,
     computed_field,
     field_validator,
     model_validator,
@@ -78,6 +79,7 @@ from gaggiclanker.db.repos.version_names import (
     state_sql,
 )
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.drinks import Drink, drink_label
 from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.recipes import version_label
 from gaggiclanker.domain.slog import FIELD_DEFS
@@ -93,11 +95,13 @@ from gaggiclanker.domain.vocab import (
 log = structlog.get_logger(__name__)
 
 __all__ = [
+    "DRINK_NOTES_MAX",
     "RECIPE_FIELDS",
     "SEARCH_COLUMNS",
     "VERSION_FIELDS",
     "DesignBrief",
     "DesignRefusal",
+    "DrinkNotes",
     "FieldChange",
     "LiveRecipe",
     "ProfileMatch",
@@ -136,6 +140,12 @@ TEXT_MAX = 1000
 #: as three spaces is "no prediction" everywhere at once — including in
 #: `outcome_state`, which asks whether the text is empty.
 LongText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=TEXT_MAX)]
+
+#: How long a version's drink notes may be. A line or two of what goes around the shot.
+DRINK_NOTES_MAX = 500
+
+#: Drink notes as stored: stripped, so notes of three spaces are "no notes" (``""``) everywhere.
+DrinkNotes = Annotated[str, StringConstraints(strip_whitespace=True, max_length=DRINK_NOTES_MAX)]
 
 
 class RecipeWrite(BaseModel):
@@ -178,6 +188,13 @@ class DesignBrief(BaseModel):
     grind_setting: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] = ""
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
+    #: The drink the person chose for the Recipe, and how it is made around the shot. The
+    #: design's version 1 takes both from here, whatever the card says
+    #: (:meth:`RecipesRepository._fill_design`).
+    #: A brief stored before drinks existed has none: ``None`` reads as "no drink stated", and its
+    #: version 1 is filled with ``NULL``, as the design was.
+    drink: Drink | None = None
+    drink_notes: DrinkNotes = ""
 
 
 class RecipeVersionWrite(BaseModel):
@@ -196,6 +213,11 @@ class RecipeVersionWrite(BaseModel):
     grind_value: float | None = Field(default=None, ge=0, le=10000)
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
+    #: What is added to the shot after it leaves the portafilter. Required on a Recipe's first
+    #: version: the person chooses it when the Recipe is made, and every later version inherits it.
+    drink: Drink
+    #: How the drink is made around the shot, in the person's words; whitespace-only is none.
+    drink_notes: DrinkNotes = ""
     intent: str = Field(default="", max_length=500)
     #: What this version is expected to do differently. On a Recipe's first version
     #: there is nothing earlier to compare against, so there is no
@@ -208,6 +230,17 @@ class RecipeVersionWrite(BaseModel):
     #: review of the same id when that analysis finished. Nothing sets it now
     #: but a push of such an older draft.
     origin_analysis_id: int | None = None
+
+    @classmethod
+    def carrying(cls, drink: Drink | None, **fields: Any) -> RecipeVersionWrite:
+        """A first version that carries the drink of something that already exists.
+
+        A person's new Recipe always states a drink (the field is required), but a Recipe made
+        by copying another version, or from a starting-point run or a design brief stored before
+        drinks were recorded, carries what its source has, and that may be no drink stated.
+        The rest of the fields are validated as for any write; the drink is set after.
+        """
+        return cls.model_validate({**fields, "drink": "other"}).model_copy(update={"drink": drink})
 
 
 class RecipeVersionChange(BaseModel):
@@ -227,6 +260,12 @@ class RecipeVersionChange(BaseModel):
     grind_value: float | None = Field(default=None, ge=0, le=10000)
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
+    #: Inherited when not sent, like the numbers above. Unlike them it cannot be sent as null: a
+    #: drink once stated is never unstated, so an explicit ``null`` is refused (a 422).
+    drink: Drink | None = None
+    #: Inherited when not sent; sent as ``""`` it clears the notes. Like the drink it cannot be
+    #: sent as null.
+    drink_notes: DrinkNotes | None = None
     #: Not inherited, and asked for on every new version: a change with no
     #: stated intent is indistinguishable from a typo three weeks later.
     intent: str = Field(default="", max_length=500)
@@ -242,6 +281,15 @@ class RecipeVersionChange(BaseModel):
     compares_to_version_id: int | None = None
     origin: RecipeVersionOrigin = "manual"
     origin_analysis_id: int | None = None
+
+    @field_validator("drink", "drink_notes", mode="before")
+    @classmethod
+    def _a_stated_drink_stays_stated(cls, value: Any, info: ValidationInfo) -> Any:
+        """Null is refused: leaving a field out keeps it, and a drink once stated is never
+        unstated (the notes are cleared with ``""``)."""
+        if value is None:
+            raise ValueError(f"{info.field_name} cannot be null: leave it out to keep the current")
+        return value
 
 
 class RecipeVersionPatch(RecipeVersionChange):
@@ -280,6 +328,11 @@ class RecipeVersionRow(BaseModel):
     grind_value: float | None = None
     dose_g: float | None = None
     target_yield_g: float | None = None
+    #: What is added to the shot after it leaves the portafilter. ``None`` is no drink stated: a
+    #: version made before drinks were recorded, which is not Espresso.
+    drink: Drink | None = None
+    #: How the drink is made around the shot, in the person's words; ``""`` is none.
+    drink_notes: str = ""
     #: The brew temperature, read from the profile this version names rather
     #: than typed on the Recipe: the machine heats to what the document says, so a
     #: number stored here could only ever disagree with the cup. NULL when the
@@ -607,6 +660,10 @@ class RecipeRow(BaseModel):
     #: The current version's name, "v1.2"; empty only for a Recipe with no
     #: version, which does not exist outside a half-written transaction.
     current_version_label: str = ""
+    #: The current version's drink and notes (``None`` and ``""`` while none is stated), so the
+    #: list and the form that changes a version read them from the Recipe's own row.
+    drink: Drink | None = None
+    drink_notes: str = ""
     #: What the next version would be called as a minor ("v1.3") and as a
     #: major ("v2"), for every button and form that says which version it will
     #: record. Worked out in this row's own query with the arithmetic the
@@ -846,6 +903,8 @@ VERSION_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("grind_value", "Grind value", "number"),
     ("dose_g", "Dose", "g"),
     ("target_yield_g", "Target yield", "g"),
+    ("drink", "Drink", "drink"),
+    ("drink_notes", "Drink notes", "notes"),
 )
 
 
@@ -855,6 +914,10 @@ def _render(value: Any, kind: str, labels: dict[int, str] | None = None) -> str 
     if kind == "profile":
         label = (labels or {}).get(int(value))
         return label or f"#{int(value)}"
+    if kind == "drink":
+        return drink_label(str(value)) or str(value)
+    if kind == "notes" and not str(value):
+        return None
     if kind == "g":
         return f"{float(value):g} g"
     if kind == "c":
@@ -872,15 +935,15 @@ def version_changes(
     """What this version changed, against the one it came from.
 
     Computed rather than stored. A stored diff is a third copy of two values
-    that can disagree with either, and this one is cheap: five fields compared
+    that can disagree with either, and this one is cheap: the fields compared
     in memory on a list the page already holds.
 
     The first version of a Recipe has no parent and therefore no changes — it is
-    the baseline, not a change to anything, and rendering it as "five fields
+    the baseline, not a change to anything, and rendering it as "every field
     set" would bury the one version the reader actually wants to compare
     against.
 
-    The temperature is the sixth line the log can show and the one nobody typed:
+    The temperature is one more line the log can show, and the one nobody typed:
     it rides along with the profile. A version whose profile version changed
     changed the brew temperature too whenever the two documents state different
     ones, and that is the change the reader is looking for — "one degree hotter"
@@ -1104,6 +1167,8 @@ RECIPE_FIELDS: tuple[str, ...] = (
     "grind_value",
     "dose_g",
     "target_yield_g",
+    "drink",
+    "drink_notes",
 )
 
 _RECIPE_SELECT = f"""
@@ -1111,6 +1176,8 @@ _RECIPE_SELECT = f"""
            b.name AS bean_name,
            g.name AS grinder_name,
            COALESCE({label_sql("cur")}, '') AS current_version_label,
+           cur.drink AS drink,
+           COALESCE(cur.drink_notes, '') AS drink_notes,
            {state_sql("cur")},
            cur.profile_version_id AS profile_version_id,
            COALESCE(pb.label, {version_name_sql("pv")}) AS profile_label,
@@ -1673,6 +1740,8 @@ class RecipesRepository(Repository):
         }
         for field in RECIPE_FIELDS:
             payload[field] = values.get(field)
+        # The one NOT NULL column among these: a caller that states no notes has none.
+        payload["drink_notes"] = values.get("drink_notes") or ""
         columns = ", ".join("recipe_id" if name == "recipe_id" else name for name in payload)
         placeholders = ", ".join(f":{name}" for name in payload)
         cursor = await self.db.execute(
@@ -1777,6 +1846,13 @@ class RecipesRepository(Repository):
         for field in RECIPE_FIELDS:
             if field in sent:
                 values[field] = sent[field]
+        # The drink and its notes are the person's choice from the dialog, kept in the brief, and
+        # version 1 takes them from there whatever the card (or the form) says, as the brief's
+        # kept numbers are what the agent is told to propose. A brief stored before drinks existed
+        # has none: the version is then filled with no drink stated, as the design was.
+        brief = await self._design_brief(current.recipe_id)
+        values["drink"] = brief.drink
+        values["drink_notes"] = brief.drink_notes
         await self._refuse_a_pins_copy(values["profile_version_id"])
         # The first recipe gives the Recipe its profile. An accepted card has put its draft first,
         # so it may be a version the profile has moved on from; the person's own choice in the form
@@ -1795,6 +1871,8 @@ class RecipesRepository(Repository):
                    grind_value = :grind_value,
                    dose_g = :dose_g,
                    target_yield_g = :target_yield_g,
+                   drink = :drink,
+                   drink_notes = :drink_notes,
                    intent = :intent,
                    origin = :origin,
                    origin_analysis_id = :origin_analysis_id,
@@ -1823,6 +1901,17 @@ class RecipesRepository(Repository):
             if active is not None and active != values["profile_version_id"]:
                 await self.follow_profile(owner, int(active), keep_proposal=keep_proposal)
         return current.id
+
+    async def _design_brief(self, recipe_id: int) -> DesignBrief:
+        """The brief a Recipe was designed from; an empty one when it has none."""
+        stored = await self.db.fetch_value(
+            "SELECT design_brief FROM recipes WHERE id = ?", (recipe_id,)
+        )
+        try:
+            return DesignBrief.model_validate_json(str(stored or "{}"))
+        except ValidationError:
+            log.warning("recipe_design_brief_unreadable", recipe_id=recipe_id)
+            return DesignBrief()
 
     async def _retire_waiting(
         self, recipe_id: int, now: str, *, keep_proposal: int | None = None

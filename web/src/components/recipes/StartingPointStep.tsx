@@ -133,6 +133,9 @@ export function StartingPointStep({
               grinder_id: grinderId,
               usual_grind: usualGrind.trim(),
               dose_hint_g: toNumber(doseHint),
+              // The dialog's Drink row arrives with the screens; until then the Recipe is Espresso.
+              drink: "espresso",
+              drink_notes: "",
               model: "",
             }),
           );

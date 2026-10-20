@@ -166,7 +166,7 @@ async def test_a_first_recipe_is_drawn_against_an_empty_one_before_and_after_acc
 async def test_a_change_is_drawn_against_the_version_it_changes(wired: Fixtures) -> None:
     row = await wired.recipes.create(
         RecipeWrite(name="By hand", bean_id=wired.bean_id),
-        RecipeVersionWrite(grind_setting="18", dose_g=18),
+        RecipeVersionWrite(drink="espresso", grind_setting="18", dose_g=18),
     )
     proposals = RecipeProposalsRepository(wired.db)
     stored = (
@@ -191,7 +191,8 @@ async def test_an_initial_recipe_is_refused_on_a_recipe_that_is_not_being_design
     wired: Fixtures,
 ) -> None:
     row = await wired.recipes.create(
-        RecipeWrite(name="By hand", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
+        RecipeWrite(name="By hand", bean_id=wired.bean_id),
+        RecipeVersionWrite(drink="espresso", dose_g=18),
     )
     draft_id, profile = await a_draft(wired, "Designed")
 
@@ -373,7 +374,7 @@ async def test_discuss_still_continues_an_ordinary_conversation_with_a_change_in
     """Only a first-recipe card marks the design: a change argued in a room keeps it."""
     row = await wired.recipes.create(
         RecipeWrite(name="Guji", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36),
     )
     chat = ChatRepository(wired.db)
     room = (await chat.open_thread(row.id)).thread

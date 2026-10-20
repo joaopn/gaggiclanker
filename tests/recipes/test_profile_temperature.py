@@ -102,7 +102,12 @@ async def test_every_query_reads_the_temperature_the_way_python_does(
     await own_version(wired.db, profile_version_id)
     row = await wired.recipes.create(
         RecipeWrite(name=f"Recipe {name}", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        RecipeVersionWrite(profile_version_id=profile_version_id, dose_g=18.0, target_yield_g=36.0),
+        RecipeVersionWrite(
+            drink="espresso",
+            profile_version_id=profile_version_id,
+            dose_g=18.0,
+            target_yield_g=36.0,
+        ),
     )
     version_id = row.current_version_id
     assert version_id is not None
@@ -151,7 +156,7 @@ async def test_a_profile_that_states_no_temperature_is_not_a_zero_degree_shot(
     await own_version(wired.db, profile_version_id)
     row = await wired.recipes.create(
         RecipeWrite(name="Says nothing", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        RecipeVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),
+        RecipeVersionWrite(drink="espresso", profile_version_id=profile_version_id, dose_g=18.0),
     )
     version_id = row.current_version_id
     assert version_id is not None

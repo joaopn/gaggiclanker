@@ -363,7 +363,8 @@ async def test_a_name_for_an_ordinary_change_is_refused(
     db = app.state.db
     bean = await BeansRepository(db).create(BeanWrite(name="Kenya AA"))
     row = await RecipesRepository(db).create(
-        RecipeWrite(name="Plain", bean_id=bean.id), RecipeVersionWrite(dose_g=18, target_yield_g=36)
+        RecipeWrite(name="Plain", bean_id=bean.id),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36),
     )
     created = await RecipeProposalsRepository(db).create(
         row.id,

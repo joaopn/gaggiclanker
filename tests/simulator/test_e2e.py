@@ -323,6 +323,7 @@ async def test_the_whole_prototype_against_the_simulator(
                 "bean_id": bean["id"],
                 "grinder_id": grinder["id"],
                 "version": {
+                    "drink": "espresso",
                     "profile_version_id": profile_version_id,
                     "grind_setting": "22",
                     "grind_value": 22.0,

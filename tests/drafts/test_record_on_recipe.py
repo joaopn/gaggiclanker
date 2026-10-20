@@ -51,7 +51,10 @@ async def another_recipe(client: httpx.AsyncClient) -> dict[str, Any]:
                     "name": "Another coffee",
                     "bean_id": bean["id"],
                     "automatch": False,
-                    "version": {"profile_version_id": other["row"]["current_version_id"]},
+                    "version": {
+                        "drink": "espresso",
+                        "profile_version_id": other["row"]["current_version_id"],
+                    },
                 },
             )
         )

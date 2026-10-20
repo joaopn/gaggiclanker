@@ -20,7 +20,7 @@ async def _a_recipe(wired: Fixtures, original: int) -> tuple[int, int]:
     """A Recipe on ``original`` with v1 and a later v1.1: their ids."""
     made = await wired.recipes.create(
         RecipeWrite(name="Guji", bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=original, dose_g=18.0),
+        RecipeVersionWrite(drink="espresso", profile_version_id=original, dose_g=18.0),
     )
     first = await wired.recipes.current_version(made.id)
     assert first is not None

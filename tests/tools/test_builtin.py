@@ -641,7 +641,8 @@ async def test_a_conversation_of_another_recipe_cannot_be_named_as_the_room(
 ) -> None:
     """The thread comes from the runner, not the model, and is still checked."""
     other = await RecipesRepository(archive.db).create(
-        RecipeWrite(name="Another coffee", bean_id=archive.bean_id), RecipeVersionWrite(dose_g=18)
+        RecipeWrite(name="Another coffee", bean_id=archive.bean_id),
+        RecipeVersionWrite(drink="espresso", dose_g=18),
     )
     cursor = await archive.db.execute(
         "INSERT INTO chat_threads (title, recipe_id) VALUES (?, ?)", ("Elsewhere", other.id)
@@ -665,7 +666,7 @@ async def test_a_comparison_outside_this_recipe_is_refused(
 ) -> None:
     other = await RecipesRepository(archive.db).create(
         RecipeWrite(name="Another coffee", bean_id=archive.bean_id),
-        RecipeVersionWrite(dose_g=18),
+        RecipeVersionWrite(drink="espresso", dose_g=18),
     )
     theirs = await RecipesRepository(archive.db).current_version(other.id)
     assert theirs is not None

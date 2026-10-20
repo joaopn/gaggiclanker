@@ -25,6 +25,7 @@ from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.domain.signature import ShotChecks, check_key
 from gaggiclanker.domain.slog import shot_header_name
 from gaggiclanker.domain.vocab import Decision
@@ -271,6 +272,9 @@ class ShotListRow(BaseModel):
     #: somebody to say which one it belongs to.
     recipe_version_id: int | None = None
     recipe_badge: ShotRecipeBadge | None = None
+    #: The drink of the version the shot is filed under. ``None`` for an unfiled shot and for a
+    #: version with no drink stated.
+    recipe_drink: Drink | None = None
     synced_at: str
 
     #: What the machine called the profile when the shot was brewed, when that is not what the
@@ -450,6 +454,7 @@ _LIST_COLUMNS = f"""
     sv.recipe_id AS badge_recipe_id,
     st.name AS badge_recipe_name,
     {label_sql("sv")} AS badge_version_label,
+    sv.drink AS recipe_drink,
     s.synced_at
 """
 

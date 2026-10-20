@@ -115,7 +115,7 @@ async def _no_profile_recipe(client: httpx.AsyncClient) -> tuple[int, int]:
     bean = data(await client.post("/api/beans", json={"name": "Bare", "roaster": "x"}))
     made = await RecipesRepository(database_of(client)).create(
         RecipeWrite(name="Bare", bean_id=bean["id"]),
-        RecipeVersionWrite(dose_g=18, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18, grind_setting="22"),
     )
     detail = data(await client.get(f"/api/recipes/{made.id}"))
     return int(made.id), int(detail["versions"][0]["version"]["id"])
@@ -159,6 +159,8 @@ async def test_the_preview_is_the_suggested_name_the_recipe_and_the_recipes_own_
         "grind_value": None,
         "dose_g": 18.0,
         "target_yield_g": 36.0,
+        "drink": "espresso",
+        "drink_notes": "",
         "intent": "",
     }
     # The Recipe's own confirmed, not dismissed ones, in the order the Recipe page lists them.
@@ -298,6 +300,48 @@ async def test_a_duplicate_is_a_new_recipe_on_a_new_profile_with_a_note_and_no_h
         "Guji": False,
         "Guji milk": True,
     }
+
+
+async def test_a_duplicate_copies_the_versions_drink_and_notes_and_the_preview_shows_them(
+    adopted: Adopted,
+) -> None:
+    app, client, _fake = adopted
+    recipe_id, _ = await _recipe_with_version(app, client)
+    changed = data(
+        await client.post(
+            f"/api/recipes/{recipe_id}/versions",
+            json={"drink": "cappuccino", "drink_notes": "oat milk, ~150 ml", "intent": "for milk"},
+        )
+    )
+
+    preview = data(await _preview(client, recipe_id, changed["id"]))
+    made = data(await _duplicate(client, recipe_id, changed["id"]))["recipe"]
+
+    shown = preview["version_fields"]
+    assert (shown["drink"], shown["drink_notes"]) == ("cappuccino", "oat milk, ~150 ml")
+    assert (made["drink"], made["drink_notes"]) == ("cappuccino", "oat milk, ~150 ml")
+    (only,) = data(await client.get(f"/api/recipes/{made['id']}"))["versions"]
+    assert only["version"]["drink"] == "cappuccino"
+    # The source is untouched.
+    source = data(await client.get(f"/api/recipes/{recipe_id}"))["recipe"]
+    assert source["drink"] == "cappuccino"
+
+
+async def test_a_duplicate_of_a_version_with_no_drink_stated_states_none(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    recipe_id, version_id = await _recipe_with_version(app, client)
+    await app.state.db.execute(
+        "UPDATE recipe_versions SET drink = NULL WHERE id = ?", (version_id,)
+    )
+
+    preview = data(await _preview(client, recipe_id, version_id))
+    made = data(await _duplicate(client, recipe_id, version_id))["recipe"]
+
+    assert (preview["version_fields"]["drink"], preview["version_fields"]["drink_notes"]) == (
+        None,
+        "",
+    )
+    assert (made["drink"], made["drink_notes"]) == (None, "")
 
 
 async def test_the_new_profile_is_the_versions_profile_under_the_new_name(

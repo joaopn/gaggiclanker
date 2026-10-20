@@ -135,6 +135,8 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "recipe_grind": "recipe.grind_setting@1",
         "recipe_dose": "recipe.dose@1",
         "recipe_yield": "recipe.target_yield@1",
+        "recipe_drink": "recipe.drink@1",
+        "recipe_drink_notes": "recipe.drink_notes@1",
         "recipe_profile": "recipe.profile@1",
         "profile_temperature": "recipe.profile_temperature@1",
         "note_rating": "note.rating@1",

@@ -73,7 +73,10 @@ async def file_lever(
     row = await recipes.create(
         RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         RecipeVersionWrite(
-            profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G
+            drink="espresso",
+            profile_version_id=profile.id,
+            dose_g=18.0,
+            target_yield_g=TARGET_YIELD_G,
         ),
     )
     slog = lever_shot() if scale else without_scale(lever_shot())

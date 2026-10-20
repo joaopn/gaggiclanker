@@ -34,7 +34,9 @@ PREDICTION = "Two seconds longer and a touch sweeter than the version before it.
 async def _recipe(wired: Fixtures, profile: int | None = None) -> int:
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        RecipeVersionWrite(profile_version_id=profile, grind_setting="22", dose_g=18),
+        RecipeVersionWrite(
+            drink="espresso", profile_version_id=profile, grind_setting="22", dose_g=18
+        ),
     )
     return row.id
 

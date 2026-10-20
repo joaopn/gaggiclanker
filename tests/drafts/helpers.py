@@ -110,7 +110,7 @@ async def make_recipe(client: httpx.AsyncClient, name: str = "Replace test") -> 
             json={
                 "name": name,
                 "bean_id": bean["id"],
-                "version": {"dose_g": 18.0, "target_yield_g": 36.0},
+                "version": {"drink": "espresso", "dose_g": 18.0, "target_yield_g": 36.0},
             },
         )
     )
@@ -181,6 +181,7 @@ async def make_recipe_on(client: httpx.AsyncClient, name: str, profile_version_i
             "name": name,
             "bean_id": bean["id"],
             "version": {
+                "drink": "espresso",
                 "dose_g": 18.0,
                 "target_yield_g": 36.0,
                 "profile_version_id": profile_version_id,

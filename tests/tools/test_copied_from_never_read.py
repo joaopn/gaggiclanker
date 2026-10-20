@@ -57,7 +57,7 @@ async def _make(db: Database) -> Copied:
     async with db.transaction():
         new_id = await recipes.create_in_transaction(
             RecipeWrite(name=COPY_NAME, bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
-            RecipeVersionWrite(dose_g=18, target_yield_g=36),
+            RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36),
             copied_from_version_id=fixture.version_id,
         )
         await InsightsRepository(db).insert(

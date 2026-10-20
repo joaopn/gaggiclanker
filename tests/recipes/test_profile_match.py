@@ -42,7 +42,7 @@ async def _recipe_on(
         await own_version(wired.db, profile_version_id)
     row = await wired.recipes.create(
         RecipeWrite(name=name, bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),
+        RecipeVersionWrite(drink="espresso", profile_version_id=profile_version_id, dose_g=18.0),
         automatch=automatch,
     )
     return row.id
@@ -319,7 +319,7 @@ class TestSync:
                 await own_version(archive.db, second)
                 on_other = await recipes.create(
                     RecipeWrite(name="Kenya", bean_id=bean.id),
-                    RecipeVersionWrite(profile_version_id=second),
+                    RecipeVersionWrite(drink="espresso", profile_version_id=second),
                 )
                 on_wanted = await _recipe_naming(archive, wanted)
 
@@ -350,7 +350,7 @@ class TestApi:
             json={
                 "name": "Guji",
                 "bean_id": bean_id,
-                "version": {"profile_version_id": profile, "dose_g": 18.0},
+                "version": {"drink": "espresso", "profile_version_id": profile, "dose_g": 18.0},
             },
         )
         assert created.status_code == 201, created.text

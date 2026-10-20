@@ -18,6 +18,7 @@ from typing import get_args
 import pytest
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.domain.drinks import DRINKS
 from gaggiclanker.domain.models import BalanceTaste
 from gaggiclanker.domain.spread import MEASURE_FLOORS
 from gaggiclanker.domain.vocab import (
@@ -56,6 +57,7 @@ CHECKED: list[tuple[str, str, tuple[str, ...]]] = [
     ("grinders", "step_unit", STEP_UNITS),
     ("recipe_versions", "origin", RECIPE_VERSION_ORIGINS),
     ("recipe_versions", "outcome", VERSION_OUTCOMES),
+    ("recipe_versions", "drink", DRINKS),
     ("shot_judgements", "balance", BALANCES),
     ("shot_judgements", "decision", DECISIONS),
     ("flavor_picks", "kind", FLAVOR_PICK_KINDS),
@@ -215,6 +217,8 @@ def test_the_served_vocabulary_carries_every_term() -> None:
     served = vocabulary()
     assert [term.value for term in served.roast_levels] == list(ROAST_LEVELS)
     assert [term.value for term in served.decisions] == list(DECISIONS)
+    assert [term.value for term in served.drinks] == list(DRINKS)
+    assert all(term.label and term.covers for term in served.drinks)
     # Six states are rendered and only four can be recorded: `open` and
     # `no_prediction` are what a version looks like, not grades anybody gave.
     assert [term.value for term in served.version_outcomes] == list(VERSION_OUTCOMES)

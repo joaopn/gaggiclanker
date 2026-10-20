@@ -87,6 +87,7 @@ async def lever(tmp_path: Path) -> AsyncIterator[tuple[Database, int, int]]:
         row = await RecipesRepository(db).create(
             RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
             RecipeVersionWrite(
+                drink="espresso",
                 profile_version_id=profile.id,
                 grind_setting="14",
                 dose_g=18.0,
@@ -391,7 +392,10 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
     row = await recipes.create(
         RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         RecipeVersionWrite(
-            profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G
+            drink="espresso",
+            profile_version_id=profile.id,
+            dose_g=18.0,
+            target_yield_g=TARGET_YIELD_G,
         ),
     )
     slog = lever_shot()

@@ -10,14 +10,14 @@ async def _two_recipes(wired: Fixtures) -> tuple[int, int]:
     """A source Recipe and a Recipe copied from its first version: (source version id, copy id)."""
     source = await wired.recipes.create(
         RecipeWrite(name="Ethiopia Guji", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        RecipeVersionWrite(dose_g=18),
+        RecipeVersionWrite(drink="espresso", dose_g=18),
     )
     version = await wired.recipes.current_version(source.id)
     assert version is not None
     async with wired.db.transaction():
         copy_id = await wired.recipes.create_in_transaction(
             RecipeWrite(name="Guji milk", bean_id=wired.bean_id),
-            RecipeVersionWrite(dose_g=18),
+            RecipeVersionWrite(drink="espresso", dose_g=18),
             copied_from_version_id=version.id,
         )
     return version.id, copy_id
@@ -43,7 +43,8 @@ async def test_the_note_names_the_source_recipe_and_version(wired: Fixtures) -> 
 
 async def test_a_recipe_made_any_other_way_has_no_note(wired: Fixtures) -> None:
     made = await wired.recipes.create(
-        RecipeWrite(name="Plain", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
+        RecipeWrite(name="Plain", bean_id=wired.bean_id),
+        RecipeVersionWrite(drink="espresso", dose_g=18),
     )
 
     assert made.copied_from is None

@@ -65,7 +65,12 @@ async def _make_recipe(client: httpx.AsyncClient, bean_id: int, **over: Any) -> 
     body: dict[str, Any] = {
         "name": "Guji on the Niche",
         "bean_id": bean_id,
-        "version": {"dose_g": 18.0, "target_yield_g": 36.0, "grind_setting": "22"},
+        "version": {
+            "drink": "espresso",
+            "dose_g": 18.0,
+            "target_yield_g": 36.0,
+            "grind_setting": "22",
+        },
     }
     body.update(over)
     body["version"] = {
@@ -447,7 +452,10 @@ class TestRecipes:
     async def test_a_recipe_on_a_bean_that_is_not_there_names_the_field(
         self, client: httpx.AsyncClient
     ) -> None:
-        response = await client.post("/api/recipes", json={"name": "x", "bean_id": 909})
+        response = await client.post(
+            "/api/recipes",
+            json={"name": "x", "bean_id": 909, "version": {"drink": "espresso"}},
+        )
         assert response.status_code == 422
         assert error(response)["details"]["field"] == "bean_id"
 
@@ -1098,9 +1106,12 @@ class TestRecipeReferencesAndRefusals:
     @pytest.mark.parametrize(
         ("field", "body"),
         [
-            ("bean_id", {"bean_id": 909}),
-            ("grinder_id", {"grinder_id": 909}),
-            ("version.profile_version_id", {"version": {"profile_version_id": 909}}),
+            ("bean_id", {"bean_id": 909, "version": {"drink": "espresso"}}),
+            ("grinder_id", {"grinder_id": 909, "version": {"drink": "espresso"}}),
+            (
+                "version.profile_version_id",
+                {"version": {"drink": "espresso", "profile_version_id": 909}},
+            ),
         ],
     )
     async def test_a_reference_that_does_not_resolve_names_itself(
@@ -1131,7 +1142,7 @@ class TestRecipeReferencesAndRefusals:
                 "name": "Whatever is loaded",
                 "bean_id": bean_id,
                 "grinder_id": None,
-                "version": {"profile_version_id": profile},
+                "version": {"drink": "espresso", "profile_version_id": profile},
             },
         )
         none = await client.post(
@@ -1139,7 +1150,7 @@ class TestRecipeReferencesAndRefusals:
             json={
                 "name": "Any profile",
                 "bean_id": bean_id,
-                "version": {"profile_version_id": None},
+                "version": {"drink": "espresso", "profile_version_id": None},
             },
         )
         assert fine.status_code == 201

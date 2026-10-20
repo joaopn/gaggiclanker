@@ -643,7 +643,12 @@ async def _recipe_on(client: httpx.AsyncClient, name: str, version_id: int) -> i
         json={
             "name": name,
             "bean_id": bean["id"],
-            "version": {"dose_g": 18.0, "target_yield_g": 36.0, "profile_version_id": version_id},
+            "version": {
+                "drink": "espresso",
+                "dose_g": 18.0,
+                "target_yield_g": 36.0,
+                "profile_version_id": version_id,
+            },
         },
     )
     return int(data(response)["id"]) if response.status_code < 300 else None

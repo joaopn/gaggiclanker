@@ -25,8 +25,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.api.deps import StartingPointServiceDep
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
-from gaggiclanker.db.repos.recipes import RecipeRow, RecipeVersionRow
+from gaggiclanker.db.repos.recipes import DrinkNotes, RecipeRow, RecipeVersionRow
 from gaggiclanker.db.repos.starting import StartingPointRunRow
+from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import NotFound
 from gaggiclanker.infra.ratelimit import rate_limit
@@ -59,6 +60,10 @@ class StartingPointRequest(BaseModel):
     usual_grind: str = Field(default="", max_length=100)
     #: A dose to hold, usually their basket. Empty lets the model choose.
     dose_hint_g: float | None = Field(default=None, gt=0, le=100)
+    #: The drink the Recipe is for, chosen in the New Recipe dialog before the suggestion is asked
+    #: for, and how it is made around the shot. The first version made from an option has both.
+    drink: Drink
+    drink_notes: DrinkNotes = ""
     #: Overrides `modelStartingPoint` for this run only.
     model: str = ""
 
@@ -122,6 +127,8 @@ async def create_starting_point(
             grinder_id=body.grinder_id,
             usual_grind=body.usual_grind,
             dose_hint_g=body.dose_hint_g,
+            drink=body.drink,
+            drink_notes=body.drink_notes,
             tasks=request.app.state.tasks,
             model=body.model or None,
         )

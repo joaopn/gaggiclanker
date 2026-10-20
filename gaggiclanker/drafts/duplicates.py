@@ -46,6 +46,7 @@ from gaggiclanker.db.repos.recipes import (
     RecipeVersionWrite,
     RecipeWrite,
 )
+from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.copies import (
     RECIPE_GONE,
@@ -98,6 +99,9 @@ class DuplicateVersionFields(BaseModel):
     grind_value: float | None = None
     dose_g: float | None = None
     target_yield_g: float | None = None
+    #: The drink and its notes, copied with the rest (``None`` and ``""``: none stated).
+    drink: Drink | None = None
+    drink_notes: str = ""
     intent: str = ""
 
 
@@ -236,6 +240,8 @@ class DuplicateService:
                 grind_value=version.grind_value,
                 dose_g=version.dose_g,
                 target_yield_g=version.target_yield_g,
+                drink=version.drink,
+                drink_notes=version.drink_notes,
                 intent=version.intent,
             ),
             has_profile=version.profile_version_id is not None,
@@ -301,12 +307,14 @@ class DuplicateService:
                 RecipeWrite(
                     name=recipe_name, bean_id=request.bean_id, grinder_id=request.grinder_id
                 ),
-                RecipeVersionWrite(
+                RecipeVersionWrite.carrying(
+                    version.drink,
                     profile_version_id=profile_version_id,
                     grind_setting=version.grind_setting,
                     grind_value=version.grind_value,
                     dose_g=version.dose_g,
                     target_yield_g=version.target_yield_g,
+                    drink_notes=version.drink_notes,
                     intent=version.intent,
                     origin="manual",
                 ),

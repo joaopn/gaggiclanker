@@ -13,6 +13,8 @@ export function duplicatePreview(overrides: Partial<DuplicatePreview> = {}): Dup
       grind_value: 2.2,
       dose_g: 18,
       target_yield_g: 40,
+      drink: null,
+      drink_notes: "",
       intent: "",
     },
     has_profile: true,

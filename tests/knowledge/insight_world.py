@@ -111,7 +111,7 @@ async def build_provenance_world(db: Database) -> ProvenanceWorld:
     recipes = RecipesRepository(db)
     row = await recipes.create(
         RecipeWrite(name="A", bean_id=bean.id, grinder_id=grinder.id),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert row.current_version_id is not None
     v1 = row.current_version_id
@@ -132,7 +132,7 @@ async def build_provenance_world(db: Database) -> ProvenanceWorld:
 
     stranger = await recipes.create(
         RecipeWrite(name="B", bean_id=bean.id, grinder_id=grinder.id),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert stranger.current_version_id is not None
     await _graded(recipes, db, stranger.id, stranger.current_version_id, "000604", "failed")

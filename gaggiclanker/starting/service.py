@@ -70,6 +70,7 @@ from gaggiclanker.db.repos.starting import (
     StartingPointRunsRepository,
     StartingPointStart,
 )
+from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_policy import clamp
 from gaggiclanker.domain.profile_recipe import profile_recipe
@@ -188,6 +189,8 @@ class StartingPointService:
         grinder_id: int | None = None,
         usual_grind: str = "",
         dose_hint_g: float | None = None,
+        drink: Drink | None = None,
+        drink_notes: str = "",
         tasks: TaskSpawner,
         model: str | None = None,
     ) -> tuple[StartingPointRunRow, bool]:
@@ -215,6 +218,8 @@ class StartingPointService:
             "grinder_id": grinder_id,
             "usual_grind": usual_grind,
             "dose_hint_g": dose_hint_g,
+            "drink": drink,
+            "drink_notes": drink_notes,
             "model": model,
         }
         try:
@@ -256,6 +261,8 @@ class StartingPointService:
         grinder_id: int | None = None,
         usual_grind: str = "",
         dose_hint_g: float | None = None,
+        drink: Drink | None = None,
+        drink_notes: str = "",
         model: str | None = None,
         as_of: str = "",
     ) -> StartingPointRunRow:
@@ -270,6 +277,8 @@ class StartingPointService:
             grinder_id=grinder_id,
             usual_grind=usual_grind,
             dose_hint_g=dose_hint_g,
+            drink=drink,
+            drink_notes=drink_notes,
             model=model,
             as_of=as_of,
         )
@@ -282,6 +291,8 @@ class StartingPointService:
         grinder_id: int | None = None,
         usual_grind: str = "",
         dose_hint_g: float | None = None,
+        drink: Drink | None = None,
+        drink_notes: str = "",
         model: str | None = None,
         as_of: str = "",
     ) -> _Prepared:
@@ -298,6 +309,8 @@ class StartingPointService:
             grinder_id=grinder_id,
             usual_grind=usual_grind,
             dose_hint_g=dose_hint_g,
+            drink=drink,
+            drink_notes=drink_notes,
             as_of=as_of,
             chunk_token_budget=budget,
         )
@@ -687,7 +700,11 @@ class StartingPointService:
                     bean_id=run.bean_id,
                     grinder_id=run.grinder_id,
                 ),
-                RecipeVersionWrite(
+                RecipeVersionWrite.carrying(
+                    # What the person chose when they asked for the suggestion; none stated for a
+                    # run made before drinks were recorded.
+                    run.input.get("drink"),
+                    drink_notes=str(run.input.get("drink_notes") or ""),
                     profile_version_id=profile_version_id,
                     grind_setting=option.grind_setting[:100],
                     grind_value=grind_value(

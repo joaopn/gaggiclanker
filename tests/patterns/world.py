@@ -104,7 +104,9 @@ async def build_pattern_world(db: Database) -> PatternWorld:
         made.append(
             await recipes.create(
                 RecipeWrite(name=name, bean_id=bean_id, grinder_id=grinder.id),
-                RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+                RecipeVersionWrite(
+                    drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"
+                ),
             )
         )
     draft = await recipes.create_design(

@@ -75,7 +75,9 @@ async def world(tmp_path: Path) -> AsyncIterator[World]:
         for name, bean_id in (("A", bean.id), ("B", bean.id), ("Other", elsewhere.id)):
             row = await recipes.create(
                 RecipeWrite(name=name, bean_id=bean_id, grinder_id=grinder.id),
-                RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+                RecipeVersionWrite(
+                    drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"
+                ),
             )
             made.append(row)
         yield World(
@@ -384,7 +386,12 @@ async def _api_world(client: httpx.AsyncClient, app: FastAPI) -> dict[str, int]:
                         "name": name,
                         "bean_id": bean,
                         "grinder_id": grinder,
-                        "version": {"dose_g": 18, "target_yield_g": 36, "grind_setting": "22"},
+                        "version": {
+                            "drink": "espresso",
+                            "dose_g": 18,
+                            "target_yield_g": 36,
+                            "grind_setting": "22",
+                        },
                     },
                 ),
             )

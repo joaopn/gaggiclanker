@@ -72,6 +72,7 @@ def _body(fixture: Fixture, **overrides: object) -> dict[str, object]:
         "bean_id": fixture.new_bean_id,
         "grinder_id": fixture.grinder_id,
         "usual_grind": "22",
+        "drink": "espresso",
         **overrides,
     }
 
@@ -196,6 +197,54 @@ async def test_accepting_answers_201_with_the_recipe_and_its_version(
     # ... and the Recipe is where the Recipes page will find it.
     listed = await client.get("/api/recipes")
     assert any(row["id"] == data["recipe"]["id"] for row in listed.json()["data"]["items"])
+
+
+async def test_the_recipe_an_option_makes_has_the_drink_chosen_when_it_was_asked_for(
+    api: tuple[FastAPI, httpx.AsyncClient, Fixture, FakeProvider],
+) -> None:
+    _app, client, fixture, _provider = api
+    run_id = await _run(client, fixture, drink="latte", drink_notes="  oat milk, 150 ml ")
+
+    run = (await client.get(f"/api/starting-points/{run_id}")).json()["data"]
+    response = await client.post(
+        f"/api/starting-points/{run_id}/accept", json={"option": "recommended"}
+    )
+
+    assert (run["input"]["drink"], run["input"]["drink_notes"]) == ("latte", "oat milk, 150 ml")
+    version = response.json()["data"]["version"]
+    assert (version["drink"], version["drink_notes"]) == ("latte", "oat milk, 150 ml")
+
+
+async def test_a_run_asked_for_without_a_drink_makes_a_recipe_with_none_stated(
+    api: tuple[FastAPI, httpx.AsyncClient, Fixture, FakeProvider],
+) -> None:
+    """Not reachable through the route (the drink is required there): a run stored before drinks."""
+    app, client, fixture, _provider = api
+    run_id = await _run(client, fixture)
+    await app.state.db.execute(
+        "UPDATE starting_point_runs SET input_json = json_remove(json_remove(input_json, "
+        "'$.drink'), '$.drink_notes') WHERE id = ?",
+        (run_id,),
+    )
+
+    response = await client.post(
+        f"/api/starting-points/{run_id}/accept", json={"option": "recommended"}
+    )
+
+    version = response.json()["data"]["version"]
+    assert (version["drink"], version["drink_notes"]) == (None, "")
+
+
+async def test_asking_for_a_starting_point_without_a_drink_is_refused(
+    api: tuple[FastAPI, httpx.AsyncClient, Fixture, FakeProvider],
+) -> None:
+    _app, client, fixture, _provider = api
+    body = _body(fixture)
+    del body["drink"]
+
+    response = await client.post("/api/starting-points", json=body)
+
+    assert response.status_code == 400
 
 
 async def test_accepting_an_option_with_a_profile_returns_the_draft_to_open(

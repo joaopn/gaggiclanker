@@ -158,6 +158,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         row = await recipes.create(
             RecipeWrite(name="Guji natural on the Niche", bean_id=bean.id, grinder_id=grinder.id),
             RecipeVersionWrite(
+                drink="espresso",
                 profile_version_id=profile,
                 grind_setting="22",
                 dose_g=18.0,
@@ -841,7 +842,7 @@ async def test_a_recipe_with_no_shots_says_the_spread_is_not_measured_and_names_
     """A heading with nothing under it reads as a bug rather than as "not yet"."""
     empty = await RecipesRepository(experiment.db).create(
         RecipeWrite(name="Nothing pulled yet", bean_id=1),
-        RecipeVersionWrite(grind_setting="20"),
+        RecipeVersionWrite(drink="espresso", grind_setting="20"),
         automatch=False,
     )
 

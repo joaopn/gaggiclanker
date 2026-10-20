@@ -82,6 +82,7 @@ from gaggiclanker.db.repository import Repository
 log = structlog.get_logger(__name__)
 
 __all__ = [
+    "DRINK_MAJOR_REASON",
     "PROPOSAL_STATUSES",
     "ProposalKind",
     "ProposalRefusal",
@@ -92,6 +93,7 @@ __all__ = [
     "RecipeProposalRow",
     "RecipeProposalsRepository",
     "change_groups",
+    "changed_names",
 ]
 
 #: What a proposal can be. `stale` is not something a person chooses: it is what
@@ -122,12 +124,33 @@ _CHANGE_GROUPS: dict[str, str] = {
 }
 
 
+#: Why a change of drink suggests a major version, when the agent gave no reason of its own.
+DRINK_MAJOR_REASON = "the drink changes"
+
+#: What a patch's drink fields are called beside the groups above. They are not groups: "one
+#: change at a time" is about dialling in the shot, and a drink change comes with the numbers it
+#: needs (a shorter yield for milk) on one card, so it is named but never counted.
+_NAMED_ALSO: dict[str, str] = {
+    "drink": "the drink",
+    "drink_notes": "the drink notes",
+}
+
+
+def changed_names(patch: RecipeVersionPatch) -> list[str]:
+    """Everything this patch moves, named as a person would: the groups, then the drink fields."""
+    return [
+        *change_groups(patch),
+        *(name for field, name in _NAMED_ALSO.items() if field in patch.model_fields_set),
+    ]
+
+
 def change_groups(patch: RecipeVersionPatch) -> list[str]:
-    """Which things this patch moves, named as a person would name them.
+    """Which things this patch moves that count as a change each, named as a person would.
 
     Sorted, so the same patch always reads the same way — a refusal that lists
     "the dose and the grind" one time and "the grind and the dose" the next is
-    a refusal a model reads as two different rules.
+    a refusal a model reads as two different rules. The drink and its notes are not among them
+    (:func:`changed_names` names them).
     """
     return sorted(
         {
@@ -297,7 +320,7 @@ class RecipeProposalRow(BaseModel):
     @property
     def changed(self) -> list[str]:
         """Which things this proposal moves, for a refusal or a summary line."""
-        return [] if self.patch is None else change_groups(self.patch)
+        return [] if self.patch is None else changed_names(self.patch)
 
 
 #: Why a guarded write to a proposal was refused. A slug, like the version
@@ -683,6 +706,16 @@ class RecipeProposalsRepository(Repository):
                 )
                 if mine is None:
                     return ProposalWriteResult(refused="bad_thread")
+            suggest_major, major_reason = spec.suggest_major, spec.major_reason
+            if (
+                spec.kind == "change"
+                and "drink" in spec.patch.model_fields_set
+                and spec.patch.drink != current.drink
+            ):
+                # A different drink is a different cup for the shot to do its job in: a major by
+                # default. The agent's own suggestion and reason are kept when it made one.
+                suggest_major = True
+                major_reason = spec.major_reason if spec.suggest_major else DRINK_MAJOR_REASON
             if spec.draft_id is not None:
                 # The draft is the profile the recipe names: the same version,
                 # and still a draft somebody can approve. A card whose profile
@@ -718,8 +751,8 @@ class RecipeProposalsRepository(Repository):
                     "combined_reason": spec.combined_reason,
                     "kind": spec.kind,
                     "draft_id": spec.draft_id,
-                    "suggest_major": int(spec.suggest_major),
-                    "major_reason": spec.major_reason,
+                    "suggest_major": int(suggest_major),
+                    "major_reason": major_reason,
                     "created_at": now,
                 },
             )

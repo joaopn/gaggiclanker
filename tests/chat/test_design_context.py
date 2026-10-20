@@ -68,6 +68,7 @@ async def _forked_design(kitchen: Fixture) -> RecipeRow:
             name="Kenya AA on the Mazzer", bean_id=bean_id, grinder_id=kitchen.other_grinder_id
         ),
         RecipeVersionWrite(
+            drink="espresso",
             profile_version_id=kitchen.profile_version_id,
             grind_setting="7",
             dose_g=20,
@@ -86,7 +87,8 @@ async def _forked_design(kitchen: Fixture) -> RecipeRow:
     )
     # And one that is finished with: archived Recipes are not part of the record.
     archived = await recipes.create(
-        RecipeWrite(name="Kenya AA, last year", bean_id=bean_id), RecipeVersionWrite(dose_g=17)
+        RecipeWrite(name="Kenya AA, last year", bean_id=bean_id),
+        RecipeVersionWrite(drink="espresso", dose_g=17),
     )
     await recipes.archive(archived.id)
 
@@ -246,7 +248,7 @@ async def test_the_siblings_are_capped_and_the_cut_is_said(kitchen: Fixture) -> 
     for index in range(SIBLING_RECIPES + 1):
         await recipes.create(
             RecipeWrite(name=f"Kenya AA try {index}", bean_id=bean_id),
-            RecipeVersionWrite(dose_g=18),
+            RecipeVersionWrite(drink="espresso", dose_g=18),
         )
     designed = await recipes.create_design(
         RecipeWrite(name="Kenya AA designed", bean_id=bean_id, grinder_id=kitchen.grinder_id),

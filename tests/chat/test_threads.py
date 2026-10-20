@@ -250,7 +250,7 @@ def _other_recipe(archive: Fixture) -> tuple[Any, Any]:
 
     return (
         RecipeWrite(name="Another bag", bean_id=archive.bean_id),
-        RecipeVersionWrite(grind_setting="20"),
+        RecipeVersionWrite(drink="espresso", grind_setting="20"),
     )
 
 

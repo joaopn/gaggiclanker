@@ -36,15 +36,15 @@ def error(response: httpx.Response) -> dict[str, Any]:
 
 
 @pytest.fixture
-async def kit(client: httpx.AsyncClient) -> dict[str, int]:
+async def kit(client: httpx.AsyncClient) -> dict[str, Any]:
     bean = data(await client.post("/api/beans", json={"name": "Kenya AA", "roast_level": "light"}))
     grinder = data(
         await client.post("/api/grinders", json={"name": "Niche Zero", "step_unit": "numbers"})
     )
-    return {"bean_id": int(bean["id"]), "grinder_id": int(grinder["id"])}
+    return {"bean_id": int(bean["id"]), "grinder_id": int(grinder["id"]), "drink": "espresso"}
 
 
-async def _design(client: httpx.AsyncClient, kit: dict[str, int], **over: Any) -> Any:
+async def _design(client: httpx.AsyncClient, kit: dict[str, Any], **over: Any) -> Any:
     response = await client.post("/api/recipes/design", json={**kit, **over})
     assert response.status_code == 201, response.text
     return data(response)
@@ -54,7 +54,7 @@ async def _design(client: httpx.AsyncClient, kit: dict[str, int], **over: Any) -
 
 
 async def test_a_design_is_a_recipe_with_an_empty_version_1_and_its_conversation(
-    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     fork = await make_profile_version(app.state.db, "Fork me", owned=False)
 
@@ -80,6 +80,8 @@ async def test_a_design_is_a_recipe_with_an_empty_version_1_and_its_conversation
         "grind_setting": "19",
         "dose_g": 18.0,
         "target_yield_g": None,
+        "drink": "espresso",
+        "drink_notes": "",
     }
     version = created["version"]
     assert (version["version_label"], version["profile_version_id"], version["dose_g"]) == (
@@ -95,7 +97,7 @@ async def test_a_design_is_a_recipe_with_an_empty_version_1_and_its_conversation
     assert page["recipe"]["designing"] is True
 
 
-async def test_a_design_may_be_named(client: httpx.AsyncClient, kit: dict[str, int]) -> None:
+async def test_a_design_may_be_named(client: httpx.AsyncClient, kit: dict[str, Any]) -> None:
     created = await _design(client, kit, name="Kenya, but juicier")
 
     assert created["recipe"]["name"] == "Kenya, but juicier"
@@ -106,7 +108,7 @@ async def test_a_design_may_be_named(client: httpx.AsyncClient, kit: dict[str, i
     [("bean_id", 999_999), ("grinder_id", 999_999), ("fork_profile_version_id", 999_999)],
 )
 async def test_an_unknown_reference_is_a_404_naming_the_field_not_the_value(
-    client: httpx.AsyncClient, kit: dict[str, int], field: str, value: int
+    client: httpx.AsyncClient, kit: dict[str, Any], field: str, value: int
 ) -> None:
     response = await client.post("/api/recipes/design", json={**kit, field: value})
 
@@ -117,8 +119,10 @@ async def test_an_unknown_reference_is_a_404_naming_the_field_not_the_value(
     assert "999999" not in str(refused)
 
 
-async def test_a_grinder_is_required(client: httpx.AsyncClient, kit: dict[str, int]) -> None:
-    response = await client.post("/api/recipes/design", json={"bean_id": kit["bean_id"]})
+async def test_a_grinder_is_required(client: httpx.AsyncClient, kit: dict[str, Any]) -> None:
+    response = await client.post(
+        "/api/recipes/design", json={"bean_id": kit["bean_id"], "drink": "espresso"}
+    )
 
     assert response.status_code == 400
     assert error(response)["code"] == "INVALID_REQUEST"
@@ -138,7 +142,7 @@ async def test_a_grinder_is_required(client: httpx.AsyncClient, kit: dict[str, i
     ],
 )
 async def test_the_body_is_as_strict_as_the_brief(
-    client: httpx.AsyncClient, kit: dict[str, int], extra: dict[str, Any]
+    client: httpx.AsyncClient, kit: dict[str, Any], extra: dict[str, Any]
 ) -> None:
     response = await client.post("/api/recipes/design", json={**kit, **extra})
 
@@ -151,7 +155,7 @@ async def test_the_body_is_as_strict_as_the_brief(
 
 
 async def test_a_design_nobody_brewed_under_is_discarded(
-    client: httpx.AsyncClient, kit: dict[str, int]
+    client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     created = await _design(client, kit)
     recipe_id = created["recipe"]["id"]
@@ -164,7 +168,7 @@ async def test_a_design_nobody_brewed_under_is_discarded(
 
 
 async def test_discarding_anything_else_is_refused_with_its_own_code(
-    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     ordinary = data(
         await client.post(
@@ -214,7 +218,7 @@ async def _card(app: FastAPI, recipe_id: int, thread_id: int) -> tuple[int, int,
 
 
 async def test_the_card_is_served_with_its_kind_and_draft_and_accepts_into_version_1(
-    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     created = await _design(client, kit)
     recipe_id = created["recipe"]["id"]
@@ -251,8 +255,26 @@ async def test_the_card_is_served_with_its_kind_and_draft_and_accepts_into_versi
     assert page["versions"][0]["chat_thread_id"] == created["thread_id"]
 
 
+async def test_an_accepted_card_gives_version_1_the_drink_and_notes_from_the_brief(
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
+) -> None:
+    created = await _design(client, kit, drink="cappuccino", drink_notes="oat milk, 150 ml")
+    recipe_id = created["recipe"]["id"]
+    proposal_id, _, _ = await _card(app, recipe_id, created["thread_id"])
+
+    accepted = data(await client.post(f"/api/recipes/{recipe_id}/proposals/{proposal_id}/accept"))
+
+    version = accepted["version"]
+    assert (version["drink"], version["drink_notes"]) == ("cappuccino", "oat milk, 150 ml")
+    page = data(await client.get(f"/api/recipes/{recipe_id}"))
+    assert page["recipe"]["drink"] == "cappuccino"
+    # The card is drawn against the empty version 1: it says nothing of the drink, which the
+    # person chose in the dialog and the agent never proposes.
+    assert "drink" not in {change["field"] for change in accepted["proposal"]["changes"]}
+
+
 async def test_an_accepted_card_still_shows_the_recipe_it_set(
-    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     created = await _design(client, kit)
     recipe_id = created["recipe"]["id"]
@@ -270,7 +292,7 @@ async def test_an_accepted_card_still_shows_the_recipe_it_set(
 
 
 async def test_a_card_overtaken_by_a_hand_written_recipe_still_shows_only_its_own(
-    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     created = await _design(client, kit)
     recipe_id = created["recipe"]["id"]
@@ -301,7 +323,7 @@ async def test_a_card_overtaken_by_a_hand_written_recipe_still_shows_only_its_ow
 
 
 async def test_declining_the_card_discards_its_draft(
-    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     created = await _design(client, kit)
     recipe_id = created["recipe"]["id"]
@@ -319,7 +341,7 @@ async def test_declining_the_card_discards_its_draft(
 
 
 async def test_accepting_the_card_after_a_shot_was_filed_is_a_409(
-    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     created = await _design(client, kit)
     recipe_id = created["recipe"]["id"]
@@ -334,7 +356,7 @@ async def test_accepting_the_card_after_a_shot_was_filed_is_a_409(
 
 
 async def test_the_add_a_version_form_ends_the_design_and_retires_the_card(
-    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, Any]
 ) -> None:
     created = await _design(client, kit)
     recipe_id = created["recipe"]["id"]

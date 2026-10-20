@@ -151,6 +151,7 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                             "name": f"S{n_recipes}",
                             "bean_id": bean["id"],
                             "version": {
+                                "drink": "espresso",
                                 "profile_version_id": pick["profile_version_id"],
                                 "dose_g": 18,
                             },

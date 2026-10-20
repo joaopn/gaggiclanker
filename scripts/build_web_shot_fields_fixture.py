@@ -190,6 +190,7 @@ class Scene:
         row = await self.recipes.create(
             RecipeWrite(name=name, bean_id=bean.id, grinder_id=grinder.id),
             RecipeVersionWrite(
+                drink="espresso",
                 profile_version_id=version_id,
                 grind_setting="14",
                 dose_g=18.0,

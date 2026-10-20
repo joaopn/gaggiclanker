@@ -933,7 +933,14 @@ CREATE TABLE recipe_versions (
     outcome_at           TEXT,
     created_at           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     version_major        INTEGER NOT NULL DEFAULT 0,
-    version_minor        INTEGER NOT NULL DEFAULT 0
+    version_minor        INTEGER NOT NULL DEFAULT 0,
+    -- What is added to the shot after it leaves the portafilter (`domain/drinks.py`). NULL is no
+    -- drink stated: every version made before drinks were recorded, which is not Espresso.
+    -- Inherited by the next version, like the grind, dose and yield.
+    drink                TEXT    CHECK (drink IS NULL OR drink IN
+                              ('espresso', 'americano', 'cappuccino', 'latte', 'other')),
+    -- How the drink is made around the shot, in the person's words. Inherited; '' is none.
+    drink_notes          TEXT    NOT NULL DEFAULT ''
 ) STRICT;
 CREATE INDEX idx_recipe_versions_parent ON recipe_versions(parent_version_id);
 CREATE INDEX idx_recipe_versions_profile ON recipe_versions(profile_version_id);
@@ -1184,6 +1191,8 @@ SELECT v.id AS recipe_version_id,
        v.grind_value,
        v.dose_g,
        v.target_yield_g,
+       v.drink,
+       v.drink_notes,
        CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
              AND json_extract(pv.json, '$.temperature') > 0
             THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
@@ -1236,6 +1245,7 @@ SELECT s.id                                        AS shot_id,
        sv.grind_setting,
        sv.dose_g                                   AS recipe_dose_g,
        sv.target_yield_g,
+       sv.drink                                    AS recipe_drink,
        CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
              AND json_extract(pv.json, '$.temperature') > 0
             THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
@@ -1372,4 +1382,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;

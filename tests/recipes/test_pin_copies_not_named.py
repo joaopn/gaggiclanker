@@ -29,7 +29,7 @@ async def _a_pinned_recipe(wired: Fixtures) -> tuple[int, int, int]:
     original = await make_profile_version(wired.db, "Blooming")
     made = await wired.recipes.create(
         RecipeWrite(name="Guji", bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=original, dose_g=18.0),
+        RecipeVersionWrite(drink="espresso", profile_version_id=original, dose_g=18.0),
     )
     v1 = await wired.recipes.current_version(made.id)
     assert v1 is not None
@@ -49,7 +49,7 @@ async def test_a_new_recipe_and_a_new_version_cannot_name_a_copy(wired: Fixtures
     with pytest.raises(VersionRefused) as refused:
         await wired.recipes.create(
             RecipeWrite(name="Other", bean_id=wired.bean_id),
-            RecipeVersionWrite(profile_version_id=copy),
+            RecipeVersionWrite(drink="espresso", profile_version_id=copy),
         )
     assert refused.value.code == "PROFILE_IS_A_PIN"
     with pytest.raises(VersionRefused):

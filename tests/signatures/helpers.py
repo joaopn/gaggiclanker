@@ -39,6 +39,7 @@ async def make_recipe_versions(
     row = await recipes.create(
         RecipeWrite(name="Alturas", bean_id=bean.id, grinder_id=grinder.id),
         RecipeVersionWrite(
+            drink="espresso",
             profile_version_id=profile_version_id,
             grind_setting="14",
             dose_g=18.0,

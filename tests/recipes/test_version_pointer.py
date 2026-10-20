@@ -16,7 +16,15 @@ from tests.recipes.conftest import Fixtures, make_profile_version, make_shot
 async def _recipe(wired: Fixtures, **recipe: object) -> int:
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22", **recipe),  # type: ignore[arg-type]
+        RecipeVersionWrite.model_validate(
+            {
+                "drink": "espresso",
+                "dose_g": 18,
+                "target_yield_g": 36,
+                "grind_setting": "22",
+                **recipe,
+            }
+        ),
     )
     return row.id
 

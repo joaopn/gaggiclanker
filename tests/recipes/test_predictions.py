@@ -51,7 +51,7 @@ async def _recipe_with_versions(
     """A Recipe with ``count`` versions, oldest first."""
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     for step in range(2, count + 1):
         await wired.recipes.add_version(
@@ -490,7 +490,7 @@ class TestRevert:
         profile = await make_profile_version(wired.db, "Older profile")
         row = await wired.recipes.create(
             RecipeWrite(name="Guji", bean_id=wired.bean_id),
-            RecipeVersionWrite(profile_version_id=profile, dose_g=18),
+            RecipeVersionWrite(drink="espresso", profile_version_id=profile, dose_g=18),
         )
         first = await wired.recipes.current_version(row.id)
         assert first is not None
@@ -525,7 +525,8 @@ class TestTheWayBackOffer:
 
     async def test_after_going_back_the_offer_does_not_point_forward(self, wired: Fixtures) -> None:
         row = await wired.recipes.create(
-            RecipeWrite(name="Guji", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
+            RecipeWrite(name="Guji", bean_id=wired.bean_id),
+            RecipeVersionWrite(drink="espresso", dose_g=18),
         )
         v1 = await wired.recipes.current_version(row.id)
         assert v1 is not None
@@ -575,7 +576,8 @@ class TestDeadEnds:
     async def _fork(self, wired: Fixtures) -> tuple[int, dict[str, int]]:
         """v1 -> v1.1 -> v2 -> v2.1, by name."""
         row = await wired.recipes.create(
-            RecipeWrite(name="Guji", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
+            RecipeWrite(name="Guji", bean_id=wired.bean_id),
+            RecipeVersionWrite(drink="espresso", dose_g=18),
         )
         ids = {"v1": (await wired.recipes.current_version(row.id)).id}  # type: ignore[union-attr]
         for label, patch, major in (

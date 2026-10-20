@@ -158,7 +158,10 @@ async def test_only_the_derived_columns_and_the_version_change(db: Database) -> 
     row = await recipes.create(
         RecipeWrite(name="Guji", bean_id=bean.id),
         RecipeVersionWrite(
-            profile_version_id=await make_profile_version(db, "p"), dose_g=18.0, target_yield_g=36.0
+            drink="espresso",
+            profile_version_id=await make_profile_version(db, "p"),
+            dose_g=18.0,
+            target_yield_g=36.0,
         ),
     )
     assert row.current_version_id is not None

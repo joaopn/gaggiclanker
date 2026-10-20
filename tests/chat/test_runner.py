@@ -1189,7 +1189,7 @@ async def test_a_hand_made_recipe_that_names_no_profile_is_an_ordinary_recipe_ch
 
     any_profile = await RecipesRepository(archive.db).create(
         RecipeWrite(name="Any profile", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
-        RecipeVersionWrite(),
+        RecipeVersionWrite(drink="espresso"),
     )
     opened = await ChatRepository(archive.db).open_thread(any_profile.id)
     assert opened.thread is not None

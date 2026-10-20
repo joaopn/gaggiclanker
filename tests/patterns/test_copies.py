@@ -52,7 +52,7 @@ async def _duplicate(world: PatternWorld, *, copied_from: int | None = None) -> 
     original = await world.own(world.a, "Light roasts channel below 9 clicks.")
     dup = await world.recipes.create(
         RecipeWrite(name="Guji milk", bean_id=world.bean_a, grinder_id=world.grinder_id),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     copy = await world.insights.insert(
         InsightWrite(
@@ -88,7 +88,7 @@ async def _second_duplicate(world: PatternWorld, original: int, name: str) -> tu
     """Another duplicate of A, with its copy of A's insight: (the Recipe's id, the copy's id)."""
     other = await world.recipes.create(
         RecipeWrite(name=name, bean_id=world.bean_a, grinder_id=world.grinder_id),
-        RecipeVersionWrite(dose_g=18),
+        RecipeVersionWrite(drink="espresso", dose_g=18),
     )
     copy = await world.insights.insert(
         InsightWrite(
@@ -378,7 +378,7 @@ class TestTheKnowledgePagesCount:
         dup = await _duplicate(world)
         second = await world.recipes.create(
             RecipeWrite(name="Guji again", bean_id=world.bean_a, grinder_id=world.grinder_id),
-            RecipeVersionWrite(dose_g=18),
+            RecipeVersionWrite(drink="espresso", dose_g=18),
         )
         # Written as a duplicate of D writes it: the first original's id, not the copy's.
         await world.insights.insert(

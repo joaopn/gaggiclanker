@@ -394,6 +394,7 @@ async def build_fixture(db: Database) -> Fixture:
             grinder_id=grinder.id,
         ),
         RecipeVersionWrite(
+            drink="espresso",
             profile_version_id=profile_version.id,
             grind_setting="22 numbers",
             grind_value=22.0,

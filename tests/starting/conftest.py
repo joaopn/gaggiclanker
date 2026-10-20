@@ -423,6 +423,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                 grinder_id=grinder_ids[str(entry["grinder"])],
             ),
             RecipeVersionWrite(
+                drink="espresso",
                 profile_version_id=None,
                 grind_setting=str(entry["grind"]),
                 grind_value=float(entry["grind"]),

@@ -4919,6 +4919,12 @@ export interface components {
         DesignBrief: {
             /** Dose G */
             dose_g?: number | null;
+            drink?: components["schemas"]["Drink"] | null;
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
             /** Fork Profile Version Id */
             fork_profile_version_id?: number | null;
             /**
@@ -5333,6 +5339,19 @@ export interface components {
             /** Writes Enabled */
             writes_enabled: boolean;
         };
+        /** @enum {string} */
+        Drink: "espresso" | "americano" | "cappuccino" | "latte" | "other";
+        /**
+         * DrinkOption
+         * @description One drink the New Recipe dialog and the version form offer, with what it covers.
+         */
+        DrinkOption: {
+            /** Covers */
+            covers: string;
+            /** Label */
+            label: string;
+            value: components["schemas"]["Drink"];
+        };
         /**
          * DuplicateAnswer
          * @description `POST .../duplicate`: the new Recipe, and the id of the profile-list row of its new profile
@@ -5398,6 +5417,12 @@ export interface components {
         DuplicateVersionFields: {
             /** Dose G */
             dose_g?: number | null;
+            drink?: components["schemas"]["Drink"] | null;
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
             /** Grind Setting */
             grind_setting?: string | null;
             /** Grind Value */
@@ -7432,13 +7457,6 @@ export interface components {
             grinder_id?: number | null;
             /** Name */
             name: string;
-            /**
-             * @default {
-             *       "intent": "",
-             *       "prediction": "",
-             *       "origin": "manual"
-             *     }
-             */
             version: components["schemas"]["RecipeVersionWrite"];
         };
         /**
@@ -7455,6 +7473,12 @@ export interface components {
             bean_id: number;
             /** Dose G */
             dose_g?: number | null;
+            drink: components["schemas"]["Drink"];
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
             /** Fork Profile Version Id */
             fork_profile_version_id?: number | null;
             /**
@@ -7755,6 +7779,12 @@ export interface components {
              * @default false
              */
             designing: boolean;
+            drink?: components["schemas"]["Drink"] | null;
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
             /** Grinder Id */
             grinder_id?: number | null;
             /** Grinder Name */
@@ -7991,6 +8021,9 @@ export interface components {
             compares_to_version_id?: number | null;
             /** Dose G */
             dose_g?: number | null;
+            drink?: components["schemas"]["Drink"] | null;
+            /** Drink Notes */
+            drink_notes?: string | null;
             /** Grind Setting */
             grind_setting?: string | null;
             /** Grind Value */
@@ -8073,6 +8106,12 @@ export interface components {
             created_at: string;
             /** Dose G */
             dose_g?: number | null;
+            drink?: components["schemas"]["Drink"] | null;
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
             /** Grind Setting */
             grind_setting?: string | null;
             /** Grind Value */
@@ -8161,6 +8200,12 @@ export interface components {
         RecipeVersionWrite: {
             /** Dose G */
             dose_g?: number | null;
+            drink: components["schemas"]["Drink"];
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
             /** Grind Setting */
             grind_setting?: string | null;
             /** Grind Value */
@@ -8723,6 +8768,7 @@ export interface components {
              */
             raw_bytes: number;
             recipe_badge?: components["schemas"]["ShotRecipeBadge"] | null;
+            recipe_drink?: components["schemas"]["Drink"] | null;
             /** Recipe Version Id */
             recipe_version_id?: number | null;
             /**
@@ -8963,6 +9009,7 @@ export interface components {
             /** Rating */
             rating?: number | null;
             recipe_badge?: components["schemas"]["ShotRecipeBadge"] | null;
+            recipe_drink?: components["schemas"]["Drink"] | null;
             /** Recipe Version Id */
             recipe_version_id?: number | null;
             review: components["schemas"]["ReviewBlock"];
@@ -9384,6 +9431,12 @@ export interface components {
             bean_id: number;
             /** Dose Hint G */
             dose_hint_g?: number | null;
+            drink: components["schemas"]["Drink"];
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
             /** Grinder Id */
             grinder_id?: number | null;
             /**
@@ -9926,6 +9979,8 @@ export interface components {
             burr_types: components["schemas"]["Term"][];
             /** Decisions */
             decisions: components["schemas"]["Term"][];
+            /** Drinks */
+            drinks: components["schemas"]["DrinkOption"][];
             /** Flavor Wheel */
             flavor_wheel: components["schemas"]["FlavorNode"][];
             /** Origins */

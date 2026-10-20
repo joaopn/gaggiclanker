@@ -69,7 +69,7 @@ async def test_a_designed_recipe_has_the_flag_the_brief_and_an_empty_version_1(
 
 async def test_a_recipe_made_any_other_way_is_not_being_designed(wired: Fixtures) -> None:
     row = await wired.recipes.create(
-        RecipeWrite(name="By hand", bean_id=wired.bean_id), RecipeVersionWrite()
+        RecipeWrite(name="By hand", bean_id=wired.bean_id), RecipeVersionWrite(drink="espresso")
     )
 
     assert row.designing is False
@@ -156,7 +156,7 @@ async def test_once_filled_the_recipe_appends_like_any_other(wired: Fixtures) ->
 async def test_a_hand_made_recipe_that_names_no_profile_still_appends(wired: Fixtures) -> None:
     """The "any profile" Recipe looks like an empty design and must not be treated as one."""
     row = await wired.recipes.create(
-        RecipeWrite(name="Any profile", bean_id=wired.bean_id), RecipeVersionWrite()
+        RecipeWrite(name="Any profile", bean_id=wired.bean_id), RecipeVersionWrite(drink="espresso")
     )
 
     second = await wired.recipes.add_version(row.id, RecipeVersionPatch(dose_g=18))
@@ -222,7 +222,7 @@ async def test_a_design_nothing_was_filed_under_is_deleted_with_its_conversation
 
 async def test_discarding_refuses_a_recipe_that_is_not_being_designed(wired: Fixtures) -> None:
     row = await wired.recipes.create(
-        RecipeWrite(name="By hand", bean_id=wired.bean_id), RecipeVersionWrite()
+        RecipeWrite(name="By hand", bean_id=wired.bean_id), RecipeVersionWrite(drink="espresso")
     )
 
     assert await wired.recipes.discard_design(row.id) == "not_designing"
@@ -342,6 +342,8 @@ async def test_the_recipe_rows_carry_the_flag_and_the_brief(
         "grind_setting": "",
         "dose_g": None,
         "target_yield_g": None,
+        "drink": None,
+        "drink_notes": "",
     }
 
 

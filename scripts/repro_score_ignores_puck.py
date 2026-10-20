@@ -80,6 +80,7 @@ async def read_base_rendering() -> str:
             row = await RecipesRepository(db).create(
                 RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
                 RecipeVersionWrite(
+                    drink="espresso",
                     profile_version_id=version.id,
                     grind_setting="14",
                     dose_g=18.0,

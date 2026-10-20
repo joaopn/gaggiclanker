@@ -119,6 +119,7 @@ async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
         row = await recipes.create(
             RecipeWrite(name="Alturas on the Niche", bean_id=bean.id, grinder_id=grinder.id),
             RecipeVersionWrite(
+                drink="espresso",
                 profile_version_id=profile,
                 grind_setting="14",
                 dose_g=18.0,

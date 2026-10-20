@@ -48,6 +48,7 @@ from gaggiclanker.db.repos.profiles import (
     not_synthetic_sql,
     version_name_sql,
 )
+from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.knowledge.rules import RecipeContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
@@ -156,6 +157,11 @@ class StartingPointContext(BaseModel):
     #: The style rule selection was made for, and why. See the module docstring.
     planned_style: str = DEFAULT_STYLE
     planned_style_reason: str = ""
+    #: The drink the person chose for the new Recipe and how it is made around the shot, as they
+    #: said it. ``None`` is none stated (a run from before drinks were recorded). Kept on the run
+    #: so that taking an option makes version 1 with the same drink.
+    drink: Drink | None = None
+    drink_notes: str = ""
     similar: list[SimilarRecipe] = Field(default_factory=list)
     profiles: list[ProfileCandidate] = Field(default_factory=list)
     signals: list[str] = Field(default_factory=list)
@@ -222,6 +228,8 @@ async def build_context(
     grinder_id: int | None = None,
     usual_grind: str = "",
     dose_hint_g: float | None = None,
+    drink: Drink | None = None,
+    drink_notes: str = "",
     as_of: str = "",
     chunk_token_budget: int = DEFAULT_CHUNK_TOKEN_BUDGET,
     similar_limit: int = DEFAULT_LIMIT,
@@ -307,6 +315,8 @@ async def build_context(
         as_of=today,
         planned_style=style,
         planned_style_reason=reason,
+        drink=drink,
+        drink_notes=drink_notes.strip(),
         similar=similar,
         profiles=profiles,
         signals=signals,

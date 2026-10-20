@@ -29,6 +29,8 @@ from gaggiclanker.drafts.standing import classify
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.starting.models import StartingPointOption
 
+LEVEL_FOUR = schema.describe_sql(frozen_schema_sql(4))
+
 NOW = datetime(2026, 10, 20, 12, 0, 0, tzinfo=UTC)
 
 #: Every table the step renames, old name to new.
@@ -343,7 +345,9 @@ class Level3:
     def upgrade(self) -> UpgradeReport:
         self.conn.commit()
         self.conn.close()
-        report = upgrade_database_file(self.path, self.path.parent, steps=STEPS, now=NOW)
+        report = upgrade_database_file(
+            self.path, self.path.parent, steps=STEPS[:4], expected=LEVEL_FOUR, now=NOW
+        )
         assert report is not None
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
@@ -381,7 +385,7 @@ def test_the_result_is_the_schema_file_and_every_row_is_still_there(level3: Leve
     report = level3.upgrade()
 
     assert (report.from_level, report.to_level) == (3, 4)
-    assert schema.schema_differences(level3.conn) == []
+    assert schema.schema_differences(level3.conn, LEVEL_FOUR) == []
     assert level3.one("PRAGMA user_version") == 4
     for old, new in TABLES.items():
         assert level3.one(f"SELECT COUNT(*) FROM {new}") == before[old], new  # noqa: S608
@@ -753,7 +757,7 @@ def test_the_step_alone_without_the_runners_map_would_have_refused(tmp_path: Pat
     db.conn.close()
     unmapped = (*STEPS[:3], replace(STEPS[3], renamed_tables={}))
     with pytest.raises(UpgradeRefused, match="refer to missing rows"):
-        upgrade_database_file(db.path, db.path.parent, steps=unmapped, now=NOW)
+        upgrade_database_file(db.path, db.path.parent, steps=unmapped, expected=LEVEL_FOUR, now=NOW)
     conn = sqlite3.connect(db.path)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
     conn.close()
@@ -780,7 +784,7 @@ def test_a_reference_the_step_itself_breaks_still_refuses(tmp_path: Path) -> Non
     db.conn.close()
     steps = (*STEPS[:3], replace(STEPS[3], run=breaks, foreign_keys_off=True))
     with pytest.raises(UpgradeRefused, match="refer to missing rows"):
-        upgrade_database_file(db.path, db.path.parent, steps=steps, now=NOW)
+        upgrade_database_file(db.path, db.path.parent, steps=steps, expected=LEVEL_FOUR, now=NOW)
     conn = sqlite3.connect(db.path)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
     assert conn.execute("SELECT COUNT(*) FROM sets").fetchone()[0] == 2

@@ -811,6 +811,8 @@ describe("NewRecipeDialog, designing it with the agent", () => {
       grind_setting: "22",
       dose_g: 18,
       target_yield_g: 36,
+      drink: "espresso",
+      drink_notes: "",
     });
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(12, "more body, and try a bloom"),

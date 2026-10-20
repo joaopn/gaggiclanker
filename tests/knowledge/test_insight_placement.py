@@ -78,7 +78,7 @@ async def _recipe(
 ) -> tuple[int, int]:
     row = await recipes.create(
         RecipeWrite(name=name, bean_id=bean, grinder_id=grinder),
-        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert row.current_version_id is not None
     return row.id, row.current_version_id

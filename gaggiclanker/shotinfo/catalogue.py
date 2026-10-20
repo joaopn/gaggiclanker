@@ -49,6 +49,7 @@ import structlog
 
 from gaggiclanker.db.repos.reviews import ReviewClaimRow
 from gaggiclanker.domain import diagnostics as engine
+from gaggiclanker.domain.drinks import drink_label
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
 from gaggiclanker.domain.phase_metrics import (
     FAST_FLOW_PRESSURE_SHARE,
@@ -2004,6 +2005,33 @@ def _items() -> tuple[Item, ...]:
             default_tier="excluded",
             shot=lambda f: (
                 _qty(f.version.target_yield_g, 1, "g") if f.version is not None else None
+            ),
+        ),
+        Item(
+            key="recipe_drink",
+            group=recipe,
+            name="Recipe drink",
+            label="Recipe drink",
+            meaning=(
+                "The drink the shot's Recipe version is made for: what is added to the shot after "
+                "it leaves the portafilter (Espresso, Americano, Cappuccino, Latte or Other). "
+                "Absent when the shot is not filed or its version states no drink."
+            ),
+            default_tier="excluded",
+            shot=lambda f: drink_label(f.version.drink) if f.version is not None else None,
+        ),
+        Item(
+            key="recipe_drink_notes",
+            group=recipe,
+            name="Recipe drink notes",
+            label="Recipe drink notes",
+            meaning=(
+                "How the shot's Recipe version says the drink is made around the shot, in the "
+                "person's words (milk type, syrup, ice). Absent when there are none."
+            ),
+            default_tier="excluded",
+            shot=lambda f: (
+                (f.version.drink_notes or "").strip() or None if f.version is not None else None
             ),
         ),
         Item(

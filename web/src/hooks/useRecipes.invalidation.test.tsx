@@ -355,6 +355,8 @@ describe("the Recipe-side writes invalidate no more than they changed", () => {
       usual_grind: "",
       goal: "",
       grind_setting: "",
+      drink: "espresso",
+      drink_notes: "",
     });
 
     await waitFor(() => expect(keys.length).toBe(2));

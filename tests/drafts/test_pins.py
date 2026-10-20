@@ -182,7 +182,8 @@ async def _state(app: FastAPI, client: httpx.AsyncClient, kind: str) -> tuple[in
     if kind == "no_profile":
         bean = data(await client.post("/api/beans", json={"name": "Bare", "roaster": "x"}))
         made = await RecipesRepository(app.state.db).create(
-            RecipeWrite(name="Bare", bean_id=bean["id"]), RecipeVersionWrite(dose_g=18)
+            RecipeWrite(name="Bare", bean_id=bean["id"]),
+            RecipeVersionWrite(drink="espresso", dose_g=18),
         )
         detail = data(await client.get(f"/api/recipes/{made.id}"))
         return int(made.id), int(detail["versions"][0]["version"]["id"]), None
@@ -448,7 +449,11 @@ async def test_a_new_recipe_is_refused_the_profile_of_a_pins_copy(adopted: Adopt
 
     new_recipe = await client.post(
         "/api/recipes",
-        json={"name": "Other", "bean_id": bean["id"], "version": {"profile_version_id": copy}},
+        json={
+            "name": "Other",
+            "bean_id": bean["id"],
+            "version": {"drink": "espresso", "profile_version_id": copy},
+        },
     )
     # (A new version of a Recipe has no profile to name: it brews the Recipe's own.)
     assert new_recipe.status_code == 409 and error(new_recipe)["code"] == "PROFILE_IS_A_PIN"

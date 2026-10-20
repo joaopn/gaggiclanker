@@ -366,6 +366,7 @@ Flow adherence: 0.44 ml/s
 Recipe grind: 22 numbers
 Recipe dose: 18.0 g
 Recipe target yield: 36.0 g
+Recipe drink: Espresso
 Recipe profile: Medium 18g 1:2
 Profile temperature: 93.0 °C
 [Curve]

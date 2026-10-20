@@ -96,7 +96,9 @@ async def _recipe_naming(archive: Archive, version_id: int) -> int:
     await own_version(archive.db, version_id)
     row = await archive.engine.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=bean.id),
-        RecipeVersionWrite(profile_version_id=version_id, dose_g=18.0, target_yield_g=36.0),
+        RecipeVersionWrite(
+            drink="espresso", profile_version_id=version_id, dose_g=18.0, target_yield_g=36.0
+        ),
     )
     return row.id
 
@@ -192,7 +194,7 @@ class TestImporterMatching:
         await own_version(wired.db, version_id)
         created = await wired.recipes.create(
             RecipeWrite(name="Imported archive", bean_id=wired.bean_id),
-            RecipeVersionWrite(profile_version_id=version_id),
+            RecipeVersionWrite(drink="espresso", profile_version_id=version_id),
         )
 
         service = ImportService(wired.db)

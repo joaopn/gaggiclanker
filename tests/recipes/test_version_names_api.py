@@ -34,7 +34,7 @@ async def recipe_id(client: httpx.AsyncClient) -> int:
                 {
                     "name": "Guji on the Niche",
                     "bean_id": bean["id"],
-                    "version": {"dose_g": 18.0, "grind_setting": "22"},
+                    "version": {"drink": "espresso", "dose_g": 18.0, "grind_setting": "22"},
                 },
             ),
         )
@@ -125,7 +125,8 @@ class TestTheRecipePage:
         )
         designed = data(
             await client.post(
-                "/api/recipes/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
+                "/api/recipes/design",
+                json={"bean_id": bean["id"], "grinder_id": grinder["id"], "drink": "espresso"},
             )
         )
         assert (designed["recipe"]["next_minor_label"], designed["recipe"]["next_major_label"]) == (

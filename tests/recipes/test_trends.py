@@ -18,7 +18,7 @@ from tests.recipes.conftest import Fixtures, make_shot
 async def _three_versions_and_ten_shots(wired: Fixtures) -> int:
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-        RecipeVersionWrite(dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
+        RecipeVersionWrite(drink="espresso", dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
     )
     versions = [(await wired.recipes.current_version(row.id))]
     for grind, intent in (("21", "finer"), ("20", "finer still")):
@@ -83,7 +83,7 @@ class TestTrends:
 
     async def test_a_shot_with_no_dose_anywhere_has_no_ratio(self, wired: Fixtures) -> None:
         row = await wired.recipes.create(
-            RecipeWrite(name="No dose", bean_id=wired.bean_id), RecipeVersionWrite()
+            RecipeWrite(name="No dose", bean_id=wired.bean_id), RecipeVersionWrite(drink="espresso")
         )
         assert row.current_version_id is not None
         shot_id = await make_shot(wired.db, "000777")
@@ -98,7 +98,7 @@ class TestTrends:
         """A zero would draw a bar at the bottom saying the recipe was terrible."""
         row = await wired.recipes.create(
             RecipeWrite(name="Fresh start", bean_id=wired.bean_id),
-            RecipeVersionWrite(),
+            RecipeVersionWrite(drink="espresso"),
         )
         trends = await wired.recipes.trends(row.id)
         assert trends.shots == []
@@ -134,7 +134,8 @@ async def test_points_are_in_the_order_the_shots_were_pulled_not_the_versions_ma
 ) -> None:
     """After going back, new shots of an older version come after the newer version's."""
     row = await wired.recipes.create(
-        RecipeWrite(name="Order", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
+        RecipeWrite(name="Order", bean_id=wired.bean_id),
+        RecipeVersionWrite(drink="espresso", dose_g=18),
     )
     first = await wired.recipes.current_version(row.id)
     assert first is not None
@@ -178,7 +179,7 @@ async def _counted_recipe(wired: Fixtures) -> tuple[int, int]:
     """
     row = await wired.recipes.create(
         RecipeWrite(name="Counted", bean_id=wired.bean_id),
-        RecipeVersionWrite(dose_g=18.0, target_yield_g=36.0),
+        RecipeVersionWrite(drink="espresso", dose_g=18.0, target_yield_g=36.0),
     )
     assert row.current_version_id is not None
     version = row.current_version_id
@@ -237,7 +238,7 @@ class TestTheAveragesAreOverCountedShots:
     async def test_a_version_with_only_uncounted_shots_has_no_mean(self, wired: Fixtures) -> None:
         row = await wired.recipes.create(
             RecipeWrite(name="Only a discard", bean_id=wired.bean_id),
-            RecipeVersionWrite(dose_g=18.0),
+            RecipeVersionWrite(drink="espresso", dose_g=18.0),
         )
         assert row.current_version_id is not None
         shot = await make_shot(wired.db, "000810")
@@ -255,7 +256,7 @@ class TestTheAveragesAreOverCountedShots:
     ) -> None:
         row = await wired.recipes.create(
             RecipeWrite(name="Standard board", bean_id=wired.bean_id),
-            RecipeVersionWrite(dose_g=18.0),
+            RecipeVersionWrite(drink="espresso", dose_g=18.0),
         )
         assert row.current_version_id is not None
         shot = await make_shot(wired.db, "000811")
@@ -274,7 +275,8 @@ class TestTheAveragesAreOverCountedShots:
 async def test_the_ratio_s_dose_is_the_judgement_s_when_one_was_typed(wired: Fixtures) -> None:
     """18 g in the version, 20 g typed on one shot: that shot's ratio is yield over 20."""
     row = await wired.recipes.create(
-        RecipeWrite(name="Typed dose", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18.0)
+        RecipeWrite(name="Typed dose", bean_id=wired.bean_id),
+        RecipeVersionWrite(drink="espresso", dose_g=18.0),
     )
     assert row.current_version_id is not None
     for device, dose_in in (("000820", None), ("000821", 20.0)):

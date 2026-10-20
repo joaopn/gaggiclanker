@@ -101,6 +101,7 @@ from gaggiclanker.db.repos.recipes import (
     version_changes,
 )
 from gaggiclanker.db.repos.shots import ShotListItem
+from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.domain.recipes import recipe_name
 from gaggiclanker.domain.spread import (
     MeasureSpread,
@@ -135,9 +136,10 @@ class RecipeCreate(BaseModel):
     name: str
     bean_id: int
     grinder_id: int | None = None
-    #: Version 1. Everything on it is optional — a Recipe can start as "this bean,
-    #: this grinder, we will see" — and the wizard fills it in.
-    version: RecipeVersionWrite = RecipeVersionWrite()
+    #: Version 1. Everything on it is optional but the drink — a Recipe can start as "this
+    #: bean, this grinder, we will see", and the wizard fills in the rest — so the body must
+    #: carry a version, and the version a drink.
+    version: RecipeVersionWrite
     #: Whether the matcher may file shots under this Recipe. True by default: a
     #: Recipe is created by somebody who has just put that bean in a hopper, and one
     #: that did not collect the shots pulled on its profile would look broken.
@@ -189,6 +191,9 @@ class RecipeDesignCreate(DesignBrief):
     """
 
     bean_id: int
+    #: Required here, where the brief it is stored as allows a brief from before drinks: the
+    #: drink the design is for. The design's version 1 takes it (and the notes) from the brief.
+    drink: Drink
     #: Required: a grind is only ever a number on one grinder's dial, and a
     #: design with no grinder has nothing to anchor one on. Pre-ground coffee
     #: keeps the ordinary New Recipe form and its suggestions.

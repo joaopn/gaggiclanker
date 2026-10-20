@@ -33,7 +33,7 @@ async def _new_recipe(
 ) -> RecipeRow:
     return await wired.recipes.create(
         RecipeWrite(name=name, bean_id=wired.bean_id),
-        RecipeVersionWrite(**version),  # type: ignore[arg-type]
+        RecipeVersionWrite(drink="espresso", **version),  # type: ignore[arg-type]
     )
 
 

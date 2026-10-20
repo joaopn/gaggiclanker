@@ -39,7 +39,8 @@ async def profile(fx: Fixtures, label: str) -> tuple[int, int]:
 
 async def new_recipe(fx: Fixtures, name: str, version: int | None):  # type: ignore[no-untyped-def]
     return await fx.recipes.create(
-        RecipeWrite(name=name, bean_id=fx.bean_id), RecipeVersionWrite(profile_version_id=version)
+        RecipeWrite(name=name, bean_id=fx.bean_id),
+        RecipeVersionWrite(drink="espresso", profile_version_id=version),
     )
 
 
@@ -107,14 +108,14 @@ async def test_only_the_starting_point_starts_a_recipe_on_a_loose_version(wired:
 
     made = await wired.recipes.create(
         RecipeWrite(name="From a draft", bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=loose, dose_g=18.0),
+        RecipeVersionWrite(drink="espresso", profile_version_id=loose, dose_g=18.0),
         from_a_draft=True,
     )
     assert made.board_id is None
     with pytest.raises(VersionRefused):
         await wired.recipes.create(
             RecipeWrite(name="Second", bean_id=wired.bean_id),
-            RecipeVersionWrite(profile_version_id=loose, dose_g=18.0),
+            RecipeVersionWrite(drink="espresso", profile_version_id=loose, dose_g=18.0),
             from_a_draft=True,
         )
 
@@ -183,7 +184,7 @@ async def test_a_recipe_on_a_loose_version_is_given_a_profile_that_takes_the_ver
     loose = await make_profile_version(wired.db, "Imported", owned=False)
     older = await wired.recipes.create(
         RecipeWrite(name="Old", bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=loose),
+        RecipeVersionWrite(drink="espresso", profile_version_id=loose),
         from_a_draft=True,
     )
 
@@ -209,7 +210,7 @@ async def test_a_recipe_on_two_loose_versions_is_given_a_profile_that_takes_both
     second = await make_profile_version(wired.db, "Second file", owned=False)
     made = await wired.recipes.create(
         RecipeWrite(name="Old", bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=first),
+        RecipeVersionWrite(drink="espresso", profile_version_id=first),
         from_a_draft=True,
     )
     await wired.recipes.add_version(made.id, RecipeVersionPatch(profile_version_id=second))
@@ -366,7 +367,7 @@ async def test_the_route_refuses_a_profile_that_has_a_recipe_in_the_spec_s_words
         return {
             "name": name,
             "bean_id": bean,
-            "version": {"profile_version_id": row.current_version_id},
+            "version": {"drink": "espresso", "profile_version_id": row.current_version_id},
         }
 
     first = await client.post("/api/recipes", json=body("Guji natural"))
@@ -396,7 +397,7 @@ async def test_a_new_version_has_no_profile_to_choose(
             json={
                 "name": "S",
                 "bean_id": bean,
-                "version": {"profile_version_id": row.current_version_id},
+                "version": {"drink": "espresso", "profile_version_id": row.current_version_id},
             },
         )
     ).json()["data"]
@@ -440,7 +441,7 @@ async def test_a_profile_that_takes_over_a_loose_version_takes_its_recipe_with_i
     loose = await make_profile_version(wired.db, "Drafted", owned=False)
     made = await wired.recipes.create(
         RecipeWrite(name="From a draft", bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=loose, dose_g=18.0),
+        RecipeVersionWrite(drink="espresso", profile_version_id=loose, dose_g=18.0),
         from_a_draft=True,
     )
     board = ProfileBoardRepository(wired.db)
@@ -459,7 +460,7 @@ async def test_a_profile_with_a_recipe_gets_its_own_copy_and_the_loose_version_s
     loose = await make_profile_version(wired.db, "Drafted", owned=False)
     made = await wired.recipes.create(
         RecipeWrite(name="From a draft", bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=loose, dose_g=18.0),
+        RecipeVersionWrite(drink="espresso", profile_version_id=loose, dose_g=18.0),
         from_a_draft=True,
     )
     holder, _version = await profile(wired, "Taken")
@@ -496,11 +497,18 @@ async def test_the_add_a_version_route_gives_a_design_its_profile_under_new_reci
     held = (
         await client.post(
             "/api/recipes",
-            json={"name": "Holder", "bean_id": bean, "version": {"profile_version_id": taken}},
+            json={
+                "name": "Holder",
+                "bean_id": bean,
+                "version": {"drink": "espresso", "profile_version_id": taken},
+            },
         )
     ).json()["data"]
     design = (
-        await client.post("/api/recipes/design", json={"bean_id": bean, "grinder_id": grinder})
+        await client.post(
+            "/api/recipes/design",
+            json={"bean_id": bean, "grinder_id": grinder, "drink": "espresso"},
+        )
     ).json()["data"]["recipe"]
 
     async def add(version: int) -> httpx.Response:
@@ -532,7 +540,11 @@ async def test_the_choices_route_lists_free_profiles_and_the_files_nobody_stands
     bean = (await client.post("/api/beans", json={"name": "Guji"})).json()["data"]["id"]
     await client.post(
         "/api/recipes",
-        json={"name": "Holder", "bean_id": bean, "version": {"profile_version_id": held}},
+        json={
+            "name": "Holder",
+            "bean_id": bean,
+            "version": {"drink": "espresso", "profile_version_id": held},
+        },
     )
 
     response = await client.get("/api/recipes/profile-choices")
@@ -555,7 +567,7 @@ async def test_a_recipe_on_a_loose_version_is_given_a_profile_through_the_route(
     recipes = RecipesRepository(db)
     old = await recipes.create(
         RecipeWrite(name="Old", bean_id=bean),
-        RecipeVersionWrite(profile_version_id=loose),
+        RecipeVersionWrite(drink="espresso", profile_version_id=loose),
         from_a_draft=True,
     )
 
@@ -654,7 +666,7 @@ async def test_a_second_recipe_on_a_shared_loose_version_leaves_the_profile_its_
     assert moved is not None
     other = await wired.recipes.create(
         RecipeWrite(name="B", bean_id=wired.bean_id),
-        RecipeVersionWrite(profile_version_id=None),
+        RecipeVersionWrite(drink="espresso", profile_version_id=None),
     )
     await wired.db.execute(
         "UPDATE recipe_versions SET profile_version_id = ? WHERE recipe_id = ?", (shared, other.id)
@@ -737,7 +749,7 @@ async def test_a_recipe_with_no_profile_now_is_given_one_though_an_older_version
     recipes = RecipesRepository(db)
     old = await recipes.create(
         RecipeWrite(name="OnLoose", bean_id=bean),
-        RecipeVersionWrite(profile_version_id=loose),
+        RecipeVersionWrite(drink="espresso", profile_version_id=loose),
         from_a_draft=True,
     )
     assert await recipes.add_version(old.id, RecipeVersionPatch(profile_version_id=None))

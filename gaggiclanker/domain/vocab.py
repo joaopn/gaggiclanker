@@ -25,6 +25,8 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from gaggiclanker.domain.drinks import DRINK_TERMS, Drink
+
 __all__ = [
     "BALANCES",
     "BURR_TYPES",
@@ -491,6 +493,16 @@ class Term(BaseModel):
     label: str
 
 
+class DrinkOption(BaseModel):
+    """One drink the New Recipe dialog and the version form offer, with what it covers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: Drink
+    label: str
+    covers: str
+
+
 class MeasureTerm(BaseModel):
     """One measure the spread is worked out over: its slug, its words, its unit.
 
@@ -553,6 +565,9 @@ class Vocabulary(BaseModel):
     shot_styles: list[Term]
     rule_categories: list[Term]
     rule_confidences: list[Term]
+    #: The drinks a Recipe version is made for, in the order of the table the person picks from,
+    #: each with the line that says what it covers (`domain/drinks.py`).
+    drinks: list[DrinkOption]
 
 
 def _terms(values: tuple[str, ...], labels: dict[str, str] | None = None) -> list[Term]:
@@ -661,4 +676,8 @@ def vocabulary() -> Vocabulary:
         shot_styles=_terms(SHOT_STYLES, _STYLE_LABELS),
         rule_categories=_terms(RULE_CATEGORIES),
         rule_confidences=_terms(RULE_CONFIDENCES, _CONFIDENCE_LABELS),
+        drinks=[
+            DrinkOption(value=term.value, label=term.label, covers=term.covers)
+            for term in DRINK_TERMS
+        ],
     )

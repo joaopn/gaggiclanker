@@ -181,6 +181,9 @@ export function toDesignBody(draft: Draft): RecipeDesignCreate {
     grind_setting: draft.grindSetting.trim(),
     dose_g: toNumber(draft.doseG),
     target_yield_g: toNumber(draft.targetYieldG),
+    // The dialog's Drink row arrives with the screens; until then a new Recipe is an Espresso one.
+    drink: "espresso",
+    drink_notes: "",
   };
 }
 
@@ -202,6 +205,9 @@ export function toCreateBody(draft: Draft): RecipeCreate {
       dose_g: toNumber(draft.doseG),
       target_yield_g: toNumber(draft.targetYieldG),
       intent: draft.intent,
+      // The dialog's Drink row arrives with the screens; until then a new Recipe is an Espresso one.
+      drink: "espresso",
+      drink_notes: "",
       // The starting point is not an experiment against anything, so it
       // states no prediction; one is added from the Recipe page when it is.
       prediction: "",
