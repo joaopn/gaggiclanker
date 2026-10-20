@@ -59,7 +59,7 @@ from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.domain.spread import CountedShot
-from gaggiclanker.knowledge.service import KnowledgeService
+from gaggiclanker.knowledge.service import DEFAULT_DOCS_DIR, KnowledgeService
 from gaggiclanker.settings import SETTINGS_REGISTRY
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import SignatureService
@@ -152,13 +152,16 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
         )
         profile = await make_profile_version(db, "Classic 9 bar", temperature=93.0)
+        # The drink entries only: the whole knowledge base would be chunked for nothing here.
+        await KnowledgeService(db).seed_docs(DEFAULT_DOCS_DIR / "drinks")
         recipes = RecipesRepository(db)
         judgements = JudgementsRepository(db)
 
         row = await recipes.create(
             RecipeWrite(name="Guji natural on the Niche", bean_id=bean.id, grinder_id=grinder.id),
             RecipeVersionWrite(
-                drink="espresso",
+                drink="cappuccino",
+                drink_notes="oat milk (Oatly Barista), ~150 ml",
                 profile_version_id=profile,
                 grind_setting="22",
                 dose_g=18.0,

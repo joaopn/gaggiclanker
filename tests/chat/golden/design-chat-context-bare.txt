@@ -28,6 +28,7 @@ SIMILAR RECIPES ON THIS GRINDER (other beans)
   grind: 21
   dose: 18 g
   target yield: 45 g
+  drink: Espresso
   ratio: 1:2.50
   profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
@@ -39,6 +40,7 @@ SIMILAR RECIPES ON THIS GRINDER (other beans)
   grind: 23
   dose: 18 g
   target yield: 40 g
+  drink: Cappuccino; oat milk (Oatly Barista), ~150 ml
   ratio: 1:2.22
   profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
@@ -50,6 +52,7 @@ SIMILAR RECIPES ON THIS GRINDER (other beans)
   grind: 26
   dose: 18 g
   target yield: 32 g
+  drink: Espresso
   ratio: 1:1.78
   profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
@@ -81,7 +84,6 @@ pressure_matrix:
 
 ratio_by_style:
   [bloom] A bloom profile aims at about 1:2 to 1:2.5; the soak does the work, not the ratio.
-  [ristretto_and_milk] For milk drinks and ristretto, 1:1 to 1:1.5 is the working range.
 
 time_by_style:
   [bloom] A bloom profile totals 30-45 s, with first drip between 15 and 25 s.

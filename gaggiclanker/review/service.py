@@ -222,7 +222,12 @@ class ReviewService:
         # `build_review_input` so that assembling the input stays a pure
         # function of the database it was handed.
         budget = int(await self.llm.settings.get("knowledgeChunkTokenBudget"))
-        review = await build_review_input(self.db, shot_id, chunk_token_budget=budget)
+        review = await build_review_input(
+            self.db,
+            shot_id,
+            chunk_token_budget=budget,
+            drink_in_prompt=await self.prompts.uses_variable(REVIEW_USER_PROMPT, "drink"),
+        )
         # What this shot's answer may say: its own phases, this review's expectation ids and
         # whether there is a prediction to answer.
         output = build_output_model(

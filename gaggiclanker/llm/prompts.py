@@ -248,6 +248,19 @@ class PromptService:
             declared=declared,
         )
 
+    async def uses_variable(self, name: str, variable: str) -> bool:
+        """Whether the prompt as it is stored (a person may have edited it) names ``{{variable}}``.
+
+        For a caller that hands something over only through one variable and has to know whether
+        it will reach the model.
+        """
+        parsed, _ = await self._file(name)
+        return any(
+            match.group(1) == variable
+            for text in (parsed.system, parsed.user)
+            for match in _VARIABLE.finditer(text or "")
+        )
+
     async def render_fragment(self, name: str, variables: dict[str, Any] | None = None) -> str:
         """Render a fragment on its own, for a caller that wants just the note."""
         full = name if name.startswith(FRAGMENT_PREFIX) else f"{FRAGMENT_PREFIX}{name}"

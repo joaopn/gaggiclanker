@@ -15,7 +15,7 @@ precisely so that a rule that misleads can be found and turned off.
 **The signal grammar.** `applies.signal` is a list of tokens, and a rule matches
 if *any* of them is present. The tokens are built by
 :func:`gaggiclanker.review.context.signal_tokens` from a shot's telemetry, or
-passed by the chat's `get_rules`, and there are seven shapes (a review reads
+passed by the chat's `get_rules`, and there are eight shapes (a review reads
 no judgement, so the taste, aroma and balance shapes only ever come from the
 chat):
 
@@ -33,6 +33,10 @@ chat):
     ``balance:<value>``    the user's sour/balanced/bitter verdict
     ``first_drip:<fast|slow>``, ``avg_flow:<high|low>``, ``temp:<cold|hot>``
     ``scale:absent``       the shot was pulled without a scale
+    ``drink:<value>``      the drink of the Recipe version the shot is filed under, when it
+                           states one (``drink:cappuccino``); the chat's `get_rules` adds the
+                           Recipe's current drink to the tokens the agent passes. A shot in the
+                           inbox, or under a version with no drink stated, has none
     ``style:<style>``      the detected shot style, also matched by `applies.style`
 
 A rule with no `applies` at all matches everything, which is what the procedure

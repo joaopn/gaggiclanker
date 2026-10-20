@@ -43,9 +43,17 @@ def named_dump(row: BaseModel) -> dict[str, Any]:
     A Recipe's "copied from" note is left out: it is where a Recipe's first recipe came from, a
     record for the person's page, and the agent reasons from this Recipe's own shots and versions
     only.
+
+    A drink nobody stated and notes nobody wrote are left out too, rather than sent as null and
+    "": a model reads a null as something known, and a version made before drinks were recorded
+    states none (which is not Espresso).
     """
     dumped: dict[str, Any] = row.model_dump(mode="json")
     dumped.pop("copied_from", None)
+    if dumped.get("drink", "") is None:
+        dumped.pop("drink")
+    if dumped.get("drink_notes") == "":
+        dumped.pop("drink_notes")
     return dumped
 
 

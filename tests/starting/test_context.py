@@ -37,7 +37,7 @@ async def _build(fixture: Fixture, **overrides: object) -> object:
 async def test_the_rendered_prompt_matches_the_golden_file(
     fixture: Fixture, update_golden: bool
 ) -> None:
-    context = await _build(fixture)
+    context = await _build(fixture, drink="latte", drink_notes="oat milk (Oatly Barista), 200 ml")
     rendered = "\n\n".join(
         f"=== {name} ===\n{value}"
         for name, value in sorted(context.render().items())  # type: ignore[attr-defined]

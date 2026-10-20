@@ -23,6 +23,7 @@ import pytest
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.recipes import RecipeVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.domain.drinks import DRINKS
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.domain.warnings import FAULTS, fault_token
@@ -51,7 +52,10 @@ KNOWN_PREFIXES = (
     "temp:",
     "scale:",
     "yield:",
+    "drink:",
 )
+#: The tokens `drink:<value>` can be: one per drink a version can state.
+DRINK_TOKENS = {f"drink:{drink}" for drink in DRINKS}
 KNOWN_TOKENS = {
     "temp:cold",
     "temp:hot",
@@ -101,6 +105,8 @@ def test_every_token_a_seed_rule_keys_on_is_one_a_shot_can_produce() -> None:
             assert token in FAULT_TOKENS, token
         if token.startswith(("temp:", "scale:", "yield:")):
             assert token in KNOWN_TOKENS, token
+        if token.startswith("drink:"):
+            assert token in DRINK_TOKENS, token
 
 
 def test_the_rules_keyed_on_a_fault_are_the_ones_listed() -> None:
@@ -373,3 +379,49 @@ async def test_the_stop_early_signal_and_rules_never_reach_a_fill_that_ended_at_
     assert "fault:skipped" not in started.signals
     assert "pressure_exit_on_a_fill" not in stopped.rule_keys
     assert "fault:skipped_at_start" not in stopped.signals
+
+
+async def _file_under(db: Database, shot_id: int, drink: str | None) -> None:
+    """Make a Recipe whose version states this drink (or none) and file the shot under it."""
+    from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
+    from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionWrite, RecipeWrite
+
+    bean = await BeansRepository(db).create(BeanWrite(name="Real shot bean"))
+    recipes = RecipesRepository(db)
+    made = await recipes.create(
+        RecipeWrite(name="Real shot recipe", bean_id=bean.id),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36),
+    )
+    assert made.current_version_id is not None
+    await db.execute(
+        "UPDATE recipe_versions SET drink = ? WHERE id = ?", (drink, made.current_version_id)
+    )
+    assert await recipes.assign_shot(shot_id, made.current_version_id)
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+async def test_a_real_shot_filed_under_a_cappuccino_version_selects_the_milk_rule(
+    seeded: Database, path: Path
+) -> None:
+    shot_id = await _ingest(seeded, path)
+    await _file_under(seeded, shot_id, "cappuccino")
+
+    review = await build_review_input(seeded, shot_id)
+
+    assert "drink:cappuccino" in review.signals
+    assert "ristretto_and_milk" in review.rule_keys
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+@pytest.mark.parametrize("drink", ["espresso", None])
+async def test_the_same_real_shot_with_no_milk_drink_does_not(
+    seeded: Database, path: Path, drink: str | None
+) -> None:
+    shot_id = await _ingest(seeded, path)
+    await _file_under(seeded, shot_id, drink)
+
+    review = await build_review_input(seeded, shot_id)
+
+    assert "ristretto_and_milk" not in review.rule_keys
+    assert ("drink:espresso" in review.signals) == (drink == "espresso")
+    assert not [s for s in review.signals if s.startswith("drink:")] or drink == "espresso"

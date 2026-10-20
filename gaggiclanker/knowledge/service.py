@@ -396,8 +396,13 @@ class KnowledgeService:
         *,
         token_budget: int = DEFAULT_CHUNK_TOKEN_BUDGET,
         max_excerpts: int = MAX_EXCERPTS,
+        exclude_docs: frozenset[str] = frozenset(),
     ) -> list[Excerpt]:
         """The excerpts one review is given. Deterministic, budgeted, deduped.
+
+        ``exclude_docs`` are documents (by slug) the caller hands over whole by other means, as
+        the drink block does: none of their chunks is a candidate, so they take no part of the
+        budget and are never shown twice.
 
         Three properties, each of which a test pins:
 
@@ -432,7 +437,7 @@ class KnowledgeService:
         for _rank, _index, _score, _path, chunk, query in candidates:
             if len(chosen) >= max_excerpts:
                 break
-            if chunk.doc_slug in seen_docs:
+            if chunk.doc_slug in seen_docs or chunk.doc_slug in exclude_docs:
                 continue
             if spent + chunk.tokens_estimate > token_budget:
                 continue

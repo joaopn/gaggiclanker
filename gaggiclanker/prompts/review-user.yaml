@@ -10,7 +10,10 @@ description: |
 
   The shot first, because that is the subject, its checks leading; what the
   signature asks the review to answer and what the Recipe version predicted next,
-  because those are the questions; the phases and the language the evidence is
+  because those are the questions; the drink the version is for, when it states
+  one, whose knowledge entry is handed over whole (and is left out of the
+  retrieved excerpts), because it says what the shot has to do in the cup; the
+  phases and the language the evidence is
   written in, because they bound what may be said; the profile it brewed,
   because it says what the machine was commanded to do; the detected style,
   which sets the expectations; the rules after that, because they are reference
@@ -23,6 +26,8 @@ variables:
     description: The free-text expectations of the profile's signature in force, each with its id, or why there are none.
   - name: prediction
     description: The prediction the Recipe version was filed with and what it is measured against, or why there is none.
+  - name: drink
+    description: The knowledge base's entry for the drink of the Recipe version the shot is filed under, whole, with a heading of its own; nothing for a shot that is not filed, or whose version states no drink or Other.
   - name: phases
     description: The phase names this shot logged, the only ones a window may name.
   - name: metric_language
@@ -48,7 +53,7 @@ user: |
 
   {{prediction}}
 
-  PHASES THIS SHOT LOGGED — the only names a window or an anchor may use
+  {{drink}}PHASES THIS SHOT LOGGED — the only names a window or an anchor may use
 
   {{phases}}
 

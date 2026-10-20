@@ -313,6 +313,9 @@ class StartingPointService:
             drink_notes=drink_notes,
             as_of=as_of,
             chunk_token_budget=budget,
+            # A user prompt a person edited may not name {{drink}}: the entry then stays in
+            # ordinary retrieval instead of being left out of it.
+            drink_in_prompt=await self.prompts.uses_variable(STARTING_POINT_USER_PROMPT, "drink"),
         )
         system, user, version = await self._render(context)
 

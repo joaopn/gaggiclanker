@@ -832,6 +832,8 @@ export function similarRecipe(overrides: Partial<SimilarRecipe> = {}): SimilarRe
     grind_value: 21,
     dose_g: 18,
     target_yield_g: 45,
+    drink: null,
+    drink_notes: "",
     profile_temperature_c: 94,
     ratio: 2.5,
     profile_version_id: 7,

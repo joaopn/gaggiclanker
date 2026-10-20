@@ -34,6 +34,7 @@ from gaggiclanker.db.repos.recipes import (
     RecipeWrite,
 )
 from gaggiclanker.db.schema import create_schema
+from gaggiclanker.knowledge.service import DEFAULT_DOCS_DIR, KnowledgeService
 from gaggiclanker.tools.scope import ToolScope
 from tests.recipes.conftest import make_profile_version
 from tests.starting.conftest import Fixture, build_fixture
@@ -47,7 +48,10 @@ async def kitchen(tmp_path: Path) -> AsyncIterator[Fixture]:
     await db.connect()
     await create_schema(db)
     try:
-        yield await build_fixture(db, seed_knowledge=False)
+        fixture = await build_fixture(db, seed_knowledge=False)
+        # The drink entries only: the whole knowledge base would be chunked for nothing here.
+        await KnowledgeService(db).seed_docs(DEFAULT_DOCS_DIR / "drinks")
+        yield fixture
     finally:
         await db.close()
 
@@ -97,6 +101,8 @@ async def _forked_design(kitchen: Fixture) -> RecipeRow:
         DesignBrief(
             fork_profile_version_id=kitchen.profile_version_id,
             usual_grind="21",
+            drink="cappuccino",
+            drink_notes="oat milk (Oatly Barista), ~150 ml",
             goal="More body than the Niche Recipe, and keep the blackcurrant.",
             dose_g=18,
             target_yield_g=40,

@@ -64,6 +64,7 @@ from gaggiclanker.domain.spread import (
     version_evidence,
 )
 from gaggiclanker.domain.vocab import SPREAD_MEASURES, MeasureTerm, SpreadMeasure, vocabulary
+from gaggiclanker.knowledge.drinks import drink_lines, drink_reference
 from gaggiclanker.shotinfo.catalogue import Tier, effective_tiers
 from gaggiclanker.shotinfo.downsample import CURVE_POINTS
 from gaggiclanker.shotinfo.render import load_shots, needs_samples, render_shot
@@ -204,6 +205,11 @@ async def opening_context(
     lines: list[str] = []
     # First, and nothing that moves between turns before it: see `_profile_block`.
     lines += await _profile_block(db, version, compared, thread_id)
+    # Then the drink's knowledge entry: it is fixed by the version, so it moves no more than the
+    # profile does, and it is cut off from the lines that do move.
+    block = await drink_reference(db, version.drink)
+    if block:
+        lines += ["", *block.split("\n")]
     lines += [""]
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
     lines += await _reverts_block(recipes, version)
@@ -301,6 +307,7 @@ async def _heading(
         + (" (a dead end: the Recipe went back past it)" if version.id in dead_ends else "")
         + (" — the current version of this Recipe" if version.is_current else ""),
         f"Version numbers: {_recipe(version, profile=False)}.",
+        *drink_lines(version.drink, version.drink_notes),
         f"Changed against {parent.version_label}: {_changes(changes)}."
         if parent is not None
         else "It is the Recipe's first version: a baseline, not a change to anything.",

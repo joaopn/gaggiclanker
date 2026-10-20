@@ -552,7 +552,7 @@ rules:
 
   - category: ratio_by_style
     key: ristretto_and_milk
-    applies: {}
+    applies: { signal: ["drink:cappuccino", "drink:latte"] }
     value:
       text: "For milk drinks and ristretto, 1:1 to 1:1.5 is the working range."
       min: 1.0

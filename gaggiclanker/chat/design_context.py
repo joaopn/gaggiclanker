@@ -39,7 +39,14 @@ from __future__ import annotations
 import json
 from typing import Any, get_args
 
-from gaggiclanker.chat.context import _OUTCOMES, _cut, _plural, _quote, _recipe, _taste
+from gaggiclanker.chat.context import (
+    _OUTCOMES,
+    _cut,
+    _plural,
+    _quote,
+    _recipe,
+    _taste,
+)
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
@@ -60,6 +67,7 @@ from gaggiclanker.domain.models import (
     TargetType,
     TransitionType,
 )
+from gaggiclanker.knowledge.drinks import drink_lines, drink_reference
 from gaggiclanker.knowledge.rules import RecipeContext, render_rules
 from gaggiclanker.review.style import detect_style
 from gaggiclanker.signatures.lines import signature_answers_block, signature_block
@@ -140,11 +148,15 @@ async def design_context(db: Database, recipe_id: int, *, thread_id: int | None 
             decaf=bean.decaf if bean else False,
         ),
         style,
+        row.design_brief.drink,
     )
 
     lines: list[str] = []
     lines += _heading(row, bean, grinder)
     lines += ["", *_brief(row, grinder)]
+    block = await drink_reference(db, row.design_brief.drink)
+    if block:
+        lines += ["", *block.split("\n")]
     lines += [
         "",
         *_fork_block(fork, "" if fork is None else await ProfilesRepository(db).name_of(fork)),
@@ -211,6 +223,7 @@ def _brief(row: RecipeRow, grinder: GrinderRow | None) -> list[str]:
     unit = grinder.step_unit if grinder is not None else "its units"
     return [
         "WHAT THEY ASKED FOR",
+        *drink_lines(brief.drink, brief.drink_notes),
         f"Goal: {_quote(_cut(brief.goal, _GOAL_CHARS))}"
         if brief.goal
         else "Goal: not stated. Ask what they want from this Recipe before proposing anything.",

@@ -57,9 +57,11 @@ from gaggiclanker.db.repos.recipe_proposals import (
     ProposalWriteResult,
     RecipeProposalsRepository,
     change_groups,
+    changed_names,
 )
 from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, version_changes
 from gaggiclanker.db.repos.version_names import named_dump, next_names
+from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.recipes import grind_value, parse_version_label
@@ -1070,7 +1072,8 @@ class GetRulesInput(_Model):
         description=(
             "Tokens of the form dimension:value (roast_level:light, style:bloom, "
             "signal:balance:sour). A rule is returned when every dimension it states is "
-            "satisfied by one of them."
+            "satisfied by one of them. In a Recipe's conversation the Recipe's own drink "
+            "(signal:drink:cappuccino) is added to them."
         ),
     )
 
@@ -1098,8 +1101,28 @@ class GetRulesOutput(_Model):
     ),
 )
 async def get_rules(ctx: ToolContext, args: GetRulesInput) -> GetRulesOutput:
+    applies = args.applies
+    if applies and ctx.scope.kind == "recipe" and ctx.scope.recipe_id is not None:
+        # In a Recipe's conversation the drink the conversation is about is a signal like any the
+        # agent passes: the rules for milk drinks apply to it without the agent having to say so.
+        # It is the drink the context describes: the brief's while the Recipe is being designed
+        # (version 1 is empty then), else the version the conversation is about.
+        recipes = RecipesRepository(ctx.db)
+        drink: str | None = None
+        row = await recipes.get(ctx.scope.recipe_id)
+        if row is not None and row.designing:
+            drink = row.design_brief.drink
+        elif row is not None:
+            version = (
+                await recipes.version_of_recipe(ctx.scope.recipe_id, ctx.scope.recipe_version_id)
+                if ctx.scope.recipe_version_id is not None
+                else None
+            )
+            drink = version.drink if version is not None else row.drink
+        if drink is not None:
+            applies = [*applies, f"signal:drink:{drink}"]
     rows = await RulesRepository(ctx.db).list_rules(
-        category=args.category, enabled=True, applies=args.applies
+        category=args.category, enabled=True, applies=applies
     )
     return GetRulesOutput(
         rules=[
@@ -1315,12 +1338,30 @@ class ProposeVersionInput(_Model):
     grind_value: float | None = Field(default=None, ge=0, le=10000)
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
+    drink: Drink | None = Field(
+        default=None,
+        description=(
+            "Only to change what the Recipe is made for: espresso, americano, cappuccino, "
+            "latte or other. A different drink is a new major version by default (the card "
+            "says so). Leave it out to keep the current drink."
+        ),
+    )
+    drink_notes: str | None = Field(
+        default=None,
+        max_length=500,
+        description=(
+            "Only to change how the drink is made around the shot (milk type, syrup, ice), in "
+            "the person's words; the whole new text, since it replaces the old, and '' takes "
+            "the notes away. Leave it out to keep the current notes."
+        ),
+    )
     suggest_major: bool = Field(
         default=False,
         description=(
             "Suggest that the person record this as a major version (the next vN) rather "
             "than a minor one (vN.M+1). Only for a functional change to what the profile "
-            "does; requires major_reason. The person decides."
+            "does; requires major_reason. The person decides. A change of drink is suggested "
+            "as a major for you."
         ),
     )
     major_reason: str = Field(
@@ -1368,7 +1409,10 @@ class ProposeVersionOutput(_Model):
         "graded, and while another proposal is already waiting. There is no temperature "
         "here: the machine brews at the temperature the profile states, so a temperature "
         "change is a profile change — use draft_profile, and the person approves it on its "
-        "card (with writes on, approving syncs it to the machine). " + MAJOR_MEANING
+        "card (with writes on, approving syncs it to the machine). The drink and how it is made "
+        "around the shot (drink, drink_notes) can change too, on the same card: a different "
+        "drink is a new major by default, because it is a different cup for the shot to do its "
+        "job in. " + MAJOR_MEANING
     ),
 )
 async def propose_recipe_version(
@@ -1409,14 +1453,24 @@ async def propose_recipe_version(
         )
         if getattr(args, name) is not None
     }
+    # The drink and its notes only when they differ from the version this is a change to: the
+    # same drink sent again is not a change.
+    current = await recipes.current_version(recipe_id)
+    if args.drink is not None and (current is None or args.drink != current.drink):
+        fields["drink"] = args.drink
+    if args.drink_notes is not None and (
+        current is None or args.drink_notes.strip() != current.drink_notes
+    ):
+        fields["drink_notes"] = args.drink_notes
     patch = RecipeVersionPatch.model_validate(fields)
     groups = change_groups(patch)
-    if not groups:
+    if not changed_names(patch):
         raise ValueError(
             "A proposal has to change something. If the right next step is another shot on "
             "the same version, say so to the person in words — that is a legitimate answer "
             "and it needs no version. Otherwise name one of: grind_setting, grind_value, "
-            "dose_g, target_yield_g. A different brew is a draft_profile, not a proposal."
+            "dose_g, target_yield_g, or a drink or drink_notes that differ from the current "
+            "ones. A different brew is a draft_profile, not a proposal."
         )
     combined = args.combined_reason.strip()
     if len(groups) > 1 and len(combined) < PREDICTION_MIN_CHARS:
@@ -1465,7 +1519,13 @@ async def propose_recipe_version(
         "do. If they decline it, that is information about what they want — not a reason to "
         "propose it again. On the card they choose whether it is a minor version "
         f"({names.minor}) or a major one ({names.major}); by default it is minor"
-        + (", and your suggestion of major is shown with your reason" if suggest_major else "")
+        + (
+            ", and your suggestion of major is shown with your reason"
+            if suggest_major
+            else ", and the card suggests a major because the drink changes"
+            if stored.suggest_major
+            else ""
+        )
         + ". Do not name the new version as if it were decided."
     )
     if len(groups) > 1:

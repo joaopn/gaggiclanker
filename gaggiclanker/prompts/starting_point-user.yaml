@@ -8,8 +8,10 @@ description: |
   what is snapshotted onto the run row — so what an old suggestion says it was
   told is exactly what it was told.
 
-  The order follows the question. The coffee first, because that is the subject.
-  The hardware next, because it decides what units the answer can even be given
+  The order follows the question. The coffee first, because that is the subject,
+  then the drink it is for when one was stated (the drink's knowledge entry is
+  handed over whole and is left out of the retrieved excerpts). The hardware
+  next, because it decides what units the answer can even be given
   in — and the user's usual grind setting lives there, which is the single fact
   that turns a relative answer into a dialable one. The similar Recipes after that,
   because they are this kitchen's own evidence and the prompt says they outrank
@@ -21,6 +23,8 @@ description: |
 variables:
   - name: bean_facts
     description: The coffee — whichever of roast level, process, origin, decaf, the taste scales and the description a person recorded; an empty field is left out.
+  - name: drink
+    description: The drink the Recipe is for and how it is made around the shot, then the knowledge base's entry for that drink, whole; nothing when no drink was stated.
   - name: hardware_facts
     description: The grinder (its step unit and their usual setting) and the machine.
   - name: similar_recipes
@@ -38,7 +42,7 @@ user: |
 
   {{bean_facts}}
 
-  THE KIT IT WILL BE BREWED ON — every grind figure you give is in this grinder's units
+  {{drink}}THE KIT IT WILL BE BREWED ON — every grind figure you give is in this grinder's units
 
   {{hardware_facts}}
 

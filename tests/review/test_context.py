@@ -187,7 +187,7 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
 
     # What it does see: the shot, the version it is filed under with its recipe, the
     # prediction and what it is measured against.
-    assert prompt.startswith("=== knowledge_excerpts ===")
+    assert prompt.startswith("=== drink ===\nDRINK: CAPPUCCINO")
     assert f"shot {subject}" in prompt
     assert "Shot time: 24.0 s" in prompt
     assert review.version == "v1.1"

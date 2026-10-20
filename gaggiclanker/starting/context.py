@@ -48,7 +48,8 @@ from gaggiclanker.db.repos.profiles import (
     not_synthetic_sql,
     version_name_sql,
 )
-from gaggiclanker.domain.drinks import Drink
+from gaggiclanker.domain.drinks import Drink, drink_label
+from gaggiclanker.knowledge.drinks import drink_lines, drink_reference, drink_slug
 from gaggiclanker.knowledge.rules import RecipeContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
@@ -162,6 +163,9 @@ class StartingPointContext(BaseModel):
     #: so that taking an option makes version 1 with the same drink.
     drink: Drink | None = None
     drink_notes: str = ""
+    #: The knowledge base's entry for that drink as it stood when the run was asked, whole
+    #: (`knowledge/drinks.py`): stored with the run for the reason the excerpts are.
+    drink_reference: str = ""
     similar: list[SimilarRecipe] = Field(default_factory=list)
     profiles: list[ProfileCandidate] = Field(default_factory=list)
     signals: list[str] = Field(default_factory=list)
@@ -197,6 +201,7 @@ class StartingPointContext(BaseModel):
         """
         return {
             "bean_facts": _render_bean(self.bean, self.as_of),
+            "drink": _render_drink(self),
             "hardware_facts": _render_hardware(self.hardware),
             "similar_recipes": render_similar(self.similar),
             "profile_library": render_profiles(self.profiles),
@@ -233,6 +238,7 @@ async def build_context(
     as_of: str = "",
     chunk_token_budget: int = DEFAULT_CHUNK_TOKEN_BUDGET,
     similar_limit: int = DEFAULT_LIMIT,
+    drink_in_prompt: bool = True,
 ) -> StartingPointContext:
     """Assemble the whole context. Pure in the database it is handed.
 
@@ -297,6 +303,7 @@ async def build_context(
             decaf=bean.decaf,
         ),
         style,
+        drink,
     )
     excerpts = await KnowledgeService(db).select_chunks(
         RetrievalContext(
@@ -307,6 +314,10 @@ async def build_context(
             extra_queries=("starting point for a new coffee", "first shot dial in"),
         ),
         token_budget=chunk_token_budget,
+        # The drink's own document is handed over whole above, not once more as an excerpt.
+        exclude_docs=frozenset(filter(None, [drink_slug(drink)]))
+        if drink_in_prompt
+        else frozenset(),
     )
 
     return StartingPointContext(
@@ -317,6 +328,7 @@ async def build_context(
         planned_style_reason=reason,
         drink=drink,
         drink_notes=drink_notes.strip(),
+        drink_reference=await drink_reference(db, drink) if drink_in_prompt else "",
         similar=similar,
         profiles=profiles,
         signals=signals,
@@ -326,7 +338,7 @@ async def build_context(
 
 
 async def starting_rules(
-    db: Database, context: RecipeContext, style: str
+    db: Database, context: RecipeContext, style: str, drink: str | None = None
 ) -> tuple[list[str], list[dict[str, str]]]:
     """The rules for a recipe nobody has brewed yet: the signals and the selection.
 
@@ -334,9 +346,12 @@ async def starting_rules(
     choosing a first recipe for a coffee with no shot behind it and must be told
     the same rules for the same bean, kit and style. Deterministic: the same
     selection :func:`~gaggiclanker.knowledge.rules.select_rules` makes for a
-    review, in its stable order.
+    review, in its stable order. ``drink`` is the drink the Recipe is for, when one is stated: it
+    becomes the ``drink:<value>`` signal, which is what selects the rules for milk drinks.
     """
-    selection = await select_rules(RulesRepository(db), context, style, _signal_tokens(style))
+    selection = await select_rules(
+        RulesRepository(db), context, style, _signal_tokens(style, drink)
+    )
     return selection.signals, [
         {
             "key": rule.key,
@@ -368,7 +383,7 @@ async def _fetch(db: Database, *, bean_id: int, grinder_id: int | None) -> _Inpu
     )
 
 
-def _signal_tokens(style: str) -> list[str]:
+def _signal_tokens(style: str, drink: str | None = None) -> list[str]:
     """The tokens rule selection matches `applies.signal` against.
 
     A much shorter list than a review's — one token — because the whole of
@@ -379,9 +394,10 @@ def _signal_tokens(style: str) -> list[str]:
     itself and which is repeated here so the stored signal list reads as the
     whole basis of the selection.
 
-    A list rather than a bare string so the snapshot has a review's shape.
+    A list rather than a bare string so the snapshot has a review's shape. The drink the Recipe
+    is for, when stated, is the one other token (``drink:cappuccino``).
     """
-    return [f"style:{style}"]
+    return [f"style:{style}", *([f"drink:{drink}"] if drink else [])]
 
 
 async def planned_style(db: Database, similar: list[SimilarRecipe]) -> tuple[str, str]:
@@ -524,6 +540,21 @@ def _render_bean(bean: BeanFacts, as_of: str) -> str:
     )
 
 
+def _render_drink(context: StartingPointContext) -> str:
+    """The drink they chose and its knowledge entry, as a section of its own, or nothing at all.
+
+    Ends in a blank line when there is something, so that the prompt can put the variable
+    straight before the next heading and leave no gap when a drink was never stated.
+    """
+    lines = drink_lines(context.drink, context.drink_notes)
+    if not lines and not context.drink_reference:
+        return ""
+    parts = ["THE DRINK THIS RECIPE IS FOR\n" + "\n".join(lines)] if lines else []
+    if context.drink_reference:
+        parts.append(context.drink_reference)
+    return "\n\n".join(parts) + "\n\n"
+
+
 def _render_hardware(hardware: HardwareFacts) -> str:
     grinder = _block(
         [
@@ -607,6 +638,7 @@ def render_similar(similar: list[SimilarRecipe]) -> str:
                     _line("  grind", entry.grind_setting or "not recorded"),
                     _line("  dose", entry.dose_g, " g"),
                     _line("  target yield", entry.target_yield_g, " g"),
+                    _line("  drink", _drink_of(entry)),
                     _line("  ratio", None if entry.ratio is None else f"1:{entry.ratio:.2f}"),
                     _line("  profile temperature", entry.profile_temperature_c, " °C"),
                     _line(
@@ -627,6 +659,12 @@ def render_similar(similar: list[SimilarRecipe]) -> str:
             )
         )
     return "\n\n".join(blocks)
+
+
+def _drink_of(entry: SimilarRecipe) -> str | None:
+    """That version's drink and notes on one line ("Latte; oat milk, 150 ml"), or nothing."""
+    parts = [drink_label(entry.drink) or "", entry.drink_notes.strip()]
+    return "; ".join(part for part in parts if part) or None
 
 
 def _mean(value: float | None, prefix: str = "") -> str:

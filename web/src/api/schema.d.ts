@@ -9316,6 +9316,12 @@ export interface components {
             decaf_match: boolean;
             /** Dose G */
             dose_g?: number | null;
+            drink?: components["schemas"]["Drink"] | null;
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
             /** Grind Setting */
             grind_setting?: string | null;
             /** Grind Value */

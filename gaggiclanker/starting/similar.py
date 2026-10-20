@@ -58,6 +58,7 @@ from pydantic import BaseModel, ConfigDict
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.version_names import label_sql
+from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.vocab import ROAST_LEVELS
 
@@ -138,6 +139,10 @@ class SimilarRecipe(BaseModel):
     grind_value: float | None = None
     dose_g: float | None = None
     target_yield_g: float | None = None
+    #: The drink that version states and how it is made, shown beside its numbers (nothing is
+    #: scored on it: preferring the same drink is a later unit).  Unstated: ``None`` and ``""``.
+    drink: Drink | None = None
+    drink_notes: str = ""
     #: The brew temperature that Recipe's profile states. Not a number anybody
     #: typed: a Recipe version records none, because the machine heats to what the
     #: profile says.
@@ -198,6 +203,8 @@ SELECT v.id                                         AS recipe_version_id,
        v.grind_value,
        v.dose_g,
        v.target_yield_g,
+       v.drink,
+       v.drink_notes,
        -- Out of the profile's own document, with the firmware's 0 ("not set")
        -- nulled out, which is how `profile_recipe` reads the same field.
        CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
@@ -375,6 +382,8 @@ def _to_model(row: dict[str, Any], mean_ratio: float | None) -> SimilarRecipe:
         grind_value=row["grind_value"],
         dose_g=dose,
         target_yield_g=yield_g,
+        drink=row["drink"],
+        drink_notes=str(row["drink_notes"] or ""),
         profile_temperature_c=row["profile_temperature_c"],
         ratio=round(float(yield_g) / float(dose), 2) if dose and yield_g else None,
         profile_version_id=row["profile_version_id"],

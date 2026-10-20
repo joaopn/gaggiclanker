@@ -444,6 +444,12 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
             "UPDATE recipe_versions SET profile_version_id = ? WHERE id = ?",
             (profile_version.id, version_id),
         )
+        if entry["label"] == "guji":
+            # One anchor that was made for milk, so the drink shows on a similar Recipe's card.
+            await db.execute(
+                "UPDATE recipe_versions SET drink = 'cappuccino', drink_notes = ? WHERE id = ?",
+                ("oat milk (Oatly Barista), ~150 ml", version_id),
+            )
         versions[str(entry["label"])] = version_id
         recipe_ids[str(entry["label"])] = stored.id
 

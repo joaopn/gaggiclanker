@@ -56,6 +56,7 @@ from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.domain.metric_language import CHANNELS, OPS
 from gaggiclanker.domain.recipes import version_label
 from gaggiclanker.domain.warnings import fault_token
+from gaggiclanker.knowledge.drinks import drink_reference, drink_slug
 from gaggiclanker.knowledge.rules import RecipeContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
@@ -177,6 +178,11 @@ class ReviewInput(BaseModel):
     #: query}]` for every retrieved chunk, stored in full so a citation into a
     #: document edited since still resolves to the text the model read.
     excerpts: list[dict[str, Any]] = Field(default_factory=list)
+    #: The knowledge base's entry for the drink of the version the shot is filed under, whole
+    #: (`knowledge/drinks.py`), or "" for an unfiled shot, a version with no drink stated, or
+    #: Other. Outside the excerpts and their budget, and the drink's document is never one of
+    #: them.
+    drink_reference: str = ""
 
     @property
     def rule_keys(self) -> frozenset[str]:
@@ -194,6 +200,7 @@ class ReviewInput(BaseModel):
             "shot_information": self.shot,
             "signature": _render_expectations(self),
             "prediction": _render_prediction(self),
+            "drink": f"{self.drink_reference}\n\n" if self.drink_reference else "",
             "phases": _render_phases(self.phases),
             "metric_language": _render_language(),
             "profile": _render_profile(self.profile_label, self.profile),
@@ -208,6 +215,7 @@ async def build_review_input(
     shot_id: int,
     *,
     chunk_token_budget: int = DEFAULT_CHUNK_TOKEN_BUDGET,
+    drink_in_prompt: bool = True,
 ) -> ReviewInput:
     """Assemble everything a review is told about one shot.
 
@@ -215,6 +223,10 @@ async def build_review_input(
     estimated tokens; a parameter rather than a settings read so this stays a
     pure function of the database it was handed (the service resolves
     `knowledgeChunkTokenBudget`). Zero turns retrieval off.
+
+    ``drink_in_prompt`` says the review prompt in use names ``{{drink}}``, the only way the drink's
+    entry reaches the model. A prompt a person edited may not: the entry is then neither handed
+    over nor kept out of the excerpts, so ordinary retrieval may still bring it, as it did before.
 
     Raises ``LookupError`` for a shot that does not exist.
     """
@@ -297,6 +309,7 @@ async def build_review_input(
         label=facts.shot.profile_label or "",
     )
 
+    drink = facts.version.drink if facts.version is not None else None
     signals = signal_tokens(facts, verdict)
     # No Recipe attributes: the bean and the grinder are the Recipe's, so a rule
     # keyed on them is not selected for a review.
@@ -304,6 +317,11 @@ async def build_review_input(
     excerpts = await KnowledgeService(db).select_chunks(
         RetrievalContext(style=verdict.style, signals=tuple(selection.signals)),
         token_budget=chunk_token_budget,
+        # The drink's own document is handed over whole as the drink block, not once more as
+        # an excerpt, and takes none of the excerpt budget.
+        exclude_docs=frozenset(filter(None, [drink_slug(drink)]))
+        if drink_in_prompt
+        else frozenset(),
     )
 
     return ReviewInput(
@@ -341,6 +359,7 @@ async def build_review_input(
             for rule in selection.rules
         ],
         excerpts=[excerpt.as_dict() for excerpt in excerpts],
+        drink_reference=await drink_reference(db, drink) if drink_in_prompt else "",
     )
 
 
@@ -369,6 +388,10 @@ def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
     )
     if not facts.has_scale:
         tokens.add("scale:absent")
+    # The drink of the version the shot is filed under, when it states one: a shot in the inbox,
+    # or filed under a version from before drinks were recorded, has no such signal.
+    if facts.version is not None and facts.version.drink is not None:
+        tokens.add(f"drink:{facts.version.drink}")
 
     flow = readable_summary(facts).get("flow") or {}
     # The first drip the model is shown: the cup's when the shot had a scale, the puck flow's
