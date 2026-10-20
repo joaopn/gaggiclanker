@@ -19,13 +19,13 @@ from gaggiclanker.db.repos.pins import PinsRepository, PinWrite
 from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
-from gaggiclanker.db.repos.sets import (
+from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
     RollbackWrite,
-    SetsRepository,
-    SetVersionPatch,
     SetVersionWrite,
-    SetWrite,
 )
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.domain.models import Profile
@@ -182,7 +182,7 @@ async def test_compare_shots_refuses_more_than_four(ctx: ToolContext, archive: F
     assert data["error"] == "invalid_arguments"
 
 
-async def test_get_set_returns_the_versions_and_the_trajectory(
+async def test_get_recipe_returns_the_versions_and_the_trajectory(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await call(ctx, "get_set", set_id=archive.set_id)
@@ -197,7 +197,7 @@ async def test_the_trajectory_serves_the_averages_the_chat_ledger_is_written_fro
 ) -> None:
     """One function: `get_set`'s trajectory is the trends' versions, yield and first drip too."""
     data = await call(ctx, "get_set", set_id=archive.set_id)
-    trends = await SetsRepository(archive.db).trends(archive.set_id)
+    trends = await RecipesRepository(archive.db).trends(archive.set_id)
 
     assert [item["version_label"] for item in data["trajectory"]] == [
         version.version_label for version in trends.versions
@@ -259,15 +259,15 @@ async def test_a_document_read_from_get_profile_is_a_document_draft_profile_acce
     assert "selected" not in draft and "favorite" not in draft
 
 
-async def test_get_set_falls_back_to_the_conversation_scope(
-    set_ctx: ToolContext, archive: Fixture
+async def test_get_recipe_falls_back_to_the_conversation_scope(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    """ "How is it going?" has an answer when the conversation is about a Set."""
-    data = await call(set_ctx, "get_set")
+    """ "How is it going?" has an answer when the conversation is about a Recipe."""
+    data = await call(recipe_ctx, "get_set")
     assert data["set"]["id"] == archive.set_id
 
 
-async def test_get_set_says_what_to_do_when_there_is_no_scope(ctx: ToolContext) -> None:
+async def test_get_recipe_says_what_to_do_when_there_is_no_scope(ctx: ToolContext) -> None:
     data = await refuse(ctx, "get_set")
     assert "list_sets" in data["detail"]
 
@@ -355,15 +355,15 @@ async def test_get_insights_returns_only_confirmed_ones_by_default(
 PREDICTION = "Compared to v1: two to four seconds longer and less sour."
 
 
-async def test_propose_set_version_creates_a_proposal_and_no_version(
-    set_ctx: ToolContext, archive: Fixture
+async def test_propose_recipe_version_creates_a_proposal_and_no_version(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    sets = SetsRepository(archive.db)
-    before = await sets.current_version(archive.set_id)
+    recipes = RecipesRepository(archive.db)
+    before = await recipes.current_version(archive.set_id)
     assert before is not None
 
     data = await call(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer, to chase the sour finish.",
         grind_setting="20",
@@ -377,58 +377,58 @@ async def test_propose_set_version_creates_a_proposal_and_no_version(
     assert data["compares_to_version"] == before.version_label
     # Named, never counted: there is no ordinal to reach the model.
     assert "compares_to_version_no" not in data
-    # The whole point: the Set is where it was, and the answer says so.
+    # The whole point: the Recipe is where it was, and the answer says so.
     assert "Nothing has changed yet" in data["note"]
     # The person names the version on the card; the answer says both names.
     assert (data["would_be_minor"], data["would_be_major"]) == ("v1.1", "v2")
     assert "a minor version (v1.1) or a major one (v2); by default it is minor" in data["note"]
     assert data["suggest_major"] is False
-    after = await sets.current_version(archive.set_id)
+    after = await recipes.current_version(archive.set_id)
     assert after is not None and after.id == before.id
 
-    waiting = await SetProposalsRepository(archive.db).waiting(archive.set_id)
+    waiting = await RecipeProposalsRepository(archive.db).waiting(archive.set_id)
     assert waiting is not None and waiting.id == data["proposal_id"]
     assert waiting.thread_id is None, "this context names no conversation"
 
 
 async def test_a_proposal_records_the_conversation_it_came_from(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     """So the experiment log can lead back to where the change was argued."""
     cursor = await archive.db.execute(
         "INSERT INTO chat_threads (title, recipe_id) VALUES (?, ?)", ("About v1", archive.set_id)
     )
-    set_ctx.thread_id = int(cursor.lastrowid or 0)
+    recipe_ctx.thread_id = int(cursor.lastrowid or 0)
 
     data = await call(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Half a gram more.",
         dose_g=18.5,
         prediction=PREDICTION,
     )
 
-    waiting = await SetProposalsRepository(archive.db).waiting(archive.set_id)
+    waiting = await RecipeProposalsRepository(archive.db).waiting(archive.set_id)
     assert waiting is not None
     assert waiting.id == data["proposal_id"]
-    assert waiting.thread_id == set_ctx.thread_id
+    assert waiting.thread_id == recipe_ctx.thread_id
 
 
-async def test_propose_set_version_refuses_a_proposal_with_no_prediction(
-    set_ctx: ToolContext, archive: Fixture
+async def test_propose_recipe_version_refuses_a_proposal_with_no_prediction(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await refuse(
-        set_ctx, "propose_set_version", reason="Two clicks finer.", grind_setting="20"
+        recipe_ctx, "propose_set_version", reason="Two clicks finer.", grind_setting="20"
     )
     assert "without a prediction" in data["detail"]
-    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+    assert await RecipeProposalsRepository(archive.db).waiting(archive.set_id) is None
 
 
 async def test_a_prediction_too_short_to_be_one_is_the_same_refusal(
-    set_ctx: ToolContext,
+    recipe_ctx: ToolContext,
 ) -> None:
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer.",
         grind_setting="20",
@@ -437,18 +437,18 @@ async def test_a_prediction_too_short_to_be_one_is_the_same_refusal(
     assert "without a prediction" in data["detail"]
 
 
-async def test_propose_set_version_refuses_a_proposal_that_changes_nothing(
-    set_ctx: ToolContext,
+async def test_propose_recipe_version_refuses_a_proposal_that_changes_nothing(
+    recipe_ctx: ToolContext,
 ) -> None:
     """Another shot on the same recipe is an answer in words, not a version."""
-    data = await refuse(set_ctx, "propose_set_version", reason="because", prediction=PREDICTION)
+    data = await refuse(recipe_ctx, "propose_set_version", reason="because", prediction=PREDICTION)
     assert "has to change something" in data["detail"]
     assert "another shot on the same recipe" in data["detail"]
 
 
-async def test_the_grind_text_and_its_number_are_one_change(set_ctx: ToolContext) -> None:
+async def test_the_grind_text_and_its_number_are_one_change(recipe_ctx: ToolContext) -> None:
     data = await call(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer.",
         grind_setting="20",
@@ -459,10 +459,10 @@ async def test_the_grind_text_and_its_number_are_one_change(set_ctx: ToolContext
 
 
 async def test_two_changes_are_refused_without_a_combined_reason(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Finer and a bit more coffee.",
         grind_setting="20",
@@ -471,14 +471,14 @@ async def test_two_changes_are_refused_without_a_combined_reason(
     )
     assert "the dose and the grind at once" in data["detail"]
     assert "combined_reason" in data["detail"]
-    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+    assert await RecipeProposalsRepository(archive.db).waiting(archive.set_id) is None
 
 
 async def test_two_changes_with_a_combined_reason_are_accepted_with_a_warning(
-    set_ctx: ToolContext,
+    recipe_ctx: ToolContext,
 ) -> None:
     data = await call(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Finer and a bit more coffee.",
         grind_setting="20",
@@ -491,17 +491,17 @@ async def test_two_changes_with_a_combined_reason_are_accepted_with_a_warning(
 
 
 async def test_a_second_proposal_is_refused_and_told_about_the_first(
-    set_ctx: ToolContext,
+    recipe_ctx: ToolContext,
 ) -> None:
     await call(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer, to chase the sour finish.",
         grind_setting="20",
         prediction=PREDICTION,
     )
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Or half a gram more.",
         dose_g=18.5,
@@ -513,14 +513,14 @@ async def test_a_second_proposal_is_refused_and_told_about_the_first(
 
 
 async def test_an_ungraded_prediction_blocks_the_next_proposal(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    sets = SetsRepository(archive.db)
+    recipes = RecipesRepository(archive.db)
     # A version somebody predicted something about and nobody has graded: the
     # state the whole rule is about.
-    current = await sets.add_version(
+    current = await recipes.add_version(
         archive.set_id,
-        SetVersionPatch.model_validate(
+        RecipeVersionPatch.model_validate(
             {
                 "intent": "one click finer",
                 "grind_setting": "21",
@@ -532,7 +532,7 @@ async def test_an_ungraded_prediction_blocks_the_next_proposal(
     assert current is not None and current.outcome_state == "open"
 
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer.",
         grind_setting="20",
@@ -543,23 +543,23 @@ async def test_an_ungraded_prediction_blocks_the_next_proposal(
 
 
 async def test_a_proposal_takes_no_profile_a_change_of_brew_is_a_draft(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    """A Set brews one profile, so a proposal changes the recipe only; a different brew is a
+    """A Recipe brews one profile, so a proposal changes the recipe only; a different brew is a
     draft of that profile, which the person makes active."""
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Switch to the hotter profile.",
         profile_version_id=archive.profile_version_id,
         prediction=PREDICTION,
     )
     assert "profile_version_id" in data["detail"]
-    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+    assert await RecipeProposalsRepository(archive.db).waiting(archive.set_id) is None
 
 
 async def _second_profile(archive: Fixture) -> int:
-    """A profile version the archive knows besides the Set's own, on no machine yet."""
+    """A profile version the archive knows besides the Recipe's own, on no machine yet."""
     profiles = ProfilesRepository(archive.db)
     own = await profiles.get_version(archive.profile_version_id)
     assert own is not None and isinstance(own.profile, dict)
@@ -589,11 +589,11 @@ async def test_list_profiles_says_which_are_on_the_machine(
 
 
 async def test_a_combined_reason_too_short_to_be_one_does_not_buy_two_changes(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     """Twenty characters, the same floor a prediction has."""
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Finer and a bit more coffee.",
         grind_setting="20",
@@ -603,12 +603,12 @@ async def test_a_combined_reason_too_short_to_be_one_does_not_buy_two_changes(
     )
     assert "the dose and the grind at once" in data["detail"]
     assert "at least 20 characters" in data["detail"]
-    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+    assert await RecipeProposalsRepository(archive.db).waiting(archive.set_id) is None
 
     # Nineteen is still not enough, and twenty is.
     assert not (
         await registry.dispatch(
-            set_ctx,
+            recipe_ctx,
             "propose_set_version",
             {
                 "reason": "Finer and a bit more coffee.",
@@ -621,7 +621,7 @@ async def test_a_combined_reason_too_short_to_be_one_does_not_buy_two_changes(
     ).ok
     assert (
         await registry.dispatch(
-            set_ctx,
+            recipe_ctx,
             "propose_set_version",
             {
                 "reason": "Finer and a bit more coffee.",
@@ -634,20 +634,20 @@ async def test_a_combined_reason_too_short_to_be_one_does_not_buy_two_changes(
     ).ok
 
 
-async def test_a_conversation_of_another_set_cannot_be_named_as_the_room(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_conversation_of_another_recipe_cannot_be_named_as_the_room(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     """The thread comes from the runner, not the model, and is still checked."""
-    other = await SetsRepository(archive.db).create(
-        SetWrite(name="Another coffee", bean_id=archive.bean_id), SetVersionWrite(dose_g=18)
+    other = await RecipesRepository(archive.db).create(
+        RecipeWrite(name="Another coffee", bean_id=archive.bean_id), SetVersionWrite(dose_g=18)
     )
     cursor = await archive.db.execute(
         "INSERT INTO chat_threads (title, recipe_id) VALUES (?, ?)", ("Elsewhere", other.id)
     )
-    set_ctx.thread_id = int(cursor.lastrowid or 0)
+    recipe_ctx.thread_id = int(cursor.lastrowid or 0)
 
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer.",
         grind_setting="20",
@@ -655,21 +655,21 @@ async def test_a_conversation_of_another_set_cannot_be_named_as_the_room(
     )
     assert "not one of this Set's" in data["detail"]
     assert "Another coffee" not in data["detail"]
-    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+    assert await RecipeProposalsRepository(archive.db).waiting(archive.set_id) is None
 
 
-async def test_a_comparison_outside_this_set_is_refused(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_comparison_outside_this_recipe_is_refused(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    other = await SetsRepository(archive.db).create(
-        SetWrite(name="Another coffee", bean_id=archive.bean_id),
+    other = await RecipesRepository(archive.db).create(
+        RecipeWrite(name="Another coffee", bean_id=archive.bean_id),
         SetVersionWrite(dose_g=18),
     )
-    theirs = await SetsRepository(archive.db).current_version(other.id)
+    theirs = await RecipesRepository(archive.db).current_version(other.id)
     assert theirs is not None
 
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer.",
         grind_setting="20",
@@ -681,18 +681,18 @@ async def test_a_comparison_outside_this_set_is_refused(
     assert "Another coffee" not in data["detail"]
 
 
-async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(
-    set_ctx: ToolContext, archive: Fixture
+async def test_propose_recipe_version_takes_no_temperature_and_says_where_it_went(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     """A temperature argument is a refusal, not a silently dropped field.
 
-    The machine brews at the profile's temperature, so there is nothing on a Set
+    The machine brews at the profile's temperature, so there is nothing on a Recipe
     version for this to write. The schema refuses it (every tool model forbids
     extras) and the description sends the model to the tool that can actually
     change a temperature — a profile draft somebody approves.
     """
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="a degree hotter",
         target_temperature_c=94,
@@ -704,7 +704,7 @@ async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(
     assert "draft_profile" in spec.description
 
     # And the archive is untouched: a refused call writes nothing.
-    current = await SetsRepository(archive.db).current_version(archive.set_id)
+    current = await RecipesRepository(archive.db).current_version(archive.set_id)
     assert current is not None and current.version_label == "v1"
 
 
@@ -719,12 +719,12 @@ def _with_drafts(ctx: ToolContext) -> ToolContext:
     return ctx
 
 
-async def test_a_profile_draft_in_a_set_conversation_needs_a_prediction(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_profile_draft_in_a_recipe_conversation_needs_a_prediction(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     """A profile change is a change to the experiment, so it owes a guess too."""
     data = await refuse(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         base_version_id=archive.profile_version_id,
         patch={"temperature": 92},
@@ -733,13 +733,14 @@ async def test_a_profile_draft_in_a_set_conversation_needs_a_prediction(
     assert "cannot be proposed without a prediction" in data["detail"]
 
 
-async def test_a_set_conversation_cannot_make_a_new_profile(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_recipe_conversation_cannot_make_a_new_profile(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    """A Set has one profile for good: a new profile means a new Set, with or without a guess."""
+    """A Recipe has one profile for good: a new profile means a new Recipe, with or without a
+    guess."""
     for extra in ({}, {"prediction": "It runs a little sweeter."}):
         data = await refuse(
-            _with_drafts(set_ctx),
+            _with_drafts(recipe_ctx),
             "draft_profile",
             base_version_id=archive.profile_version_id,
             patch={"temperature": 92},
@@ -751,8 +752,8 @@ async def test_a_set_conversation_cannot_make_a_new_profile(
     assert await ProfileDraftsRepository(archive.db).list_drafts() == []
 
 
-async def test_a_set_conversations_profile_draft_changes_the_sets_profile_by_default(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_recipe_conversations_profile_draft_changes_the_recipes_profile_by_default(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     """The base is the profile's active version, which on a profile with two is the later one."""
     from tests.profile_rows import another_version
@@ -764,7 +765,7 @@ async def test_a_set_conversations_profile_draft_changes_the_sets_profile_by_def
         (later, archive.set_id),
     )
     made = await call(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         patch={"temperature": 92},
         prediction="It runs a little sweeter, about two seconds slower.",
@@ -778,14 +779,14 @@ async def test_a_set_conversations_profile_draft_changes_the_sets_profile_by_def
     )
 
 
-async def test_a_set_conversations_profile_draft_cannot_start_from_another_profile(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_recipe_conversations_profile_draft_cannot_start_from_another_profile(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     from tests.profile_rows import free_profile_version
 
     other = await free_profile_version(archive.db)
     data = await refuse(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         base_version_id=other,
         patch={"temperature": 92},
@@ -796,12 +797,12 @@ async def test_a_set_conversations_profile_draft_cannot_start_from_another_profi
     assert await ProfileDraftsRepository(archive.db).list_drafts() == []
 
 
-async def test_a_set_with_no_profile_has_none_to_change(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_recipe_with_no_profile_has_none_to_change(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     await archive.db.execute("UPDATE recipes SET board_id = NULL WHERE id = ?", (archive.set_id,))
     data = await refuse(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         base_version_id=archive.profile_version_id,
         patch={"temperature": 92},
@@ -916,7 +917,9 @@ async def test_a_profile_draft_renamed_onto_a_profile_that_exists_is_refused(
     assert stored_draft is not None and stored_draft.draft_label == stored.label
 
 
-async def test_a_profile_draft_outside_a_set_needs_none(ctx: ToolContext, archive: Fixture) -> None:
+async def test_a_profile_draft_outside_a_recipe_needs_none(
+    ctx: ToolContext, archive: Fixture
+) -> None:
     """A draft that belongs to no experiment has nothing to be graded against."""
     data = await call(
         _with_drafts(ctx),
@@ -953,14 +956,14 @@ async def test_a_profile_draft_reports_the_stop_condition_it_moves(
     assert change["target_type"] == "volumetric" and change["after"]["value"] == 61
 
 
-async def test_a_set_conversation_s_draft_carries_its_set_and_its_prediction(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_recipe_conversation_s_draft_carries_its_recipe_and_its_prediction(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    current = await SetsRepository(archive.db).current_version(archive.set_id)
+    current = await RecipesRepository(archive.db).current_version(archive.set_id)
     assert current is not None
 
     data = await call(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         base_version_id=archive.profile_version_id,
         patch={"temperature": 92},
@@ -981,12 +984,12 @@ async def test_a_set_conversation_s_draft_carries_its_set_and_its_prediction(
 
 
 async def test_a_profile_draft_is_blocked_while_a_prediction_is_ungraded(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     """The same rule as a proposed grind change, in the same words."""
-    current = await SetsRepository(archive.db).add_version(
+    current = await RecipesRepository(archive.db).add_version(
         archive.set_id,
-        SetVersionPatch.model_validate(
+        RecipeVersionPatch.model_validate(
             {
                 "intent": "one click finer",
                 "grind_setting": "21",
@@ -998,7 +1001,7 @@ async def test_a_profile_draft_is_blocked_while_a_prediction_is_ungraded(
     assert current is not None
 
     data = await refuse(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         base_version_id=archive.profile_version_id,
         patch={"temperature": 92},
@@ -1009,10 +1012,10 @@ async def test_a_profile_draft_is_blocked_while_a_prediction_is_ungraded(
 
 
 async def test_a_profile_draft_is_blocked_while_a_proposal_is_waiting(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     await call(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer, to chase the sour finish.",
         grind_setting="20",
@@ -1020,7 +1023,7 @@ async def test_a_profile_draft_is_blocked_while_a_proposal_is_waiting(
     )
 
     data = await refuse(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         base_version_id=archive.profile_version_id,
         patch={"temperature": 92},
@@ -1032,10 +1035,10 @@ async def test_a_profile_draft_is_blocked_while_a_proposal_is_waiting(
 
 
 async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await call(
-        set_ctx,
+        recipe_ctx,
         "record_insight",
         text="This grinder wants two clicks finer for anything anaerobic.",
         evidence_shot_ids=archive.shots[:2],
@@ -1046,7 +1049,7 @@ async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
     assert stored.source == "chat"
     assert stored.confirmed is False, "nothing unconfirmed reaches a prompt"
     assert stored.evidence_shot_ids == archive.shots[:2]
-    # It belongs to the Set it was learned in, at the version the chat is about.
+    # It belongs to the Recipe it was learned in, at the version the chat is about.
     assert stored.set_id == archive.set_id
     assert stored.set_version_id == archive.version_id
     assert stored.scope.stated() == {}
@@ -1055,42 +1058,42 @@ async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
 
 
 async def test_a_recorded_insight_records_the_conversation_that_wrote_it(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     cursor = await archive.db.execute(
         "INSERT INTO chat_threads (title, recipe_id) VALUES ('v1', ?)", (archive.set_id,)
     )
-    set_ctx.thread_id = int(cursor.lastrowid or 0)
+    recipe_ctx.thread_id = int(cursor.lastrowid or 0)
 
     data = await call(
-        set_ctx, "record_insight", text="Finer helps.", evidence_shot_ids=archive.shots[:1]
+        recipe_ctx, "record_insight", text="Finer helps.", evidence_shot_ids=archive.shots[:1]
     )
 
     stored = await InsightsRepository(archive.db).get(data["insight_id"])
-    assert stored is not None and stored.thread_id == set_ctx.thread_id
+    assert stored is not None and stored.thread_id == recipe_ctx.thread_id
 
 
 async def test_a_recorded_insight_does_not_reach_the_next_prompt(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     """The loop tier 3 exists to break: propose, then be believed next turn."""
     await call(
-        set_ctx, "record_insight", text="Always go finer.", evidence_shot_ids=archive.shots[:1]
+        recipe_ctx, "record_insight", text="Always go finer.", evidence_shot_ids=archive.shots[:1]
     )
 
-    listed = await call(set_ctx, "get_insights")
+    listed = await call(recipe_ctx, "get_insights")
 
     assert "Always go finer." not in [insight["text"] for insight in listed["insights"]]
 
 
 async def test_the_propose_tools_are_refused_for_a_read_only_caller(
-    set_ctx: ToolContext,
+    recipe_ctx: ToolContext,
 ) -> None:
     """The permission class, not the scope: these three are in this scope."""
     read_only = ToolContext(
-        db=set_ctx.db,
-        settings=set_ctx.settings,
-        scope=set_ctx.scope,
+        db=recipe_ctx.db,
+        settings=recipe_ctx.settings,
+        scope=recipe_ctx.scope,
         caller="test",
         permissions=READ_ONLY,
     )
@@ -1121,10 +1124,10 @@ MAJOR_REASON = "Two clicks is a new direction for this Set, not a nudge on the o
 
 
 async def test_a_proposal_stores_the_agent_s_major_suggestion_and_its_reason(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await call(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer, to chase the sour finish.",
         grind_setting="20",
@@ -1137,17 +1140,17 @@ async def test_a_proposal_stores_the_agent_s_major_suggestion_and_its_reason(
     assert "your suggestion of major is shown with your reason" in data["note"]
     # Only a suggestion: the default for a grind change is still minor.
     assert "by default it is minor" in data["note"]
-    stored = await SetProposalsRepository(archive.db).get(archive.set_id, data["proposal_id"])
+    stored = await RecipeProposalsRepository(archive.db).get(archive.set_id, data["proposal_id"])
     assert stored is not None
     assert (stored.suggest_major, stored.major_reason) == (True, MAJOR_REASON)
 
 
 @pytest.mark.parametrize("reason", ["", "   ", "It is bigger."])
 async def test_a_major_suggestion_without_a_reason_is_refused_in_its_own_words(
-    set_ctx: ToolContext, archive: Fixture, reason: str
+    recipe_ctx: ToolContext, archive: Fixture, reason: str
 ) -> None:
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer, to chase the sour finish.",
         grind_setting="20",
@@ -1157,14 +1160,14 @@ async def test_a_major_suggestion_without_a_reason_is_refused_in_its_own_words(
     )
 
     assert data["detail"].startswith("suggest_major needs major_reason")
-    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+    assert await RecipeProposalsRepository(archive.db).waiting(archive.set_id) is None
 
 
 async def test_a_reason_without_a_suggestion_is_not_stored(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await call(
-        set_ctx,
+        recipe_ctx,
         "propose_set_version",
         reason="Two clicks finer, to chase the sour finish.",
         grind_setting="20",
@@ -1172,16 +1175,16 @@ async def test_a_reason_without_a_suggestion_is_not_stored(
         major_reason=MAJOR_REASON,
     )
 
-    stored = await SetProposalsRepository(archive.db).get(archive.set_id, data["proposal_id"])
+    stored = await RecipeProposalsRepository(archive.db).get(archive.set_id, data["proposal_id"])
     assert stored is not None
     assert (stored.suggest_major, stored.major_reason) == (False, "")
 
 
-async def test_a_set_draft_stores_the_agent_s_major_suggestion(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_recipe_draft_stores_the_agent_s_major_suggestion(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await call(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         base_version_id=archive.profile_version_id,
         patch={"temperature": 92},
@@ -1198,11 +1201,11 @@ async def test_a_set_draft_stores_the_agent_s_major_suggestion(
     assert (stored.set_next_minor_label, stored.set_next_major_label) == ("v1.1", "v2")
 
 
-async def test_a_set_draft_refuses_a_major_suggestion_without_a_reason(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_recipe_draft_refuses_a_major_suggestion_without_a_reason(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await refuse(
-        _with_drafts(set_ctx),
+        _with_drafts(recipe_ctx),
         "draft_profile",
         base_version_id=archive.profile_version_id,
         patch={"temperature": 92},
@@ -1214,7 +1217,7 @@ async def test_a_set_draft_refuses_a_major_suggestion_without_a_reason(
     assert data["detail"].startswith("suggest_major needs major_reason")
 
 
-async def test_a_draft_outside_a_set_cannot_suggest_a_major_version(
+async def test_a_draft_outside_a_recipe_cannot_suggest_a_major_version(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await refuse(
@@ -1230,18 +1233,18 @@ async def test_a_draft_outside_a_set_cannot_suggest_a_major_version(
     assert "only means something in a conversation about one Set" in data["detail"]
 
 
-async def test_get_set_names_the_version_the_set_went_back_to_as_current(
-    set_ctx: ToolContext, archive: Fixture
+async def test_get_recipe_names_the_version_the_recipe_went_back_to_as_current(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    sets = SetsRepository(archive.db)
-    first = await sets.current_version(archive.set_id)
+    recipes = RecipesRepository(archive.db)
+    first = await recipes.current_version(archive.set_id)
     assert first is not None
-    await sets.add_version(archive.set_id, SetVersionPatch(grind_setting="21"))
-    assert (await call(set_ctx, "get_set"))["set"]["current_version_label"] == "v1.1"
+    await recipes.add_version(archive.set_id, RecipeVersionPatch(grind_setting="21"))
+    assert (await call(recipe_ctx, "get_set"))["set"]["current_version_label"] == "v1.1"
 
-    await sets.rollback(archive.set_id, RollbackWrite(to_version_id=first.id))
+    await recipes.rollback(archive.set_id, RollbackWrite(to_version_id=first.id))
 
-    got = await call(set_ctx, "get_set")
+    got = await call(recipe_ctx, "get_set")
     assert got["set"]["current_version_label"] == "v1"
     assert {v["version_label"]: v["is_current"] for v in got["versions"]} == {
         "v1": True,
@@ -1250,20 +1253,20 @@ async def test_get_set_names_the_version_the_set_went_back_to_as_current(
     assert (got["set"]["next_minor_label"], got["set"]["next_major_label"]) == ("v1.2", "v2")
 
 
-async def test_the_set_tools_name_versions_and_never_count_them(
-    set_ctx: ToolContext, ctx: ToolContext, archive: Fixture
+async def test_the_recipe_tools_name_versions_and_never_count_them(
+    recipe_ctx: ToolContext, ctx: ToolContext, archive: Fixture
 ) -> None:
     """There is no ordinal for a model to say "v3" from: the names are all it is given."""
-    sets = SetsRepository(archive.db)
-    await sets.add_version(archive.set_id, SetVersionPatch(grind_setting="21"))
-    await sets.add_version(
+    recipes = RecipesRepository(archive.db)
+    await recipes.add_version(archive.set_id, RecipeVersionPatch(grind_setting="21"))
+    await recipes.add_version(
         archive.set_id,
-        SetVersionPatch.model_validate(
+        RecipeVersionPatch.model_validate(
             {"grind_setting": "20", "prediction": PREDICTION, "compares_to_version_id": None}
         ),
     )
 
-    got = await call(set_ctx, "get_set")
+    got = await call(recipe_ctx, "get_set")
     listed = await call(ctx, "list_sets")
 
     assert got["set"]["current_version_label"] == "v1.2"
@@ -1277,7 +1280,7 @@ async def test_the_set_tools_name_versions_and_never_count_them(
 async def test_list_profiles_leaves_out_the_copy_of_a_pin(
     ctx: ToolContext, archive: Fixture
 ) -> None:
-    """No Set version may name a pin's copy, so the agent is not offered it to choose."""
+    """No Recipe version may name a pin's copy, so the agent is not offered it to choose."""
     copy = await _second_profile(archive)
     listed = {item["profile_version_id"] for item in (await call(ctx, "list_profiles"))["items"]}
     assert copy in listed

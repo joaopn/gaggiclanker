@@ -1,6 +1,6 @@
 """Loading shots and writing them down for a model: one loader, one renderer.
 
-Every place a chat is told about a shot — a Set conversation's opening
+Every place a chat is told about a shot — a Recipe conversation's opening
 context, the shot search, `get_shot`, `get_shot_extended`, `get_shot_full` and
 `compare_shots` — reads it through :func:`load_shots` and writes it with
 :func:`render_shot`. One path, so a shot reads the same wherever the model
@@ -28,8 +28,8 @@ from typing import Any
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.notes import NotesRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
-from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotSampleRow, ShotsRepository
 from gaggiclanker.domain.cup_flow import cup_flow
 from gaggiclanker.shotinfo.catalogue import (
@@ -73,7 +73,7 @@ async def load_shots(
     under, their readings and, only when ``samples`` is asked
     for, every sample of all of them
     — because the opening context renders twenty shots and the search loads a
-    whole Set. The result follows the order of ``shot_ids``; an id with no shot
+    whole Recipe. The result follows the order of ``shot_ids``; an id with no shot
     is left out.
     """
     rows = await ShotsRepository(db).get_many(shot_ids)
@@ -83,7 +83,7 @@ async def load_shots(
     judgements = await JudgementsRepository(db).for_shots(ids)
     notes = await NotesRepository(db).for_shots(ids)
     readings = await ShotReviewsRepository(db).readings_for_shots(ids)
-    versions = await SetsRepository(db).versions_by_id(
+    versions = await RecipesRepository(db).versions_by_id(
         row.set_version_id for row in rows if row.set_version_id is not None
     )
     curves: dict[int, list[ShotSampleRow]] = (
@@ -110,7 +110,7 @@ async def with_samples(db: Database, shots: Sequence[ShotFacts]) -> list[ShotFac
     """The same shots with their samples, read in one query for all of them.
 
     For a caller that checks what it loaded before paying for the curve: a
-    shot tool refuses a shot outside its Set before reading its samples.
+    shot tool refuses a shot outside its Recipe before reading its samples.
     """
     curves = await ShotsRepository(db).samples_for([facts.shot_id for facts in shots])
     return [

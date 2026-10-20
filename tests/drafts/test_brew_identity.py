@@ -22,7 +22,7 @@ from tests.drafts.conftest import BASE_LABEL, data, error
 from tests.drafts.helpers import (
     APP_LABEL,
     assert_versions_owned,
-    make_set_on,
+    make_recipe_on,
     manual_draft,
     same_name_draft,
 )
@@ -506,7 +506,7 @@ async def test_the_pin_detail_names_the_copy_by_the_pin_row(
 ) -> None:
     _app, client, _fake = adopted
     base = row_for(await get_board(client), BASE_LABEL)
-    set_id = await make_set_on(client, "Guji", base["row"]["current_version_id"])
+    set_id = await make_recipe_on(client, "Guji", base["row"]["current_version_id"])
     set_version = data(await client.get(f"/api/sets/{set_id}"))["versions"][0]["version"]["id"]
     made = await client.post(
         f"/api/sets/{set_id}/versions/{set_version}/pin", json={"label": "Guji copy"}

@@ -12,7 +12,7 @@ from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.signatures.service import SignatureService
 from tests.lever_shot import LEVER_PROFILE
-from tests.signatures.helpers import make_set_versions
+from tests.signatures.helpers import make_recipe_versions
 from tests.signatures.test_carry import RAMP_CUP, _version
 
 
@@ -44,11 +44,11 @@ async def _in_force(app: FastAPI) -> tuple[int, list[int]]:
     return version, [r.id for r in rows]
 
 
-async def test_the_signature_is_served_with_each_expectation_and_the_sets_that_use_it(
+async def test_the_signature_is_served_with_each_expectation_and_the_recipes_that_use_it(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     version, ids = await _in_force(app)
-    await make_set_versions(app.state.db, version)
+    await make_recipe_versions(app.state.db, version)
 
     body = _ok(await client.get(f"/api/profile-versions/{version}/signature"))
 
@@ -166,12 +166,12 @@ async def test_an_expectation_that_needs_a_phase_can_be_rejected_and_never_resto
     assert _error(refused)["code"] == "NEEDS_A_NEW_PHASE"
 
 
-async def test_an_override_is_rejected_and_restored_by_the_set_it_belongs_to(
+async def test_an_override_is_rejected_and_restored_by_the_recipe_it_belongs_to(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     version, (measure, *_) = await _in_force(app)
-    first, _ = await make_set_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).set_of_version(first)
+    first, _ = await make_recipe_versions(app.state.db, version)
+    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
     assert set_id is not None
     proposed = await SignatureService(app.state.db).propose_override(
         set_version_id=first,
@@ -222,8 +222,8 @@ async def test_a_rejected_override_keeps_its_reason(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     version, (measure, *_) = await _in_force(app)
-    first, _ = await make_set_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).set_of_version(first)
+    first, _ = await make_recipe_versions(app.state.db, version)
+    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
     proposed = await SignatureService(app.state.db).propose_override(
         set_version_id=first,
         profile_version_id=version,
@@ -248,8 +248,8 @@ async def test_a_restore_is_refused_while_another_override_is_in_force_or_its_ex
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     version, (measure, *_) = await _in_force(app)
-    first, _ = await make_set_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).set_of_version(first)
+    first, _ = await make_recipe_versions(app.state.db, version)
+    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
     assert set_id is not None
     service = SignatureService(app.state.db)
 
@@ -283,8 +283,8 @@ async def test_a_replaced_override_reads_as_withdrawn_and_is_not_a_rejection(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     version, (measure, *_) = await _in_force(app)
-    first, _ = await make_set_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).set_of_version(first)
+    first, _ = await make_recipe_versions(app.state.db, version)
+    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
     service = SignatureService(app.state.db)
     for value in (0.2, 0.3):
         await service.propose_override(
@@ -322,8 +322,8 @@ async def test_an_override_of_a_limit_in_a_unit_words_both_limits_in_it(
         [ExpectationInput(tier="important", kind="measure", expression=flow)],
         reason="a lever's ramp is gentle",
     )
-    first, _ = await make_set_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).set_of_version(first)
+    first, _ = await make_recipe_versions(app.state.db, version)
+    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
     await SignatureService(app.state.db).propose_override(
         set_version_id=first,
         profile_version_id=version,

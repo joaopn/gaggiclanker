@@ -2,7 +2,7 @@
 
 The behaviours under test are the ones the feature promises: a run writes only its own rows,
 a provider failure is a stored row rather than an exception, every shown proposal rests on two
-Sets, cites only what it was given and states a scope every source Set matches, one run at a
+Recipes, cites only what it was given and states a scope every source Recipe matches, one run at a
 time, and a process that died mid-call leaves a row a page can render.
 """
 
@@ -24,7 +24,7 @@ from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
-from gaggiclanker.patterns.service import NotEnoughSets, PatternsService
+from gaggiclanker.patterns.service import NotEnoughRecipes, PatternsService
 from tests.llm.conftest import FakeProvider, api_error
 from tests.patterns.world import Talking, build_pattern_world
 
@@ -218,7 +218,7 @@ class TestThePostFilter:
         proposals = await PatternProposalsRepository(service.db).for_run(row.id)
         return row, proposals
 
-    async def test_a_proposal_on_one_set_is_dropped_and_counted(
+    async def test_a_proposal_on_one_recipe_is_dropped_and_counted(
         self, service: PatternsService, provider: FakeProvider, talking: Talking
     ) -> None:
         answer = _answer(talking, source_insight_ids=[talking.a_grinder, talking.a_only])
@@ -229,7 +229,7 @@ class TestThePostFilter:
         assert (row.status, row.proposals_kept, row.proposals_dropped) == ("done", 0, 1)
         assert row.dropped == {"one_set": 1}
 
-    async def test_the_same_insight_twice_is_still_one_set(
+    async def test_the_same_insight_twice_is_still_one_recipe(
         self, service: PatternsService, provider: FakeProvider, talking: Talking
     ) -> None:
         answer = _answer(talking, source_insight_ids=[talking.a_grinder, talking.a_grinder])
@@ -242,7 +242,7 @@ class TestThePostFilter:
     async def test_an_invented_source_is_dropped_and_counted(
         self, service: PatternsService, provider: FakeProvider, talking: Talking, invented: int
     ) -> None:
-        # 5 is a waiting insight, 6 one in a Set being designed: neither was given.
+        # 5 is a waiting insight, 6 one in a Recipe being designed: neither was given.
         answer = _answer(
             talking, source_insight_ids=[talking.a_grinder, talking.b_grinder, invented]
         )
@@ -270,7 +270,7 @@ class TestThePostFilter:
 
         assert proposals == [] and row.dropped == {"scope_not_shared": 1}
 
-    async def test_a_scope_that_one_source_set_does_not_match_is_dropped(
+    async def test_a_scope_that_one_source_recipe_does_not_match_is_dropped(
         self, service: PatternsService, provider: FakeProvider, talking: Talking
     ) -> None:
         # Light roast: A and B match, C (dark) does not.
@@ -296,7 +296,9 @@ class TestThePostFilter:
     async def test_an_invented_replaced_insight_is_dropped_and_counted(
         self, service: PatternsService, provider: FakeProvider, talking: Talking
     ) -> None:
-        answer = _answer(talking, replaces_insight_id=talking.a_only)  # a Set insight, not general
+        answer = _answer(
+            talking, replaces_insight_id=talking.a_only
+        )  # a Recipe insight, not general
 
         row, proposals = await self._run(service, provider, answer)
 
@@ -487,14 +489,14 @@ class TestOneRunAtATime:
 
         assert started and second.id != first.id
 
-    async def test_fewer_than_two_sets_with_insights_starts_nothing(
+    async def test_fewer_than_two_recipes_with_insights_starts_nothing(
         self, db: Database, llm: LlmService, provider: FakeProvider
     ) -> None:
         world = await build_pattern_world(db)
         await world.own(world.a, "Only one Set has said anything.")
         service = PatternsService(db, llm, PromptService(PromptsRepository(db)))
 
-        with pytest.raises(NotEnoughSets):
+        with pytest.raises(NotEnoughRecipes):
             await service.start(tasks=TaskRegistry())
 
         assert provider.calls == []

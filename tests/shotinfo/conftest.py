@@ -1,4 +1,4 @@
-"""Real shots, derived from real `.slog` files, filed in a Set and judged.
+"""Real shots, derived from real `.slog` files, filed in a Recipe and judged.
 
 The shot is `shot_204_ramping_flow.slog` run through the ingest path
 (`derive_shot`), so its diagnostics are the full block the archive actually
@@ -28,14 +28,14 @@ from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.notes import NotesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw
 from gaggiclanker.domain.models import ShotNotes
 from gaggiclanker.domain.slog import Slog, parse_slog
 from gaggiclanker.sync.derive import SI_SCALE_CONNECTED, derive_shot
-from tests.sets.conftest import make_profile_version
+from tests.recipes.conftest import make_profile_version
 
 SLOG = Path(__file__).resolve().parents[1] / "fixtures" / "slog" / "shot_204_ramping_flow.slog"
 #: The profiles these two shots are derived with: constructed to match them (the
@@ -115,9 +115,9 @@ async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
             GrinderWrite(name="Niche Zero", step_unit="numbers")
         )
         profile = await make_profile_version(db, "Alturas bloom", temperature=93.0)
-        sets = SetsRepository(db)
-        row = await sets.create(
-            SetWrite(name="Alturas on the Niche", bean_id=bean.id, grinder_id=grinder.id),
+        recipes = RecipesRepository(db)
+        row = await recipes.create(
+            RecipeWrite(name="Alturas on the Niche", bean_id=bean.id, grinder_id=grinder.id),
             SetVersionWrite(
                 profile_version_id=profile,
                 grind_setting="14",
@@ -133,7 +133,7 @@ async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
         no_scale = await _insert(db, _without_scale(slog), "000205")
         no_pressure = await _insert(db, slog, "000206", has_pressure=False)
         for shot_id in (shot, no_scale, no_pressure):
-            assert await sets.assign_shot(shot_id, version_id)
+            assert await recipes.assign_shot(shot_id, version_id)
 
         await JudgementsRepository(db).upsert(
             shot,

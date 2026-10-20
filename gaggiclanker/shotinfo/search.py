@@ -1,8 +1,8 @@
-"""The shot search: one Set's shots, filtered and sorted on their base items.
+"""The shot search: one Recipe's shots, filtered and sorted on their base items.
 
-A Set conversation opens with its version's latest shots; everything else it
+A Recipe conversation opens with its version's latest shots; everything else it
 finds through here. A filter is either a plain column — version, label,
-balance, day, and the numbers :data:`~gaggiclanker.db.repos.sets.SEARCH_COLUMNS`
+balance, day, and the numbers :data:`~gaggiclanker.db.repos.recipes.SEARCH_COLUMNS`
 lists — applied in SQL, or a value only the loaded shot knows (a number inside
 the diagnostics, the ratio), applied here over the same catalogue
 accessors the renderer uses. So a shot found by "first drip over 9 s" shows a
@@ -20,7 +20,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.domain.vocab import Decision
 from gaggiclanker.shotinfo import catalogue
 from gaggiclanker.shotinfo.facts import ShotFacts
@@ -35,7 +35,7 @@ __all__ = [
 ]
 
 #: The most shots one search returns. A search is how the model finds which
-#: shots to read in full, not a way to read a Set in bulk.
+#: shots to read in full, not a way to read a Recipe in bulk.
 SEARCH_LIMIT = 10
 
 #: The numeric base items a search filters and sorts on, by catalogue key.
@@ -61,8 +61,8 @@ SEARCH_NUMBERS: Mapping[str, Callable[[ShotFacts], float | None]] = {
 class ShotQuery:
     """What to find. Every filter is optional; none at all is "the newest"."""
 
-    #: One version of the Set, by row id: the tool resolves the name the agent
-    #: typed ("v1.1") into this, and refuses a name the Set does not have.
+    #: One version of the Recipe, by row id: the tool resolves the name the agent
+    #: typed ("v1.1") into this, and refuses a name the Recipe does not have.
     version_id: int | None = None
     label: Decision | None = None
     balance: str | None = None
@@ -85,8 +85,8 @@ class SearchResult:
 
 
 async def search_shots(db: Database, set_id: int, query: ShotQuery) -> SearchResult:
-    """This Set's shots that match, in order, at most ``query.limit`` of them."""
-    ids = await SetsRepository(db).search_shot_ids(
+    """This Recipe's shots that match, in order, at most ``query.limit`` of them."""
+    ids = await RecipesRepository(db).search_shot_ids(
         set_id,
         version_id=query.version_id,
         decision=query.label,

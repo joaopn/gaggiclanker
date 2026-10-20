@@ -4,14 +4,14 @@ Shaped after `shot_reviews` (`repos/reviews.py`) deliberately, because it has
 the same life: a row is opened before the provider is contacted, closed when it
 answers, and reconciled at boot if the process died in between. The one thing
 it has that a review does not is an *accept*: three options are offered and
-at most one of them becomes a Set, so the row carries what was chosen and what
+at most one of them becomes a Recipe, so the row carries what was chosen and what
 it produced.
 
 The accept is split in two: :meth:`claim` takes the run with
 `UPDATE ... WHERE accepted_option IS NULL` **before** anything is created, and
 :meth:`finish_accept` records what that produced. Two tabs pressing "use the
 recommended one" is an ordinary race, and the loser has to be refused before it
-has made a second Set on the same bean — which is why the guard cannot be the
+has made a second Recipe on the same bean — which is why the guard cannot be the
 last write of the sequence.
 """
 
@@ -89,7 +89,7 @@ class StartingPointRunRow(BaseModel):
 
 #: The joins a reader wants beside the row: which bean and which grinder, by
 #: name. A correlated read rather than a second request, the way `beans` joins
-#: its Set count.
+#: its Recipe count.
 _SELECT = """
     SELECT r.*, b.name AS bean_name, g.name AS grinder_name
       FROM starting_point_runs r
@@ -195,8 +195,8 @@ class StartingPointRunsRepository(Repository):
         of two requests that both read an unaccepted row exactly one writes it;
         the loser gets ``False`` and the caller turns that into a 409.
 
-        It used to run last, after the Set existed — which meant two accepts
-        created two Sets for one bean and only the second one was told off. The
+        It used to run last, after the Recipe existed — which meant two accepts
+        created two Recipes for one bean and only the second one was told off. The
         order is the fix, not the guard.
 
         The ids of what the option produced are filled in afterwards by
@@ -218,8 +218,8 @@ class StartingPointRunsRepository(Repository):
         """Undo a claim whose work then failed. Only ever an unfinished one.
 
         The `accepted_recipe_id IS NULL` guard is what makes this safe to call from
-        an exception handler: a claim that did produce a Set is never withdrawn,
-        whatever went wrong afterwards, because the Set is real and the row has
+        an exception handler: a claim that did produce a Recipe is never withdrawn,
+        whatever went wrong afterwards, because the Recipe is real and the row has
         to keep pointing at it.
         """
         await self.db.execute(

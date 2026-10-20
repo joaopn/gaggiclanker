@@ -1,6 +1,6 @@
 """The brew ratio, worked out in one place.
 
-The shots table's Ratio column, the shot information's ratio, a Set's trend and
+The shots table's Ratio column, the shot information's ratio, a Recipe's trend and
 the starting point's mean ratio all answer the same question, and four copies of
 the rule drifted: one read the version's dose when the person entered none, the
 others did not. They all call this.

@@ -1,4 +1,4 @@
-"""`grinders` — the other half of the hardware a Set names.
+"""`grinders` — the other half of the hardware a Recipe names.
 
 Small table, one job: record the grinder in enough detail that advice can be
 given in **its own units**. `step_unit` is why this exists at all — "two clicks

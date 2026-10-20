@@ -4,7 +4,7 @@ A signature is what one profile version is for. An agent **proposes** expectatio
 (`propose_signature`, a draft that carries some, or the carrying of a signature to a new
 version) and they are in force at once; everything here is a person's press: read the
 signature, reject an expectation, restore a rejected one, move one to another tier, and reject
-or restore a Set version's override. There is no tool for any of it, in the chat or over MCP.
+or restore a Recipe version's override. There is no tool for any of it, in the chat or over MCP.
 
 Every answer is one guarded write (`SignatureRepository`): the first press wins, a second tab
 finds the expectation answered and gets a 409, never a second write. Only a **confirmed**
@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from gaggiclanker.api.deps import DatabaseDep, ProfilesRepoDep, SetsRepoDep
+from gaggiclanker.api.deps import DatabaseDep, ProfilesRepoDep, RecipesRepoDep
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.signatures import (
     ExpectationRow,
@@ -95,7 +95,7 @@ class SetUsingOut(BaseModel):
     set_id: int
     set_name: str
     archived: bool
-    #: The newest version of that Set on this profile version.
+    #: The newest version of that Recipe on this profile version.
     version_id: int
     version_label: str
     is_current: bool
@@ -119,7 +119,7 @@ class SignatureData(BaseModel):
     rejected: int
     #: Tier order (critical, important, context), then in the order they were written.
     expectations: list[ExpectationOut]
-    #: The Sets with a version on this profile version, for "ask for a signature" links.
+    #: The Recipes with a version on this profile version, for "ask for a signature" links.
     sets: list[SetUsingOut]
 
 
@@ -209,7 +209,9 @@ async def _signature(
         not_in_force=sum(1 for r in rows if r.status == "proposed"),
         rejected=sum(1 for r in rows if r.status == "rejected"),
         expectations=[expectation_out(r) for r in rows],
-        sets=[SetUsingOut.model_validate(item) for item in await signatures.sets_using(version_id)],
+        sets=[
+            SetUsingOut.model_validate(item) for item in await signatures.recipes_using(version_id)
+        ],
     )
 
 
@@ -327,7 +329,7 @@ async def set_expectation_tier(
     return await _answered(expectation_id, [result.row], signatures, profiles)
 
 
-# ── a Set version's override ────────────────────────────────────────
+# ── a Recipe version's override ────────────────────────────────────────
 
 
 class OverrideOut(BaseModel):
@@ -345,7 +347,7 @@ class OverrideOut(BaseModel):
     proposed_by_thread_id: int | None
     proposed_at: str
     answered_at: str | None
-    #: The limit this Set version would read: ``{op, value}`` or ``{op, low, high}``.
+    #: The limit this Recipe version would read: ``{op, value}`` or ``{op, low, high}``.
     compare: JsonValue | None
     compare_text: str
     #: What it overrides: the profile's limit, and the expectation it is a limit of.
@@ -415,12 +417,12 @@ async def _override_out(row: OverrideRow, signatures: SignatureRepository) -> Ov
     summary="The overrides proposed for one Set version's signature limits",
 )
 async def list_overrides(
-    set_id: int, version_id: int, signatures: SignatureRepoDep, sets: SetsRepoDep
+    set_id: int, version_id: int, signatures: SignatureRepoDep, recipes: RecipesRepoDep
 ) -> JSONResponse:
     """In force, rejected and replaced, newest first, so a card read later tells the truth."""
-    if await sets.version_of_set(set_id, version_id) is None:
+    if await recipes.version_of_recipe(set_id, version_id) is None:
         raise NotFound(f"No version {version_id} in Set {set_id}")
-    rows = await signatures.overrides_for_set_version(version_id)
+    rows = await signatures.overrides_for_recipe_version(version_id)
     items = [await _override_out(row, signatures) for row in reversed(rows)]
     return envelope_response(OverrideListData(items=items).model_dump(mode="json"))
 
@@ -459,7 +461,7 @@ def _override_refusal(refused: str, override_id: int) -> Exception:
 
 async def _owned_override(signatures: SignatureRepository, set_id: int, override_id: int) -> None:
     row = await signatures.get_override(override_id)
-    if row is None or await signatures.set_of_version(row.set_version_id) != set_id:
+    if row is None or await signatures.recipe_of_version(row.set_version_id) != set_id:
         raise NotFound(f"No signature override {override_id} in Set {set_id}")
 
 

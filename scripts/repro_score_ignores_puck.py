@@ -18,7 +18,7 @@ or the flow.
 
 The check builds that shot out of a real fixture (`tests/lever_shot.py`: the
 weight, the scale flow, the water counter and the end of the shot are rewritten,
-nothing is taken from a person's shot), files it under a Set version whose
+nothing is taken from a person's shot), files it under a Recipe version whose
 target yield is 36 g, and reads it the way a chat does (the base rendering of
 the shot renderer). It requires the three things that are plainly true of it to
 be said: it is over target, its ramp ran fast, and the decline was skipped.
@@ -37,7 +37,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import slog_to_raw
@@ -77,8 +77,8 @@ async def read_base_rendering() -> str:
             grinder = await GrindersRepository(db).create(
                 GrinderWrite(name="Constructed grinder", step_unit="numbers")
             )
-            row = await SetsRepository(db).create(
-                SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
+            row = await RecipesRepository(db).create(
+                RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
                 SetVersionWrite(
                     profile_version_id=version.id,
                     grind_setting="14",
@@ -93,7 +93,7 @@ async def read_base_rendering() -> str:
             )
             shot_id = await ShotsRepository(db).insert(derived.shot, derived.samples)
             assert row.current_version_id is not None
-            assert await SetsRepository(db).assign_shot(shot_id, row.current_version_id)
+            assert await RecipesRepository(db).assign_shot(shot_id, row.current_version_id)
             facts = (await load_shots(db, [shot_id]))[0]
             return render_shot(facts, "base", default_tiers(), curve_points=60)
         finally:

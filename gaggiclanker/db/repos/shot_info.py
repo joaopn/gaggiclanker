@@ -21,7 +21,7 @@ class ShotInfoTierWrite(BaseModel):
 
     Checked against the catalogue on the way in, so a row can only ever name
     an item that exists and that a person may move. A locked item (the shot
-    id, the Set version, whether the shot counts) is what the agent needs to
+    id, the Recipe version, whether the shot counts) is what the agent needs to
     search and cite at all; it is not a choice, and a row for one is refused
     here as well as by the route.
     """

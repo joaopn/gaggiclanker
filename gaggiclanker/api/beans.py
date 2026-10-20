@@ -4,8 +4,8 @@ CRUD plus archive and delete. Archive is how a coffee is retired: a finished
 bag is still the coffee a hundred shots were pulled with, and
 `POST /api/beans/{id}/archive` hides it from the pickers and leaves every
 reference intact. `DELETE /api/beans/{id}` is for a bean nobody used — a typo, a
-duplicate — and answers 409 while any Set points at it, because Sets cannot be
-deleted and a Set whose bean is gone is a Set whose page cannot render.
+duplicate — and answers 409 while any Recipe points at it, because Recipes cannot be
+deleted and a Recipe whose bean is gone is a Recipe whose page cannot render.
 
 `POST /api/beans/import` saves a bean read from a JSON file, the shape the
 Beans page exports: the bean with the file's `id` is updated with the fields
@@ -31,7 +31,7 @@ from gaggiclanker.api.deps import BeansRepoDep, DatabaseDep
 from gaggiclanker.db.repos.beans import BeanRow, BeanWrite
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import BadRequest, Conflict, NotFound
-from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_sets
+from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_recipes
 
 __all__ = ["router"]
 
@@ -199,7 +199,7 @@ async def bean_similar_sets(
     bean = await beans.get(bean_id)
     if bean is None:
         raise NotFound(f"No bean {bean_id}")
-    items = await similar_sets(
+    items = await similar_recipes(
         db,
         roast_level=bean.roast_level,
         process=bean.process,

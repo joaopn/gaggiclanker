@@ -8,7 +8,7 @@ Exits non-zero while the bug exists, zero when it is fixed.
 The bug
 -------
 
-One conversation is one version: a Set's conversation belongs to the version it
+One conversation is one version: a Recipe's conversation belongs to the version it
 was opened on, and a version the person accepts is a new experiment with a
 conversation of its own. Nothing held the agent or the app to that.
 
@@ -18,9 +18,9 @@ conversation of its own. Nothing held the agent or the app to that.
   web and is pinned by its tests (the proposal card and the Chat page); what
   the agent is told to do with the message is checked here, in the prompts.
 * The design prompt said the conversation a first recipe was designed in
-  "becomes the Set's ordinary one" once accepted, and the Set prompt had no
+  "becomes the Recipe's ordinary one" once accepted, and the Recipe prompt had no
   word about an accepted card.
-* Discuss in chat on version 1 of a designed Set opened the newest conversation
+* Discuss in chat on version 1 of a designed Recipe opened the newest conversation
   about version 1, which after the accept is the design itself: the button
   took the person back into the room the agent should be sending them out of.
 
@@ -42,8 +42,8 @@ import yaml
 
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetVersionPatch
+from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import RecipeVersionPatch
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.main import create_app
 from gaggiclanker.settings import EnvSettings
@@ -107,14 +107,14 @@ async def main() -> int:
                         change_summary="Designed in chat.",
                     )
                 )
-                stored = await SetProposalsRepository(db).create(
+                stored = await RecipeProposalsRepository(db).create(
                     set_id,
                     ProposalWrite(
                         kind="design",
                         draft_id=draft.id,
                         thread_id=created["thread_id"],
                         reason="A longer, gentler shot for more body.",
-                        patch=SetVersionPatch(
+                        patch=RecipeVersionPatch(
                             profile_version_id=drafted.id,
                             grind_setting="20",
                             grind_value=20,

@@ -1,7 +1,8 @@
-"""A Set with graded versions, shots, conversations and insights to rest on, for the insight tests.
+"""A Recipe with graded versions, shots, conversations and insights to rest on, for the insight
+tests.
 
-Real database, real repositories. Set A has v1 and v2 graded ("held") and v3 open
-(current), one shot on each, and two conversations; Set B is a stranger with one
+Real database, real repositories. Recipe A has v1 and v2 graded ("held") and v3 open
+(current), one shot on each, and two conversations; Recipe B is a stranger with one
 graded version, one shot and one conversation. Nothing here is a mock: what the
 tests pin is mostly a constraint or a read inside the transaction that writes.
 """
@@ -19,21 +20,21 @@ from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, InsightWrite
-from gaggiclanker.db.repos.sets import (
-    SetsRepository,
-    SetVersionPatch,
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
     SetVersionWrite,
-    SetWrite,
     VersionOutcomeWrite,
     VersionPredictionWrite,
 )
-from tests.sets.conftest import make_shot
+from tests.recipes.conftest import make_shot
 
 
 @dataclass(slots=True)
 class ProvenanceWorld:
     db: Database
-    sets: SetsRepository
+    recipes: RecipesRepository
     insights: InsightsRepository
     deletions: InsightDeletionsRepository
     set_id: int
@@ -45,7 +46,7 @@ class ProvenanceWorld:
     shot3: int
     thread: int
     other_thread: int
-    stranger_set: int
+    stranger_recipe: int
     stranger_version: int
     stranger_thread: int
 
@@ -59,7 +60,7 @@ class ProvenanceWorld:
         thread_id: int | None = None,
         shots: list[int] | None = None,
     ) -> int:
-        """A Set insight written straight into the table (a seeded, answered one)."""
+        """A Recipe insight written straight into the table (a seeded, answered one)."""
         return await self.insights.insert(
             InsightWrite(
                 text=text,
@@ -73,15 +74,20 @@ class ProvenanceWorld:
         )
 
     async def regrade(self, version_id: int, outcome: str) -> None:
-        await self.sets.set_outcome(
+        await self.recipes.set_outcome(
             self.set_id, version_id, VersionOutcomeWrite.model_validate({"outcome": outcome})
         )
 
 
 async def _graded(
-    sets: SetsRepository, db: Database, set_id: int, version_id: int, device_id: str, outcome: str
+    recipes: RecipesRepository,
+    db: Database,
+    set_id: int,
+    version_id: int,
+    device_id: str,
+    outcome: str,
 ) -> int:
-    await sets.set_prediction(
+    await recipes.set_prediction(
         set_id,
         version_id,
         VersionPredictionWrite.model_validate(
@@ -89,9 +95,9 @@ async def _graded(
         ),
     )
     shot = await make_shot(db, device_id)
-    assert await sets.assign_shot(shot, version_id)
+    assert await recipes.assign_shot(shot, version_id)
     await JudgementsRepository(db).upsert(shot, JudgementWrite.model_validate({"decision": "keep"}))
-    await sets.set_outcome(
+    await recipes.set_outcome(
         set_id, version_id, VersionOutcomeWrite.model_validate({"outcome": outcome})
     )
     return shot
@@ -102,34 +108,34 @@ async def build_provenance_world(db: Database) -> ProvenanceWorld:
     grinder = await GrindersRepository(db).create(
         GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
     )
-    sets = SetsRepository(db)
-    row = await sets.create(
-        SetWrite(name="A", bean_id=bean.id, grinder_id=grinder.id),
+    recipes = RecipesRepository(db)
+    row = await recipes.create(
+        RecipeWrite(name="A", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert row.current_version_id is not None
     v1 = row.current_version_id
-    shot1 = await _graded(sets, db, row.id, v1, "000601", "held")
-    second = await sets.add_version(
+    shot1 = await _graded(recipes, db, row.id, v1, "000601", "held")
+    second = await recipes.add_version(
         row.id,
-        SetVersionPatch.model_validate({"grind_setting": "21", "prediction": "Expect 32 s."}),
+        RecipeVersionPatch.model_validate({"grind_setting": "21", "prediction": "Expect 32 s."}),
     )
     assert second is not None
-    shot2 = await _graded(sets, db, row.id, second.id, "000602", "held")
-    third = await sets.add_version(
+    shot2 = await _graded(recipes, db, row.id, second.id, "000602", "held")
+    third = await recipes.add_version(
         row.id,
-        SetVersionPatch.model_validate({"grind_setting": "20", "prediction": "Expect 34 s."}),
+        RecipeVersionPatch.model_validate({"grind_setting": "20", "prediction": "Expect 34 s."}),
     )
     assert third is not None
     shot3 = await make_shot(db, "000603")
-    assert await sets.assign_shot(shot3, third.id)
+    assert await recipes.assign_shot(shot3, third.id)
 
-    stranger = await sets.create(
-        SetWrite(name="B", bean_id=bean.id, grinder_id=grinder.id),
+    stranger = await recipes.create(
+        RecipeWrite(name="B", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert stranger.current_version_id is not None
-    await _graded(sets, db, stranger.id, stranger.current_version_id, "000604", "failed")
+    await _graded(recipes, db, stranger.id, stranger.current_version_id, "000604", "failed")
 
     chat = ChatRepository(db)
     threads = []
@@ -139,7 +145,7 @@ async def build_provenance_world(db: Database) -> ProvenanceWorld:
         threads.append(made.thread.id)
     return ProvenanceWorld(
         db=db,
-        sets=sets,
+        recipes=recipes,
         insights=InsightsRepository(db),
         deletions=InsightDeletionsRepository(db),
         set_id=row.id,
@@ -151,7 +157,7 @@ async def build_provenance_world(db: Database) -> ProvenanceWorld:
         shot3=shot3,
         thread=threads[0],
         other_thread=threads[1],
-        stranger_set=stranger.id,
+        stranger_recipe=stranger.id,
         stranger_version=stranger.current_version_id,
         stranger_thread=threads[2],
     )

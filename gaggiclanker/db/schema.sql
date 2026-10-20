@@ -683,7 +683,7 @@ CREATE INDEX idx_knowledge_insights_replaces ON knowledge_insights(replaces_id);
 CREATE TABLE shots (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id               TEXT    NOT NULL,
-    -- No foreign key, on purpose. The reference is enforced in `SetsRepository` (the only code
+    -- No foreign key, on purpose. The reference is enforced in `RecipesRepository` (the only code
     -- that writes the column) and a Recipe version is never deleted: a Recipe is archived and its
     -- versions stay. A row pointing at nothing lists as unassigned rather than disappearing.
     recipe_version_id       INTEGER,

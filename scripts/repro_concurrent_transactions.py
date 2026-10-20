@@ -14,7 +14,7 @@ What aiosqlite serialises is individual *statements*; it knows nothing about a
 transaction spanning several of them.
 
 So two coroutines that both reach ``BEGIN IMMEDIATE`` — two browser tabs adding
-a Set version, or a tab racing a sync pass — give the second one
+a Recipe version, or a tab racing a sync pass — give the second one
 ``cannot start a transaction within a transaction``, which surfaces as a 500 on
 a request that did nothing wrong. The sync engine has a lock of its own,
 which is why this only showed up once the API got its first transactional
@@ -40,7 +40,7 @@ async def _insert(db: Database, value: int) -> None:
     """One transaction that reads, then writes what it read.
 
     Read-then-write inside the transaction on purpose: it is the shape
-    `SetsRepository.add_version` has (find the current version, insert the next
+    `RecipesRepository.add_version` has (find the current version, insert the next
     one), so this reproduces the collision *and* the reason the fix has to be a
     lock rather than a retry.
     """

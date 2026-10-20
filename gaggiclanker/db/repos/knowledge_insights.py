@@ -3,10 +3,10 @@
 Rows rather than a file (gaggimate-mcp keeps the same thing as
 `brewing-insights.md`) because an insight has to be *selected*: "this grinder
 needs two clicks finer for anything anaerobic" belongs in front of a
-conversation about an anaerobic Set on that grinder and nowhere else. The selection rule is one
+conversation about an anaerobic Recipe on that grinder and nowhere else. The selection rule is one
 sentence and it lives in :func:`scope_matches`:
 
-    an insight applies when **every** key its scope states matches the Set.
+    an insight applies when **every** key its scope states matches the Recipe.
 
 So ``{}`` is a fact about the whole kitchen, ``{"grinder_id": 2}`` is about one
 grinder, and ``{"grinder_id": 2, "process": "anaerobic"}`` is about the
@@ -15,14 +15,14 @@ partial credit and no scoring: a rule that half-applies is a rule nobody can
 predict, and the point of showing these to a model is that the user knows what
 it was told.
 
-**An insight is general or belongs to one Set.** A general insight
+**An insight is general or belongs to one Recipe.** A general insight
 (``set_id`` NULL: hand-written, or an agent-written one nobody could place) keeps
-the attribute matching above and reaches every conversation whose Set it
-matches. An insight written in a Set's conversation carries that Set and the
+the attribute matching above and reaches every conversation whose Recipe it
+matches. An insight written in a Recipe's conversation carries that Recipe and the
 version the conversation was about, has no attribute scope, and is given to that
-Set's conversations only — whatever bean and grinder another Set shares with it.
-One function, :meth:`InsightsRepository.for_set`, answers "what applies to this
-Set" for the opening context, ``get_insights`` and the Set page, so the three
+Recipe's conversations only — whatever bean and grinder another Recipe shares with it.
+One function, :meth:`InsightsRepository.for_recipe`, answers "what applies to this
+Recipe" for the opening context, ``get_insights`` and the Recipe page, so the three
 cannot disagree.
 
 **Unconfirmed insights never reach a prompt.** They are proposals — by the chat
@@ -61,8 +61,8 @@ __all__ = [
     "InsightsRepository",
     "RestsOn",
     "RestsOnRow",
+    "recipe_attributes",
     "scope_matches",
-    "set_attributes",
 ]
 
 #: The dimensions an insight may be scoped by. Closed, because the chat is
@@ -112,13 +112,13 @@ class InsightScope(BaseModel):
 
 
 def scope_matches(scope: dict[str, Any] | None, attributes: dict[str, Any]) -> bool:
-    """Whether an insight's scope holds for a Set's attributes.
+    """Whether an insight's scope holds for a Recipe's attributes.
 
-    All-keys-must-match, and an attribute the Set does not state never matches a
+    All-keys-must-match, and an attribute the Recipe does not state never matches a
     scope that names it: an insight about natural processing must not be handed
     to a conversation about a bag whose roaster printed no process. Saying nothing is
     better than reasoning from a guess — the same rule
-    :class:`~gaggiclanker.knowledge.rules.SetContext` documents for tier 1.
+    :class:`~gaggiclanker.knowledge.rules.RecipeContext` documents for tier 1.
 
     Strings compare case-insensitively and trimmed, because `origin` is typed by
     hand into a bean form and "Ethiopia " is the same country as "ethiopia".
@@ -140,7 +140,7 @@ def scope_matches(scope: dict[str, Any] | None, attributes: dict[str, Any]) -> b
     return True
 
 
-def set_attributes(
+def recipe_attributes(
     *,
     bean_id: int | None = None,
     roast_level: str | None = None,
@@ -149,16 +149,16 @@ def set_attributes(
     grinder_id: int | None = None,
     profile_style: str | None = None,
 ) -> dict[str, Any]:
-    """A Set's attributes in the shape :func:`scope_matches` reads them.
+    """A Recipe's attributes in the shape :func:`scope_matches` reads them.
 
     One place, because there are two callers that assemble it from different
-    rows — the chat from the Set it is about, the API from a Set the page
+    rows — the chat from the Recipe it is about, the API from a Recipe the page
     asked about — and a dimension added to :data:`SCOPE_KEYS` has to reach both
     or an insight silently stops matching on one of them.
 
     The normalisation is the part worth sharing: an empty string and the
     detected style ``"unknown"`` both mean *not stated*, and a scope that names
-    an unstated dimension must not match (the same rule tier 1's `SetContext`
+    an unstated dimension must not match (the same rule tier 1's `RecipeContext`
     documents). A blank `origin` reaching the comparison as `""` would match an
     insight scoped to `origin: ""`, which nothing should ever be.
     """
@@ -223,20 +223,21 @@ def _words(outcome: str | None) -> str:
     return "no outcome" if outcome is None else outcome.replace("_", " ")
 
 
-def home_sets(facts: Iterable[tuple[int, int, int | None]]) -> dict[int, int]:
-    """The Set each insight counts for when insights are weighed across Sets.
+def home_recipes(facts: Iterable[tuple[int, int, int | None]]) -> dict[int, int]:
+    """The Recipe each insight counts for when insights are weighed across Recipes.
 
-    ``facts`` are ``(insight id, its Set's id, the Set the first original was learned in or None)``
-    of the insights in play (the confirmed, not dismissed ones of the Sets being read).
+    ``facts`` are ``(insight id, its Recipe's id, the Recipe the first original was learned in or
+    None)`` of the insights in play (the confirmed, not dismissed ones of the Recipes being read).
 
-    A lesson's home is the Set it was first learned in. A copy's home is therefore always that
-    Set, whatever became of the original (deleted, taken back, dismissed) and whichever of several
-    duplicates came first; every other insight counts for its own Set. So an original and all its
-    copies are one lesson, and a Set holding a copy beside a lesson of its own stands for two.
+    A lesson's home is the Recipe it was first learned in. A copy's home is therefore always that
+    Recipe, whatever became of the original (deleted, taken back, dismissed) and whichever of
+    several duplicates came first; every other insight counts for its own Recipe. So an original and
+    all its copies are one lesson, and a Recipe holding a copy beside a lesson of its own stands for
+    two.
 
     **The one place copies are folded.** Find patterns calls it for the proposal filter, for the
-    approval, for the number of Sets a run needs and for the run's own count; nothing else may
-    count Sets behind insights without it.
+    approval, for the number of Recipes a run needs and for the run's own count; nothing else may
+    count Recipes behind insights without it.
     """
     return {
         insight_id: set_id if copied_from_set is None else copied_from_set
@@ -247,13 +248,13 @@ def home_sets(facts: Iterable[tuple[int, int, int | None]]) -> dict[int, int]:
 def grouped_by_version(
     insights: Sequence[InsightRow], versions_newest_first: Sequence[int]
 ) -> list[InsightRow]:
-    """A Set's own insights in the order its page lists them.
+    """A Recipe's own insights in the order its page lists them.
 
     The page groups them by the version they were learned at, the newest version's group first,
-    then the insights that name no version, then the copies made when the Set was duplicated
-    ("Copied with this Set"); inside a group they keep the order they came in (oldest first). A
-    version the list does not know sits after the known ones and before the unversioned. The Set
-    page does this client-side (``SetInsights``); the Duplicate preview calls this, and a test on
+    then the insights that name no version, then the copies made when the Recipe was duplicated
+    ("Copied with this Recipe"); inside a group they keep the order they came in (oldest first). A
+    version the list does not know sits after the known ones and before the unversioned. The Recipe
+    page does this client-side (``RecipeInsights``); the Duplicate preview calls this, and a test on
     each side holds both to one fixture.
     """
     rank = {version_id: place for place, version_id in enumerate(versions_newest_first)}
@@ -279,8 +280,8 @@ class InsightWrite(BaseModel):
     evidence_shot_ids: list[int] = Field(default_factory=list)
     source: InsightSource = "user"
     confirmed: bool = False
-    #: The Set this insight belongs to, when it was learned in one. A Set's
-    #: insight states no attribute scope: it is about this Set whatever its bean
+    #: The Recipe this insight belongs to, when it was learned in one. A Recipe's
+    #: insight states no attribute scope: it is about this Recipe whatever its bean
     #: and grinder are shared with.
     set_id: int | None = None
     #: The version the conversation that wrote it was about.
@@ -291,19 +292,19 @@ class InsightWrite(BaseModel):
     #: as given by :meth:`InsightsRepository.insert` (seeding, tests); the guarded
     #: path, :meth:`InsightsRepository.propose`, reads them from the versions instead.
     rests_on: list[RestsOn] = Field(default_factory=list)
-    #: The added insight of the same Set this one is proposed to replace, and its
+    #: The added insight of the same Recipe this one is proposed to replace, and its
     #: text as it stands now (set by :meth:`InsightsRepository.propose`).
     replaces_id: int | None = None
     replaces_text: str = ""
     #: The pattern run an approved general insight came from; ``None`` for every other one.
     pattern_run_id: int | None = None
-    #: The first original, when this is a copy made by duplicating a Set; nothing else writes it.
+    #: The first original, when this is a copy made by duplicating a Recipe; nothing else writes it.
     copied_from_insight_id: int | None = None
-    #: The Set that original was learned in; written with it, by the duplicate only.
+    #: The Recipe that original was learned in; written with it, by the duplicate only.
     copied_from_set_id: int | None = None
 
     @model_validator(mode="after")
-    def _a_set_insight_has_no_scope(self) -> InsightWrite:
+    def _a_recipe_insight_has_no_scope(self) -> InsightWrite:
         if (self.rests_on or self.replaces_id is not None) and self.set_id is None:
             raise ValueError("only a Set's insight rests on versions or replaces another")
         if self.set_version_id is not None and self.set_id is None:
@@ -340,7 +341,7 @@ class InsightRow(BaseModel):
     created_at: str = ""
     updated_at: str = ""
     confirmed_at: str | None = None
-    #: The Set it belongs to; NULL is a general insight.
+    #: The Recipe it belongs to; NULL is a general insight.
     set_id: int | None = None
     #: The version it was learned at, and its name ("v3"). NULL for "learned
     #: before versions were recorded", and for a general insight.
@@ -355,7 +356,7 @@ class InsightRow(BaseModel):
     #: same query as the row. Empty for a general insight and for one written
     #: before versions were recorded as evidence.
     rests_on: list[RestsOnRow] = Field(default_factory=list, validation_alias="rests_on_resolved")
-    #: The evidence shots still filed in the insight's own Set, read in the same query. The
+    #: The evidence shots still filed in the insight's own Recipe, read in the same query. The
     #: line a prompt carries lists these and no others (the same filter `get_insights`
     #: applies to `evidence_shot_ids`): a shot re-filed elsewhere is no longer evidence here.
     filed_shots: list[int] = Field(
@@ -369,14 +370,14 @@ class InsightRow(BaseModel):
     #: deleted by it) or ``old_changed`` (the old one was already gone or no longer
     #: added). ``None`` for an insight that replaces nothing, or is still waiting.
     replaced: Literal["deleted", "old_changed"] | None = None
-    #: The run of Find patterns across Sets whose approved proposal wrote this general
+    #: The run of Find patterns across Recipes whose approved proposal wrote this general
     #: insight; ``None`` for one written any other way.
     pattern_run_id: int | None = None
     #: The first original this insight was copied from (a copy of a copy names the first), when it
     #: is a copy; it outlives that original. A copy and its original are one lesson.
     copied_from_insight_id: int | None = None
-    #: The Set that original was learned in: this copy's home Set when insights are weighed across
-    #: Sets, whatever became of the original.
+    #: The Recipe that original was learned in: this copy's home Recipe when insights are weighed
+    #: across Recipes, whatever became of the original.
     copied_from_set_id: int | None = None
 
     @computed_field  # type: ignore[prop-decorator]
@@ -398,12 +399,12 @@ class InsightRow(BaseModel):
     def render(self, text_chars: int | None = None) -> str:
         """The line a prompt carries: its id, where it was learned, what it rests on, the sentence.
 
-        ``#17 [this Set, learned at v2; rests on v2 held, v3 held → now failed;
+        ``#17 [this Recipe, learned at v2; rests on v2 held, v3 held → now failed;
         shots 41, 43] text``. **One place** for the opening context and
         ``get_insights``, so the two cannot describe one insight two ways. The id is
         in it so the agent can name the insight in a replacement or a deletion, and the
         facts come before the sentence so a cut text never cuts them. A general insight
-        states its scope only: its shots may belong to other Sets, which a Set's
+        states its scope only: its shots may belong to other Recipes, which a Recipe's
         conversation must not be told.
         """
         text = self.text
@@ -476,7 +477,7 @@ class InsightsRepository(Repository):
         One order for every reader, including the prompt. Oldest first because
         that is the order they were learned in, and a later insight that
         qualifies an earlier one only reads correctly after it. General only:
-        a Set's own insights are :meth:`own`, and nothing reads both through
+        a Recipe's own insights are :meth:`own`, and nothing reads both through
         one door by accident.
         """
         where = ["i.recipe_id IS NULL", "i.dismissed = 0"]
@@ -491,7 +492,7 @@ class InsightsRepository(Repository):
         return [self._decode(row) for row in rows]
 
     async def own(self, set_id: int, *, include_dismissed: bool = False) -> list[InsightRow]:
-        """What was learned **in** this Set, in any state, oldest first.
+        """What was learned **in** this Recipe, in any state, oldest first.
 
         Dismissed ones only when asked: the conversation that proposed one is
         told what happened to it, and nothing else reads them.
@@ -522,13 +523,13 @@ class InsightsRepository(Repository):
         return [self._decode(row) for row in reversed(rows)]
 
     async def select(self, attributes: dict[str, Any]) -> list[InsightRow]:
-        """The confirmed **general** insights that apply to a Set's attributes.
+        """The confirmed **general** insights that apply to a Recipe's attributes.
 
         Filtered in Python, like tier 1's rule selection and for the same
         reason: the rule is "every stated key matches", the table is small, and
         a WHERE clause that could express it over a JSON column would be both
-        unreadable and hard to prove deterministic. A Set's own insights are
-        not here: they apply to their Set by ownership, not by attributes.
+        unreadable and hard to prove deterministic. A Recipe's own insights are
+        not here: they apply to their Recipe by ownership, not by attributes.
         """
         return [
             insight
@@ -536,11 +537,11 @@ class InsightsRepository(Repository):
             if scope_matches(insight.scope.stated(), attributes)
         ]
 
-    async def for_set(self, set_id: int) -> list[InsightRow]:
-        """What applies to a Set: its own confirmed insights, then the general ones that match.
+    async def for_recipe(self, set_id: int) -> list[InsightRow]:
+        """What applies to a Recipe: its own confirmed insights, then the general ones that match.
 
-        **The one selection** for a Set's conversations (opening context and
-        ``get_insights``) and for the Set page. Another Set's insights are never
+        **The one selection** for a Recipe's conversations (opening context and
+        ``get_insights``) and for the Recipe page. Another Recipe's insights are never
         selected, whatever bean and grinder they share with this one; a
         dismissed insight is never selected; an unconfirmed one never reaches a
         prompt. Oldest first across both, so a later insight that qualifies an
@@ -554,10 +555,11 @@ class InsightsRepository(Repository):
         return sorted([*mine, *general], key=lambda item: (item.created_at, item.id))
 
     async def attributes_of(self, set_id: int) -> dict[str, Any] | None:
-        """A Set's attributes in the shape :func:`scope_matches` reads, or ``None`` for no such Set.
+        """A Recipe's attributes in the shape :func:`scope_matches` reads, or ``None`` for no such
+        Recipe.
 
         ``profile_style`` is left unstated on purpose: it is detected per
-        *shot* from the profile the machine ran, so a Set has no single one, and
+        *shot* from the profile the machine ran, so a Recipe has no single one, and
         an insight scoped by style belongs on the shot page.
         """
         row = await self.db.fetch_one(
@@ -566,7 +568,7 @@ class InsightsRepository(Repository):
         if row is None:
             return None
         bean = await BeansRepository(self.db).get(row["bean_id"]) if row["bean_id"] else None
-        return set_attributes(
+        return recipe_attributes(
             bean_id=row["bean_id"],
             grinder_id=row["grinder_id"],
             roast_level=getattr(bean, "roast_level", None),
@@ -621,19 +623,19 @@ class InsightsRepository(Repository):
     async def propose(
         self, insight: InsightWrite, *, version_ids: list[int]
     ) -> InsightProposeResult:
-        """Write a Set insight an agent proposed, after the guards, in one transaction.
+        """Write a Recipe insight an agent proposed, after the guards, in one transaction.
 
         What it rests on and what it replaces are read and written inside the same
         transaction, so a version re-graded or an insight deleted between the check
         and the write cannot leave a row resting on nothing or naming a stranger.
 
         * It must rest on something: a shot or a version.
-        * Every version is a version of **this** Set with a **recorded** outcome right
+        * Every version is a version of **this** Recipe with a **recorded** outcome right
           now, and that outcome is what is stored as "then".
-        * What it replaces is an **added** insight of the same Set: never a waiting or
-          dismissed one, a general one, or another Set's.
+        * What it replaces is an **added** insight of the same Recipe: never a waiting or
+          dismissed one, a general one, or another Recipe's.
 
-        The evidence shots are the caller's to check (they are this Set's shots, as
+        The evidence shots are the caller's to check (they are this Recipe's shots, as
         for any insight); this does not look at them beyond counting.
         """
         if insight.set_id is None:
@@ -725,7 +727,7 @@ class InsightsRepository(Repository):
     async def _take_back_in_transaction(self, insight_id: int) -> bool:
         """Un-confirm, and stale the deletion proposals waiting for it in the same step.
 
-        Nothing may wait on something that is no longer added: the Set page would
+        Nothing may wait on something that is no longer added: the Recipe page would
         otherwise show "the agent proposes deleting this" beside a waiting insight. The
         insight still exists, so the proposal keeps its text.
         """
@@ -748,7 +750,7 @@ class InsightsRepository(Repository):
     async def _add_in_transaction(self, insight_id: int) -> bool:
         """Confirm, and when this insight replaces another, delete the other in the same step.
 
-        The old insight is deleted only if it is **still an added insight of this Set**
+        The old insight is deleted only if it is **still an added insight of this Recipe**
         when the person presses Add; otherwise this one is added as an ordinary
         insight and says the old one had already changed (``replaced = 'old_changed'``).
         Either way the link is dropped, so a later take back and re-add never deletes
@@ -795,7 +797,7 @@ class InsightsRepository(Repository):
         return True
 
     async def dismiss(self, insight_id: int) -> bool:
-        """Turn a Set's insight down. Kept for the conversation that proposed it.
+        """Turn a Recipe's insight down. Kept for the conversation that proposed it.
 
         Never confirmed at the same time: a dismissed insight reaches no prompt
         and is shown nowhere but in the chat that proposed it. Adding it later
@@ -813,7 +815,7 @@ class InsightsRepository(Repository):
         return cursor.rowcount > 0
 
     async def delete(self, insight_id: int) -> bool:
-        """Remove an insight. A person's press: the Delete on the Set page or the list."""
+        """Remove an insight. A person's press: the Delete on the Recipe page or the list."""
         async with self.db.transaction():
             return await self.delete_in_transaction(insight_id)
 

@@ -256,7 +256,7 @@ class ShotListRow(BaseModel):
     judgement_rating: int | None = None
     has_notes: bool = False
     #: Whether the user has recorded a verdict on the cup. The list shows it as
-    #: a dot; `needs_set` has an equivalent on the Set side.
+    #: a dot; `needs_set` has an equivalent on the Recipe side.
     has_judgement: bool = False
     #: The verdict's own notes, so the list can show what the cup was like and
     #: its row editor can open with what is already written rather than empty.
@@ -267,7 +267,7 @@ class ShotListRow(BaseModel):
     #: and sets from the row. The same join, one more column.
     judgement_decision: Decision | None = None
     #: What the user says they were brewing. NULL is the `needs_set`
-    #: state: the shot arrived while no Set matched it, and it is waiting for
+    #: state: the shot arrived while no Recipe matched it, and it is waiting for
     #: somebody to say which one it belongs to.
     set_version_id: int | None = None
     set_badge: ShotSetBadge | None = None
@@ -287,7 +287,7 @@ class ShotListRow(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _fold_set_badge(cls, data: Any) -> Any:
+    def _fold_recipe_badge(cls, data: Any) -> Any:
         """Fold the three joined badge columns into one nested object.
 
         The SQL has to select them flat — there is no other way to get three
@@ -299,13 +299,13 @@ class ShotListRow(BaseModel):
         if not isinstance(data, dict) or "set_badge" in data:
             return data
         payload = dict(data)
-        badge_set_id = payload.pop("badge_set_id", None)
-        badge_set_name = payload.pop("badge_set_name", None)
+        badge_recipe_id = payload.pop("badge_recipe_id", None)
+        badge_recipe_name = payload.pop("badge_recipe_name", None)
         badge_version_label = payload.pop("badge_version_label", None)
-        if badge_set_id is not None and badge_version_label is not None:
+        if badge_recipe_id is not None and badge_version_label is not None:
             payload["set_badge"] = {
-                "set_id": badge_set_id,
-                "set_name": badge_set_name or "",
+                "set_id": badge_recipe_id,
+                "set_name": badge_recipe_name or "",
                 "version_label": badge_version_label or "",
             }
         return payload
@@ -396,9 +396,9 @@ class ShotCounts(BaseModel):
     deleted_on_device: int = 0
     incomplete: int = 0
     samples: int = 0
-    #: Shots with no Set version, quarantined ones excluded. The Shots page
+    #: Shots with no Recipe version, quarantined ones excluded. The Shots page
     #: header shows it as a call to action, because an unassigned shot is
-    #: invisible to every Set trend, the spread and the Set's conversations.
+    #: invisible to every Recipe trend, the spread and the Recipe's conversations.
     needs_set: int = 0
 
 
@@ -447,28 +447,28 @@ _LIST_COLUMNS = f"""
     j.notes AS judgement_notes,
     j.decision AS judgement_decision,
     s.recipe_version_id,
-    sv.recipe_id AS badge_set_id,
-    st.name AS badge_set_name,
+    sv.recipe_id AS badge_recipe_id,
+    st.name AS badge_recipe_name,
     {label_sql("sv")} AS badge_version_label,
     s.synced_at
 """
 
-#: The "needs a Set" inbox, over `shots s`: the shots the archive is still
+#: The "needs a Recipe" inbox, over `shots s`: the shots the archive is still
 #: waiting for an answer on. A quarantined shot is not one: its bytes never
 #: parsed, so there is no profile to match and nothing to judge, and leaving it
 #: in would mean the count never reached zero. Nor is a shot labelled Discard:
-#: the person has already said it went wrong, it counts towards no Set's spread,
+#: the person has already said it went wrong, it counts towards no Recipe's spread,
 #: and asking them where it belongs is asking about a shot they threw away. The
 #: header's count, the list's filter and the button that files the inbox all
 #: read this one condition, so the three can never disagree on what is waiting.
-NEEDS_SET_SQL = """(
+NEEDS_RECIPE_SQL = """(
     s.recipe_version_id IS NULL AND s.quarantined = 0
     AND NOT EXISTS (
         SELECT 1 FROM shot_judgements dj WHERE dj.shot_id = s.id AND dj.decision = 'discard'
     )
 )"""
 
-# The Set joins are LEFT for the obvious reason and one less obvious one:
+# The Recipe joins are LEFT for the obvious reason and one less obvious one:
 # `shots.set_version_id` carries no foreign key (`db/schema.sql` explains why),
 # so a row pointing at a version that no longer exists must list as unassigned
 # rather than disappear from the archive.
@@ -505,7 +505,7 @@ REVIEW_SORT = "review"
 
 #: What a shot's checks are worked out from, per shot: the numbers `shot_warnings` reads, the
 #: target yield and dose of the version the shot is filed under, and which profile version and
-#: Set version decide its signature and its override. The diagnostics blob is large, so only
+#: Recipe version decide its signature and its override. The diagnostics blob is large, so only
 #: its `metrics` block and the pressure flag are pulled out of it.
 _REVIEW_COLUMNS = f"""
     s.id, s.final_weight_g, ({HAS_SCALE_SQL}) AS scale_connected, s.final_exit_reason,
@@ -579,7 +579,7 @@ class ShotsRepository(Repository):
         the bytes, or a file rescued from a backup. What the bytes say is
         overwritten; what a *person* or the *machine* said about the shot is not.
 
-        Kept deliberately: the row id (so a Set or a judgement that references
+        Kept deliberately: the row id (so a Recipe or a judgement that references
         this shot still does), `set_version_id`, the `index_*` columns and
         `deleted_on_device` — the device's own view of a shot, which no export
         carries and which re-deriving cannot invent — and the `device_shot_notes`
@@ -755,7 +755,7 @@ class ShotsRepository(Repository):
         """Replace a shot's phases, diagnostics and version, and nothing else.
 
         One statement, so a crash leaves the shot as it was or as it is meant to
-        be. Samples, notes, judgements, Set membership and `updated_at` are not
+        be. Samples, notes, judgements, Recipe membership and `updated_at` are not
         this write's to touch: the shot itself did not change, only how it is
         read.
 
@@ -1023,7 +1023,7 @@ class ShotsRepository(Repository):
                    COALESCE(SUM(s.quarantined), 0) AS quarantined,
                    COALESCE(SUM(s.deleted_on_device), 0) AS deleted_on_device,
                    COALESCE(SUM(s.incomplete), 0) AS incomplete,
-                   COALESCE(SUM({NEEDS_SET_SQL}), 0) AS needs_set
+                   COALESCE(SUM({NEEDS_RECIPE_SQL}), 0) AS needs_set
             FROM shots s
             """  # noqa: S608 - module constant
         )
@@ -1122,9 +1122,9 @@ class ShotsRepository(Repository):
             params.append(set_version_id)
         if needs_set is not None:
             # "Which shots is the archive still waiting for an answer on?" —
-            # `NEEDS_SET_SQL` says which, and why quarantined and discarded
+            # `NEEDS_RECIPE_SQL` says which, and why quarantined and discarded
             # shots are not among them.
-            where.append(NEEDS_SET_SQL if needs_set else "s.recipe_version_id IS NOT NULL")
+            where.append(NEEDS_RECIPE_SQL if needs_set else "s.recipe_version_id IS NOT NULL")
         if quarantined is not None:
             where.append("s.quarantined = ?")
             params.append(int(quarantined))
@@ -1200,7 +1200,7 @@ class ShotsRepository(Repository):
         """Every shot the condition selects, as the person reads it: Curve check and review.
 
         The Curve check is the universal warnings merged with the results of the **confirmed**
-        signature of the profile version each shot brewed (and its Set version's confirmed
+        signature of the profile version each shot brewed (and its Recipe version's confirmed
         override); nothing proposed or rejected in a signature is ever read here. The review is
         the one in force, beside it and never mixed into it.
         """

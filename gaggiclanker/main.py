@@ -368,7 +368,7 @@ async def _start(app: FastAPI, db: Database) -> None:
     # The profile list is filled once from everything the archive stores (see
     # `db/repos/profile_list.py`); a step rather than SQL, run before anything reads the board.
     await ProfileListBuilder(db).build()
-    # Agent-written insights are placed on the Set they fit, once (see
+    # Agent-written insights are placed on the Recipe they fit, once (see
     # `db/repos/insight_placement.py`): the same shape of step, for the same reason.
     await InsightPlacementBuilder(db).build()
 

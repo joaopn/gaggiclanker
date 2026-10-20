@@ -252,8 +252,8 @@ def test_a_draft_with_nothing_an_agent_adds_is_a_persons_edit() -> None:
 async def test_agent_work_stays_with_the_profile_a_put_would_have_put_it_in(db: Database) -> None:
     """The fill replays old drafts through the put's own rule, never by label without the suffix.
 
-    A firmware "Turbo Shot" keeps its own versions; "Turbo Shot [AI]" versions made for a Set and
-    the version that renamed it for that Set are one profile; a chain of "Blooming [AI]" drafts
+    A firmware "Turbo Shot" keeps its own versions; "Turbo Shot [AI]" versions made for a Recipe and
+    the version that renamed it for that Recipe are one profile; a chain of "Blooming [AI]" drafts
     joins the board row it ended up on; a fork of an imported profile is not merged into it.
     """
     for vid, label, source in (
@@ -343,7 +343,7 @@ async def test_what_a_draft_replaced_is_the_same_profile(db: Database) -> None:
     ):
         await _version(db, vid, label, source=source)
     await _draft(db, 1, base=1, version=2, status="superseded")
-    # A different name, no Set: by the put's rule a new profile, but it replaced version 2.
+    # A different name, no Recipe: by the put's rule a new profile, but it replaced version 2.
     await _draft(db, 2, base=2, version=3, status="pushed", pushed="p", replaced=2)
 
     await ProfileListBuilder(db).build()
@@ -368,10 +368,10 @@ async def test_two_profiles_that_exist_are_never_merged_by_a_draft(db: Database)
     assert [v for v, _ in got["2"]["versions"]] == [2]  # type: ignore[attr-defined]
 
 
-async def test_a_set_chain_renamed_onto_a_held_name_joins_the_profile_that_has_it(
+async def test_a_recipe_chain_renamed_onto_a_held_name_joins_the_profile_that_has_it(
     db: Database,
 ) -> None:
-    """Whatever path placed a version, no two profiles end with one name: a Set's chain that
+    """Whatever path placed a version, no two profiles end with one name: a Recipe's chain that
     was renamed to a name a live row holds joins that row. Only current names count, so a
     later fresh draft with the chain's former name is a profile of its own."""
     for vid, label, source in (
@@ -443,8 +443,8 @@ async def test_an_import_or_pre_board_version_joins_the_profile_with_exactly_its
     assert other["label"] == "Lever [AI]" and other["versions"] == [(3, "import")]
 
 
-async def test_a_sets_chain_alone_links_a_renamed_version_to_its_profile(db: Database) -> None:
-    """No file, no replaced version: the Set's profile is the one its draft is named for, and a
+async def test_a_recipes_chain_alone_links_a_renamed_version_to_its_profile(db: Database) -> None:
+    """No file, no replaced version: the Recipe's profile is the one its draft is named for, and a
     renamed draft is a profile of its own (the put's rule: a name never changes through a
     version)."""
     await _version(db, 1, "Base", source="device")

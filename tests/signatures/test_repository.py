@@ -13,7 +13,7 @@ from gaggiclanker.db.repos.signatures import (
     SignatureRepository,
 )
 from gaggiclanker.domain.metric_language import Compare, Expression
-from tests.sets.conftest import make_profile_version
+from tests.recipes.conftest import make_profile_version
 
 RAMP_CUP = Expression.model_validate(
     {
@@ -191,10 +191,10 @@ async def test_a_damaged_expression_is_read_as_unreadable_not_as_an_error(db: Da
 async def test_a_newer_override_replaces_the_one_in_force_without_being_a_rejection(
     db: Database,
 ) -> None:
-    from tests.signatures.helpers import make_set_versions
+    from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    first_version, second_version = await make_set_versions(db, version)
+    first_version, second_version = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
 
@@ -223,10 +223,10 @@ async def test_a_newer_override_replaces_the_one_in_force_without_being_a_reject
 
 
 async def test_an_override_is_rejected_and_restored_by_the_person(db: Database) -> None:
-    from tests.signatures.helpers import make_set_versions
+    from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_set_versions(db, version)
+    (set_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
     first = await repo.add_override(
@@ -250,10 +250,10 @@ async def test_an_override_is_rejected_and_restored_by_the_person(db: Database) 
 async def test_a_rejected_override_is_not_restored_over_another_in_force_or_without_its_expectation(
     db: Database,
 ) -> None:
-    from tests.signatures.helpers import make_set_versions
+    from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_set_versions(db, version)
+    (set_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
     first = await repo.add_override(
@@ -285,10 +285,10 @@ def test_the_shape_of_a_write_is_checked(bad: dict[str, object]) -> None:
 async def test_rejecting_an_expectation_withdraws_its_override_and_restoring_leaves_it_out(
     db: Database,
 ) -> None:
-    from tests.signatures.helpers import make_set_versions
+    from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_set_versions(db, version)
+    (set_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
     override = await repo.add_override(
@@ -314,10 +314,10 @@ async def test_an_override_for_another_expectation_is_refused_inside_the_transac
     db: Database,
 ) -> None:
     from gaggiclanker.db.repos.signatures import AnotherOverrideInForce
-    from tests.signatures.helpers import make_set_versions
+    from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_set_versions(db, version)
+    (set_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     first, second = await repo.add(version, [_measure(), _measure(phase="soak")])
 
@@ -335,7 +335,7 @@ async def test_an_override_for_another_expectation_is_refused_inside_the_transac
         return_exceptions=True,
     )
     assert sorted(type(r).__name__ for r in results) == ["AnotherOverrideInForce", "OverrideRow"]
-    live = await repo.overrides_for_set_version(set_version, statuses=["confirmed"])
+    live = await repo.overrides_for_recipe_version(set_version, statuses=["confirmed"])
     assert len(live) == 1
     with pytest.raises(AnotherOverrideInForce):
         await repo.add_override(
@@ -346,10 +346,10 @@ async def test_an_override_for_another_expectation_is_refused_inside_the_transac
 async def test_a_row_proposed_before_in_force_signatures_is_no_check_and_can_be_rejected(
     db: Database,
 ) -> None:
-    from tests.signatures.helpers import make_set_versions
+    from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_set_versions(db, version)
+    (set_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (old,) = await repo.add(version, [_reached(status="proposed")])
     assert old.needs_phase is False and old.status == "proposed"

@@ -25,11 +25,11 @@ The grouping, in order:
    waiting on it.
 3. **The stored drafts, replayed oldest first, through the rule history was written under**
    (``lineage_owner``, exact names): a version lands in the profile a put of it would then have
-   landed in (the Set's chain, or the profile whose version list has its base when the name is
+   landed in (the Recipe's chain, or the profile whose version list has its base when the name is
    the profile's own). A draft stored before a change could keep a profile's name
    carries the "[AI]" marker the app then added, on a base that has none, so it fails the name
    test and is grouped as it always was: a firmware profile does not absorb the agent's old
-   work. A renamed version of a Set's profile stays with it. What a draft replaced on the
+   work. A renamed version of a Recipe's profile stays with it. What a draft replaced on the
    machine is the same profile. A version that would start a new
    profile joins the one that already has exactly its label, so no two profiles share a name.
 4. **What no draft made** (imports, versions the machine held before the board) joins the
@@ -86,7 +86,7 @@ def version_source_for_draft(draft: dict[str, Any]) -> VersionSource:
     """Whether a draft's version was the agent's or a person's own edit.
 
     A draft records who made it (``made_by``) and that is believed. Only a draft made before the
-    column existed has none, and for those this reads what only an agent's draft carries: a Set,
+    column existed has none, and for those this reads what only an agent's draft carries: a Recipe,
     an analysis or suggestion it came from, a prediction, a refinement's parent or notes. A
     document typed into the editor carries none of them. A heuristic, for history only.
     """
@@ -294,7 +294,7 @@ class ProfileListBuilder(Repository):
             if not eligible(version) and groups.owner_of(version) is None:
                 continue
             # A version a hard fact already placed stays where it is; otherwise the put's own
-            # rule: the profile with exactly its name (a Set's profile first), else a new one.
+            # rule: the profile with exactly its name (a Recipe's profile first), else a new one.
             landed = groups.owner_of(version)
             if landed is None:
                 landed = await lineage_owner(
@@ -308,7 +308,7 @@ class ProfileListBuilder(Repository):
             if replaced is not None and groups.owner_of(int(replaced)) is not None:
                 groups.add(landed, int(replaced))
             if draft["set_id"] is not None:
-                lookup.last_for_set[int(draft["set_id"])] = version
+                lookup.last_for_recipe[int(draft["set_id"])] = version
 
         # 3. What no draft made (imports, versions the machine held before the board): the
         # profile with exactly that label, else a profile of its own. The suffix is never
@@ -320,7 +320,7 @@ class ProfileListBuilder(Repository):
             home = groups.with_label(label)
             groups.add(home if home is not None else groups.new(), version_id)
 
-        # Whatever path placed a version (a Set chain that was renamed onto a name another
+        # Whatever path placed a version (a Recipe chain that was renamed onto a name another
         # profile holds, for one), no two profiles end with one name: a made group whose name is
         # held by another joins that profile (an existing one first, else the older made group).
         groups.unify_names()
@@ -538,14 +538,14 @@ class _ReplayLookup:
     def __init__(self, groups: _Groups, files_of: dict[str, int], rows: list[BoardRow]) -> None:
         self.groups = groups
         self.files_of = files_of
-        #: The last draft version replayed for each Set: the Set's chain, as it stood.
-        self.last_for_set: dict[int, int] = {}
+        #: The last draft version replayed for each Recipe: the Recipe's chain, as it stood.
+        self.last_for_recipe: dict[int, int] = {}
 
     def label_of(self, profile: int) -> str:
         return self.groups.name_of(profile)
 
-    async def by_set(self, set_id: int) -> int | None:
-        version = self.last_for_set.get(set_id)
+    async def by_recipe(self, set_id: int) -> int | None:
+        version = self.last_for_recipe.get(set_id)
         return None if version is None else self.groups.owner_of(version)
 
     async def by_label(self, label: str) -> int | None:

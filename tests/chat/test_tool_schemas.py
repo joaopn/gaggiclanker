@@ -38,7 +38,7 @@ from gaggiclanker.llm.providers.openai_compatible import OpenAiCompatibleProvide
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import registry
-from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS
+from gaggiclanker.tools.scope import GENERAL_TOOLS, RECIPE_TOOLS
 from tests.review.conftest import Fixture, build_fixture
 
 
@@ -195,7 +195,7 @@ async def test_the_anthropic_body_carries_exactly_this_conversation_s_tools(
         set_id=None,
     )
 
-    assert {tool["name"] for tool in scoped.body_json["tools"]} == SET_TOOLS
+    assert {tool["name"] for tool in scoped.body_json["tools"]} == RECIPE_TOOLS
     assert {tool["name"] for tool in general.body_json["tools"]} == GENERAL_TOOLS
 
 
@@ -217,5 +217,5 @@ async def test_the_openai_body_carries_exactly_this_conversation_s_tools(
         set_id=None,
     )
 
-    assert {tool["function"]["name"] for tool in scoped.body_json["tools"]} == SET_TOOLS
+    assert {tool["function"]["name"] for tool in scoped.body_json["tools"]} == RECIPE_TOOLS
     assert {tool["function"]["name"] for tool in general.body_json["tools"]} == GENERAL_TOOLS

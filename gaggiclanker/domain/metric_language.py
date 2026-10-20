@@ -833,7 +833,7 @@ def expression_unit(expr: Expression) -> str:
     """The unit an expression's value is in (``share`` for one relative to something).
 
     Known from the expression alone, with no shot: a limit is worded in it before any shot has
-    been read (a Set version's override, shown beside the profile's own limit).
+    been read (a Recipe version's override, shown beside the profile's own limit).
     """
     return _unit(expr)
 

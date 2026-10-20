@@ -14,12 +14,12 @@ What goes in, and nothing else:
    groups named by :data:`REVIEW_EXCLUDED_GROUP_MEMBERS`: the person's
    judgement, the note typed on the machine (which seeds the judgement), the
    shot's earlier reviews, and the shot's label and counted state. The checks
-   come first (the renderer's order), the Set version's recipe is in, since the
+   come first (the renderer's order), the Recipe version's recipe is in, since the
    checks' shares of the target need it, and the tiers a person set on Settings
    → Shot information govern what a chat is handed, never what a review reads;
 2. **the free-text expectations of the signature in force**, each with its id, tier, phase,
    sentence and fault word: the review must answer every one;
-3. **the Set version's prediction** and which version it is measured against, or the plain
+3. **the Recipe version's prediction** and which version it is measured against, or the plain
    statement that there is none (the shot is not filed, or its version has no prediction);
 4. **the profile the shot brewed**, the whole document of the profile version
    the shot itself links to;
@@ -30,7 +30,7 @@ What goes in, and nothing else:
 **Independent by construction.** Nothing here reads the person's judgement (rating, balance,
 notes, decision), the note typed on the machine, the label, another shot, an earlier
 review, an insight or a conversation: the loader's judgement, note and review are dropped
-before rendering, and rule selection is given no Set attributes. A review of one shot
+before rendering, and rule selection is given no Recipe attributes. A review of one shot
 cannot be told what the person thought of it, or what another shot did.
 
 Determinism is the property everything here is arranged around. Nothing reads
@@ -51,12 +51,12 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.pins import judged_profile_version
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.domain.metric_language import CHANNELS, OPS
-from gaggiclanker.domain.sets import version_label
+from gaggiclanker.domain.recipes import version_label
 from gaggiclanker.domain.warnings import fault_token
-from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
+from gaggiclanker.knowledge.rules import RecipeContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
     KnowledgeService,
@@ -160,7 +160,7 @@ class ReviewInput(BaseModel):
     signature_confirmed: int = 0
     #: The signature in force's free-text expectations, in written order: each one is answered.
     expectations: list[ExpectationAsked] = Field(default_factory=list)
-    #: The name of the Set version the shot is filed under ("" when it is not filed), the
+    #: The name of the Recipe version the shot is filed under ("" when it is not filed), the
     #: prediction that version was filed with (the text the review is shown, "" for none) and
     #: the name of the version it is measured against ("" for nothing).
     version: str = ""
@@ -224,7 +224,7 @@ async def build_review_input(
     # Independent by construction: whatever the loader read about the person's
     # verdict, the machine's notes card and an earlier review is dropped here,
     # before anything renders, and the exclusions above keep the lines that
-    # would describe them out as well. The Set version stays: its recipe is what
+    # would describe them out as well. The Recipe version stays: its recipe is what
     # the checks' shares of the target are measured against, and its prediction
     # is what the review is asked to compare the shot with.
     # The shot row carries a copy of some of the person's verdict too (the
@@ -281,14 +281,14 @@ async def build_review_input(
         version_name = version_label(facts.version.version_major, facts.version.version_minor)
         prediction = facts.version.prediction.strip()
         if prediction and facts.version.compares_to_version_id is not None:
-            compared = await SetsRepository(db).get_version(facts.version.compares_to_version_id)
+            compared = await RecipesRepository(db).get_version(facts.version.compares_to_version_id)
             if compared is not None:
                 compares_to = version_label(compared.version_major, compared.version_minor)
 
     duration = facts.shot.duration_ms / 1000 if facts.shot.duration_ms > 0 else None
     verdict = detect_style(
         profile,
-        # No dose: it lives in the judgement and the Set version, and the style is the
+        # No dose: it lives in the judgement and the Recipe version, and the style is the
         # profile's, so the allongé test (a ratio) is skipped.
         dose_g=None,
         summary=readable_summary(facts),
@@ -298,9 +298,9 @@ async def build_review_input(
     )
 
     signals = signal_tokens(facts, verdict)
-    # No Set attributes: the bean and the grinder are the Set's, so a rule
+    # No Recipe attributes: the bean and the grinder are the Recipe's, so a rule
     # keyed on them is not selected for a review.
-    selection = await select_rules(RulesRepository(db), SetContext(), verdict.style, signals)
+    selection = await select_rules(RulesRepository(db), RecipeContext(), verdict.style, signals)
     excerpts = await KnowledgeService(db).select_chunks(
         RetrievalContext(style=verdict.style, signals=tuple(selection.signals)),
         token_budget=chunk_token_budget,
@@ -352,11 +352,11 @@ def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
     aroma and balance tokens are never produced for one (the chat can still
     pass them to `get_rules`). The faults are the shot's own warnings (``fault:fast_flow``,
     ``fault:skipped``, ``fault:skipped_at_start`` for a phase over before the machine logged a
-    sample of it, and the two yield ones when the shot is filed under a Set version with a
+    sample of it, and the two yield ones when the shot is filed under a Recipe version with a
     target, which a reading is given), and the rest are plain readings of the numbers with no
     grade in them. The puck-flow readings are left
     out for a shot flagged without a pressure sensor (:func:`readable_summary`). Sorted,
-    because the list is stored on the review row and a set's iteration order would make two
+    because the list is stored on the review row and a recipe's iteration order would make two
     identical runs produce different snapshots.
     """
     tokens: set[str] = {f"style:{style.style}"}

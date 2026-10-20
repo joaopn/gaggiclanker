@@ -1,7 +1,7 @@
 """`propose_signature` and the signature a draft carries: in force at once, unless a person rejects.
 
 The profile is the review fixture's (phases Pre-infusion, Bloom, Pressurise, Ramp down,
-Hammer), and the Set is the fixture's one Set.
+Hammer), and the Recipe is the fixture's one Recipe.
 """
 
 from __future__ import annotations
@@ -41,11 +41,11 @@ def _propose(archive: Fixture, **extra: Any) -> dict[str, Any]:
     }
 
 
-async def test_a_set_chat_proposes_a_signature_that_is_in_force_at_once(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_recipe_chat_proposes_a_signature_that_is_in_force_at_once(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    set_ctx.thread_id = None
-    data = await call(set_ctx, "propose_signature", **_propose(archive))
+    recipe_ctx.thread_id = None
+    data = await call(recipe_ctx, "propose_signature", **_propose(archive))
 
     assert data["status"] == "in force"
     assert data["already_confirmed"] == 2
@@ -65,11 +65,11 @@ async def test_a_set_chat_proposes_a_signature_that_is_in_force_at_once(
 
 
 async def test_the_proposer_is_recorded_as_the_thread(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     thread = await _thread(archive)
-    set_ctx.thread_id = thread
-    await call(set_ctx, "propose_signature", **_propose(archive))
+    recipe_ctx.thread_id = thread
+    await call(recipe_ctx, "propose_signature", **_propose(archive))
     rows = await SignatureRepository(archive.db).proposed_in_thread(thread)
     assert len(rows) == 2
 
@@ -85,10 +85,10 @@ async def _thread(archive: Fixture) -> int:
 
 
 async def test_a_refusal_names_every_problem_and_writes_nothing(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await refuse(
-        set_ctx,
+        recipe_ctx,
         "propose_signature",
         profile_version_id=archive.profile_version_id,
         expectations=[
@@ -101,18 +101,18 @@ async def test_a_refusal_names_every_problem_and_writes_nothing(
     assert await SignatureRepository(archive.db).for_version(archive.profile_version_id) == []
 
 
-async def test_a_profile_outside_the_set_is_refused_in_the_same_words_whether_or_not_it_exists(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_profile_outside_the_recipe_is_refused_in_the_same_words_whether_or_not_it_exists(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     other = await refuse(
-        set_ctx, "propose_signature", **_propose(archive, profile_version_id=99999)
+        recipe_ctx, "propose_signature", **_propose(archive, profile_version_id=99999)
     )
-    # A real profile version that no version of this Set brews.
-    from tests.sets.conftest import make_profile_version
+    # A real profile version that no version of this Recipe brews.
+    from tests.recipes.conftest import make_profile_version
 
     elsewhere = await make_profile_version(archive.db, "Somebody else's profile")
     foreign = await refuse(
-        set_ctx, "propose_signature", **_propose(archive, profile_version_id=elsewhere)
+        recipe_ctx, "propose_signature", **_propose(archive, profile_version_id=elsewhere)
     )
     assert other["detail"] == foreign["detail"]
     assert "not one this conversation is about" in other["detail"]
@@ -125,13 +125,13 @@ async def test_a_general_conversation_cannot_propose_one(
     assert "propose_signature" in str(outcome)
 
 
-async def test_a_conversation_designing_a_set_proposes_for_the_profile_it_forks(
+async def test_a_conversation_designing_a_recipe_proposes_for_the_profile_it_forks(
     ctx: ToolContext, archive: Fixture
 ) -> None:
-    from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
+    from gaggiclanker.db.repos.recipes import DesignBrief, RecipesRepository, RecipeWrite
 
-    designed = await SetsRepository(archive.db).create_design(
-        SetWrite(name="Designed", bean_id=archive.bean_id),
+    designed = await RecipesRepository(archive.db).create_design(
+        RecipeWrite(name="Designed", bean_id=archive.bean_id),
         DesignBrief(fork_profile_version_id=archive.profile_version_id),
     )
     ctx.scope = ToolScope.for_thread(designed.id, designing=True)
@@ -235,17 +235,17 @@ async def test_a_draft_and_its_signature_are_one_write(
 
 
 async def test_the_same_expectation_is_refused_by_the_tool_saying_in_force_or_rejected(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    await call(set_ctx, "propose_signature", **_propose(archive))
-    again = await refuse(set_ctx, "propose_signature", **_propose(archive))
+    await call(recipe_ctx, "propose_signature", **_propose(archive))
+    again = await refuse(recipe_ctx, "propose_signature", **_propose(archive))
     assert "expectation 1 is already in force" in again["detail"]
     repo = SignatureRepository(archive.db)
     rows = await repo.for_version(archive.profile_version_id)
     assert len(rows) == 2
     # What the person rejected stays out: the tool says so, and only a Restore returns it.
     await repo.reject(rows[0].id, reason="no")
-    rejected = await refuse(set_ctx, "propose_signature", **_propose(archive))
+    rejected = await refuse(recipe_ctx, "propose_signature", **_propose(archive))
     assert "expectation 1 is one the person rejected" in rejected["detail"]
     assert "expectation 2 is already in force" in rejected["detail"]
     assert [r.status for r in await repo.for_version(archive.profile_version_id)] == [
@@ -310,11 +310,11 @@ async def _shot_texts(ctx: ToolContext, archive: Fixture) -> dict[str, str]:
 
 
 async def test_a_proposed_signature_is_a_check_at_once_and_a_rejected_one_is_told_to_no_shot_tool(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     shot_only = "pressure falls together with flow through the ramp down"
     service = SignatureService(archive.db)
-    before = await _shot_texts(set_ctx, archive)
+    before = await _shot_texts(recipe_ctx, archive)
     for name, text in before.items():
         assert "read without a signature" in text or name == "get_shot_extended", name
 
@@ -329,14 +329,14 @@ async def test_a_proposed_signature_is_a_check_at_once_and_a_rejected_one_is_tol
         reason="r",
     )
     assert (kept.status, rejected.status) == ("confirmed", "confirmed")
-    after = await _shot_texts(set_ctx, archive)
+    after = await _shot_texts(recipe_ctx, archive)
     assert "signature: in force, 2 expectations" in after["get_shot"]
     assert shot_only in after["get_shot_extended"]
     assert "the rejected one" in after["get_shot_extended"]
     assert shot_only not in after["get_shot"], "free text is extended, not base"
 
     await SignatureRepository(archive.db).reject(rejected.id, reason="no")
-    last = await _shot_texts(set_ctx, archive)
+    last = await _shot_texts(recipe_ctx, archive)
     assert "signature: in force, 1 expectation" in last["get_shot"]
     for text in last.values():
         assert "the rejected one" not in text

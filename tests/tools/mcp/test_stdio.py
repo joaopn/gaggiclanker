@@ -25,8 +25,8 @@ from mcp.shared.exceptions import MCPError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
-from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
+from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.llm.chat_types import without_field_meanings
@@ -34,10 +34,10 @@ from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_co
 from gaggiclanker.shotinfo.catalogue import default_tiers
 from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.mcp.server import SERVER_NAME
-from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
+from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, RECIPE_TOOLS
 from tests.knowledge.insight_world import ProvenanceWorld, build_provenance_world
+from tests.recipes.conftest import make_shot
 from tests.review.conftest import Fixture, build_fixture
-from tests.sets.conftest import make_shot
 
 #: The subprocess has to import gaggiclanker, and a test run is not necessarily
 #: cwd'd at the repository root.
@@ -82,7 +82,7 @@ async def session_for(stack: AsyncExitStack, data_dir: Path, **env: str) -> Clie
 async def test_the_entry_point_serves_the_tools_and_the_resources(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
-    """With no Set in the environment it is a general conversation."""
+    """With no Recipe in the environment it is a general conversation."""
     data_dir, _ = archive_dir
     async with AsyncExitStack() as stack:
         session = await session_for(stack, data_dir)
@@ -94,7 +94,7 @@ async def test_the_entry_point_serves_the_tools_and_the_resources(
         assert f"{SERVER_NAME}://knowledge/rules" in resources
 
 
-async def test_a_set_scoped_server_offers_the_set_s_tools_and_no_others(
+async def test_a_recipe_scoped_server_offers_the_recipe_s_tools_and_no_others(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
     """The scope reaches the child in its environment, and narrows what it has.
@@ -109,11 +109,11 @@ async def test_a_set_scoped_server_offers_the_set_s_tools_and_no_others(
 
         tools = {tool.name for tool in (await session.list_tools()).tools}
 
-    assert tools == SET_TOOLS
+    assert tools == RECIPE_TOOLS
     assert "query_shots" not in tools
 
 
-async def test_a_set_scoped_server_refuses_another_set_s_shot_and_its_resource(
+async def test_a_recipe_scoped_server_refuses_another_recipe_s_shot_and_its_resource(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
     data_dir, fixture = archive_dir
@@ -123,7 +123,7 @@ async def test_a_set_scoped_server_refuses_another_set_s_shot_and_its_resource(
         refused = await session.call_tool("get_set", {"set_id": fixture.set_id + 1})
         with pytest.raises(MCPError, match="can see no other"):
             await session.read_resource(f"{SERVER_NAME}://sets/{fixture.set_id + 1}")
-        # And its own Set still reads, so the refusal is the scope and not the
+        # And its own Recipe still reads, so the refusal is the scope and not the
         # resource being broken.
         assert await session.read_resource(f"{SERVER_NAME}://sets/{fixture.set_id}")
 
@@ -227,7 +227,7 @@ async def test_the_scope_env_var_makes_an_unqualified_question_answerable(
     assert result.structured_content["set"]["id"] == fixture.set_id
 
 
-async def test_a_set_scoped_child_answers_insights_with_this_set_s_confirmed_ones(
+async def test_a_recipe_scoped_child_answers_insights_with_this_recipe_s_confirmed_ones(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
     """The same narrowing over the protocol, because this is the other dispatcher.
@@ -260,12 +260,12 @@ async def _seed_insights(data_dir: Path, fixture: Fixture) -> None:
         InsightsRepository,
         InsightWrite,
     )
-    from gaggiclanker.db.repos.sets import SetsRepository
+    from gaggiclanker.db.repos.recipes import RecipesRepository
 
     db = Database(data_dir / "gaggiclanker.db")
     await db.connect()
     try:
-        row = await SetsRepository(db).get(fixture.set_id)
+        row = await RecipesRepository(db).get(fixture.set_id)
         assert row is not None
         stranger = await BeansRepository(db).create(BeanWrite(name="Somebody else's bag"))
         repo = InsightsRepository(db)
@@ -302,7 +302,7 @@ async def _provenance_world(data_dir: Path) -> tuple[ProvenanceWorld, dict[str, 
             "waiting": await world.own("Waiting claim.", confirmed=False),
             "dismissed": await world.own("Dismissed claim.", confirmed=False),
             "theirs": await world.own(
-                "Theirs.", set_id=world.stranger_set, version_id=world.stranger_version
+                "Theirs.", set_id=world.stranger_recipe, version_id=world.stranger_version
             ),
             "general": await InsightsRepository(db).insert(
                 InsightWrite(text="General.", source="user", confirmed=True)
@@ -501,7 +501,7 @@ def test_a_meanings_flag_that_is_not_one_refuses_to_start(
 def test_a_scope_that_does_not_parse_refuses_to_start(
     archive_dir: tuple[Path, Fixture], value: str
 ) -> None:
-    """Fail closed. Anything else serves the archive to a conversation about one Set."""
+    """Fail closed. Anything else serves the archive to a conversation about one Recipe."""
     data_dir, _ = archive_dir
 
     result = run_server(data_dir, GAGGICLANKER_MCP_SET_ID=value)
@@ -542,7 +542,7 @@ def test_a_flag_that_is_not_a_positive_id_refuses_to_start(
     assert result.stdout == ""
 
 
-def test_a_version_without_its_set_refuses_to_start(
+def test_a_version_without_its_recipe_refuses_to_start(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
     data_dir, fixture = archive_dir
@@ -554,7 +554,7 @@ def test_a_version_without_its_set_refuses_to_start(
     assert result.stdout == ""
 
 
-def test_a_version_of_another_set_refuses_to_start(
+def test_a_version_of_another_recipe_refuses_to_start(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
     """Checked against the archive: the ids have to describe one experiment."""
@@ -571,12 +571,12 @@ def test_a_version_of_another_set_refuses_to_start(
     assert result.stdout == ""
 
 
-def test_a_conversation_of_another_set_refuses_to_start(
+def test_a_conversation_of_another_recipe_refuses_to_start(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
     """The thread is written onto every change proposed here as its room.
 
-    One belonging to another Set would file this Set's reasoning under somebody
+    One belonging to another Recipe would file this Recipe's reasoning under somebody
     else's transcript, so it gets the scope variables' answer: serve nothing,
     rather than start and refuse every proposal afterwards.
     """
@@ -593,10 +593,10 @@ def test_a_conversation_of_another_set_refuses_to_start(
     assert result.stdout == ""
 
 
-def test_a_conversation_without_a_set_refuses_to_start(
+def test_a_conversation_without_a_recipe_refuses_to_start(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
-    """A general conversation changes no Set, so it is the room of nothing."""
+    """A general conversation changes no Recipe, so it is the room of nothing."""
     data_dir, _ = archive_dir
 
     result = run_server(data_dir, GAGGICLANKER_MCP_THREAD_ID="1")
@@ -606,7 +606,7 @@ def test_a_conversation_without_a_set_refuses_to_start(
     assert result.stdout == ""
 
 
-def test_a_set_that_is_not_in_the_archive_refuses_to_start(
+def test_a_recipe_that_is_not_in_the_archive_refuses_to_start(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
     data_dir, fixture = archive_dir
@@ -765,9 +765,9 @@ async def test_a_change_proposed_over_stdio_waits_and_creates_no_version(
     await db.connect()
     try:
         # Still one version, and the proposal names the conversation it came from.
-        versions = await SetsRepository(db).versions(fixture.set_id)
+        versions = await RecipesRepository(db).versions(fixture.set_id)
         assert [version.version_label for version in versions] == ["v1"]
-        waiting = await SetProposalsRepository(db).waiting(fixture.set_id)
+        waiting = await RecipeProposalsRepository(db).waiting(fixture.set_id)
         assert waiting is not None
         assert waiting.thread_id == thread_id
     finally:
@@ -781,10 +781,10 @@ async def _predicted_version_with_a_keep_shot(
     db = Database(data_dir / "gaggiclanker.db")
     await db.connect()
     try:
-        sets = SetsRepository(db)
-        version = await sets.add_version(
+        recipes = RecipesRepository(db)
+        version = await recipes.add_version(
             fixture.set_id,
-            SetVersionPatch.model_validate(
+            RecipeVersionPatch.model_validate(
                 {
                     "grind_setting": "21",
                     "prediction": "Expect two seconds longer and less sour.",
@@ -795,7 +795,7 @@ async def _predicted_version_with_a_keep_shot(
         assert version is not None
         if with_shot:
             shot_id = await make_shot(db, "000950")
-            assert await sets.assign_shot(shot_id, version.id)
+            assert await recipes.assign_shot(shot_id, version.id)
             await JudgementsRepository(db).upsert(
                 shot_id, JudgementWrite.model_validate({"decision": "keep"})
             )
@@ -865,7 +865,7 @@ async def test_a_grade_proposed_over_stdio_waits_and_records_nothing(
     db = Database(data_dir / "gaggiclanker.db")
     await db.connect()
     try:
-        version = await SetsRepository(db).get_version(version_id)
+        version = await RecipesRepository(db).get_version(version_id)
         assert version is not None and version.outcome is None
         waiting = await OutcomeProposalsRepository(db).waiting_for_version(version_id)
         assert waiting is not None and waiting.outcome == "partly_held"
@@ -976,16 +976,16 @@ async def test_an_archive_without_a_schema_is_refused_with_the_fix(
     assert "Start gaggiclanker once" in str(caught.value)
 
 
-async def _designed_set(data_dir: Path, fixture: Fixture) -> tuple[int, int]:
-    """A Set of the fixture's bean being designed, and its conversation."""
+async def _designed_recipe(data_dir: Path, fixture: Fixture) -> tuple[int, int]:
+    """A Recipe of the fixture's bean being designed, and its conversation."""
     from gaggiclanker.db.repos.chat import ChatRepository
-    from gaggiclanker.db.repos.sets import DesignBrief, SetWrite
+    from gaggiclanker.db.repos.recipes import DesignBrief, RecipeWrite
 
     db = Database(data_dir / "gaggiclanker.db")
     await db.connect()
     try:
-        row = await SetsRepository(db).create_design(
-            SetWrite(name="Designed", bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
+        row = await RecipesRepository(db).create_design(
+            RecipeWrite(name="Designed", bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
             DesignBrief(fork_profile_version_id=fixture.profile_version_id),
         )
         opened = await ChatRepository(db).open_thread(row.id)
@@ -995,12 +995,12 @@ async def _designed_set(data_dir: Path, fixture: Fixture) -> tuple[int, int]:
         await db.close()
 
 
-async def test_a_child_for_a_set_being_designed_serves_the_design_tools_only(
+async def test_a_child_for_a_recipe_being_designed_serves_the_design_tools_only(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
     """The flag is read from the archive by the child, with the runner's own rule."""
     data_dir, fixture = archive_dir
-    set_id, thread_id = await _designed_set(data_dir, fixture)
+    set_id, thread_id = await _designed_recipe(data_dir, fixture)
     async with AsyncExitStack() as stack:
         session = await session_for(
             stack,
@@ -1038,7 +1038,7 @@ async def test_a_child_for_a_set_being_designed_serves_the_design_tools_only(
     db = Database(data_dir / "gaggiclanker.db")
     await db.connect()
     try:
-        waiting = await SetProposalsRepository(db).waiting(set_id)
+        waiting = await RecipeProposalsRepository(db).waiting(set_id)
     finally:
         await db.close()
     assert waiting is not None and waiting.thread_id == thread_id

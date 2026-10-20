@@ -12,7 +12,7 @@ answer depends on the shot:
 * a window or an anchor may name only the phases *this shot* logged;
 * the free-text results must carry exactly the ids of the confirmed signature's free-text
   expectations, one each, no more and no fewer;
-* ``prediction`` exists exactly when the Set version was filed with one, so a review that
+* ``prediction`` exists exactly when the Recipe version was filed with one, so a review that
   invents a stance for a prediction nobody made is refused as an unknown key, and one that
   leaves it out when there is one is refused as a missing key.
 

@@ -24,9 +24,9 @@ from gaggiclanker.api import (
     profile_board,
     profiles,
     prompts,
+    recipes,
     reset,
     reviews,
-    sets,
     settings,
     shot_info,
     shots,
@@ -58,7 +58,7 @@ api_router.include_router(flavor_picks.router)
 api_router.include_router(shot_info.router)
 api_router.include_router(beans.router)
 api_router.include_router(grinders.router)
-api_router.include_router(sets.router)
+api_router.include_router(recipes.router)
 api_router.include_router(signatures.router)
 api_router.include_router(pins.router)
 api_router.include_router(duplicates.router)

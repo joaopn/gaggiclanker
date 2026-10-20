@@ -8,7 +8,7 @@ columns, and the derivation version, exactly as they were.
 
 from __future__ import annotations
 
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch
 from gaggiclanker.shotinfo import load_shots
 from tests.shotinfo.conftest import Archive
 
@@ -25,7 +25,7 @@ async def _stored(archive: Archive) -> tuple[object, ...]:
 async def test_refiling_a_shot_into_a_version_with_another_target_changes_what_is_read(
     archive: Archive,
 ) -> None:
-    sets = SetsRepository(archive.db)
+    recipes = RecipesRepository(archive.db)
     before_row = await _stored(archive)
     (facts,) = await load_shots(archive.db, [archive.shot])
     # 31.6 g in the cup against the version's 36 g target.
@@ -33,25 +33,25 @@ async def test_refiling_a_shot_into_a_version_with_another_target_changes_what_i
     assert facts.share_of_target(31.6) == 87.8
     assert [w.badge for w in facts.warnings] == ["Shot: under target"]
 
-    other = await sets.add_version(
-        archive.set_id, SetVersionPatch(target_yield_g=30.0, intent="a shorter shot")
+    other = await recipes.add_version(
+        archive.set_id, RecipeVersionPatch(target_yield_g=30.0, intent="a shorter shot")
     )
     assert other is not None
-    assert await sets.assign_shot(archive.shot, other.id)
+    assert await recipes.assign_shot(archive.shot, other.id)
     (refiled,) = await load_shots(archive.db, [archive.shot])
     assert refiled.target_yield_g == 30.0
     assert refiled.share_of_target(31.6) == 105.3
     assert refiled.warnings == []
 
-    longer = await sets.add_version(
-        archive.set_id, SetVersionPatch(target_yield_g=25.0, intent="a much shorter shot")
+    longer = await recipes.add_version(
+        archive.set_id, RecipeVersionPatch(target_yield_g=25.0, intent="a much shorter shot")
     )
     assert longer is not None
-    assert await sets.assign_shot(archive.shot, longer.id)
+    assert await recipes.assign_shot(archive.shot, longer.id)
     (over,) = await load_shots(archive.db, [archive.shot])
     assert [w.badge for w in over.warnings] == ["Shot: over target"]
 
-    assert await sets.assign_shot(archive.shot, None)
+    assert await recipes.assign_shot(archive.shot, None)
     (inbox,) = await load_shots(archive.db, [archive.shot])
     assert inbox.target_yield_g is None
     assert inbox.share_of_target(31.6) is None

@@ -4,7 +4,7 @@ One row, `id = 1`, enforced by a CHECK. It describes whatever host is configured
 *now*, and the host is a setting rather than an identity: the firmware reports
 no serial number — the whole of `res:ota-settings` is versions, a hardware
 string and free space — so keying on the address meant that a display board that
-changed IP became a second machine, taking its shots, profiles and Sets with it.
+changed IP became a second machine, taking its shots, profiles and Recipes with it.
 Nothing merged them back.
 
 So connecting to a new address updates this row. Nothing else in the archive

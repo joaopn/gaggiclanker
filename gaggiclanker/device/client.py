@@ -297,7 +297,7 @@ class GaggimateClient:
 
         self.last_status: LiveStatus | None = None
         self.identity: OtaSettings | None = None
-        # Set, and replaced by a fresh one, on every merged status frame: a waiter
+        # Recipe, and replaced by a fresh one, on every merged status frame: a waiter
         # takes the current one, checks, and awaits it, so no frame is missed and
         # any number of waiters can share it (see `change_mode`).
         self._status_tick = asyncio.Event()

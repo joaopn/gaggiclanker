@@ -29,7 +29,7 @@ GOLDEN = Path(__file__).resolve().parent / "golden" / "patterns-prompt.txt"
 
 async def _with_extras(talking: Talking) -> None:
     """Two more general insights and two declined proposals, written so that id order and
-    alphabetical order disagree, and an archived Set: what the golden must keep in id order."""
+    alphabetical order disagree, and an archived Recipe: what the golden must keep in id order."""
     world = talking.world
     await world.general("Zeroing the scale first avoids a yield error.", process="washed")
     await world.general("Always preheat the group for a minute.")
@@ -89,7 +89,7 @@ async def test_the_same_rows_give_the_same_input(talking: Talking) -> None:
     assert first.render() == second.render()
 
 
-async def test_the_input_is_ordered_by_set_id_then_insight_id(talking: Talking) -> None:
+async def test_the_input_is_ordered_by_recipe_id_then_insight_id(talking: Talking) -> None:
     given = await build_patterns_input(talking.world.db)
 
     assert [item.id for item in given.sets] == sorted(item.id for item in given.sets)
@@ -97,7 +97,7 @@ async def test_the_input_is_ordered_by_set_id_then_insight_id(talking: Talking) 
         assert [i.id for i in item.insights] == sorted(i.id for i in item.insights)
 
 
-async def test_only_confirmed_insights_of_sets_that_are_not_being_designed_are_read(
+async def test_only_confirmed_insights_of_recipes_that_are_not_being_designed_are_read(
     talking: Talking,
 ) -> None:
     given = await build_patterns_input(talking.world.db)
@@ -110,7 +110,7 @@ async def test_only_confirmed_insights_of_sets_that_are_not_being_designed_are_r
     assert [item.id for item in given.general] == [talking.general]
 
 
-async def test_a_set_is_shown_with_the_attributes_a_scope_may_name(talking: Talking) -> None:
+async def test_a_recipe_is_shown_with_the_attributes_a_scope_may_name(talking: Talking) -> None:
     given = await build_patterns_input(talking.world.db)
     world = talking.world
 
@@ -185,7 +185,7 @@ async def test_declined_proposals_are_told_with_their_sources(talking: Talking) 
     assert f'Guji daily #{talking.a_grinder} "A."' in block
 
 
-async def test_archived_sets_are_read_and_designing_ones_are_not(talking: Talking) -> None:
+async def test_archived_recipes_are_read_and_designing_ones_are_not(talking: Talking) -> None:
     world = talking.world
     await world.sets.archive(world.c)
 

@@ -110,7 +110,7 @@ class TestOneRunAtATime:
 
 
 class TestTheCountSinceTheLastRun:
-    async def test_only_sets_that_count_and_only_confirmed_insights(
+    async def test_only_recipes_that_count_and_only_confirmed_insights(
         self, world: PatternWorld
     ) -> None:
         runs = PatternRunsRepository(world.db)
@@ -352,7 +352,7 @@ class TestApproval:
         assert kept is not None and not kept.confirmed
         assert await world.insights.get(b) is None
 
-    async def test_a_source_whose_set_stopped_matching_the_scope_stays(
+    async def test_a_source_whose_recipe_stopped_matching_the_scope_stays(
         self, world: PatternWorld
     ) -> None:
         """The live matching rule decides, not a copy taken when the run finished."""
@@ -382,7 +382,7 @@ class TestApproval:
         assert await world.insights.get(third) is not None
         assert await world.insights.get(a) is None and await world.insights.get(b) is None
 
-    async def test_fewer_than_two_sets_left_refuses_and_writes_nothing(
+    async def test_fewer_than_two_recipes_left_refuses_and_writes_nothing(
         self, world: PatternWorld
     ) -> None:
         a, b, proposal = await _two(world)
@@ -393,14 +393,14 @@ class TestApproval:
 
         result = await proposals.approve(waiting.id)
 
-        assert result.refused == "too_few_sets"
+        assert result.refused == "too_few_recipes"
         assert [item.reason for item in result.skipped] == ["gone"]
         assert await _dump_insights(world) == before
         still = await proposals.get(waiting.id)
         assert still is not None and still.status == "proposed"
         assert await world.insights.get(b) is not None
 
-    async def test_two_insights_of_one_set_are_one_set(self, world: PatternWorld) -> None:
+    async def test_two_insights_of_one_recipe_are_one_recipe(self, world: PatternWorld) -> None:
         a1, _b, proposal = await _two(world)
         a2 = await world.own(world.a, "Also in A.")
         proposal = proposal.model_copy(
@@ -411,7 +411,7 @@ class TestApproval:
         proposals = PatternProposalsRepository(world.db)
         (waiting,) = await proposals.for_run(await _finished(world, proposal))
 
-        assert (await proposals.approve(waiting.id)).refused == "too_few_sets"
+        assert (await proposals.approve(waiting.id)).refused == "too_few_recipes"
         assert await world.insights.get(a1) is not None
 
     async def test_it_is_atomic(self, world: PatternWorld, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -483,7 +483,7 @@ class TestApproval:
     async def test_the_scope_recheck_is_the_live_matching_rule(self, world: PatternWorld) -> None:
         """`scope_matches` ignores case and spacing, so a case-variant scope is not skipped.
 
-        An `==` in its place would call the Set's "Ethiopia" a mismatch for " ethiopia " and
+        An `==` in its place would call the Recipe's "Ethiopia" a mismatch for " ethiopia " and
         leave both sources behind.
         """
         a, b, proposal = await _two(world)
@@ -546,7 +546,7 @@ class TestTheCounts:
         # the run may not have read it.
         assert await runs.new_since_last_run() == 1
 
-    async def test_only_confirmed_insights_count_a_set(self, world: PatternWorld) -> None:
+    async def test_only_confirmed_insights_count_a_recipe(self, world: PatternWorld) -> None:
         runs = PatternRunsRepository(world.db)
         await world.own(world.a, "Waiting only.", confirmed=False)
         dismissed = await world.own(world.b, "Dismissed only.", confirmed=False)

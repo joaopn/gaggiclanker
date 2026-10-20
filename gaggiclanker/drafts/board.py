@@ -77,7 +77,12 @@ from gaggiclanker.db.repos.profiles import (
     document_for,
     stored_document,
 )
-from gaggiclanker.db.repos.sets import LiveSet, RollbackWrite, SetsRepository, VersionWriteResult
+from gaggiclanker.db.repos.recipes import (
+    LiveRecipe,
+    RecipesRepository,
+    RollbackWrite,
+    VersionWriteResult,
+)
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
 from gaggiclanker.db.repos.version_names import next_names
 from gaggiclanker.device.client import GaggimateClient
@@ -284,8 +289,8 @@ class BoardRowView(BaseModel):
     starred: bool = True
     #: The active version, summarised.
     active_version: ActiveVersion
-    #: The profile's Set (a profile has at most one, and archived Sets do not count): changing the
-    #: active version gives it a version of its own, and switching the profile off changes what
+    #: The profile's Recipe (a profile has at most one, and archived Recipes do not count): changing
+    #: the active version gives it a version of its own, and switching the profile off changes what
     #: the machine holds for it.
     set: SetBrewing | None = None
     #: In conflict: the machine's file differs from everything the app knows, so a sync does
@@ -294,7 +299,7 @@ class BoardRowView(BaseModel):
     conflict: ConflictSummary | None = None
     #: How many open drafts would become a version of this profile once made active.
     proposed_versions: int = 0
-    #: Set when this row carries the frozen copy of a pinned Set version: it has one version for
+    #: Set when this row carries the frozen copy of a pinned Recipe version: it has one version for
     #: ever, no switch, and changes only by unpinning. ``None`` for every other profile.
     pin: BoardRowPin | None = None
     #: Set while the latest profile sync is the one that took the machine's name for this profile
@@ -329,8 +334,8 @@ class BoardLanding(BaseModel):
     #: Why a put would be refused: the draft is new or renamed and its name is already a
     #: profile (the sentence the put answers with), else ``None``.
     refused: str | None = None
-    #: The Set of the profile the put lands on, which follows it with a version of its own;
-    #: ``None`` when the profile has no Set (and for a new profile).
+    #: The Recipe of the profile the put lands on, which follows it with a version of its own;
+    #: ``None`` when the profile has no Recipe (and for a new profile).
     set: LandingSet | None = None
 
 
@@ -380,8 +385,8 @@ class DraftStanding(BaseModel):
     row_label: str | None = None
     #: Whether it is the selected profile on the machine, once it is on the machine.
     selected: bool | None = None
-    #: The Set version making this proposal active recorded; ``None`` while it waits, and for a
-    #: proposal whose profile has no Set.
+    #: The Recipe version making this proposal active recorded; ``None`` while it waits, and for a
+    #: proposal whose profile has no Recipe.
     set_version_label: str | None = None
     writes_enabled: bool
 
@@ -477,7 +482,7 @@ class _Destination:
     #: (``refused`` is then the person's sentence about the pin).
     frozen: bool = False
     #: The put is refused because the draft's document is exactly a pin's copy, which belongs to
-    #: that pin's Set version for ever (``refused`` is then the person's sentence).
+    #: that pin's Recipe version for ever (``refused`` is then the person's sentence).
     pinned_copy: PinnedCopyName | None = None
 
 
@@ -518,7 +523,7 @@ class BoardService:
         self.board = ProfileBoardRepository(db)
         self.profiles = ProfilesRepository(db)
         self.signatures = SignatureService(db)
-        self.sets = SetsRepository(db)
+        self.recipes = RecipesRepository(db)
         self.drafts = ProfileDraftsRepository(db)
         self.writes = DeviceWritesRepository(db)
         self.runs = SyncRepository(db)
@@ -559,7 +564,7 @@ class BoardService:
         for proposal in proposals:
             if proposal.row_id is not None:
                 proposed_by_row[proposal.row_id] = proposed_by_row.get(proposal.row_id, 0) + 1
-        brews = await self.sets.live_sets_by_profile()
+        brews = await self.recipes.live_recipes_by_profile()
         counts = await self.board.shot_counts([p.version.id for p in computed.rows])
         pinned = await PinsRepository(self.db).live_for_boards(p.row.id for p in computed.rows)
         renamed = await self._renamed_on_machine()
@@ -586,7 +591,7 @@ class BoardService:
                         shots_brewed=counts.get(plan.version.id, 0),
                         profile=stored_document(plan.version, plan.row.label),
                     ),
-                    set=_set_brewing(brews.get(plan.row.id)),
+                    set=_recipe_brewing(brews.get(plan.row.id)),
                     in_conflict=plan.conflict_file is not None,
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),
@@ -738,10 +743,10 @@ class BoardService:
         """A person's choice in a conflict. Sends nothing to the machine.
 
         ``machine``: the file becomes what the profile is (its brew is the active version, and
-        the profile takes the file's name); nothing will be pushed, and the profile's Set follows
-        (a new minor version naming it). A pin's copy is no exception: its Set's profile gets its
+        the profile takes the file's name); nothing will be pushed, and the profile's Recipe follows
+        (a new minor version naming it). A pin's copy is no exception: its Recipe's profile gets its
         own version of the machine's brew, made active the same way, and the pin then names the
-        Set's new version while the copy keeps the file and the machine's version. ``app``: that
+        Recipe's new version while the copy keeps the file and the machine's version. ``app``: that
         exact machine document (brew and name) is overruled, so the same file is not flagged
         again, and the next sync replaces the file with the active version, its removal guarded
         by a fresh load against that document. Refused when there is no conflict, or when the
@@ -796,7 +801,7 @@ class BoardService:
                     ),
                 )
                 assert updated is not None
-                await self._set_follows(row.id, kept)
+                await self._recipe_follows(row.id, kept)
                 pin = await PinsRepository(self.db).live_for_board(row.id)
                 if pin is not None:
                     await self._pinned_machine_side(pin, machine, kept)
@@ -807,8 +812,8 @@ class BoardService:
         """Keeping the machine's side of a conflict about the name alone writes only the name.
 
         The file's brew is one the profile has had, so there is no brew to adopt: the active
-        version, the Set that follows it and a pin stay as they are, and the next sync decides the
-        brew by its own rule (an older brew under the current name is matched and replaced).
+        version, the Recipe that follows it and a pin stay as they are, and the next sync decides
+        the brew by its own rule (an older brew under the current name is matched and replaced).
         """
         holder = await self.board.find_live_by_name_key(machine.name, excluding=row.id)
         if holder is not None and machine.name != row.label:
@@ -831,16 +836,16 @@ class BoardService:
     async def _pinned_machine_side(
         self, pin: PinDetail, machine: _MirrorConflict, machine_version_id: int
     ) -> None:
-        """A pin's file was edited on the machine and the person kept that: the Set's profile gets
-        its own version of the machine's brew (under its own name), made active like any other,
-        which gives the Set a new minor version, and the pin names that Set version."""
-        owner = await self.sets.get(pin.set_id)
+        """A pin's file was edited on the machine and the person kept that: the Recipe's profile
+        gets its own version of the machine's brew (under its own name), made active like any other,
+        which gives the Recipe a new minor version, and the pin names that Recipe version."""
+        owner = await self.recipes.get(pin.set_id)
         target = (
             None
             if owner is None or owner.board_id is None
             else await self.board.get(owner.board_id)
         )
-        if target is None:  # pragma: no cover - a pin needs a Set that brews a profile
+        if target is None:  # pragma: no cover - a pin needs a Recipe that brews a profile
             return
         document = document_for(machine.version, target.label)
         mine, created = await self.profiles.ensure_version(document, owner=target.id)
@@ -851,10 +856,10 @@ class BoardService:
         if mine.id != target.current_version_id:
             await self._activatable(target, mine.id)
             await self._make_active(target, mine)
-            recorded = await self.sets.follow_profile(target.id, mine.id)
-        # The pin names the machine's version (the copy row's active one now) and the Set's new
-        # version, so it still names exactly one version and one Set version.
-        await PinsRepository(self.db).move_to_set_version(
+            recorded = await self.recipes.follow_profile(target.id, mine.id)
+        # The pin names the machine's version (the copy row's active one now) and the Recipe's new
+        # version, so it still names exactly one version and one Recipe version.
+        await PinsRepository(self.db).move_to_recipe_version(
             pin.id, None if recorded is None else recorded.id, machine_version_id
         )
 
@@ -1048,7 +1053,7 @@ class BoardService:
             if found is not None:
                 stored[entry.version_id] = found
         on_machine = {d.current_version_id for d in await self.profiles.list_device_profiles()}
-        brewing = (await self.sets.live_sets_by_profile()).get(row.id)
+        brewing = (await self.recipes.live_recipes_by_profile()).get(row.id)
         counts = await self.board.shot_counts(list(stored))
         ordered = [e for e in entries if e.version_id in stored]
         listed: list[ListedVersion] = []
@@ -1068,7 +1073,7 @@ class BoardService:
                     is_on_machine=version.id in on_machine,
                     did_not_verify=row.failed_version_id == version.id,
                     shots_brewed=counts.get(version.id, 0),
-                    set=_set_brewing(
+                    set=_recipe_brewing(
                         brewing if brewing and brewing.brewing_version_id == version.id else None
                     ),
                     profile=stored_document(version, row.label),
@@ -1154,10 +1159,12 @@ class BoardService:
             return BoardLanding(revives_label=None if dest.revived is None else dest.revived.label)
         # Every proposal is an independent candidate: making another one active never blocks or
         # undoes this one, so there is nothing to say about newer drafts.
-        return BoardLanding(row_id=row.id, row_label=row.label, set=await self._landing_set(row.id))
+        return BoardLanding(
+            row_id=row.id, row_label=row.label, set=await self._landing_recipe(row.id)
+        )
 
-    async def _landing_set(self, board_id: int) -> LandingSet | None:
-        found = await self.sets.set_of_profile(board_id)
+    async def _landing_recipe(self, board_id: int) -> LandingSet | None:
+        found = await self.recipes.recipe_of_profile(board_id)
         if found is None:
             return None
         names = await next_names(self.db, found[0])
@@ -1260,7 +1267,7 @@ class BoardService:
         refused with the same sentence, and the draft stays as it was.
 
         ``label`` is the name the person typed for a new profile. ``major`` names the new version
-        of the profile's Set a major one (a minor otherwise). See :meth:`put_in_transaction`.
+        of the profile's Recipe a major one (a minor otherwise). See :meth:`put_in_transaction`.
         """
         # Every check and the write in one transaction: two puts of the same draft (a
         # double click) are serialised, and the second finds the first's row.
@@ -1270,7 +1277,7 @@ class BoardService:
     async def settle_for_accept(self, draft_id: int, *, label: str | None) -> BoardRow | None:
         """What a first recipe's accept does with its draft, inside the accept's transaction.
 
-        A draft still waiting is put (:meth:`put_in_transaction`: switched on, no Set recording,
+        A draft still waiting is put (:meth:`put_in_transaction`: switched on, no Recipe recording,
         renamed when ``label`` is given). A draft already answered, whether approved or pushed
         on the Profiles page or overtaken by a later version of its profile, is left exactly as
         it is: the accept must not make an older version active again or undo anyone's answer.
@@ -1314,9 +1321,9 @@ class BoardService:
         **Where the put goes is the destination the draft stored when it was made**, and the new
         profile is called what the draft is called; the document's own label decides nothing.
 
-        **The profile's Set follows in the same transaction** (:meth:`_set_follows`): a profile
-        with a Set gets a new active version, so the Set gets a new version naming it, carrying
-        the draft's experiment when the draft was argued in that Set's chat.
+        **The profile's Recipe follows in the same transaction** (:meth:`_recipe_follows`): a
+        profile with a Recipe gets a new active version, so the Recipe gets a new version naming it,
+        carrying the draft's experiment when the draft was argued in that Recipe's chat.
         """
         draft = await self.drafts.get(draft_id)
         if draft is None:
@@ -1368,7 +1375,7 @@ class BoardService:
             revived = dest.revived
             if revived is not None:
                 # The same profile put back while its old file still waits to be dealt
-                # with (a Set may be brewing it): the row is the same profile again, not
+                # with (a Recipe may be brewing it): the row is the same profile again, not
                 # a second row that would push a second identical copy.
                 back = await self.board.update(
                     revived.id,
@@ -1383,7 +1390,7 @@ class BoardService:
                 kept = await self.board.version_for(back.id, version.id)
                 await self.board.add_version(back.id, kept, source)
                 await self._follow(draft, kept)
-                await self._set_follows(back.id, kept, draft=draft, major=major)
+                await self._recipe_follows(back.id, kept, draft=draft, major=major)
                 return back
             created = await self.board.insert(
                 BoardRowWrite(
@@ -1415,7 +1422,7 @@ class BoardService:
         )
         assert updated is not None  # the row was read in this transaction
         await self._follow(draft, kept)
-        await self._set_follows(updated.id, kept, draft=draft, major=major)
+        await self._recipe_follows(updated.id, kept, draft=draft, major=major)
         return updated
 
     async def _follow(self, draft: ProfileDraftRow, version_id: int) -> None:
@@ -1423,13 +1430,13 @@ class BoardService:
 
         A draft's version is the profile's own when the put lists it. When the profile already
         had that brew under a version of its own (a profile put back, an old document put again)
-        that version is the one the profile has, and the draft, which is recorded on the Set and
+        that version is the one the profile has, and the draft, which is recorded on the Recipe and
         read by the sync as that profile's, names it too.
         """
         if draft.draft_version_id != version_id:
             await self.drafts.set_draft_version(draft.id, version_id, label=draft.draft_label or "")
 
-    async def _set_follows(
+    async def _recipe_follows(
         self,
         board_id: int,
         version_id: int,
@@ -1437,14 +1444,14 @@ class BoardService:
         draft: ProfileDraftRow | None = None,
         major: bool | None = None,
     ) -> None:
-        """The profile has a new active version: its Set, if it has one, follows.
+        """The profile has a new active version: its Recipe, if it has one, follows.
 
         The draft that made it so passes its experiment on: the prediction and what it is
-        compared to when the draft was argued in this very Set's chat (the comparison falls back
-        to the Set's current version when the one the prediction named is no longer one of its
+        compared to when the draft was argued in this very Recipe's chat (the comparison falls back
+        to the Recipe's current version when the one the prediction named is no longer one of its
         versions), the draft's summary as the intent, and the person's choice of a major.
         """
-        found = await self.sets.set_of_profile(board_id)
+        found = await self.recipes.recipe_of_profile(board_id)
         if found is None:
             return
         origin: Literal["manual", "analysis", "chat"] = "manual"
@@ -1455,11 +1462,11 @@ class BoardService:
             if draft.set_id == found[0] and draft.prediction:
                 compares_to = draft.compares_to_version_id
                 if compares_to is not None and (
-                    await self.sets.version_of_set(found[0], compares_to) is None
+                    await self.recipes.version_of_recipe(found[0], compares_to) is None
                 ):
                     compares_to = None
                 if compares_to is None:
-                    current = await self.sets.current_version(found[0])
+                    current = await self.recipes.current_version(found[0])
                     compares_to = None if current is None else current.id
                 extra["prediction"] = draft.prediction
                 extra["compares_to_version_id"] = compares_to
@@ -1468,7 +1475,7 @@ class BoardService:
                 if draft.source_analysis_id is not None
                 else ("chat" if extra.get("prediction") else "manual")
             )
-        recorded = await self.sets.follow_profile(
+        recorded = await self.recipes.follow_profile(
             board_id, version_id, major=major, origin=origin, **extra
         )
         if draft is not None and recorded is not None:
@@ -1540,7 +1547,7 @@ class BoardService:
         """
         return await self.writes.saved_with_content(device_id, host=host, content_hash=content_hash)
 
-    async def set_on_machine(self, row_id: int, on: bool) -> BoardRow:
+    async def recipe_on_machine(self, row_id: int, on: bool) -> BoardRow:
         """Switch a profile on or off the machine. The next sync follows; nothing is sent now."""
         row = await self._live_row(row_id)
         await self._refuse_if_pinned(row)
@@ -1552,7 +1559,7 @@ class BoardService:
         """Give a profile another name. The next sync puts it on the machine; nothing is sent now.
 
         A person's act (no tool, MCP client or agent renames). It writes the profile's name and
-        nothing else: no version, draft, Set or signature row, so it works with the switch off,
+        nothing else: no version, draft, Recipe or signature row, so it works with the switch off,
         and on a pinned row (a pin freezes what the copy brews, not what it is called). The name
         is checked as the list checks every name: not empty, and not another live profile's
         (case and surrounding space ignored, so a change of case alone is a rename). The same
@@ -1584,7 +1591,7 @@ class BoardService:
         """Make one of a profile's versions its active one. The next sync puts it on the machine.
 
         Any version the profile has had will do, an older one included (the sync pushes it and
-        removes the file the profile stood on). The profile's Set follows in the same
+        removes the file the profile stood on). The profile's Recipe follows in the same
         transaction: it gets a new minor version naming the version made active. The profile
         keeps its name: only its active version changes. Refused, each with its own sentence,
         for a version that is not this profile's, the synthetic baseline, and a version outside
@@ -1602,20 +1609,20 @@ class BoardService:
                 assert cleared is not None
                 return cleared
             updated = await self._make_active(row, version)
-            await self._set_follows(row.id, version.id)
+            await self._recipe_follows(row.id, version.id)
             return updated
 
-    async def revert_set(self, set_id: int, spec: RollbackWrite) -> VersionWriteResult:
-        """Put a Set back on another of its versions, and its profile on the version that
-        version brews: one transaction, and no Set version is written (the Set is going back to
-        one it already has). Everything that can refuse making a version active refuses the
+    async def revert_recipe(self, set_id: int, spec: RollbackWrite) -> VersionWriteResult:
+        """Put a Recipe back on another of its versions, and its profile on the version that
+        version brews: one transaction, and no Recipe version is written (the Recipe is going back
+        to one it already has). Everything that can refuse making a version active refuses the
         revert, and then nothing has moved."""
         async with self.db.transaction():
-            result = await self.sets.rollback(set_id, spec)
+            result = await self.recipes.rollback(set_id, spec)
             version = result.version
             if version is None or version.profile_version_id is None:
                 return result
-            found = await self.sets.get(set_id)
+            found = await self.recipes.get(set_id)
             row = None
             if found is not None and found.board_id is not None:
                 row = await self.board.get(found.board_id)
@@ -2727,8 +2734,8 @@ class BoardService:
 
         The draft becomes ``pushed`` exactly as a person's push leaves it. Done at the moment the
         profile is found on the machine, whether this pass put it there or an earlier one did and
-        was cut off before this step. (Its Set recorded the version when the draft was put: the
-        profile's active version is what the Set follows, not what is on the machine.)
+        was cut off before this step. (Its Recipe recorded the version when the draft was put: the
+        profile's active version is what the Recipe follows, not what is on the machine.)
         """
         row = plan.row
         if row.pending_draft_id is None:
@@ -2867,8 +2874,8 @@ def _machine_state(plan: RowPlan, machine: MachineState) -> BoardMachineState:
     )
 
 
-def _set_brewing(found: LiveSet | None) -> SetBrewing | None:
-    """The profile's Set as the pages show it, or ``None``."""
+def _recipe_brewing(found: LiveRecipe | None) -> SetBrewing | None:
+    """The profile's Recipe as the pages show it, or ``None``."""
     if found is None:
         return None
     return SetBrewing(

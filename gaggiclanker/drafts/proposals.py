@@ -117,7 +117,7 @@ class PinFrozen(Conflict):
 
 
 class PinnedCopyName(Conflict):
-    """A draft's document is the copy of a pin, which belongs to that pin's Set version for ever.
+    """A draft's document is the copy of a pin, which belongs to that pin's Recipe version for ever.
 
     The message is the agent's wording; ``person`` is the sentence under a Name field.
     """
@@ -177,7 +177,7 @@ class DraftProposals:
         first problem six times.
 
         A document that is the copy a pin made is refused (:class:`PinnedCopyName`): a copy names
-        one Set version for ever, so an ordinary draft cannot land on it once its pin is gone.
+        one Recipe version for ever, so an ordinary draft cannot land on it once its pin is gone.
         ``for_pin`` is the pin's own path, which decides what to do with a copy it finds.
         """
         bounds = await self.bounds()
@@ -323,9 +323,9 @@ class DraftProposals:
 
         ``set_id``, ``prediction`` and ``compares_to_version_id`` are the
         experiment half and travel together (with the agent's ``suggest_major``
-        and its ``major_reason``, which the push card shows): a draft proposed inside one Set's
-        conversation says which Set it is for and what it is expected to do
-        differently, and the push records that on the Set version it creates. A
+        and its ``major_reason``, which the push card shows): a draft proposed inside one Recipe's
+        conversation says which Recipe it is for and what it is expected to do
+        differently, and the push records that on the Recipe version it creates. A
         draft with none of them — typed by hand, or proposed where there is no
         experiment — is exactly what it was before.
 

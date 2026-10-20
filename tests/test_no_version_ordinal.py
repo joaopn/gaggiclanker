@@ -1,7 +1,7 @@
 """A version's name is an identifier: no ordinal is served, in any shape, anywhere.
 
 The ordinal ("the Nth version") ordered versions and meant "the current one is
-the highest". Names say what a reader needs, the Set's pointer says which one is
+the highest". Names say what a reader needs, the Recipe's pointer says which one is
 current and `created_at` says what was made first, so a field that counts
 versions can only mislead (v1.2 may be the third version, or the ninth). Four
 places can serve one and each is walked here: every API response model, every
@@ -16,7 +16,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.sets import SetRow, SetVersionRow
+from gaggiclanker.db.repos.recipes import SetRow, SetVersionRow
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, registry
 
 ROOT = Path(__file__).resolve().parent.parent / "gaggiclanker"
@@ -58,7 +58,7 @@ def test_no_tool_input_or_output_has_an_ordinal() -> None:
 
 
 def test_the_rows_the_mcp_resource_serves_have_no_ordinal() -> None:
-    """The stdio `sets/{id}` resource dumps these two models, nothing else."""
+    """The stdio `recipes/{id}` resource dumps these two models, nothing else."""
     for model in (SetRow, SetVersionRow):
         assert _ordinal_names(model.model_json_schema(mode="serialization"), model.__name__) == []
 

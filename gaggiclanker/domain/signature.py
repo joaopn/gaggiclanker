@@ -550,7 +550,7 @@ class Check:
     #: Where within the group it stands: the expectation's position, a warning's fault.
     seq: int
     shot_wide: bool
-    #: The limit the check was held against, after any Set version override, as the language
+    #: The limit the check was held against, after any Recipe version override, as the language
     #: states it; ``None`` for a check with no limit.
     compare: Compare | None = None
     #: What a share is a share of (``target_yield``, ``dose``, ``final_weight``).
@@ -865,7 +865,7 @@ def build_checks(
 
     ``expectations`` are the **confirmed** ones of the shot's profile version; the caller
     never hands an unconfirmed one, and nothing here could tell it from a confirmed one.
-    ``override`` is the filed Set version's confirmed override, as (expectation id, the
+    ``override`` is the filed Recipe version's confirmed override, as (expectation id, the
     compare to use instead): applied only to that expectation and only to a measure.
     ``data`` is what the metric language reads of the shot, ``None`` when the log is not
     available (every measure is then not measured, with that reason).
@@ -1077,7 +1077,7 @@ def expectation_line(exp: ExpectationLike, override: Compare | None = None) -> s
 
     ``critical, ramp, measure (fails as early yield): the sentence``.
 
-    ``override`` is the filed Set version's confirmed limit, which the line then states with
+    ``override`` is the filed Recipe version's confirmed limit, which the line then states with
     the profile's own beside it.
     """
     sentence = exp.sentence

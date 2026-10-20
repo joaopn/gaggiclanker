@@ -237,7 +237,7 @@ def test_the_report_is_one_rounded_entry_per_measure_in_vocabulary_order() -> No
     assert times.shots == 5
     assert times.degrees_of_freedom == 3
     assert times.floor == 2.0
-    # Every measure is served, including the ones this Set holds nothing for.
+    # Every measure is served, including the ones this Recipe holds nothing for.
     peak = next(entry for entry in report if entry.measure == "peak_pressure_bar")
     assert peak.value is None
     assert peak.recorded == 0
@@ -545,7 +545,7 @@ def test_bar_differences_get_a_third_decimal() -> None:
 # ── determinism ──────────────────────────────────────────────────────
 
 
-#: A Set whose pooled total depends on the order its groups are added in.
+#: A Recipe whose pooled total depends on the order its groups are added in.
 #:
 #: One recipe scattered over 200 million (a sum of squares of 2e16) and two
 #: tight ones (2 each). Added biggest-first the two 2s fall off the end of the

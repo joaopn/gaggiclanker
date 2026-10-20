@@ -38,13 +38,13 @@ __all__ = [
     "OUTCOME_STATES",
     "PREDICTION_STANCES",
     "PROCESSES",
+    "RECIPE_VERSION_ORIGINS",
     "REVIEW_CLAIM_KINDS",
     "REVIEW_CLAIM_STATUSES",
     "REVIEW_STATUSES",
     "ROAST_LEVELS",
     "RULE_CATEGORIES",
     "RULE_CONFIDENCES",
-    "SET_VERSION_ORIGINS",
     "SHOT_STYLES",
     "SPREAD_MEASURES",
     "STEP_UNITS",
@@ -116,9 +116,9 @@ type Decision = Literal["keep", "improve", "discard"]
 #: offered on its Taste row and the ones offered on its Aroma row.
 type FlavorPickKind = Literal["taste", "aroma"]
 
-# ── sets ─────────────────────────────────────────────────────────────
+# ── recipes ─────────────────────────────────────────────────────────────
 
-#: Who proposed a Set version. Recorded rather than inferred so that "did
+#: Who proposed a Recipe version. Recorded rather than inferred so that "did
 #: following the model's advice actually help" is a GROUP BY a year later.
 #: `starting_point` is the starting-point wizard — the only origin that can appear on a
 #: *first* version, which is what makes "how good is the cold start" answerable.
@@ -186,7 +186,7 @@ type ReviewStatus = Literal["running", "ok", "failed", "interrupted"]
 
 #: What one stored statement of a reading is. A `claim` is something the model says about a
 #: window of the shot, a `free_text` one answers one of the confirmed signature's free-text
-#: expectations, and a `prediction` says how the shot moved against the Set version's
+#: expectations, and a `prediction` says how the shot moved against the Recipe version's
 #: prediction. All three are kept or rejected the same way, by a person, one at a time.
 type ReviewClaimKind = Literal["claim", "free_text", "prediction"]
 
@@ -194,12 +194,12 @@ type ReviewClaimKind = Literal["claim", "free_text", "prediction"]
 #: claim never teaches the chat anything.
 type ReviewClaimStatus = Literal["confirmed", "rejected"]
 
-#: How the shot moved against the prediction its Set version was filed with.
+#: How the shot moved against the prediction its Recipe version was filed with.
 type PredictionStance = Literal["as_predicted", "partly", "against", "not_shown"]
 
 #: How much a knowledge rule is worth. `expert` is a published heuristic,
 #: `calibrated` is a threshold measured against real shots, `anecdotal` is one
-#: person's report, and `learned` is one this archive derived from its own Sets
+#: person's report, and `learned` is one this archive derived from its own Recipes
 #: (nothing writes those yet).
 type RuleConfidence = Literal["expert", "calibrated", "anecdotal", "learned"]
 
@@ -229,7 +229,7 @@ STEP_UNITS: tuple[str, ...] = get_args(StepUnit.__value__)
 BALANCES: tuple[str, ...] = get_args(Balance.__value__)
 DECISIONS: tuple[str, ...] = get_args(Decision.__value__)
 FLAVOR_PICK_KINDS: tuple[str, ...] = get_args(FlavorPickKind.__value__)
-SET_VERSION_ORIGINS: tuple[str, ...] = get_args(SetVersionOrigin.__value__)
+RECIPE_VERSION_ORIGINS: tuple[str, ...] = get_args(SetVersionOrigin.__value__)
 VERSION_OUTCOMES: tuple[str, ...] = get_args(VersionOutcome.__value__)
 OUTCOME_STATES: tuple[str, ...] = get_args(OutcomeState.__value__)
 #: Typed as the literal rather than as plain strings, unlike its neighbours:
@@ -540,9 +540,9 @@ class Vocabulary(BaseModel):
     #: The six states the experiment log renders, the four above plus the two
     #: that are not a grade: `no_prediction` and `open`.
     outcome_states: list[Term]
-    #: The measures a Set's spread and a version's evidence are reported per,
+    #: The measures a Recipe's spread and a version's evidence are reported per,
     #: with the words and the unit each one is read in. Served for the same
-    #: reason as the rest: the Set page renders these labels, and a component
+    #: reason as the rest: the Recipe page renders these labels, and a component
     #: with its own copy would drift from what the server computes.
     spread_measures: list[MeasureTerm]
     #: The flavour wheel, as a tree: nine categories, their groups, their notes.
@@ -644,7 +644,7 @@ def vocabulary() -> Vocabulary:
         step_units=_terms(STEP_UNITS),
         balances=_terms(BALANCES, _BALANCE_LABELS),
         decisions=_terms(DECISIONS, _DECISION_LABELS),
-        origins=_terms(SET_VERSION_ORIGINS, _ORIGIN_LABELS),
+        origins=_terms(RECIPE_VERSION_ORIGINS, _ORIGIN_LABELS),
         version_outcomes=_terms(VERSION_OUTCOMES, _OUTCOME_LABELS),
         outcome_states=_terms(OUTCOME_STATES, _OUTCOME_LABELS),
         spread_measures=[

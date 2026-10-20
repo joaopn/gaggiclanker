@@ -1,7 +1,7 @@
 """Every piece of information a shot carries, as one ordered catalogue.
 
 A chat is told about a shot in two tiers. **Base** is what it sees without
-asking — every shot in a Set conversation's opening context, every result of
+asking — every shot in a Recipe conversation's opening context, every result of
 the shot search, `get_shot` — and **extended** is what it asks for by name
 (`get_shot_extended`; `get_shot_full` is both). An item may also be
 **excluded**, and then no chat ever sees it. Which tier an item sits in is a
@@ -32,8 +32,8 @@ because a model reads "0.0 bar" as a fact about the shot. Each accessor says
 which zero it is guarding against.
 
 **The numbers are the engine's, and they are only numbers.** A value is shown at
-the precision the diagnostics round it to (or the Set page's vocabulary gives
-it, for the five measures the Set page shows), with no grade beside it: no band
+the precision the diagnostics round it to (or the Recipe page's vocabulary gives
+it, for the five measures the Recipe page shows), with no grade beside it: no band
 label, no verdict. What a number means for a given profile is for the reader.
 """
 
@@ -292,9 +292,9 @@ def _notes(notes: list[str]) -> str | None:
     return "; ".join(paths) if paths else None
 
 
-# ── the Set page's vocabulary ────────────────────────────────────────
+# ── the Recipe page's vocabulary ────────────────────────────────────────
 
-#: The five measures the Set page and its spread are read in, with the same
+#: The five measures the Recipe page and its spread are read in, with the same
 #: units and precision, so "Shot time: 33.0 s" here and on the page are one
 #: reading.
 _MEASURES = {term.value: term for term in vocabulary().spread_measures}

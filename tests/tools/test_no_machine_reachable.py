@@ -4,7 +4,7 @@ The registry already refuses a tool declaring anything but ``read`` or
 ``propose``. This file pins the other half: the context a tool is handed holds
 nothing from which the device client, the connection that owns it or the sync
 engine can be reached. A propose tool that creates a draft is given the object
-that creates drafts, not the service that also records them on a Set, so a mistake in a
+that creates drafts, not the service that also records them on a Recipe, so a mistake in a
 tool cannot become a write to the machine.
 
 The check is an object-graph walk from the context, bounded, over instance
@@ -47,7 +47,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
-from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
+from gaggiclanker.db.repos.recipes import DesignBrief, RecipesRepository, RecipeWrite
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
@@ -64,7 +64,7 @@ from gaggiclanker.tools.mcp.stdio import stdio_tool_context
 from gaggiclanker.tools.registry import registry
 from gaggiclanker.tools.scope import ToolScope
 from tests.conftest import running_app, seed_settings
-from tests.review.conftest import Fixture, build_fixture, give_the_set_its_profile
+from tests.review.conftest import Fixture, build_fixture, give_the_recipe_its_profile
 from tests.sync.conftest import SMALL_COUNT, build_archive_device
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -245,7 +245,7 @@ async def connected(
         assert await connection.client.wait_connected(5.0), "the fake machine did not connect"
         assert connection.engine is not None
         fixture = await build_fixture(app.state.db)
-        await give_the_set_its_profile(fixture)
+        await give_the_recipe_its_profile(fixture)
         yield app, client, fixture
 
 
@@ -539,8 +539,8 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     connected: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
     app, client, fixture = connected
-    # Each proposal is dispatched in a conversation that has it: proposing a Set
-    # version belongs in that Set's own chat.
+    # Each proposal is dispatched in a conversation that has it: proposing a Recipe
+    # version belongs in that Recipe's own chat.
     ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(fixture.set_id), run_id=None)
     proposers = {spec.name for spec in registry.specs(frozenset({"propose"}))}
     assert proposers == {
@@ -593,9 +593,9 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     assert learned.ok, learned.data
     assert learned.data["confirmed"] is False
 
-    # And the initial recipe, in the conversation of a Set being designed.
-    designed = await SetsRepository(app.state.db).create_design(
-        SetWrite(name="Designed", bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
+    # And the initial recipe, in the conversation of a Recipe being designed.
+    designed = await RecipesRepository(app.state.db).create_design(
+        RecipeWrite(name="Designed", bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
         DesignBrief(fork_profile_version_id=fixture.profile_version_id),
     )
     designing = app.state.chat.tool_context(
@@ -625,7 +625,7 @@ async def test_the_stdio_context_proposes_drafts(
     try:
         await create_schema(db)
         fixture = await build_fixture(db)
-        await give_the_set_its_profile(fixture)
+        await give_the_recipe_its_profile(fixture)
         settings = SettingsService(SettingsRepository(db))
         ctx = stdio_tool_context(db, settings, scope=ToolScope.for_thread(fixture.set_id))
 

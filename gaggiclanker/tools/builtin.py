@@ -8,8 +8,8 @@ making a profile active (which the next sync puts on the machine) stays a button
 
 Which of the twenty-two a conversation *has* is not decided here:
 :mod:`gaggiclanker.tools.scope` decides it from the conversation's kind. What
-is decided here is what a tool does when it is called inside a Set's
-conversation — the Set is the conversation's and another one is refused, and a
+is decided here is what a tool does when it is called inside a Recipe's
+conversation — the Recipe is the conversation's and another one is refused, and a
 shot filed elsewhere is refused in words that do not say whether it exists.
 
 Two shapes recur and are worth stating once. **Every output is a pydantic model**,
@@ -52,17 +52,17 @@ from gaggiclanker.db.repos.outcome_proposals import (
 from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
-from gaggiclanker.db.repos.set_proposals import (
+from gaggiclanker.db.repos.recipe_proposals import (
     ProposalWrite,
     ProposalWriteResult,
-    SetProposalsRepository,
+    RecipeProposalsRepository,
     change_groups,
 )
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, version_changes
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, version_changes
 from gaggiclanker.db.repos.version_names import named_dump, next_names
 from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.profile_recipe import profile_recipe
-from gaggiclanker.domain.sets import grind_value, parse_version_label
+from gaggiclanker.domain.recipes import grind_value, parse_version_label
 from gaggiclanker.domain.signature import ExpectationInput, SignatureRefused
 from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance
 from gaggiclanker.infra.errors import Unprocessable
@@ -99,7 +99,7 @@ class _Model(BaseModel):
 
 #: Shown with the schema. Examples are worth more than column lists to a model
 #: that has to write correlated SQL, and these four are the shapes that actually
-#: come up: one Set's shots, a per-version average, a join to a shot's confirmed claims,
+#: come up: one Recipe's shots, a per-version average, a join to a shot's confirmed claims,
 #: and a curve slice.
 EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
     (
@@ -418,7 +418,7 @@ async def compare_shots(ctx: ToolContext, args: CompareInput) -> CompareOutput:
     )
 
 
-# ── sets and catalogue ───────────────────────────────────────────────
+# ── recipes and catalogue ───────────────────────────────────────────────
 
 
 class GetSetInput(_Model):
@@ -434,14 +434,14 @@ class SetOutput(_Model):
     insights: list[str] = Field(default_factory=list)
 
 
-def _resolve_set(ctx: ToolContext, given: int | None) -> int:
-    """Which Set this call is about, and a refusal when it is not this one.
+def _resolve_recipe(ctx: ToolContext, given: int | None) -> int:
+    """Which Recipe this call is about, and a refusal when it is not this one.
 
-    In a Set conversation the answer is fixed: the Set the conversation is
+    In a Recipe conversation the answer is fixed: the Recipe the conversation is
     about, whatever was passed. A different id is refused in words that say so
-    and **say nothing else** — not whether that Set exists, not how many there
-    are. "There is no Set 7" and "Set 7 is somebody else's coffee" are two
-    different things to learn, and a conversation limited to one Set gets to
+    and **say nothing else** — not whether that Recipe exists, not how many there
+    are. "There is no Recipe 7" and "Recipe 7 is somebody else's coffee" are two
+    different things to learn, and a conversation limited to one Recipe gets to
     learn neither.
     """
     if ctx.scope.kind == "set" and ctx.scope.set_id is not None:
@@ -463,8 +463,8 @@ def _shot_of_scope(ctx: ToolContext, shot_id: int, data: dict[str, Any] | None) 
     """Refuse a shot this conversation is not entitled to, without saying why.
 
     One message for both "there is no such shot" and "that shot belongs to
-    another Set", because two messages are an existence oracle: a model told
-    them apart could walk the archive from inside one Set's conversation, which
+    another Recipe", because two messages are an existence oracle: a model told
+    them apart could walk the archive from inside one Recipe's conversation, which
     is the whole thing the scope is for.
     """
     if ctx.scope.kind != "set":
@@ -487,14 +487,14 @@ def _shot_of_scope(ctx: ToolContext, shot_id: int, data: dict[str, Any] | None) 
     ),
 )
 async def get_set(ctx: ToolContext, args: GetSetInput) -> SetOutput:
-    set_id = _resolve_set(ctx, args.set_id)
-    sets = SetsRepository(ctx.db)
-    row = await sets.get(set_id)
+    set_id = _resolve_recipe(ctx, args.set_id)
+    recipes = RecipesRepository(ctx.db)
+    row = await recipes.get(set_id)
     if row is None:
         raise ValueError(f"No Set {set_id}.")
-    versions = await sets.versions(set_id)
-    trends = await sets.trends(set_id)
-    insights = await _set_insights(ctx, row)
+    versions = await recipes.versions(set_id)
+    trends = await recipes.trends(set_id)
+    insights = await _recipe_insights(ctx, row)
     return SetOutput(
         set=named_dump(row),
         versions=[named_dump(version) for version in versions],
@@ -503,15 +503,15 @@ async def get_set(ctx: ToolContext, args: GetSetInput) -> SetOutput:
     )
 
 
-async def _set_insights(ctx: ToolContext, row: Any) -> list[Any]:
-    """The confirmed insights that apply to a Set, through the one selection.
+async def _recipe_insights(ctx: ToolContext, row: Any) -> list[Any]:
+    """The confirmed insights that apply to a Recipe, through the one selection.
 
-    The same ``InsightsRepository.for_set`` the opening context and the Set page
+    The same ``InsightsRepository.for_recipe`` the opening context and the Recipe page
     use, so the chat and the page cannot disagree about which insights apply —
-    reimplementing the rule here is how the two drift. The Set's own, then the
-    general ones whose scope matches it; never another Set's.
+    reimplementing the rule here is how the two drift. The Recipe's own, then the
+    general ones whose scope matches it; never another Recipe's.
     """
-    return await InsightsRepository(ctx.db).for_set(row.id)
+    return await InsightsRepository(ctx.db).for_recipe(row.id)
 
 
 class Range(_Model):
@@ -631,7 +631,7 @@ class SearchShotsOutput(_Model):
     shots: list[ShotHit] = Field(default_factory=list)
     count: int = 0
     #: True when more shots matched than came back, so a model can narrow the
-    #: search rather than conclude the Set has only these.
+    #: search rather than conclude the Recipe has only these.
     truncated: bool = False
 
 
@@ -695,12 +695,12 @@ def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier], order: s
     ),
 )
 async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShotsOutput:
-    """No ``set_id``: the Set is the conversation's, which is the whole point.
+    """No ``set_id``: the Recipe is the conversation's, which is the whole point.
 
-    A Set conversation searches its own shots and cannot be pointed at anybody
+    A Recipe conversation searches its own shots and cannot be pointed at anybody
     else's, so there is no argument here to point wrongly.
     """
-    set_id = _resolve_set(ctx, None)
+    set_id = _resolve_recipe(ctx, None)
     tiers = await effective_tiers(ctx.db)
     order = _order(args, tiers)
     _refuse_excluded(args, tiers, order)
@@ -758,18 +758,18 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
 
 
 async def _named_version(ctx: ToolContext, set_id: int, name: str | float) -> int:
-    """The id of this Set's version called ``name``, or a refusal saying which names exist.
+    """The id of this Recipe's version called ``name``, or a refusal saying which names exist.
 
     The name is what the agent reads everywhere ("v1.1"); an ordinal is never
-    accepted as one — "2" is v2. The list in the refusal is this Set's own
+    accepted as one — "2" is v2. The list in the refusal is this Recipe's own
     versions only, which the conversation can see anyway.
     """
     parsed = parse_version_label(str(name))
-    sets = SetsRepository(ctx.db)
-    found = None if parsed is None else await sets.version_named(set_id, *parsed)
+    recipes = RecipesRepository(ctx.db)
+    found = None if parsed is None else await recipes.version_named(set_id, *parsed)
     if found is not None:
         return found.id
-    names = [version.version_label for version in reversed(await sets.versions(set_id))]
+    names = [version.version_label for version in reversed(await recipes.versions(set_id))]
     raise ValueError(
         f"This Set has no version called {str(name)!r}. Its versions are "
         f"{', '.join(names)}; name one of them as 'v1.1', '1.1' or '2', or leave version out."
@@ -791,7 +791,7 @@ class ListOutput(_Model):
     description="Every Set, the ones new shots are filed under first.",
 )
 async def list_sets(ctx: ToolContext, args: ListSetsInput) -> ListOutput:
-    rows = await SetsRepository(ctx.db).list_sets(include_archived=args.include_archived)
+    rows = await RecipesRepository(ctx.db).list_sets(include_archived=args.include_archived)
     items = [named_dump(row) for row in rows]
     return ListOutput(items=items, count=len(items))
 
@@ -856,7 +856,7 @@ class ListProfilesInput(_Model):
 async def list_profiles(ctx: ToolContext, args: ListProfilesInput) -> ListOutput:
     # `on_machine` is what a proposal naming a profile needs to know: a version
     # the machine does not have can only get there as a pushed draft.
-    # A pin's copy is no profile to choose for a Set: no version may name it.
+    # A pin's copy is no profile to choose for a Recipe: no version may name it.
     copies = await ProfilesRepository(ctx.db).pin_copy_ids()
     rows = await ctx.db.fetch_all(
         f"""
@@ -874,7 +874,7 @@ async def list_profiles(ctx: ToolContext, args: ListProfilesInput) -> ListOutput
     items = [dict(zip(row.keys(), tuple(row), strict=True)) for row in rows]
     if ctx.scope.kind == "set":
         # `shot_count` counts the whole archive's shots on that profile, which
-        # is how busy the *other* Sets have been — a fact this conversation is
+        # is how busy the *other* Recipes have been — a fact this conversation is
         # not entitled to. The profiles themselves are archive-wide on purpose:
         # a draft is made from one, and a conversation may read any profile.
         for item in items:
@@ -911,7 +911,7 @@ class GetProfileOutput(_Model):
     #: the expectation's id. Empty when it has none; a rejected expectation is never here.
     signature: list[str] = Field(default_factory=list)
     #: How many of the archive's shots were pulled with it. Only in a general
-    #: conversation: see :func:`list_profiles` for why a Set's does not get it.
+    #: conversation: see :func:`list_profiles` for why a Recipe's does not get it.
     shot_count: int | None = None
 
 
@@ -932,7 +932,7 @@ async def get_profile(ctx: ToolContext, args: GetProfileInput) -> GetProfileOutp
 
     `list_profiles` gives labels and metadata; an agent asked to fork or adjust
     a profile has to read what it is changing, or it writes a patch against a
-    document it imagined. Every conversation may read any profile; what a Set's
+    document it imagined. Every conversation may read any profile; what a Recipe's
     conversation does not get is the
     archive-wide shot count, for the reason `list_profiles` gives.
     """
@@ -1160,42 +1160,44 @@ class GetInsightsOutput(_Model):
     ),
 )
 async def get_insights(ctx: ToolContext, args: GetInsightsInput) -> GetInsightsOutput:
-    """Scoped in a Set conversation, and in three ways rather than one.
+    """Scoped in a Recipe conversation, and in three ways rather than one.
 
-    The Set, obviously. But also **confirmed only**: an unconfirmed insight is a
+    The Recipe, obviously. But also **confirmed only**: an unconfirmed insight is a
     proposal waiting for the person, it is not evidence, and a list of every
     proposal in the archive would be a list of what has been noticed about every
-    other coffee. And the **evidence shot ids are filtered to this Set's shots**:
-    an insight scoped by bean legitimately rests on shots from several Sets, and
+    other coffee. And the **evidence shot ids are filtered to this Recipe's shots**:
+    an insight scoped by bean legitimately rests on shots from several Recipes, and
     handing those ids over would give back the existence oracle the shot
     refusals close — `get_shot` would refuse them, and their bare presence is
     already the answer.
     """
     repo = InsightsRepository(ctx.db)
     if ctx.scope.kind == "set":
-        set_id = _resolve_set(ctx, args.set_id)
+        set_id = _resolve_recipe(ctx, args.set_id)
         if args.include_unconfirmed:
             raise ValueError(
                 "Unconfirmed insights are proposals waiting for the person, and in a "
                 "conversation about one Set nothing unconfirmed is evidence. Ask for the "
                 "confirmed ones (leave include_unconfirmed out)."
             )
-        row = await SetsRepository(ctx.db).get(set_id)
+        row = await RecipesRepository(ctx.db).get(set_id)
         if row is None:
             raise ValueError(f"No Set {set_id}.")
-        mine = await SetsRepository(ctx.db).shot_ids(set_id)
+        mine = await RecipesRepository(ctx.db).shot_ids(set_id)
         return GetInsightsOutput(
-            insights=[_insight_out(insight, only=mine) for insight in await _set_insights(ctx, row)]
+            insights=[
+                _insight_out(insight, only=mine) for insight in await _recipe_insights(ctx, row)
+            ]
         )
 
     # A general conversation reads general insights, and the selection of one
     # Set when it names it (it is read-only across the archive). Never the
-    # other Sets' own insights: those reach their Set's conversations only.
+    # other Recipes' own insights: those reach their Recipe's conversations only.
     if args.set_id is not None and not args.include_unconfirmed:
-        row = await SetsRepository(ctx.db).get(args.set_id)
+        row = await RecipesRepository(ctx.db).get(args.set_id)
         if row is None:
             raise ValueError(f"No Set {args.set_id}.")
-        rows = await _set_insights(ctx, row)
+        rows = await _recipe_insights(ctx, row)
     else:
         rows = await repo.list_insights(confirmed=None if args.include_unconfirmed else True)
     return GetInsightsOutput(insights=[_insight_out(insight) for insight in rows])
@@ -1367,15 +1369,15 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
 
     Every refusal below is an error *value* with a sentence of its own, because
     a model that is told "refused" and nothing else calls again with the same
-    arguments. None of them says anything about another Set.
+    arguments. None of them says anything about another Recipe.
     """
     if ctx.scope.designing:
         # The dispatcher refuses this tool in a design conversation before it
         # gets here; this is the same sentence for a caller that did not ask it.
         raise ValueError(DESIGN_RULE)
-    set_id = _resolve_set(ctx, args.set_id)
-    sets = SetsRepository(ctx.db)
-    if await sets.get(set_id) is None:
+    set_id = _resolve_recipe(ctx, args.set_id)
+    recipes = RecipesRepository(ctx.db)
+    if await recipes.get(set_id) is None:
         raise ValueError(f"No Set {set_id}.")
 
     prediction = args.prediction.strip()
@@ -1398,7 +1400,7 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
         )
         if getattr(args, name) is not None
     }
-    patch = SetVersionPatch.model_validate(fields)
+    patch = RecipeVersionPatch.model_validate(fields)
     groups = change_groups(patch)
     if not groups:
         raise ValueError(
@@ -1416,7 +1418,7 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
             f"{PREDICTION_MIN_CHARS} characters."
         )
 
-    proposals = SetProposalsRepository(ctx.db)
+    proposals = RecipeProposalsRepository(ctx.db)
     spec: dict[str, Any] = {
         "thread_id": ctx.thread_id,
         "patch": patch,
@@ -1432,12 +1434,12 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
         spec["compares_to_version_id"] = args.compares_to_version_id
     result = await proposals.create(set_id, ProposalWrite.model_validate(spec))
     if result.refused is not None:
-        raise ValueError(await _proposal_refusal(sets, set_id, result))
+        raise ValueError(await _proposal_refusal(recipes, set_id, result))
     stored = result.proposal
     assert stored is not None  # a result with no refusal carries the row
 
     preview = await proposals.preview(stored)
-    base = await sets.get_version(stored.base_version_id)
+    base = await recipes.get_version(stored.base_version_id)
     summary = (
         "; ".join(
             f"{change.label} {change.before or 'not set'} → {change.after or 'cleared'}"
@@ -1484,11 +1486,13 @@ def _and(parts: list[str]) -> str:
     return f"{', '.join(parts[:-1])} and {parts[-1]}"
 
 
-async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalWriteResult) -> str:
+async def _proposal_refusal(
+    recipes: RecipesRepository, set_id: int, result: ProposalWriteResult
+) -> str:
     """The sentence a refused proposal comes back as.
 
     Each refusal names the rule and the way out, and none of them reveals
-    anything outside this Set — a proposal is refused for what this experiment
+    anything outside this Recipe — a proposal is refused for what this experiment
     is doing, never for what another one is.
     """
     if result.refused == "already_waiting" and result.waiting is not None:
@@ -1500,7 +1504,7 @@ async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalW
             "another beside it. They accept or decline it on the Set page."
         )
     if result.refused == "outcome_open":
-        current = await sets.current_version(set_id)
+        current = await recipes.current_version(set_id)
         number = current.version_label if current is not None else "this version"
         return (
             f"{number}'s prediction has not been graded yet, so there is nothing settled to "
@@ -1601,17 +1605,17 @@ async def propose_outcome(ctx: ToolContext, args: ProposeOutcomeInput) -> Propos
 
     Every refusal is an error value with a sentence of its own, for the reason
     the other propose tools give. The version is the **conversation's own** and
-    no argument can name another: a Set conversation is about one version, and a
+    no argument can name another: a Recipe conversation is about one version, and a
     grade of some other version would be an argument made in the wrong room.
     """
     if ctx.scope.designing:
         raise ValueError(DESIGN_RULE)
-    set_id = _resolve_set(ctx, None)
-    sets = SetsRepository(ctx.db)
+    set_id = _resolve_recipe(ctx, None)
+    recipes = RecipesRepository(ctx.db)
     version = (
-        await sets.version_of_set(set_id, ctx.scope.set_version_id)
+        await recipes.version_of_recipe(set_id, ctx.scope.set_version_id)
         if ctx.scope.set_version_id is not None
-        else await sets.current_version(set_id)
+        else await recipes.current_version(set_id)
     )
     if version is None:
         raise ValueError(
@@ -1740,19 +1744,19 @@ class ProposeSignatureOutput(_Model):
 async def _signature_profile_versions(ctx: ToolContext, set_id: int) -> set[int]:
     """The profile versions a conversation may propose a signature for.
 
-    A Set conversation: the profile versions its own versions brew. A Set being designed:
+    A Recipe conversation: the profile versions its own versions brew. A Recipe being designed:
     the profile it forks and the ones its cards carried. Anything else is refused in one
     sentence whether or not it exists.
     """
     if ctx.scope.designing:
-        row = await SetsRepository(ctx.db).get(set_id)
-        found = set(await SetProposalsRepository(ctx.db).design_profile_versions(set_id))
+        row = await RecipesRepository(ctx.db).get(set_id)
+        found = set(await RecipeProposalsRepository(ctx.db).design_profile_versions(set_id))
         if row is not None and row.design_brief.fork_profile_version_id is not None:
             found.add(row.design_brief.fork_profile_version_id)
         return found
     return {
         version.profile_version_id
-        for version in await SetsRepository(ctx.db).versions(set_id)
+        for version in await RecipesRepository(ctx.db).versions(set_id)
         if version.profile_version_id is not None
     }
 
@@ -1777,7 +1781,7 @@ async def propose_signature(
     ctx: ToolContext, args: ProposeSignatureInput
 ) -> ProposeSignatureOutput:
     """The agent's signature as rows a person answers. Never a check."""
-    set_id = _resolve_set(ctx, None)
+    set_id = _resolve_recipe(ctx, None)
     allowed = await _signature_profile_versions(ctx, set_id)
     if args.profile_version_id not in allowed:
         raise ValueError(
@@ -1869,12 +1873,12 @@ async def propose_signature_override(
     """An override as a row a person answers. The version is the conversation's own."""
     if ctx.scope.designing:
         raise ValueError(DESIGN_RULE)
-    set_id = _resolve_set(ctx, None)
-    sets = SetsRepository(ctx.db)
+    set_id = _resolve_recipe(ctx, None)
+    recipes = RecipesRepository(ctx.db)
     version = (
-        await sets.version_of_set(set_id, ctx.scope.set_version_id)
+        await recipes.version_of_recipe(set_id, ctx.scope.set_version_id)
         if ctx.scope.set_version_id is not None
-        else await sets.current_version(set_id)
+        else await recipes.current_version(set_id)
     )
     if version is None:
         raise ValueError("This conversation's version no longer exists.")
@@ -1979,18 +1983,18 @@ class DraftProfileOutput(_Model):
     clamp_changes: list[dict[str, Any]] = Field(default_factory=list)
     stop_condition_changes: list[dict[str, Any]] = Field(default_factory=list)
     #: What this draft is expected to do, and against which version — empty
-    #: outside a Set's conversation.
+    #: outside a Recipe's conversation.
     prediction: str = ""
     #: The compared-to version's name, "v1.1".
     compares_to_version: str | None = None
-    #: Whether the agent suggested a major version when it is made active for the Set; the
+    #: Whether the agent suggested a major version when it is made active for the Recipe; the
     #: person decides.
     suggest_major: bool = False
     #: How many expectations were stored, in force, with the draft.
     signature_proposed: int = 0
     #: What the model should tell the person. A draft is further from the
-    #: machine than a proposal is from the Set: somebody has to approve it on its card (saying
-    #: which Set it is for), and a sync with writes on then sends it.
+    #: machine than a proposal is from the Recipe: somebody has to approve it on its card (saying
+    #: which Recipe it is for), and a sync with writes on then sends it.
     note: str = ""
 
 
@@ -2034,16 +2038,16 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     timeout_s=30.0,
 )
 async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfileOutput:
-    """The safety layers are untouched; what a Set conversation adds is a guess.
+    """The safety layers are untouched; what a Recipe conversation adds is a guess.
 
     Nothing about how a draft is built, clamped, checked or sent changes here.
-    What changes is that a draft argued inside one Set's conversation is an
-    experiment on that Set — the temperature and the pressure curve are recipe
+    What changes is that a draft argued inside one Recipe's conversation is an
+    experiment on that Recipe — the temperature and the pressure curve are recipe
     as much as the grind is — so it owes a prediction and waits its turn like
     any other change.
     """
     if ctx.scope.designing:
-        # A profile of a Set being designed is part of its initial recipe, and
+        # A profile of a Recipe being designed is part of its initial recipe, and
         # proposed whole with it: see `propose_initial_recipe`.
         raise ValueError(DESIGN_RULE)
     if ctx.drafts is None:
@@ -2053,7 +2057,7 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         )
     base_version_id = args.base_version_id
     if ctx.scope.kind == "set":
-        base_version_id = await _sets_profile_base(ctx, args)
+        base_version_id = await _recipes_profile_base(ctx, args)
     elif base_version_id is None:
         raise ValueError("Name the profile version to start from: base_version_id.")
     version = await ProfilesRepository(ctx.db).get_version(base_version_id)
@@ -2098,7 +2102,7 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         "approve may differ from yours; a change to an existing profile keeps its name."
     )
     if ctx.scope.kind == "set":
-        set_id = _resolve_set(ctx, None)
+        set_id = _resolve_recipe(ctx, None)
         compares_to = await _draft_experiment(ctx, set_id, args, prediction)
         names = await next_names(ctx.db, set_id)
         note += (
@@ -2167,15 +2171,16 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
     )
 
 
-async def _sets_profile_base(ctx: ToolContext, args: DraftProfileInput) -> int:
-    """The profile version a Set conversation's draft changes: always one of the Set's profile.
+async def _recipes_profile_base(ctx: ToolContext, args: DraftProfileInput) -> int:
+    """The profile version a Recipe conversation's draft changes: always one of the Recipe's
+    profile.
 
-    A Set brews one profile, so a draft here is a change to it: the base is one of its versions
-    (the active one when none is named), and a new profile is a new Set.
+    A Recipe brews one profile, so a draft here is a change to it: the base is one of its versions
+    (the active one when none is named), and a new profile is a new Recipe.
     """
-    set_id = _resolve_set(ctx, None)
-    row = await SetsRepository(ctx.db).get(set_id)
-    if row is None:  # pragma: no cover - the scope's Set exists by construction
+    set_id = _resolve_recipe(ctx, None)
+    row = await RecipesRepository(ctx.db).get(set_id)
+    if row is None:  # pragma: no cover - the scope's Recipe exists by construction
         raise ValueError(f"No Set {set_id}.")
     if args.new_profile_name is not None:
         raise ValueError("A new profile means a new Set: duplicate this Set.")
@@ -2184,7 +2189,7 @@ async def _sets_profile_base(ctx: ToolContext, args: DraftProfileInput) -> int:
     profiles = ProfilesRepository(ctx.db)
     if args.base_version_id is None:
         active = await ProfileBoardRepository(ctx.db).get(row.board_id)
-        assert active is not None  # a Set's profile row exists
+        assert active is not None  # a Recipe's profile row exists
         return active.current_version_id
     if await profiles.owner_of(args.base_version_id) != row.board_id:
         raise ValueError(
@@ -2198,7 +2203,7 @@ async def _sets_profile_base(ctx: ToolContext, args: DraftProfileInput) -> int:
 async def _draft_experiment(
     ctx: ToolContext, set_id: int, args: DraftProfileInput, prediction: str
 ) -> int | None:
-    """The rules a profile change owes inside a Set's conversation.
+    """The rules a profile change owes inside a Recipe's conversation.
 
     The same three the proposal tool applies, in the same words, because they
     are the same rule and a model that met one of them phrased differently
@@ -2213,16 +2218,16 @@ async def _draft_experiment(
             "roughly how much, on which measure the archive records, and compared with which "
             "version — then call this again."
         )
-    sets = SetsRepository(ctx.db)
-    current = await sets.current_version(set_id)
-    if current is not None and await SetProposalsRepository(ctx.db).outcome_blocks(current):
+    recipes = RecipesRepository(ctx.db)
+    current = await recipes.current_version(set_id)
+    if current is not None and await RecipeProposalsRepository(ctx.db).outcome_blocks(current):
         raise ValueError(
             f"{current.version_label}'s prediction has not been graded yet, so there is nothing "
             "settled to build the next change on. Propose its outcome first (propose_outcome) "
             "and then draft the change in the same answer, or ask for another shot on the "
             "same recipe and say what you expect from it."
         )
-    waiting = await SetProposalsRepository(ctx.db).waiting(set_id)
+    waiting = await RecipeProposalsRepository(ctx.db).waiting(set_id)
     if waiting is not None:
         raise ValueError(
             f"A proposal is already waiting for the person on this Set: it changes "
@@ -2232,13 +2237,13 @@ async def _draft_experiment(
         )
     compares_to = args.compares_to_version_id
     if compares_to is None:
-        # The Set's **current** version, which is the same default
+        # The Recipe's **current** version, which is the same default
         # `propose_set_version` takes and for the same reason: a change is a
         # change to what is being brewed now. Not the version this conversation
         # is about — a conversation opened on v4 and still going after v6 was
         # recorded would otherwise predict against a recipe two changes old.
         return current.id if current is not None else None
-    if await sets.version_of_set(set_id, compares_to) is None:
+    if await recipes.version_of_recipe(set_id, compares_to) is None:
         raise ValueError(
             "compares_to_version_id is not a version of this Set. Name one of this Set's own "
             "versions, or leave it out to compare against the version this conversation is "
@@ -2362,19 +2367,19 @@ async def propose_initial_recipe(
     The draft is made **now**, not when the card is accepted: a document the
     safety policy refuses comes back to the model as this tool's error, which
     it can fix in the same conversation, instead of as a refusal on the
-    person's Accept button. It belongs to no Set on the draft side — no
-    `set_id`, no prediction — because a draft that names a Set is that Set's
-    profile *change*, which making it active for the Set records as a new version; this
+    person's Accept button. It belongs to no Recipe on the draft side — no
+    `set_id`, no prediction — because a draft that names a Recipe is that Recipe's
+    profile *change*, which making it active for the Recipe records as a new version; this
     one is the profile version 1 already names once the card is accepted.
 
     Nothing is left behind by a refusal: the policy and the not-new check run
     before anything is stored, and a proposal the repository refuses has its
     draft discarded.
     """
-    set_id = _resolve_set(ctx, None)
-    sets = SetsRepository(ctx.db)
-    row = await sets.get(set_id)
-    if row is None:  # pragma: no cover - the scope's Set exists by construction
+    set_id = _resolve_recipe(ctx, None)
+    recipes = RecipesRepository(ctx.db)
+    row = await recipes.get(set_id)
+    if row is None:  # pragma: no cover - the scope's Recipe exists by construction
         raise ValueError(f"No Set {set_id}.")
     if not ctx.scope.designing or not row.designing:
         raise ValueError(
@@ -2403,7 +2408,7 @@ async def propose_initial_recipe(
         document = dict(args.profile.patch)
     document["label"] = args.profile.label
 
-    proposals = SetProposalsRepository(ctx.db)
+    proposals = RecipeProposalsRepository(ctx.db)
     try:
         draft = await ctx.drafts.create_manual(
             base_version_id=base_id,
@@ -2440,14 +2445,14 @@ async def propose_initial_recipe(
             draft_id=draft.id,
             thread_id=ctx.thread_id,
             reason=args.reason,
-            patch=SetVersionPatch.model_validate(fields),
+            patch=RecipeVersionPatch.model_validate(fields),
         ),
     )
     if result.refused is not None or result.proposal is None:
         # The card was not stored, so the draft it would have carried is
         # nobody's: discarded rather than left open on the Profiles page.
         await ProfileDraftsRepository(ctx.db).discard_unsent([draft.id])
-        raise ValueError(await _proposal_refusal(sets, set_id, result))
+        raise ValueError(await _proposal_refusal(recipes, set_id, result))
     stored = result.proposal
 
     preview = await proposals.preview(stored)
@@ -2490,17 +2495,17 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 
 async def _resting_version(ctx: ToolContext, set_id: int, name: str) -> int:
-    """The id of the version an insight is said to rest on, or a sentence naming this Set's own.
+    """The id of the version an insight is said to rest on, or a sentence naming this Recipe's own.
 
     Not :func:`_named_version`: its refusal tells the model to "leave version out", an
     argument this tool does not have.
     """
     parsed = parse_version_label(name)
-    sets = SetsRepository(ctx.db)
-    found = None if parsed is None else await sets.version_named(set_id, *parsed)
+    recipes = RecipesRepository(ctx.db)
+    found = None if parsed is None else await recipes.version_named(set_id, *parsed)
     if found is not None:
         return found.id
-    names = [version.version_label for version in reversed(await sets.versions(set_id))]
+    names = [version.version_label for version in reversed(await recipes.versions(set_id))]
     raise ValueError(
         f"This Set has no version called {name!r}. Its versions are {', '.join(names)}; "
         "name the ones the insight rests on as 'v1.2', or leave rests_on_versions out and "
@@ -2568,14 +2573,14 @@ _RETIRED_SCOPE_FIELDS = (
 
 
 async def _check_evidence(ctx: ToolContext, set_id: int, args: RecordInsightInput) -> None:
-    """Refuse evidence that is not this Set's, in the words the shot tools use.
+    """Refuse evidence that is not this Recipe's, in the words the shot tools use.
 
-    Naming another Set's shot as evidence would be a way of asking whether it
+    Naming another Recipe's shot as evidence would be a way of asking whether it
     exists.
     """
     if not args.evidence_shot_ids:
         return
-    mine = await SetsRepository(ctx.db).shot_ids(set_id)
+    mine = await RecipesRepository(ctx.db).shot_ids(set_id)
     for shot_id in args.evidence_shot_ids:
         if shot_id not in mine:
             raise ValueError(
@@ -2588,7 +2593,7 @@ def _insight_refusal(refused: InsightProposeRefusal, subject: int | None, label:
     """The sentence a refused insight comes back as, saying what to do instead.
 
     ``label`` names the version a refusal is about. Nothing here says anything about
-    another Set: an id that is not this Set's is refused as exactly that.
+    another Recipe: an id that is not this Recipe's is refused as exactly that.
     """
     if refused == "nothing_to_rest_on":
         return (
@@ -2641,18 +2646,18 @@ def _insight_refusal(refused: InsightProposeRefusal, subject: int | None, label:
     ),
 )
 async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordInsightOutput:
-    """An insight belongs to the Set it was learned in, and waits for the person.
+    """An insight belongs to the Recipe it was learned in, and waits for the person.
 
-    Written with the conversation's Set and version and **no attribute scope**:
-    what is true of this coffee on this grinder is a statement about this Set,
-    and one scoped by bean would reach every other Set that shares it. Stored
+    Written with the conversation's Recipe and version and **no attribute scope**:
+    what is true of this coffee on this grinder is a statement about this Recipe,
+    and one scoped by bean would reach every other Recipe that shares it. Stored
     unconfirmed; the person's Add is the only thing that makes it confirmed. What
     it rests on and what it replaces are read and written in one transaction by
     the repository, so this function only turns a refusal into a sentence.
     """
     if ctx.scope.designing:
         raise ValueError(DESIGN_RULE)
-    set_id = _resolve_set(ctx, None)
+    set_id = _resolve_recipe(ctx, None)
     given = list(args.model_extra or {})
     if any(key in _RETIRED_SCOPE_FIELDS for key in given):
         raise ValueError(
@@ -2667,15 +2672,15 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
             "Only text, evidence_shot_ids, rests_on_versions and replaces_insight_id."
         )
     await _check_evidence(ctx, set_id, args)
-    sets = SetsRepository(ctx.db)
+    recipes = RecipesRepository(ctx.db)
     # Named the way a version is named everywhere else ("v1.2"), through the helper
-    # that refuses with the Set's own list of versions.
+    # that refuses with the Recipe's own list of versions.
     version_ids = [await _resting_version(ctx, set_id, name) for name in args.rests_on_versions]
     labels = dict(zip(version_ids, args.rests_on_versions, strict=True))
     version = (
-        await sets.version_of_set(set_id, ctx.scope.set_version_id)
+        await recipes.version_of_recipe(set_id, ctx.scope.set_version_id)
         if ctx.scope.set_version_id is not None
-        else await sets.current_version(set_id)
+        else await recipes.current_version(set_id)
     )
     repo = InsightsRepository(ctx.db)
     result = await repo.propose(
@@ -2796,7 +2801,7 @@ async def propose_insight_deletion(
     """
     if ctx.scope.designing:
         raise ValueError(DESIGN_RULE)
-    set_id = _resolve_set(ctx, None)
+    set_id = _resolve_recipe(ctx, None)
     reason = args.reason.strip()
     if len(reason) < REASON_MIN:
         raise ValueError(

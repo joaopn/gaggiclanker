@@ -32,9 +32,9 @@ from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.patterns import PatternProposalsRepository, PatternRunsRepository
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
-from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.device.client import GaggimateClient
@@ -86,11 +86,11 @@ __all__ = [
     "PinsRepoDep",
     "ProfilesRepoDep",
     "PromptServiceDep",
+    "RecipeProposalsRepoDep",
+    "RecipesRepoDep",
     "ReviewServiceDep",
     "ReviewsRepoDep",
     "RulesRepoDep",
-    "SetProposalsRepoDep",
-    "SetsRepoDep",
     "SettingsServiceDep",
     "ShotInformationServiceDep",
     "ShotsRepoDep",
@@ -233,12 +233,12 @@ def get_pins_repo(request: Request) -> PinsRepository:
     return PinsRepository(get_database(request))
 
 
-def get_sets_repo(request: Request) -> SetsRepository:
-    return SetsRepository(get_database(request))
+def get_recipes_repo(request: Request) -> RecipesRepository:
+    return RecipesRepository(get_database(request))
 
 
-def get_set_proposals_repo(request: Request) -> SetProposalsRepository:
-    return SetProposalsRepository(get_database(request))
+def get_recipe_proposals_repo(request: Request) -> RecipeProposalsRepository:
+    return RecipeProposalsRepository(get_database(request))
 
 
 def get_outcome_proposals_repo(request: Request) -> OutcomeProposalsRepository:
@@ -342,12 +342,12 @@ def get_board_service(request: Request) -> BoardService:
 
 
 def get_pin_service(request: Request) -> PinService:
-    """Pinning a Set version. Built over the board service, which only the routes hold."""
+    """Pinning a Recipe version. Built over the board service, which only the routes hold."""
     return PinService(get_database(request), get_board_service(request))
 
 
 def get_duplicate_service(request: Request) -> DuplicateService:
-    """Duplicating a Set. Built over the board service, which only the routes hold."""
+    """Duplicating a Recipe. Built over the board service, which only the routes hold."""
     return DuplicateService(get_database(request), get_board_service(request))
 
 
@@ -370,10 +370,10 @@ MachineRepoDep = Annotated[MachineRepository, Depends(get_machine_repo)]
 SyncRepoDep = Annotated[SyncRepository, Depends(get_sync_repo)]
 BeansRepoDep = Annotated[BeansRepository, Depends(get_beans_repo)]
 GrindersRepoDep = Annotated[GrindersRepository, Depends(get_grinders_repo)]
-SetsRepoDep = Annotated[SetsRepository, Depends(get_sets_repo)]
+RecipesRepoDep = Annotated[RecipesRepository, Depends(get_recipes_repo)]
 PinsRepoDep = Annotated[PinsRepository, Depends(get_pins_repo)]
 OutcomeProposalsRepoDep = Annotated[OutcomeProposalsRepository, Depends(get_outcome_proposals_repo)]
-SetProposalsRepoDep = Annotated[SetProposalsRepository, Depends(get_set_proposals_repo)]
+RecipeProposalsRepoDep = Annotated[RecipeProposalsRepository, Depends(get_recipe_proposals_repo)]
 JudgementsRepoDep = Annotated[JudgementsRepository, Depends(get_judgements_repo)]
 FlavorPicksRepoDep = Annotated[FlavorPicksRepository, Depends(get_flavor_picks_repo)]
 ShotInformationServiceDep = Annotated[ShotInformationService, Depends(get_shot_information_service)]

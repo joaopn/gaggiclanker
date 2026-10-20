@@ -1,6 +1,6 @@
 """The starting-point wizard never offers a pin's copy, and refuses one it is handed.
 
-A Set version never names a pin's copy, so the library the wizard shortlists from leaves copies
+A Recipe version never names a pin's copy, so the library the wizard shortlists from leaves copies
 out (pinned or since unpinned), and a suggestion that names one anyway is refused as a 409 with
 its own code before anything is claimed or made, never as a server error.
 """
@@ -25,7 +25,7 @@ from tests.starting.test_service import _propose
 
 
 async def _a_lookalike(fixture: Fixture) -> int:
-    """A profile no Set has that is the fixture's under another name: its active version."""
+    """A profile no Recipe has that is the fixture's under another name: its active version."""
     profiles = ProfilesRepository(fixture.db)
     original = await profiles.get_version(fixture.profile_version_id)
     assert original is not None and original.profile is not None
@@ -39,7 +39,7 @@ async def _a_lookalike(fixture: Fixture) -> int:
 
 
 async def _pin_it(fixture: Fixture, copy_id: int) -> int:
-    """Pin that profile version to the first Set version: the pin."""
+    """Pin that profile version to the first Recipe version: the pin."""
     profiles = ProfilesRepository(fixture.db)
     copy = await profiles.get_version(copy_id)
     assert copy is not None
@@ -94,20 +94,20 @@ async def test_accepting_an_option_that_names_a_copy_is_a_409_and_changes_nothin
     # The suggestion was made while the profile was an ordinary one; it is pinned before the
     # person answers.
     await _pin_it(fixture, copy)
-    sets_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes"))
+    recipes_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes"))
     drafts_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM profile_drafts"))
 
     with pytest.raises(Conflict) as refused:
         await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
 
     assert refused.value.code == "PROFILE_IS_A_PIN"
-    assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes")) == sets_before
+    assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes")) == recipes_before
     assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM profile_drafts")) == drafts_before
     again = await starting.get(run.id)  # type: ignore[attr-defined]
     assert again.accepted_option is None, "the run stays acceptable"
 
 
-async def test_the_set_creation_step_answers_a_conflict_too(
+async def test_the_recipe_creation_step_answers_a_conflict_too(
     starting: StartingPointService, fixture: Fixture, provider: FakeProvider
 ) -> None:
     """The guard's twin at application: even a copy that got past the first look is a 409."""
@@ -119,7 +119,7 @@ async def test_the_set_creation_step_answers_a_conflict_too(
     assert option is not None
 
     with pytest.raises(Conflict) as refused:
-        await starting._create_set(run, option, None)  # type: ignore[arg-type]
+        await starting._create_recipe(run, option, None)  # type: ignore[arg-type]
 
     assert refused.value.code == "PROFILE_IS_A_PIN"
 
@@ -136,12 +136,12 @@ async def test_an_authored_option_that_is_exactly_a_copy_answers_the_wizards_409
     assert await PinsRepository(fixture.db).unpin(pin)
     provider.script = [json.dumps(option_with(profile=GOOD_PROFILE))]
     run = await _propose(starting, fixture)
-    sets_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes"))
+    recipes_before = int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes"))
 
     with pytest.raises(Conflict) as refused:
         await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
 
     assert "belongs to a pinned copy" in refused.value.message
     assert GOOD_PROFILE["label"] in refused.value.message
-    assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes")) == sets_before
+    assert int(await fixture.db.fetch_value("SELECT COUNT(*) FROM recipes")) == recipes_before
     assert (await starting.get(run.id)).accepted_option is None  # type: ignore[attr-defined]

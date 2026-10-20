@@ -1,7 +1,7 @@
 """A shot's ordered checks, worked out whenever it is read.
 
 Nothing about a signature's results is stored on a shot: the checks are a function of the
-shot's stored facts, where it is filed (its target yield, its dose, its Set version's
+shot's stored facts, where it is filed (its target yield, its dose, its Recipe version's
 override) and the expectations in force (``confirmed``) of its profile version. Proposing,
 rejecting or restoring an expectation, or changing an override, therefore changes every
 shot's checks at once, with no re-derivation, and ``DERIVATION_VERSION`` does not move.
@@ -9,7 +9,7 @@ shot's checks at once, with no re-derivation, and ``DERIVATION_VERSION`` does no
 This module is the one place that gathers what the pure evaluation
 (:func:`gaggiclanker.domain.signature.build_checks`) needs, in a fixed number of queries for
 any number of shots: the expectations in force of every profile version involved, the
-overrides of every Set version involved, and, only for a shot a confirmed measure or phase
+overrides of every Recipe version involved, and, only for a shot a confirmed measure or phase
 check applies to **and** whose result is not already remembered, its stored samples.
 
 **A read never parses a log.** The language reads the samples the derivation stored
@@ -21,7 +21,7 @@ page of the shots list would otherwise cost.
 **A per-process memo** keeps a shot's checks for as long as nothing they depend on has changed.
 The key is everything the result is a function of: the shot, a fingerprint of its stored
 derivation, its flags and weight, the confirmed expectations (their content, so a confirm, a
-reject or a tier change is a different key), the override, and the filing (Set version,
+reject or a tier change is a different key), the override, and the filing (Recipe version,
 target, dose). Nothing has to be invalidated by hand, since a change to any of those is a
 different key; the memo is bounded and a restart empties it.
 """
@@ -84,7 +84,7 @@ class CheckSubject:
     #: The profile version the shot brewed. Its signature applies, but for a pin's copy, which is
     #: judged by the signature of the profile it was copied from (`judged_profile_version`).
     profile_version_id: int | None
-    #: The Set version it is filed under: whose override applies.
+    #: The Recipe version it is filed under: whose override applies.
     set_version_id: int | None
     warnings: Sequence[ShotWarning]
     phases: Sequence[Mapping[str, Any]]

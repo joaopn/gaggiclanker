@@ -268,7 +268,7 @@ class JudgementsRepository(Repository):
     async def for_shots(self, shot_ids: list[int]) -> dict[int, ShotJudgementRow]:
         """Judgements for a batch of shots, keyed by shot id.
 
-        One query for a Set page rather than one per shot: a Set with three
+        One query for a Recipe page rather than one per shot: a Recipe with three
         versions and thirty shots would otherwise be thirty round trips to
         answer "which of these did you like".
         """

@@ -159,13 +159,13 @@ class ChatRequest:
     model: str = ""
     timeout_s: float = 300.0
     max_tokens: int = 4096
-    #: The Set this conversation is scoped to, when it is scoped to one. Only
+    #: The Recipe this conversation is scoped to, when it is scoped to one. Only
     #: ``claude_code`` reads it, and it has to: the CLI runs the tool loop
     #: itself against our MCP server, so a scope the runner keeps to itself
     #: would make `get_set` with no argument answer "not scoped" on the default
     #: provider and succeed on every other one — and, worse, would leave the
     #: CLI's child offering the whole archive's tools inside a conversation
-    #: about one Set.
+    #: about one Recipe.
     set_id: int | None = None
     #: The version being argued, beside it. Carried for the same reason and
     #: forwarded to the same place; the two travel together everywhere.

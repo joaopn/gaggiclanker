@@ -1,7 +1,7 @@
 """A conversation as a JSON file a person can keep.
 
 Built **only** from what is stored (``chat_messages`` and ``chat_runs``). The
-system prompt and everything rendered into it each turn (the Set chat's opening
+system prompt and everything rendered into it each turn (the Recipe chat's opening
 context with its shot lines, the design context, the base shot-field glossary) is
 never stored, so it cannot be in the transcript; nothing here renders a prompt or calls
 ``opening_context``, and a test builds the real context and looks for it.

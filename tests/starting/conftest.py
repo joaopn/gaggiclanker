@@ -1,11 +1,11 @@
-"""A small archive with four dialled-in Sets in it, and a coffee nobody has brewed.
+"""A small archive with four dialled-in Recipes in it, and a coffee nobody has brewed.
 
 Everything here is deterministic: hand-written diagnostics rather than numbers
 derived from a `.slog`, fixed timestamps, and an explicit `as_of` date rather
 than today. The golden prompt is rendered from this fixture, so anything that
 read the clock would move the file once a day for ever.
 
-The Sets are chosen to make the scoring readable rather than to be realistic:
+The Recipes are chosen to make the scoring readable rather than to be realistic:
 
     Kenya AA      light        washed   Kenya   Niche   5 shots, mean 4.4 stars
     Guji          light        natural  Ethiopia Niche  3 shots, mean 3 stars
@@ -40,7 +40,7 @@ from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
@@ -235,12 +235,12 @@ class Fixture:
     #: The bag nobody has opened: light, washed, Kenya.
     new_bean_id: int
     profile_version_id: int
-    #: `{label: set_version_id}` for every Set built below.
+    #: `{label: set_version_id}` for every Recipe built below.
     versions: dict[str, int] = field(default_factory=dict)
-    sets: dict[str, int] = field(default_factory=dict)
+    recipes: dict[str, int] = field(default_factory=dict)
 
 
-#: What each seeded Set is made of. One table, because every one of these rows
+#: What each seeded Recipe is made of. One table, because every one of these rows
 #: exists to make one term of the score observable and the test reads better
 #: next to the data than next to a page of inserts.
 _ARCHIVE: tuple[dict[str, Any], ...] = (
@@ -395,8 +395,8 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
     profile_version, _ = await ProfilesRepository(db).ensure_version(
         Profile.model_validate(document), owner=None
     )
-    # What the wizard may offer: a profile no Set has (a profile has at most one Set, so the five
-    # Sets below, which share the version above as they did before that rule, are not it).
+    # What the wizard may offer: a profile no Recipe has (a profile has at most one Recipe, so the
+    # five Recipes below, which share the version above as they did before that rule, are not it).
     library, _ = await ProfilesRepository(db).ensure_version(
         Profile.model_validate({**document, "label": LIBRARY_LABEL}), owner=None
     )
@@ -407,17 +407,17 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
     )
 
     beans = BeansRepository(db)
-    sets = SetsRepository(db)
+    recipes = RecipesRepository(db)
     shots = ShotsRepository(db)
     judgements = JudgementsRepository(db)
     versions: dict[str, int] = {}
-    set_ids: dict[str, int] = {}
+    recipe_ids: dict[str, int] = {}
     device_id = 100
 
     for entry in _ARCHIVE:
         bean = await beans.create(BeanWrite(**entry["bean"]))
-        stored = await sets.create(
-            SetWrite(
+        stored = await recipes.create(
+            RecipeWrite(
                 name=f"{entry['bean']['name']} on the {entry['grinder']}",
                 bean_id=bean.id,
                 grinder_id=grinder_ids[str(entry["grinder"])],
@@ -430,21 +430,21 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                 target_yield_g=float(entry["yield"]),
                 intent="Baseline for this bag.",
             ),
-            # Matching is not what this suite is about; leaving every Set out
+            # Matching is not what this suite is about; leaving every Recipe out
             # of the matcher's reach keeps the inserts independent of their
             # order.
             automatch=False,
         )
         version_id = stored.current_version_id
         assert version_id is not None
-        # The archive of a database from before a Set had a profile of its own: five Sets name the
-        # one version (the repository would refuse that now, so it is written as it was).
+        # The archive of a database from before a Recipe had a profile of its own: five Recipes name
+        # the one version (the repository would refuse that now, so it is written as it was).
         await db.execute(
             "UPDATE recipe_versions SET profile_version_id = ? WHERE id = ?",
             (profile_version.id, version_id),
         )
         versions[str(entry["label"])] = version_id
-        set_ids[str(entry["label"])] = stored.id
+        recipe_ids[str(entry["label"])] = stored.id
 
         for rating, score in entry["shots"]:
             device_id += 1
@@ -464,7 +464,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                     diagnostics_json=_diagnostics(float(score)),
                 )
             )
-            await sets.assign_shot(shot_id, version_id)
+            await recipes.assign_shot(shot_id, version_id)
             await judgements.upsert(
                 shot_id,
                 JudgementWrite(
@@ -476,7 +476,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
             )
 
     # The coffee the wizard is about: light, washed, Kenyan. Every attribute
-    # matches the Kenya AA Set, which is what makes it the top anchor.
+    # matches the Kenya AA Recipe, which is what makes it the top anchor.
     new_bean = await beans.create(
         BeanWrite(
             name="Kenya Nyeri",
@@ -498,7 +498,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
         new_bean_id=new_bean.id,
         profile_version_id=library.id,
         versions=versions,
-        sets=set_ids,
+        recipes=recipe_ids,
     )
 
 

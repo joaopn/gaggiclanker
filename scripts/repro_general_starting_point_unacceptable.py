@@ -11,13 +11,13 @@ The bug
 The General chat could call ``starting_point``, which spends a provider call on
 three recipes for a bag nobody has brewed and stores them as a run, and its
 description told the model a person "accepts one in the UI". Nothing in the web
-could: the New Set dialog accepts only the run it started itself (the id lives
+could: the New Recipe dialog accepts only the run it started itself (the id lives
 in the dialog's state), the chat has no card for the tool, and there is no
 route that lists runs. The person was sent to accept something they could not
 find.
 
 The fix retires the tool (and its read-back twin) from every conversation: a new
-bag is designed in a Set of its own, which ends in a first recipe to accept.
+bag is designed in a Recipe of its own, which ends in a first recipe to accept.
 
 Through the real app: the tools a provider is sent for a General conversation
 decide it. The dispatch of the tool is printed too; after the fix it is refused

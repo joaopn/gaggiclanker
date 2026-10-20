@@ -505,7 +505,7 @@ REMOVED_SETTINGS: dict[str, str] = {
 
 
 #: The switch that used to let this box write to the machine from the
-#: environment. Set non-empty, it refuses the boot rather than joining the
+#: environment. Recipe non-empty, it refuses the boot rather than joining the
 #: report below: every other former variable was a preference, and ignoring a
 #: preference costs somebody a trip to the Settings page. This one allowed
 #: writes to an espresso machine, and its owner reading a silent boot log would

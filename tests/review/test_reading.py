@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.reviews import (
     ClaimWrite,
     ReadingRecord,
@@ -23,7 +24,6 @@ from gaggiclanker.db.repos.reviews import (
     ReviewStart,
     ShotReviewsRepository,
 )
-from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import CHECK_SORT, REVIEW_SORT, ShotInsert, ShotsRepository
 from gaggiclanker.domain.signature import Check, ShotChecks, SignatureState
 from gaggiclanker.review.reading import review_entries, review_key, serve_review
@@ -475,7 +475,7 @@ def test_the_review_key_orders_faults_first_and_then_by_state_as_shown() -> None
 async def _shot(
     fixture: Fixture, number: int, *, profile: bool = True, weight: float = 37.0, **kwargs: Any
 ) -> int:
-    """One more shot of the fixture's Set, started `number` minutes after the others."""
+    """One more shot of the fixture's Recipe, started `number` minutes after the others."""
     return await ShotsRepository(fixture.db).insert(
         ShotInsert(
             device_id=f"0009{number:02d}",
@@ -514,7 +514,7 @@ async def _finish(
 
 async def _states(fixture: Fixture) -> dict[str, int]:
     """One shot in every state, each filed under the fixture's version (target 36 g)."""
-    sets = SetsRepository(fixture.db)
+    recipes = RecipesRepository(fixture.db)
     shots: dict[str, int] = {}
     # A fault the review names, on a shot whose Curve check names one too (45 g over a 36 g target).
     shots["entries"] = await _shot(fixture, 11, weight=45.0)
@@ -526,7 +526,7 @@ async def _states(fixture: Fixture) -> dict[str, int]:
     shots["quarantined"] = await _shot(fixture, 17, profile=False, quarantined=True)
     shots["discarded"] = await _shot(fixture, 18, profile=False)
     for shot in shots.values():
-        await sets.assign_shot(shot, fixture.version_id)
+        await recipes.assign_shot(shot, fixture.version_id)
     await fixture.db.execute(
         "INSERT INTO shot_judgements (shot_id, decision) VALUES (?, 'discard')",
         (shots["discarded"],),
@@ -619,10 +619,10 @@ async def test_a_review_finishing_or_a_claim_being_rejected_moves_the_review_sor
 
 async def test_no_review_moves_the_curve_check_or_its_sort(fixture: Fixture) -> None:
     """The Curve check column reads the same before and after every review, finished or not."""
-    sets = SetsRepository(fixture.db)
+    recipes = RecipesRepository(fixture.db)
     shots = [await _shot(fixture, number, weight=45.0 - number) for number in (21, 22, 23, 24)]
     for shot in shots:
-        await sets.assign_shot(shot, fixture.version_id)
+        await recipes.assign_shot(shot, fixture.version_id)
     expectation = await confirm_free_text(fixture)
     repo = ShotsRepository(fixture.db)
 
@@ -663,7 +663,7 @@ async def test_a_failed_free_text_answer_is_a_review_fault_until_rejected(
     clean = await _shot(fixture, 30)
     other = await _shot(fixture, 31)
     for shot in (clean, other):
-        await SetsRepository(fixture.db).assign_shot(shot, fixture.version_id)
+        await RecipesRepository(fixture.db).assign_shot(shot, fixture.version_id)
     expectation = await confirm_free_text(fixture)
     failed = ClaimWrite(
         kind="free_text",

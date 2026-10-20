@@ -13,7 +13,7 @@ prompts rendered some of those empty fields anyway: the per-shot analysis
 context's BEAN block (since retired; a review reads no bean) wrote
 ``process: not stated`` and ``roast level: not stated``, the
 starting-point context wrote the same for origin, process and roast level (and
-``roast not stated, process not stated, origin not stated`` on a similar Set,
+``roast not stated, process not stated, origin not stated`` on a similar Recipe,
 whose "why it is similar" line also called every field neither bean recorded
 "different"),
 and the ``list_beans`` tool handed the chat and MCP clients ``null`` and ``""``

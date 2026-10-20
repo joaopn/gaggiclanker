@@ -39,7 +39,7 @@ from pydantic.fields import FieldInfo
 
 from gaggiclanker import __version__
 from gaggiclanker.db.repos.knowledge import RulesRepository
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.version_names import named_dump
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.tools.registry import (
@@ -52,8 +52,8 @@ from gaggiclanker.tools.scope import ToolScope
 
 __all__ = [
     "MCP_INSTRUCTIONS",
+    "RECIPE_INSTRUCTIONS",
     "SERVER_NAME",
-    "SET_INSTRUCTIONS",
     "build_mcp_server",
     "instructions_for",
 ]
@@ -80,11 +80,11 @@ MCP_INSTRUCTIONS = (
     "confirm; nothing here writes to the espresso machine."
 )
 
-#: The same, for a server serving one Set's conversation. It names the tools
+#: The same, for a server serving one Recipe's conversation. It names the tools
 #: that exist *here* rather than the two that do not: a first line telling a
-#: model to start with `describe_schema` inside a Set's chat is a first tool
+#: model to start with `describe_schema` inside a Recipe's chat is a first tool
 #: call that comes back refused.
-SET_INSTRUCTIONS = (
+RECIPE_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. This connection is "
     "about one Set — one coffee being dialled in — and it can see that Set only: its "
     "versions with their predictions and outcomes, its shots, and the knowledge base.\n\n"
@@ -100,7 +100,7 @@ SET_INSTRUCTIONS = (
 )
 
 
-#: The same, for a Set being designed: no shots to start from, and one tool that
+#: The same, for a Recipe being designed: no shots to start from, and one tool that
 #: proposes the whole first recipe.
 DESIGN_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. This connection is "
@@ -117,7 +117,7 @@ def instructions_for(scope: ToolScope | None) -> str:
     """What the client is told this connection is, from the same scope."""
     if scope is None or scope.kind != "set":
         return MCP_INSTRUCTIONS
-    return DESIGN_INSTRUCTIONS if scope.designing else SET_INSTRUCTIONS
+    return DESIGN_INSTRUCTIONS if scope.designing else RECIPE_INSTRUCTIONS
 
 
 #: Produces the context one call runs with. Async so building one may read the
@@ -204,8 +204,8 @@ def build_mcp_server(
     ``permissions`` defaults to the chat's own set, and both entry points leave
     it there: the MCP server is read-only by design (``propose`` writes to this
     archive, never to the machine), and no setting widens it. ``scope`` is the
-    other narrowing, and it is the one that differs per conversation — a Set's
-    chat gets the Set's tools and a general one gets the archive's, from the
+    other narrowing, and it is the one that differs per conversation — a Recipe's
+    chat gets the Recipe's tools and a general one gets the archive's, from the
     same function the dispatcher and the provider schemas use.
 
     A tool outside either set is not merely refused at call time, it is not
@@ -238,7 +238,7 @@ def _add_resources(
     db: Any = None,
     scope: ToolScope | None = None,
 ) -> None:
-    """Three resources: the rules, one knowledge document, one Set.
+    """Three resources: the rules, one knowledge document, one Recipe.
 
     Resources rather than tools because that is what they are — addressable
     documents a client can attach to a conversation without the model deciding
@@ -297,14 +297,14 @@ def _add_resources(
         except ValueError:
             raise ResourceError(f"{set_id!r} is not a Set id") from None
         # The scope is a limit here as well as on the tools. A resource is
-        # fetched by URI rather than called, so a client that can read any Set
-        # by address would be the one way around a Set conversation's whole
-        # point — and the refusal says nothing about the Set it refuses.
+        # fetched by URI rather than called, so a client that can read any Recipe
+        # by address would be the one way around a Recipe conversation's whole
+        # point — and the refusal says nothing about the Recipe it refuses.
         if scope is not None and scope.kind == "set" and identifier != scope.set_id:
             raise ResourceError(
                 f"This conversation is about Set {scope.set_id} and can see no other"
             )
-        repo = SetsRepository(await _db())
+        repo = RecipesRepository(await _db())
         row = await repo.get(identifier)
         if row is None:
             raise ResourceError(f"No Set {identifier}")

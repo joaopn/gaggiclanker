@@ -223,7 +223,7 @@ async def test_the_version_view_carries_the_experiment_log(archive: Fixture) -> 
 async def test_the_views_read_the_temperature_off_the_profile(archive: Fixture) -> None:
     """Named for where it comes from, because that is what makes it usable.
 
-    A model that reads `target_temperature_c` on a Set version writes SQL about
+    A model that reads `target_temperature_c` on a Recipe version writes SQL about
     a number somebody typed; there is no such number. `profile_temperature_c`
     says the brew temperature belongs to the profile, which is also the only way
     to answer "did the hotter profile help".

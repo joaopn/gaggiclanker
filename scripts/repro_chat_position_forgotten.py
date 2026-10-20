@@ -12,7 +12,7 @@ The bug
 
 The open conversation lived only in the URL (``?thread=``), and the sidebar's
 Chat link is a bare ``/chat``. A person reading a conversation who went to the
-Shots page and clicked Chat again landed on the newest Set's badge with nothing
+Shots page and clicked Chat again landed on the newest Recipe's badge with nothing
 open, and had to find the conversation again; a badge they had opened without
 a conversation was forgotten the same way.
 

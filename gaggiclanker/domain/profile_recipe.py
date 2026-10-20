@@ -1,8 +1,8 @@
 """The recipe numbers a profile document already states.
 
 A GaggiMate profile carries two numbers a person would otherwise type into a
-Set's recipe: the brew temperature, and — when a phase stops on the scale — the
-weight in the cup. Picking a profile for a new Set fills those in, and the style
+Recipe's recipe: the brew temperature, and — when a phase stops on the scale — the
+weight in the cup. Picking a profile for a new Recipe fills those in, and the style
 detector reads the same yield to tell an allongé from a short low-pressure shot.
 Both read it through here, so "what yield does this profile aim for" has one
 answer rather than two that could drift.

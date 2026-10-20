@@ -15,8 +15,8 @@ shapes because the tiers are owned by different people:
 * **insights** (`/insights`) belong to this box alone. They are the one part of
   the knowledge base with a real DELETE, and the one part where confirming is a
   distinct verb from editing: nothing unconfirmed ever reaches a prompt. An
-  insight is **general** (this page, matched to a Set by its attributes) or
-  **a Set's own** (learned in that Set's conversations, listed under
+  insight is **general** (this page, matched to a Recipe by its attributes) or
+  **a Recipe's own** (learned in that Recipe's conversations, listed under
   `?set_id=` and never on this page's list): adding one is the confirm, and
   dismissing one is a state of its own that only the conversation which
   proposed it ever sees.
@@ -323,8 +323,8 @@ class InsightListData(BaseModel):
     #: The dimensions a scope may name, so the form renders from data rather
     #: than from a list typed into a component.
     scope_keys: list[str]
-    #: With `?set_id=`: the deletions an agent proposed for this Set's insights that are
-    #: still waiting for a person, so the Set page can say which insight has one and link
+    #: With `?set_id=`: the deletions an agent proposed for this Recipe's insights that are
+    #: still waiting for a person, so the Recipe page can say which insight has one and link
     #: into the chat. Empty otherwise.
     waiting_deletions: list[InsightDeletionRow] = Field(default_factory=list)
 
@@ -401,12 +401,12 @@ async def list_insights(
         if await insights.attributes_of(set_id) is None:
             raise NotFound(f"No Set {set_id}")
         own = await insights.own(set_id)
-        applying = {item.id for item in await insights.for_set(set_id) if item.set_id is None}
+        applying = {item.id for item in await insights.for_recipe(set_id) if item.set_id is None}
         general = [
             item for item in await insights.list_insights(confirmed=True) if item.id in applying
         ]
         items = sorted([*own, *general], key=lambda item: (item.created_at, item.id))
-        waiting = await deletions.waiting_for_set(set_id)
+        waiting = await deletions.waiting_for_recipe(set_id)
     else:
         items = await insights.list_insights(confirmed=confirmed)
         waiting = []

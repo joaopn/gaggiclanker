@@ -28,7 +28,12 @@ from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
+    SetVersionWrite,
+)
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import slog_to_raw
@@ -55,8 +60,8 @@ from tests.lever_shot import (
     without_scale,
 )
 from tests.profile_rows import own_version
-from tests.sets.conftest import make_shot
-from tests.sets.test_api import data
+from tests.recipes.conftest import make_shot
+from tests.recipes.test_api import data
 from tests.shotinfo.conftest import Archive
 
 LEADING_NUMBER = re.compile(r"^-?\d+(?:\.(\d+))?")
@@ -79,8 +84,8 @@ async def lever(tmp_path: Path) -> AsyncIterator[tuple[Database, int, int]]:
             GrinderWrite(name="Constructed", step_unit="numbers")
         )
         await own_version(db, profile.id)
-        row = await SetsRepository(db).create(
-            SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
+        row = await RecipesRepository(db).create(
+            RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
             SetVersionWrite(
                 profile_version_id=profile.id,
                 grind_setting="14",
@@ -94,7 +99,7 @@ async def lever(tmp_path: Path) -> AsyncIterator[tuple[Database, int, int]]:
             slog, slog_to_raw(slog), device_id="000900", source="import", profile=LEVER_PROFILE
         )
         shot = await ShotsRepository(db).insert(derived.shot, derived.samples)
-        assert await SetsRepository(db).assign_shot(shot, row.current_version_id)
+        assert await RecipesRepository(db).assign_shot(shot, row.current_version_id)
         yield db, shot, row.current_version_id
     finally:
         await db.close()
@@ -306,7 +311,7 @@ async def test_the_ratio_takes_the_versions_dose_and_the_scales_yield_when_none_
     assert ITEMS["ratio"].field(typed_out).text == "1:2.00"  # type: ignore[union-attr]
 
     # No dose anywhere, no ratio.
-    await SetsRepository(db).assign_shot(shot, None)
+    await RecipesRepository(db).assign_shot(shot, None)
     [unfiled] = await load_shots(db, [shot])
     await JudgementsRepository(db).delete(shot)
     [bare] = await load_shots(db, [shot])
@@ -381,10 +386,10 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
     grinder = await GrindersRepository(db).create(
         GrinderWrite(name="Constructed", step_unit="numbers")
     )
-    sets = SetsRepository(db)
+    recipes = RecipesRepository(db)
     await own_version(db, profile.id)
-    row = await sets.create(
-        SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
+    row = await recipes.create(
+        RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),
     )
     slog = lever_shot()
@@ -393,7 +398,7 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
     )
     shot = await ShotsRepository(db).insert(derived.shot, derived.samples)
     assert row.current_version_id is not None
-    assert await sets.assign_shot(shot, row.current_version_id)
+    assert await recipes.assign_shot(shot, row.current_version_id)
 
     document: dict[str, Any] = data(await client.get(f"/api/shots/{shot}/fields"))
     assert document["shot_id"] == shot
@@ -413,11 +418,11 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
     assert cup["phase"] == {"number": 2, "name": "ramp"}
 
     # Refiled under a version with a bigger target, the same shot reads another way.
-    other = await sets.add_version(
-        row.id, SetVersionPatch(target_yield_g=60.0, intent="a longer shot")
+    other = await recipes.add_version(
+        row.id, RecipeVersionPatch(target_yield_g=60.0, intent="a longer shot")
     )
     assert other is not None
-    assert await sets.assign_shot(shot, other.id)
+    assert await recipes.assign_shot(shot, other.id)
     refiled: dict[str, Any] = data(await client.get(f"/api/shots/{shot}/fields"))
     assert [w["fault"] for w in refiled["checks"]["entries"]] == [
         "fast flow",

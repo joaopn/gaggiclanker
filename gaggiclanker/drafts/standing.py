@@ -44,8 +44,8 @@ NEWER_PROPOSAL = "A newer proposal replaced this one."
 NOT_IN_LIST = "That profile is no longer in the list."
 ANOTHER_ACTIVE = "Another version of this profile is active now."
 NEWER_FIRST_RECIPE = "A newer first recipe replaced this one."
-SET_WRITTEN_OTHERWISE = "The Set's first recipe was written another way."
-SET_DISCARDED = "That Set was discarded."
+RECIPE_WRITTEN_OTHERWISE = "The Set's first recipe was written another way."
+RECIPE_DISCARDED = "That Set was discarded."
 TOOK_OFF = "The profile is switched off, so the sync took it off the machine."
 
 
@@ -87,8 +87,8 @@ RETIRED_BY_SYNC = frozenset(
 #: declined, with the sentence each reads as. The draft was never put on the list.
 OVERTAKEN_DESIGN = {
     "newer_recipe": NEWER_FIRST_RECIPE,
-    "recipe_written_otherwise": SET_WRITTEN_OTHERWISE,
-    "recipe_discarded": SET_DISCARDED,
+    "recipe_written_otherwise": RECIPE_WRITTEN_OTHERWISE,
+    "recipe_discarded": RECIPE_DISCARDED,
 }
 
 
@@ -113,8 +113,8 @@ def classify(
     is not declined: it is read from the board like an approved one, so a version made active
     again reads as waiting for the next sync, and one that is not active any more reads as
     replaced. A first recipe's draft that
-    the design paths discarded (a newer recipe, the Set's first version written another way, the
-    Set discarded) records why and reads as replaced; only a discard with no recorded reason is a
+    the design paths discarded (a newer recipe, the Recipe's first version written another way, the
+    Recipe discarded) records why and reads as replaced; only a discard with no recorded reason is a
     person's decline.
     """
     status = draft.status

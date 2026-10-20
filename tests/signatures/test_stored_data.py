@@ -36,7 +36,7 @@ from gaggiclanker.sync.derive import derive_shot
 from tests.domain.helpers import SLOG_FIXTURES, fill_ended_shot
 from tests.lever_shot import LEVER_PROFILE, lever_shot, without_pressure, without_scale
 from tests.signatures.helpers import (
-    LONG_NAME_SETS,
+    LONG_NAME_RECIPES,
     long_name_profile,
     long_name_shot,
     turbo_profile,
@@ -55,7 +55,7 @@ def _cases() -> Iterator[Case]:
     yield "lever-no-scale", without_scale(lever_shot()), LEVER_PROFILE
     yield "lever-no-pressure", without_pressure(lever_shot()), LEVER_PROFILE
     yield "turbo", turbo_shot(), turbo_profile()
-    for number, names in enumerate(LONG_NAME_SETS):
+    for number, names in enumerate(LONG_NAME_RECIPES):
         yield f"long-names-{number}", long_name_shot(names), long_name_profile(names)
 
 

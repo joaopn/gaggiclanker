@@ -1,9 +1,9 @@
-"""The profile a designed Set's accepted recipe puts on the list, and what a sync then does.
+"""The profile a designed Recipe's accepted recipe puts on the list, and what a sync then does.
 
-A Set being designed has no profile, so a put never touches it: the accepted card is what gives
-the Set its profile, in the accept's own transaction (version 1 is filled with the version the
+A Recipe being designed has no profile, so a put never touches it: the accepted card is what gives
+the Recipe its profile, in the accept's own transaction (version 1 is filled with the version the
 put ended on). The sync that follows sends the profile to the machine and records nothing on
-the Set, and the first shot on that profile files under version 1.
+the Recipe, and the first shot on that profile files under version 1.
 """
 
 from __future__ import annotations
@@ -12,26 +12,26 @@ import httpx
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
-from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import (
-    SetsRepository,
-    SetVersionPatch,
+from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
 )
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import base_profile, base_version_id, data
 from tests.drafts.test_api import lower_pressure
 from tests.drafts.test_board import adopted, pull, put
-from tests.sets.conftest import make_shot
+from tests.recipes.conftest import make_shot
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
 
 
-async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_the_set(
+async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_the_recipe(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     """Automatch is on from the start, and it needs nothing more than the put and a sync.
 
-    The design's draft belongs to no Set and is put plainly by the accept itself. What files
+    The design's draft belongs to no Recipe and is put plainly by the accept itself. What files
     the next shot is the sync verifying the profile against the draft's own document: the
     machine's copy resolves to the version the accepted card put on version 1.
     """
@@ -49,14 +49,14 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
         document={**lower_pressure(await base_profile(app), 8.5), "label": "Kenya AA body"},
         change_summary="A gentler peak for body.",
     )
-    proposal = await SetProposalsRepository(app.state.db).create(
+    proposal = await RecipeProposalsRepository(app.state.db).create(
         set_id,
         ProposalWrite(
             kind="design",
             draft_id=draft.id,
             thread_id=created["thread_id"],
             reason="A gentler peak for body.",
-            patch=SetVersionPatch(
+            patch=RecipeVersionPatch(
                 profile_version_id=draft.draft_version_id, grind_setting="20", dose_g=18
             ),
         ),
@@ -72,7 +72,7 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
     shot = await make_shot(
         app.state.db, "000601", profile_id_on_device=pushed.pushed_device_profile_id or ""
     )
-    summary = await SetsRepository(app.state.db).match_unfiled([shot])
+    summary = await RecipesRepository(app.state.db).match_unfiled([shot])
     assert summary.matched == 1
     filed = await app.state.db.fetch_value(
         "SELECT recipe_version_id FROM shots WHERE id = ?", (shot,)
@@ -100,14 +100,14 @@ async def test_accepting_after_the_profile_was_synced_and_a_later_version_made_a
         document={**lower_pressure(await base_profile(app), 8.5), "label": "Kenya AA body"},
         change_summary="A gentler peak for body.",
     )
-    proposal = await SetProposalsRepository(app.state.db).create(
+    proposal = await RecipeProposalsRepository(app.state.db).create(
         set_id,
         ProposalWrite(
             kind="design",
             draft_id=draft.id,
             thread_id=created["thread_id"],
             reason="A gentler peak for body.",
-            patch=SetVersionPatch(
+            patch=RecipeVersionPatch(
                 profile_version_id=draft.draft_version_id, grind_setting="20", dose_g=18
             ),
         ),

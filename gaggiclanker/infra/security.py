@@ -70,7 +70,7 @@ SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
     # Nothing here is meant to be framed, and the API is same-origin with the
     # SPA, so a frame is only ever somebody else's idea.
     ("x-frame-options", "DENY"),
-    # Shot ids and Set names are in the path. They do not belong in the Referer
+    # Shot ids and Recipe names are in the path. They do not belong in the Referer
     # header of an outbound link.
     ("referrer-policy", "no-referrer"),
 )

@@ -500,10 +500,10 @@ def build_mcp_config(
 
     `env` is the child server's whole environment as far as gaggiclanker is
     concerned: `DATA_DIR` is how it finds the archive, and it is the same
-    directory this process opened, so the two see one database. The Set and its
+    directory this process opened, so the two see one database. The Recipe and its
     version are the conversation's **scope**, not a convenience: the child
-    builds its tool surface from them, so a Set conversation's child offers the
-    Set's tools only and refuses any other Set — which is what makes this
+    builds its tool surface from them, so a Recipe conversation's child offers the
+    Recipe's tools only and refuses any other Recipe — which is what makes this
     provider's own tool loop obey the same limit as the dispatcher the API
     providers go through.
     """

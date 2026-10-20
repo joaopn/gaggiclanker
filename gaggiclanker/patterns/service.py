@@ -1,4 +1,4 @@
-"""Running Find patterns across Sets: a row, a call, proposals, and nothing else.
+"""Running Find patterns across Recipes: a row, a call, proposals, and nothing else.
 
 The shape of :meth:`PatternsService.run` is the contract, and it is short on purpose:
 
@@ -48,12 +48,12 @@ from gaggiclanker.patterns.context import PatternsInput, build_patterns_input
 from gaggiclanker.patterns.models import PatternsResult, filter_proposals
 
 __all__ = [
-    "MIN_SETS",
+    "MIN_RECIPES",
     "PATTERNS_EVENTS",
     "PATTERNS_PROMPT",
     "PATTERNS_TASK",
     "PATTERNS_USER_PROMPT",
-    "NotEnoughSets",
+    "NotEnoughRecipes",
     "PatternsService",
 ]
 
@@ -68,18 +68,18 @@ PATTERNS_TASK = "patterns"
 #: The SSE events a run publishes, on the LLM bus. The Knowledge page refreshes from them.
 PATTERNS_EVENTS = ("patterns.started", "patterns.finished", "patterns.failed")
 
-#: A pattern needs two Sets, so a run needs two Sets with a confirmed insight.
-MIN_SETS = 2
+#: A pattern needs two Recipes, so a run needs two Recipes with a confirmed insight.
+MIN_RECIPES = 2
 
 #: Linear backoff between this call's own retries; the suite sets it to zero.
 RETRY_DELAY_S = 0.5
 
 
-class NotEnoughSets(Exception):
-    """Fewer than two Sets have a confirmed insight, so there is nothing to find a pattern in."""
+class NotEnoughRecipes(Exception):
+    """Fewer than two Recipes have a confirmed insight, so there is nothing to find a pattern in."""
 
     def __init__(self, found: int) -> None:
-        super().__init__(f"{found} Set(s) have confirmed insights; a pattern needs {MIN_SETS}")
+        super().__init__(f"{found} Set(s) have confirmed insights; a pattern needs {MIN_RECIPES}")
         self.found = found
 
 
@@ -119,7 +119,7 @@ class PatternsService:
     ) -> tuple[PatternRunRow, bool]:
         """Queue a run. Returns the row and whether this call started it.
 
-        Raises :class:`NotEnoughSets` when fewer than two Sets have a confirmed insight: the
+        Raises :class:`NotEnoughRecipes` when fewer than two Recipes have a confirmed insight: the
         caller's situation rather than the provider's, which the route answers with a 409
         and not a stored `failed` row.
         """
@@ -133,8 +133,8 @@ class PatternsService:
         if running is not None:
             return running, False
         found = await self.runs.sets_with_insights()
-        if found < MIN_SETS:
-            raise NotEnoughSets(found)
+        if found < MIN_RECIPES:
+            raise NotEnoughRecipes(found)
         pending = self._in_flight()  # another request may have got in while we read
         if pending is not None:
             return await asyncio.shield(pending), False
@@ -190,7 +190,7 @@ class PatternsService:
                 prompt_version=version,
                 input=given.model_dump(mode="json"),
                 insights_read=given.insight_count,
-                sets_read=given.lesson_set_count,
+                sets_read=given.lesson_recipe_count,
             )
         )
         self._publish("patterns.started", run_id, status="running")

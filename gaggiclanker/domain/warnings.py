@@ -231,7 +231,7 @@ def shot_warnings(
     ``phases`` are the shot's stored phases (name and number), ``metrics`` its
     stored shot-wide facts (``diagnostics["metrics"]``): the profile's phases it
     never began and the first window of fast cup flow. ``target_yield_g`` is
-    the filed version's target, ``None`` for a shot in no Set or a version that
+    the filed version's target, ``None`` for a shot in no Recipe or a version that
     has none. A phase's warning is ordered by where it falls in the shot, a
     skipped phase at the moment the shot stopped, and the shot-wide warnings come
     after every phase warning of the same severity.

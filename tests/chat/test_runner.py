@@ -19,7 +19,7 @@ import pytest
 from gaggiclanker.chat.runner import ChatRunner, _to_chat_message, run_task_name
 from gaggiclanker.db.repos.chat import ChatEventsRepository, ChatRepository, ChatThreadWrite
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, InsightWrite
-from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
+from gaggiclanker.db.repos.recipes import DesignBrief, RecipesRepository, RecipeWrite
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.infra.sse import EventBus, SseEvent
@@ -34,7 +34,7 @@ from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.types import Usage
 from gaggiclanker.shotinfo.catalogue import CATALOGUE, default_tiers
 from gaggiclanker.shotinfo.glossary import render_glossary
-from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
+from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, RECIPE_TOOLS
 from tests.llm.conftest import FakeProvider
 from tests.review.conftest import Fixture
 
@@ -148,7 +148,7 @@ async def test_a_failing_tool_is_shown_to_the_model_rather_than_ending_the_run(
     assert run is not None and run.status == "ok"
     result = chat_provider.chat_calls[1].messages[-1].tool_results[0]
     assert result.ok is False
-    # A Set conversation refuses a shot that is not its own in the same words
+    # A Recipe conversation refuses a shot that is not its own in the same words
     # whether or not it exists, which is what the model is shown here.
     assert "not a shot of this Set" in result.content
 
@@ -870,7 +870,7 @@ async def test_the_oldest_messages_are_dropped_to_fit_the_budget(
     assert sent[0].role != "tool", "an orphaned tool result is a 400 on both APIs"
 
 
-async def test_the_system_prompt_carries_the_set_scope(
+async def test_the_system_prompt_carries_the_recipe_scope(
     runner: ChatRunner,
     tasks: TaskRegistry,
     thread: int,
@@ -884,11 +884,11 @@ async def test_the_system_prompt_carries_the_set_scope(
     system = chat_provider.chat_calls[0].system
     assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in system
     assert f"Set {archive.set_id}" in system
-    # Not only the Set: the experiment, which is what a grade is made against.
+    # Not only the Recipe: the experiment, which is what a grade is made against.
     assert "THE EXPERIMENT SO FAR" in system
 
 
-async def test_the_set_scope_opens_with_as_many_shots_as_the_setting_says(
+async def test_the_recipe_scope_opens_with_as_many_shots_as_the_setting_says(
     runner: ChatRunner,
     tasks: TaskRegistry,
     thread: int,
@@ -995,7 +995,7 @@ async def test_a_tier_moved_between_turns_reaches_the_next_turn_s_context_and_gl
     assert "- Rating [" not in second
 
 
-async def test_the_set_and_general_prompts_carry_the_shot_field_glossary(
+async def test_the_recipe_and_general_prompts_carry_the_shot_field_glossary(
     runner: ChatRunner,
     tasks: TaskRegistry,
     thread: int,
@@ -1069,21 +1069,21 @@ async def test_the_provider_is_given_the_chat_tool_set(
     await send(runner, tasks, thread)
 
     names = {schema["function"]["name"] for schema in chat_provider.chat_calls[0].tools}
-    # The Set conversation's surface, because that is what this thread is: the
+    # The Recipe conversation's surface, because that is what this thread is: the
     # archive-wide tools are not merely refused, they are never described.
-    assert names == SET_TOOLS
+    assert names == RECIPE_TOOLS
     assert not any(name.startswith("push_") for name in names)
 
 
-async def test_a_set_being_designed_is_given_the_design_tools_and_a_dispatcher_to_match(
+async def test_a_recipe_being_designed_is_given_the_design_tools_and_a_dispatcher_to_match(
     runner: ChatRunner,
     tasks: TaskRegistry,
     archive: Fixture,
     chat_provider: FakeProvider,
 ) -> None:
-    """The schemas sent, and the calls allowed, are the design scope — from the Set's flag."""
-    designed = await SetsRepository(archive.db).create_design(
-        SetWrite(name="Designed", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
+    """The schemas sent, and the calls allowed, are the design scope — from the Recipe's flag."""
+    designed = await RecipesRepository(archive.db).create_design(
+        RecipeWrite(name="Designed", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
         DesignBrief(),
     )
     opened = await ChatRepository(archive.db).open_thread(designed.id)
@@ -1117,16 +1117,16 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
     archive: Fixture,
     chat_provider: FakeProvider,
 ) -> None:
-    """Read from the Set on every turn: the turn after Accept is an ordinary Set chat."""
+    """Read from the Recipe on every turn: the turn after Accept is an ordinary Recipe chat."""
     from gaggiclanker.db.repos.llm import LlmCallsRepository
     from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
-    from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-    from gaggiclanker.db.repos.sets import SetVersionPatch
+    from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+    from gaggiclanker.db.repos.recipes import RecipeVersionPatch
 
     calls = LlmCallsRepository(archive.db)
     runner.llm.calls_repo = calls
-    designed = await SetsRepository(archive.db).create_design(
-        SetWrite(name="Designed", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
+    designed = await RecipesRepository(archive.db).create_design(
+        RecipeWrite(name="Designed", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
         DesignBrief(goal="More body."),
     )
     opened = await ChatRepository(archive.db).open_thread(designed.id)
@@ -1145,7 +1145,7 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
             draft_version_id=free,
         )
     )
-    proposals = SetProposalsRepository(archive.db)
+    proposals = RecipeProposalsRepository(archive.db)
     card = await proposals.create(
         designed.id,
         ProposalWrite(
@@ -1153,7 +1153,7 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
             draft_id=draft.id,
             thread_id=thread_id,
             reason="The recipe we agreed.",
-            patch=SetVersionPatch(profile_version_id=free, dose_g=18),
+            patch=RecipeVersionPatch(profile_version_id=free, dose_g=18),
         ),
     )
     assert card.proposal is not None, card.refused
@@ -1161,33 +1161,33 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
 
     second = await send(runner, tasks, thread_id, "It came out fast.")
 
-    design_turn, set_turn = chat_provider.chat_calls
+    design_turn, recipe_turn = chat_provider.chat_calls
     assert "THIS CONVERSATION IS DESIGNING A NEW SET" in design_turn.system
     assert "GRADE FIRST" not in design_turn.system
     # A design reads no shots, so it is not told what their fields mean.
     assert "SHOT FIELDS" not in design_turn.system
     assert {schema["function"]["name"] for schema in design_turn.tools} == DESIGN_TOOLS
-    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in set_turn.system
-    assert "GRADE FIRST" in set_turn.system
-    assert "SHOT FIELDS" in set_turn.system
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in recipe_turn.system
+    assert "GRADE FIRST" in recipe_turn.system
+    assert "SHOT FIELDS" in recipe_turn.system
     # The card it came from is told as the recipe it set, not as an empty change.
-    assert "its initial recipe was accepted as v1" in set_turn.system
-    assert {schema["function"]["name"] for schema in set_turn.tools} == SET_TOOLS
+    assert "its initial recipe was accepted as v1" in recipe_turn.system
+    assert {schema["function"]["name"] for schema in recipe_turn.tools} == RECIPE_TOOLS
     rows = {row.call_id: row.prompt_name for row in await calls.recent(limit=10)}
     assert (rows[f"chat-{first}"], rows[f"chat-{second}"]) == ("chat-design", "chat-recipe")
 
 
-async def test_a_hand_made_set_that_names_no_profile_is_an_ordinary_set_chat(
+async def test_a_hand_made_recipe_that_names_no_profile_is_an_ordinary_recipe_chat(
     runner: ChatRunner,
     tasks: TaskRegistry,
     archive: Fixture,
     chat_provider: FakeProvider,
 ) -> None:
     """Its version 1 looks like an empty design, and nothing about it changes."""
-    from gaggiclanker.db.repos.sets import SetVersionWrite
+    from gaggiclanker.db.repos.recipes import SetVersionWrite
 
-    any_profile = await SetsRepository(archive.db).create(
-        SetWrite(name="Any profile", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
+    any_profile = await RecipesRepository(archive.db).create(
+        RecipeWrite(name="Any profile", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
         SetVersionWrite(),
     )
     opened = await ChatRepository(archive.db).open_thread(any_profile.id)
@@ -1203,7 +1203,7 @@ async def test_a_hand_made_set_that_names_no_profile_is_an_ordinary_set_chat(
     )
     assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in request.system
     assert "DESIGNING" not in request.system
-    assert {schema["function"]["name"] for schema in request.tools} == SET_TOOLS
+    assert {schema["function"]["name"] for schema in request.tools} == RECIPE_TOOLS
 
 
 async def test_the_usage_row_records_which_prompt_answered_the_turn(
@@ -1247,7 +1247,7 @@ async def test_an_empty_message_is_refused_before_a_run_is_opened(
     assert await ChatRepository(runner.db).messages(thread) == []
 
 
-# -- the Set scope reaches the provider ------------------------------------
+# -- the Recipe scope reaches the provider ------------------------------------
 
 
 async def test_the_scope_is_on_the_request_so_the_cli_can_carry_it(

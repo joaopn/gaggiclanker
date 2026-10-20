@@ -4,8 +4,8 @@
 `web/src/test/fixtures/shot-fields.json` is what the shot page's tests render:
 `GET /api/shots/{id}/fields` documents, in exactly the shape the route answers.
 `web/src/test/fixtures/signature.json` is what the Profiles page's Signature card and
-the Set page's override rows render: the answers of `GET /api/profile-versions/{id}/signature`
-and of the Set version's override list. Both are generated rather than hand-written, so a
+the Recipe page's override rows render: the answers of `GET /api/profile-versions/{id}/signature`
+and of the Recipe version's override list. Both are generated rather than hand-written, so a
 test of a page is a test against what the server really serves.
 
 Shot-fields documents:
@@ -27,9 +27,9 @@ Shot-fields documents:
   cup checks are not measured;
 * ``turbo``: a turbo-like profile whose confirmed signature expects ``fast flow``: the
   warning is grey, nothing is amber;
-* ``real``: the exported shot, in no Set, with no warning and no target;
+* ``real``: the exported shot, in no Recipe, with no warning and no target;
 * ``fillEnded`` and ``fillEndedSigned``: a real shot whose profile's first phase (a fill that
-  exits on a pressure target) was over before the machine logged its first sample, in no Set,
+  exits on a pressure target) was over before the machine logged its first sample, in no Recipe,
   read without a signature and against one (the fill must begin; its peak pressure at most
   3 bar): the phase list has a row for the fill with no samples, the warning sits at 0 s, the
   expectation fails and the measure ended before it was measured.
@@ -37,7 +37,7 @@ Shot-fields documents:
 Signature documents: ``none`` (a version nobody proposed anything for), ``inForce`` (what a
 conversation proposed: every expectation in force, none answered), ``mixed`` (one rejected with
 a reason, the rest in force), ``carried`` (a next version whose soak phase was renamed: the
-carried ones are in force, one needs a new phase and is not) and the Set version's overrides
+carried ones are in force, one needs a new phase and is not) and the Recipe version's overrides
 (``overrideInForce``, ``overrideRejected``).
 
 Re-run it whenever the catalogue, the metrics, the signature routes or the fields route change:
@@ -67,7 +67,11 @@ from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite  # noqa: E402
 from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite  # noqa: E402
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite  # noqa: E402
 from gaggiclanker.db.repos.profiles import ProfilesRepository  # noqa: E402
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite  # noqa: E402
+from gaggiclanker.db.repos.recipes import (  # noqa: E402
+    RecipesRepository,
+    RecipeWrite,
+    SetVersionWrite,
+)
 from gaggiclanker.db.repos.shots import ShotsRepository  # noqa: E402
 from gaggiclanker.db.repos.signatures import SignatureRepository  # noqa: E402
 from gaggiclanker.db.schema import create_schema  # noqa: E402
@@ -158,12 +162,12 @@ def _plain(value: Any) -> dict[str, Any]:
 
 
 class Scene:
-    """A fresh database with the constructed lever profile, a Set on it and shots filed there."""
+    """A fresh database with the constructed lever profile, a Recipe on it and shots filed there."""
 
     def __init__(self, db: Database) -> None:
         self.db = db
         self.profiles = ProfilesRepository(db)
-        self.sets = SetsRepository(db)
+        self.recipes = RecipesRepository(db)
         self.signatures = SignatureRepository(db)
         self.service = SignatureService(db)
         self.version_id = 0
@@ -176,15 +180,15 @@ class Scene:
         )
         return version.id
 
-    async def make_set(self, version_id: int, name: str, target: float) -> int:
+    async def make_recipe(self, version_id: int, name: str, target: float) -> int:
         bean = await BeansRepository(self.db).create(
             BeanWrite(name=name, roast_level="medium", process="washed")
         )
         grinder = await GrindersRepository(self.db).create(
             GrinderWrite(name=name, step_unit="numbers")
         )
-        row = await self.sets.create(
-            SetWrite(name=name, bean_id=bean.id, grinder_id=grinder.id),
+        row = await self.recipes.create(
+            RecipeWrite(name=name, bean_id=bean.id, grinder_id=grinder.id),
             SetVersionWrite(
                 profile_version_id=version_id,
                 grind_setting="14",
@@ -219,7 +223,7 @@ class Scene:
                 "UPDATE shots SET profile_version_id = ? WHERE id = ?", (version_id, shot)
             )
         if set_version_id is not None:
-            assert await self.sets.assign_shot(shot, set_version_id)
+            assert await self.recipes.assign_shot(shot, set_version_id)
         return shot
 
     async def fields(self, shot: int) -> dict[str, Any]:
@@ -249,7 +253,7 @@ async def _lever(
     scene: Scene, slog: Slog, *, signed: bool, has_pressure: bool | None = None
 ) -> Any:
     version = await scene.version(LEVER_PROFILE)
-    set_version = await scene.make_set(version, "Constructed lever", TARGET_YIELD_G)
+    set_version = await scene.make_recipe(version, "Constructed lever", TARGET_YIELD_G)
     shot = await scene.add_shot(
         slog,
         profile=LEVER_PROFILE,
@@ -265,7 +269,7 @@ async def _lever(
 async def _turbo(scene: Scene) -> Any:
     profile = turbo_profile()
     version = await scene.version(profile)
-    set_version = await scene.make_set(version, "Constructed turbo", 42.0)
+    set_version = await scene.make_recipe(version, "Constructed turbo", 42.0)
     shot = await scene.add_shot(
         turbo_shot(), profile=profile, version_id=version, set_version_id=set_version
     )
@@ -314,7 +318,7 @@ async def _real(scene: Scene, export: Slog) -> Any:
 async def _signatures(scene: Scene) -> dict[str, Any]:
     """The signature routes' documents, in every state the card draws."""
     version = await scene.version(LEVER_PROFILE)
-    set_version = await scene.make_set(version, "Constructed lever", TARGET_YIELD_G)
+    set_version = await scene.make_recipe(version, "Constructed lever", TARGET_YIELD_G)
     documents: dict[str, Any] = {"none": await scene.signature(version)}
 
     thread = await ChatRepository(scene.db).create_thread(

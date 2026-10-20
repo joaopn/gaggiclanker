@@ -1,6 +1,6 @@
 """The base tier's per-phase lines: name, how the phase ended, the cup at its end and its share.
 
-Every shot a Set conversation opens with carries one short line per phase, so the
+Every shot a Recipe conversation opens with carries one short line per phase, so the
 agent need not ask for the cup at the end of a phase, which is a basic measure. The
 cup lines need a scale; the share needs a version with a target.
 """

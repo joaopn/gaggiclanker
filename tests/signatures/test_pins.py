@@ -1,7 +1,7 @@
 """A shot brewed on a pin's copy is judged by the original's signature.
 
 The copy is the same recipe under another name, so the profile that judges its shots is the one
-the pinned Set version names: the pinned version's override applies to them, a rejection on the
+the pinned Recipe version names: the pinned version's override applies to them, a rejection on the
 original reaches them, and nothing is proposed on the copy. One function says whose signature
 judges a shot (`judged_profile_version`), and every lookup goes through it.
 """
@@ -29,7 +29,7 @@ from tests.signatures.test_checks import Lever, _lever, _propose, _row
 
 
 async def _pinned_lever(db: Database) -> tuple[Lever, int, int]:
-    """The lever Set with its first version pinned, and a shot brewed on the copy:
+    """The lever Recipe with its first version pinned, and a shot brewed on the copy:
     (the lever, the copy's profile version, the shot on the copy)."""
     lever = await _lever(db)
     document = copy.deepcopy(LEVER_PROFILE)
@@ -87,7 +87,7 @@ async def test_the_pinned_versions_override_applies_to_a_shot_on_the_copy(db: Da
     )
 
     assert (await _row(db, shot)).checks.badge == "decline: skipped +3"
-    # The version the Set moved on to is not the pinned one: its shots read the profile's own.
+    # The version the Recipe moved on to is not the pinned one: its shots read the profile's own.
     other = await add_shot(
         db, set_version_id=lever.other_version, profile_version_id=lever.version, device_id="000951"
     )

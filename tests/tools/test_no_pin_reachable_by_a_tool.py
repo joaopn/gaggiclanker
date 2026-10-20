@@ -1,4 +1,4 @@
-"""Pinning a Set version to the machine, unpinning it and previewing the pin are a person's.
+"""Pinning a Recipe version to the machine, unpinning it and previewing the pin are a person's.
 
 A pin puts a profile on the profile list and so, at the next sync, on the machine; an unpin takes
 it off. Neither may be started by a chat tool or the MCP server. The object-graph walk in
@@ -21,7 +21,7 @@ from tests.tools.test_no_proposal_is_accepted_by_a_tool import _code_objects, _t
 PIN_WRITERS = (
     "pin",
     "unpin",
-    "unpin_set",
+    "unpin_recipe",
     "mark_unpinned",
     "revive",
     "copy_profile",
@@ -33,7 +33,7 @@ PIN_TABLES = ("recipe_version_pins",)
 
 def test_the_pin_writers_and_routes_are_where_this_file_thinks_they_are() -> None:
     assert callable(PinService.pin) and callable(PinService.unpin) and callable(PinService.preview)
-    assert callable(PinsRepository.unpin) and callable(PinsRepository.unpin_set)
+    assert callable(PinsRepository.unpin) and callable(PinsRepository.unpin_recipe)
     assert callable(PinsRepository.mark_unpinned) and callable(PinsRepository.revive)
     assert callable(ProfileCopier.copy_profile)
     assert callable(pin_version) and callable(preview_pin) and callable(unpin)

@@ -13,7 +13,7 @@ class BackupStateRepository(Repository):
     """Read-only questions about the live archive that the backup screens ask."""
 
     async def counts(self) -> RestoreCounts:
-        """How many shots, Sets and beans the app holds now."""
+        """How many shots, Recipes and beans the app holds now."""
         return RestoreCounts(
             shots=int(await self.db.fetch_value("SELECT COUNT(*) FROM shots") or 0),
             sets=int(await self.db.fetch_value("SELECT COUNT(*) FROM recipes") or 0),

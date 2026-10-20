@@ -23,7 +23,7 @@ from structlog.typing import EventDict, WrappedLogger
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw
@@ -33,7 +33,7 @@ from gaggiclanker.sync import derive
 from gaggiclanker.sync.derive import DERIVATION_VERSION, derive_shot, rederive_shots
 from tests.conftest import running_app
 from tests.domain.helpers import SLOG_FIXTURES, load_export
-from tests.sets.conftest import make_profile_version
+from tests.recipes.conftest import make_profile_version
 
 DERIVED = ("phases_json", "diagnostics_json")
 
@@ -144,7 +144,7 @@ async def test_only_the_derived_columns_and_the_version_change(db: Database) -> 
         device_id: await _store_stale(db, device_id, slog, raw, source)
         for device_id, (slog, raw, source) in _slogs().items()
     }
-    # What is ours and must survive: a judgement, a device note, Set membership.
+    # What is ours and must survive: a judgement, a device note, Recipe membership.
     target = ids["000300"]
     await JudgementsRepository(db).upsert(
         target, JudgementWrite(rating=4, balance="sour", notes="mine", decision="keep")
@@ -154,15 +154,15 @@ async def test_only_the_derived_columns_and_the_version_change(db: Database) -> 
         (target, '{"notes":"from the machine"}', "from the machine"),
     )
     bean = await BeansRepository(db).create(BeanWrite(name="Ethiopia Guji"))
-    sets = SetsRepository(db)
-    row = await sets.create(
-        SetWrite(name="Guji", bean_id=bean.id),
+    recipes = RecipesRepository(db)
+    row = await recipes.create(
+        RecipeWrite(name="Guji", bean_id=bean.id),
         SetVersionWrite(
             profile_version_id=await make_profile_version(db, "p"), dose_g=18.0, target_yield_g=36.0
         ),
     )
     assert row.current_version_id is not None
-    assert await sets.assign_shot(target, row.current_version_id)
+    assert await recipes.assign_shot(target, row.current_version_id)
     before = await _everything_else(db)
     assert any(before["shot_samples"]) and any(before["shot_judgements"])
     assert any(before["device_shot_notes"])

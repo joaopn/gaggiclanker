@@ -4,9 +4,9 @@ One prompt per kind of conversation, and the goldens are what stop a wording
 change from being invisible: these are the instructions a model follows, so a
 diff here is a behaviour change however small the edit looked.
 
-The Set prompt's `{{scope}}` is rendered with a marker rather than with a real
+The Recipe prompt's `{{scope}}` is rendered with a marker rather than with a real
 opening context. The context has a golden of its own
-(`golden/set-chat-context.txt`) and pinning it twice would mean every change to
+(`golden/recipe-chat-context.txt`) and pinning it twice would mean every change to
 the ledger's wording failing two files; what this golden is for is the
 *instructions* around it.
 """
@@ -22,7 +22,7 @@ import pytest
 from gaggiclanker.chat.runner import (
     DESIGN_CHAT_PROMPT,
     GENERAL_CHAT_PROMPT,
-    SET_CHAT_PROMPT,
+    RECIPE_CHAT_PROMPT,
     prompt_for,
 )
 from gaggiclanker.db.connection import Database
@@ -64,7 +64,7 @@ async def prompts(tmp_path: Path) -> AsyncIterator[PromptService]:
     ("name", "variables", "golden"),
     [
         (
-            SET_CHAT_PROMPT,
+            RECIPE_CHAT_PROMPT,
             {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER},
             "chat-recipe-prompt.txt",
         ),
@@ -90,12 +90,12 @@ async def test_the_rendered_prompt_matches_the_golden_file(
     assert rendered == path.read_text(encoding="utf-8")
 
 
-async def test_every_variable_the_set_prompt_uses_is_declared_and_provided(
+async def test_every_variable_the_recipe_prompt_uses_is_declared_and_provided(
     prompts: PromptService,
 ) -> None:
     """An undefined variable raises, so this is the only way to find a typo."""
     rendered = await prompts.load(
-        SET_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER}
+        RECIPE_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER}
     )
 
     assert rendered.declared == ["scope", "shot_fields"]
@@ -112,7 +112,7 @@ async def test_the_general_prompt_takes_only_the_shot_field_glossary(
     assert FIELDS_MARKER in rendered.system
 
 
-@pytest.mark.parametrize("name", [SET_CHAT_PROMPT, GENERAL_CHAT_PROMPT])
+@pytest.mark.parametrize("name", [RECIPE_CHAT_PROMPT, GENERAL_CHAT_PROMPT])
 async def test_the_glossary_comes_after_the_shared_rules(prompts: PromptService, name: str) -> None:
     system = (
         await prompts.load(name, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER})
@@ -129,7 +129,7 @@ async def test_the_design_prompt_does_not_take_the_glossary(prompts: PromptServi
 
 
 def test_the_prompt_follows_the_conversation_s_kind() -> None:
-    assert prompt_for(ToolScope.for_thread(3, 9)) == SET_CHAT_PROMPT
+    assert prompt_for(ToolScope.for_thread(3, 9)) == RECIPE_CHAT_PROMPT
     assert prompt_for(ToolScope.for_thread(3, 9, designing=True)) == DESIGN_CHAT_PROMPT
     assert prompt_for(ToolScope()) == GENERAL_CHAT_PROMPT
 
@@ -152,7 +152,7 @@ async def test_the_design_prompt_says_what_designing_is_and_is_not(
     assert "a newer card replaces the one waiting" in system
     # Ask first, but briefly.
     assert "Never a questionnaire" in system
-    # The Sets are evidence and outrank the rules; the profile is new.
+    # The Recipes are evidence and outrank the rules; the profile is new.
     assert "THEY OUTRANK THE RULES" in system
     assert "THE PROFILE IS NEW, SO NAME IT" in system
     # And it is the design and nothing else: version 1's shots are analysed in
@@ -180,11 +180,11 @@ async def test_the_grind_number_rule_is_one_text_in_both_first_recipe_prompts(
     assert rule.strip() in starting
 
 
-async def test_the_set_prompt_says_what_a_grade_and_a_proposal_have_to_be(
+async def test_the_recipe_prompt_says_what_a_grade_and_a_proposal_have_to_be(
     prompts: PromptService,
 ) -> None:
     """The behaviour the whole piece exists for, in the words it is given in."""
-    system = (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system
+    system = (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system
 
     assert "GRADE FIRST" in system
     assert "inconclusive" in system
@@ -193,11 +193,11 @@ async def test_the_set_prompt_says_what_a_grade_and_a_proposal_have_to_be(
     assert "Keep shots are the target" in system
     # It never decides the experiment is over.
     assert "never tell them to stop or to carry on" in system
-    # And it knows it can see one Set.
+    # And it knows it can see one Recipe.
     assert "this Set and nothing else" in system
 
 
-async def test_the_set_prompt_sends_an_accepted_version_to_a_new_conversation(
+async def test_the_recipe_prompt_sends_an_accepted_version_to_a_new_conversation(
     prompts: PromptService,
 ) -> None:
     """One conversation is one version, and the person is told so when they accept.
@@ -208,7 +208,7 @@ async def test_the_set_prompt_sends_an_accepted_version_to_a_new_conversation(
     a design is accepted is answered by this prompt.
     """
     system = " ".join(
-        (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+        (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
     )
 
     assert "WHEN THEY ACCEPT, THIS CONVERSATION IS DONE" in system
@@ -218,7 +218,7 @@ async def test_the_set_prompt_sends_an_accepted_version_to_a_new_conversation(
     assert "first recipe was designed" in system
 
 
-async def test_the_set_prompt_says_an_accepted_change_needs_nothing_on_the_machine(
+async def test_the_recipe_prompt_says_an_accepted_change_needs_nothing_on_the_machine(
     prompts: PromptService,
 ) -> None:
     """A grind change needs no push, and the agent must not invent one.
@@ -230,7 +230,7 @@ async def test_the_set_prompt_says_an_accepted_change_needs_nothing_on_the_machi
     version by themselves.
     """
     system = " ".join(
-        (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+        (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
     )
 
     assert "An accepted change puts nothing on the machine" in system
@@ -240,12 +240,12 @@ async def test_the_set_prompt_says_an_accepted_change_needs_nothing_on_the_machi
     assert "never describe a step this archive does not have" in system
 
 
-async def test_the_set_prompt_answers_a_declined_card_in_the_same_conversation(
+async def test_the_recipe_prompt_answers_a_declined_card_in_the_same_conversation(
     prompts: PromptService,
 ) -> None:
     """The Decline button's turn starts with "Declined:"; nothing changed, so it stays here."""
     system = " ".join(
-        (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+        (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
     )
 
     assert '"Declined:"' in system
@@ -253,13 +253,13 @@ async def test_the_set_prompt_answers_a_declined_card_in_the_same_conversation(
     assert "never the same change again" in system
 
 
-async def test_the_general_prompt_sends_a_set_change_to_that_set_s_badge(
+async def test_the_general_prompt_sends_a_recipe_change_to_that_recipe_s_badge(
     prompts: PromptService,
 ) -> None:
     system = (await prompts.load(GENERAL_CHAT_PROMPT, {"shot_fields": ""})).system
 
     assert "YOU CANNOT CHANGE A SET HERE" in system
-    # The Chat page picks a Set with a badge above the conversation; the agent
+    # The Chat page picks a Recipe with a badge above the conversation; the agent
     # names what is on the screen, not the folders the page used to have.
     assert "say which Set's badge to open" in " ".join(system.split())
     assert "folder" not in system
@@ -276,7 +276,7 @@ GLOSSARY = render_glossary(default_tiers())
     ("name", "variables", "scope"),
     [
         (
-            SET_CHAT_PROMPT,
+            RECIPE_CHAT_PROMPT,
             {"scope": SCOPE_MARKER, "shot_fields": GLOSSARY},
             ToolScope.for_thread(3, 9),
         ),
@@ -309,7 +309,7 @@ async def test_a_prompt_names_no_tool_this_conversation_does_not_have(
 async def test_both_prompts_carry_the_shared_rules(prompts: PromptService) -> None:
     """The fragment is expanded, not merely referenced."""
     for name, variables in (
-        (SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""}),
+        (RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""}),
         (GENERAL_CHAT_PROMPT, {"shot_fields": ""}),
     ):
         system = " ".join((await prompts.load(name, variables)).system.split())
@@ -325,21 +325,23 @@ async def test_both_prompts_carry_the_shared_rules(prompts: PromptService) -> No
         assert "do NOT suggest a finer grind for it" in system, name
 
 
-async def test_the_set_prompt_names_the_three_shot_tools_and_the_search(
+async def test_the_recipe_prompt_names_the_three_shot_tools_and_the_search(
     prompts: PromptService,
 ) -> None:
-    system = (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system
+    system = (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system
 
     for tool_name in ("get_shot", "get_shot_extended", "get_shot_full", "list_set_shots"):
         assert f"`{tool_name}`" in system, tool_name
     assert "shots of both compared versions" not in system
 
 
-async def test_the_set_prompt_sends_the_agent_to_the_extended_call_for_shots_it_holds(
+async def test_the_recipe_prompt_sends_the_agent_to_the_extended_call_for_shots_it_holds(
     prompts: PromptService,
 ) -> None:
     rendered = (
-        await prompts.load(SET_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER})
+        await prompts.load(
+            RECIPE_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER}
+        )
     ).system
     flat = " ".join(rendered.split())
     assert "each already in its base information" in flat
@@ -348,11 +350,13 @@ async def test_the_set_prompt_sends_the_agent_to_the_extended_call_for_shots_it_
     assert "so `get_shot_extended` is the call that adds something" in flat
 
 
-async def test_the_set_prompt_says_the_conversation_s_profile_is_already_given(
+async def test_the_recipe_prompt_says_the_conversation_s_profile_is_already_given(
     prompts: PromptService,
 ) -> None:
     rendered = (
-        await prompts.load(SET_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER})
+        await prompts.load(
+            RECIPE_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER}
+        )
     ).system
     flat = " ".join(rendered.split())
     assert "the one this version brews is in it whole, as stored" in flat

@@ -2,8 +2,8 @@
 
 A thread is one of two things and the repository is where that stays true: a
 **general** conversation about the archive, or a conversation about **one
-version of one Set** — the room where that one change was argued. Creating one
-with a Set and no version files it under whatever is current at that moment and
+version of one Recipe** — the room where that one change was argued. Creating one
+with a Recipe and no version files it under whatever is current at that moment and
 it stays there for good, so a folder's conversations read as a history rather
 than as a pile that all claim to be about the latest recipe.
 
@@ -24,7 +24,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 
@@ -46,9 +46,9 @@ __all__ = [
 type RunStatus = Literal["running", "ok", "failed", "cancelled", "interrupted"]
 
 #: Why a thread could not be created where it was asked for. A slug, as in
-#: :mod:`gaggiclanker.db.repos.sets`: the repository has no opinion about
+#: :mod:`gaggiclanker.db.repos.recipes`: the repository has no opinion about
 #: statuses and the route that does is the one place the mapping is written.
-type ThreadRefusal = Literal["no_set", "no_version", "version_without_set"]
+type ThreadRefusal = Literal["no_recipe", "no_version", "version_without_recipe"]
 
 
 class ChatThreadWrite(BaseModel):
@@ -79,8 +79,8 @@ class ChatThreadRow(BaseModel):
     #: That version's name, joined in: a folder row reads "v1.1 · title", and a
     #: reader thinks in "v1.1" rather than in a row id.
     set_version_label: str | None = None
-    #: The Set is on another line now: this version is not reachable from the one
-    #: it is on (a revert went back past it). Derived from the Set's line,
+    #: The Recipe is on another line now: this version is not reachable from the one
+    #: it is on (a revert went back past it). Derived from the Recipe's line,
     #: never stored — it is a fact about what came after — and carried here so
     #: the folder can mute the row without a request per conversation.
     dead_end: bool = False
@@ -206,12 +206,12 @@ class ChatRepository(Repository):
         recently updated one, so a version somebody has started several
         conversations about continues in the one they were last in.
 
-        Except the conversation a Set's first recipe was designed in, once the
+        Except the conversation a Recipe's first recipe was designed in, once the
         design is over. It belongs to version 1 as well, but one conversation is
         one version's worth of work, and designing the recipe was that work: the
         agent tells the person to start a new conversation to read the shots,
         so Discuss on version 1 must not bring them back into the design. While
-        the Set is still being designed it is the room, and Continue designing
+        the Recipe is still being designed it is the room, and Continue designing
         lands in it. "The design conversation" is one a first-recipe card was
         proposed in — the only trace a design leaves on a thread.
         """
@@ -243,21 +243,21 @@ class ChatRepository(Repository):
     ) -> int | ThreadRefusal | None:
         """Which version a thread belongs to: the id, ``None``, or a refusal.
 
-        Through :class:`~gaggiclanker.db.repos.sets.SetsRepository` rather than
-        with SQL of its own — "the current version of a Set" and "a version of
-        this Set" are rules that already exist there, and a second copy here is
-        how a thread would come to be filed under a version the Set page does
+        Through :class:`~gaggiclanker.db.repos.recipes.RecipesRepository` rather than
+        with SQL of its own — "the current version of a Recipe" and "a version of
+        this Recipe" are rules that already exist there, and a second copy here is
+        how a thread would come to be filed under a version the Recipe page does
         not think is current.
         """
         if set_id is None:
-            return "version_without_set" if set_version_id is not None else None
-        sets = SetsRepository(self.db)
+            return "version_without_recipe" if set_version_id is not None else None
+        recipes = RecipesRepository(self.db)
         if set_version_id is None:
-            current = await sets.current_version(set_id)
+            current = await recipes.current_version(set_id)
             if current is None:
-                return "no_set"
+                return "no_recipe"
             return current.id
-        if await sets.version_of_set(set_id, set_version_id) is None:
+        if await recipes.version_of_recipe(set_id, set_version_id) is None:
             return "no_version"
         return set_version_id
 
@@ -281,17 +281,17 @@ class ChatRepository(Repository):
     async def mark_dead_ends(self, threads: Sequence[ChatThreadRow]) -> list[ChatThreadRow]:
         """Fill in ``dead_end`` for a page of threads, in one further query.
 
-        A dead end is a fact about a Set's whole line — walk back from its
+        A dead end is a fact about a Recipe's whole line — walk back from its
         current version and see what you step over — so it cannot be a column
-        on the thread and it cannot be joined in. It is one query for every Set
+        on the thread and it cannot be joined in. It is one query for every Recipe
         the page mentions, which is what keeps the folder list at two queries
         rather than one per conversation.
         """
         rows = list(threads)
-        set_ids = {row.set_id for row in rows if row.set_id is not None}
-        if not set_ids:
+        recipe_ids = {row.set_id for row in rows if row.set_id is not None}
+        if not recipe_ids:
             return rows
-        dead = await SetsRepository(self.db).dead_end_versions(set_ids)
+        dead = await RecipesRepository(self.db).dead_end_versions(recipe_ids)
         return [
             row.model_copy(update={"dead_end": row.set_version_id in dead})
             if row.set_version_id is not None

@@ -3,7 +3,7 @@
 The record at the end of the opening context is how the agent learns what the person
 did with a card (nothing is sent as a message), so each state of each kind is pinned
 here in the words the agent reads, and the property the feature rests on: after an
-insight is removed, every other prompt for the Set is byte-for-byte what it was before
+insight is removed, every other prompt for the Recipe is byte-for-byte what it was before
 the insight existed.
 """
 
@@ -202,7 +202,7 @@ class TestWhatItProposedDeleting:
 
 
 class TestRemovedMeansRemoved:
-    """Every prompt for the Set, bar the proposing conversation's own record, is unchanged."""
+    """Every prompt for the Recipe, bar the proposing conversation's own record, is unchanged."""
 
     async def _prompts(self, world: ProvenanceWorld, scope: ToolScope) -> list[str]:
         return [

@@ -6,7 +6,7 @@ from gaggiclanker.chat.context import opening_context, thread_title_from
 from gaggiclanker.chat.runner import (
     CHAT_EVENT,
     GENERAL_CHAT_PROMPT,
-    SET_CHAT_PROMPT,
+    RECIPE_CHAT_PROMPT,
     ChatRunner,
     prompt_for,
     run_task_name,
@@ -15,7 +15,7 @@ from gaggiclanker.chat.runner import (
 __all__ = [
     "CHAT_EVENT",
     "GENERAL_CHAT_PROMPT",
-    "SET_CHAT_PROMPT",
+    "RECIPE_CHAT_PROMPT",
     "ChatRunner",
     "opening_context",
     "prompt_for",

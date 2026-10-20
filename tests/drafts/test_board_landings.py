@@ -20,7 +20,14 @@ from gaggiclanker.db.repos.profile_board import (
 )
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, data, error
-from tests.drafts.helpers import APP_LABEL, Live, draft_of, make_set_on, same_name_draft, tombstone
+from tests.drafts.helpers import (
+    APP_LABEL,
+    Live,
+    draft_of,
+    make_recipe_on,
+    same_name_draft,
+    tombstone,
+)
 from tests.drafts.test_board import (
     adopted,
     app_row,
@@ -159,15 +166,15 @@ async def test_a_fork_named_like_an_app_profile_continues_that_profile(
     assert len((await get_board(client))["rows"]) == rows
 
 
-async def test_a_set_draft_renamed_onto_a_name_that_became_a_profile_is_refused_by_landing_and_put(
+async def test_a_recipe_draft_renamed_onto_a_profile_s_name_is_refused_by_landing_and_put(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     """The refusal is first at creation. A name that becomes a profile after the draft was made
     (the race) is refused the same way when the page's landing is read and when the put runs: a
-    rename never lands on a profile it is not a version of, for the Set or without it."""
+    rename never lands on a profile it is not a version of, for the Recipe or without it."""
     app, client, fake = adopted
     first = await app_row(app, client, fake, provider, 8, name="First")
-    set_id = await make_set_on(client, "Rename set", first["current_version_id"])
+    set_id = await make_recipe_on(client, "Rename set", first["current_version_id"])
     version = data(await client.get(f"/api/profile-versions/{first['current_version_id']}"))
     document = dict(version["profile"])
     document["label"] = "Second"
@@ -284,12 +291,12 @@ async def test_the_landing_is_what_a_put_then_does(
     assert said["row_id"] == put_row["id"] == row["id"]
 
 
-async def test_a_set_draft_lands_on_the_profile_the_set_brews_and_the_landing_names_the_set(
+async def test_a_recipe_draft_lands_on_the_recipes_profile_and_the_landing_names_the_recipe(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
     row = await app_row(app, client, fake, provider, 8)
-    set_id = await make_set_on(client, "Landing set", row["current_version_id"])
+    set_id = await make_recipe_on(client, "Landing set", row["current_version_id"])
     draft = await draft_of(app, client, provider, BASE_LABEL, 7)
     await app.state.db.execute(
         "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
@@ -298,8 +305,8 @@ async def test_a_set_draft_lands_on_the_profile_the_set_brews_and_the_landing_na
 
     found = landing(await get_board(client), draft)
 
-    # A fork named like the app's profile the Set brews: it continues that profile, because that
-    # is the profile with exactly its name, and the landing says whose Set follows it.
+    # A fork named like the app's profile the Recipe brews: it continues that profile, because that
+    # is the profile with exactly its name, and the landing says whose Recipe follows it.
     assert found["plain"]["row_id"] == row["id"]
     assert found["plain"]["set"] == {
         "id": set_id,

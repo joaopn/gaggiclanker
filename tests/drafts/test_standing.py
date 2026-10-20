@@ -23,7 +23,7 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.drafts import standing as words
 from gaggiclanker.drafts.standing import RowFacts, classify
 from tests.drafts.conftest import BASE_LABEL, data, error
-from tests.drafts.helpers import make_set_on, manual_draft, same_name_draft, tombstone
+from tests.drafts.helpers import make_recipe_on, manual_draft, same_name_draft, tombstone
 from tests.drafts.test_board import adopted, get_board, pull, put, row_for
 from tests.llm.conftest import FakeProvider
 
@@ -371,21 +371,21 @@ async def test_a_waiting_proposal_whose_document_is_already_listed_is_replaced(
     assert got["landing"] is None
 
 
-async def test_the_set_version_an_approval_is_recorded_as(
+async def test_the_recipe_version_an_approval_is_recorded_as(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
     first = await put(client, await manual_draft(app, client, BASE_LABEL, "For a set", 8))
-    set_id = await make_set_on(client, "Label set", first["current_version_id"])
+    set_id = await make_recipe_on(client, "Label set", first["current_version_id"])
 
-    async def for_set(bar: float) -> dict[str, Any]:
+    async def for_recipe(bar: float) -> dict[str, Any]:
         draft = await same_name_draft(app, client, provider, "For a set", bar)
         await app.state.db.execute(
             "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
         )
         return draft
 
-    plain = await for_set(7)
+    plain = await for_recipe(7)
     assert (await standing(client, plain))["set_version_label"] is None, "waiting: not yet"
     await put(client, plain)
     got = await standing(client, plain)
@@ -395,7 +395,7 @@ async def test_the_set_version_an_approval_is_recorded_as(
     assert (await pull(app)).status == "ok"
     assert (await standing(client, plain))["set_version_label"] == "v1.1", "the sync adds none"
 
-    major = await for_set(6)
+    major = await for_recipe(6)
     await put(client, major, major=True)
     assert (await standing(client, major))["set_version_label"] == "v2"
 
@@ -411,7 +411,7 @@ async def test_a_later_put_leaves_an_earlier_approvals_version_where_it_was(
 ) -> None:
     app, client, _ = adopted
     first = await put(client, await manual_draft(app, client, BASE_LABEL, "For a set", 8))
-    await make_set_on(client, "Moved set", first["current_version_id"])
+    await make_recipe_on(client, "Moved set", first["current_version_id"])
     older = await same_name_draft(app, client, provider, "For a set", 7)
     newer = await same_name_draft(app, client, provider, "For a set", 6)
     await put(client, older)

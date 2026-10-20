@@ -2,7 +2,7 @@
 
 Read it as four concentric things.
 
-**The loop.** System prompt plus Set scope, then the thread's history, then a
+**The loop.** System prompt plus Recipe scope, then the thread's history, then a
 provider call with the tool schemas attached. If the answer contains tool calls,
 run them through the dispatcher, append the results as a ``tool`` message, and
 ask again. Bounded twice — by rounds and by total calls — because a model that
@@ -76,7 +76,7 @@ __all__ = [
     "CHAT_EVENT",
     "DESIGN_CHAT_PROMPT",
     "GENERAL_CHAT_PROMPT",
-    "SET_CHAT_PROMPT",
+    "RECIPE_CHAT_PROMPT",
     "ChatRunner",
     "prompt_for",
     "run_task_name",
@@ -95,7 +95,7 @@ CHAT_EVENT = "chat.event"
 #: is for — grading an experiment, working out a recipe that does not exist
 #: yet, answering about the archive — and a single prompt would have to be read
 #: with two thirds of it crossed out.
-SET_CHAT_PROMPT = "chat-recipe"
+RECIPE_CHAT_PROMPT = "chat-recipe"
 DESIGN_CHAT_PROMPT = "chat-design"
 GENERAL_CHAT_PROMPT = "chat-general"
 
@@ -103,13 +103,13 @@ GENERAL_CHAT_PROMPT = "chat-general"
 def prompt_for(scope: ToolScope) -> str:
     """Which prompt this conversation is answered with. From the same scope.
 
-    A Set being designed is answered with the design prompt for exactly as long
-    as the Set is being designed: the scope is resolved from the Set on every
-    turn, so the turn after its recipe is accepted gets the Set prompt.
+    A Recipe being designed is answered with the design prompt for exactly as long
+    as the Recipe is being designed: the scope is resolved from the Recipe on every
+    turn, so the turn after its recipe is accepted gets the Recipe prompt.
     """
     if scope.kind != "set":
         return GENERAL_CHAT_PROMPT
-    return DESIGN_CHAT_PROMPT if scope.designing else SET_CHAT_PROMPT
+    return DESIGN_CHAT_PROMPT if scope.designing else RECIPE_CHAT_PROMPT
 
 
 #: Roughly four characters to a token. Deliberately crude: the budget exists to
@@ -224,11 +224,11 @@ class ChatRunner:
 
         state = _RunState(run_id=run.id, thread_id=thread_id)
         self._running[run.id] = state
-        # The thread's two columns and its Set's design flag decide what this
-        # turn is: one experiment, a Set being designed, or the archive. Read
+        # The thread's two columns and its Recipe's design flag decide what this
+        # turn is: one experiment, a Recipe being designed, or the archive. Read
         # once per turn, here, and carried through the run — every later
         # decision about tools is this one value — so the turn after an
-        # initial recipe is accepted is already an ordinary Set conversation.
+        # initial recipe is accepted is already an ordinary Recipe conversation.
         scope = await ToolScope.resolve(self.db, thread.set_id, thread.set_version_id)
         registry.spawn(run_task_name(run.id), self._background(state, scope))
         return run, stored
@@ -320,8 +320,8 @@ class ChatRunner:
 
     async def _loop(self, state: _RunState, scope: ToolScope, *, model: str) -> None:
         budget = await self._budget()
-        # The Set prompt is handed the experiment and the design prompt the
-        # brief and its evidence. The Set and General prompts are also handed
+        # The Recipe prompt is handed the experiment and the design prompt the
+        # brief and its evidence. The Recipe and General prompts are also handed
         # the glossary of shot fields, since both read shots; the design prompt
         # reads none, and a prompt is passed only what it declares.
         prompt = prompt_for(scope)
@@ -340,10 +340,10 @@ class ChatRunner:
                     thread_id=state.thread_id,
                 )
             }
-            if prompt in (SET_CHAT_PROMPT, DESIGN_CHAT_PROMPT)
+            if prompt in (RECIPE_CHAT_PROMPT, DESIGN_CHAT_PROMPT)
             else {}
         )
-        if prompt in (SET_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
+        if prompt in (RECIPE_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
             variables["shot_fields"] = render_glossary(tiers, "base")
         rendered = await self.prompts.load(prompt, variables)
         history, meanings_in_history = await self._history(
@@ -626,7 +626,7 @@ class ChatRunner:
 
         The scope is applied here rather than left to the dispatcher because a
         tool a conversation does not have should not be *described* to it: a
-        model told about `query_shots` inside a Set's chat will plan around it
+        model told about `query_shots` inside a Recipe's chat will plan around it
         and then be refused, which reads as a broken tool rather than as a
         limit.
 

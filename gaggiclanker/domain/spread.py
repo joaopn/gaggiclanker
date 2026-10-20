@@ -1,4 +1,4 @@
-"""How much a Set's shots vary when nothing in the recipe changed.
+"""How much a Recipe's shots vary when nothing in the recipe changed.
 
 Two shots pulled with the same grind, the same dose and the same profile do not
 land on the same numbers, and the difference between them is not an experiment
@@ -14,17 +14,17 @@ be traced back to arithmetic somebody can redo on paper.
 **Pooled within-recipe deviation.** Shots brewed with the same five recipe
 fields are repeats of each other. Each repeat group contributes its own shots'
 distance from *its own* mean, and those distances are pooled across every group
-of the Set:
+of the Recipe:
 
     spread = sqrt( sum_g sum_i (x_gi - mean_g)^2 / sum_g (n_g - 1) )
 
-Pooled rather than "the standard deviation of all the Set's shots", because the
-Set's shots are meant to differ: that figure would measure the dial-in itself
+Pooled rather than "the standard deviation of all the Recipe's shots", because the
+Recipe's shots are meant to differ: that figure would measure the dial-in itself
 and grow every time a change worked. Pooled rather than "the deviation of the
-one version with the most shots", because a Set is usually many versions of two
+one version with the most shots", because a Recipe is usually many versions of two
 or three shots each, and the pooling is what turns those into one usable figure.
 A group of one contributes nothing — one shot has no distance from itself — but
-it costs nothing either, so a Set of singletons simply has no spread yet.
+it costs nothing either, so a Recipe of singletons simply has no spread yet.
 
 **Three degrees of freedom.** With one or two, the estimate is worth less than
 the floor beside it: a sample standard deviation on 2 degrees of freedom has a
@@ -33,10 +33,10 @@ taken seriously by a reader who has no way of seeing how thin it is. So the
 number is still served — it is the only evidence there is — but it is flagged
 "not measured yet" and the floors are what a difference is held against.
 
-**Floors.** A conservative minimum per measure, so a young Set does not declare
+**Floors.** A conservative minimum per measure, so a young Recipe does not declare
 a 0.3 s difference significant. They are first numbers, to be tuned with use:
 they are constants here rather than settings because a person tuning them by
-hand would be tuning what counts as evidence, one Set at a time.
+hand would be tuning what counts as evidence, one Recipe at a time.
 
 **Two standard errors.** A difference between two means is held against the
 standard error of that difference, `spread * sqrt(1/n_this + 1/n_other)`, times
@@ -87,8 +87,8 @@ __all__ = [
 MEASURED_DEGREES_OF_FREEDOM = 3
 
 #: The smallest difference each measure is ever asked to take seriously. First
-#: numbers, to be tuned once there are enough Sets to tune them against —
-#: constants rather than settings, because tuning them per Set would be tuning
+#: numbers, to be tuned once there are enough Recipes to tune them against —
+#: constants rather than settings, because tuning them per Recipe would be tuning
 #: what counts as evidence.
 MEASURE_FLOORS: dict[SpreadMeasure, float] = {
     "shot_time_s": 2.0,
@@ -108,9 +108,9 @@ type Verdict = Literal["beyond", "inside", "no_data"]
 
 
 class CountedShot(BaseModel):
-    """One shot that counts towards a Set's spread, and what it measured.
+    """One shot that counts towards a Recipe's spread, and what it measured.
 
-    "Counts" is decided before this model: filed under a version of the Set, not
+    "Counts" is decided before this model: filed under a version of the Recipe, not
     quarantined, not incomplete, not labelled Discard. An unlabelled shot counts
     — it is plain data, and leaving it out would mean the spread depended on how
     diligent somebody had been about labelling.
@@ -130,7 +130,7 @@ class CountedShot(BaseModel):
     version_label: str = ""
 
     #: The version's recipe, which is what makes two shots repeats of each
-    #: other. Shots filed under a version after the Set went back to it join
+    #: other. Shots filed under a version after the Recipe went back to it join
     #: the group of its earlier shots, with no special case anywhere.
     profile_version_id: int | None = None
     grind_setting: str | None = None
@@ -194,7 +194,7 @@ class Spread:
     shots: int
     degrees_of_freedom: int
     #: Counted shots holding a value for this measure at all, repeats or not.
-    #: Not the same question as ``shots``: a Set whose every version has one
+    #: Not the same question as ``shots``: a Recipe whose every version has one
     #: shot records plenty of shot times and has no repeats, and a page that
     #: could not tell that from "this archive holds no such number" would drop
     #: the line instead of saying it is not measured yet.
@@ -313,7 +313,7 @@ class VersionEvidence(BaseModel):
     measures: list[MeasureEvidence]
     this: EvidenceCounts
     #: ``None`` for a version compared against nothing — the first version of a
-    #: Set, or one deliberately graded on the numbers it states. Its own side is
+    #: Recipe, or one deliberately graded on the numbers it states. Its own side is
     #: still worth showing: those are the numbers.
     other: EvidenceCounts | None = None
 
@@ -321,7 +321,7 @@ class VersionEvidence(BaseModel):
 def pooled_spreads(shots: Sequence[CountedShot]) -> dict[SpreadMeasure, Spread]:
     """Every measure's pooled within-recipe deviation, unrounded.
 
-    One entry per measure in the vocabulary, always, including the ones this Set
+    One entry per measure in the vocabulary, always, including the ones this Recipe
     holds nothing for: a caller that had to ask whether a key was there would
     end up with its own opinion about what "no data" looks like.
     """
@@ -388,12 +388,12 @@ def _repeat_groups(shots: Sequence[CountedShot]) -> list[list[CountedShot]]:
 
     The sort is load-bearing, and for one specific reason: :func:`_pool` adds
     each group's sum of squares onto a running total with ``+=``, which is a
-    left fold, and floating-point addition is not associative. A Set with one
+    left fold, and floating-point addition is not associative. A Recipe with one
     wildly scattered recipe and two tight ones totals differently depending on
     which group is added first, so the group order has to follow the data
     rather than however a query happened to return the rows. Sorting by shot id
     fixes both the order of the groups (first appearance) and the order within
-    each one. `tests/domain/test_spread.py` walks every permutation of a Set
+    each one. `tests/domain/test_spread.py` walks every permutation of a Recipe
     built to show it.
     """
     groups: dict[tuple[object, ...], list[CountedShot]] = {}
@@ -414,7 +414,7 @@ def _pool(groups: Sequence[Sequence[CountedShot]], measure: SpreadMeasure) -> Sp
         if len(values) < 2:
             # One value has no distance from its own mean. It is not an error
             # and not a zero: it simply contributes nothing, which is what lets
-            # a Set of many two-shot versions still produce a figure.
+            # a Recipe of many two-shot versions still produce a figure.
             continue
         mean = sum(values) / len(values)
         sum_of_squares += sum((value - mean) ** 2 for value in values)

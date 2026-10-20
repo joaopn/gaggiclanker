@@ -27,15 +27,15 @@ from gaggiclanker.api.deps import (
     DatabaseDep,
     JudgementsRepoDep,
     NotesRepoDep,
+    RecipesRepoDep,
     ReviewServiceDep,
     ReviewsRepoDep,
-    SetsRepoDep,
     ShotsRepoDep,
 )
 from gaggiclanker.db.repos.judgements import JudgementWrite, ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
+from gaggiclanker.db.repos.recipes import ProfileMatchSummary, SetVersionRow
 from gaggiclanker.db.repos.reviews import ShotReviewRow
-from gaggiclanker.db.repos.sets import ProfileMatchSummary, SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListItem, ShotSampleRow
 from gaggiclanker.domain.metric_language import Expression, Result
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
@@ -53,7 +53,7 @@ __all__ = ["router"]
 router = APIRouter(prefix="/shots", tags=["shots"])
 
 #: A page bigger than this is somebody scraping rather than browsing, and each
-#: row joins the Set, the notes and the judgement.
+#: row joins the Recipe, the notes and the judgement.
 MAX_LIMIT = 500
 
 #: The sorts the list accepts, spelled once and shared with the repository so
@@ -92,7 +92,7 @@ class ShotDetailData(BaseModel):
     shot: ShotDetailRow
     notes: DeviceShotNotesRow | None = None
     judgement: ShotJudgementRow | None = None
-    #: The Set version this shot is attached to, resolved. NULL is `needs_set`.
+    #: The Recipe version this shot is attached to, resolved. NULL is `needs_set`.
     set_version: SetVersionRow | None = None
     #: Every review of this shot, newest first, each with its claims. Sent with the shot
     #: rather than fetched separately because the Review box is on this page and a second
@@ -220,13 +220,15 @@ async def get_shot(
     shots: ShotsRepoDep,
     notes: NotesRepoDep,
     judgements: JudgementsRepoDep,
-    sets: SetsRepoDep,
+    recipes: RecipesRepoDep,
     reviews: ReviewsRepoDep,
 ) -> JSONResponse:
     shot = await shots.get(shot_id)
     if shot is None:
         raise NotFound(f"No shot {shot_id}")
-    version = None if shot.set_version_id is None else await sets.get_version(shot.set_version_id)
+    version = (
+        None if shot.set_version_id is None else await recipes.get_version(shot.set_version_id)
+    )
     served = (await shots.served([shot_id]))[shot_id]
     return envelope_response(
         ShotDetailData(
@@ -423,7 +425,7 @@ async def get_shot_raw(shot_id: int, shots: ShotsRepoDep) -> Response:
 
 # ---------------------------------------------------------------------------
 # The two things a person writes about a shot: what they thought of it, and
-# which Set it belongs to. Everything above this line is read-only.
+# which Recipe it belongs to. Everything above this line is read-only.
 # ---------------------------------------------------------------------------
 
 
@@ -489,7 +491,7 @@ async def delete_judgement(shot_id: int, judgements: JudgementsRepoDep) -> JSONR
     summary="Assign this shot to a Set version, or detach it",
 )
 async def put_set_version(
-    shot_id: int, body: SetVersionAssignment, shots: ShotsRepoDep, sets: SetsRepoDep
+    shot_id: int, body: SetVersionAssignment, shots: ShotsRepoDep, recipes: RecipesRepoDep
 ) -> JSONResponse:
     """The correction path, so unlike auto-assignment it overwrites.
 
@@ -499,7 +501,7 @@ async def put_set_version(
     """
     if await shots.get(shot_id) is None:
         raise NotFound(f"No shot {shot_id}")
-    if not await sets.assign_shot(shot_id, body.set_version_id):
+    if not await recipes.assign_shot(shot_id, body.set_version_id):
         raise Unprocessable(
             f"No Set version {body.set_version_id}",
             details={"field": "set_version_id", "message": "that Set version does not exist"},
@@ -529,7 +531,7 @@ class ProfileMatchRequest(BaseModel):
     summary="File shots that need a Set under the one Set that brews their profile",
 )
 async def post_profile_match(
-    body: ProfileMatchRequest, shots: ShotsRepoDep, sets: SetsRepoDep
+    body: ProfileMatchRequest, shots: ShotsRepoDep, recipes: RecipesRepoDep
 ) -> JSONResponse:
     """The button beside the `shotsProfileAutomatch` switch: the same rule, on demand.
 
@@ -540,7 +542,7 @@ async def post_profile_match(
         for shot_id in body.shot_ids:
             if await shots.get(shot_id) is None:
                 raise NotFound(f"No shot {shot_id}")
-    summary = await sets.match_unfiled(body.shot_ids)
+    summary = await recipes.match_unfiled(body.shot_ids)
     return envelope_response(summary.model_dump(mode="json"))
 
 

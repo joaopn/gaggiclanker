@@ -3,7 +3,7 @@
 This is the evidence half of the starting-point wizard. A starting point built only from the
 rule tier is a textbook answer: correct, general, and silent about the fact
 that *this* grinder runs two numbers finer than the chart says. A starting
-point anchored on a Set that was actually pulled on this hardware, with a bean
+point anchored on a Recipe that was actually pulled on this hardware, with a bean
 of the same roast and process, carries that calibration for free.
 
 crema does the same thing and does it in Python with a string-similarity hack
@@ -27,13 +27,13 @@ not how the cup was.
 
 **Decaf is a penalty rather than a filter.** Decaf is a different coffee
 hydraulically — it wants a few degrees less and usually grinds differently — so
-a decaf Set is weak evidence for a caffeinated bag and vice versa. But it is not
+a decaf Recipe is weak evidence for a caffeinated bag and vice versa. But it is not
 *no* evidence the way a different grinder is, and excluding it outright would
 leave a kitchen that drinks decaf in the evening with nothing to anchor on. So
-it costs two points, which is enough that an otherwise identical caffeinated Set
+it costs two points, which is enough that an otherwise identical caffeinated Recipe
 always wins.
 
-**The outcome term is the half nobody else has.** A Set version is not just a
+**The outcome term is the half nobody else has.** A Recipe version is not just a
 recipe, it is a recipe with shots attached and verdicts on them, so a version
 somebody rated 4.5 out of 5 is better evidence than an identically-specified
 one they abandoned at 2. It is scaled by how many shots back it up — one lucky
@@ -66,10 +66,10 @@ __all__ = [
     "OUTCOME_CONFIDENCE_SHOTS",
     "SimilarOutcome",
     "SimilarSet",
-    "similar_sets",
+    "similar_recipes",
 ]
 
-#: How many similar Sets the wizard is given. Three, which is crema's number
+#: How many similar Recipes the wizard is given. Three, which is crema's number
 #: and about the point where a fourth card stops being read.
 DEFAULT_LIMIT = 3
 
@@ -119,7 +119,7 @@ class SimilarSet(BaseModel):
     roast_match: str = "unknown"
     process_match: bool | None = None
     origin_match: bool | None = None
-    #: Whether this Set is on the same side of the decaf line. False costs two
+    #: Whether this Recipe is on the same side of the decaf line. False costs two
     #: points; the card shows it because "same roast, but decaf" is a sentence a
     #: reader needs before they copy the grind.
     decaf_match: bool = True
@@ -138,8 +138,8 @@ class SimilarSet(BaseModel):
     grind_value: float | None = None
     dose_g: float | None = None
     target_yield_g: float | None = None
-    #: The brew temperature that Set's profile states. Not a number anybody
-    #: typed: a Set version records none, because the machine heats to what the
+    #: The brew temperature that Recipe's profile states. Not a number anybody
+    #: typed: a Recipe version records none, because the machine heats to what the
     #: profile says.
     profile_temperature_c: float | None = None
     ratio: float | None = None
@@ -249,14 +249,14 @@ SELECT v.id                                         AS set_version_id,
   LEFT JOIN grinders g          ON g.id = s.grinder_id
   LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
  WHERE (:grinder_id IS NULL OR s.grinder_id = :grinder_id)
-   AND (:exclude_set_id IS NULL OR s.id <> :exclude_set_id)
+   AND (:exclude_recipe_id IS NULL OR s.id <> :exclude_recipe_id)
    AND (:exclude_bean_id IS NULL OR s.bean_id <> :exclude_bean_id)
  ORDER BY (attribute_score + outcome_score) DESC, o.shots DESC, v.id DESC
  LIMIT :limit
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
-async def similar_sets(
+async def similar_recipes(
     db: Database,
     *,
     roast_level: str | None,
@@ -264,29 +264,29 @@ async def similar_sets(
     origin: str | None,
     grinder_id: int | None,
     decaf: bool = False,
-    exclude_set_id: int | None = None,
+    exclude_recipe_id: int | None = None,
     exclude_bean_id: int | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[SimilarSet]:
-    """The best few past Set versions to anchor a new bean on.
+    """The best few past Recipe versions to anchor a new bean on.
 
     ``grinder_id`` is a filter rather than a score term, and deliberately: a
     grind number from a different grinder is not a weaker signal, it is a
     meaningless one, and putting it on a card next to "22" would invite
     somebody to dial 22 on the wrong grinder. ``None`` lifts the filter, which
-    is what a Set with no recorded grinder needs — the recipe is still worth
+    is what a Recipe with no recorded grinder needs — the recipe is still worth
     seeing, and the caller renders it without a grind number.
 
-    There is no machine term: the archive holds one, so every past Set was
+    There is no machine term: the archive holds one, so every past Recipe was
     brewed on the same boiler at the same offset and a filter on it would
     always match.
 
-    ``exclude_set_id`` keeps a Set out of its own suggestions, for the "suggest
-    a new version of this Set" caller. The wizard leaves it ``None``: a
+    ``exclude_recipe_id`` keeps a Recipe out of its own suggestions, for the "suggest
+    a new version of this Recipe" caller. The wizard leaves it ``None``: a
     previous bag of the same coffee is the *best* anchor there is.
 
-    ``exclude_bean_id`` leaves out every Set of one bean, for the design
-    conversation: it is shown that bean's own Sets in a section of their own,
+    ``exclude_bean_id`` leaves out every Recipe of one bean, for the design
+    conversation: it is shown that bean's own Recipes in a section of their own,
     and listing them twice would count the same evidence twice.
     """
     before, after = _neighbours(roast_level)
@@ -300,7 +300,7 @@ async def similar_sets(
             "origin": origin,
             "decaf": int(decaf),
             "grinder_id": grinder_id,
-            "exclude_set_id": exclude_set_id,
+            "exclude_recipe_id": exclude_recipe_id,
             "exclude_bean_id": exclude_bean_id,
             "confidence_shots": OUTCOME_CONFIDENCE_SHOTS,
             "limit": max(1, limit),

@@ -76,10 +76,10 @@ def _body(fixture: Fixture, **overrides: object) -> dict[str, object]:
     }
 
 
-# ── similar sets ─────────────────────────────────────────────────────
+# ── similar recipes ─────────────────────────────────────────────────────
 
 
-async def test_similar_sets_is_readable_without_spending_anything(
+async def test_similar_recipes_is_readable_without_spending_anything(
     api: tuple[FastAPI, httpx.AsyncClient, Fixture, FakeProvider],
 ) -> None:
     """The wizard's first step shows these before anybody presses a button."""
@@ -96,7 +96,7 @@ async def test_similar_sets_is_readable_without_spending_anything(
     assert provider.calls == [], "reading the archive costs no tokens"
 
 
-async def test_similar_sets_404s_for_a_bean_that_does_not_exist(
+async def test_similar_recipes_404s_for_a_bean_that_does_not_exist(
     api: tuple[FastAPI, httpx.AsyncClient, Fixture, FakeProvider],
 ) -> None:
     _app, client, _fixture, _provider = api
@@ -176,7 +176,7 @@ async def _run(client: httpx.AsyncClient, fixture: Fixture, **overrides: object)
     return run_id
 
 
-async def test_accepting_answers_201_with_the_set_and_its_version(
+async def test_accepting_answers_201_with_the_recipe_and_its_version(
     api: tuple[FastAPI, httpx.AsyncClient, Fixture, FakeProvider],
 ) -> None:
     _app, client, fixture, _provider = api
@@ -193,7 +193,7 @@ async def test_accepting_answers_201_with_the_set_and_its_version(
     assert data["draft"] is None
     assert data["run"]["accepted_option"] == "recommended"
 
-    # ... and the Set is where the Sets page will find it.
+    # ... and the Recipe is where the Recipes page will find it.
     listed = await client.get("/api/sets")
     assert any(row["id"] == data["set"]["id"] for row in listed.json()["data"]["items"])
 
@@ -234,7 +234,7 @@ async def test_accepting_twice_is_a_409(
     )
     assert second.status_code == 409
     # The refusal carries what the first accept made, so the UI can take the
-    # person there rather than showing them an error about a Set that exists.
+    # person there rather than showing them an error about a Recipe that exists.
     assert second.json()["error"]["details"]["set_id"]
 
 

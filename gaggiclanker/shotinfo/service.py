@@ -108,7 +108,7 @@ class TokenEstimates(BaseModel):
     glossary: int
     #: The extended half, in what the model is sent once, with a shot read in detail.
     glossary_extended: int
-    #: Base per shot times `recent_shots`: what a Set conversation's opening
+    #: Base per shot times `recent_shots`: what a Recipe conversation's opening
     #: context spends on its shots, on every turn.
     autoload: int | None
     #: The `chatRecentShots` setting.

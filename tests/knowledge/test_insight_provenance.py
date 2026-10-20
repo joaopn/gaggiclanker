@@ -1,12 +1,12 @@
-"""What a Set's insight rests on, and what happens when one replaces another.
+"""What a Recipe's insight rests on, and what happens when one replaces another.
 
 The rules pinned here, against the real file because most of them are a read or a
 write inside one transaction:
 
-* an insight rests on shots and on versions of **its own Set** that have a recorded
+* an insight rests on shots and on versions of **its own Recipe** that have a recorded
   outcome at the moment of writing; the outcome it had then never changes, the
   outcome now is read from the version every time;
-* an insight proposed as a replacement names an **added** insight of the same Set,
+* an insight proposed as a replacement names an **added** insight of the same Recipe,
   and the person's Add deletes the old one in the same transaction (or, when the old
   one has changed in the meantime, adds the new one as an ordinary insight and says so);
 * every delete path leaves nothing behind and nothing waiting on it;
@@ -88,7 +88,7 @@ class TestWhatItRestsOn:
         self, provenance: ProvenanceWorld
     ) -> None:
         insight_id = await _propose(provenance, versions=[provenance.v1])
-        await provenance.sets.clear_outcome(provenance.set_id, provenance.v1)
+        await provenance.recipes.clear_outcome(provenance.set_id, provenance.v1)
 
         row = await provenance.insights.get(insight_id)
         assert row is not None
@@ -159,7 +159,7 @@ class TestWhatItMayRestOn:
     async def test_a_shot_alone_is_enough(self, provenance: ProvenanceWorld) -> None:
         assert await _propose(provenance, shots=[provenance.shot1])
 
-    async def test_another_sets_version_is_refused(self, provenance: ProvenanceWorld) -> None:
+    async def test_another_recipes_version_is_refused(self, provenance: ProvenanceWorld) -> None:
         result = await provenance.insights.propose(
             InsightWrite(text="x", source="chat", set_id=provenance.set_id),
             version_ids=[provenance.stranger_version],
@@ -178,7 +178,7 @@ class TestWhatItMayRestOn:
     async def test_a_cleared_outcome_is_refused_at_the_moment_of_writing(
         self, provenance: ProvenanceWorld
     ) -> None:
-        await provenance.sets.clear_outcome(provenance.set_id, provenance.v1)
+        await provenance.recipes.clear_outcome(provenance.set_id, provenance.v1)
         result = await provenance.insights.propose(
             InsightWrite(text="x", source="chat", set_id=provenance.set_id),
             version_ids=[provenance.v1],
@@ -197,7 +197,7 @@ class TestWhatItMayRestOn:
 
 
 class TestReplacing:
-    async def test_it_names_an_added_insight_of_the_same_set(
+    async def test_it_names_an_added_insight_of_the_same_recipe(
         self, provenance: ProvenanceWorld
     ) -> None:
         old = await provenance.own("Old claim.")
@@ -216,7 +216,7 @@ class TestReplacing:
             ("waiting", "replaces_not_added"),
             ("dismissed", "replaces_not_added"),
             ("general", "replaces_general"),
-            ("other_set", "bad_replaces"),
+            ("other_recipe", "bad_replaces"),
             ("missing", "bad_replaces"),
         ],
     )
@@ -232,9 +232,9 @@ class TestReplacing:
             target = await provenance.insights.insert(
                 InsightWrite(text="General.", source="user", confirmed=True)
             )
-        elif case == "other_set":
+        elif case == "other_recipe":
             target = await provenance.own(
-                "Theirs.", set_id=provenance.stranger_set, version_id=provenance.stranger_version
+                "Theirs.", set_id=provenance.stranger_recipe, version_id=provenance.stranger_version
             )
         else:
             target = 9999
@@ -568,11 +568,11 @@ class TestTakingAnInsightBack:
         row = await provenance.deletions.get(provenance.set_id, proposal.id)
         assert row is not None and row.status == "stale"
         assert row.insight_text == "Doubtful claim." and row.insight_id == target
-        assert await provenance.deletions.waiting_for_set(provenance.set_id) == []
+        assert await provenance.deletions.waiting_for_recipe(provenance.set_id) == []
 
 
 class TestADamagedRow:
-    async def test_bad_json_reads_as_resting_on_nothing_and_never_errors_the_set(
+    async def test_bad_json_reads_as_resting_on_nothing_and_never_errors_the_recipe(
         self, provenance: ProvenanceWorld
     ) -> None:
         good = await _propose(provenance, "Good.", versions=[provenance.v1])
@@ -600,13 +600,13 @@ class TestTheLineListsOnlyShotsStillFiledHere:
         assert before is not None
         assert f"shots {provenance.shot1}, {provenance.shot2}" in before.render()
 
-        assert await provenance.sets.assign_shot(provenance.shot2, provenance.stranger_version)
+        assert await provenance.recipes.assign_shot(provenance.shot2, provenance.stranger_version)
 
         row = await provenance.insights.get(insight)
         assert row is not None
         line = row.render()
         assert f"shots {provenance.shot1}]" in line and f", {provenance.shot2}" not in line
-        # The stored evidence is untouched: the shot is simply no longer this Set's.
+        # The stored evidence is untouched: the shot is simply no longer this Recipe's.
         assert row.evidence_shot_ids == [provenance.shot1, provenance.shot2]
 
 

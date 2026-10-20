@@ -111,7 +111,7 @@ def configure_logging(level: str = "info", *, json_output: bool = True) -> None:
 
     # uvicorn's access log is silenced rather than reformatted: the request
     # middleware already logs one line per request, with the request id and the
-    # duration, and two lines per request is one too many. Set explicitly
+    # duration, and two lines per request is one too many. Recipe explicitly
     # because this function runs when uvicorn imports the app — after uvicorn
     # has applied its own `access_log=False`, which a blanket propagate=True
     # above would otherwise undo.

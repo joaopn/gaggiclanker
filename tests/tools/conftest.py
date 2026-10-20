@@ -1,6 +1,6 @@
 """A seeded archive and a tool context over it.
 
-The fixture is the review tests' — one Set, six judged shots, the whole
+The fixture is the review tests' — one Recipe, six judged shots, the whole
 knowledge base — because the tools are asked about the same shots a review is,
 and building a second archive would mean two places to keep the coffee facts
 consistent.
@@ -21,7 +21,7 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
 from gaggiclanker.tools.scope import ToolScope
-from tests.review.conftest import Fixture, build_fixture, give_the_set_its_profile
+from tests.review.conftest import Fixture, build_fixture, give_the_recipe_its_profile
 
 
 @pytest.fixture
@@ -37,9 +37,10 @@ async def tool_db(tmp_path: Path) -> AsyncIterator[Database]:
 
 @pytest.fixture
 async def archive(tool_db: Database) -> Fixture:
-    """The review tests' archive, with the Set brewing a profile of its own (a Set has one)."""
+    """The review tests' archive, with the Recipe brewing a profile of its own (a Recipe has
+    one)."""
     found = await build_fixture(tool_db)
-    await give_the_set_its_profile(found)
+    await give_the_recipe_its_profile(found)
     return found
 
 
@@ -61,13 +62,13 @@ def _context(archive: Fixture, settings: SettingsService, scope: ToolScope) -> T
 
 @pytest.fixture
 def ctx(archive: Fixture, settings: SettingsService) -> ToolContext:
-    """A general conversation: the whole archive, read-only, no Set."""
+    """A general conversation: the whole archive, read-only, no Recipe."""
     return _context(archive, settings, ToolScope())
 
 
 @pytest.fixture
-def set_ctx(archive: Fixture, settings: SettingsService) -> ToolContext:
-    """A conversation about the fixture Set: its tools, and nothing else's."""
+def recipe_ctx(archive: Fixture, settings: SettingsService) -> ToolContext:
+    """A conversation about the fixture Recipe: its tools, and nothing else's."""
     return _context(archive, settings, ToolScope.for_thread(archive.set_id))
 
 

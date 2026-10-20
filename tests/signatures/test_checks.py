@@ -24,7 +24,7 @@ from gaggiclanker.signatures.service import SignatureService
 from tests.lever_shot import LEVER_PROFILE, lever_shot, without_pressure, without_scale
 from tests.signatures.helpers import (
     add_shot,
-    make_set_versions,
+    make_recipe_versions,
     turbo_profile,
     turbo_shot,
 )
@@ -64,7 +64,7 @@ class Lever:
 
 async def _lever(db: Database) -> Lever:
     version = await _version(db, LEVER_PROFILE)
-    set_version, other = await make_set_versions(db, version)
+    set_version, other = await make_recipe_versions(db, version)
     shot = await add_shot(db, set_version_id=set_version, profile_version_id=version)
     return Lever(db, version, set_version, other, shot)
 
@@ -167,7 +167,7 @@ async def test_proposing_changes_every_shot_at_once_and_stores_nothing_on_a_shot
     ]
 
 
-async def test_an_override_changes_only_its_own_set_versions_shots(db: Database) -> None:
+async def test_an_override_changes_only_its_own_recipe_versions_shots(db: Database) -> None:
     lever = await _lever(db)
     other_shot = await add_shot(
         db,
@@ -186,7 +186,7 @@ async def test_an_override_changes_only_its_own_set_versions_shots(db: Database)
         reason="a coarser bean",
         thread_id=None,
     )
-    # In force at once, for this Set version's shots only.
+    # In force at once, for this Recipe version's shots only.
     mine, theirs = await _row(db, lever.shot), await _row(db, other_shot)
     assert mine.checks.badge == "decline: skipped +3"  # the ramp now holds at 1.3
     assert (
@@ -205,10 +205,10 @@ async def test_the_curve_check_sort_follows_the_badge_red_amber_grey_then_none(
 ) -> None:
     lever = await _lever(db)
     turbo_version = await _version(db, turbo_profile())
-    turbo_set, _ = await make_set_versions(db, turbo_version, target=42.0)
+    turbo_recipe, _ = await make_recipe_versions(db, turbo_version, target=42.0)
     turbo = await add_shot(
         db,
-        set_version_id=turbo_set,
+        set_version_id=turbo_recipe,
         profile_version_id=turbo_version,
         slog=turbo_shot(),
         profile=turbo_profile(),
@@ -251,7 +251,7 @@ async def test_the_curve_check_sort_follows_the_badge_red_amber_grey_then_none(
 
 async def test_a_turbo_with_its_fast_flow_expected_shows_no_amber(db: Database) -> None:
     version = await _version(db, turbo_profile())
-    set_version, _ = await make_set_versions(db, version, target=42.0)
+    set_version, _ = await make_recipe_versions(db, version, target=42.0)
     shot = await add_shot(
         db,
         set_version_id=set_version,
@@ -412,7 +412,7 @@ async def test_a_shot_with_no_pressure_sensor_cannot_fail_a_flow_or_pressure_exp
     db: Database,
 ) -> None:
     version = await _version(db, LEVER_PROFILE)
-    set_version, _ = await make_set_versions(db, version)
+    set_version, _ = await make_recipe_versions(db, version)
     shot = await add_shot(
         db,
         set_version_id=set_version,

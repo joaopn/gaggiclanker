@@ -56,7 +56,7 @@ from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.machines import MachineRepository, MachineRow, identity_to_upsert
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository, ShotState
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunRow, SyncRunUpdate
 from gaggiclanker.device.client import GaggimateClient, SlogFetch
@@ -258,7 +258,7 @@ class SyncEngine:
         self.shots = ShotsRepository(db)
         self.notes = NotesRepository(db)
         self.runs = SyncRepository(db)
-        self.sets = SetsRepository(db)
+        self.recipes = RecipesRepository(db)
         self.judgements = JudgementsRepository(db)
         self._machine: MachineRow | None = None
         self._shot_poke = _Poke()
@@ -476,7 +476,7 @@ class SyncEngine:
         There is always a row — the schema holds exactly one — so this is a
         write of the configured host onto it rather than a lookup that might
         miss. Pointing the container at a new address therefore moves the
-        machine rather than forking the archive: every shot, profile and Set
+        machine rather than forking the archive: every shot, profile and Recipe
         stays attached, which is the whole reason identity stopped being the
         host.
         """
@@ -856,11 +856,11 @@ class SyncEngine:
 
         shot.profile_version_id = None if version is None else version.id
         shot_id = await self.shots.insert(shot, samples)
-        # The user's half of the shot: which Set was this, and what did they
+        # The user's half of the shot: which Recipe was this, and what did they
         # think of it. Both are best-effort and neither can fail an ingest —
-        # the archive's job is to hold the bytes, and a Set that does not match
+        # the archive's job is to hold the bytes, and a Recipe that does not match
         # leaves the shot in the `needs_set` inbox rather than losing it.
-        match = await self.sets.profile_match(
+        match = await self.recipes.profile_match(
             shot_id,
             profile_version_id=shot.profile_version_id,
             device_profile_id=shot.profile_id_on_device,

@@ -9,7 +9,7 @@ from gaggiclanker.db.repos.signatures import OverrideRow, SignatureRepository
 from gaggiclanker.domain.signature import ExpectationInput, SignatureRefused
 from gaggiclanker.signatures.service import SignatureService
 from tests.lever_shot import LEVER_PROFILE
-from tests.signatures.helpers import make_set_versions
+from tests.signatures.helpers import make_recipe_versions
 from tests.signatures.test_carry import RAMP_CUP, _version
 
 
@@ -60,7 +60,7 @@ async def test_a_proposal_for_a_profile_version_that_is_not_stored_is_refused(db
 
 async def test_an_override_changes_only_the_numbers_of_a_measure_in_force(db: Database) -> None:
     version = await _version(db, LEVER_PROFILE)
-    first, _ = await make_set_versions(db, version)
+    first, _ = await make_recipe_versions(db, version)
     service = SignatureService(db)
     repo = SignatureRepository(db)
     measure, reached = await service.propose(
@@ -115,7 +115,7 @@ async def test_a_newer_override_replaces_the_same_expectations_and_refuses_anoth
     db: Database,
 ) -> None:
     version = await _version(db, LEVER_PROFILE)
-    first, _ = await make_set_versions(db, version)
+    first, _ = await make_recipe_versions(db, version)
     service = SignatureService(db)
     repo = SignatureRepository(db)
     measure, other = await service.propose(
@@ -149,7 +149,7 @@ async def test_a_newer_override_replaces_the_same_expectations_and_refuses_anoth
     # A version has one override at a time: another expectation's is refused and said.
     with pytest.raises(SignatureRefused, match="already has an override in force"):
         await propose(other.id, 0.3)
-    live = await repo.overrides_for_set_version(first, statuses=["confirmed"])
+    live = await repo.overrides_for_recipe_version(first, statuses=["confirmed"])
     assert [o.id for o in live] == [two.id]
     # What the person rejected is not put back by proposing exactly it again.
     await repo.reject_override(two.id, reason="no")

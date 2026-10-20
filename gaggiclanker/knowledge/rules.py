@@ -5,7 +5,7 @@ contract: the seed file declares what a rule applies to, and
 :func:`select_rules` is the only code that reads those declarations.
 
 **Selection is deterministic.** That is the acceptance criterion for this chunk
-and the reason none of this is SQL: given the same Set attributes, the same
+and the reason none of this is SQL: given the same Recipe attributes, the same
 detected style and the same diagnostic signals, two runs produce the same rule
 ids in the same order — (category rank, category, key). A prompt that quietly
 changed its knowledge between two runs would make "why did it say that" an
@@ -55,9 +55,9 @@ from gaggiclanker.domain.vocab import RULE_CATEGORIES
 
 __all__ = [
     "DEFAULT_RULES_FILE",
+    "RecipeContext",
     "RuleSeedError",
     "RuleSelection",
-    "SetContext",
     "load_seed_rules",
     "render_rules",
     "seed_rules",
@@ -91,13 +91,13 @@ class _SeedFile(BaseModel):
 
 
 @dataclass(frozen=True, slots=True)
-class SetContext:
-    """The Set attributes rule selection filters on.
+class RecipeContext:
+    """The Recipe attributes rule selection filters on.
 
     A flat record rather than the `SetRow`/`BeanRow` pair, because selection is
     also run by the tests and by a future chat turn that has the attributes but
-    not the rows, and because every field here is allowed to be unknown: a Set
-    with no grinder, a bag whose roaster printed no process, a shot with no Set
+    not the rows, and because every field here is allowed to be unknown: a Recipe
+    with no grinder, a bag whose roaster printed no process, a shot with no Recipe
     at all. ``None`` means "not stated", and a rule that filters on an unstated
     dimension does not match — saying nothing is better than reasoning from a
     guess.
@@ -237,7 +237,9 @@ async def seed_rules(repo: RulesRepository, path: Path | None = None) -> int:
     return changed
 
 
-def _matches(applies: dict[str, Any], context: SetContext, style: str, signals: set[str]) -> bool:
+def _matches(
+    applies: dict[str, Any], context: RecipeContext, style: str, signals: set[str]
+) -> bool:
     """Whether one rule's conditions hold. Every stated dimension must match."""
     if not applies:
         return True
@@ -271,7 +273,7 @@ def _matches(applies: dict[str, Any], context: SetContext, style: str, signals: 
 
 async def select_rules(
     repo: RulesRepository,
-    context: SetContext,
+    context: RecipeContext,
     style: str,
     signals: set[str] | list[str],
 ) -> RuleSelection:

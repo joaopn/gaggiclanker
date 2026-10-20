@@ -83,7 +83,7 @@ def test_no_read_method_name_suggests_a_write() -> None:
     explicitly rather than matched by prefix, which is what stops
     `save_settings` from ever looking like it belongs.
     """
-    forbidden = ("save", "delete", "write", "post", "set_", "update", "start_ota", "select")
+    forbidden = ("save", "delete", "write", "post", "recipe_", "update", "start_ota", "select")
     offenders = [
         name
         for name in public_methods() - set(GATED_WRITE_METHODS)

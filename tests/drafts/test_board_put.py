@@ -1,7 +1,7 @@
 """Putting a draft on the board is one action: the approval and the put together.
 
 The staged box had an Approve and then a Push; the board has a single "Put on the board",
-which carries what the push carried (the Set, and whether it is a major version). Every
+which carries what the push carried (the Recipe, and whether it is a major version). Every
 refusal here must leave the draft as it was: a refused put that had half approved it would be
 a draft the card no longer offers a click for.
 """
@@ -16,7 +16,13 @@ from fastapi import FastAPI
 
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
-from tests.drafts.helpers import APP_LABEL, draft_of, make_set_on, same_name_draft, set_version_ids
+from tests.drafts.helpers import (
+    APP_LABEL,
+    draft_of,
+    make_recipe_on,
+    recipe_version_ids,
+    same_name_draft,
+)
 from tests.drafts.test_board import (
     adopted,
     approve,
@@ -136,23 +142,23 @@ async def test_a_refused_put_leaves_the_draft_drafted_and_the_board_as_it_was(
     assert len((await get_board(client))["rows"]) == rows
 
 
-async def test_the_sets_version_and_the_major_choice_ride_on_the_put(
+async def test_the_recipes_version_and_the_major_choice_ride_on_the_put(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
     row = await variant_draft(app, client, "For a set", 8)
     first = await put(client, row)
-    set_id = await make_set_on(client, "One click set", first["current_version_id"])
+    set_id = await make_recipe_on(client, "One click set", first["current_version_id"])
     newer = await same_name_draft(app, client, provider, "For a set", 7)
     await app.state.db.execute(
         "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, newer["id"])
     )
     await pull(app)
-    before = await set_version_ids(app, set_id)
+    before = await recipe_version_ids(app, set_id)
 
     await put(client, newer, major=True)
 
-    assert len(await set_version_ids(app, set_id)) == len(before) + 1
+    assert len(await recipe_version_ids(app, set_id)) == len(before) + 1
     major = await app.state.db.fetch_value(
         "SELECT version_major FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at DESC, "
         "id DESC",
@@ -162,7 +168,7 @@ async def test_the_sets_version_and_the_major_choice_ride_on_the_put(
     run = await pull(app)
 
     assert run.status == "ok", run.error
-    assert len(await set_version_ids(app, set_id)) == len(before) + 1
+    assert len(await recipe_version_ids(app, set_id)) == len(before) + 1
     assert (await draft_status(client, newer))["status"] == "pushed"
 
 

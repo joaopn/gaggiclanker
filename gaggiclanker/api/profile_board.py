@@ -50,9 +50,9 @@ class BoardPut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     draft_id: int
-    #: Whether the new version of the profile's Set is a major one (when the profile has a Set);
-    #: ``None`` leaves the default, a minor. Strict: "yes" is not an answer to a question that
-    #: decides a version's name.
+    #: Whether the new version of the profile's Recipe is a major one (when the profile has a
+    #: Recipe); ``None`` leaves the default, a minor. Strict: "yes" is not an answer to a question
+    #: that decides a version's name.
     major: StrictBool | None = None
     #: The name for a new profile, stored with the approval. Refused for a change to an existing
     #: profile (a name never changes through a version), when empty, and when taken.
@@ -186,7 +186,7 @@ async def put_on_machine(row_id: int, body: OnMachineBody, board: BoardServiceDe
     """Person-only. The next sync puts the profile on the machine or takes it off; with the
     Writes switch off it is only stored. Nothing is sent to the machine here. No chat or MCP
     tool reaches it."""
-    row = await board.set_on_machine(row_id, body.on)
+    row = await board.recipe_on_machine(row_id, body.on)
     return envelope_response(row.model_dump(mode="json"))
 
 

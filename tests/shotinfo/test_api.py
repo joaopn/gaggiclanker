@@ -22,7 +22,7 @@ from gaggiclanker.shotinfo.catalogue import CATALOGUE, GROUP_NOTES, GROUPS, ITEM
 from gaggiclanker.shotinfo.downsample import CURVE_POINTS
 from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.shotinfo.render import load_shots, render_shot
-from tests.sets.test_api import data, error
+from tests.recipes.test_api import data, error
 from tests.shotinfo.conftest import SLOG, _insert
 
 

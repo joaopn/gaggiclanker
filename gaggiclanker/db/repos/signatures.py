@@ -1,4 +1,4 @@
-"""`profile_signatures`, `signature_expectations` and the Set-version overrides.
+"""`profile_signatures`, `signature_expectations` and the Recipe-version overrides.
 
 A signature is what one profile version is for, as a list of expectations a person
 has answered. This module is the only SQL for it, and each method keeps one of
@@ -20,11 +20,11 @@ these properties true.
 * **Positions are never reused**, so an expectation keeps its place in the list
   for good and the index is the writers' guard.
 
-* **An override is one live row per Set version** (a partial unique index) and
+* **An override is one live row per Recipe version** (a partial unique index) and
   changes nothing but a confirmed measure's `compare`. A newer override for the same
   expectation replaces the one in force; the replaced row is marked `withdrawn`, which is
   never the person's rejection (only `rejected` carries a person's reason to the agent). It is
-  found by Set version, never by expectation alone, so it cannot reach another version's shots.
+  found by Recipe version, never by expectation alone, so it cannot reach another version's shots.
 
 Nothing here is reachable from a tool except the two writes that *propose*
 (:meth:`add`, :meth:`add_override`), which put what they write in force; rejecting and
@@ -87,7 +87,7 @@ _POSITION_RETRIES = 4
 
 
 class AnotherOverrideInForce(Exception):
-    """A Set version has one override in force at a time, and it is for another expectation."""
+    """A Recipe version has one override in force at a time, and it is for another expectation."""
 
     def __init__(self, expectation_id: int) -> None:
         super().__init__(expectation_id)
@@ -196,7 +196,7 @@ class OverrideWrite(BaseModel):
 
 
 class OverrideRow(BaseModel):
-    """A Set version's override of one expectation's compare values."""
+    """A Recipe version's override of one expectation's compare values."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -247,7 +247,7 @@ class OverrideAnswer:
     row: OverrideRow | None = None
     #: ``no_override``; ``already_rejected`` / ``not_rejected`` (nothing to reject / restore);
     #: ``expectation_not_confirmed`` (an override of an expectation out of force cannot be put in
-    #: force); ``another_in_force`` (the Set version has a live override already).
+    #: force); ``another_in_force`` (the Recipe version has a live override already).
     refused: (
         Literal[
             "no_override",
@@ -518,7 +518,7 @@ class SignatureRepository(Repository):
         )
         return self.to_model(OverrideRow, row)
 
-    async def overrides_for_set_version(
+    async def overrides_for_recipe_version(
         self, set_version_id: int, *, statuses: Iterable[str] | None = None
     ) -> list[OverrideRow]:
         where: list[str] = ["recipe_version_id = ?"]
@@ -534,9 +534,12 @@ class SignatureRepository(Repository):
         )
         return self.to_models(OverrideRow, rows)
 
-    async def confirmed_overrides(self, set_version_ids: Iterable[int]) -> dict[int, OverrideRow]:
-        """The override in force of each Set version, by Set version: the only way one is found."""
-        ids = sorted(set(set_version_ids))
+    async def confirmed_overrides(
+        self, recipe_version_ids: Iterable[int]
+    ) -> dict[int, OverrideRow]:
+        """The override in force of each Recipe version, by Recipe version: the only way one is
+        found."""
+        ids = sorted(set(recipe_version_ids))
         if not ids:
             return {}
         rows = await self.db.fetch_all(
@@ -555,7 +558,7 @@ class SignatureRepository(Repository):
         return self.to_models(OverrideRow, rows)
 
     async def add_override(self, write: OverrideWrite) -> OverrideRow:
-        """Put an override in force, replacing the one the Set version has in force.
+        """Put an override in force, replacing the one the Recipe version has in force.
 
         The replaced row is marked ``withdrawn``: out of force, and not the person's rejection
         (a rejection and its reason are what the agent learns from). Check and write share one
@@ -564,7 +567,7 @@ class SignatureRepository(Repository):
         """
         async with self._transaction():
             now = utc_now()
-            for live in await self.overrides_for_set_version(
+            for live in await self.overrides_for_recipe_version(
                 write.set_version_id, statuses=["confirmed"]
             ):
                 if live.expectation_id != write.expectation_id:
@@ -596,7 +599,8 @@ class SignatureRepository(Repository):
             return row
 
     async def reject_override(self, override_id: int, *, reason: str = "") -> OverrideAnswer:
-        """Reject an override that is in force: the Set version reads the profile's limit again."""
+        """Reject an override that is in force: the Recipe version reads the profile's limit
+        again."""
         async with self._transaction():
             row = await self.get_override(override_id)
             if row is None:
@@ -613,7 +617,7 @@ class SignatureRepository(Repository):
 
     async def restore_override(self, override_id: int) -> OverrideAnswer:
         """Put a rejected override back in force, unless its expectation is out of force or the
-        Set version has another override in force now."""
+        Recipe version has another override in force now."""
         async with self._transaction():
             row = await self.get_override(override_id)
             if row is None:
@@ -623,7 +627,7 @@ class SignatureRepository(Repository):
             target = await self.get(row.expectation_id)
             if target is None or target.status != "confirmed":
                 return OverrideAnswer(refused="expectation_not_confirmed")
-            if await self.overrides_for_set_version(
+            if await self.overrides_for_recipe_version(
                 row.set_version_id, statuses=["proposed", "confirmed"]
             ):
                 return OverrideAnswer(refused="another_in_force")
@@ -636,9 +640,9 @@ class SignatureRepository(Repository):
                 return OverrideAnswer(refused="not_rejected")
             return OverrideAnswer(row=await self.get_override(override_id))
 
-    async def sets_using(self, profile_version_id: int) -> list[dict[str, Any]]:
-        """The Sets with a version on this profile version: where a person goes to ask for a
-        signature when it has none. The newest such version of each, live Sets first."""
+    async def recipes_using(self, profile_version_id: int) -> list[dict[str, Any]]:
+        """The Recipes with a version on this profile version: where a person goes to ask for a
+        signature when it has none. The newest such version of each, live Recipes first."""
         rows = await self.db.fetch_all(
             f"""
             SELECT st.id AS set_id, st.name AS set_name, st.archived AS archived,
@@ -655,7 +659,7 @@ class SignatureRepository(Repository):
         )
         return [row_to_dict(row) for row in rows]
 
-    async def set_of_version(self, set_version_id: int) -> int | None:
+    async def recipe_of_version(self, set_version_id: int) -> int | None:
         value = await self.db.fetch_value(
             "SELECT recipe_id FROM recipe_versions WHERE id = ?", (set_version_id,)
         )

@@ -2,7 +2,7 @@
 
 One waiting proposal per insight (a partial unique index, since the stdio child is a
 second process), a newer one replaces it, every answer is one transaction, and what
-may be named is an added insight of the same Set.
+may be named is an added insight of the same Recipe.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ class TestProposing:
             ("waiting", "not_added"),
             ("dismissed", "not_added"),
             ("general", "general"),
-            ("other_set", "bad_insight"),
+            ("other_recipe", "bad_insight"),
             ("missing", "bad_insight"),
         ],
     )
@@ -65,9 +65,9 @@ class TestProposing:
             target = await provenance.insights.insert(
                 InsightWrite(text="General.", source="user", confirmed=True)
             )
-        elif case == "other_set":
+        elif case == "other_recipe":
             target = await provenance.own(
-                "Theirs.", set_id=provenance.stranger_set, version_id=provenance.stranger_version
+                "Theirs.", set_id=provenance.stranger_recipe, version_id=provenance.stranger_version
             )
         else:
             target = 9999
@@ -76,7 +76,7 @@ class TestProposing:
 
         assert (result.refused, result.proposal) == (refusal, None)
 
-    async def test_the_conversation_must_be_this_sets(self, provenance: ProvenanceWorld) -> None:
+    async def test_the_conversation_must_be_this_recipes(self, provenance: ProvenanceWorld) -> None:
         target = await provenance.own("Doubtful claim.")
         result = await provenance.deletions.propose(
             provenance.set_id,
@@ -102,7 +102,7 @@ class TestProposing:
         assert second.replaced is not None and second.replaced.id == first.id
         old = await provenance.deletions.get(provenance.set_id, first.id)
         assert old is not None and old.status == "superseded"
-        waiting = await provenance.deletions.waiting_for_set(provenance.set_id)
+        waiting = await provenance.deletions.waiting_for_recipe(provenance.set_id)
         assert [row.id for row in waiting] == [second.proposal.id]  # type: ignore[union-attr]
 
     async def test_one_waits_per_insight_whatever_the_repository_says(
@@ -176,7 +176,7 @@ class TestAnswering:
         assert proposal is not None
         assert (await provenance.deletions.accept(provenance.set_id, 9999)).refused == "no_proposal"
         assert (
-            await provenance.deletions.accept(provenance.stranger_set, proposal.id)
+            await provenance.deletions.accept(provenance.stranger_recipe, proposal.id)
         ).refused == "no_proposal"
         assert await provenance.insights.get(target) is not None
 
@@ -231,7 +231,7 @@ class TestAnswering:
 
         await ChatRepository(provenance.db).delete_thread(provenance.thread)
 
-        assert await provenance.deletions.for_set(provenance.set_id) == []
+        assert await provenance.deletions.for_recipe(provenance.set_id) == []
         # The insight itself is the person's and stays.
         assert await provenance.insights.get(target) is not None
 

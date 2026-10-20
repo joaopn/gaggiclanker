@@ -47,7 +47,7 @@ from gaggiclanker.db.repos.profiles import (
     ProfilesRepository,
     ProfileVersionRow,
 )
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotInsert, ShotsRepository
 from gaggiclanker.domain.exports import (
     ShotExport,
@@ -183,7 +183,7 @@ class ImportService:
         self.profiles = ProfilesRepository(db)
         self.board = ProfileBoardRepository(db)
         self.notes = NotesRepository(db)
-        self.sets = SetsRepository(db)
+        self.recipes = RecipesRepository(db)
         self.judgements = JudgementsRepository(db)
 
     # ── the batch ────────────────────────────────────────────────────
@@ -426,7 +426,7 @@ class ImportService:
             # a better copy of a shot we already hold, and `replace_derived`
             # deliberately keeps its `set_version_id` — re-matching at that
             # point could move a shot the user had already filed by hand.
-            await self.sets.profile_match(
+            await self.recipes.profile_match(
                 shot_id,
                 profile_version_id=shot.profile_version_id,
                 device_profile_id=shot.profile_id_on_device,

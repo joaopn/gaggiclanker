@@ -1,7 +1,7 @@
-"""Duplicate a Set from one of its versions, and preview what the duplicate starts from.
+"""Duplicate a Recipe from one of its versions, and preview what the duplicate starts from.
 
 A duplicate copies a recipe, not a past: a new profile made from the version's profile by the one
-copy function, a new Set with its first version, an optional choice of the source Set's own
+copy function, a new Recipe with its first version, an optional choice of the source Recipe's own
 confirmed insights, and a note saying where it came from. These tests walk the two routes: the
 shape of each answer, that every refusal writes nothing, that the whole thing is one transaction,
 and that the copied insights are plain confirmed rows with no past.
@@ -17,12 +17,12 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, InsightWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.signatures.service import SignatureService
 from tests.drafts.conftest import BASE_LABEL, base_version_id, data, error
-from tests.drafts.helpers import make_set_on, make_set_on_a_free_profile
+from tests.drafts.helpers import make_recipe_on, make_recipe_on_a_free_profile
 from tests.drafts.test_board import adopted, get_board, pull, row_for
 from tests.profile_rows import database_of
 
@@ -31,15 +31,15 @@ __all__ = ["adopted"]  # the fixture, re-exported for this module
 Adopted = tuple[FastAPI, httpx.AsyncClient, FakeDevice]
 
 
-async def _set_with_version(
+async def _recipe_with_version(
     app: FastAPI, client: httpx.AsyncClient, name: str = "Guji"
 ) -> tuple[int, int]:
-    """A Set and its v1: (set id, version id). The first is on the base profile; a profile has at
-    most one Set, so any other is on the first profile that has none."""
+    """A Recipe and its v1: (recipe id, version id). The first is on the base profile; a profile has
+    at most one Recipe, so any other is on the first profile that has none."""
     if name == "Guji":
-        set_id = await make_set_on(client, name, await base_version_id(app, BASE_LABEL))
+        set_id = await make_recipe_on(client, name, await base_version_id(app, BASE_LABEL))
     else:
-        set_id = await make_set_on_a_free_profile(app, client, name)
+        set_id = await make_recipe_on_a_free_profile(app, client, name)
     detail = data(await client.get(f"/api/sets/{set_id}"))
     return set_id, int(detail["versions"][0]["version"]["id"])
 
@@ -110,11 +110,11 @@ async def _learned_at(app: FastAPI, insight_id: int, version_id: int | None) -> 
     )
 
 
-async def _no_profile_set(client: httpx.AsyncClient) -> tuple[int, int]:
-    """A Set that never named a profile: one an older version made (the API no longer does)."""
+async def _no_profile_recipe(client: httpx.AsyncClient) -> tuple[int, int]:
+    """A Recipe that never named a profile: one an older version made (the API no longer does)."""
     bean = data(await client.post("/api/beans", json={"name": "Bare", "roaster": "x"}))
-    made = await SetsRepository(database_of(client)).create(
-        SetWrite(name="Bare", bean_id=bean["id"]),
+    made = await RecipesRepository(database_of(client)).create(
+        RecipeWrite(name="Bare", bean_id=bean["id"]),
         SetVersionWrite(dose_g=18, grind_setting="22"),
     )
     detail = data(await client.get(f"/api/sets/{made.id}"))
@@ -124,16 +124,16 @@ async def _no_profile_set(client: httpx.AsyncClient) -> tuple[int, int]:
 # ── the preview ──────────────────────────────────────────────────────
 
 
-async def test_the_preview_is_the_suggested_name_the_recipe_and_the_sets_own_insights(
+async def test_the_preview_is_the_suggested_name_the_recipe_and_the_recipes_own_insights(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
-    other_set, _ = await _set_with_version(app, client, "Other")
+    set_id, version_id = await _recipe_with_version(app, client)
+    other_recipe, _ = await _recipe_with_version(app, client, "Other")
     first = await _insight(app, set_id, "Grind finer than 2.3 runs sour", source="user")
     await _insight(app, set_id, "Waiting for the person", confirmed=False)
     await _insight(app, set_id, "Turned down", dismissed=True)
-    await _insight(app, other_set, "Another Set's")
+    await _insight(app, other_recipe, "Another Set's")
     await _insight(app, None, "A general insight about natural Ethiopians")
     second = await _insight(app, set_id, "Preinfusion under 6 s channels")
     before = await _counts(app)
@@ -152,7 +152,7 @@ async def test_the_preview_is_the_suggested_name_the_recipe_and_the_sets_own_ins
         "target_yield_g": 36.0,
         "intent": "",
     }
-    # The Set's own confirmed, not dismissed ones, in the order the Set page lists them.
+    # The Recipe's own confirmed, not dismissed ones, in the order the Recipe page lists them.
     assert body["insights"] == [
         {"id": first, "text": "Grind finer than 2.3 runs sour", "source": "user"},
         {"id": second, "text": "Preinfusion under 6 s channels", "source": "chat"},
@@ -167,7 +167,7 @@ async def test_the_preview_lists_insights_by_version_newest_first_unversioned_th
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, v1 = await _set_with_version(app, client)
+    set_id, v1 = await _recipe_with_version(app, client)
     data(await client.post(f"/api/sets/{set_id}/versions", json={"dose_g": 18.5}))
     versions = {
         v["version"]["version_label"]: v["version"]["id"]
@@ -192,13 +192,13 @@ async def test_the_preview_lists_insights_by_version_newest_first_unversioned_th
     body = data(await _preview(client, set_id, v1))
 
     # The newest version's group first, each group oldest first, no version, then the copies:
-    # the Set page. The same fixture as the page's own test (`SetInsights.test.tsx`).
+    # the Recipe page. The same fixture as the page's own test (`RecipeInsights.test.tsx`).
     assert [item["id"] for item in body["insights"]] == [b, a, a2, loose, copy]
 
 
 async def test_a_version_with_no_profile_says_so_and_names_none(adopted: Adopted) -> None:
     _app, client, _fake = adopted
-    set_id, version_id = await _no_profile_set(client)
+    set_id, version_id = await _no_profile_recipe(client)
 
     body = data(await _preview(client, set_id, version_id))
 
@@ -208,12 +208,12 @@ async def test_a_version_with_no_profile_says_so_and_names_none(adopted: Adopted
 
 async def test_the_preview_answers_404_and_409_like_the_duplicate(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
-    _, other_version = await _set_with_version(app, client, "Kenya")
+    set_id, version_id = await _recipe_with_version(app, client)
+    _, other_version = await _recipe_with_version(app, client, "Kenya")
 
-    for url_set, url_version in ((9999, version_id), (set_id, 9999), (set_id, other_version)):
-        assert (await _preview(client, url_set, url_version)).status_code == 404
-        assert (await _duplicate(client, url_set, url_version, bean_id=1)).status_code == 404
+    for url_recipe, url_version in ((9999, version_id), (set_id, 9999), (set_id, other_version)):
+        assert (await _preview(client, url_recipe, url_version)).status_code == 404
+        assert (await _duplicate(client, url_recipe, url_version, bean_id=1)).status_code == 404
 
     await app.state.db.execute("UPDATE recipes SET designing = 1 WHERE id = ?", (set_id,))
     preview = await _preview(client, set_id, version_id)
@@ -226,11 +226,11 @@ async def test_the_preview_answers_404_and_409_like_the_duplicate(adopted: Adopt
 # ── the duplicate ────────────────────────────────────────────────────
 
 
-async def test_a_duplicate_is_a_new_set_on_a_new_profile_with_a_note_and_no_history(
+async def test_a_duplicate_is_a_new_recipe_on_a_new_profile_with_a_note_and_no_history(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, _ = await _set_with_version(app, client)
+    set_id, _ = await _recipe_with_version(app, client)
     data(await client.post(f"/api/sets/{set_id}/versions", json={"dose_g": 18.5, "intent": "more"}))
     detail = data(await client.get(f"/api/sets/{set_id}"))
     (v1,) = [
@@ -267,7 +267,7 @@ async def test_a_duplicate_is_a_new_set_on_a_new_profile_with_a_note_and_no_hist
     assert (row["on_machine"], row["starred"], row["row"]["origin"]) == (True, True, "draft")
     assert row["row"]["current_version_id"] == version["profile_version_id"]
     assert board["proposals"] == []
-    # The source Set is untouched, and still names its own profile.
+    # The source Recipe is untouched, and still names its own profile.
     after = data(await client.get(f"/api/sets/{set_id}"))
     assert len(after["versions"]) == 2 and after["set"]["copied_from"] is None
     assert after["versions"][0]["version"]["profile_version_id"] == base
@@ -283,7 +283,7 @@ async def test_the_new_profile_is_the_versions_profile_under_the_new_name(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     base = await base_version_id(app, BASE_LABEL)
 
     made = data(await _duplicate(client, set_id, version_id))["set"]
@@ -302,7 +302,7 @@ async def test_the_new_profile_is_the_versions_profile_under_the_new_name(
 
 async def test_the_signature_is_carried_to_the_new_profile(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     base = await base_version_id(app, BASE_LABEL)
     service = SignatureService(app.state.db)
     phase = (await service.phase_names(base) or [])[0]
@@ -322,7 +322,7 @@ async def test_duplicating_a_pinned_version_copies_the_profile_it_brews_not_the_
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     pin = data(await client.post(_url(set_id, version_id, "pin"), json={}))["pin"]
     base = await base_version_id(app, BASE_LABEL)
     assert pin["profile_version_id"] != base
@@ -338,7 +338,7 @@ async def test_duplicating_a_pinned_version_copies_the_profile_it_brews_not_the_
     assert original is not None and copy is not None and copy.profile and original.profile
     assert {**copy.profile, "label": ""} == {**original.profile, "label": ""}
     assert copy_id not in (base, pin["profile_version_id"])
-    # The new Set's version names the new profile, never the pin's frozen copy.
+    # The new Recipe's version names the new profile, never the pin's frozen copy.
     assert (
         int(
             await app.state.db.fetch_value(
@@ -354,7 +354,7 @@ async def test_a_name_freed_by_an_unpin_is_still_the_pins_and_cannot_be_the_new_
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     pin = data(await client.post(_url(set_id, version_id, "pin"), json={}))["pin"]
     data(await client.post(f"/api/pins/{pin['id']}/unpin"))
     before = await _counts(app)
@@ -368,7 +368,7 @@ async def test_a_name_freed_by_an_unpin_is_still_the_pins_and_cannot_be_the_new_
 
 async def test_a_duplicate_of_an_any_profile_version_has_no_profile(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _no_profile_set(client)
+    set_id, version_id = await _no_profile_recipe(client)
     before_profiles = int(await app.state.db.fetch_value("SELECT COUNT(*) FROM profile_board"))
 
     response = await client.post(
@@ -389,9 +389,9 @@ async def test_a_duplicate_of_an_any_profile_version_has_no_profile(adopted: Ado
     )
 
 
-async def test_the_copy_suggestion_is_a_valid_set_name_at_the_limit(adopted: Adopted) -> None:
+async def test_the_copy_suggestion_is_a_valid_recipe_name_at_the_limit(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     long_name = "L" * 199 + "z"
     await app.state.db.execute("UPDATE recipes SET name = ? WHERE id = ?", (long_name, set_id))
 
@@ -400,13 +400,13 @@ async def test_the_copy_suggestion_is_a_valid_set_name_at_the_limit(adopted: Ado
     assert len(suggested) == 200 and suggested.endswith(" (copy)")
     made = data(await _duplicate(client, set_id, version_id, set_name=suggested))["set"]
     assert made["name"] == suggested
-    short = data(await _preview(client, *(await _set_with_version(app, client, "Kenya"))))
+    short = data(await _preview(client, *(await _recipe_with_version(app, client, "Kenya"))))
     assert short["set_name"] == "Kenya (copy)"
 
 
 async def test_the_sentences_a_person_reads_are_person_worded(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     cases: list[tuple[dict[str, Any], str]] = [
         ({"set_name": " "}, "A Set needs a name."),
         ({"set_name": "x" * 201}, "A Set name is at most 200 characters."),
@@ -425,7 +425,7 @@ async def test_the_sentences_a_person_reads_are_person_worded(adopted: Adopted) 
     assert error(gone)["message"] == "That Set is not there any more."
     foreign = await _preview(client, set_id, 9999)
     assert error(foreign)["message"] == "That version is not one of this Set's."
-    _, other = await _set_with_version(app, client, "Other")
+    _, other = await _recipe_with_version(app, client, "Other")
     assert (
         error(await _preview(client, set_id, other))["message"]
         == foreign.json()["error"]["message"]
@@ -434,7 +434,7 @@ async def test_the_sentences_a_person_reads_are_person_worded(adopted: Adopted) 
 
 async def test_an_archived_source_may_be_duplicated(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     data(await client.post(f"/api/sets/{set_id}/archive"))
 
     made = data(await _duplicate(client, set_id, version_id))["set"]
@@ -447,7 +447,7 @@ async def test_the_new_profile_reaches_the_machine_through_the_ordinary_sync(
     adopted: Adopted,
 ) -> None:
     app, client, fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     data(await _duplicate(client, set_id, version_id))
 
     run = await pull(app)
@@ -458,7 +458,7 @@ async def test_the_new_profile_reaches_the_machine_through_the_ordinary_sync(
 
 async def test_a_new_bean_and_grinder_are_the_dialogs_not_the_sources(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     bean = data(await client.post("/api/beans", json={"name": "Kenya AA", "roaster": "x"}))
     grinder = data(
         await client.post("/api/grinders", json={"name": "Niche", "step_unit": "numbers"})
@@ -489,7 +489,7 @@ async def test_a_bad_field_is_unprocessable_and_writes_nothing(
     adopted: Adopted, body: dict[str, Any], field: str
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     before = await _counts(app)
 
     response = await _duplicate(client, set_id, version_id, **body)
@@ -502,7 +502,7 @@ async def test_a_profile_name_for_a_version_with_no_profile_is_unprocessable(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _no_profile_set(client)
+    set_id, version_id = await _no_profile_recipe(client)
     before = await _counts(app)
 
     response = await _duplicate(client, set_id, version_id, profile_name="Anything")
@@ -515,11 +515,11 @@ async def test_an_insight_that_is_not_one_of_the_previews_is_unprocessable(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
-    other_set, _ = await _set_with_version(app, client, "Other")
+    set_id, version_id = await _recipe_with_version(app, client)
+    other_recipe, _ = await _recipe_with_version(app, client, "Other")
     mine = await _insight(app, set_id, "Mine")
     foreign = [
-        await _insight(app, other_set, "Another Set's"),
+        await _insight(app, other_recipe, "Another Set's"),
         await _insight(app, None, "General"),
         await _insight(app, set_id, "Unconfirmed", confirmed=False),
         await _insight(app, set_id, "Dismissed", dismissed=True),
@@ -536,7 +536,7 @@ async def test_a_taken_profile_name_is_the_persons_sentence_and_writes_nothing(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     before = await _counts(app)
 
     for typed in (BASE_LABEL, BASE_LABEL.upper()):
@@ -553,7 +553,7 @@ async def test_a_profile_the_policy_would_change_is_refused_in_the_pins_words(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     await app.state.settings_service.apply({"profilePolicyPressureMaxBar": 7.5})
     before = await _counts(app)
 
@@ -572,11 +572,11 @@ async def test_a_profile_the_policy_would_change_is_refused_in_the_pins_words(
 # ── one transaction ──────────────────────────────────────────────────
 
 
-async def test_the_last_write_failing_undoes_the_profile_the_set_and_the_insights(
+async def test_the_last_write_failing_undoes_the_profile_the_recipe_and_the_insights(
     adopted: Adopted, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     ids = [await _insight(app, set_id, f"Insight {n}") for n in range(3)]
     before = await _counts(app)
     original = InsightsRepository.insert
@@ -606,7 +606,7 @@ async def test_the_last_write_failing_undoes_the_profile_the_set_and_the_insight
 
 async def test_copied_insights_are_plain_confirmed_rows_with_no_past(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     a = await _insight(app, set_id, "Grind finer than 2.3 runs sour", source="user")
     await _insight(app, set_id, "Not chosen")
     c = await _insight(app, set_id, "Preinfusion under 6 s channels", source="analysis")
@@ -621,7 +621,7 @@ async def test_copied_insights_are_plain_confirmed_rows_with_no_past(adopted: Ad
     rows = await app.state.db.fetch_all(
         "SELECT * FROM knowledge_insights WHERE recipe_id = ? ORDER BY id", (made["id"],)
     )
-    # In the order the source Set lists them, however the request named them.
+    # In the order the source Recipe lists them, however the request named them.
     assert [(r["text"], r["source"]) for r in rows] == [
         ("Grind finer than 2.3 runs sour", "user"),
         ("Preinfusion under 6 s channels", "analysis"),
@@ -642,7 +642,7 @@ async def test_copied_insights_are_plain_confirmed_rows_with_no_past(adopted: Ad
         == 3
     )
     insights = InsightsRepository(app.state.db)
-    assert [i.text for i in await insights.for_set(made["id"]) if i.set_id == made["id"]] == [
+    assert [i.text for i in await insights.for_recipe(made["id"]) if i.set_id == made["id"]] == [
         "Grind finer than 2.3 runs sour",
         "Preinfusion under 6 s channels",
     ]
@@ -658,7 +658,7 @@ async def test_no_insights_chosen_copies_none_and_a_repeated_id_copies_one(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     only = await _insight(app, set_id, "Only one")
 
     none = data(await _duplicate(client, set_id, version_id, profile_name="P1"))["set"]
@@ -696,7 +696,7 @@ async def test_a_copy_names_its_original_and_a_copy_of_a_copy_names_the_first(
     adopted: Adopted,
 ) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     first = await _insight(app, set_id, "One")
     second = await _insight(app, set_id, "Two")
     assert await _copy_flags(app, set_id) == [None, None]
@@ -719,7 +719,7 @@ async def test_a_copy_names_its_original_and_a_copy_of_a_copy_names_the_first(
         )
     )["set"]
 
-    # The first original, not the copy it was copied from, and the Set it was learned in.
+    # The first original, not the copy it was copied from, and the Recipe it was learned in.
     assert await _copy_flags(app, c["id"]) == [first, second]
     assert await _home_flags(app, b["id"]) == [set_id, set_id]
     assert await _home_flags(app, c["id"]) == [set_id, set_id]
@@ -733,7 +733,7 @@ async def test_a_copy_names_its_original_and_a_copy_of_a_copy_names_the_first(
 
 async def test_the_flag_outlives_its_original(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     only = await _insight(app, set_id, "Only")
     b = data(await _duplicate(client, set_id, version_id, insight_ids=[only]))["set"]
 
@@ -745,7 +745,7 @@ async def test_the_flag_outlives_its_original(adopted: Adopted) -> None:
 
 async def test_no_route_takes_the_flag_as_input(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     for field in ("copied_from_insight_id", "copied_from_set_id"):
         refused = await client.post("/api/knowledge/insights", json={"text": "x", field: 1})
         assert refused.status_code in (400, 422)
@@ -755,7 +755,7 @@ async def test_no_route_takes_the_flag_as_input(adopted: Adopted) -> None:
 
 async def test_an_edited_copy_keeps_its_flag(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     only = await _insight(app, set_id, "Grind finer than 2.3 runs sour")
     b = data(await _duplicate(client, set_id, version_id, insight_ids=[only]))["set"]
     (copy,) = [
@@ -859,7 +859,7 @@ async def test_duplicate_profile_refusals_write_nothing(adopted: Adopted) -> Non
 
 async def test_duplicate_profile_refuses_a_pins_copy(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     pin = data(await client.post(_url(set_id, version_id, "pin"), json={}))["pin"]
     before = await _counts(app)
 
@@ -869,9 +869,9 @@ async def test_duplicate_profile_refuses_a_pins_copy(adopted: Adopted) -> None:
     assert await _counts(app) == before
 
 
-async def test_profile_choices_list_the_taken_profiles_with_their_set(adopted: Adopted) -> None:
+async def test_profile_choices_list_the_taken_profiles_with_their_recipe(adopted: Adopted) -> None:
     app, client, _fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     data(await client.post(_url(set_id, version_id, "pin"), json={}))
     base = await base_version_id(app, BASE_LABEL)
 

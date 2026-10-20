@@ -1,4 +1,4 @@
-"""What a Set conversation is told about the grade and the insights it proposed.
+"""What a Recipe conversation is told about the grade and the insights it proposed.
 
 Two things pinned together. The positive: this version's conversation is told
 that its grade is waiting (so it does not repeat itself), and what the person did
@@ -6,7 +6,7 @@ with it, and the same for the insights it proposed. The negative, which is the
 rule: **nothing an agent graded reaches a later chat unless a person accepted
 it** — a waiting or dismissed grade appears in no other version's context, no
 ledger, no track record and no tool's output; those render byte-identical to the
-same Set without the proposals.
+same Recipe without the proposals.
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ from gaggiclanker.db.repos.outcome_proposals import (
     OutcomeProposalsRepository,
     OutcomeProposalWrite,
 )
-from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, track_record
+from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, track_record
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings_service import SettingsService
@@ -36,7 +36,7 @@ from tests.chat.test_context import Experiment
 #: The experiment fixture of the opening-context tests, re-exported so it is one archive.
 experiment = _base.experiment
 
-GOLDEN = Path(__file__).resolve().parent / "golden" / "set-chat-context-grade.txt"
+GOLDEN = Path(__file__).resolve().parent / "golden" / "recipe-chat-context-grade.txt"
 NOTE = "Time went up by 2.5 s against v2.1 (target 2 to 3 s); the finish is still drying."
 GRADE_HEADINGS = ("A GRADE YOU PROPOSED IS WAITING FOR THE PERSON", "THE LAST ANSWER TO YOUR GRADE")
 INSIGHT_HEADING = "INSIGHTS YOU PROPOSED IN THIS CONVERSATION"
@@ -105,13 +105,13 @@ class TestThisVersionsConversation:
         assert "do not propose it again" in text
 
     async def test_more_shots_since_are_said(self, experiment: Experiment) -> None:
-        from tests.sets.conftest import make_shot
+        from tests.recipes.conftest import make_shot
 
         grades = OutcomeProposalsRepository(experiment.db)
         await grades.create(experiment.set_id, experiment.v5, _grade())
-        sets = SetsRepository(experiment.db)
+        recipes = RecipesRepository(experiment.db)
         extra = await make_shot(experiment.db, "000950", started_at="2026-04-06T08:00:00.000Z")
-        assert await sets.assign_shot(extra, experiment.v5)
+        assert await recipes.assign_shot(extra, experiment.v5)
         from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 
         await JudgementsRepository(experiment.db).upsert(
@@ -273,7 +273,7 @@ class TestProposedInThisConversation:
         self, experiment: Experiment
     ) -> None:
         insights = InsightsRepository(experiment.db)
-        # What the one-time move leaves: agent-written, on the Set and version, no thread.
+        # What the one-time move leaves: agent-written, on the Recipe and version, no thread.
         await insights.insert(
             InsightWrite(
                 text="Moved, waiting.",
@@ -300,13 +300,13 @@ class TestProposedInThisConversation:
             )
             # An unconfirmed moved insight reaches no prompt at all.
             assert "Moved, waiting." not in text
-            # A confirmed one comes through the Set's selection and only that.
+            # A confirmed one comes through the Recipe's selection and only that.
             assert "[this Set, learned at v2.2] Moved, confirmed." in text
             assert INSIGHT_HEADING not in text
 
 
 class TestNothingUnansweredReachesAnyoneElse:
-    """Rule 3: byte-identical to the same Set without the proposals."""
+    """Rule 3: byte-identical to the same Recipe without the proposals."""
 
     async def _seed(self, experiment: Experiment) -> None:
         grades = OutcomeProposalsRepository(experiment.db)
@@ -361,19 +361,25 @@ class TestNothingUnansweredReachesAnyoneElse:
     async def test_the_ledger_and_the_track_record_read_recorded_outcomes_only(
         self, experiment: Experiment
     ) -> None:
-        sets = SetsRepository(experiment.db)
+        recipes = RecipesRepository(experiment.db)
         before_versions = [
-            v.model_dump(mode="json") for v in await sets.versions(experiment.set_id)
+            v.model_dump(mode="json") for v in await recipes.versions(experiment.set_id)
         ]
-        before_record = track_record(await sets.versions(experiment.set_id)).model_dump(mode="json")
+        before_record = track_record(await recipes.versions(experiment.set_id)).model_dump(
+            mode="json"
+        )
         await self._seed(experiment)
 
-        after_versions = [v.model_dump(mode="json") for v in await sets.versions(experiment.set_id)]
-        after_record = track_record(await sets.versions(experiment.set_id)).model_dump(mode="json")
+        after_versions = [
+            v.model_dump(mode="json") for v in await recipes.versions(experiment.set_id)
+        ]
+        after_record = track_record(await recipes.versions(experiment.set_id)).model_dump(
+            mode="json"
+        )
 
         assert after_versions == before_versions
         assert after_record == before_record
-        v5 = next(v for v in await sets.versions(experiment.set_id) if v.id == experiment.v5)
+        v5 = next(v for v in await recipes.versions(experiment.set_id) if v.id == experiment.v5)
         assert v5.outcome is None and v5.outcome_state == "open"
 
     async def test_no_tool_output_carries_a_proposed_grade(self, experiment: Experiment) -> None:
@@ -405,14 +411,14 @@ class TestNothingUnansweredReachesAnyoneElse:
     async def test_a_proposed_version_does_not_leak_a_grade_into_another_versions_context(
         self, experiment: Experiment
     ) -> None:
-        """The version proposal block is Set-wide, so it must not mention a waiting grade."""
+        """The version proposal block is Recipe-wide, so it must not mention a waiting grade."""
         await OutcomeProposalsRepository(experiment.db).create(
             experiment.set_id, experiment.v5, _grade("held")
         )
-        result = await SetProposalsRepository(experiment.db).create(
+        result = await RecipeProposalsRepository(experiment.db).create(
             experiment.set_id,
             ProposalWrite(
-                patch=SetVersionPatch(grind_setting="20"),
+                patch=RecipeVersionPatch(grind_setting="20"),
                 reason="one finer again",
                 prediction="Compared to v2.2: two seconds longer and a sweeter finish.",
             ),
@@ -451,10 +457,10 @@ async def test_the_context_with_a_grade_and_insights_matches_the_golden_file(
             await insights.set_confirmed(stored, True)
         if name == "dismissed":
             await insights.dismiss(stored)
-    await SetProposalsRepository(experiment.db).create(
+    await RecipeProposalsRepository(experiment.db).create(
         experiment.set_id,
         ProposalWrite(
-            patch=SetVersionPatch(grind_setting="20"),
+            patch=RecipeVersionPatch(grind_setting="20"),
             reason="one finer again",
             prediction="Compared to v2.2: two seconds longer and a sweeter finish.",
         ),

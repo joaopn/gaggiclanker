@@ -1,8 +1,8 @@
-"""Proposing a starting point, and turning the one somebody picked into a Set.
+"""Proposing a starting point, and turning the one somebody picked into a Recipe.
 
 Two halves, and they are deliberately far apart in time: `propose` spends a
 provider call and stores three options; `accept` is a button press that happens
-minutes or days later and creates exactly one Set.
+minutes or days later and creates exactly one Recipe.
 
 **`propose` is shaped exactly like a review** (`review/service.py`), for
 the same three reasons and with the same consequences:
@@ -19,18 +19,18 @@ the same three reasons and with the same consequences:
   `spawn`, so a second tab pressing the button gets the running row rather than
   a second paid call for the same bean on the same kit.
 
-**`accept` is where the money is.** It creates the Set and its first version
+**`accept` is where the money is.** It creates the Recipe and its first version
 with `origin='starting_point'` — the only origin that can appear on a version 1
 — and, when the chosen option needs one, a draft through
 `DraftProposals.create_manual`, which is what puts it through the schema, the
 safety policy and the clamp. A document the policy refuses is a 422 naming
-every violation, and the Set is **not** created: half-accepting an option would
-leave a Set pointing at a profile that does not exist.
+every violation, and the Recipe is **not** created: half-accepting an option would
+leave a Recipe pointing at a profile that does not exist.
 
 An option needs a draft in two cases: it authored a whole profile, or it picked
 one from the library and suggests a temperature that profile does not brew at.
 The second is not optional politeness — the machine heats to what the document
-says, a Set version records no temperature of its own, so the only way taking
+says, a Recipe version records no temperature of its own, so the only way taking
 an option can make its suggested temperature true is to draft the profile at
 it. Nothing is pushed either way; the person makes the proposal active from the Profiles
 page.
@@ -38,7 +38,7 @@ page.
 The accept is idempotent by refusal rather than by repetition, and the *order*
 is what makes that true: the run is claimed with a guarded UPDATE before
 anything is created, so of two concurrent accepts exactly one proceeds. One run
-yields one Set; the loser gets a 409 carrying the Set the winner made, which is
+yields one Recipe; the loser gets a 409 carrying the Recipe the winner made, which is
 the thing the person actually wants to be taken to. A claim whose work then
 fails — a profile document the policy refuses — is released again, so the other
 two options stay reachable.
@@ -56,12 +56,12 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
-from gaggiclanker.db.repos.sets import (
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeWrite,
     SetRow,
-    SetsRepository,
     SetVersionRow,
     SetVersionWrite,
-    SetWrite,
     VersionRefused,
     design_refusal_message,
 )
@@ -73,7 +73,7 @@ from gaggiclanker.db.repos.starting import (
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_policy import clamp
 from gaggiclanker.domain.profile_recipe import profile_recipe
-from gaggiclanker.domain.sets import grind_value, set_name
+from gaggiclanker.domain.recipes import grind_value, set_name
 from gaggiclanker.drafts.proposals import DraftProposals, PinnedCopyName, TakenName
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
@@ -102,7 +102,7 @@ STARTING_POINT_PROMPT = "starting_point"
 STARTING_POINT_USER_PROMPT = "starting_point-user"
 
 #: Published on the LLM bus, which the header's activity indicator is already
-#: watching — so a suggestion started in the Sets wizard shows up in a tab
+#: watching — so a suggestion started in the Recipes wizard shows up in a tab
 #: looking at something else.
 STARTING_POINT_EVENTS = (
     "starting_point.started",
@@ -128,10 +128,10 @@ def starting_point_task_name(bean_id: int, grinder_id: int | None) -> str:
 
 @dataclass(frozen=True, slots=True)
 class AcceptedStartingPoint:
-    """What an accept produced: the Set, its first version, and any draft."""
+    """What an accept produced: the Recipe, its first version, and any draft."""
 
     run: StartingPointRunRow
-    set_row: SetRow
+    recipe_row: SetRow
     version: SetVersionRow
     draft: ProfileDraftRow | None = None
 
@@ -172,7 +172,7 @@ class StartingPointService:
         self.bus = bus
         self.retry_delay_s = RETRY_DELAY_S
         self.runs = StartingPointRunsRepository(db)
-        self.sets = SetsRepository(db)
+        self.recipes = RecipesRepository(db)
         # Runs whose row is being opened right now, so a second request waits
         # for the first one's row instead of reading a database it has not
         # written to yet. Exactly the review service's `_opening` map, and it is held
@@ -401,13 +401,13 @@ class StartingPointService:
     # ── accepting ────────────────────────────────────────────────────
 
     async def accept(self, run_id: int, option_key: str) -> AcceptedStartingPoint:
-        """Turn one option into a Set, its first version and — maybe — a draft.
+        """Turn one option into a Recipe, its first version and — maybe — a draft.
 
         The order matters and is the reason this is not four independent
         writes. The draft is created **first**, because it is the step that can
         be refused: a profile document the safety policy will not allow is a 422
-        naming every violation, and it has to come back before a Set exists. A
-        Set pointing at a profile that was rejected is worse than no Set.
+        naming every violation, and it has to come back before a Recipe exists. A
+        Recipe pointing at a profile that was rejected is worse than no Recipe.
         """
         run = await self.runs.get(run_id)
         if run is None:
@@ -435,7 +435,7 @@ class StartingPointService:
         if option.profile_version_id is not None and await PinsRepository(self.db).is_copy(
             option.profile_version_id
         ):
-            # The wizard offers no copy, but a suggestion can still name one: a Set version never
+            # The wizard offers no copy, but a suggestion can still name one: a Recipe version never
             # names a pin's copy, so it is refused here, before a claim or a draft is made.
             raise Conflict(
                 design_refusal_message("profile_is_a_pin"),
@@ -446,7 +446,7 @@ class StartingPointService:
         # **Claim first, create second.** The read above is not a guard: two
         # requests can both see an unaccepted run and both get past it. The
         # guarded UPDATE is atomic, so exactly one of them proceeds to create
-        # anything — and the loser is refused before it has made a second Set
+        # anything — and the loser is refused before it has made a second Recipe
         # for one bean, which is what happens when the guard is the last write
         # rather than the first.
         if not await self.runs.claim(run_id, option_key):
@@ -454,9 +454,9 @@ class StartingPointService:
 
         try:
             draft = await self._draft_for(option)
-            set_row, version = await self._create_set(run, option, draft)
+            recipe_row, version = await self._create_recipe(run, option, draft)
         except BaseException:
-            # The claim was a promise to create a Set, and this is how one that
+            # The claim was a promise to create a Recipe, and this is how one that
             # could not be kept is withdrawn: a refused profile document must
             # leave the run acceptable again, or the other two options — which
             # may be perfectly fine — become unreachable for ever.
@@ -465,7 +465,7 @@ class StartingPointService:
 
         await self.runs.finish_accept(
             run_id,
-            set_id=set_row.id,
+            set_id=recipe_row.id,
             set_version_id=version.id,
             draft_id=draft.id if draft else None,
         )
@@ -474,12 +474,12 @@ class StartingPointService:
             "starting_point_accepted",
             run_id=run_id,
             option=option_key,
-            set_id=set_row.id,
+            set_id=recipe_row.id,
             draft_id=draft.id if draft else None,
         )
         return AcceptedStartingPoint(
             run=_require(await self.runs.get(run_id), run_id),
-            set_row=set_row,
+            recipe_row=recipe_row,
             version=version,
             draft=draft,
         )
@@ -503,7 +503,7 @@ class StartingPointService:
         """ "Somebody already took this", carrying what they made.
 
         The ids matter more than the message: the UI uses them to take the
-        person to the Set that exists rather than showing them an error about
+        person to the Recipe that exists rather than showing them an error about
         one they cannot see.
         """
         return Conflict(
@@ -530,7 +530,7 @@ class StartingPointService:
         option that points at a profile already in the library and suggests a
         different temperature from the one that profile brews at: the machine
         heats to what the document says, so taking that option without touching
-        the profile would file a Set whose stated temperature is not the one it
+        the profile would file a Recipe whose stated temperature is not the one it
         brews. See :meth:`_temperature_draft_for`.
         """
         if option.profile is None:
@@ -580,7 +580,7 @@ class StartingPointService:
 
         An option still suggests a temperature — the rule tier's advice about
         roast level is half of what this feature is for — and taking the option
-        has to make that temperature true. A Set version records none, so the
+        has to make that temperature true. A Recipe version records none, so the
         only place it can be true is the profile, and the only way to change a
         profile is a proposal somebody makes active. Nothing here reaches
         the machine: the person makes it active from the Profiles page exactly as
@@ -589,7 +589,7 @@ class StartingPointService:
         Nothing is staged when the two already agree, which is the common case
         for an option that picked the profile *because* it brews at the right
         temperature. A profile that states none (the firmware's 0) counts as
-        disagreeing: filing a Set that claims 94 °C against a document that
+        disagreeing: filing a Recipe that claims 94 °C against a document that
         names no temperature would be the same lie in a quieter form.
 
         **The words say what the draft carries, not what the option asked
@@ -659,17 +659,17 @@ class StartingPointService:
             ),
         )
 
-    async def _create_set(
+    async def _create_recipe(
         self,
         run: StartingPointRunRow,
         option: StartingPointOption,
         draft: ProfileDraftRow | None,
     ) -> tuple[SetRow, SetVersionRow]:
-        """The Set and its version 1.
+        """The Recipe and its version 1.
 
         The version points at the option's chosen profile when it named one, and
         at the **draft's** version when it authored one — the draft's document
-        is what the Set means from now on, even though nobody has pushed it to
+        is what the Recipe means from now on, even though nobody has pushed it to
         the machine yet. `intent` carries the option's rationale, trimmed: it is
         the sentence the timeline shows against version 1 for ever, and "the
         wizard suggested it" would be a worse answer than the reasoning itself.
@@ -681,8 +681,8 @@ class StartingPointService:
         intent = _intent(run, option, draft)
         name = set_name(run.bean_name, run.grinder_name)
         try:
-            stored = await self.sets.create(
-                SetWrite(
+            stored = await self.recipes.create(
+                RecipeWrite(
                     name=name,
                     bean_id=run.bean_id,
                     grinder_id=run.grinder_id,
@@ -704,7 +704,7 @@ class StartingPointService:
             # The repository refuses from inside its transaction; this is the person's answer.
             raise Conflict(refused.message, code=refused.code) from None
         version_id = stored.current_version_id
-        version = None if version_id is None else await self.sets.get_version(version_id)
+        version = None if version_id is None else await self.recipes.get_version(version_id)
         if version is None:  # pragma: no cover - create() writes version 1
             raise RuntimeError(f"Set {stored.id} was created without a version")
         return stored, version
@@ -770,7 +770,7 @@ def _intent(
     """Version 1's stated intent: the option's own reasoning, plus its links.
 
     The draft id is in here as text as well as in
-    `starting_point_runs.accepted_draft_id`, because the Set page renders the
+    `starting_point_runs.accepted_draft_id`, because the Recipe page renders the
     intent and the person reading it needs to know a profile is waiting for
     approval. The column is what code reads; this sentence is what a human does.
     """
@@ -794,7 +794,7 @@ def _post_process(
 
     The fourth is the one this feature adds: a `profile_version_id` naming a
     profile the model was not shown is **cleared**, not dropped-and-ignored. A
-    Set version pointing at an arbitrary profile id would silently change which
+    Recipe version pointing at an arbitrary profile id would silently change which
     shots auto-assignment attaches to it, and the option is still perfectly
     usable without a profile — it just means "keep what is selected".
     """
@@ -826,7 +826,7 @@ def _post_process(
                         option.similar_set_version_ids,
                         context.similar_version_ids,
                         context.bean.bean_id,
-                        "similar_sets",
+                        "similar_recipes",
                     ),
                 }
             )

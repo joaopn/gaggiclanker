@@ -9,7 +9,7 @@ The bug
 -------
 
 Settings → Shot information lets a person move any curve channel (pressure,
-puck flow, …) into base, which is what a Set conversation's opening context and
+puck flow, …) into base, which is what a Recipe conversation's opening context and
 the shot search show for every shot. The shot tools load a shot's samples when
 their tier carries a curve, but the opening context and `list_set_shots`
 loaded their shots without samples, so the curve the person asked for came out
@@ -19,7 +19,7 @@ autoload estimates did count it, so they overstated what a conversation sent.
 The fix: both load the samples, in one query for all their shots, exactly when
 the base tier carries a curve channel.
 
-Through the real app: a shot imported from the fixture export, filed in a Set,
+Through the real app: a shot imported from the fixture export, filed in a Recipe,
 pressure moved into base; then the opening context the runner builds and the
 search tool as the chat dispatches it. No model is needed for either.
 """
@@ -35,7 +35,7 @@ from typing import Any
 import httpx
 
 from gaggiclanker.chat.context import opening_context
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.main import create_app
 from gaggiclanker.settings import EnvSettings
@@ -97,7 +97,7 @@ async def main() -> int:
                 row["shot_id"] for row in imported["items"] if row.get("shot_id") is not None
             )
             version_id = made["current_version_id"]
-            assert await SetsRepository(db).assign_shot(shot_id, version_id)
+            assert await RecipesRepository(db).assign_shot(shot_id, version_id)
             await ShotInfoTiersRepository(db).set_tier(
                 ShotInfoTierWrite(item_key="curve_pressure", tier="base")
             )

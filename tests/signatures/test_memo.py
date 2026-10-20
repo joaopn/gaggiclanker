@@ -8,7 +8,7 @@ import dataclasses
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch
 from gaggiclanker.db.repos.shots import CHECK_SORT, ShotsRepository
 from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.domain.signature import ExpectationInput
@@ -16,13 +16,13 @@ from gaggiclanker.shotinfo.fields import shot_fields
 from gaggiclanker.signatures import checks as checks_module
 from gaggiclanker.signatures.service import SignatureService
 from tests.lever_shot import LEVER_PROFILE, lever_shot
-from tests.signatures.helpers import add_shot, derived_lever, make_set_versions
+from tests.signatures.helpers import add_shot, derived_lever, make_recipe_versions
 from tests.signatures.test_carry import RAMP_CUP, _version
 
 
 async def _signed(db: Database) -> tuple[int, int, int, int]:
     version = await _version(db, LEVER_PROFILE)
-    set_version, other = await make_set_versions(db, version)
+    set_version, other = await make_recipe_versions(db, version)
     shot = await add_shot(db, set_version_id=set_version, profile_version_id=version)
     rows = await SignatureService(db).propose(
         version,
@@ -112,13 +112,13 @@ async def test_whatever_a_result_depends_on_changing_is_a_different_answer(db: D
     )
     assert again.status == "confirmed"
     assert await _badge(db, shot) == "decline: skipped +2"
-    sets = SetsRepository(db)
-    longer = await sets.add_version(
-        (await repo.set_of_version(set_version)) or 0,
-        SetVersionPatch(target_yield_g=100.0, intent="a long shot"),
+    recipes = RecipesRepository(db)
+    longer = await recipes.add_version(
+        (await repo.recipe_of_version(set_version)) or 0,
+        RecipeVersionPatch(target_yield_g=100.0, intent="a long shot"),
     )
     assert longer is not None
-    assert await sets.assign_shot(shot, longer.id)
+    assert await recipes.assign_shot(shot, longer.id)
     # 42.2 g against 100 g is 42 % of target: over 15 %, and no override on this version.
     assert await _badge(db, shot) == "ramp: early yield +3"
 
@@ -181,7 +181,7 @@ async def test_the_list_and_the_fields_share_one_entry_per_shot(db: Database) ->
 async def test_a_replaced_copy_of_a_shot_is_not_served_from_the_memory(db: Database) -> None:
     """The importer's "a better copy": the samples change and the derived facts do not."""
     version = await _version(db, LEVER_PROFILE)
-    set_version, _ = await make_set_versions(db, version)
+    set_version, _ = await make_recipe_versions(db, version)
     shot = await add_shot(db, set_version_id=set_version, profile_version_id=version)
     service = SignatureService(db)
     await service.propose(
@@ -241,7 +241,7 @@ async def test_a_replaced_copy_of_a_shot_is_not_served_from_the_memory(db: Datab
 
 async def test_a_refiling_that_changes_only_the_dose_is_a_different_answer(db: Database) -> None:
     version = await _version(db, LEVER_PROFILE)
-    set_version, _ = await make_set_versions(db, version)
+    set_version, _ = await make_recipe_versions(db, version)
     shot = await add_shot(db, set_version_id=set_version, profile_version_id=version)
     await SignatureService(db).propose(
         version,
@@ -260,21 +260,24 @@ async def test_a_refiling_that_changes_only_the_dose_is_a_different_answer(db: D
         ],
         reason="r",
     )
-    sets = SetsRepository(db)
-    set_id = (await SignatureRepository(db).set_of_version(set_version)) or 0
-    # The same Set version's recipe but for the dose (a version with the same target and profile).
-    same_dose = await sets.add_version(
-        set_id, SetVersionPatch(grind_setting="15", intent="same dose")
+    recipes = RecipesRepository(db)
+    set_id = (await SignatureRepository(db).recipe_of_version(set_version)) or 0
+    # The same Recipe version's recipe but for the dose (a version with the same target and
+    # profile).
+    same_dose = await recipes.add_version(
+        set_id, RecipeVersionPatch(grind_setting="15", intent="same dose")
     )
-    bigger_dose = await sets.add_version(set_id, SetVersionPatch(dose_g=22.0, intent="more coffee"))
+    bigger_dose = await recipes.add_version(
+        set_id, RecipeVersionPatch(dose_g=22.0, intent="more coffee")
+    )
     assert same_dose is not None and bigger_dose is not None
     # 42.2 g over 18 g is 2.34, over the limit; over 22 g it is 1.92, within it.
     first = await _badge(db, shot)
     assert first is not None and first.startswith("ramp: early yield")
-    assert await sets.assign_shot(shot, bigger_dose.id)
+    assert await recipes.assign_shot(shot, bigger_dose.id)
     second = await _badge(db, shot)
     assert second is not None and second.startswith("ramp: fast flow")
-    assert await sets.assign_shot(shot, same_dose.id)
+    assert await recipes.assign_shot(shot, same_dose.id)
     assert await _badge(db, shot) == first
 
 
@@ -321,7 +324,7 @@ async def test_a_quarantined_shot_has_no_checks_and_logs_nothing(db: Database) -
             profile_version_id=version,
         )
     )
-    assert await SetsRepository(db).assign_shot(quarantined, set_version) in (True, False)
+    assert await RecipesRepository(db).assign_shot(quarantined, set_version) in (True, False)
     with structlog.testing.capture_logs() as logs:
         page = await shots.list_shots(limit=50, sort=CHECK_SORT, quarantined=True)
         document = await shot_fields(db, quarantined)
@@ -367,10 +370,10 @@ async def test_a_restored_expectation_is_not_served_the_old_answer(db: Database)
 async def test_what_the_shot_is_filed_under_is_part_of_the_key_even_when_the_shot_row_is_untouched(
     db: Database,
 ) -> None:
-    """The recipe of a Set version is immutable, but nothing here relies on that: a dose, a
+    """The recipe of a Recipe version is immutable, but nothing here relies on that: a dose, a
     target or a filing changed by a write that never touches the shot row is a different answer."""
     version = await _version(db, LEVER_PROFILE)
-    first, second = await make_set_versions(db, version)
+    first, second = await make_recipe_versions(db, version)
     shot = await add_shot(db, set_version_id=first, profile_version_id=version)
     service = SignatureService(db)
     ramp_expression = {

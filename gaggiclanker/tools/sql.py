@@ -1,7 +1,7 @@
 """The SQL sandbox: what ``query_shots`` may run, and how it is stopped.
 
 The SQL tool is the workhorse of the chat — "average flow-vs-target residual
-for the last ten shots per Set version" is one query and no bespoke endpoint —
+for the last ten shots per Recipe version" is one query and no bespoke endpoint —
 and it is also the only tool that runs text a language model wrote against the
 archive. Four layers stand between the two, in this order, and each exists
 because the one before it is not sufficient on its own:

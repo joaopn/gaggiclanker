@@ -1,9 +1,9 @@
 """A profile copied under a new name, through the draft constructor and the put.
 
-The copy is the foundation a pinned Set version and a duplicated Set stand on, so the properties
-it promises are pinned here: the document is the original's but for the label; the safety policy
-refuses a profile it would have to change; the name rule applies; nothing is left waiting; and
-nothing is recorded on a Set.
+The copy is the foundation a pinned Recipe version and a duplicated Recipe stand on, so the
+properties it promises are pinned here: the document is the original's but for the label; the safety
+policy refuses a profile it would have to change; the name rule applies; nothing is left waiting;
+and nothing is recorded on a Recipe.
 """
 
 from __future__ import annotations

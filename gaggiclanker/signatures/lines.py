@@ -2,9 +2,9 @@
 
 Two pieces, kept apart because they move differently.
 
-* **The signature itself**, in the profile block at the very top of the Set conversation's
+* **The signature itself**, in the profile block at the very top of the Recipe conversation's
   opening context (and the design conversation's fork block): the expectations **in force**
-  for the profile version, one line each, tier first, with the Set version's override in
+  for the profile version, one line each, tier first, with the Recipe version's override in
   force stated beside the limit it changes. An agent's proposal is in force at once, so the
   block moves when one is proposed, when a person rejects or restores one and when a profile
   version is carried; a new shot, a grade, a proposal of another kind, a version or a revert

@@ -3,7 +3,7 @@
 Through the dispatcher, like the other tools, because that is what the chat and
 the stdio server both use. What these pin: it grades the conversation's own
 version and no other, it records nothing, every refusal has a sentence of its
-own, and it exists in a Set's conversation only.
+own, and it exists in a Recipe's conversation only.
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from typing import Any
 
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
-from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionRow
+from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, SetVersionRow
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
+from tests.recipes.conftest import make_shot
 from tests.review.conftest import Fixture
-from tests.sets.conftest import make_shot
 from tests.tools.conftest import _context
 
 NOTE = "Time held at 31 s against 28 s; the sourness did not move; the yield held at 36 g."
@@ -38,10 +38,10 @@ async def refuse(ctx: ToolContext, name: str, **arguments: Any) -> dict[str, Any
 
 async def _predicted_version(archive: Fixture, *, shots: int = 1) -> SetVersionRow:
     """A version with a prediction and ``shots`` Keep shots filed under it."""
-    sets = SetsRepository(archive.db)
-    version = await sets.add_version(
+    recipes = RecipesRepository(archive.db)
+    version = await recipes.add_version(
         archive.set_id,
-        SetVersionPatch.model_validate(
+        RecipeVersionPatch.model_validate(
             {
                 "intent": "one click finer",
                 "grind_setting": "21",
@@ -53,7 +53,7 @@ async def _predicted_version(archive: Fixture, *, shots: int = 1) -> SetVersionR
     assert version is not None
     for number in range(shots):
         shot_id = await make_shot(archive.db, f"0009{number:02d}")
-        assert await sets.assign_shot(shot_id, version.id)
+        assert await recipes.assign_shot(shot_id, version.id)
         await JudgementsRepository(archive.db).upsert(
             shot_id, JudgementWrite.model_validate({"decision": "keep"})
         )
@@ -88,7 +88,7 @@ async def test_it_writes_a_waiting_card_and_records_nothing(
     assert "Nothing is recorded until the person accepts it" in data["note"]
     assert "2 counted shots" in data["note"]
     # Rule 1, at the tool: the version's outcome is untouched.
-    read = await SetsRepository(archive.db).get_version(version.id)
+    read = await RecipesRepository(archive.db).get_version(version.id)
     assert read is not None and read.outcome is None and read.outcome_state == "open"
     waiting = await OutcomeProposalsRepository(archive.db).waiting_for_version(version.id)
     assert waiting is not None and waiting.id == data["proposal_id"]
@@ -99,9 +99,9 @@ async def test_it_grades_the_conversations_own_version_and_no_other(
 ) -> None:
     """Rule 2. The version is the conversation's; there is no argument to name another."""
     other = await _predicted_version(archive)
-    mine = await SetsRepository(archive.db).add_version(
+    mine = await RecipesRepository(archive.db).add_version(
         archive.set_id,
-        SetVersionPatch.model_validate(
+        RecipeVersionPatch.model_validate(
             {"grind_setting": "20", "prediction": "Expect a little more body."}
         ),
     )
@@ -173,11 +173,11 @@ class TestRefusals:
     async def test_no_prediction_means_nothing_to_grade(
         self, archive: Fixture, settings: SettingsService
     ) -> None:
-        first = (await SetsRepository(archive.db).versions(archive.set_id))[0]
+        first = (await RecipesRepository(archive.db).versions(archive.set_id))[0]
         ctx = _in_version(archive, settings, first)
         data = await refuse(ctx, "propose_outcome", outcome="held", note=NOTE)
         assert "has no prediction, so there is nothing to grade" in data["detail"]
-        assert await OutcomeProposalsRepository(archive.db).for_set(archive.set_id) == []
+        assert await OutcomeProposalsRepository(archive.db).for_recipe(archive.set_id) == []
 
     async def test_no_counted_shot_yet(self, archive: Fixture, settings: SettingsService) -> None:
         version = await _predicted_version(archive, shots=0)
@@ -204,9 +204,9 @@ class TestRefusals:
         data = await refuse(ctx, "propose_outcome", outcome="held", note="it held")
         assert "A grade needs its reasons" in data["detail"]
         assert "at least 20 characters" in data["detail"]
-        assert await OutcomeProposalsRepository(archive.db).for_set(archive.set_id) == []
+        assert await OutcomeProposalsRepository(archive.db).for_recipe(archive.set_id) == []
 
-    async def test_a_conversation_of_no_set_of_this_one(
+    async def test_a_conversation_of_no_recipe_of_this_one(
         self, archive: Fixture, settings: SettingsService
     ) -> None:
         version = await _predicted_version(archive)
@@ -233,17 +233,17 @@ class TestWhereItExists:
         assert outcome.status == "refused"
         assert "designing a Set" in outcome.error
 
-    async def test_it_is_in_the_set_scope_and_nowhere_else(self) -> None:
-        from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
+    async def test_it_is_in_the_recipe_scope_and_nowhere_else(self) -> None:
+        from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, RECIPE_TOOLS
 
-        assert "propose_outcome" in SET_TOOLS
+        assert "propose_outcome" in RECIPE_TOOLS
         assert "propose_outcome" not in GENERAL_TOOLS | DESIGN_TOOLS
 
 
 class TestTheNextChangeAfterAGrade:
     """The tool-side twins of the repository rule: the same sentence, the same unlock."""
 
-    async def test_propose_set_version_is_refused_with_the_new_way_out(
+    async def test_propose_recipe_version_is_refused_with_the_new_way_out(
         self, archive: Fixture, settings: SettingsService
     ) -> None:
         version = await _predicted_version(archive)
@@ -274,9 +274,9 @@ class TestTheNextChangeAfterAGrade:
         )
         assert proposed["status"] == "proposed"
         # And nothing was recorded by proposing it.
-        read = await SetsRepository(archive.db).get_version(version.id)
+        read = await RecipesRepository(archive.db).get_version(version.id)
         assert read is not None and read.outcome is None
-        waiting = await SetProposalsRepository(archive.db).waiting(archive.set_id)
+        waiting = await RecipeProposalsRepository(archive.db).waiting(archive.set_id)
         assert waiting is not None
 
     async def test_the_draft_rule_is_the_same_rule(
@@ -319,10 +319,10 @@ async def test_proposing_the_next_version_still_needs_the_repository_to_agree(
     ).proposal
     assert stored is not None
     await grades.dismiss(archive.set_id, stored.id)
-    result = await SetProposalsRepository(archive.db).create(
+    result = await RecipeProposalsRepository(archive.db).create(
         archive.set_id,
         ProposalWrite(
-            patch=SetVersionPatch(grind_setting="20"),
+            patch=RecipeVersionPatch(grind_setting="20"),
             reason="finer",
             prediction="Compared to the last one: two to four seconds longer.",
         ),

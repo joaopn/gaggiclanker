@@ -19,7 +19,12 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
+    SetVersionWrite,
+)
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.models import Profile
@@ -33,7 +38,7 @@ from tests.lever_shot import (
     without_scale,
 )
 from tests.profile_rows import own_version
-from tests.sets.test_api import data
+from tests.recipes.test_api import data
 
 RAMP_CUP_SHARE = {
     "channel": "cup_weight",
@@ -52,7 +57,7 @@ async def file_lever(
     has_pressure: bool | None = None,
     clear_flag: bool = False,
 ) -> tuple[int, int, int]:
-    """The lever shot filed under a version: (shot id, set id, version id)."""
+    """The lever shot filed under a version: (shot id, recipe id, version id)."""
     db: Database = app.state.db
     profile, _ = await ProfilesRepository(db).ensure_version(
         Profile.model_validate(LEVER_PROFILE), owner=None
@@ -63,10 +68,10 @@ async def file_lever(
     grinder = await GrindersRepository(db).create(
         GrinderWrite(name="Constructed", step_unit="numbers")
     )
-    sets = SetsRepository(db)
+    recipes = RecipesRepository(db)
     await own_version(db, profile.id)
-    row = await sets.create(
-        SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
+    row = await recipes.create(
+        RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),
     )
     slog = lever_shot() if scale else without_scale(lever_shot())
@@ -86,7 +91,7 @@ async def file_lever(
     derived.shot.profile_version_id = profile.id
     shot = await ShotsRepository(db).insert(derived.shot, derived.samples)
     assert row.current_version_id is not None
-    assert await sets.assign_shot(shot, row.current_version_id)
+    assert await recipes.assign_shot(shot, row.current_version_id)
     return shot, row.id, row.current_version_id
 
 
@@ -166,15 +171,15 @@ async def test_relative_to_follows_the_filing_and_nothing_stored_moves(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     shot, set_id, _ = await file_lever(app)
-    sets = SetsRepository(app.state.db)
+    recipes = RecipesRepository(app.state.db)
     before = await ShotsRepository(app.state.db).get(shot)
     assert before is not None
     [first] = await evaluate(client, shot, [RAMP_CUP_SHARE])
-    other = await sets.add_version(
-        set_id, SetVersionPatch(target_yield_g=60.0, intent="a longer shot")
+    other = await recipes.add_version(
+        set_id, RecipeVersionPatch(target_yield_g=60.0, intent="a longer shot")
     )
     assert other is not None
-    assert await sets.assign_shot(shot, other.id)
+    assert await recipes.assign_shot(shot, other.id)
     [second] = await evaluate(client, shot, [RAMP_CUP_SHARE])
     assert first["value"] == round(RAMP_END_G / 36.0, 3)
     assert second["value"] == round(RAMP_END_G / 60.0, 3)

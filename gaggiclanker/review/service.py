@@ -7,7 +7,7 @@ on purpose:
     ->  close the row with its claims
 
 **A review writes one review and its claims, about one shot.** It opens the row and closes
-it, and touches no other table: no Set version, no insight, no draft, no conversation, no
+it, and touches no other table: no Recipe version, no insight, no draft, no conversation, no
 signature. Every claim it writes is kept (`confirmed`); what it says reaches the chat unless a
 person rejected the claim (:meth:`ReviewService.answer`, which also restores one).
 

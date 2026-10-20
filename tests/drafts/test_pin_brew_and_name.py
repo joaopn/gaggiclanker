@@ -34,8 +34,8 @@ async def test_the_copy_is_found_by_its_brew_and_its_pin_rows_name(adopted: Adop
     assert await pins.by_copy_content(copy.content_hash, NAME) is not None
     assert await pins.by_copy_content(copy.content_hash, BASE_LABEL) is None
     assert await pins.by_copy_content(copy.content_hash, "Another name") is None
-    assert await pins.set_version_naming_content(copy.content_hash, BASE_LABEL) is not None
-    assert await pins.set_version_naming_content(copy.content_hash, NAME) is None
+    assert await pins.recipe_version_naming_content(copy.content_hash, BASE_LABEL) is not None
+    assert await pins.recipe_version_naming_content(copy.content_hash, NAME) is None
 
 
 async def test_a_change_of_the_original_back_to_the_pinned_brew_is_not_the_pins_copy(

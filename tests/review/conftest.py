@@ -1,4 +1,4 @@
-"""A Set with six judged shots, a knowledge tier, and a review service on a fake provider.
+"""A Recipe with six judged shots, a knowledge tier, and a review service on a fake provider.
 
 Everything here is deterministic on purpose. The review input's whole claim is
 that two builds of the same shot produce byte-identical text — that is what the
@@ -7,8 +7,8 @@ checkable — so nothing in this fixture reads the clock, and the shots carry
 hand-written diagnostics rather than diagnostics derived from a `.slog`, whose
 numbers would move the day the diagnostics engine is tuned.
 
-The Set is also the shared archive the chat and tool tests read: five earlier
-shots in one Set, each judged, the sixth shot (the one a reading reads) judged
+The Recipe is also the shared archive the chat and tool tests read: five earlier
+shots in one Recipe, each judged, the sixth shot (the one a reading reads) judged
 in full, and three insights. Everything a reading must never see is here on
 purpose, so the tests that say it sees none of it have something to find.
 """
@@ -38,7 +38,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow, ShotsRepository
 from gaggiclanker.db.repos.signatures import ExpectationWrite, SignatureRepository
 from gaggiclanker.db.schema import create_schema
@@ -119,10 +119,10 @@ async def seeded(db: Database) -> Database:
     return db
 
 
-async def give_the_set_its_profile(found: Fixture) -> None:
-    """The fixture Set brews a profile of its own: a profile-list row that owns its version.
+async def give_the_recipe_its_profile(found: Fixture) -> None:
+    """The fixture Recipe brews a profile of its own: a profile-list row that owns its version.
 
-    A Set has one profile, so a conversation about it that drafts a change to its profile needs
+    A Recipe has one profile, so a conversation about it that drafts a change to its profile needs
     one. The review tests themselves need no row, which is why the fixture leaves it out.
     """
     from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
@@ -150,7 +150,7 @@ class Fixture:
     version_id: int
     profile_version_id: int
     #: Oldest first. `shots[-1]` is the one a review reads; the five before it
-    #: are the Set's history.
+    #: are the Recipe's history.
     shots: list[int]
 
 
@@ -335,7 +335,7 @@ _HISTORY: tuple[dict[str, Any], ...] = (
 
 @pytest.fixture
 async def fixture(seeded: Database) -> Fixture:
-    """One Set, six shots, six judgements and three insights."""
+    """One Recipe, six shots, six judgements and three insights."""
     return await build_fixture(seeded)
 
 
@@ -373,7 +373,8 @@ async def build_fixture(db: Database) -> Fixture:
     profile_version, _ = await ProfilesRepository(db).ensure_version(
         Profile.model_validate(document), owner=None
     )
-    # The Set brews a profile of its own (a Set has one): a profile-list row owning the version.
+    # The Recipe brews a profile of its own (a Recipe has one): a profile-list row owning the
+    # version.
     from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 
     await ProfileBoardRepository(db).insert(
@@ -384,8 +385,8 @@ async def build_fixture(db: Database) -> Fixture:
             on_machine=False,
         )
     )
-    stored_set = await SetsRepository(db).create(
-        SetWrite(
+    stored_recipe = await RecipesRepository(db).create(
+        RecipeWrite(
             name="Guji natural on the Niche",
             bean_id=bean.id,
             grinder_id=grinder.id,
@@ -399,7 +400,7 @@ async def build_fixture(db: Database) -> Fixture:
             intent="Baseline for this bag.",
         ),
     )
-    version_id = stored_set.current_version_id
+    version_id = stored_recipe.current_version_id
     assert version_id is not None
 
     shots_repo = ShotsRepository(db)
@@ -424,7 +425,7 @@ async def build_fixture(db: Database) -> Fixture:
                 diagnostics_json=_diagnostics(resistance=2.4, flow_rmse=0.41),
             )
         )
-        await SetsRepository(db).assign_shot(shot_id, version_id)
+        await RecipesRepository(db).assign_shot(shot_id, version_id)
         await judgements.upsert(
             shot_id,
             JudgementWrite(
@@ -457,7 +458,7 @@ async def build_fixture(db: Database) -> Fixture:
         ),
         _samples(),
     )
-    await SetsRepository(db).assign_shot(subject, version_id)
+    await RecipesRepository(db).assign_shot(subject, version_id)
     await judgements.upsert(
         subject,
         JudgementWrite(
@@ -473,8 +474,8 @@ async def build_fixture(db: Database) -> Fixture:
     )
     shot_ids.append(subject)
 
-    # Tier 3, both halves: one confirmed insight that applies to this Set (so
-    # the Set's conversation has something learned to read), one that is
+    # Tier 3, both halves: one confirmed insight that applies to this Recipe (so
+    # the Recipe's conversation has something learned to read), one that is
     # confirmed but scoped to a different grinder (so scoping is seen to
     # exclude something), and one unconfirmed proposal. A review reads none of
     # them, which is what its blind test looks for.
@@ -510,7 +511,7 @@ async def build_fixture(db: Database) -> Fixture:
         db=db,
         bean_id=bean.id,
         grinder_id=grinder.id,
-        set_id=stored_set.id,
+        set_id=stored_recipe.id,
         version_id=version_id,
         profile_version_id=profile_version.id,
         shots=shot_ids,
@@ -586,7 +587,8 @@ async def confirm_free_text(
 async def predict(
     fixture: Fixture, text: str = PREDICTION, *, compares_to: int | None = None
 ) -> None:
-    """Give the fixture's Set version a prediction (a version with shots refuses one by route)."""
+    """Give the fixture's Recipe version a prediction (a version with shots refuses one by
+    route)."""
     await fixture.db.execute(
         "UPDATE recipe_versions SET prediction = ?, compares_to_version_id = ? WHERE id = ?",
         (text, compares_to, fixture.version_id),
@@ -652,5 +654,5 @@ def rewire(app: FastAPI, provider: FakeProvider) -> None:
 
 
 async def build_app_fixture(app: FastAPI) -> Fixture:
-    """The conftest Set, built against the app's own handle so the routes see it."""
+    """The conftest Recipe, built against the app's own handle so the routes see it."""
     return await build_fixture(app.state.db)

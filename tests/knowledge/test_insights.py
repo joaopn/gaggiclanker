@@ -1,8 +1,8 @@
 """Tier 3: scope matching, confirmation, and what never reaches a prompt.
 
 The rule under test is one sentence — an insight applies when **every** key its
-scope states matches the Set — and the tests are mostly the ways that sentence
-can be got wrong: a partial scope that should still match, an attribute the Set
+scope states matches the Recipe — and the tests are mostly the ways that sentence
+can be got wrong: a partial scope that should still match, an attribute the Recipe
 does not state that must *not* match, and a scope key nobody recognises.
 """
 
@@ -43,7 +43,7 @@ def test_every_stated_key_must_match() -> None:
     assert not scope_matches({"grinder_id": 99}, GUJI)
 
 
-def test_an_attribute_the_set_does_not_state_never_matches() -> None:
+def test_an_attribute_the_recipe_does_not_state_never_matches() -> None:
     """Saying nothing beats reasoning from a guess — the tier 1 rule, again."""
     unknown = {**GUJI, "process": None}
     assert not scope_matches({"process": "natural"}, unknown)

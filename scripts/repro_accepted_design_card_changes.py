@@ -14,11 +14,11 @@ it becomes are drawn by the same function. For a change that is right before
 and after the person answers, because accepting appends a *new* version and
 leaves the base as it was.
 
-A Set being designed breaks that. Its first-recipe card is based on version 1,
+A Recipe being designed breaks that. Its first-recipe card is based on version 1,
 which is empty, so while the card waits the diff is the whole recipe. Accepting
 it fills version 1 *in place* with that same recipe, and from then on the base
 and the preview are equal: ``changes`` comes back empty. The card in the chat
-and on the Set page can only say "version 1 is set", and scrolling back through
+and on the Recipe page can only say "version 1 is set", and scrolling back through
 the design conversation no longer shows what was agreed.
 
 The fix is to diff a first-recipe card against an empty recipe whatever its
@@ -41,8 +41,8 @@ import httpx
 
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetVersionPatch
+from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import RecipeVersionPatch
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.main import create_app
 from gaggiclanker.settings import EnvSettings
@@ -104,14 +104,14 @@ async def main() -> int:
                         change_summary="Designed in chat.",
                     )
                 )
-                stored = await SetProposalsRepository(db).create(
+                stored = await RecipeProposalsRepository(db).create(
                     set_id,
                     ProposalWrite(
                         kind="design",
                         draft_id=draft.id,
                         thread_id=created["thread_id"],
                         reason="A longer, gentler shot for more body.",
-                        patch=SetVersionPatch(
+                        patch=RecipeVersionPatch(
                             profile_version_id=drafted.id,
                             grind_setting="20",
                             grind_value=20,

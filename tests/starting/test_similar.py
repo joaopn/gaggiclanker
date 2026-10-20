@@ -1,4 +1,4 @@
-"""The similar-Set query: what it scores, what it excludes, and in what order.
+"""The similar-Recipe query: what it scores, what it excludes, and in what order.
 
 The fixture is built so every assertion here is about one term of the score at a
 time — see `conftest.py` for the table and why each row is in it.
@@ -6,7 +6,7 @@ time — see `conftest.py` for the table and why each row is in it.
 
 from __future__ import annotations
 
-from gaggiclanker.starting.similar import SimilarSet, similar_sets
+from gaggiclanker.starting.similar import SimilarSet, similar_recipes
 from tests.starting.conftest import Fixture
 
 #: What the new bag is: light, washed, Kenyan. Spelled once, because every test
@@ -23,17 +23,17 @@ async def _for_the_new_bag(
     origin: str | None = _UNSET,
     decaf: bool = False,
     grinder_id: int | None = -1,
-    exclude_set_id: int | None = None,
+    exclude_recipe_id: int | None = None,
     exclude_bean_id: int | None = None,
 ) -> list[SimilarSet]:
-    return await similar_sets(
+    return await similar_recipes(
         fixture.db,
         roast_level="light" if roast_level is _UNSET else roast_level,
         process="washed" if process is _UNSET else process,
         origin="Kenya" if origin is _UNSET else origin,
         decaf=decaf,
         grinder_id=fixture.grinder_id if grinder_id == -1 else grinder_id,
-        exclude_set_id=exclude_set_id,
+        exclude_recipe_id=exclude_recipe_id,
         exclude_bean_id=exclude_bean_id,
         limit=5,
     )
@@ -52,10 +52,10 @@ async def test_the_best_match_is_the_one_that_matches_on_everything(fixture: Fix
 
 
 async def test_the_temperature_reported_is_the_profiles(fixture: Fixture) -> None:
-    """What that Set actually brewed at, not what somebody wrote on it.
+    """What that Recipe actually brewed at, not what somebody wrote on it.
 
     The card is read to copy numbers off, so this one has to be true: it is the
-    temperature in the profile the Set names. A Set naming no profile reports
+    temperature in the profile the Recipe names. A Recipe naming no profile reports
     none rather than a plausible default.
     """
     from gaggiclanker.db.repos.profiles import ProfilesRepository
@@ -98,7 +98,7 @@ async def test_an_adjacent_roast_scores_one_and_two_steps_away_scores_nothing(
 ) -> None:
     """`medium-dark` is two steps from `light`, so its roast term is zero.
 
-    The Brazil Set still appears — it matches on process — which is the point:
+    The Brazil Recipe still appears — it matches on process — which is the point:
     adjacency has to be an index step on the ordered scale rather than "not the
     same", or every roast level would score.
     """
@@ -119,7 +119,7 @@ async def test_an_adjacent_roast_scores_one_and_two_steps_away_scores_nothing(
 
 
 async def test_a_version_with_no_shots_is_never_offered(fixture: Fixture) -> None:
-    """The Untouched Set matches on all three attributes and has never been brewed.
+    """The Untouched Recipe matches on all three attributes and has never been brewed.
 
     On attributes alone it would tie with Kenya AA for first place. It is
     excluded outright, because the whole point of the query is to find results
@@ -130,7 +130,7 @@ async def test_a_version_with_no_shots_is_never_offered(fixture: Fixture) -> Non
 
 
 async def test_the_grinder_is_a_filter_not_a_score_term(fixture: Fixture) -> None:
-    """The Sumatra Set matches on everything and is on the other grinder.
+    """The Sumatra Recipe matches on everything and is on the other grinder.
 
     It has the best outcome in the archive, so if the grinder were merely
     weighted it would come first — and its grind setting, on a scale the user
@@ -199,15 +199,15 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     rows = await _for_the_new_bag(fixture)
     original = {row.set_version_id: row for row in rows}[fixture.versions["kenya"]]
 
-    # A second version of the same Set, with the same shots moved onto it,
-    # would change the first one's shot count — so copy the *Set* instead.
+    # A second version of the same Recipe, with the same shots moved onto it,
+    # would change the first one's shot count — so copy the *Recipe* instead.
     await fixture.db.execute(
         """
         INSERT INTO recipes (name, bean_id, grinder_id, archived, automatch, created_at)
         SELECT name || ' (copy)', bean_id, grinder_id, archived, 0, created_at
           FROM recipes WHERE id = ?
         """,
-        (fixture.sets["kenya"],),
+        (fixture.recipes["kenya"],),
     )
     copy_id = int(await fixture.db.fetch_value("SELECT last_insert_rowid()") or 0)
     await fixture.db.execute(
@@ -267,7 +267,7 @@ async def test_a_field_the_other_bean_leaves_empty_is_unknown_not_different(
     await fixture.db.execute(
         "UPDATE beans SET process = NULL, roast_level = NULL, origin = NULL"
         " WHERE id = (SELECT bean_id FROM recipes WHERE id = ?)",
-        (fixture.sets["kenya"],),
+        (fixture.recipes["kenya"],),
     )
     rows = await _for_the_new_bag(fixture)
     kenya = next(row for row in rows if row.set_version_id == fixture.versions["kenya"])
@@ -295,13 +295,13 @@ async def test_the_prompt_never_calls_an_unrecorded_field_different(fixture: Fix
     assert "why it is similar" not in rendered
 
 
-async def test_a_set_can_be_excluded_from_its_own_suggestions(fixture: Fixture) -> None:
-    rows = await _for_the_new_bag(fixture, exclude_set_id=fixture.sets["kenya"])
+async def test_a_recipe_can_be_excluded_from_its_own_suggestions(fixture: Fixture) -> None:
+    rows = await _for_the_new_bag(fixture, exclude_recipe_id=fixture.recipes["kenya"])
     assert fixture.versions["kenya"] not in {row.set_version_id for row in rows}
 
 
-async def test_one_bean_s_sets_can_be_left_out_altogether(fixture: Fixture) -> None:
-    """For the design conversation, which lists that bean's Sets in a block of their own."""
+async def test_one_bean_s_recipes_can_be_left_out_altogether(fixture: Fixture) -> None:
+    """For the design conversation, which lists that bean's Recipes in a block of their own."""
     every = await _for_the_new_bag(fixture)
     kenya = next(row for row in every if row.set_version_id == fixture.versions["kenya"])
 
@@ -321,19 +321,19 @@ async def test_a_quarantined_shot_does_not_count_as_evidence(fixture: Fixture) -
     assert fixture.versions["guji"] not in {row.set_version_id for row in rows}
 
 
-async def test_a_decaf_set_never_outranks_a_caffeinated_exact_match(fixture: Fixture) -> None:
+async def test_a_decaf_recipe_never_outranks_a_caffeinated_exact_match(fixture: Fixture) -> None:
     """Decaf is a penalty, not a filter — but a big enough one to settle ties.
 
     Decaf is a different coffee hydraulically. Excluding it outright would leave
     a kitchen that drinks decaf in the evening with nothing to anchor on, so it
-    costs two points: enough that an otherwise identical caffeinated Set always
-    wins, not so much that a decaf Set with real shots behind it disappears.
+    costs two points: enough that an otherwise identical caffeinated Recipe always
+    wins, not so much that a decaf Recipe with real shots behind it disappears.
     """
-    # Make the Guji Set decaf. On attributes it was second (roast only, 3);
+    # Make the Guji Recipe decaf. On attributes it was second (roast only, 3);
     # against a caffeinated bag it now scores 1.
     await fixture.db.execute(
         "UPDATE beans SET decaf = 1 WHERE id = (SELECT bean_id FROM recipes WHERE id = ?)",
-        (fixture.sets["guji"],),
+        (fixture.recipes["guji"],),
     )
     rows = await _for_the_new_bag(fixture)
     by_version = {row.set_version_id: row for row in rows}
@@ -343,7 +343,7 @@ async def test_a_decaf_set_never_outranks_a_caffeinated_exact_match(fixture: Fix
     # Still offered — it has shots behind it and is the only other light roast.
     assert rows[0].set_version_id == fixture.versions["kenya"]
 
-    # ... and for a decaf bag the sign flips: the decaf Set is now the match and
+    # ... and for a decaf bag the sign flips: the decaf Recipe is now the match and
     # every caffeinated one takes the penalty.
     for_decaf = await _for_the_new_bag(fixture, decaf=True)
     decaf_rows = {row.set_version_id: row for row in for_decaf}
@@ -355,7 +355,7 @@ async def test_a_decaf_set_never_outranks_a_caffeinated_exact_match(fixture: Fix
 async def test_a_decaf_mismatch_is_spelled_out_in_the_prompt(fixture: Fixture) -> None:
     """A card that looks like a match and is not has to say so.
 
-    A model that copies a decaf Set's grind for a caffeinated bag has been
+    A model that copies a decaf Recipe's grind for a caffeinated bag has been
     misled by the card, not by its own reasoning.
     """
     from gaggiclanker.starting.context import build_context
@@ -363,7 +363,7 @@ async def test_a_decaf_mismatch_is_spelled_out_in_the_prompt(fixture: Fixture) -
 
     await fixture.db.execute(
         "UPDATE beans SET decaf = 1 WHERE id = (SELECT bean_id FROM recipes WHERE id = ?)",
-        (fixture.sets["kenya"],),
+        (fixture.recipes["kenya"],),
     )
     context = await build_context(
         fixture.db,

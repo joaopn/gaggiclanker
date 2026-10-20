@@ -4,7 +4,7 @@ The document is deliberately *not* here. A draft's profile is a
 `profile_versions` row with `source = 'draft'`, exactly like a mirrored or an
 imported one, and :attr:`ProfileDraftRow.draft_version_id` points at it. Profile
 versions are content-hashed and immutable and shots resolve to them; a draft that
-becomes the profile a Set is brewed with has to be the same kind of thing as
+becomes the profile a Recipe is brewed with has to be the same kind of thing as
 every other profile in the archive, not a blob in a table every later join would
 have to special-case.
 
@@ -88,18 +88,18 @@ class ProfileDraftWrite(BaseModel):
     base_device_profile_id: str | None = None
     #: Who made the draft.
     made_by: Literal["agent", "edit"] | None = None
-    #: The Set this was proposed for, when it was proposed inside one Set's
+    #: The Recipe this was proposed for, when it was proposed inside one Recipe's
     #: conversation. It is what makes the prediction below mean something: a
     #: prediction is about one experiment, and pushing this draft for any other
-    #: Set records none.
+    #: Recipe records none.
     set_id: int | None = None
     #: What this profile change is expected to do differently. Empty for a draft
     #: nobody predicted anything about — one typed by hand, or proposed in a
-    #: conversation that is about no Set.
+    #: conversation that is about no Recipe.
     prediction: str = ""
-    #: Which version of that Set the prediction is measured against.
+    #: Which version of that Recipe the prediction is measured against.
     compares_to_version_id: int | None = None
-    #: The agent thinks recording this on its Set is a major version — a
+    #: The agent thinks recording this on its Recipe is a major version — a
     #: functional change to what the profile does rather than dialling in —
     #: and why. Only a suggestion: the push card preselects its box from it
     #: and the person decides.
@@ -126,18 +126,18 @@ class ProfileDraftRow(BaseModel):
     parent_draft_id: int | None = None
     base_device_profile_id: str | None = None
     made_by: Literal["agent", "edit"] | None = None
-    #: The Set this was proposed for, the prediction it carries, and the version
+    #: The Recipe this was proposed for, the prediction it carries, and the version
     #: that prediction is against. All three are empty on a draft nobody
     #: predicted anything about, which is most of them.
     set_id: int | None = None
     #: Joined, so a card can say which experiment this belongs to without a
-    #: second request. NULL when the Set has since been removed.
+    #: second request. NULL when the Recipe has since been removed.
     set_name: str | None = None
     prediction: str = ""
     compares_to_version_id: int | None = None
     #: The compared-to version's name, joined in: a reader thinks in "v1.1".
     compares_to_version_label: str | None = None
-    #: The agent's suggestion that recording this on its Set is a major
+    #: The agent's suggestion that recording this on its Recipe is a major
     #: version, and its reason. The push card preselects "Major change" from
     #: it; the person decides.
     suggest_major: bool = False
@@ -149,13 +149,13 @@ class ProfileDraftRow(BaseModel):
     is_new: bool = False
     #: What that version would be called as a minor ("v1.3") and as a major
     #: ("v2"): the push button names one of them, whichever the person ticks.
-    #: NULL without a Set. Filled by the repository from the same query the
+    #: NULL without a Recipe. Filled by the repository from the same query the
     #: insert numbers with, so the button and the record cannot disagree.
     set_next_minor_label: str | None = None
     set_next_major_label: str | None = None
-    #: The version of this draft's Set that making it active recorded, prediction and all, by
-    #: name ("v1.3"), and that Set's name. NULL for a draft whose profile has no Set, and for one
-    #: not made active yet. Read through `recorded_version_id`, which the put stores.
+    #: The version of this draft's Recipe that making it active recorded, prediction and all, by
+    #: name ("v1.3"), and that Recipe's name. NULL for a draft whose profile has no Recipe, and for
+    #: one not made active yet. Read through `recorded_version_id`, which the put stores.
     recorded_version_label: str | None = None
     recorded_set_name: str | None = None
     #: Whether the machine still holds the profile this was drafted from.
@@ -194,7 +194,7 @@ class ProfileDraftRow(BaseModel):
     #: predecessor alone or had none.
     replaced_device_profile_id: str | None = None
     replaced_version_id: int | None = None
-    #: The Set version making this draft active recorded, when it recorded one.
+    #: The Recipe version making this draft active recorded, when it recorded one.
     recorded_version_id: int | None = None
     #: The draft whose push removed this one's profile from the machine. Such a draft
     #: has nothing left to roll back.
@@ -314,10 +314,10 @@ class ProfileDraftsRepository(Repository):
         return None if draft is None else (await self._with_next_names([draft]))[0]
 
     async def _with_next_names(self, drafts: list[ProfileDraftRow]) -> list[ProfileDraftRow]:
-        """Fill in what the next version of each draft's Set would be called.
+        """Fill in what the next version of each draft's Recipe would be called.
 
         Asked of :func:`next_names`, the query the insert itself numbers with,
-        once per Set however many drafts share it. A draft with no Set has
+        once per Recipe however many drafts share it. A draft with no Recipe has
         nothing to name.
         """
         names: dict[int, tuple[str, str]] = {}
@@ -423,7 +423,7 @@ class ProfileDraftsRepository(Repository):
         return await self.get(draft_id)
 
     async def set_recorded_version(self, draft_id: int, version_id: int | None) -> None:
-        """Remember which Set version making this draft active recorded."""
+        """Remember which Recipe version making this draft active recorded."""
         await self.db.execute(
             "UPDATE profile_drafts SET recorded_version_id = ? WHERE id = ?", (version_id, draft_id)
         )
@@ -491,7 +491,7 @@ class ProfileDraftsRepository(Repository):
         """Discard these drafts, unless they have already been sent to the machine.
 
         For the callers that retire a draft because what it was proposed for
-        went away — its proposal was declined or overtaken, its Set discarded —
+        went away — its proposal was declined or overtaken, its Recipe discarded —
         inside a transaction they already hold. Only `draft` and `approved`
         move: a `pushed` or `failed` draft names a profile the display holds,
         and saying `discarded` about it would be the archive lying about the

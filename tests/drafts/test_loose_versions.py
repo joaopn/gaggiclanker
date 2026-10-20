@@ -4,7 +4,7 @@ A machine file no profile stands on (the whole machine while Writes are off), an
 waiting draft for a new profile, a pin's copy and a Duplicate's profile have no profile name, so
 each is its own version by brew **and** the name it carries: a second one with the same brew under
 another name is not the first. Only a profile's own versions are one by brew alone. Each test is a
-state the profile-owned reading of a brew would have broken: the Set on a machine file's version
+state the profile-owned reading of a brew would have broken: the Recipe on a machine file's version
 keeps its version, and the shots brewed on that file keep filing under it.
 """
 
@@ -19,7 +19,7 @@ import pytest
 
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
 from tests.drafts.conftest import BASE_LABEL, FIXTURES, base_profile, base_version_id, data
-from tests.drafts.helpers import assert_versions_owned, make_set_on, manual_draft
+from tests.drafts.helpers import assert_versions_owned, make_recipe_on, manual_draft
 from tests.drafts.test_board import WRITE_FRAMES, get_board, pull, put, row_for
 
 #: The file id the fixture shot 129 was brewed on.
@@ -72,7 +72,7 @@ async def test_a_copy_made_on_the_display_while_writes_are_off_is_not_the_origin
     app, client = writes_on
     await pull(app)
     nine = row_for(await get_board(client), BASE_LABEL)
-    await make_set_on(client, "Nine set", int(nine["row"]["current_version_id"]))
+    await make_recipe_on(client, "Nine set", int(nine["row"]["current_version_id"]))
     await app.state.settings_service.apply({"deviceWritesEnabled": False})
     twin = copy.deepcopy(next(p for p in fake_device.profiles if p["label"] == BASE_LABEL))
     twin.update(id=SHOT_FILE, label="9 Bar copy", favorite=False, selected=False)
@@ -100,7 +100,7 @@ async def test_an_import_with_a_machine_files_brew_under_another_name_is_not_its
 ) -> None:
     app, client = live
     loose = await base_version_id(app, BASE_LABEL)
-    await make_set_on(client, "Nine set", loose)
+    await make_recipe_on(client, "Nine set", loose)
     document = (await base_profile(app, BASE_LABEL)).model_dump(
         mode="json", exclude={"annotations", "id"}
     )
@@ -115,8 +115,8 @@ async def test_an_import_with_a_machine_files_brew_under_another_name_is_not_its
         ("created", "My Import")
     ]
     assert await owner_of(app, loose) is None
-    sets = await app.state.db.fetch_all("SELECT name, board_id FROM recipes")
-    assert [(r["name"], r["board_id"]) for r in sets] == [("Nine set", None)]
+    recipes = await app.state.db.fetch_all("SELECT name, board_id FROM recipes")
+    assert [(r["name"], r["board_id"]) for r in recipes] == [("Nine set", None)]
     await the_nine_bar_file_brews_shot_129(app, fake_device)
     assert await shot_filed_under(app, client) == "Nine set"
 
@@ -126,7 +126,7 @@ async def test_a_new_profile_with_a_machine_files_brew_under_another_name_is_its
 ) -> None:
     app, client = live
     loose = await base_version_id(app, BASE_LABEL)
-    await make_set_on(client, "Nine set", loose)
+    await make_recipe_on(client, "Nine set", loose)
     draft = await manual_draft(app, client, BASE_LABEL, "Fork", 9, same_document=True)
     assert draft["draft_version_id"] != loose
 
@@ -134,8 +134,8 @@ async def test_a_new_profile_with_a_machine_files_brew_under_another_name_is_its
 
     assert response.status_code == 201, response.text
     assert await owner_of(app, loose) is None
-    sets = await app.state.db.fetch_all("SELECT name, board_id FROM recipes")
-    assert [(r["name"], r["board_id"]) for r in sets] == [("Nine set", None)]
+    recipes = await app.state.db.fetch_all("SELECT name, board_id FROM recipes")
+    assert [(r["name"], r["board_id"]) for r in recipes] == [("Nine set", None)]
     await the_nine_bar_file_brews_shot_129(app, fake_device)
     assert await shot_filed_under(app, client) == "Nine set"
 
@@ -169,7 +169,7 @@ async def test_an_older_brew_under_the_current_name_is_matched_and_replaced(
     await assert_versions_owned(app.state.db)
 
 
-async def test_a_pin_of_a_set_version_on_a_machine_files_loose_version(
+async def test_a_pin_of_a_recipe_version_on_a_machine_files_loose_version(
     live: Any, fake_device: FakeDevice
 ) -> None:
     app, client = live
@@ -177,7 +177,7 @@ async def test_a_pin_of_a_set_version_on_a_machine_files_loose_version(
     nine["id"] = SHOT_FILE
     await pull(app)
     loose = await base_version_id(app, BASE_LABEL)
-    set_id = await make_set_on(client, "Nine set", loose)
+    set_id = await make_recipe_on(client, "Nine set", loose)
     v1 = data(await client.get(f"/api/sets/{set_id}"))["versions"][0]["version"]["id"]
 
     made = await client.post(f"/api/sets/{set_id}/versions/{v1}/pin", json={"label": "Pin A"})
@@ -196,7 +196,7 @@ async def test_a_pin_of_a_set_version_on_a_machine_files_loose_version(
     assert await shot_filed_under(app, client) == "Nine set"
 
 
-async def test_a_duplicate_of_a_set_on_a_machine_files_loose_version(
+async def test_a_duplicate_of_a_recipe_on_a_machine_files_loose_version(
     live: Any, fake_device: FakeDevice
 ) -> None:
     app, client = live
@@ -204,7 +204,7 @@ async def test_a_duplicate_of_a_set_on_a_machine_files_loose_version(
     nine["id"] = SHOT_FILE
     await pull(app)
     loose = await base_version_id(app, BASE_LABEL)
-    set_id = await make_set_on(client, "Nine set", loose)
+    set_id = await make_recipe_on(client, "Nine set", loose)
     detail = data(await client.get(f"/api/sets/{set_id}"))
     v1 = detail["versions"][0]["version"]["id"]
 
@@ -219,11 +219,11 @@ async def test_a_duplicate_of_a_set_on_a_machine_files_loose_version(
     )
 
     assert made.status_code == 201, made.text
-    sets = await app.state.db.fetch_all(
+    recipes = await app.state.db.fetch_all(
         "SELECT s.name, b.label FROM recipes s LEFT JOIN profile_board b ON b.id = s.board_id "
         "ORDER BY s.id"
     )
-    assert [(r["name"], r["label"]) for r in sets] == [
+    assert [(r["name"], r["label"]) for r in recipes] == [
         ("Nine set", None),
         ("Copy", "Blooming milk"),
     ]

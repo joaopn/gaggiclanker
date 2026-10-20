@@ -399,7 +399,7 @@ def test_the_mcp_config_carries_the_scope_when_there_is_one() -> None:
     assert env["GAGGICLANKER_MCP_SET_ID"] == "3"
 
 
-async def test_a_scoped_request_puts_the_set_in_the_generated_config() -> None:
+async def test_a_scoped_request_puts_the_recipe_in_the_generated_config() -> None:
     """The scope has to survive the whole way to the child's environment.
 
     Every other provider gets it through the tool context, because the loop

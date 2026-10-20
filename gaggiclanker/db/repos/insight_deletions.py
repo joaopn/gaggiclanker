@@ -1,6 +1,7 @@
-"""`set_insight_deletions` — an added insight the agent proposes to delete, waiting for the person.
+"""`recipe_insight_deletions` — an added insight the agent proposes to delete, waiting for the
+person.
 
-An insight the person added reaches every later conversation of its Set, so one
+An insight the person added reaches every later conversation of its Recipe, so one
 that the shots no longer support is a standing mistake in the agent's prompt. The
 agent may say so, with its reason, but **removing is the person's**: a row here is
 words and changes nothing until somebody presses Delete. Each method keeps one
@@ -20,8 +21,8 @@ property true.
   guard (the stdio child is a second process); a newer proposal marks the waiting
   one `superseded` in the same transaction.
 
-* **What may be named** is an *added* insight of this Set: never a waiting or
-  dismissed one, a general one, or another Set's.
+* **What may be named** is an *added* insight of this Recipe: never a waiting or
+  dismissed one, a general one, or another Recipe's.
 
 * **Every answer is one transaction.** The proposal is still waiting, the
   insight is still there and still added, and the write happens, in one go; a
@@ -120,7 +121,7 @@ _SELECT = "SELECT d.* FROM recipe_insight_deletions d"
 
 
 class InsightDeletionsRepository(Repository):
-    """Reads and writes the deletions an agent has proposed for a Set's insights."""
+    """Reads and writes the deletions an agent has proposed for a Recipe's insights."""
 
     def __init__(self, db: Database) -> None:
         super().__init__(db)
@@ -134,8 +135,8 @@ class InsightDeletionsRepository(Repository):
         )
         return self.to_model(InsightDeletionRow, row)
 
-    async def for_set(self, set_id: int, *, limit: int = 100) -> list[InsightDeletionRow]:
-        """Every deletion proposed on this Set, newest first."""
+    async def for_recipe(self, set_id: int, *, limit: int = 100) -> list[InsightDeletionRow]:
+        """Every deletion proposed on this Recipe, newest first."""
         rows = await self.db.fetch_all(
             f"{_SELECT} WHERE d.recipe_id = ? ORDER BY d.id DESC LIMIT ?", (set_id, limit)
         )
@@ -145,15 +146,15 @@ class InsightDeletionsRepository(Repository):
         """Every deletion this conversation proposed, however old, newest first.
 
         Uncapped on purpose: the chat's cards read their proposal from here, and a
-        card must find its row however many proposals the Set has had since.
+        card must find its row however many proposals the Recipe has had since.
         """
         rows = await self.db.fetch_all(
             f"{_SELECT} WHERE d.thread_id = ? ORDER BY d.id DESC", (thread_id,)
         )
         return self.to_models(InsightDeletionRow, rows)
 
-    async def waiting_for_set(self, set_id: int) -> list[InsightDeletionRow]:
-        """The ones still waiting, for the Set page's line on an insight."""
+    async def waiting_for_recipe(self, set_id: int) -> list[InsightDeletionRow]:
+        """The ones still waiting, for the Recipe page's line on an insight."""
         rows = await self.db.fetch_all(
             f"{_SELECT} WHERE d.recipe_id = ? AND d.status = 'proposed' ORDER BY d.id", (set_id,)
         )

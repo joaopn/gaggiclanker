@@ -1,17 +1,17 @@
-"""What the next version of a Set is called, and how a version's name is read in SQL.
+"""What the next version of a Recipe is called, and how a version's name is read in SQL.
 
-A Set version has a name (`version_major`.`version_minor`, "v1.1") and nothing
+A Recipe version has a name (`version_major`.`version_minor`, "v1.1") and nothing
 else of the kind: the name is an identifier, like a tag, not a position. What
-order the versions came in is `created_at`, and which one the Set is on is the
-Set's `current_version_id`. The name is assigned when the row is inserted and
+order the versions came in is `created_at`, and which one the Recipe is on is the
+Recipe's `current_version_id`. The name is assigned when the row is inserted and
 shown before that on every card and form that says what pressing its button
 will record ("Accept as v1.1"). Both come from :func:`next_numbers` here, so
 the number a button promises and the number the insert writes are one query.
 A minor continues the **current** version's major, so after a revert to v1.2 it
 is v1.3 (the next free minor of major 1), whatever else exists.
 
-This module imports nothing from the other repositories: the Sets repository
-writes versions, and the drafts and proposals repositories — which the Sets
+This module imports nothing from the other repositories: the Recipes repository
+writes versions, and the drafts and proposals repositories — which the Recipes
 repository itself imports — read the same numbers for their cards.
 """
 
@@ -23,7 +23,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.domain.sets import next_version_name, version_label
+from gaggiclanker.domain.recipes import next_version_name, version_label
 
 __all__ = [
     "NextNames",
@@ -40,8 +40,9 @@ __all__ = [
 def named_dump(row: BaseModel) -> dict[str, Any]:
     """A row as the agent is handed it: its versions by name (there is no ordinal).
 
-    A Set's "copied from" note is left out: it is where a Set's first recipe came from, a record
-    for the person's page, and the agent reasons from this Set's own shots and versions only.
+    A Recipe's "copied from" note is left out: it is where a Recipe's first recipe came from, a
+    record for the person's page, and the agent reasons from this Recipe's own shots and versions
+    only.
     """
     dumped: dict[str, Any] = row.model_dump(mode="json")
     dumped.pop("copied_from", None)
@@ -51,7 +52,7 @@ def named_dump(row: BaseModel) -> dict[str, Any]:
 def label_sql(alias: str) -> str:
     """The SQL for a version's label, off the `recipe_versions` row called ``alias``.
 
-    `domain/sets.py::version_label` in SQL: 'v' and the major, plus '.' and the
+    `domain/recipes.py::version_label` in SQL: 'v' and the major, plus '.' and the
     minor when the minor is above 0. NULL when the row is NULL (a LEFT JOIN
     that found nothing), because 'v' || NULL is NULL — "compared to nothing"
     stays nothing. The views in `db/schema.sql` repeat this text, and a test
@@ -65,7 +66,7 @@ def label_sql(alias: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class NextNumbers:
-    """The name the next version of a Set takes."""
+    """The name the next version of a Recipe takes."""
 
     major: int
     minor: int
@@ -87,8 +88,8 @@ def state_sql(current: str) -> str:
     """What numbering the next version needs, off the current version called ``current``.
 
     Three columns: the current version's major, the highest minor within that
-    major, and the Set's highest major. One text for the insert's own read
-    (:func:`next_numbers`) and for the Sets list, which serves every Set's next
+    major, and the Recipe's highest major. One text for the insert's own read
+    (:func:`next_numbers`) and for the Recipes list, which serves every Recipe's next
     names in its one query, so what a button promises and what the insert
     writes are the same arithmetic on the same columns.
     """
@@ -110,7 +111,7 @@ def names_from_state(
 ) -> NextNames:
     """What the next version would be called as a minor and as a major.
 
-    A Set being designed has an empty version 1 that the next write fills in
+    A Recipe being designed has an empty version 1 that the next write fills in
     place, so both answers are v1 there.
     """
     if designing:
@@ -129,7 +130,7 @@ def names_from_state(
 async def _state(db: Database, set_id: int) -> tuple[int, int, int]:
     """(current major, highest minor in it, highest major), zeros for none.
 
-    Off the Set's pointer, so a Set that went back to v1.2 numbers from v1.2.
+    Off the Recipe's pointer, so a Recipe that went back to v1.2 numbers from v1.2.
     """
     row = await db.fetch_one(
         f"""
@@ -167,7 +168,7 @@ async def next_numbers(db: Database, set_id: int, *, major: bool) -> NextNumbers
 
 
 async def next_names(db: Database, set_id: int) -> NextNames:
-    """What the next version of one Set would be called as a minor and as a major."""
+    """What the next version of one Recipe would be called as a minor and as a major."""
     designing = await db.fetch_value("SELECT designing FROM recipes WHERE id = ?", (set_id,))
     current_major, minor_max, major_max = await _state(db, set_id)
     return names_from_state(

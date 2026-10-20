@@ -2,7 +2,7 @@
 
 The golden file is `golden/starting-point-prompt.txt`, and it is the real check
 on this module: everything else here asserts one fact at a time, while the
-golden asserts that the whole document — the bag, the kit, three similar Sets
+golden asserts that the whole document — the bag, the kit, three similar Recipes
 with their outcomes, the profile library and the selected rules — comes out
 exactly as it did last time. A change to any of it is a diff in review.
 
@@ -84,7 +84,7 @@ async def test_a_bean_with_only_a_name_gives_the_model_only_its_name(fixture: Fi
     assert rendered == f"bean: Mystery\ntoday: {AS_OF}"
 
 
-def test_a_similar_set_s_bean_line_carries_only_what_its_bean_states() -> None:
+def test_a_similar_recipe_s_bean_line_carries_only_what_its_bean_states() -> None:
     def entry(**bean: object) -> SimilarSet:
         return SimilarSet(
             set_id=1,
@@ -121,14 +121,14 @@ async def test_the_usual_grind_reaches_the_prompt_and_its_absence_is_loud(
     assert "NOT GIVEN" in rendered
 
 
-async def test_the_planned_style_comes_from_the_closest_similar_set(
+async def test_the_planned_style_comes_from_the_closest_similar_recipe(
     fixture: Fixture,
 ) -> None:
     """A style so the ratio and time rules are selected at all.
 
     With nothing comparable in the archive it falls back to `classic`, and it
     says which of the two happened — because "we guessed" and "we read it off
-    your own Set" are different amounts of evidence.
+    your own Recipe" are different amounts of evidence.
     """
     context = await _build(fixture)
     assert context.planned_style != "unknown"  # type: ignore[attr-defined]
@@ -163,7 +163,7 @@ async def test_the_selected_rules_cover_the_categories_the_wizard_needs(
 
 async def test_the_only_signal_is_the_planned_style(fixture: Fixture) -> None:
     """No channeling band, no taste — there is no shot yet — and nothing about
-    the coffee: roast level, process and decaf are matched as Set attributes,
+    the coffee: roast level, process and decaf are matched as Recipe attributes,
     and neither a roast date nor a growing altitude is recorded any more."""
     context = await _build(fixture)
     signals = context.signals  # type: ignore[attr-defined]
@@ -202,11 +202,11 @@ async def test_an_empty_archive_says_so_rather_than_rendering_nothing(
     assert "Nothing comparable" in rendered
 
 
-async def test_the_candidates_are_the_active_versions_of_profiles_with_no_set(
+async def test_the_candidates_are_the_active_versions_of_profiles_with_no_recipe(
     fixture: Fixture,
 ) -> None:
-    """A profile a Set brews, a switched-off row, a utility profile and an older version of a free
-    profile are none of them what the wizard may offer."""
+    """A profile a Recipe brews, a switched-off row, a utility profile and an older version of a
+    free profile are none of them what the wizard may offer."""
     from gaggiclanker.starting.context import profile_candidates
     from tests.profile_rows import another_version, free_profile_version
 
@@ -225,7 +225,7 @@ async def test_the_candidates_are_the_active_versions_of_profiles_with_no_set(
     )
     await fixture.db.execute(
         "UPDATE recipes SET board_id = ? WHERE id = ?",
-        (held_board, next(iter(fixture.sets.values()))),
+        (held_board, next(iter(fixture.recipes.values()))),
     )
     off = await free_profile_version(fixture.db, "Switched off")
     await fixture.db.execute(

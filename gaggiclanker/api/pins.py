@@ -1,4 +1,4 @@
-"""Pin a Set version to the machine, preview the pin, unpin it.
+"""Pin a Recipe version to the machine, preview the pin, unpin it.
 
 Person-only: these routes are the only way in. The pin service is built over the board service,
 which the chat tools and the MCP server are never handed, and nothing here writes to the machine

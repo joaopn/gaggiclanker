@@ -13,9 +13,9 @@ closed vocabulary (`gaggiclanker/domain/vocab.py`), because a rule keyed on
 "medium-light" cannot match "med light".
 
 Archiving is how a coffee is retired. A coffee you have stopped buying is still
-the coffee a hundred shots were pulled with, and a Set that points at it must
+the coffee a hundred shots were pulled with, and a Recipe that points at it must
 keep resolving. Deleting is for a bean nobody used — a typo, a duplicate — and
-is refused while any Set points at it.
+is refused while any Recipe points at it.
 """
 
 from __future__ import annotations
@@ -107,19 +107,19 @@ class BeanRow(BeanWrite):
     id: int
     archived: bool = False
     created_at: str
-    #: How many Sets point at this bean. The archive button asks before it hides
+    #: How many Recipes point at this bean. The archive button asks before it hides
     #: a bean that is still in use, and a delete would have to refuse.
     set_count: int = 0
 
 
 class BeanDeletion(BaseModel):
-    """What a delete did: nothing to delete, refused because Sets use it, or done."""
+    """What a delete did: nothing to delete, refused because Recipes use it, or done."""
 
     model_config = ConfigDict(extra="forbid")
 
     found: bool
     deleted: bool
-    #: The Sets that pointed at the bean when the delete was asked for; a
+    #: The Recipes that pointed at the bean when the delete was asked for; a
     #: refusal names the number so the person knows why.
     set_count: int = 0
 
@@ -213,11 +213,11 @@ class BeansRepository(Repository):
         return None if cursor.rowcount == 0 else await self.get(bean_id)
 
     async def delete(self, bean_id: int) -> BeanDeletion:
-        """Delete a bean no Set uses.
+        """Delete a bean no Recipe uses.
 
         The count and the delete run in one transaction: `Database.transaction()`
-        serialises writers, so a Set created between the check and the delete
-        cannot be orphaned. `sets.bean_id` has no `ON DELETE`, so the foreign key
+        serialises writers, so a Recipe created between the check and the delete
+        cannot be orphaned. `recipes.bean_id` has no `ON DELETE`, so the foreign key
         would refuse anyway; the check is what turns that into a reason a person
         can act on. Starting-point runs about the bean cascade with it.
         """

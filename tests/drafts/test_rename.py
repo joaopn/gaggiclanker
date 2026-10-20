@@ -207,10 +207,10 @@ async def test_a_rename_never_takes_a_name_that_changes_nothing_else(adopted: Ad
 
 
 async def test_a_pinned_row_can_be_renamed_and_its_brew_stays_frozen(adopted: Adopted) -> None:
-    from tests.drafts.test_pins import _pin, _set_with_version
+    from tests.drafts.test_pins import _pin, _recipe_with_version
 
     app, client, fake = adopted
-    set_id, version_id = await _set_with_version(app, client)
+    set_id, version_id = await _recipe_with_version(app, client)
     pinned = data(await _pin(client, set_id, version_id))
     row_id = pinned["board_id"]
     before = await snapshot(app)
@@ -325,20 +325,20 @@ async def test_renaming_a_profile_whose_file_has_an_older_brew_and_a_taken_name_
 # ── what reads the name ──────────────────────────────────────────────
 
 
-async def test_the_sets_the_pickers_and_the_version_list_show_the_new_name(
+async def test_the_recipes_the_pickers_and_the_version_list_show_the_new_name(
     adopted: Adopted,
 ) -> None:
-    from tests.drafts.test_pins import _set_with_version
+    from tests.drafts.test_pins import _recipe_with_version
 
     app, client, _fake = adopted
-    set_id, _version_id = await _set_with_version(app, client)
+    set_id, _version_id = await _recipe_with_version(app, client)
     free = next(r for r in (await get_board(client))["rows"] if r["set"] is None)
     brewing = next(r for r in (await get_board(client))["rows"] if r["set"] is not None)
     await rename(client, brewing["row"]["id"], "Renamed brewing profile")
     await rename(client, free["row"]["id"], "Renamed free profile")
 
-    sets = data(await client.get("/api/sets"))
-    assert "Renamed brewing profile" in str(sets) and BASE_LABEL not in str(sets)
+    recipes = data(await client.get("/api/sets"))
+    assert "Renamed brewing profile" in str(recipes) and BASE_LABEL not in str(recipes)
     detail = data(await client.get(f"/api/sets/{set_id}"))
     assert "Renamed brewing profile" in str(detail) and BASE_LABEL not in str(detail)
     choices = [i["label"] for i in data(await client.get("/api/sets/profile-choices"))["items"]]

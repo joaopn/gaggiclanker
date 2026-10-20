@@ -1,7 +1,7 @@
-"""`pattern_runs` and `pattern_proposals`: Find patterns across Sets, and what a person does.
+"""`pattern_runs` and `pattern_proposals`: Find patterns across Recipes, and what a person does.
 
-A run reads the confirmed insights of every Set and proposes general insights that several
-Sets say in different words. Each method here keeps one property true.
+A run reads the confirmed insights of every Recipe and proposes general insights that several
+Recipes say in different words. Each method here keeps one property true.
 
 * **A run writes only its own rows.** :meth:`PatternRunsRepository.finish_done` writes the run
   and its proposals and nothing in ``knowledge_insights``. The one other thing it touches is
@@ -14,17 +14,17 @@ Sets say in different words. Each method here keeps one property true.
   bytecode to keep it that way).
 
 * **Approval is one transaction.** The general insight is written confirmed, every source
-  that is still a confirmed insight of its Set and still matched by the scope is deleted
+  that is still a confirmed insight of its Recipe and still matched by the scope is deleted
   through :meth:`~gaggiclanker.db.repos.knowledge_insights.InsightsRepository.delete_in_transaction`
   (so deletion cards and replacements pointing at it go stale as they do for any delete), and
   an existing general insight the proposal replaces is deleted the same way. A source that
-  vanished, was taken back, or whose Set stopped matching the scope in the meantime is
+  vanished, was taken back, or whose Recipe stopped matching the scope in the meantime is
   **skipped and named**: its insight stays where it is, since the general one would not reach
-  that Set. The approval is refused when fewer than two Sets' sources remain.
+  that Recipe. The approval is refused when fewer than two Recipes' sources remain.
 
 * **The scope is checked with the live matching rule.** A proposal's scope has to hold for
-  every source Set, which is :func:`scope_matches` over :func:`set_attributes` (through
-  :meth:`InsightsRepository.attributes_of`): the same function that decides which Sets a
+  every source Recipe, which is :func:`scope_matches` over :func:`recipe_attributes` (through
+  :meth:`InsightsRepository.attributes_of`): the same function that decides which Recipes a
   general insight reaches. There is no copy of that rule here.
 """
 
@@ -43,7 +43,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightScope,
     InsightsRepository,
     InsightWrite,
-    home_sets,
+    home_recipes,
     scope_matches,
 )
 from gaggiclanker.db.repos.renamed_keys import DROPPED, SKIPPED, SOURCES, from_stored, to_stored
@@ -58,11 +58,11 @@ __all__ = [
     "PatternProposalRow",
     "PatternProposalWrite",
     "PatternProposalsRepository",
+    "PatternRecipeFacts",
     "PatternRunOutcome",
     "PatternRunRow",
     "PatternRunStart",
     "PatternRunsRepository",
-    "PatternSetFacts",
     "PatternSkipped",
     "PatternSource",
 ]
@@ -84,7 +84,7 @@ class PatternSource(BaseModel):
 
     insight_id: int
     set_id: int
-    #: The Set's name when the run read it, so a card can say where a lesson came from.
+    #: The Recipe's name when the run read it, so a card can say where a lesson came from.
     set_name: str
     text: str
 
@@ -103,8 +103,8 @@ class PatternSkipped(BaseModel):
     reason: SkipReason
 
 
-class PatternSetFacts(BaseModel):
-    """What a run is told about a Set besides its attributes: the names a person knows it by."""
+class PatternRecipeFacts(BaseModel):
+    """What a run is told about a Recipe besides its attributes: the names a person knows it by."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -125,7 +125,7 @@ class PatternRunStart(BaseModel):
     model: str = ""
     prompt_name: str = ""
     prompt_version: str = ""
-    #: What the model is told, snapshotted: the Set insights, the general ones and the
+    #: What the model is told, snapshotted: the Recipe insights, the general ones and the
     #: declined proposals as they were at this moment.
     input: dict[str, Any] = Field(default_factory=dict)
     insights_read: int = 0
@@ -212,7 +212,7 @@ class PatternProposalRow(BaseModel):
     decided_at: str | None = None
 
 
-type ApproveRefusal = Literal["no_proposal", "not_waiting", "too_few_sets", "run_going"]
+type ApproveRefusal = Literal["no_proposal", "not_waiting", "too_few_recipes", "run_going"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,10 +264,10 @@ def _loads(raw: Any, default: Any) -> Any:
         return default
 
 
-async def read_home_sets(db: Database) -> dict[int, int]:
-    """The Set each insight a run reads counts for (:func:`home_sets` over those insights).
+async def read_home_recipes(db: Database) -> dict[int, int]:
+    """The Recipe each insight a run reads counts for (:func:`home_recipes` over those insights).
 
-    The insights a run reads are the confirmed, not dismissed ones of Sets that are not being
+    The insights a run reads are the confirmed, not dismissed ones of Recipes that are not being
     designed. Asked of the database as it is now, so an approval folds exactly as the run did,
     over what is still there.
     """
@@ -276,7 +276,7 @@ async def read_home_sets(db: Database) -> dict[int, int]:
         "JOIN recipes s ON s.id = i.recipe_id "
         "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
     )
-    return home_sets((row["id"], row["set_id"], row["copied_from_set_id"]) for row in rows)
+    return home_recipes((row["id"], row["set_id"], row["copied_from_set_id"]) for row in rows)
 
 
 class PatternRunsRepository(Repository):
@@ -446,8 +446,8 @@ class PatternRunsRepository(Repository):
         )
         return cursor.rowcount
 
-    async def sets_with_confirmed_insights(self) -> list[PatternSetFacts]:
-        """The Sets a run reads, by id: not being designed, with a confirmed insight each.
+    async def recipes_with_confirmed_insights(self) -> list[PatternRecipeFacts]:
+        """The Recipes a run reads, by id: not being designed, with a confirmed insight each.
 
         Archived ones are in: what they taught is still true, or was replaced.
         """
@@ -464,25 +464,25 @@ class PatternRunsRepository(Repository):
              ORDER BY s.id
             """
         )
-        return self.to_models(PatternSetFacts, rows)
+        return self.to_models(PatternRecipeFacts, rows)
 
     # ── the page's two numbers ───────────────────────────────────────
 
     async def sets_with_insights(self) -> int:
-        """How many Sets have at least one confirmed insight of their own: the run needs two.
+        """How many Recipes have at least one confirmed insight of their own: the run needs two.
 
-        A copy made by duplicating a Set counts for the Set of the insight it copies
-        (:func:`~gaggiclanker.db.repos.knowledge_insights.home_sets`), so a Set holding only
-        copies is not another Set.
+        A copy made by duplicating a Recipe counts for the Recipe of the insight it copies
+        (:func:`~gaggiclanker.db.repos.knowledge_insights.home_recipes`), so a Recipe holding only
+        copies is not another Recipe.
         """
-        return len(set((await read_home_sets(self.db)).values()))
+        return len(set((await read_home_recipes(self.db)).values()))
 
     async def new_since_last_run(self) -> int:
-        """Confirmed Set insights confirmed after the last **finished** run began.
+        """Confirmed Recipe insights confirmed after the last **finished** run began.
 
         A failed or interrupted run read nothing the person can rely on, so it does not move
-        the line; with no finished run, every confirmed Set insight is new. A copy made by
-        duplicating a Set is never new: it is the lesson it copies.
+        the line; with no finished run, every confirmed Recipe insight is new. A copy made by
+        duplicating a Recipe is never new: it is the lesson it copies.
         """
         since = await self.db.fetch_value(
             "SELECT MAX(created_at) FROM pattern_runs WHERE status = 'done'"
@@ -547,7 +547,7 @@ class PatternProposalsRepository(Repository):
 
         Everything is read inside the transaction that writes, so a source deleted or taken
         back a moment ago is skipped rather than deleted twice or counted; nothing is written
-        at all when fewer than two Sets' sources remain.
+        at all when fewer than two Recipes' sources remain.
         """
         now = utc_now()
         async with self.db.transaction():
@@ -575,11 +575,11 @@ class PatternProposalsRepository(Repository):
                             reason=reason,
                         )
                     )
-            # Different lessons, not different Sets, as the run counted them: a copy and its
+            # Different lessons, not different Recipes, as the run counted them: a copy and its
             # original are one, whatever the sources that remain happen to be.
-            home = await read_home_sets(self.db)
+            home = await read_home_recipes(self.db)
             if len({home.get(source.insight_id, source.set_id) for source in kept}) < 2:
-                return ApproveResult(proposal=proposal, refused="too_few_sets", skipped=skipped)
+                return ApproveResult(proposal=proposal, refused="too_few_recipes", skipped=skipped)
 
             if proposal.replaces_id is not None or proposal.replaces_text:
                 # The link clears itself (SET NULL) when the old insight is deleted by any
@@ -661,9 +661,9 @@ class PatternProposalsRepository(Repository):
     ) -> SkipReason | None:
         """Why this source must stay, or ``None`` when Approve may delete it.
 
-        It has to still be a confirmed, not dismissed insight of the Set the run read it in,
-        and that Set has to still be matched by the scope: the general insight must reach
-        the Set whose lesson it replaces, or deleting the source would lose the lesson there.
+        It has to still be a confirmed, not dismissed insight of the Recipe the run read it in,
+        and that Recipe has to still be matched by the scope: the general insight must reach
+        the Recipe whose lesson it replaces, or deleting the source would lose the lesson there.
         """
         row = await self.db.fetch_one(
             "SELECT recipe_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",

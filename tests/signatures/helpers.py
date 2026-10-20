@@ -1,4 +1,4 @@
-"""Set versions to file shots under, for tests that need a Set."""
+"""Recipe versions to file shots under, for tests that need a Recipe."""
 
 from __future__ import annotations
 
@@ -10,7 +10,12 @@ from typing import Any
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
+    SetVersionWrite,
+)
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.diagnostics import as_sample_dicts
 from gaggiclanker.domain.exports import slog_to_raw
@@ -23,16 +28,16 @@ from tests.lever_shot import LEVER_PROFILE, TARGET_YIELD_G, lever_shot
 from tests.profile_rows import own_version
 
 
-async def make_set_versions(
+async def make_recipe_versions(
     db: Database, profile_version_id: int, *, target: float = 36.0
 ) -> tuple[int, int]:
-    """A Set on one profile version with two versions of it (the second a grind change)."""
+    """A Recipe on one profile version with two versions of it (the second a grind change)."""
     bean = await BeansRepository(db).create(BeanWrite(name="Alturas", roast_level="light"))
     grinder = await GrindersRepository(db).create(GrinderWrite(name="Niche", step_unit="numbers"))
-    sets = SetsRepository(db)
+    recipes = RecipesRepository(db)
     await own_version(db, profile_version_id)
-    row = await sets.create(
-        SetWrite(name="Alturas", bean_id=bean.id, grinder_id=grinder.id),
+    row = await recipes.create(
+        RecipeWrite(name="Alturas", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(
             profile_version_id=profile_version_id,
             grind_setting="14",
@@ -41,7 +46,9 @@ async def make_set_versions(
         ),
     )
     assert row.current_version_id is not None
-    second = await sets.add_version(row.id, SetVersionPatch(grind_setting="13", intent="finer"))
+    second = await recipes.add_version(
+        row.id, RecipeVersionPatch(grind_setting="13", intent="finer")
+    )
     assert second is not None
     return row.current_version_id, second.id
 
@@ -137,7 +144,7 @@ def turbo_shot() -> Slog:
 
 
 #: A profile whose phase names are longer than the 24 bytes the firmware logs of them.
-LONG_NAME_SETS = (
+LONG_NAME_RECIPES = (
     ("Pre-infusion with a long soak", "Ramp up to the first pressure", "Final push to the cup"),
     # The firmware cuts raw bytes: a double space and a leading space count in the 24.
     (
@@ -146,7 +153,7 @@ LONG_NAME_SETS = (
         "Final  push to the cup, long",
     ),
 )
-LONG_NAMES = LONG_NAME_SETS[0]
+LONG_NAMES = LONG_NAME_RECIPES[0]
 
 
 def long_name_profile(names: tuple[str, ...] = LONG_NAMES) -> dict[str, Any]:
@@ -198,5 +205,5 @@ async def add_shot(
         "UPDATE shots SET profile_version_id = ? WHERE id = ?", (profile_version_id, shot)
     )
     if set_version_id is not None:
-        assert await SetsRepository(db).assign_shot(shot, set_version_id)
+        assert await RecipesRepository(db).assign_shot(shot, set_version_id)
     return shot

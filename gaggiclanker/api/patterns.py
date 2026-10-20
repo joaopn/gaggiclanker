@@ -1,4 +1,5 @@
-"""`/api/knowledge/patterns`: Find patterns across Sets, and a person's answers to what it proposed.
+"""`/api/knowledge/patterns`: Find patterns across Recipes, and a person's answers to what it
+proposed.
 
 Every route here is a person's press: the button that starts a run, and the two buttons on a
 proposal. There is no tool, MCP tool, timer or boot step behind any of them (the tests walk the
@@ -10,7 +11,7 @@ still answers 2xx: the row says `failed` and carries the error.
 
 Approving is one transaction (see :meth:`PatternProposalsRepository.approve`); a source that was
 gone or no longer confirmed is skipped and named in the answer, and the approval is refused with
-its own code when fewer than two Sets' sources remain. `details` carries a field and a sentence
+its own code when fewer than two Recipes' sources remain. `details` carries a field and a sentence
 and never echoes what was sent.
 """
 
@@ -33,7 +34,7 @@ from gaggiclanker.db.repos.patterns import (
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import Conflict, NotFound
 from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, rate_limit
-from gaggiclanker.patterns.service import MIN_SETS, PATTERNS_TASK, NotEnoughSets
+from gaggiclanker.patterns.service import MIN_RECIPES, PATTERNS_TASK, NotEnoughRecipes
 
 __all__ = ["router"]
 
@@ -50,14 +51,14 @@ class PatternsData(BaseModel):
     #: The proposals of the newest **finished** run, answered ones included so a card can say
     #: what happened to it. A failed run after it leaves these standing.
     proposals: list[PatternProposalRow] = Field(default_factory=list)
-    #: Confirmed Set insights confirmed after the last finished run began.
+    #: Confirmed Recipe insights confirmed after the last finished run began.
     new_since_last_run: int = 0
     #: When the last **finished** run began: what the count above is counted from. ``None``
     #: before any run has finished, which is also when the count is of everything.
     counted_from: str | None = None
-    #: How many Sets have a confirmed insight, and how many a run needs.
+    #: How many Recipes have a confirmed insight, and how many a run needs.
     sets_with_insights: int = 0
-    min_sets: int = MIN_SETS
+    min_sets: int = MIN_RECIPES
 
 
 class PatternRunRequest(BaseModel):
@@ -84,10 +85,10 @@ class PatternProposalDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     proposal: PatternProposalRow
-    #: What Approve left alone (a source already gone, one taken back, a Set the scope no
+    #: What Approve left alone (a source already gone, one taken back, a Recipe the scope no
     #: longer reaches, a replaced insight already gone). Empty for a dismissal.
     skipped: list[PatternSkipped] = Field(default_factory=list)
-    #: The Set insights it deleted, so the page can refresh exactly their Sets.
+    #: The Recipe insights it deleted, so the page can refresh exactly their Recipes.
     deleted_insight_ids: list[int] = Field(default_factory=list)
 
 
@@ -137,14 +138,14 @@ async def start_run(
         row, _started = await patterns.start(
             tasks=request.app.state.tasks, model=body.model or None
         )
-    except NotEnoughSets as exc:
+    except NotEnoughRecipes as exc:
         raise Conflict(
             "Fewer than two Sets have a confirmed insight",
             code="PATTERNS_NOT_ENOUGH_SETS",
             details={
                 "field": "sets",
                 "message": (
-                    f"A pattern needs {MIN_SETS} Sets that have each confirmed an insight; "
+                    f"A pattern needs {MIN_RECIPES} Sets that have each confirmed an insight; "
                     f"{exc.found} do."
                 ),
             },
@@ -186,7 +187,7 @@ def _refused(refused: str | None, proposal_id: int) -> Conflict | NotFound:
                 ),
             },
         )
-    if refused == "too_few_sets":
+    if refused == "too_few_recipes":
         return Conflict(
             "Fewer than two Sets' insights are left to replace",
             code="PATTERN_TOO_FEW_SETS",

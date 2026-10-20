@@ -195,10 +195,10 @@ async def test_a_deleted_run_takes_its_proposals_and_leaves_the_insight_it_wrote
     )
 
 
-# ── what a Set owns ─────────────────────────────────────────────────────
+# ── what a Recipe owns ─────────────────────────────────────────────────────
 
 
-async def test_deleting_a_set_empties_what_is_its_own(db: Database) -> None:
+async def test_deleting_a_recipe_empties_what_is_its_own(db: Database) -> None:
     await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
     for set_id in (1, 2):
         await db.execute("INSERT INTO recipes (id, name, bean_id) VALUES (?, 'S', 1)", (set_id,))
@@ -238,7 +238,7 @@ async def test_deleting_a_set_empties_what_is_its_own(db: Database) -> None:
     assert await db.fetch_all("PRAGMA foreign_key_check") == []
 
 
-async def test_a_set_version_name_is_unique_within_its_set(db: Database) -> None:
+async def test_a_recipe_version_name_is_unique_within_its_recipe(db: Database) -> None:
     await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
     await db.execute("INSERT INTO recipes (name, bean_id) VALUES ('S', 1), ('T', 1)")
     insert = (
@@ -250,7 +250,7 @@ async def test_a_set_version_name_is_unique_within_its_set(db: Database) -> None
         await db.execute(insert, (1,))
 
 
-async def _a_set_with_two_versions_and_two_copies(db: Database) -> None:
+async def _a_recipe_with_two_versions_and_two_copies(db: Database) -> None:
     await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
     await db.execute("INSERT INTO recipes (name, bean_id) VALUES ('S', 1)")
     await db.execute(
@@ -275,8 +275,8 @@ _PIN = (
 )
 
 
-async def test_a_set_version_has_one_live_pin_and_a_copy_names_one_pin(db: Database) -> None:
-    await _a_set_with_two_versions_and_two_copies(db)
+async def test_a_recipe_version_has_one_live_pin_and_a_copy_names_one_pin(db: Database) -> None:
+    await _a_recipe_with_two_versions_and_two_copies(db)
     await db.execute(_PIN, (1, 1, "2026-10-01T00:00:00Z"))
     # An unpinned record does not stand in the way of a live one, nor of another unpinned one.
     await db.execute(_PIN, (1, 2, None))
@@ -287,14 +287,14 @@ async def test_a_set_version_has_one_live_pin_and_a_copy_names_one_pin(db: Datab
     )
     with pytest.raises(sqlite3.IntegrityError):  # a second live pin on version 1
         await db.execute(_PIN, (1, 4, None))
-    with pytest.raises(sqlite3.IntegrityError):  # the same copy for another Set version
+    with pytest.raises(sqlite3.IntegrityError):  # the same copy for another Recipe version
         await db.execute(_PIN, (2, 2, None))
 
 
-async def test_a_pin_goes_with_its_set_version_and_a_copied_from_note_outlives_it(
+async def test_a_pin_goes_with_its_recipe_version_and_a_copied_from_note_outlives_it(
     db: Database,
 ) -> None:
-    await _a_set_with_two_versions_and_two_copies(db)
+    await _a_recipe_with_two_versions_and_two_copies(db)
     await db.execute(_PIN, (2, 1, None))
     await db.execute(
         "INSERT INTO recipes (name, bean_id, copied_from_version_id) VALUES ('T', 1, 2)"
@@ -381,8 +381,8 @@ async def test_the_views_the_chat_reads_answer_through_the_sql_tool(db: Database
     assert versions.rows == [["starting_point", "from the wizard", "v1", 1]]
     beans = await run_query(db.path, "SELECT name, roast_level FROM v_beans ORDER BY bean_id")
     assert beans.rows == [["Guji", "light"], ["Decaf", None]]
-    sets = await run_query(db.path, "SELECT name, bean_name, shot_count FROM v_recipes")
-    assert sets.rows == [["S", "Guji", 1]]
+    recipes = await run_query(db.path, "SELECT name, bean_name, shot_count FROM v_recipes")
+    assert recipes.rows == [["S", "Guji", 1]]
     shots = await run_query(db.path, "SELECT device_id, recipe_name, rating FROM v_shots")
     assert shots.rows == [["000001", "S", 5]]
     judgements = await run_query(db.path, "SELECT shot_id, rating FROM v_judgements")

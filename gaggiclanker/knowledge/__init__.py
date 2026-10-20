@@ -5,14 +5,14 @@ they answer three different questions:
 
 1. **rules** (`rules.py`, seeded from `seed/rules.yaml`) — small machine-readable
    facts with the conditions they apply under, selected deterministically by the
-   Set's attributes and the shot's signals. Authoritative, and the model is
+   Recipe's attributes and the shot's signals. Authoritative, and the model is
    asked to cite them by key;
 2. **chunks** (`chunker.py` + `service.py`, seeded from `seed/docs/`) — thirty
    thousand words of prose split at its headings, indexed with FTS5 and
    retrieved a handful at a time under a token budget. Supporting context, cited
    by `heading_path`;
 3. **insights** (`db/repos/knowledge_insights.py`) — what this archive has
-   learned about this kitchen, scoped by Set attributes, proposed by the
+   learned about this kitchen, scoped by Recipe attributes, proposed by the
    chat and confirmed by the user. Nothing unconfirmed reaches a prompt.
 
 :class:`~gaggiclanker.knowledge.service.KnowledgeService` is the one object the

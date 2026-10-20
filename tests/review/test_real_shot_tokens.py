@@ -8,7 +8,7 @@ band in any of them. These tests derive real fixture recordings, and the
 constructed lever shot, the way ingest does and read the review's input.
 
 The two yield warnings need the target of the version a shot is filed under: a shot that is
-not filed has none of them among its tokens, and one that is filed under a Set version with a
+not filed has none of them among its tokens, and one that is filed under a Recipe version with a
 target gets them, from the same function.
 """
 
@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.sets import SetVersionRow
+from gaggiclanker.db.repos.recipes import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.slog import parse_slog
@@ -162,7 +162,7 @@ async def test_the_yield_faults_need_the_version_the_shot_is_filed_under(
     unfiled = await build_review_input(seeded, shot_id)
     assert "fault:over_target" not in unfiled.signals
 
-    # A shot filed under a Set version (a 36 g target) gets it, from the same function.
+    # A shot filed under a Recipe version (a 36 g target) gets it, from the same function.
     version = SetVersionRow.model_construct(target_yield_g=36.0)
     filed = dataclasses.replace(facts, version=version)
     assert "fault:over_target" in signal_tokens(filed, UNKNOWN)

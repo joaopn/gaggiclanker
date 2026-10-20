@@ -2,7 +2,7 @@
 
 The repository stores rows; this is where meaning is checked. What an agent proposes, what is
 carried to a new profile version and an override are all written in force (``confirmed``):
-they stay so unless a person rejects them on the Profiles and Set pages. The one exception is
+they stay so unless a person rejects them on the Profiles and Recipe pages. The one exception is
 a carried expectation whose phase is gone, which is shown and never in force.
 """
 
@@ -350,7 +350,7 @@ class SignatureService:
         reason: str,
         thread_id: int | None,
     ) -> OverrideRow:
-        """Put a different limit for one confirmed measure in force on one Set version.
+        """Put a different limit for one confirmed measure in force on one Recipe version.
 
         Changes the compare values only: the same comparison and the same kind of bound, so
         the expression, the tier and the phase are the profile's. A newer override for the same
@@ -384,7 +384,7 @@ class SignatureService:
                 f"An override changes the limit's numbers, not its comparison: this one is "
                 f"{old.op!r}, so use {old.op!r} with other values."
             )
-        for item in await self.repo.overrides_for_set_version(
+        for item in await self.repo.overrides_for_recipe_version(
             set_version_id, statuses=["rejected"]
         ):
             if item.expectation_id == expectation_id and item.compare == new:
@@ -392,7 +392,7 @@ class SignatureService:
                     "The person rejected exactly this limit for this version (only they can "
                     "restore it): propose a different one, or say what you would change."
                 )
-        # One override is in force per Set version (the schema's partial unique index): a newer
+        # One override is in force per Recipe version (the schema's partial unique index): a newer
         # one for the same expectation takes its place; one for another expectation would
         # silently drop that other limit, so the repository refuses it inside the same
         # transaction that withdraws and inserts, and it is said here.

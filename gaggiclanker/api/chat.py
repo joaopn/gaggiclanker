@@ -84,9 +84,9 @@ class OpenBody(BaseModel):
 #: blamed on. All 422: every one of them is a body naming something that does
 #: not resolve, and none of them is a state the caller could wait out.
 _THREAD_REFUSALS: dict[ThreadRefusal, tuple[str, str]] = {
-    "no_set": ("set_id", "that Set does not exist"),
+    "no_recipe": ("set_id", "that Set does not exist"),
     "no_version": ("set_version_id", "that is not a version of this Set"),
-    "version_without_set": ("set_id", "name the Set the version belongs to"),
+    "version_without_recipe": ("set_id", "name the Set the version belongs to"),
 }
 
 
@@ -94,7 +94,7 @@ def _thread(result: ThreadWriteResult, *, status_code: int = 200) -> JSONRespons
     """The created thread, or the one error its refusal means."""
     if result.thread is not None:
         return envelope_response(result.thread.model_dump(mode="json"), status_code=status_code)
-    field, message = _THREAD_REFUSALS[result.refused or "no_set"]
+    field, message = _THREAD_REFUSALS[result.refused or "no_recipe"]
     raise Unprocessable(
         "That conversation cannot be filed there",
         details={"field": field, "message": message},
@@ -165,7 +165,7 @@ async def list_tools(
     the one thing a reader has to know.
     """
     # Only the kind and the design flag matter here, so the ids are left out:
-    # which Set a conversation is about never changes which tools it has.
+    # which Recipe a conversation is about never changes which tools it has.
     scope = ToolScope(kind=kind, designing=kind == "set" and designing)
     return envelope_response(
         ToolList(

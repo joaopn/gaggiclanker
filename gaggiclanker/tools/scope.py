@@ -1,26 +1,26 @@
 """Which tools exist in a conversation, and what each one may touch.
 
 A conversation is one of two kinds and the kind is a **limit**, not a hint.
-A Set conversation has a third surface while its Set is being designed.
+A Recipe conversation has a third surface while its Recipe is being designed.
 
-A **Set** conversation is about one version of one Set, and every tool it has
-is bounded by that Set: it reads that Set's versions, shots, predictions and
+A **Recipe** conversation is about one version of one Recipe, and every tool it has
+is bounded by that Recipe: it reads that Recipe's versions, shots, predictions and
 outcomes, the knowledge tiers, and nothing else. There is no archive-wide SQL
-in it, no list of other Sets, and no way to ask about a shot filed somewhere
+in it, no list of other Recipes, and no way to ask about a shot filed somewhere
 else — not because a prompt asks nicely, but because the tool that would answer
 is not offered and would be refused if it were called anyway.
 
 A **General** conversation is the other half: the whole archive, read-only. It
 answers "which beans did I like most" and "what does pre-infusion do", and it
-cannot change a Set, because changing a Set is an argument that belongs in that
-Set's own room where the prediction ledger is in front of the model.
+cannot change a Recipe, because changing a Recipe is an argument that belongs in that
+Recipe's own room where the prediction ledger is in front of the model.
 
-A Set **being designed** has no recipe yet, so its conversation is neither: it
+A Recipe **being designed** has no recipe yet, so its conversation is neither: it
 has no shots to read and no recipe to change, and what it does is work out the
 first recipe with the person and propose it whole. Its surface is
-:data:`DESIGN_TOOLS`. Whether a Set is being designed is read from the archive
+:data:`DESIGN_TOOLS`. Whether a Recipe is being designed is read from the archive
 at the start of every turn (:meth:`ToolScope.resolve`), so the turn after the
-initial recipe is accepted is an ordinary Set conversation in the same thread.
+initial recipe is accepted is an ordinary Recipe conversation in the same thread.
 
 **This module is the single source.** Three consumers ask it the same question:
 the function-calling schemas the runner sends a provider, the dispatcher that
@@ -45,7 +45,7 @@ __all__ = [
     "DESIGN_RULE",
     "DESIGN_TOOLS",
     "GENERAL_TOOLS",
-    "SET_TOOLS",
+    "RECIPE_TOOLS",
     "ChatKind",
     "ToolScope",
 ]
@@ -54,17 +54,17 @@ __all__ = [
 #: things an agent can be pointed at here: one experiment, or the archive.
 type ChatKind = Literal["general", "set"]
 
-#: The tools a Set conversation has. Everything here is bounded by the Set:
-#: ``get_set`` and ``propose_set_version`` refuse another Set's id, the three
+#: The tools a Recipe conversation has. Everything here is bounded by the Recipe:
+#: ``get_set`` and ``propose_set_version`` refuse another Recipe's id, the three
 #: shot tools (``get_shot``, ``get_shot_extended``, ``get_shot_full``) and
 #: ``compare_shots`` refuse a shot filed elsewhere, and ``list_set_shots`` — the
-#: shot search — takes no Set at all: it reads the one this conversation is about.
+#: shot search — takes no Recipe at all: it reads the one this conversation is about.
 #:
 #: What is deliberately absent is as much of the design as what is here.
 #: ``query_shots`` and ``describe_schema`` would be a way around the scope in
 #: one SELECT; ``list_sets``, ``list_beans`` and ``list_grinders`` would name
 #: other coffees.
-SET_TOOLS: frozenset[str] = frozenset(
+RECIPE_TOOLS: frozenset[str] = frozenset(
     {
         "compare_shots",
         "draft_profile",
@@ -88,16 +88,16 @@ SET_TOOLS: frozenset[str] = frozenset(
     }
 )
 
-#: The tools a conversation about a Set **being designed** has. Its recipe does
+#: The tools a conversation about a Recipe **being designed** has. Its recipe does
 #: not exist yet, so every tool that reads shots or changes a recipe is absent:
 #: there are no shots, ``propose_set_version`` and ``draft_profile`` change a
 #: recipe that is not there (their refusal points at the tool that is), and
 #: ``record_insight`` would be a lesson drawn from nothing brewed (and a design has
 #: no added insights to propose deleting). What is here
-#: is what designing needs — the Set and its brief, the profile library and any
+#: is what designing needs — the Recipe and its brief, the profile library and any
 #: one profile's whole document, the knowledge tiers — and
 #: ``propose_initial_recipe``, which proposes the whole first recipe as one card.
-#: No archive-wide read: the other Sets the design may learn from are in the
+#: No archive-wide read: the other Recipes the design may learn from are in the
 #: opening context as a snapshot, and nothing here browses them.
 DESIGN_TOOLS: frozenset[str] = frozenset(
     {
@@ -114,11 +114,11 @@ DESIGN_TOOLS: frozenset[str] = frozenset(
 )
 
 #: The tools a General conversation has: every read of the archive, plus the two
-#: proposals that belong to no Set — a starting point for a bean nobody has
+#: proposals that belong to no Recipe — a starting point for a bean nobody has
 #: brewed yet, and a profile draft, which waits for a person on its card either way.
 #:
 #: Absent: ``propose_set_version``, ``record_insight`` and
-#: ``propose_insight_deletion``, because a Set is
+#: ``propose_insight_deletion``, because a Recipe is
 #: changed and learned about in its own folder, where the ledger and the
 #: evidence are in front of the model; and ``list_set_shots``, which has no
 #: Set to list.
@@ -145,7 +145,7 @@ GENERAL_TOOLS: frozenset[str] = frozenset(
 )
 
 
-#: What a conversation about a Set being designed is told when it reaches for a
+#: What a conversation about a Recipe being designed is told when it reaches for a
 #: tool that changes or reads a recipe. One sentence for every such refusal —
 #: the scope's, `propose_set_version`'s and `draft_profile`'s — because they are
 #: one rule, and a model that met it phrased three ways would read three.
@@ -173,19 +173,19 @@ class ToolScope:
     Frozen: a scope is decided when a turn starts, from the thread, and nothing
     downstream may widen it. The default is General, which is the weaker of the
     two in the direction that matters — it can read everything and change no
-    Set — so a caller that forgets to pass one cannot accidentally get a Set's
-    proposal tools pointed at the wrong Set.
+    Recipe — so a caller that forgets to pass one cannot accidentally get a Recipe's
+    proposal tools pointed at the wrong Recipe.
     """
 
     kind: ChatKind = "general"
-    #: The Set a Set conversation is about, and ``None`` in a General one. Tools
+    #: The Recipe a Recipe conversation is about, and ``None`` in a General one. Tools
     #: that take a ``set_id`` read it from here and refuse any other.
     set_id: int | None = None
-    #: The version being argued. Not a limit — the whole Set's history is what a
+    #: The version being argued. Not a limit — the whole Recipe's history is what a
     #: grade is made against — but it is what the opening context is built from.
     set_version_id: int | None = None
-    #: The Set has no recipe yet and this conversation is designing one. Only
-    #: ever true in a Set conversation, and read from the Set itself by
+    #: The Recipe has no recipe yet and this conversation is designing one. Only
+    #: ever true in a Recipe conversation, and read from the Recipe itself by
     #: :meth:`resolve` — never passed along from an earlier turn.
     designing: bool = False
 
@@ -193,9 +193,9 @@ class ToolScope:
     def for_thread(
         cls, set_id: int | None, set_version_id: int | None = None, *, designing: bool = False
     ) -> ToolScope:
-        """The scope of a conversation, from the thread's two columns and the Set's flag.
+        """The scope of a conversation, from the thread's two columns and the Recipe's flag.
 
-        For a caller that already knows whether the Set is being designed.
+        For a caller that already knows whether the Recipe is being designed.
         Everything that serves a conversation asks :meth:`resolve` instead,
         which reads the flag from the archive.
         """
@@ -207,24 +207,24 @@ class ToolScope:
     async def resolve(
         cls, db: Database, set_id: int | None, set_version_id: int | None = None
     ) -> ToolScope:
-        """The scope of a conversation **now**: the thread's columns plus the Set's flag.
+        """The scope of a conversation **now**: the thread's columns plus the Recipe's flag.
 
         The one way a scope is built for a turn, used by the chat runner and by
         the stdio MCP server the ``claude_code`` provider spawns — so the
         schemas a provider is sent, the calls the dispatcher allows and the
         tools the CLI's own loop can see are the same surface. Read on every
         turn rather than stored on the thread: the turn after the initial
-        recipe is accepted must already be an ordinary Set conversation.
+        recipe is accepted must already be an ordinary Recipe conversation.
 
-        A Set that does not exist answers as not being designed; whoever asked
+        A Recipe that does not exist answers as not being designed; whoever asked
         about it refuses it on their own terms (the stdio server exits, the
         runner's tools refuse the id).
         """
         if set_id is None:
             return cls()
-        from gaggiclanker.db.repos.sets import SetsRepository
+        from gaggiclanker.db.repos.recipes import RecipesRepository
 
-        row = await SetsRepository(db).get(set_id)
+        row = await RecipesRepository(db).get(set_id)
         return cls.for_thread(set_id, set_version_id, designing=row is not None and row.designing)
 
     @property
@@ -232,7 +232,7 @@ class ToolScope:
         """The names that exist here. The one mapping from a kind to a surface."""
         if self.kind != "set":
             return GENERAL_TOOLS
-        return DESIGN_TOOLS if self.designing else SET_TOOLS
+        return DESIGN_TOOLS if self.designing else RECIPE_TOOLS
 
     def allows(self, name: str) -> bool:
         return name in self.tools
@@ -242,13 +242,13 @@ class ToolScope:
 
         Names the rule and then the way out, because a model that is told "not
         available" and nothing else asks for it again with different arguments.
-        It says nothing about any other Set: which Sets exist is exactly what a
-        Set conversation does not get to learn.
+        It says nothing about any other Recipe: which Recipes exist is exactly what a
+        Recipe conversation does not get to learn.
 
         One tool gets a reason of its own rather than the rule of the kind it
         was called in, because the rule would be the wrong sentence: a tool
-        that lists one Set's shots is not missing from a general conversation
-        because of anything to do with changing a Set.
+        that lists one Recipe's shots is not missing from a general conversation
+        because of anything to do with changing a Recipe.
         """
         offered = ", ".join(sorted(self.tools))
         if self.designing:

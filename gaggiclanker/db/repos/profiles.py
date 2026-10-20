@@ -41,7 +41,7 @@ __all__ = [
 
 
 #: The label of the synthetic base a draft written from zero is diffed against:
-#: a Set designed with no profile to fork, or any authored draft when the
+#: a Recipe designed with no profile to fork, or any authored draft when the
 #: archive holds no profile at all. See :meth:`ProfilesRepository.empty_base`.
 SYNTHETIC_BASE_LABEL = "Empty baseline"
 
@@ -196,20 +196,20 @@ class ProfileVersionSummary(BaseModel):
     shot_count: int = 0
     #: The brew temperature and the weight in the cup the document states, or
     #: ``None`` where it does not (see :mod:`gaggiclanker.domain.profile_recipe`).
-    #: Carried on the row because the New Set form fills its recipe from the
+    #: Carried on the row because the New Recipe form fills its recipe from the
     #: version a person picks, and fetching every document to read two numbers
     #: out of it is the payload this summary exists to avoid.
     temperature_c: float | None = None
     target_yield_g: float | None = None
     #: The profile the version belongs to (``None``: an imported file or a draft no profile has
-    #: taken yet), whether it is that profile's active version, and the profile's Set. A new Set
-    #: takes a profile no Set has, by the version that profile has active.
+    #: taken yet), whether it is that profile's active version, and the profile's Recipe. A new
+    #: Recipe takes a profile no Recipe has, by the version that profile has active.
     board_id: int | None = None
     is_active: bool = False
     set: VersionSet | None = None
     #: Set when this version belongs to a pin's copy (the copy, live or since unpinned, or what
-    #: the machine's file came to hold): the pin, its Set and the Set version it belongs to. A
-    #: recipe picker leaves such a version out, because no Set brews a pin's profile; ``None``
+    #: the machine's file came to hold): the pin, its Recipe and the Recipe version it belongs to. A
+    #: recipe picker leaves such a version out, because no Recipe brews a pin's profile; ``None``
     #: for every other version.
     pin: VersionPin | None = None
 
@@ -530,8 +530,8 @@ class ProfilesRepository(Repository):
                             WHERE b.id = v.board_id AND b.current_version_id = v.id
                               AND b.deleted_at IS NULL) AS is_active,
                    ps.id AS set_id, ps.name AS set_name,
-                   p.id AS pin_id, pv.recipe_id AS pin_set_id,
-                   p.recipe_version_id AS pin_set_version_id
+                   p.id AS pin_id, pv.recipe_id AS pin_recipe_id,
+                   p.recipe_version_id AS pin_recipe_version_id
             FROM profile_versions v
             LEFT JOIN recipes ps ON ps.board_id = v.board_id
             LEFT JOIN recipe_version_pins p ON p.profile_version_id = v.id
@@ -549,7 +549,7 @@ class ProfilesRepository(Repository):
 
     async def pin_copy_ids(self) -> list[int]:
         """Every profile version that is the copy of a pin, live or since unpinned: none of them
-        may be named by a Set version, so none is offered to choose from."""
+        may be named by a Recipe version, so none is offered to choose from."""
         rows = await self.db.fetch_all(
             "SELECT profile_version_id FROM recipe_version_pins ORDER BY profile_version_id"
         )
@@ -642,7 +642,7 @@ class ProfilesRepository(Repository):
         """Tombstone every device profile the machine no longer lists.
 
         A *tombstone*, never a delete: shots reference the version, the user's
-        Sets will reference it, and "the profile I used in March" has to keep
+        Recipes will reference it, and "the profile I used in March" has to keep
         resolving after the profile is gone from the display.
 
         An empty ``seen`` is treated as "we learned nothing" rather than "the
@@ -709,7 +709,7 @@ class ProfilesRepository(Repository):
         The shots already linked to the file's old version follow, and only those of this file:
         a shot is linked to what the file held when it was brewed, and the profile that now stands
         on the file is the one its shots are filed under. Without it a shot read between the
-        mirror and the attach would stay on a version that belongs to no profile, and the Set
+        mirror and the attach would stay on a version that belongs to no profile, and the Recipe
         that brews the profile would not file it.
         """
         old = await self.db.fetch_value(
@@ -737,7 +737,7 @@ class ProfilesRepository(Repository):
         gone.
 
         A tombstone rather than a DELETE, as everywhere in this table: shots and
-        Set versions reference the version, and "the profile I used in March"
+        Recipe versions reference the version, and "the profile I used in March"
         has to keep resolving.
         """
         cursor = await self.db.execute(
@@ -788,12 +788,12 @@ def _summary(row: dict[str, object]) -> ProfileVersionSummary:
     document = json.loads(raw) if isinstance(raw, str) else None
     recipe = profile_recipe(document if isinstance(document, dict) else None)
     pin_id = row.pop("pin_id", None)
-    pin_set_id = row.pop("pin_set_id", None)
-    pin_set_version_id = row.pop("pin_set_version_id", None)
+    pin_recipe_id = row.pop("pin_recipe_id", None)
+    pin_recipe_version_id = row.pop("pin_recipe_version_id", None)
     pin = (
         None
         if pin_id is None
-        else {"pin_id": pin_id, "set_id": pin_set_id, "set_version_id": pin_set_version_id}
+        else {"pin_id": pin_id, "set_id": pin_recipe_id, "set_version_id": pin_recipe_version_id}
     )
     set_id = row.pop("set_id", None)
     set_name = row.pop("set_name", None)

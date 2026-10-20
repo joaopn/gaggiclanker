@@ -204,7 +204,7 @@ async def test_the_version_list_shows_imported_and_mirrored_alike(
     assert version["shot_count"] == 0
     # The document itself is not in the list — `/api/profile-versions/{id}` has it.
     assert "profile" not in version
-    # What the list does carry from it is the two numbers the New Set form fills
+    # What the list does carry from it is the two numbers the New Recipe form fills
     # its recipe with: this Cremina brews at 86.5 °C and stops at 36 g.
     assert version["temperature_c"] == 86.5
     assert version["target_yield_g"] == 36

@@ -9,12 +9,12 @@ What the schema cannot say is whether a proposal is **allowed**: that depends on
 this run was given. :func:`filter_proposals` decides it, and it is where the rules live that
 make a shown proposal safe to approve:
 
-* it rests on at least two distinct Sets (a lesson from one Set is that Set's own);
+* it rests on at least two distinct Recipes (a lesson from one Recipe is that Recipe's own);
 * it cites only insights it was given, and replaces only a general insight it was given;
-* its scope never uses ``profile_style`` (a Set has no single style, so a style-scoped
-  insight would reach no Set), and **every source Set matches it**, by the live
+* its scope never uses ``profile_style`` (a Recipe has no single style, so a style-scoped
+  insight would reach no Recipe), and **every source Recipe matches it**, by the live
   :func:`~gaggiclanker.db.repos.knowledge_insights.scope_matches`, so that deleting a source
-  on approval never loses its lesson for the Set it came from.
+  on approval never loses its lesson for the Recipe it came from.
 
 A proposal that fails any of these is dropped before storage and counted by reason on the run
 (a model that invents sources often is a prompt problem worth seeing).
@@ -28,12 +28,12 @@ from dataclasses import dataclass, field
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from gaggiclanker.db.repos.knowledge_insights import InsightScope, home_sets, scope_matches
+from gaggiclanker.db.repos.knowledge_insights import InsightScope, home_recipes, scope_matches
 from gaggiclanker.db.repos.patterns import PatternProposalWrite, PatternSource
 from gaggiclanker.patterns.context import (
     PatternGeneral,
     PatternInsight,
-    PatternSet,
+    PatternRecipe,
     PatternsInput,
 )
 
@@ -68,11 +68,11 @@ class PatternProposalOut(BaseModel):
 
     #: The general insight, stated at the level the sources support and no further.
     text: str = Field(min_length=1, max_length=TEXT_MAX)
-    #: Which Sets it applies to, by attribute: only keys whose value every source Set shares.
-    #: Empty reaches every Set.
+    #: Which Recipes it applies to, by attribute: only keys whose value every source Recipe shares.
+    #: Empty reaches every Recipe.
     scope: InsightScope = Field(default_factory=InsightScope)
-    #: The ids of the Set insights it was derived from (the `#id` in the input), from at
-    #: least two different Sets.
+    #: The ids of the Recipe insights it was derived from (the `#id` in the input), from at
+    #: least two different Recipes.
     source_insight_ids: list[int] = Field(default_factory=list)
     #: The id of a general insight this one sharpens or contradicts; approving deletes it.
     replaces_insight_id: int | None = None
@@ -146,7 +146,7 @@ def filter_proposals(result: PatternsResult, given: PatternsInput) -> FilterOutc
 def _why_dropped(
     proposal: PatternProposalOut,
     given: PatternsInput,
-    insights: dict[int, tuple[PatternSet, PatternInsight]],
+    insights: dict[int, tuple[PatternRecipe, PatternInsight]],
     general: dict[int, PatternGeneral],
 ) -> str | None:
     ids = list(dict.fromkeys(proposal.source_insight_ids))
@@ -154,11 +154,11 @@ def _why_dropped(
         return "invented_source"
     if proposal.replaces_insight_id is not None and proposal.replaces_insight_id not in general:
         return "invented_replaces"
-    source_sets = {insights[insight_id][0].id for insight_id in ids}
-    # Different *lessons*, not different Sets: a copy and its original are one, so a proposal that
-    # cites an insight and its copy comes from one Set. The scope check below still reads every
-    # Set the sources sit in, since approving deletes the copy too.
-    home = home_sets(
+    source_recipes = {insights[insight_id][0].id for insight_id in ids}
+    # Different *lessons*, not different Recipes: a copy and its original are one, so a proposal
+    # that cites an insight and its copy comes from one Recipe. The scope check below still reads
+    # every Recipe the sources sit in, since approving deletes the copy too.
+    home = home_recipes(
         (row.id, item.id, row.copied_from_set) for item in given.sets for row in item.insights
     )
     if len({home[insight_id] for insight_id in ids}) < 2:
@@ -167,6 +167,6 @@ def _why_dropped(
         return "profile_style"
     stated = proposal.scope.stated()
     attributes = {item.id: item.attributes for item in given.sets}
-    if not all(scope_matches(stated, attributes[set_id]) for set_id in source_sets):
+    if not all(scope_matches(stated, attributes[set_id]) for set_id in source_recipes):
         return "scope_not_shared"
     return None

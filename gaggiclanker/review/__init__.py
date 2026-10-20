@@ -4,7 +4,7 @@ Seven modules, read in the order the work happens:
 
 * :mod:`.style` — what kind of shot this profile brews (classic, turbo, lever…).
 * :mod:`.context` — everything the model is told, assembled deterministically: the shot
-  with its checks first, the Set version's recipe and prediction, the confirmed signature's
+  with its checks first, the Recipe version's recipe and prediction, the confirmed signature's
   free-text expectations, the profile, the style, the rules and excerpts. Never the person's
   judgement, the machine's note, the label, another shot or an earlier review.
 * :mod:`.models` — the shape the model must answer in, built per call so that its enums are

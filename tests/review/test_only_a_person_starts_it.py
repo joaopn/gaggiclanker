@@ -5,7 +5,7 @@ start one" has exactly one answer. Four checks, each covering a way it could
 stop being true:
 
 1. **No registered tool can.** Walked over the registry itself (every tool, so
-   the Set, General and design scopes and the stdio MCP server, which registers
+   the Recipe, General and design scopes and the stdio MCP server, which registers
    from the same registry, are all covered), over each tool function's code and
    over the context a tool is handed.
 2. **No code outside the route and the boot wiring refers to the service.**
@@ -37,7 +37,7 @@ from gaggiclanker.api import shots as shots_api
 from gaggiclanker.review.service import ReviewService, review_task_name
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.tools.registry import ToolContext, registry
-from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
+from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, RECIPE_TOOLS
 from tests.conftest import running_app
 from tests.review.conftest import build_fixture
 
@@ -96,7 +96,7 @@ def test_no_registered_tool_can_start_a_review() -> None:
     assert every, "an empty registry would pass this vacuously"
     # Every scope's tools are registered ones, so walking the registry walks
     # all three scopes and the MCP server built from it.
-    assert SET_TOOLS | GENERAL_TOOLS | DESIGN_TOOLS <= set(every)
+    assert RECIPE_TOOLS | GENERAL_TOOLS | DESIGN_TOOLS <= set(every)
 
     assert not [name for name in every if "review" in name or "analys" in name]
     offenders: list[str] = []

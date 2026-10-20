@@ -1,9 +1,9 @@
-"""What a conversation is about: general, or one version of one Set.
+"""What a conversation is about: general, or one version of one Recipe.
 
 The rules are the repository's, so they are asserted there and once more
 through the routes, where a refusal has to arrive as a 422 naming the field
 rather than as a stack trace. The one that is easy to get wrong is the third
-test here: a conversation keeps the version it was created on, so a Set's list
+test here: a conversation keeps the version it was created on, so a Recipe's list
 reads as a history of what was argued rather than as a pile of rooms all
 claiming to be about today's recipe.
 """
@@ -21,7 +21,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
-from gaggiclanker.db.repos.sets import RollbackWrite, SetsRepository, SetVersionPatch
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, RollbackWrite
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
@@ -50,7 +50,7 @@ def body(response: httpx.Response) -> Any:
     return payload["data"]
 
 
-async def test_a_thread_with_no_set_is_general(archive: Fixture) -> None:
+async def test_a_thread_with_no_recipe_is_general(archive: Fixture) -> None:
     result = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
 
     assert result.thread is not None
@@ -58,9 +58,9 @@ async def test_a_thread_with_no_set_is_general(archive: Fixture) -> None:
     assert result.thread.set_version_id is None
 
 
-async def test_a_set_thread_is_filed_under_the_current_version(archive: Fixture) -> None:
-    sets = SetsRepository(archive.db)
-    current = await sets.current_version(archive.set_id)
+async def test_a_recipe_thread_is_filed_under_the_current_version(archive: Fixture) -> None:
+    recipes = RecipesRepository(archive.db)
+    current = await recipes.current_version(archive.set_id)
     assert current is not None
 
     result = await ChatRepository(archive.db).create_thread(ChatThreadWrite(set_id=archive.set_id))
@@ -70,28 +70,28 @@ async def test_a_set_thread_is_filed_under_the_current_version(archive: Fixture)
     assert result.thread.set_version_label == current.version_label
 
 
-async def test_a_thread_keeps_its_version_when_the_set_moves_on(archive: Fixture) -> None:
+async def test_a_thread_keeps_its_version_when_the_recipe_moves_on(archive: Fixture) -> None:
     """The room where one change was argued, not a window onto the latest one."""
-    sets = SetsRepository(archive.db)
-    before = await sets.current_version(archive.set_id)
+    recipes = RecipesRepository(archive.db)
+    before = await recipes.current_version(archive.set_id)
     assert before is not None
     created = await ChatRepository(archive.db).create_thread(ChatThreadWrite(set_id=archive.set_id))
     assert created.thread is not None
 
-    await sets.add_version(archive.set_id, SetVersionPatch(intent="two clicks finer"))
+    await recipes.add_version(archive.set_id, RecipeVersionPatch(intent="two clicks finer"))
 
     still = await ChatRepository(archive.db).get_thread(created.thread.id)
     assert still is not None
     assert still.set_version_id == before.id
 
 
-async def test_a_named_version_has_to_belong_to_the_set(archive: Fixture) -> None:
-    sets = SetsRepository(archive.db)
-    other = await sets.create(
-        *_other_set(archive),
+async def test_a_named_version_has_to_belong_to_the_recipe(archive: Fixture) -> None:
+    recipes = RecipesRepository(archive.db)
+    other = await recipes.create(
+        *_other_recipe(archive),
         automatch=False,
     )
-    other_version = await sets.current_version(other.id)
+    other_version = await recipes.current_version(other.id)
     assert other_version is not None
 
     result = await ChatRepository(archive.db).create_thread(
@@ -102,21 +102,21 @@ async def test_a_named_version_has_to_belong_to_the_set(archive: Fixture) -> Non
     assert result.refused == "no_version"
 
 
-async def test_a_version_without_its_set_is_refused(archive: Fixture) -> None:
-    current = await SetsRepository(archive.db).current_version(archive.set_id)
+async def test_a_version_without_its_recipe_is_refused(archive: Fixture) -> None:
+    current = await RecipesRepository(archive.db).current_version(archive.set_id)
     assert current is not None
 
     result = await ChatRepository(archive.db).create_thread(
         ChatThreadWrite(set_version_id=current.id)
     )
 
-    assert result.refused == "version_without_set"
+    assert result.refused == "version_without_recipe"
 
 
-async def test_a_set_that_does_not_exist_is_refused(archive: Fixture) -> None:
+async def test_a_recipe_that_does_not_exist_is_refused(archive: Fixture) -> None:
     result = await ChatRepository(archive.db).create_thread(ChatThreadWrite(set_id=9999))
 
-    assert result.refused == "no_set"
+    assert result.refused == "no_recipe"
 
 
 async def test_open_continues_the_most_recent_thread_of_a_version(archive: Fixture) -> None:
@@ -144,7 +144,7 @@ async def test_open_continues_the_most_recent_thread_of_a_version(archive: Fixtu
 
 async def test_open_creates_one_when_the_version_has_none(archive: Fixture) -> None:
     repo = ChatRepository(archive.db)
-    current = await SetsRepository(archive.db).current_version(archive.set_id)
+    current = await RecipesRepository(archive.db).current_version(archive.set_id)
     assert current is not None
 
     opened = await repo.open_thread(archive.set_id)
@@ -158,18 +158,18 @@ async def test_open_creates_one_when_the_version_has_none(archive: Fixture) -> N
 
 
 async def test_a_dead_end_version_says_so_on_the_thread(archive: Fixture) -> None:
-    """A revert goes back past a version, and the Set's list has to grey its rooms."""
-    sets = SetsRepository(archive.db)
-    first = await sets.current_version(archive.set_id)
+    """A revert goes back past a version, and the Recipe's list has to grey its rooms."""
+    recipes = RecipesRepository(archive.db)
+    first = await recipes.current_version(archive.set_id)
     assert first is not None
-    stepped_over = await sets.add_version(archive.set_id, SetVersionPatch(intent="finer"))
+    stepped_over = await recipes.add_version(archive.set_id, RecipeVersionPatch(intent="finer"))
     assert stepped_over is not None
     repo = ChatRepository(archive.db)
     on_the_branch = await repo.create_thread(ChatThreadWrite(set_id=archive.set_id))
     assert on_the_branch.thread is not None
     assert on_the_branch.thread.dead_end is False
 
-    rolled = await sets.rollback(archive.set_id, RollbackWrite(to_version_id=first.id))
+    rolled = await recipes.rollback(archive.set_id, RollbackWrite(to_version_id=first.id))
     assert rolled.version is not None
 
     listed = {row.id: row for row in await repo.list_threads()}
@@ -180,18 +180,18 @@ async def test_after_a_revert_the_targets_conversation_is_the_live_one(
     archive: Fixture,
 ) -> None:
     """One conversation per version stays: going back reopens that version's room."""
-    sets = SetsRepository(archive.db)
-    first = await sets.current_version(archive.set_id)
+    recipes = RecipesRepository(archive.db)
+    first = await recipes.current_version(archive.set_id)
     assert first is not None
     repo = ChatRepository(archive.db)
     on_first = await repo.open_thread(archive.set_id)
     assert on_first.thread is not None and on_first.thread.set_version_id == first.id
-    second = await sets.add_version(archive.set_id, SetVersionPatch(intent="finer"))
+    second = await recipes.add_version(archive.set_id, RecipeVersionPatch(intent="finer"))
     assert second is not None
     on_second = await repo.open_thread(archive.set_id)
     assert on_second.thread is not None and on_second.thread.set_version_id == second.id
 
-    await sets.rollback(archive.set_id, RollbackWrite(to_version_id=first.id))
+    await recipes.rollback(archive.set_id, RollbackWrite(to_version_id=first.id))
 
     live = await repo.open_thread(archive.set_id)
     assert live.thread is not None and live.thread.id == on_first.thread.id
@@ -203,10 +203,10 @@ async def test_after_a_revert_the_targets_conversation_is_the_live_one(
     assert listed[on_first.thread.id].dead_end is False
 
 
-async def test_deleting_a_set_takes_its_conversations_with_it(archive: Fixture) -> None:
+async def test_deleting_a_recipe_takes_its_conversations_with_it(archive: Fixture) -> None:
     """Fail closed. `SET NULL` would turn them into general conversations.
 
-    Nothing deletes a Set through the API — they are archived — so this is
+    Nothing deletes a Recipe through the API — they are archived — so this is
     about what the schema guarantees if anything ever does: the scope is the
     thread's two columns, and a thread that lost them would be a general
     conversation holding one coffee's whole history.
@@ -226,7 +226,7 @@ async def test_deleting_a_set_takes_its_conversations_with_it(archive: Fixture) 
 async def test_both_halves_of_the_scope_cascade(archive: Fixture) -> None:
     """Each column on its own, which the behaviour above cannot separate.
 
-    Deleting a Set already takes its versions with it, so a thread would go
+    Deleting a Recipe already takes its versions with it, so a thread would go
     even if only one of the two references cascaded — and the one that did not
     would be the one that, some other day, leaves a thread half scoped.
     """
@@ -241,11 +241,11 @@ async def test_both_halves_of_the_scope_cascade(archive: Fixture) -> None:
     assert all("ON DELETE CASCADE" in line for line in references), references
 
 
-def _other_set(archive: Fixture) -> tuple[Any, Any]:
-    from gaggiclanker.db.repos.sets import SetVersionWrite, SetWrite
+def _other_recipe(archive: Fixture) -> tuple[Any, Any]:
+    from gaggiclanker.db.repos.recipes import RecipeWrite, SetVersionWrite
 
     return (
-        SetWrite(name="Another bag", bean_id=archive.bean_id),
+        RecipeWrite(name="Another bag", bean_id=archive.bean_id),
         SetVersionWrite(grind_setting="20"),
     )
 
@@ -263,7 +263,7 @@ async def test_the_route_files_a_new_thread_under_the_current_version(
     app_client: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
     app, client, fixture = app_client
-    current = await SetsRepository(app.state.db).current_version(fixture.set_id)
+    current = await RecipesRepository(app.state.db).current_version(fixture.set_id)
     assert current is not None
 
     created = body(await client.post("/api/chat/threads", json={"set_id": fixture.set_id}))
@@ -289,15 +289,15 @@ async def test_the_list_and_the_detail_both_carry_the_version_and_the_dead_end(
     assert detail["thread"]["dead_end"] is False
 
 
-async def test_the_served_version_stays_the_thread_s_after_the_set_moves_on(
+async def test_the_served_version_stays_the_thread_s_after_the_recipe_moves_on(
     app_client: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
     """Served, not just stored: the Chat page labels the row from what it is sent."""
     app, client, fixture = app_client
     created = body(await client.post("/api/chat/threads", json={"set_id": fixture.set_id}))
 
-    await SetsRepository(app.state.db).add_version(
-        fixture.set_id, SetVersionPatch(intent="two clicks finer")
+    await RecipesRepository(app.state.db).add_version(
+        fixture.set_id, RecipeVersionPatch(intent="two clicks finer")
     )
 
     listed = body(await client.get("/api/chat/threads"))
@@ -308,7 +308,7 @@ async def test_the_served_version_stays_the_thread_s_after_the_set_moves_on(
     assert detail["thread"]["set_version_label"] == created["set_version_label"]
 
 
-async def test_the_route_answers_422_for_a_version_of_another_set(
+async def test_the_route_answers_422_for_a_version_of_another_recipe(
     app_client: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
     _app, client, fixture = app_client

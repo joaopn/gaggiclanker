@@ -43,7 +43,7 @@ from gaggiclanker.sync.derive import derive_shot  # noqa: E402
 from tests.lever_shot import LEVER_PROFILE, lever_shot  # noqa: E402
 
 #: The profile's names, whole; what the firmware logs of them is `_logged` (24 bytes).
-NAME_SETS = (
+NAME_RECIPES = (
     (
         "Pre-infusion with a long soak",
         "Ramp up to the first pressure",
@@ -187,9 +187,9 @@ def _profile_names(profile: dict[str, Any]) -> list[str] | None:
 
 def main() -> int:
     # The third name of the first set is cut through the middle of a character, which is dropped.
-    assert _logged(NAME_SETS[0][2]) == "x" + "É" * 11
+    assert _logged(NAME_RECIPES[0][2]) == "x" + "É" * 11
     problems: list[str] = []
-    for names in NAME_SETS:
+    for names in NAME_RECIPES:
         problems += check(names)
     for line in problems:
         print("BUG:", line)

@@ -2,7 +2,7 @@
 
 One request on page load and the front end has every enum it needs: roast
 levels, processes, burr types, grind step units, balance, the flavour wheel,
-the decisions, and where a Set version came from.
+the decisions, and where a Recipe version came from.
 
 It exists so that nothing in `web/src` types a list of coffee words. A UI that
 hard-codes an enum drifts from the database the first time one changes, and the

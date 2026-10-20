@@ -165,7 +165,7 @@ class ReviewStart(BaseModel):
     model: str = ""
     prompt_name: str = ""
     prompt_version: str = ""
-    #: The Set version's prediction as the model is shown it; empty when there is none.
+    #: The Recipe version's prediction as the model is shown it; empty when there is none.
     prediction_given: str = ""
     #: What the model is told, snapshotted. Not a reference to the shot and the
     #: rules: both can change, and an old review explained by today's inputs
@@ -275,7 +275,7 @@ class ShotReviewRow(BaseModel):
     prompt_version: str = ""
     #: One sentence for the person. Never served to the chat.
     summary: str | None = None
-    #: The Set version's prediction as the model was shown it; empty when there was none.
+    #: The Recipe version's prediction as the model was shown it; empty when there was none.
     prediction_given: str = ""
     rules_used: JsonList = Field(default=None, validation_alias="rules_used_json")
     excerpts_used: JsonList = Field(default=None, validation_alias="excerpts_used_json")

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from gaggiclanker.chat.runner import DESIGN_CHAT_PROMPT, GENERAL_CHAT_PROMPT, SET_CHAT_PROMPT
+from gaggiclanker.chat.runner import DESIGN_CHAT_PROMPT, GENERAL_CHAT_PROMPT, RECIPE_CHAT_PROMPT
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.schema import create_schema
@@ -60,15 +60,15 @@ def test_a_renamed_turn_replaces_the_full_stop_with_the_ending() -> None:
     )
 
 
-async def test_the_set_prompt_understands_the_turns_of_a_profile_card(
+async def test_the_recipe_prompt_understands_the_turns_of_a_profile_card(
     prompts: PromptService,
 ) -> None:
-    system = await _system(prompts, SET_CHAT_PROMPT)
+    system = await _system(prompts, RECIPE_CHAT_PROMPT)
 
     assert f'"{TURNS["approved_for_set"]}"' in system
     assert '(you proposed it as <old name>)."' in system
     assert '"Declined: <note>"' in system and '"Declined: no reason given."' in system
-    # The Set follows its profile the moment the proposal is approved: it has recorded the
+    # The Recipe follows its profile the moment the proposal is approved: it has recorded the
     # version already, and the profile reaches the machine with the next sync.
     approved = system[system.index(TURNS["approved_for_set"]) :]
     assert "The Set has recorded that version already" in approved
@@ -89,7 +89,7 @@ async def test_the_general_prompt_understands_the_turns_of_a_profile_card(
     assert '"Declined: <note>"' in system and '"Declined: no reason given."' in system
 
 
-@pytest.mark.parametrize("name", [SET_CHAT_PROMPT, GENERAL_CHAT_PROMPT, DESIGN_CHAT_PROMPT])
+@pytest.mark.parametrize("name", [RECIPE_CHAT_PROMPT, GENERAL_CHAT_PROMPT, DESIGN_CHAT_PROMPT])
 async def test_no_prompt_sends_the_person_to_the_profiles_page_to_answer_a_proposal(
     prompts: PromptService, name: str
 ) -> None:
@@ -106,10 +106,10 @@ def renamed_first_recipe() -> str:
     return base[:-1] + TURNS["accepted_first_recipe_renamed_clause"] + TURNS["renamed_ending"]
 
 
-async def test_the_set_prompt_reads_a_first_recipe_accepted_under_another_name(
+async def test_the_recipe_prompt_reads_a_first_recipe_accepted_under_another_name(
     prompts: PromptService,
 ) -> None:
-    system = await _system(prompts, SET_CHAT_PROMPT)
+    system = await _system(prompts, RECIPE_CHAT_PROMPT)
 
     clause = TURNS["accepted_first_recipe_renamed_clause"].removeprefix(", ")
     assert f"{clause} (you proposed it as <old name>)" in system

@@ -38,7 +38,7 @@ from tests.review.conftest import (
 
 # ── the review routes ────────────────────────────────────────────────
 #
-# These need a shot, which needs a machine and a Set. The fixture Set lives in
+# These need a shot, which needs a machine and a Recipe. The fixture Recipe lives in
 # conftest and is built over a bare `Database`; here the same builder is run
 # against the app's own handle so the routes see it.
 

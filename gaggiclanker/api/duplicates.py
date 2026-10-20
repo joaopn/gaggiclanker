@@ -1,4 +1,4 @@
-"""Duplicate a Set from one of its versions, and preview what the duplicate would start from;
+"""Duplicate a Recipe from one of its versions, and preview what the duplicate would start from;
 and duplicate a profile from one of its versions (Duplicate Profile).
 
 Person-only: these routes are the only way in. The duplicate service is built over the board

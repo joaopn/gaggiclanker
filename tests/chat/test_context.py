@@ -1,6 +1,6 @@
-"""The opening context of a Set conversation, and the golden it renders to.
+"""The opening context of a Recipe conversation, and the golden it renders to.
 
-The golden file is `golden/set-chat-context.txt`, and it is the real check on
+The golden file is `golden/recipe-chat-context.txt`, and it is the real check on
 this module: the other tests here each pin one rule, while the golden asserts
 that the whole document — the version being argued, the ledger with its dead
 ends and outcomes, the spread, the evidence table, this version's shots in
@@ -43,14 +43,14 @@ from gaggiclanker.db.repos.knowledge_insights import (
 )
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document_json
-from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import (
+from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
     RollbackWrite,
-    SetsRepository,
-    SetVersionPatch,
     SetVersionRow,
     SetVersionWrite,
-    SetWrite,
     VersionOutcomeWrite,
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -66,14 +66,14 @@ from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
 from tests.profile_rows import another_version
-from tests.sets.conftest import make_pin, make_profile_version
+from tests.recipes.conftest import make_pin, make_profile_version
 
-GOLDEN = Path(__file__).resolve().parent / "golden" / "set-chat-context.txt"
+GOLDEN = Path(__file__).resolve().parent / "golden" / "recipe-chat-context.txt"
 
 
 @dataclass(slots=True)
 class Experiment:
-    """A Set with a history: five versions, a roll back, and shots to grade.
+    """A Recipe with a history: five versions, a roll back, and shots to grade.
 
     The attributes count the versions in the order they were recorded; their
     names are v1, v1.1, v2 (the dose change was marked major), v2.1 (the roll
@@ -129,7 +129,7 @@ async def _shot(
 
 @pytest.fixture
 async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
-    """One Set, dialled in badly, rolled back, and dialled in again.
+    """One Recipe, dialled in badly, rolled back, and dialled in again.
 
     Every number is written down here rather than derived, so the golden moves
     only when this module's prose or arithmetic does.
@@ -152,11 +152,11 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
         )
         profile = await make_profile_version(db, "Classic 9 bar", temperature=93.0)
-        sets = SetsRepository(db)
+        recipes = RecipesRepository(db)
         judgements = JudgementsRepository(db)
 
-        row = await sets.create(
-            SetWrite(name="Guji natural on the Niche", bean_id=bean.id, grinder_id=grinder.id),
+        row = await recipes.create(
+            RecipeWrite(name="Guji natural on the Niche", bean_id=bean.id, grinder_id=grinder.id),
             SetVersionWrite(
                 profile_version_id=profile,
                 grind_setting="22",
@@ -186,15 +186,15 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 max_bar=bar,
                 brew_flow=flow,
             )
-            assert await sets.assign_shot(shot, v1)
+            assert await recipes.assign_shot(shot, v1)
             await judgements.upsert(
                 shot, JudgementWrite(rating=4, balance="balanced", decision="keep")
             )
 
         # v2: finer, and it did not work. Graded failed.
-        version = await sets.add_version(
+        version = await recipes.add_version(
             set_id,
-            SetVersionPatch(
+            RecipeVersionPatch(
                 grind_setting="20",
                 intent="Chase the sweetness by going finer.",
                 prediction="Shot time up by about 4 s and less sour.",
@@ -212,7 +212,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             max_bar=9.60,
             brew_flow=1.10,
         )
-        assert await sets.assign_shot(shot, v2)
+        assert await recipes.assign_shot(shot, v2)
         await judgements.upsert(
             shot,
             JudgementWrite(
@@ -223,7 +223,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 taste_notes=["roasted.burnt"],
             ),
         )
-        graded = await sets.set_outcome(
+        graded = await recipes.set_outcome(
             set_id,
             v2,
             VersionOutcomeWrite(
@@ -234,9 +234,9 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
 
         # v3: half a gram more dose, one shot, nothing conclusive. Marked a
         # major version, so the record carries both kinds of name: v2.
-        version = await sets.add_version(
+        version = await recipes.add_version(
             set_id,
-            SetVersionPatch(
+            RecipeVersionPatch(
                 dose_g=18.5,
                 intent="See whether a bigger dose slows the gusher down.",
                 prediction="Shot time up by 2 s against v1.1.",
@@ -255,11 +255,11 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             max_bar=9.50,
             brew_flow=1.15,
         )
-        assert await sets.assign_shot(shot, v3)
+        assert await recipes.assign_shot(shot, v3)
         await judgements.upsert(
             shot, JudgementWrite(rating=2, balance="bitter", decision="improve")
         )
-        graded = await sets.set_outcome(
+        graded = await recipes.set_outcome(
             set_id,
             v3,
             VersionOutcomeWrite(
@@ -269,15 +269,15 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         assert graded.version is not None
 
         # v4: go back to what worked. v2 and v3 are now dead ends. This is a row
-        # as a roll back wrote it before going back became a move of the Set's
+        # as a roll back wrote it before going back became a move of the Recipe's
         # pointer (a new version copying v1's recipe and naming it as what it
         # restores): databases still hold such rows and the line walk must keep
         # reading them. The revert itself is exercised below.
-        first = await sets.get_version(v1)
+        first = await recipes.get_version(v1)
         assert first is not None
-        rolled = await sets.add_version(
+        rolled = await recipes.add_version(
             set_id,
-            SetVersionPatch(
+            RecipeVersionPatch(
                 profile_version_id=first.profile_version_id,
                 grind_setting=first.grind_setting,
                 grind_value=first.grind_value,
@@ -302,9 +302,9 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             max_bar=9.15,
             brew_flow=1.88,
         )
-        assert await sets.assign_shot(shot, v4)
+        assert await recipes.assign_shot(shot, v4)
         await judgements.upsert(shot, JudgementWrite(rating=4, balance="balanced", decision="keep"))
-        # Two more on the same recipe, so the Set has repeats and its spread is
+        # Two more on the same recipe, so the Recipe has repeats and its spread is
         # measured rather than sitting on the floors.
         for index, (device, duration, weight, drip, bar, flow, rating) in enumerate(
             (
@@ -322,20 +322,20 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 max_bar=bar,
                 brew_flow=flow,
             )
-            assert await sets.assign_shot(more, v4)
+            assert await recipes.assign_shot(more, v4)
             await judgements.upsert(
                 more, JudgementWrite(rating=rating, balance="balanced", decision="keep")
             )
-        graded = await sets.set_outcome(
+        graded = await recipes.set_outcome(
             set_id, v4, VersionOutcomeWrite(outcome="held", note="Straight back where it was.")
         )
         assert graded.version is not None
 
         # v5: the version this conversation is about. One shot judged, one
         # discarded, and nobody has graded the prediction.
-        version = await sets.add_version(
+        version = await recipes.add_version(
             set_id,
-            SetVersionPatch(
+            RecipeVersionPatch(
                 grind_setting="21",
                 intent="One number finer than the Keep recipe, for a little more body.",
                 prediction=(
@@ -355,7 +355,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             max_bar=9.30,
             brew_flow=1.70,
         )
-        assert await sets.assign_shot(shot, v5)
+        assert await recipes.assign_shot(shot, v5)
         await judgements.upsert(
             shot,
             JudgementWrite(
@@ -376,7 +376,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             max_bar=9.00,
             brew_flow=2.40,
         )
-        assert await sets.assign_shot(spilled, v5)
+        assert await recipes.assign_shot(spilled, v5)
         await judgements.upsert(
             spilled, JudgementWrite(decision="discard", notes="Knocked the cup.")
         )
@@ -478,13 +478,13 @@ async def test_it_is_about_the_thread_s_version_not_the_current_one(
 
 async def test_a_revert_is_told_to_the_conversation_it_reopens(experiment: Experiment) -> None:
     """v2.2 back to v1.1: the agent must not carry on as if nothing happened in between."""
-    sets = SetsRepository(experiment.db)
+    recipes = RecipesRepository(experiment.db)
     quiet = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
     )
     assert "The Set went back to" not in quiet
 
-    result = await sets.rollback(
+    result = await recipes.rollback(
         experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="v2.2 was too slow")
     )
     assert result.version is not None
@@ -510,12 +510,12 @@ async def test_a_revert_is_told_to_the_conversation_it_reopens(experiment: Exper
 async def test_two_reverts_into_one_version_are_told_oldest_first(
     experiment: Experiment,
 ) -> None:
-    sets = SetsRepository(experiment.db)
-    await sets.rollback(
+    recipes = RecipesRepository(experiment.db)
+    await recipes.rollback(
         experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="first time")
     )
-    await sets.rollback(experiment.set_id, RollbackWrite(to_version_id=experiment.v5))
-    await sets.rollback(
+    await recipes.rollback(experiment.set_id, RollbackWrite(to_version_id=experiment.v5))
+    await recipes.rollback(
         experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="second time")
     )
     # Forge the log's times: the second revert's row is the older one by id order only.
@@ -542,21 +542,21 @@ async def test_two_reverts_into_one_version_are_told_oldest_first(
     assert "2026-05-02 10:00 UTC. Why: first time" in lines[1]
 
 
-async def _graded(experiment: Experiment) -> SetProposalsRepository:
+async def _graded(experiment: Experiment) -> RecipeProposalsRepository:
     """Grade v2.2, so a change can be proposed against it at all."""
-    await SetsRepository(experiment.db).set_outcome(
+    await RecipesRepository(experiment.db).set_outcome(
         experiment.set_id,
         experiment.v5,
         VersionOutcomeWrite(outcome="partly_held", note="Slower, but the finish is drying."),
     )
-    return SetProposalsRepository(experiment.db)
+    return RecipeProposalsRepository(experiment.db)
 
 
-async def _propose(experiment: Experiment, proposals: SetProposalsRepository) -> int:
+async def _propose(experiment: Experiment, proposals: RecipeProposalsRepository) -> int:
     result = await proposals.create(
         experiment.set_id,
         ProposalWrite(
-            patch=SetVersionPatch(dose_g=18.5),
+            patch=RecipeVersionPatch(dose_g=18.5),
             reason="Half a gram more, to carry the finish.",
             prediction="Compared to v2.2: a touch more body and no slower.",
         ),
@@ -617,17 +617,17 @@ async def test_an_accepted_proposal_names_the_version_it_became(
     assert "They accepted it; it is v2.3." in rendered
 
 
-async def test_a_proposal_the_set_overtook_says_so_and_frees_the_agent(
+async def test_a_proposal_the_recipe_overtook_says_so_and_frees_the_agent(
     experiment: Experiment,
 ) -> None:
     """Retired by the version that overtook it, and the context says which one."""
     proposals = await _graded(experiment)
     await _propose(experiment, proposals)
-    await SetsRepository(experiment.db).add_version(
+    await RecipesRepository(experiment.db).add_version(
         experiment.set_id,
-        SetVersionPatch(dose_g=19, intent="Changed it by hand instead."),
+        RecipeVersionPatch(dose_g=19, intent="Changed it by hand instead."),
     )
-    versions = await SetsRepository(experiment.db).versions(experiment.set_id)
+    versions = await RecipesRepository(experiment.db).versions(experiment.set_id)
 
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, versions[0].id)
@@ -648,7 +648,7 @@ async def test_a_waiting_proposal_says_the_agent_suggested_a_major_version(
     result = await proposals.create(
         experiment.set_id,
         ProposalWrite(
-            patch=SetVersionPatch(dose_g=18.5),
+            patch=RecipeVersionPatch(dose_g=18.5),
             reason="Half a gram more, to carry the finish.",
             prediction="Compared to v2.2: a touch more body and no slower.",
             suggest_major=True,
@@ -682,7 +682,7 @@ async def test_a_reason_that_ends_in_a_full_stop_is_not_given_a_second_one(
     assert '".' not in rendered.replace('as "Adaptive v2 v2".', "")
 
 
-async def test_a_set_nobody_has_proposed_anything_for_says_so(
+async def test_a_recipe_nobody_has_proposed_anything_for_says_so(
     experiment: Experiment,
 ) -> None:
     """The block is always rendered: a section that comes and goes reads as two documents."""
@@ -737,12 +737,14 @@ def _shot_headers(rendered: str) -> list[int]:
 async def test_the_shots_are_this_version_s_newest_in_base_and_no_other_version_s(
     experiment: Experiment,
 ) -> None:
-    sets = SetsRepository(experiment.db)
+    recipes = RecipesRepository(experiment.db)
     mine = [
-        row.shot_id for row in await sets.set_shots(experiment.set_id, version_id=experiment.v5)
+        row.shot_id
+        for row in await recipes.recipe_shots(experiment.set_id, version_id=experiment.v5)
     ]
     compared = {
-        row.shot_id for row in await sets.set_shots(experiment.set_id, version_id=experiment.v4)
+        row.shot_id
+        for row in await recipes.recipe_shots(experiment.set_id, version_id=experiment.v4)
     }
 
     rendered = await opening_context(
@@ -760,8 +762,8 @@ async def test_the_shots_are_this_version_s_newest_in_base_and_no_other_version_
 async def test_the_number_of_shots_follows_what_the_caller_asks_for(
     experiment: Experiment,
 ) -> None:
-    sets = SetsRepository(experiment.db)
-    newest = (await sets.set_shots(experiment.set_id, version_id=experiment.v4))[0].shot_id
+    recipes = RecipesRepository(experiment.db)
+    newest = (await recipes.recipe_shots(experiment.set_id, version_id=experiment.v4))[0].shot_id
 
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v4), recent_shots=1
@@ -791,8 +793,8 @@ async def test_the_shots_block_names_the_ids_of_the_shots_it_contains(
 
 
 async def test_a_version_with_no_shots_says_so(experiment: Experiment) -> None:
-    version = await SetsRepository(experiment.db).add_version(
-        experiment.set_id, SetVersionPatch(intent="Nothing pulled on this yet.")
+    version = await RecipesRepository(experiment.db).add_version(
+        experiment.set_id, RecipeVersionPatch(intent="Nothing pulled on this yet.")
     )
     assert version is not None
 
@@ -814,7 +816,7 @@ async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(
     """Good on a branch nobody is brewing is not what an Improve shot is held to."""
     from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 
-    on_a_dead_end = await SetsRepository(experiment.db).set_shots(
+    on_a_dead_end = await RecipesRepository(experiment.db).recipe_shots(
         experiment.set_id, version_id=experiment.v2
     )
     assert on_a_dead_end
@@ -831,12 +833,12 @@ async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(
     assert "on v1, v2.1" in gold
 
 
-async def test_a_set_with_no_shots_says_the_spread_is_not_measured_and_names_the_floors(
+async def test_a_recipe_with_no_shots_says_the_spread_is_not_measured_and_names_the_floors(
     experiment: Experiment,
 ) -> None:
     """A heading with nothing under it reads as a bug rather than as "not yet"."""
-    empty = await SetsRepository(experiment.db).create(
-        SetWrite(name="Nothing pulled yet", bean_id=1),
+    empty = await RecipesRepository(experiment.db).create(
+        RecipeWrite(name="Nothing pulled yet", bean_id=1),
         SetVersionWrite(grind_setting="20"),
         automatch=False,
     )
@@ -851,7 +853,7 @@ async def test_a_set_with_no_shots_says_the_spread_is_not_measured_and_names_the
 async def test_the_insights_block_is_bounded_and_says_how_many_more_there_are(
     experiment: Experiment,
 ) -> None:
-    """The one section whose length follows the kitchen rather than the Set."""
+    """The one section whose length follows the kitchen rather than the Recipe."""
     repo = InsightsRepository(experiment.db)
     for number in range(INSIGHTS_SHOWN + 5):
         await repo.insert(
@@ -892,23 +894,23 @@ async def test_the_gold_standard_is_the_keep_shots_still_on_the_line(
 async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_matter(
     experiment: Experiment,
 ) -> None:
-    """The rule, on a Set long enough to need it.
+    """The rule, on a Recipe long enough to need it.
 
     Every version after the fifth is an ordinary one, so the ledger runs past
     its budget — and what has to survive is the version being argued and the
     one its prediction is compared against, however old that is.
     """
-    sets = SetsRepository(experiment.db)
+    recipes = RecipesRepository(experiment.db)
     for number in range(LEDGER_VERSIONS + 2):
-        version = await sets.add_version(
-            experiment.set_id, SetVersionPatch(intent=f"Filler {number}.")
+        version = await recipes.add_version(
+            experiment.set_id, RecipeVersionPatch(intent=f"Filler {number}.")
         )
         assert version is not None
     # The newest version, predicting against v2.2 — which is by now far enough
     # back that the budget would otherwise have summarised it away.
-    argued = await sets.add_version(
+    argued = await recipes.add_version(
         experiment.set_id,
-        SetVersionPatch(
+        RecipeVersionPatch(
             grind_setting="20.5",
             intent="Split the difference.",
             prediction="Between v2.1 and v2.2 on shot time.",
@@ -928,7 +930,8 @@ async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_mat
     # The summary names what it summarised and nothing else: v2.2 is written
     # out three lines below it, so a span that swallowed it would be a lie.
     made_in_order = sorted(
-        await sets.versions(experiment.set_id), key=lambda version: (version.created_at, version.id)
+        await recipes.versions(experiment.set_id),
+        key=lambda version: (version.created_at, version.id),
     )
     ordinals = {version.version_label: index + 1 for index, version in enumerate(made_in_order)}
     ledger = [line for line in rendered.splitlines() if line.startswith("- v")]
@@ -943,10 +946,10 @@ async def test_the_version_being_argued_survives_the_budget_however_old_it_is(
     experiment: Experiment,
 ) -> None:
     """An old conversation, reopened: it is still about its own version."""
-    sets = SetsRepository(experiment.db)
+    recipes = RecipesRepository(experiment.db)
     for number in range(LEDGER_VERSIONS + 4):
-        assert await sets.add_version(
-            experiment.set_id, SetVersionPatch(intent=f"Filler {number}.")
+        assert await recipes.add_version(
+            experiment.set_id, RecipeVersionPatch(intent=f"Filler {number}.")
         )
 
     rendered = await opening_context(
@@ -985,12 +988,12 @@ def _averages_of(line: str) -> dict[str, float]:
     return found
 
 
-async def test_each_ledger_line_carries_the_means_get_set_serves(experiment: Experiment) -> None:
+async def test_each_ledger_line_carries_the_means_get_recipe_serves(experiment: Experiment) -> None:
     """The ledger and the trajectory are one function's two readers: no number differs."""
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
     )
-    trends = await SetsRepository(experiment.db).trends(experiment.set_id)
+    trends = await RecipesRepository(experiment.db).trends(experiment.set_id)
 
     assert len(trends.versions) == 5
     for version in trends.versions:
@@ -1019,9 +1022,11 @@ async def test_the_ledger_averages_count_only_the_shots_that_count(experiment: E
 
 
 async def test_a_version_with_shots_but_none_that_count_says_so(experiment: Experiment) -> None:
-    sets = SetsRepository(experiment.db)
+    recipes = RecipesRepository(experiment.db)
     await JudgementsRepository(experiment.db).upsert(
-        (await sets.set_shots(experiment.set_id, version_id=experiment.v2, limit=1))[0].shot_id,
+        (await recipes.recipe_shots(experiment.set_id, version_id=experiment.v2, limit=1))[
+            0
+        ].shot_id,
         JudgementWrite(decision="discard"),
     )
 
@@ -1035,8 +1040,10 @@ async def test_a_version_with_shots_but_none_that_count_says_so(experiment: Expe
 
 
 async def test_a_version_with_no_shots_has_no_averages_part(experiment: Experiment) -> None:
-    sets = SetsRepository(experiment.db)
-    empty = await sets.add_version(experiment.set_id, SetVersionPatch(intent="Not brewed yet."))
+    recipes = RecipesRepository(experiment.db)
+    empty = await recipes.add_version(
+        experiment.set_id, RecipeVersionPatch(intent="Not brewed yet.")
+    )
     assert empty is not None
 
     rendered = await opening_context(
@@ -1053,8 +1060,8 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_says_how_many(
     experiment: Experiment,
 ) -> None:
     """Both rows: every mean on the same shots says so once; mixed counts say it per mean."""
-    sets = SetsRepository(experiment.db)
-    shots = await sets.set_shots(experiment.set_id, version_id=experiment.v4, limit=10)
+    recipes = RecipesRepository(experiment.db)
+    shots = await recipes.recipe_shots(experiment.set_id, version_id=experiment.v4, limit=10)
     assert len(shots) == 3
     # One of v2.1's three shots had no rating; the rest of its numbers stay on all three.
     await experiment.db.execute(
@@ -1075,10 +1082,10 @@ async def test_the_budget_still_trims_with_the_averages_in_the_lines(
     experiment: Experiment,
 ) -> None:
     """The old end is summarised as before; what is written out keeps its means."""
-    sets = SetsRepository(experiment.db)
+    recipes = RecipesRepository(experiment.db)
     for number in range(LEDGER_VERSIONS + 2):
-        assert await sets.add_version(
-            experiment.set_id, SetVersionPatch(intent=f"Filler {number}.")
+        assert await recipes.add_version(
+            experiment.set_id, RecipeVersionPatch(intent=f"Filler {number}.")
         )
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
@@ -1103,9 +1110,9 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_sa
     The threshold is the version's shot count: a mean over the seven counted ones is still
     a mean over fewer than the ten it has.
     """
-    sets = SetsRepository(experiment.db)
+    recipes = RecipesRepository(experiment.db)
     judgements = JudgementsRepository(experiment.db)
-    version = await sets.add_version(experiment.set_id, SetVersionPatch(intent="Ten pulls."))
+    version = await recipes.add_version(experiment.set_id, RecipeVersionPatch(intent="Ten pulls."))
     assert version is not None
     for index in range(10):
         shot = await _shot(
@@ -1118,7 +1125,7 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_sa
             max_bar=9.0,
             brew_flow=1.9,
         )
-        assert await sets.assign_shot(shot, version.id)
+        assert await recipes.assign_shot(shot, version.id)
         if index >= 7:
             await judgements.upsert(shot, JudgementWrite(decision="discard"))
         elif index < 5:
@@ -1137,8 +1144,8 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_sa
 
 
 async def test_counted_shots_that_recorded_nothing_say_so(experiment: Experiment) -> None:
-    sets = SetsRepository(experiment.db)
-    version = await sets.add_version(experiment.set_id, SetVersionPatch(intent="Blank logs."))
+    recipes = RecipesRepository(experiment.db)
+    version = await recipes.add_version(experiment.set_id, RecipeVersionPatch(intent="Blank logs."))
     assert version is not None
     shot = await ShotsRepository(experiment.db).insert(
         ShotInsert(
@@ -1148,7 +1155,7 @@ async def test_counted_shots_that_recorded_nothing_say_so(experiment: Experiment
             duration_ms=0,
         )
     )
-    assert await sets.assign_shot(shot, version.id)
+    assert await recipes.assign_shot(shot, version.id)
 
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
@@ -1162,14 +1169,14 @@ async def test_the_context_reads_the_counted_shots_once(
     experiment: Experiment, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls = 0
-    original = SetsRepository.counted_shots
+    original = RecipesRepository.counted_shots
 
-    async def counting(self: SetsRepository, set_id: int) -> list[CountedShot]:
+    async def counting(self: RecipesRepository, set_id: int) -> list[CountedShot]:
         nonlocal calls
         calls += 1
         return await original(self, set_id)
 
-    monkeypatch.setattr(SetsRepository, "counted_shots", counting)
+    monkeypatch.setattr(RecipesRepository, "counted_shots", counting)
     await opening_context(experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5))
 
     assert calls == 1
@@ -1189,7 +1196,7 @@ def _document_line(rendered: str, after: str) -> str:
 
 
 async def _own_profile_version(experiment: Experiment) -> int:
-    version = await SetsRepository(experiment.db).get_version(experiment.v5)
+    version = await RecipesRepository(experiment.db).get_version(experiment.v5)
     assert version is not None and version.profile_version_id is not None
     return version.profile_version_id
 
@@ -1253,7 +1260,7 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
     On a version whose compared version brews another profile, so both blocks are in play.
     """
     db = experiment.db
-    sets = SetsRepository(db)
+    recipes = RecipesRepository(db)
     version = await _other_profile_version(experiment)
     scope = ToolScope.for_thread(experiment.set_id, version.id)
 
@@ -1276,35 +1283,35 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
         max_bar=9.0,
         brew_flow=1.9,
     )
-    assert await sets.assign_shot(shot, version.id)
+    assert await recipes.assign_shot(shot, version.id)
     await JudgementsRepository(db).upsert(shot, JudgementWrite(rating=3, decision="improve"))
     states.append(("a shot", await render()))
-    graded = await sets.set_outcome(
+    graded = await recipes.set_outcome(
         experiment.set_id,
         version.id,
         VersionOutcomeWrite(outcome="partly_held", note="Slower, but the finish is drying."),
     )
     assert graded.version is not None, graded
     states.append(("a grade", await render()))
-    newer = await sets.add_version(experiment.set_id, SetVersionPatch(intent="One finer."))
+    newer = await recipes.add_version(experiment.set_id, RecipeVersionPatch(intent="One finer."))
     assert newer is not None
     states.append(("a new version", await render()))
-    await sets.set_outcome(
+    await recipes.set_outcome(
         experiment.set_id,
         newer.id,
         VersionOutcomeWrite(outcome="held", note="Straight where it should be."),
     )
-    result = await SetProposalsRepository(db).create(
+    result = await RecipeProposalsRepository(db).create(
         experiment.set_id,
         ProposalWrite(
-            patch=SetVersionPatch(dose_g=18.5),
+            patch=RecipeVersionPatch(dose_g=18.5),
             reason="Half a gram more, to carry the finish.",
             prediction="Compared to v3.1: a touch more body and no slower.",
         ),
     )
     assert result.proposal is not None, result.refused
     states.append(("a proposal", await render()))
-    await sets.rollback(
+    await recipes.rollback(
         experiment.set_id, RollbackWrite(to_version_id=version.id, note="One finer was no better")
     )
     states.append(("a revert", await render()))
@@ -1345,10 +1352,10 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
 
 
 async def test_a_version_with_no_profile_says_so(experiment: Experiment) -> None:
-    sets = SetsRepository(experiment.db)
-    bare = await sets.add_version(
+    recipes = RecipesRepository(experiment.db)
+    bare = await recipes.add_version(
         experiment.set_id,
-        SetVersionPatch(profile_version_id=None, intent="Any profile will do for this one."),
+        RecipeVersionPatch(profile_version_id=None, intent="Any profile will do for this one."),
     )
     assert bare is not None and bare.profile_version_id is None
 
@@ -1368,9 +1375,9 @@ async def _other_profile_version(experiment: Experiment) -> SetVersionRow:
         description="Lever ramp",
         temperature=92.0,
     )
-    version = await SetsRepository(experiment.db).add_version(
+    version = await RecipesRepository(experiment.db).add_version(
         experiment.set_id,
-        SetVersionPatch(
+        RecipeVersionPatch(
             profile_version_id=other,
             intent="Try the other profile.",
             prediction="Shot time up by 3 s against v2.1.",
@@ -1416,9 +1423,9 @@ async def test_a_compared_version_on_the_same_profile_adds_nothing(experiment: E
 async def test_a_version_with_no_profile_still_gets_the_compared_versions_profile(
     experiment: Experiment,
 ) -> None:
-    bare = await SetsRepository(experiment.db).add_version(
+    bare = await RecipesRepository(experiment.db).add_version(
         experiment.set_id,
-        SetVersionPatch(
+        RecipeVersionPatch(
             profile_version_id=None,
             intent="Any profile.",
             prediction="Faster than v2.1.",
@@ -1438,15 +1445,15 @@ async def test_a_version_with_no_profile_still_gets_the_compared_versions_profil
 async def test_a_version_with_a_profile_compared_against_one_that_names_none_adds_nothing(
     experiment: Experiment,
 ) -> None:
-    sets = SetsRepository(experiment.db)
-    bare = await sets.add_version(
+    recipes = RecipesRepository(experiment.db)
+    bare = await recipes.add_version(
         experiment.set_id,
-        SetVersionPatch(profile_version_id=None, intent="Any profile."),
+        RecipeVersionPatch(profile_version_id=None, intent="Any profile."),
     )
     assert bare is not None and bare.profile_version_id is None
-    profiled = await sets.add_version(
+    profiled = await recipes.add_version(
         experiment.set_id,
-        SetVersionPatch(
+        RecipeVersionPatch(
             profile_version_id=await _own_profile_version(experiment),
             intent="Back on the Classic profile.",
             prediction="Faster than the version with no profile.",
@@ -1599,7 +1606,7 @@ async def test_only_the_signature_in_force_is_in_the_block_tier_first(
 async def test_an_override_in_force_states_the_versions_own_limit_beside_the_profiles(
     experiment: Experiment,
 ) -> None:
-    from tests.signatures.helpers import make_set_versions  # noqa: F401
+    from tests.signatures.helpers import make_recipe_versions  # noqa: F401
 
     db = experiment.db
     profile_id = await _own_profile_version(experiment)
@@ -1622,7 +1629,7 @@ async def test_an_override_in_force_states_the_versions_own_limit_beside_the_pro
     # Rejected by the person, the version reads the profile's own limit again.
     await repo.reject_override(proposal.id, reason="too loose")
     assert "this version's limit" not in await opening_context(db, scope)
-    # Another version of the Set reads the profile's own limit.
+    # Another version of the Recipe reads the profile's own limit.
     other = await opening_context(db, ToolScope.for_thread(experiment.set_id, experiment.v4))
     assert "this version's limit" not in other
 
@@ -1787,7 +1794,7 @@ async def test_each_live_pin_is_one_line_naming_the_version_and_the_copy(
     rendered = await opening_context(experiment.db, scope)
 
     assert rendered.count("Pinned on the machine:") == 2
-    # Newest pin first; the line sits with the Set's own facts, before the version's.
+    # Newest pin first; the line sits with the Recipe's own facts, before the version's.
     assert rendered.index('Pinned on the machine: v1.1 as "Blooming v1.1".') < rendered.index(
         'Pinned on the machine: v2 as "Adaptive v2 v2".'
     )

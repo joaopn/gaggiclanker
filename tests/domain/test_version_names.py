@@ -1,14 +1,14 @@
 """The version-name rules: the label, the next name, the parse.
 
 Pure, so every case is a line. What the repository does with them on a real
-database is in `tests/sets/test_version_names.py`.
+database is in `tests/recipes/test_version_names.py`.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from gaggiclanker.domain.sets import (
+from gaggiclanker.domain.recipes import (
     next_version_name,
     parse_version_label,
     version_label,
@@ -32,13 +32,13 @@ def test_a_minor_stays_in_the_current_major_and_a_major_starts_the_next() -> Non
     assert next_version_name(
         current_major=1, current_major_minor_max=2, highest_major=1, major=True
     ) == (2, 0)
-    # The first version of a Set is a major from nothing.
+    # The first version of a Recipe is a major from nothing.
     assert next_version_name(
         current_major=0, current_major_minor_max=0, highest_major=0, major=True
     ) == (1, 0)
 
 
-def test_an_empty_set_starts_at_v1_whatever_the_change_is_called() -> None:
+def test_an_empty_recipe_starts_at_v1_whatever_the_change_is_called() -> None:
     """A minor from nothing would be v0.1, a name `parse_version_label` refuses."""
     assert next_version_name(
         current_major=0, current_major_minor_max=0, highest_major=0, major=False

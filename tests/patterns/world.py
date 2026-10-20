@@ -1,4 +1,4 @@
-"""Three Sets on one grinder, two of them sharing a roast level, for the pattern tests.
+"""Three Recipes on one grinder, two of them sharing a roast level, for the pattern tests.
 
 Real database, real repositories. What is shared is deliberate, so the scope rule has
 something to bite on:
@@ -6,7 +6,7 @@ something to bite on:
 * ``a`` (Guji: light, natural, Ethiopia) and ``b`` (Yirgacheffe: light, washed, Ethiopia)
   share the grinder, the roast level and the origin, and not the bean or the process;
 * ``c`` (Huila: dark, washed, Colombia) shares only the grinder;
-* ``designing`` is a Set still being designed: it never counts.
+* ``designing`` is a Recipe still being designed: it never counts.
 """
 
 from __future__ import annotations
@@ -22,14 +22,19 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightWrite,
     RestsOn,
 )
-from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import (
+    DesignBrief,
+    RecipesRepository,
+    RecipeWrite,
+    SetVersionWrite,
+)
 
 
 @dataclass(slots=True)
 class PatternWorld:
     db: Database
     insights: InsightsRepository
-    sets: SetsRepository
+    sets: RecipesRepository
     grinder_id: int
     bean_a: int
     bean_b: int
@@ -40,7 +45,7 @@ class PatternWorld:
     designing: int
 
     async def own(self, set_id: int, text: str, *, confirmed: bool = True) -> int:
-        """A confirmed (or waiting) insight of one Set, written straight into the table."""
+        """A confirmed (or waiting) insight of one Recipe, written straight into the table."""
         row = await self.sets.get(set_id)
         assert row is not None
         return await self.insights.insert(
@@ -93,17 +98,17 @@ async def build_pattern_world(db: Database) -> PatternWorld:
     grinder = await GrindersRepository(db).create(
         GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
     )
-    sets = SetsRepository(db)
+    sets = RecipesRepository(db)
     made = []
     for name, bean_id in (("Guji daily", guji.id), ("Yirg daily", yirg.id), ("Huila", huila.id)):
         made.append(
             await sets.create(
-                SetWrite(name=name, bean_id=bean_id, grinder_id=grinder.id),
+                RecipeWrite(name=name, bean_id=bean_id, grinder_id=grinder.id),
                 SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
             )
         )
     draft = await sets.create_design(
-        SetWrite(name="Being designed", bean_id=guji.id, grinder_id=grinder.id), DesignBrief()
+        RecipeWrite(name="Being designed", bean_id=guji.id, grinder_id=grinder.id), DesignBrief()
     )
     return PatternWorld(
         db=db,
@@ -122,7 +127,7 @@ async def build_pattern_world(db: Database) -> PatternWorld:
 
 @dataclass(slots=True)
 class Talking:
-    """The world once its Sets have said things: ids by name."""
+    """The world once its Recipes have said things: ids by name."""
 
     world: PatternWorld
     #: A's and B's two phrasings of one finding about the grinder.
@@ -131,7 +136,7 @@ class Talking:
     #: C's own lesson, and A's one that only A would say.
     c_grinder: int
     a_only: int
-    #: A waiting one and one in the Set being designed: neither is ever read.
+    #: A waiting one and one in the Recipe being designed: neither is ever read.
     waiting: int
     designing: int
     general: int

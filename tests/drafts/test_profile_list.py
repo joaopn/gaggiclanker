@@ -17,7 +17,7 @@ from gaggiclanker.domain.models import Profile
 from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.machine import read_machine
 from tests.drafts.conftest import BASE_LABEL, data, error
-from tests.drafts.helpers import APP_LABEL, draft_of, ids_labelled, make_set_on, tombstone
+from tests.drafts.helpers import APP_LABEL, draft_of, ids_labelled, make_recipe_on, tombstone
 from tests.drafts.test_board import (
     adopted,
     app_row,
@@ -154,12 +154,12 @@ async def test_the_selected_profile_stays_when_nothing_else_is_on(
     assert ids(fake) == [keep["machine"]["device_id"]]
 
 
-async def test_a_set_brewing_a_profile_is_served_and_does_not_block_switching_it_off(
+async def test_a_recipe_brewing_a_profile_is_served_and_does_not_block_switching_it_off(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     app, client, _ = adopted
     row = row_for(await get_board(client), BASE_LABEL)
-    await make_set_on(client, "Brews it", row["row"]["current_version_id"])
+    await make_recipe_on(client, "Brews it", row["row"]["current_version_id"])
     served = row_for(await get_board(client), BASE_LABEL)["set"]
     assert (served["name"], served["version_label"], served["next_minor_label"]) == (
         "Brews it",
@@ -489,7 +489,7 @@ async def test_a_profile_switched_back_on_since_the_plan_keeps_its_file(
     real = BoardService._apply_off
 
     async def switch_on_then_apply(self: BoardService, phase: Any, plan: Any) -> None:
-        await self.set_on_machine(row["row"]["id"], True)
+        await self.recipe_on_machine(row["row"]["id"], True)
         await real(self, phase, plan)
 
     monkeypatch.setattr(BoardService, "_apply_off", switch_on_then_apply)

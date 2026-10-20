@@ -27,10 +27,10 @@ whole SQL statement, the transcript already holds the readable copy, and this
 table is for "which tool, how long, did it work".
 
 **What exists is decided by the conversation, not by the caller.**
-:mod:`gaggiclanker.tools.scope` maps a conversation's kind — one Set, or the
+:mod:`gaggiclanker.tools.scope` maps a conversation's kind — one Recipe, or the
 archive — to the tools it has, and the dispatcher refuses anything outside it
 with a message the model can read. The same scope produces the schemas the
-provider is sent and the registrations the MCP server makes, so a tool a Set
+provider is sent and the registrations the MCP server makes, so a tool a Recipe
 conversation cannot call is also a tool it was never told about.
 
 **A tool cannot hang the run.** Each one has its own timeout and a tool that
@@ -153,11 +153,11 @@ class ToolContext:
     #: barrier. ``None`` over stdio MCP, where there is no application to queue
     #: work on.
     tasks: TaskSpawner | None = None
-    #: What this conversation is: the whole archive read-only, or one Set. It
+    #: What this conversation is: the whole archive read-only, or one Recipe. It
     #: decides which tools exist (the schemas, the dispatcher and the MCP
     #: server all read it) and it is what tools taking a ``set_id`` resolve
-    #: against — so "how is it going?" has an answer, and "how is Set 7 going?"
-    #: asked inside Set 3's conversation has a refusal.
+    #: against — so "how is it going?" has an answer, and "how is Recipe 7 going?"
+    #: asked inside Recipe 3's conversation has a refusal.
     scope: ToolScope = field(default_factory=ToolScope)
     #: Which conversation this is, when there is one. Not a limit — the scope
     #: above is — but a proposed change records the room it was argued in, so
@@ -177,10 +177,10 @@ class ToolContext:
 
     @property
     def set_id(self) -> int | None:
-        """The Set this conversation is about, if it is about one.
+        """The Recipe this conversation is about, if it is about one.
 
         A property over the scope rather than a field beside it: two places to
-        read the Set from is two answers the day one of them is set and the
+        read the Recipe from is two answers the day one of them is set and the
         other is not.
         """
         return self.scope.set_id
@@ -282,7 +282,7 @@ class ToolRegistry:
 
         Two narrowings, and they answer different questions. ``permissions`` is
         what the *caller* may do — read, or read and propose. ``scope`` is what
-        this *conversation* has at all, which is the Set-or-archive rule in
+        this *conversation* has at all, which is the Recipe-or-archive rule in
         :mod:`gaggiclanker.tools.scope`; left ``None`` it is the whole registry,
         which is what the docs and a test of the registry itself want.
 

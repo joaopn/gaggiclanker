@@ -1,12 +1,12 @@
-"""Agent-written insights are placed on the one Set they fit, once.
+"""Agent-written insights are placed on the one Recipe they fit, once.
 
 The placement is not SQL, because "fits" is the live matching rule and a copy of its
 logic in SQL would be a second rule. So these tests build databases like the
-maintainer's — several Sets on one bean and one grinder, an archived one, a Set
+maintainer's — several Recipes on one bean and one grinder, an archived one, a Recipe
 being designed, insights from analyses and chats with and without evidence,
 hand-written ones — and check the placement against an oracle that is written
 here from raw rows, calling only the live `scope_matches`. Every placed insight
-must fit exactly the Set it landed on, every unplaced one must fit none or
+must fit exactly the Recipe it landed on, every unplaced one must fit none or
 several, hand-written ones never move, and nothing is lost.
 """
 
@@ -29,18 +29,18 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightScope,
     InsightsRepository,
     InsightWrite,
+    recipe_attributes,
     scope_matches,
-    set_attributes,
 )
-from gaggiclanker.db.repos.sets import (
+from gaggiclanker.db.repos.recipes import (
     DesignBrief,
-    SetsRepository,
-    SetVersionPatch,
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
     SetVersionWrite,
-    SetWrite,
 )
 from gaggiclanker.db.schema import create_schema
-from tests.sets.conftest import make_shot
+from tests.recipes.conftest import make_shot
 
 
 @pytest.fixture
@@ -73,9 +73,11 @@ class Kitchen:
     shots: dict[str, int]
 
 
-async def _set(sets: SetsRepository, name: str, bean: int, grinder: int | None) -> tuple[int, int]:
-    row = await sets.create(
-        SetWrite(name=name, bean_id=bean, grinder_id=grinder),
+async def _recipe(
+    recipes: RecipesRepository, name: str, bean: int, grinder: int | None
+) -> tuple[int, int]:
+    row = await recipes.create(
+        RecipeWrite(name=name, bean_id=bean, grinder_id=grinder),
         SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert row.current_version_id is not None
@@ -99,16 +101,16 @@ async def kitchen(db: Database) -> Kitchen:
             GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
         )
     ).id
-    sets = SetsRepository(db)
-    a, a_v1 = await _set(sets, "Guji A", guji, grinder)
-    a_v2_row = await sets.add_version(a, SetVersionPatch(grind_setting="21", intent="finer"))
+    recipes = RecipesRepository(db)
+    a, a_v1 = await _recipe(recipes, "Guji A", guji, grinder)
+    a_v2_row = await recipes.add_version(a, RecipeVersionPatch(grind_setting="21", intent="finer"))
     assert a_v2_row is not None
-    b, b_v1 = await _set(sets, "Guji B", guji, grinder)
-    c, c_v1 = await _set(sets, "Guji, last bag", guji, grinder)
-    d, d_v1 = await _set(sets, "Huila", huila, grinder)
+    b, b_v1 = await _recipe(recipes, "Guji B", guji, grinder)
+    c, c_v1 = await _recipe(recipes, "Guji, last bag", guji, grinder)
+    d, d_v1 = await _recipe(recipes, "Huila", huila, grinder)
     designing = (
-        await sets.create_design(
-            SetWrite(name="Designing", bean_id=guji, grinder_id=grinder), DesignBrief()
+        await recipes.create_design(
+            RecipeWrite(name="Designing", bean_id=guji, grinder_id=grinder), DesignBrief()
         )
     ).id
 
@@ -137,10 +139,10 @@ async def kitchen(db: Database) -> Kitchen:
     }
     for number, (key, (version_id, started)) in enumerate(plan.items()):
         shot_id = await make_shot(db, f"0008{number:02d}", started_at=started)
-        assert await sets.assign_shot(shot_id, version_id)
+        assert await recipes.assign_shot(shot_id, version_id)
         shots[key] = shot_id
-    # Archived last: a Set that is archived takes no more shots.
-    await sets.archive(c)
+    # Archived last: a Recipe that is archived takes no more shots.
+    await recipes.archive(c)
     return Kitchen(
         db=db,
         guji=guji,
@@ -188,7 +190,7 @@ async def _insight(
 
 
 async def _oracle(db: Database, row: dict[str, Any]) -> list[int]:
-    """The Sets an insight fits, from raw rows. Only `scope_matches` is the live function."""
+    """The Recipes an insight fits, from raw rows. Only `scope_matches` is the live function."""
     scope = {
         key: value for key, value in json.loads(row["scope_json"]).items() if value is not None
     }
@@ -202,7 +204,7 @@ async def _oracle(db: Database, row: dict[str, Any]) -> list[int]:
         "SELECT s.id, s.bean_id, s.grinder_id, b.roast_level, b.process, b.origin "
         "FROM recipes s LEFT JOIN beans b ON b.id = s.bean_id WHERE s.designing = 0 ORDER BY s.id"
     ):
-        attributes = set_attributes(
+        attributes = recipe_attributes(
             bean_id=candidate["bean_id"],
             grinder_id=candidate["grinder_id"],
             roast_level=candidate["roast_level"],
@@ -238,25 +240,25 @@ class TestWhereEachOneLands:
     async def test_the_rule_on_every_kind_of_insight(self, kitchen: Kitchen) -> None:
         s = kitchen.shots
         ids = {
-            # One Set: evidence only in A, scope matches A (and B, C by attributes).
+            # One Recipe: evidence only in A, scope matches A (and B, C by attributes).
             "a_only": await _insight(
                 kitchen,
                 "Guji wants it finer.",
                 scope={"bean_id": kitchen.guji},
                 evidence=[s["a1"], s["a2"]],
             ),
-            # Evidence in two live Sets: ambiguous.
+            # Evidence in two live Recipes: ambiguous.
             "a_and_b": await _insight(
                 kitchen,
                 "Guji pours fast.",
                 scope={"bean_id": kitchen.guji},
                 evidence=[s["a1"], s["b1"]],
             ),
-            # No evidence, scope fits three Sets: ambiguous.
+            # No evidence, scope fits three Recipes: ambiguous.
             "no_evidence_guji": await _insight(
                 kitchen, "Guji likes it hot.", scope={"bean_id": kitchen.guji}
             ),
-            # No evidence, scope fits exactly one Set (the only Huila).
+            # No evidence, scope fits exactly one Recipe (the only Huila).
             "huila_scope": await _insight(
                 kitchen,
                 "Huila wants it coarser.",
@@ -264,7 +266,7 @@ class TestWhereEachOneLands:
                 scope={"bean_id": kitchen.huila},
                 created_at="2026-01-20T08:00:00.000Z",
             ),
-            # Empty scope, evidence in one Set: fits that one.
+            # Empty scope, evidence in one Recipe: fits that one.
             "empty_scope_evidence": await _insight(
                 kitchen, "Pre-infuse longer.", scope={}, evidence=[s["d1"]]
             ),
@@ -275,7 +277,7 @@ class TestWhereEachOneLands:
                 scope={"bean_id": kitchen.guji},
                 evidence=[s["d1"]],
             ),
-            # Hand-written, fits exactly one Set: never moves.
+            # Hand-written, fits exactly one Recipe: never moves.
             "hand_written": await _insight(
                 kitchen,
                 "My own note on Huila.",
@@ -283,7 +285,7 @@ class TestWhereEachOneLands:
                 scope={"bean_id": kitchen.huila},
                 evidence=[s["d1"]],
             ),
-            # Evidence only in the archived Set: archived counts as a candidate.
+            # Evidence only in the archived Recipe: archived counts as a candidate.
             "archived_only": await _insight(
                 kitchen, "Last bag note.", scope={"bean_id": kitchen.guji}, evidence=[s["c1"]]
             ),
@@ -331,7 +333,7 @@ class TestWhereEachOneLands:
         }
         assert counts == {"considered": 10, "moved": 5, "ambiguous": 3, "left_general": 5}
 
-        # The version it was learned at: the newest evidence shot in that Set,
+        # The version it was learned at: the newest evidence shot in that Recipe,
         # else the version current when it was written, else none.
         versions = {name: after[i]["set_version_id"] for name, i in ids.items()}
         assert versions["a_only"] == kitchen.a_v2, "the newest evidence shot is in v1.1"
@@ -358,7 +360,7 @@ class TestWhereEachOneLands:
             assert now["dismissed"] == 0
         assert after[ids["waiting"]]["confirmed"] == 0
 
-    async def test_every_placed_one_fits_its_set_and_every_unplaced_one_fits_none_or_several(
+    async def test_every_placed_one_fits_its_recipe_and_every_unplaced_one_fits_none_or_several(
         self, kitchen: Kitchen
     ) -> None:
         s = kitchen.shots
@@ -425,7 +427,7 @@ class TestWhereEachOneLands:
     async def test_a_placed_insight_is_about_the_coffee_its_text_names(
         self, kitchen: Kitchen
     ) -> None:
-        """The stop condition, on coherent data: no insight lands on another coffee's Set."""
+        """The stop condition, on coherent data: no insight lands on another coffee's Recipe."""
         s = kitchen.shots
         await _insight(
             kitchen, "Guji: go finer.", scope={"bean_id": kitchen.guji}, evidence=[s["a1"]]
@@ -446,19 +448,19 @@ class TestWhereEachOneLands:
             )
             assert str(row["text"]).startswith(str(bean)), row["text"]
 
-    async def test_a_designing_set_is_never_a_candidate(self, kitchen: Kitchen) -> None:
+    async def test_a_designing_recipe_is_never_a_candidate(self, kitchen: Kitchen) -> None:
         insight_id = await _insight(
             kitchen, "Everything.", scope={"bean_id": kitchen.guji, "grinder_id": kitchen.grinder}
         )
         builder = InsightPlacementBuilder(kitchen.db)
         row = await InsightsRepository(kitchen.db).get(insight_id)
         assert row is not None
-        fitting = await builder.fitting_sets(row)
+        fitting = await builder.fitting_recipes(row)
         assert kitchen.designing not in fitting
         assert fitting == [kitchen.a, kitchen.b, kitchen.c_archived]
 
-    async def test_a_version_before_the_sets_first_is_none(self, kitchen: Kitchen) -> None:
-        """Written before the Set had a version: "learned before versions were recorded"."""
+    async def test_a_version_before_the_recipes_first_is_none(self, kitchen: Kitchen) -> None:
+        """Written before the Recipe had a version: "learned before versions were recorded"."""
         insight_id = await _insight(
             kitchen,
             "Early Huila note.",
@@ -500,10 +502,10 @@ class TestOnlyInsightsAboutTheCoffeeMove:
                 GrinderWrite(name="Niche", burr_type="conical", step_unit="numbers")
             )
         ).id
-        sets = SetsRepository(db)
-        set_id, version_id = await _set(sets, "The only Set", bean, grinder)
+        recipes = RecipesRepository(db)
+        set_id, version_id = await _recipe(recipes, "The only Set", bean, grinder)
         shot_id = await make_shot(db, "000001")
-        assert await sets.assign_shot(shot_id, version_id)
+        assert await recipes.assign_shot(shot_id, version_id)
         kitchen = Kitchen(
             db=db,
             guji=bean,
@@ -528,7 +530,7 @@ class TestOnlyInsightsAboutTheCoffeeMove:
             "process": ({"process": "natural"}, [shot_id]),
             "origin": ({"origin": "Kenya"}, [shot_id]),
             "empty_no_evidence": ({}, []),
-            # The two that do move, with this Set the only candidate:
+            # The two that do move, with this Recipe the only candidate:
             "bean": ({"bean_id": bean}, []),
             "legacy_empty_with_evidence": ({}, [shot_id]),
         }

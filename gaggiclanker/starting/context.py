@@ -14,7 +14,7 @@ What is in it, and why each piece earns its tokens:
   the machine's temperature offset shifts every number in the answer;
 * **the user's usual grind**, when they gave one. This is what turns a relative
   answer into a number somebody can dial, and the prompt is told so;
-* **the similar Sets** (`similar.py`) with their outcomes — the calibration
+* **the similar Recipes** (`similar.py`) with their outcomes — the calibration
   this archive has that a textbook does not;
 * **the profile library**, as a short list of candidate versions, so "use
   profile 14" is a thing the model can say instead of authoring a new one;
@@ -24,7 +24,7 @@ What is in it, and why each piece earns its tokens:
 **The planned style.** Rule selection filters on a shot style, and a bean nobody
 has brewed yet has none. Rather than pass `unknown` — which would drop every
 ratio and time rule, the two most useful categories here — the style is taken
-from the best similar Set's profile and falls back to `classic`. That is an
+from the best similar Recipe's profile and falls back to `classic`. That is an
 honest answer to "what kind of shot are we planning": the one you have been
 pulling, or a traditional one if you have pulled nothing.
 """
@@ -48,7 +48,7 @@ from gaggiclanker.db.repos.profiles import (
     not_synthetic_sql,
     version_name_sql,
 )
-from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
+from gaggiclanker.knowledge.rules import RecipeContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
     KnowledgeService,
@@ -56,7 +56,7 @@ from gaggiclanker.knowledge.service import (
     render_excerpts,
 )
 from gaggiclanker.review.style import detect_style
-from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_sets
+from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_recipes
 
 __all__ = [
     "CANDIDATE_PROFILES",
@@ -268,7 +268,7 @@ async def build_context(
         dose_hint_g=dose_hint_g,
     )
 
-    similar = await similar_sets(
+    similar = await similar_recipes(
         db,
         roast_level=bean.roast_level,
         process=bean.process,
@@ -282,7 +282,7 @@ async def build_context(
 
     signals, rules = await starting_rules(
         db,
-        SetContext(
+        RecipeContext(
             roast_level=bean.roast_level,
             process=bean.process,
             burr_type=hardware.burr_type,
@@ -316,7 +316,7 @@ async def build_context(
 
 
 async def starting_rules(
-    db: Database, context: SetContext, style: str
+    db: Database, context: RecipeContext, style: str
 ) -> tuple[list[str], list[dict[str, str]]]:
     """The rules for a recipe nobody has brewed yet: the signals and the selection.
 
@@ -364,7 +364,7 @@ def _signal_tokens(style: str) -> list[str]:
     A much shorter list than a review's — one token — because the whole of
     that grammar is about a shot or a cup that has not happened: there is no
     fault, no first drip, no taste. Nothing about the coffee itself is
-    a signal either; roast level, process and decaf are matched as Set
+    a signal either; roast level, process and decaf are matched as Recipe
     attributes. What is left is the planned style, which `select_rules` adds
     itself and which is repeated here so the stored signal list reads as the
     whole basis of the selection.
@@ -377,7 +377,7 @@ def _signal_tokens(style: str) -> list[str]:
 async def planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, str]:
     """The style to plan for, and the sentence explaining the choice.
 
-    The best similar Set's profile, when it names one. That is the closest
+    The best similar Recipe's profile, when it names one. That is the closest
     thing to evidence about what this kitchen actually brews; the alternative,
     `unknown`, silently drops every `ratio_by_style` and `time_by_style` rule
     and leaves the model with no ratio guidance at all.
@@ -400,12 +400,12 @@ async def planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, s
 
 
 async def profile_candidates(db: Database) -> list[ProfileCandidate]:
-    """The library, shortlisted: the profiles no Set has, most-used first, each as the version it
-    has active (a new Set brews that one).
+    """The library, shortlisted: the profiles no Recipe has, most-used first, each as the version it
+    has active (a new Recipe brews that one).
 
     Utility profiles are excluded — a backflush is not a starting point — and so is every
-    profile that already has a Set: a profile has at most one, so a new Set cannot take it, and
-    a recipe for another bean on it is a Duplicate of that Set, not a suggestion made here.
+    profile that already has a Recipe: a profile has at most one, so a new Recipe cannot take it,
+    and a recipe for another bean on it is a Duplicate of that Recipe, not a suggestion made here.
     """
     rows = await db.fetch_all(
         f"""

@@ -1,6 +1,6 @@
 """`list_set_shots`, the shot search: every filter, the order, the cap, the scope.
 
-Over the review tests' fixture Set (six shots, summary-level diagnostics, five of
+Over the review tests' fixture Recipe (six shots, summary-level diagnostics, five of
 them judged), whose numbers are written out in `tests/review/conftest.py`:
 
     shot  duration  weight  rating  balance   resistance  flow adherence  started
@@ -25,7 +25,12 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
+    SetVersionWrite,
+)
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.shotinfo.catalogue import ITEMS, default_tiers
@@ -54,9 +59,9 @@ def at(archive: Fixture, *indices: int) -> set[int]:
 
 
 async def test_no_filter_is_the_newest_first_in_base(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    data = await search(set_ctx)
+    data = await search(recipe_ctx)
 
     assert ids(data) == list(reversed(archive.shots))
     assert data["count"] == 6
@@ -68,7 +73,7 @@ async def test_no_filter_is_the_newest_first_in_base(
 
 
 async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_samples(
-    set_ctx: ToolContext, archive: Fixture, monkeypatch: pytest.MonkeyPatch
+    recipe_ctx: ToolContext, archive: Fixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The regression `scripts/repro_base_curve_never_loaded.py` reproduces, for the search.
 
@@ -86,12 +91,12 @@ async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_sample
     monkeypatch.setattr(ShotsRepository, "samples_for", counted)
     newest = archive.shots[-1]  # the fixture's one shot with samples
 
-    before = await search(set_ctx)
+    before = await search(recipe_ctx)
     assert reads == [], "no curve in base, no samples read"
     await ShotInfoTiersRepository(archive.db).set_tier(
         ShotInfoTierWrite(item_key="curve_pressure", tier="base")
     )
-    after = await search(set_ctx)
+    after = await search(recipe_ctx)
 
     text = {hit["shot_id"]: hit["text"] for hit in after["shots"]}
     assert "[Curve]" not in {hit["shot_id"]: hit["text"] for hit in before["shots"]}[newest]
@@ -138,21 +143,21 @@ async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_sample
     ],
 )
 async def test_each_filter(
-    set_ctx: ToolContext, archive: Fixture, arguments: dict[str, Any], expected: tuple[int, ...]
+    recipe_ctx: ToolContext, archive: Fixture, arguments: dict[str, Any], expected: tuple[int, ...]
 ) -> None:
-    data = await search(set_ctx, **arguments)
+    data = await search(recipe_ctx, **arguments)
 
     assert set(ids(data)) == at(archive, *expected)
     assert data["count"] == len(expected)
 
 
 async def test_it_sorts_on_a_number_and_breaks_ties_by_shot_id(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     shots = archive.shots
 
-    rising = await search(set_ctx, order_by="shot_time", descending=False)
-    falling = await search(set_ctx, order_by="shot_time")
+    rising = await search(recipe_ctx, order_by="shot_time", descending=False)
+    falling = await search(recipe_ctx, order_by="shot_time")
 
     # Shots 4 and 5 both ran 24.0 s: the id decides, in the same direction.
     assert ids(rising) == [shots[0], shots[1], shots[4], shots[5], shots[2], shots[3]]
@@ -160,29 +165,29 @@ async def test_it_sorts_on_a_number_and_breaks_ties_by_shot_id(
 
 
 async def test_a_shot_with_no_value_for_the_sort_key_comes_last_either_way(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     await JudgementsRepository(archive.db).upsert(archive.shots[2], JudgementWrite())
 
-    rising = await search(set_ctx, order_by="rating", descending=False)
-    falling = await search(set_ctx, order_by="rating")
+    rising = await search(recipe_ctx, order_by="rating", descending=False)
+    falling = await search(recipe_ctx, order_by="rating")
 
     assert ids(rising)[-1] == archive.shots[2]
     assert ids(falling)[-1] == archive.shots[2]
     assert ids(falling)[0] == archive.shots[3], "the only 4-star shot"
 
 
-async def test_the_limit_cuts_the_list_and_says_so(set_ctx: ToolContext) -> None:
-    data = await search(set_ctx, limit=2)
+async def test_the_limit_cuts_the_list_and_says_so(recipe_ctx: ToolContext) -> None:
+    data = await search(recipe_ctx, limit=2)
 
     assert data["count"] == 2
     assert data["truncated"] is True
-    exact = await search(set_ctx, balance="balanced", limit=1)
+    exact = await search(recipe_ctx, balance="balanced", limit=1)
     assert exact["truncated"] is False, "exactly the limit is not cut short"
 
 
-async def test_at_most_ten_come_back(set_ctx: ToolContext, archive: Fixture) -> None:
-    sets = SetsRepository(archive.db)
+async def test_at_most_ten_come_back(recipe_ctx: ToolContext, archive: Fixture) -> None:
+    recipes = RecipesRepository(archive.db)
     for number in range(6):
         extra = await ShotsRepository(archive.db).insert(
             ShotInsert(
@@ -192,53 +197,53 @@ async def test_at_most_ten_come_back(set_ctx: ToolContext, archive: Fixture) -> 
                 duration_ms=25_000,
             )
         )
-        assert await sets.assign_shot(extra, archive.version_id)
+        assert await recipes.assign_shot(extra, archive.version_id)
 
-    data = await search(set_ctx)
+    data = await search(recipe_ctx)
 
     assert data["count"] == 10
     assert data["truncated"] is True
-    refused = await registry.dispatch(set_ctx, "list_set_shots", {"limit": 11})
+    refused = await registry.dispatch(recipe_ctx, "list_set_shots", {"limit": 11})
     assert refused.status == "error"
 
 
-async def test_it_never_returns_a_shot_of_another_set(
-    set_ctx: ToolContext, archive: Fixture
+async def test_it_never_returns_a_shot_of_another_recipe(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    sets = SetsRepository(archive.db)
-    other = await sets.create(
-        SetWrite(name="Another bag", bean_id=archive.bean_id),
+    recipes = RecipesRepository(archive.db)
+    other = await recipes.create(
+        RecipeWrite(name="Another bag", bean_id=archive.bean_id),
         SetVersionWrite(grind_setting="20"),
         automatch=False,
     )
-    version = await sets.current_version(other.id)
+    version = await recipes.current_version(other.id)
     assert version is not None
     moved = archive.shots[3]
-    assert await sets.assign_shot(moved, version.id)
+    assert await recipes.assign_shot(moved, version.id)
 
-    everything = await search(set_ctx)
-    balanced = await search(set_ctx, balance="balanced")
+    everything = await search(recipe_ctx)
+    balanced = await search(recipe_ctx, balance="balanced")
 
     assert moved not in ids(everything)
     assert ids(balanced) == []
 
 
 async def test_a_version_filter_finds_the_shots_of_that_version(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    sets = SetsRepository(archive.db)
-    newer = await sets.add_version(archive.set_id, SetVersionPatch(grind_setting="21"))
+    recipes = RecipesRepository(archive.db)
+    newer = await recipes.add_version(archive.set_id, RecipeVersionPatch(grind_setting="21"))
     assert newer is not None
-    assert await sets.assign_shot(archive.shots[0], newer.id)
+    assert await recipes.assign_shot(archive.shots[0], newer.id)
 
     assert newer.version_label == "v1.1"
 
     for name in ("v1.1", "1.1", "V1.1", 1.1):
-        data = await search(set_ctx, version=name)
+        data = await search(recipe_ctx, version=name)
         assert ids(data) == [archive.shots[0]], name
         assert f"Set version: v1.1 of Set {archive.set_id}" in data["shots"][0]["text"]
-    # "2" is v2, which this Set does not have — never the second version.
-    outcome = await dispatch_search(set_ctx, version="2")
+    # "2" is v2, which this Recipe does not have — never the second version.
+    outcome = await dispatch_search(recipe_ctx, version="2")
     assert not outcome.ok
     assert outcome.data["detail"] == (
         "This Set has no version called '2'. Its versions are v1, v1.1; name one of them as "
@@ -246,22 +251,23 @@ async def test_a_version_filter_finds_the_shots_of_that_version(
     )
 
 
-async def test_a_version_name_is_only_ever_this_set_s(
-    set_ctx: ToolContext, archive: Fixture
+async def test_a_version_name_is_only_ever_this_recipe_s(
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    """Only another Set has a v2: a name is looked up within the Set in scope, never across."""
-    sets = SetsRepository(archive.db)
-    other = await sets.create(
-        SetWrite(name="Another bag", bean_id=archive.bean_id),
+    """Only another Recipe has a v2: a name is looked up within the Recipe in scope, never
+    across."""
+    recipes = RecipesRepository(archive.db)
+    other = await recipes.create(
+        RecipeWrite(name="Another bag", bean_id=archive.bean_id),
         SetVersionWrite(grind_setting="20"),
         automatch=False,
     )
-    second = await sets.add_version(other.id, SetVersionPatch(grind_setting="19"), major=True)
+    second = await recipes.add_version(other.id, RecipeVersionPatch(grind_setting="19"), major=True)
     assert second is not None
     assert second.version_label == "v2"
     assert other.id > archive.set_id
 
-    outcome = await dispatch_search(set_ctx, version="v2")
+    outcome = await dispatch_search(recipe_ctx, version="v2")
 
     assert not outcome.ok
     assert outcome.data["detail"].startswith("This Set has no version called 'v2'. ")
@@ -269,10 +275,10 @@ async def test_a_version_name_is_only_ever_this_set_s(
 
 
 @pytest.mark.parametrize("name", ["v7", "v1.9", "banana", "0", "v", ""])
-async def test_a_version_the_set_does_not_have_is_refused_in_words(
-    set_ctx: ToolContext, archive: Fixture, name: str
+async def test_a_version_the_recipe_does_not_have_is_refused_in_words(
+    recipe_ctx: ToolContext, archive: Fixture, name: str
 ) -> None:
-    outcome = await dispatch_search(set_ctx, version=name)
+    outcome = await dispatch_search(recipe_ctx, version=name)
 
     assert not outcome.ok
     assert outcome.data["detail"].startswith(f"This Set has no version called {name!r}.")
@@ -280,13 +286,13 @@ async def test_a_version_the_set_does_not_have_is_refused_in_words(
 
 
 async def test_a_shot_that_does_not_count_is_found_and_says_so(
-    set_ctx: ToolContext, archive: Fixture
+    recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     await JudgementsRepository(archive.db).upsert(
         archive.shots[0], JudgementWrite(decision="discard")
     )
 
-    data = await search(set_ctx, label="discard")
+    data = await search(recipe_ctx, label="discard")
 
     assert ids(data) == [archive.shots[0]]
     assert "Counted: not counted: discarded" in data["shots"][0]["text"]
@@ -299,7 +305,7 @@ async def test_a_general_conversation_is_not_offered_the_search(ctx: ToolContext
 
 
 #: Every search argument that reads an item, with a value that uses it, and the
-#: item it reads. `version` reads the Set version, which is locked to base.
+#: item it reads. `version` reads the Recipe version, which is locked to base.
 _FILTERS: tuple[tuple[str, dict[str, Any], str], ...] = (
     ("label", {"label": "keep"}, "label"),
     ("balance", {"balance": "sour"}, "balance"),
@@ -340,7 +346,7 @@ def _tiers_with(monkeypatch: pytest.MonkeyPatch, **moved: str) -> dict[str, Any]
 
 @pytest.mark.parametrize(("case", "arguments", "key"), _FILTERS)
 async def test_the_search_refuses_to_filter_or_sort_on_an_excluded_item(
-    set_ctx: ToolContext,
+    recipe_ctx: ToolContext,
     monkeypatch: pytest.MonkeyPatch,
     case: str,
     arguments: dict[str, Any],
@@ -349,7 +355,7 @@ async def test_the_search_refuses_to_filter_or_sort_on_an_excluded_item(
     """Filtering on an item the person withheld would hand back what they withheld."""
     _tiers_with(monkeypatch, **{key: "excluded"})
 
-    outcome = await registry.dispatch(set_ctx, "list_set_shots", arguments)
+    outcome = await registry.dispatch(recipe_ctx, "list_set_shots", arguments)
 
     assert not outcome.ok, case
     assert outcome.data["detail"] == (
@@ -360,7 +366,7 @@ async def test_the_search_refuses_to_filter_or_sort_on_an_excluded_item(
 
 @pytest.mark.parametrize(("case", "arguments", "key"), _FILTERS)
 async def test_the_search_still_filters_and_sorts_on_an_extended_item(
-    set_ctx: ToolContext,
+    recipe_ctx: ToolContext,
     monkeypatch: pytest.MonkeyPatch,
     case: str,
     arguments: dict[str, Any],
@@ -369,17 +375,17 @@ async def test_the_search_still_filters_and_sorts_on_an_extended_item(
     """An extended item is one `get_shot_extended` hands over anyway."""
     _tiers_with(monkeypatch, **{key: "extended"})
 
-    outcome = await registry.dispatch(set_ctx, "list_set_shots", arguments)
+    outcome = await registry.dispatch(recipe_ctx, "list_set_shots", arguments)
 
     assert outcome.ok, (case, outcome.data)
 
 
 async def test_an_excluded_item_the_search_does_not_use_refuses_nothing(
-    set_ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    recipe_ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _tiers_with(monkeypatch, rating="excluded")
 
-    data = await search(set_ctx, shot_time={"min": 1})
+    data = await search(recipe_ctx, shot_time={"min": 1})
 
     assert data["count"] == 6
     assert all("Rating:" not in shot["text"] for shot in data["shots"])
@@ -405,16 +411,16 @@ async def _every_rendering(ctx: ToolContext, archive: Fixture, order_by: str) ->
 
 @pytest.mark.parametrize("key", _SEARCHABLE)
 async def test_no_shot_tool_ever_shows_an_excluded_item(
-    set_ctx: ToolContext, archive: Fixture, monkeypatch: pytest.MonkeyPatch, key: str
+    recipe_ctx: ToolContext, archive: Fixture, monkeypatch: pytest.MonkeyPatch, key: str
 ) -> None:
     """Every searchable item, excluded in turn, from every tool that renders a shot."""
     line = f"\n{ITEMS[key].label}: "
     # Sorted on something other than the item itself, which would be refused.
     order_by = "shot_time" if key == "started_at" else "date"
 
-    shown = await _every_rendering(set_ctx, archive, order_by)
+    shown = await _every_rendering(recipe_ctx, archive, order_by)
     _tiers_with(monkeypatch, **{key: "excluded"})
-    hidden = await _every_rendering(set_ctx, archive, order_by)
+    hidden = await _every_rendering(recipe_ctx, archive, order_by)
 
     # The fixture records no average brew flow at all, so those lines never show, and its shots
     # all have a scale, so the estimated first drip (a no-scale shot's) never shows either.
@@ -425,12 +431,12 @@ async def test_no_shot_tool_ever_shows_an_excluded_item(
 
 @pytest.mark.parametrize("descending", [True, False])
 async def test_with_the_date_excluded_the_default_sort_is_the_shot_id(
-    set_ctx: ToolContext, archive: Fixture, monkeypatch: pytest.MonkeyPatch, descending: bool
+    recipe_ctx: ToolContext, archive: Fixture, monkeypatch: pytest.MonkeyPatch, descending: bool
 ) -> None:
     """The agent named no date, so nothing it asked for is refused."""
     _tiers_with(monkeypatch, started_at="excluded")
 
-    data = await search(set_ctx, descending=descending)
+    data = await search(recipe_ctx, descending=descending)
 
     ids = [shot["shot_id"] for shot in data["shots"]]
     assert ids == sorted(archive.shots, reverse=descending)

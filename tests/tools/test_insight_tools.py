@@ -3,7 +3,7 @@
 Through the dispatcher, as the chat and the stdio server both use it. What these pin:
 every refusal has a sentence of its own that says what to do instead, nothing is
 deleted by calling a tool (the person's press is the only thing that removes an
-added insight), the deletion tool exists in a Set's conversation only, and what the
+added insight), the deletion tool exists in a Recipe's conversation only, and what the
 agent reads about each insight is one line, built in one place.
 """
 
@@ -45,7 +45,7 @@ async def world(archive: Fixture) -> ProvenanceWorld:
 def conversation(
     archive: Fixture, settings: SettingsService, world: ProvenanceWorld
 ) -> ToolContext:
-    """A conversation about the Set's newest version, with a thread of its own."""
+    """A conversation about the Recipe's newest version, with a thread of its own."""
     ctx = _context(archive, settings, ToolScope.for_thread(world.set_id, world.v3))
     ctx.thread_id = world.thread
     return ctx
@@ -80,12 +80,12 @@ class TestRestingOn:
         # Its own sentence: this tool has no `version` argument to leave out.
         assert "leave version out" not in detail and "rests_on_versions" in detail
 
-    async def test_another_sets_version_is_unknown_here(
+    async def test_another_recipes_version_is_unknown_here(
         self, conversation: ToolContext, world: ProvenanceWorld
     ) -> None:
-        # The stranger Set's only version is v1 (failed): by name it is this Set's v1,
-        # and a name only another Set has is simply not a version of this one.
-        stranger = await world.sets.versions(world.stranger_set)
+        # The stranger Recipe's only version is v1 (failed): by name it is this Recipe's v1,
+        # and a name only another Recipe has is simply not a version of this one.
+        stranger = await world.recipes.versions(world.stranger_recipe)
         assert [v.version_label for v in stranger] == ["v1"]
         detail = await refuse(conversation, "record_insight", text="x", rests_on_versions=["v2"])
         assert "no version called 'v2'" in detail
@@ -105,10 +105,10 @@ class TestRestingOn:
         assert "has to rest on something" in detail
         assert "evidence_shot_ids" in detail and "rests_on_versions" in detail
 
-    async def test_another_sets_shot_is_still_refused(
+    async def test_another_recipes_shot_is_still_refused(
         self, conversation: ToolContext, world: ProvenanceWorld
     ) -> None:
-        other = await world.sets.shot_ids(world.stranger_set)
+        other = await world.recipes.shot_ids(world.stranger_recipe)
         detail = await refuse(
             conversation, "record_insight", text="x", evidence_shot_ids=sorted(other)
         )
@@ -182,11 +182,11 @@ class TestReplacing:
         )
         assert "is general knowledge" in detail and "Knowledge page" in detail
 
-    async def test_it_refuses_another_sets_and_a_missing_one_alike(
+    async def test_it_refuses_another_recipes_and_a_missing_one_alike(
         self, conversation: ToolContext, world: ProvenanceWorld
     ) -> None:
         theirs = await world.own(
-            "Theirs.", set_id=world.stranger_set, version_id=world.stranger_version
+            "Theirs.", set_id=world.stranger_recipe, version_id=world.stranger_version
         )
         sentences = []
         for target in (theirs, 99_999):
@@ -221,7 +221,7 @@ class TestProposingADeletion:
         assert data["status"] == "proposed" and data["insight_text"] == "Doubtful claim."
         assert "Nothing is deleted" in data["note"] and "presses Delete" in data["note"]
         assert await world.insights.get(target) is not None
-        waiting = await world.deletions.waiting_for_set(world.set_id)
+        waiting = await world.deletions.waiting_for_recipe(world.set_id)
         assert [(row.insight_id, row.thread_id, row.reason) for row in waiting] == [
             (target, world.thread, REASON)
         ]
@@ -240,7 +240,7 @@ class TestProposingADeletion:
         )
 
         assert data["replaced_waiting_proposal"] is True
-        assert len(await world.deletions.waiting_for_set(world.set_id)) == 1
+        assert len(await world.deletions.waiting_for_recipe(world.set_id)) == 1
 
     @pytest.mark.parametrize("reason", ["", "too short", "x" * 19])
     async def test_a_short_reason_is_refused_with_what_a_reason_is(
@@ -251,7 +251,7 @@ class TestProposingADeletion:
             conversation, "propose_insight_deletion", insight_id=target, reason=reason
         )
         assert "A deletion needs its reason" in detail and "at least 20" in detail
-        assert await world.deletions.for_set(world.set_id) == []
+        assert await world.deletions.for_recipe(world.set_id) == []
 
     async def test_a_long_reason_is_refused(
         self, conversation: ToolContext, world: ProvenanceWorld
@@ -274,7 +274,7 @@ class TestProposingADeletion:
             InsightWrite(text="General.", source="user", confirmed=True)
         )
         theirs = await world.own(
-            "Theirs.", set_id=world.stranger_set, version_id=world.stranger_version
+            "Theirs.", set_id=world.stranger_recipe, version_id=world.stranger_version
         )
 
         details = {
@@ -295,8 +295,8 @@ class TestProposingADeletion:
         assert "is general knowledge" in details["general"]
         assert "is not an insight of this Set" in details["theirs"]
         assert "is not an insight of this Set" in details["missing"]
-        assert await world.deletions.for_set(world.set_id) == []
-        assert await world.deletions.for_set(world.stranger_set) == []
+        assert await world.deletions.for_recipe(world.set_id) == []
+        assert await world.deletions.for_recipe(world.stranger_recipe) == []
 
     async def test_a_session_with_no_conversation_has_nowhere_for_the_card(
         self, archive: Fixture, settings: SettingsService, world: ProvenanceWorld
@@ -306,7 +306,7 @@ class TestProposingADeletion:
         detail = await refuse(bare, "propose_insight_deletion", insight_id=target, reason=REASON)
         assert "no conversation" in detail
 
-    async def test_it_is_a_set_conversation_tool_only(
+    async def test_it_is_a_recipe_conversation_tool_only(
         self, archive: Fixture, settings: SettingsService, world: ProvenanceWorld
     ) -> None:
         target = await world.own("Doubtful claim.")
@@ -324,7 +324,7 @@ class TestProposingADeletion:
 
 
 class TestWhatTheAgentReads:
-    async def test_get_insights_and_the_set_carry_the_same_line(
+    async def test_get_insights_and_the_recipe_carry_the_same_line(
         self, conversation: ToolContext, world: ProvenanceWorld
     ) -> None:
         added = await call(
@@ -338,7 +338,7 @@ class TestWhatTheAgentReads:
         await world.regrade(world.v2, "failed")
 
         listed = await call(conversation, "get_insights")
-        in_set = await call(conversation, "get_set")
+        in_recipe = await call(conversation, "get_set")
 
         (insight,) = listed["insights"]
         expected = (
@@ -346,7 +346,7 @@ class TestWhatTheAgentReads:
             f"failed; shots {world.shot2}] Finer lengthens it."
         )
         assert insight["line"] == expected
-        assert in_set["insights"] == [expected]
+        assert in_recipe["insights"] == [expected]
 
 
 class TestNothingATooCanRemove:

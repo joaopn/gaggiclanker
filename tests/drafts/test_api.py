@@ -2,9 +2,9 @@
 
 Through HTTP rather than through the service, because what this feature ships is a sequence of
 button presses and the interesting failures are all at the seams: a draft that skipped the
-safety policy, a refinement that lost its Set, a pushed draft somebody discards while its
+safety policy, a refinement that lost its Recipe, a pushed draft somebody discards while its
 profile is still on the display. What happens after a draft is put on the board is the board's
-(`test_board*.py`, `test_record_on_set.py`).
+(`test_board*.py`, `test_record_on_recipe.py`).
 
 The model is scripted (`FakeProvider`) and the machine is the fake. No money is spent and no
 network is touched, here or anywhere else in the offline suite.

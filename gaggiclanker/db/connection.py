@@ -47,8 +47,8 @@ _PRAGMAS: tuple[str, ...] = (
 
 
 #: The columns the Recipe rename moved, by their new name, with the name the Python code
-#: still reads them under. A bridge for the rename's first steps: the code is renamed after
-#: the database, so a row read from the database answers to the name its readers know.
+#: still reads them under. A bridge: the served names move with the contract, after the
+#: database, so a row read from the database answers to the name its readers still know.
 _LEGACY_KEYS: dict[str, str] = {
     "recipe_id": "set_id",
     "recipe_version_id": "set_version_id",
@@ -57,10 +57,7 @@ _LEGACY_KEYS: dict[str, str] = {
     "copied_from_recipe_id": "copied_from_set_id",
     "recipes_read": "sets_read",
     "recipe_name": "set_name",
-    "recipe_version_major": "set_version_major",
-    "recipe_version_minor": "set_version_minor",
     "recipe_version_label": "set_version_label",
-    "recipe_dose_g": "set_dose_g",
 }
 
 
@@ -198,7 +195,7 @@ class Database:
 
         **Serialised by a lock**, because there is one connection and therefore
         one transaction. Without it, two coroutines that both reach
-        ``BEGIN IMMEDIATE`` — two browser tabs adding a Set version at the same
+        ``BEGIN IMMEDIATE`` — two browser tabs adding a Recipe version at the same
         moment is enough — give the second one "cannot start a transaction
         within a transaction", which surfaces as a 500 on a request that did
         nothing wrong. aiosqlite serialises individual *statements* onto its

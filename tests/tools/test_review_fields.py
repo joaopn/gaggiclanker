@@ -8,7 +8,7 @@ removed:
 
 * the rendered shot at every tier, and the shot tools that serve it;
 * the Checks lines, where a free-text expectation's answer counts unless rejected;
-* the Set chat's opening context;
+* the Recipe chat's opening context;
 * the SQL tool's views.
 
 And the smaller things: an unreviewed shot says so, the newest finished review is the one shown,
@@ -48,9 +48,9 @@ ANSWER = "Distinctive free-text answer: pressure and flow rose together."
 STANCE = "Distinctive stance text: the shot was faster."
 
 
-def _SHOT_TOOLS(ctx: ToolContext, set_ctx: ToolContext) -> list[tuple[ToolContext, str]]:
+def _SHOT_TOOLS(ctx: ToolContext, recipe_ctx: ToolContext) -> list[tuple[ToolContext, str]]:
     """Every shot tool that renders a shot, each with the context it is allowed in."""
-    return [(ctx, "get_shot"), (ctx, "get_shot_extended"), (set_ctx, "get_shot_full")]
+    return [(ctx, "get_shot"), (ctx, "get_shot_extended"), (recipe_ctx, "get_shot_full")]
 
 
 async def call(ctx: ToolContext, name: str, **arguments: Any) -> dict[str, Any]:
@@ -146,14 +146,14 @@ async def test_an_unreviewed_shot_says_so_and_shows_no_claim(
 
 
 async def test_a_kept_claim_is_in_every_rendering_with_its_numbers(
-    ctx: ToolContext, set_ctx: ToolContext, archive: Fixture
+    ctx: ToolContext, recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
     await _reading(archive.db, shot)
 
     base = (await call(ctx, "get_shot", shot_id=shot))["text"]
     extended = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
-    full = (await call(set_ctx, "get_shot_full", shot_id=shot))["text"]
+    full = (await call(recipe_ctx, "get_shot_full", shot_id=shot))["text"]
     compared = (await call(ctx, "compare_shots", shot_ids=[shot, archive.shots[0]]))["shots"]
 
     for text in (base, full, compared[0]["text"]):
@@ -171,7 +171,7 @@ async def test_a_kept_claim_is_in_every_rendering_with_its_numbers(
 
 
 async def test_the_summary_is_never_served_to_the_chat(
-    ctx: ToolContext, set_ctx: ToolContext, archive: Fixture
+    ctx: ToolContext, recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
     await _reading(archive.db, shot)
@@ -179,17 +179,17 @@ async def test_the_summary_is_never_served_to_the_chat(
     for tool_context, tool in (
         (ctx, "get_shot"),
         (ctx, "get_shot_extended"),
-        (set_ctx, "get_shot_full"),
+        (recipe_ctx, "get_shot_full"),
     ):
         assert SUMMARY not in (await call(tool_context, tool, shot_id=shot))["text"], tool
     compared = (await call(ctx, "compare_shots", shot_ids=[shot, archive.shots[0]]))["shots"]
     assert SUMMARY not in json.dumps(compared)
-    listed = await call(set_ctx, "list_set_shots")
+    listed = await call(recipe_ctx, "list_set_shots")
     assert SUMMARY not in json.dumps(listed)
 
 
 async def test_a_rejected_claim_is_only_counted_and_every_other_is_served(
-    ctx: ToolContext, set_ctx: ToolContext, archive: Fixture
+    ctx: ToolContext, recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     shot = archive.shots[-1]
     claims = [
@@ -203,7 +203,7 @@ async def test_a_rejected_claim_is_only_counted_and_every_other_is_served(
     for tool_context, tool in (
         (ctx, "get_shot"),
         (ctx, "get_shot_extended"),
-        (set_ctx, "get_shot_full"),
+        (recipe_ctx, "get_shot_full"),
     ):
         text = (await call(tool_context, tool, shot_id=shot))["text"]
         assert OTHER_CLAIM not in text, tool
@@ -362,7 +362,7 @@ async def test_a_free_text_answer_is_a_review_claim_and_never_part_of_the_checks
     assert "0 claims kept, 1 rejected" in rejected
 
 
-async def test_the_set_chat_s_opening_context_holds_every_claim_not_rejected(
+async def test_the_recipe_chat_s_opening_context_holds_every_claim_not_rejected(
     archive: Fixture,
 ) -> None:
     from gaggiclanker.chat.context import opening_context
@@ -500,7 +500,7 @@ async def _newer(archive: Fixture, shot: int, status: str) -> int:
 
 @pytest.mark.parametrize("status", ["running", "failed", "interrupted"])
 async def test_a_newer_review_that_did_not_finish_hides_nothing_of_the_one_in_force(
-    ctx: ToolContext, set_ctx: ToolContext, archive: Fixture, status: str
+    ctx: ToolContext, recipe_ctx: ToolContext, archive: Fixture, status: str
 ) -> None:
     """Reviewing again changes the badge's state text and nothing the chat or a query is told."""
     from gaggiclanker.chat.context import opening_context
@@ -526,7 +526,7 @@ async def test_a_newer_review_that_did_not_finish_hides_nothing_of_the_one_in_fo
 
     for tool_context, tool in (
         (ctx, "get_shot"),
-        (set_ctx, "get_shot_full"),
+        (recipe_ctx, "get_shot_full"),
     ):
         text = (await call(tool_context, tool, shot_id=shot))["text"]
         assert "2 claims kept, 1 rejected" in text, (status, tool)

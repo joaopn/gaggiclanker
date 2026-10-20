@@ -202,7 +202,7 @@ async def test_a_second_file_with_a_profiles_content_is_not_news_and_holds_its_o
 async def test_attaching_a_file_moves_only_that_files_shots_to_the_profiles_version(
     adopted: Adopted,
 ) -> None:
-    from tests.sets.conftest import make_shot
+    from tests.recipes.conftest import make_shot
 
     app, _client, _ = adopted
     profiles = ProfilesRepository(app.state.db)

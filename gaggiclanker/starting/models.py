@@ -17,7 +17,7 @@ card nobody sees.
 **A grind number is only offered when something anchors it.** A grinder's scale
 is arbitrary — 22 on a Niche and 22 on a Mazzer are different grinds, and there
 is no conversion — so `grind_setting` may be a number only when the user gave
-their usual setting or a similar Set on the *same* grinder supplies one.
+their usual setting or a similar Recipe on the *same* grinder supplies one.
 Otherwise the model answers in words ("two steps finer than your usual espresso
 setting") and says why in `grind_note`. That distinction is `grind_is_absolute`,
 and it exists because a made-up number on a dial is the single most expensive
@@ -84,7 +84,7 @@ class StartingPointOption(BaseModel):
     #: See the module docstring: this is the field that must never be invented.
     grind_setting: str = Field(min_length=1, max_length=100)
     #: True only when `grind_setting` is a number on this grinder's scale that
-    #: the user's usual setting or a similar Set on the same grinder supports.
+    #: the user's usual setting or a similar Recipe on the same grinder supports.
     grind_is_absolute: bool = False
     #: Why the grind is what it is, and what to change if the first shot runs
     #: long or short. Always filled in; it is the only actionable thing when
@@ -110,14 +110,14 @@ class StartingPointOption(BaseModel):
     #: What the profile is for, in one line. Shown on the card above the diff.
     profile_note: str = Field(default="", max_length=500)
 
-    #: Why this option, citing rule keys, similar Set versions and excerpt
+    #: Why this option, citing rule keys, similar Recipe versions and excerpt
     #: heading paths. The card renders it under the numbers.
     rationale: str = Field(min_length=1, max_length=2000)
     #: The rule keys leaned on. Filtered against the rules this run was given.
     rules_used: list[str] = Field(default_factory=list, max_length=40)
     #: The heading paths of the excerpts leaned on. Filtered the same way.
     excerpts_used: list[str] = Field(default_factory=list, max_length=20)
-    #: The `set_version_id`s of the similar Sets this option is anchored on.
+    #: The `set_version_id`s of the similar Recipes this option is anchored on.
     #: Filtered against the ones the run was shown, because an anchor the model
     #: invented is worse than none: the card links to it.
     similar_set_version_ids: list[int] = Field(default_factory=list, max_length=10)

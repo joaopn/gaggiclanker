@@ -1,11 +1,11 @@
-"""Pinning a Set version to the machine, and unpinning it. A person's actions only.
+"""Pinning a Recipe version to the machine, and unpinning it. A person's actions only.
 
-A pin keeps one Set version on the machine as a profile of its own while the Set goes on
+A pin keeps one Recipe version on the machine as a profile of its own while the Recipe goes on
 changing. It is made from the pinned version's profile by the one copy function
 (:class:`~gaggiclanker.drafts.copies.ProfileCopier`), so the safety layers and the name rule apply
 unchanged, and it is the row of an ordinary profile-list entry plus a record
-(:mod:`gaggiclanker.db.repos.pins`) saying which Set version it belongs to. Nothing here writes to
-the machine: the next sync with Writes on pushes the row, and removes it again after an unpin,
+(:mod:`gaggiclanker.db.repos.pins`) saying which Recipe version it belongs to. Nothing here writes
+to the machine: the next sync with Writes on pushes the row, and removes it again after an unpin,
 through the machinery every row goes through.
 
 **One function asks every question, the preview and the pin alike** (:meth:`PinService.inspect`),
@@ -25,12 +25,12 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.lineage import person_taken_sentence, pinned_copy_sentence
 from gaggiclanker.db.repos.pins import PinDetail, PinRow, PinsRepository, PinWrite
 from gaggiclanker.db.repos.profile_board import BoardRow, BoardRowPatch
-from gaggiclanker.db.repos.sets import SetRow, SetsRepository, SetVersionRow
+from gaggiclanker.db.repos.recipes import RecipesRepository, SetRow, SetVersionRow
 from gaggiclanker.domain.profile_policy import PolicyChange
 from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.copies import (
-    SET_GONE,
-    VERSION_NOT_OF_SET,
+    RECIPE_GONE,
+    VERSION_NOT_OF_RECIPE,
     CopyBeyondPolicy,
     PreparedCopy,
     ProfileCopier,
@@ -67,7 +67,7 @@ class PinPreview(BaseModel):
     #: "<the version's profile> <the version's name>".
     name: str
     #: Whether the pin is refused because that name is taken (a live profile has it, or it is the
-    #: copy of another Set version's pin).
+    #: copy of another Recipe version's pin).
     taken: bool = False
     #: Why the pin would be refused, in the sentence the pin itself answers with; ``None`` when it
     #: would go through. Set for every refusal the pin has, not only a taken name.
@@ -90,7 +90,7 @@ class PinAnswer(BaseModel):
 class _Inspection:
     """What one look at a version found: the name, and the refusal if there is one."""
 
-    set_row: SetRow
+    recipe_row: SetRow
     version: SetVersionRow
     name: str
     copy: PreparedCopy | None = None
@@ -106,7 +106,7 @@ class PinService:
         self.db = db
         self.board = board
         self.pins = PinsRepository(db)
-        self.sets = SetsRepository(db)
+        self.recipes = RecipesRepository(db)
         self.copier = ProfileCopier(board)
 
     # ── the one look ─────────────────────────────────────────────────
@@ -114,16 +114,16 @@ class PinService:
     async def inspect(self, set_id: int, version_id: int, label: str | None) -> _Inspection:
         """Every question a pin asks, in the order it asks them. Reads only.
 
-        Raises for what is not a pin's state at all (404: no such Set or version, or the version
-        is not the Set's; 422: a blank label); returns a refusal as a value, so the preview can
+        Raises for what is not a pin's state at all (404: no such Recipe or version, or the version
+        is not the Recipe's; 422: a blank label); returns a refusal as a value, so the preview can
         say it and the pin can raise it.
         """
-        set_row = await self.sets.get(set_id)
-        if set_row is None:
-            raise NotFound(SET_GONE)
-        version = await self.sets.version_of_set(set_id, version_id)
+        recipe_row = await self.recipes.get(set_id)
+        if recipe_row is None:
+            raise NotFound(RECIPE_GONE)
+        version = await self.recipes.version_of_recipe(set_id, version_id)
         if version is None:
-            raise NotFound(VERSION_NOT_OF_SET)
+            raise NotFound(VERSION_NOT_OF_RECIPE)
         if label is not None and not label.strip():
             raise Unprocessable("A profile needs a name")
         name = (
@@ -135,12 +135,12 @@ class PinService:
                 else version.version_label
             )
         )
-        found = _Inspection(set_row=set_row, version=version, name=name)
-        if set_row.archived:
+        found = _Inspection(recipe_row=recipe_row, version=version, name=name)
+        if recipe_row.archived:
             found.refusal = PinRefused(
                 "SET_ARCHIVED", "This Set is archived: an archived Set receives no shots."
             )
-        elif set_row.designing:
+        elif recipe_row.designing:
             found.refusal = PinRefused(
                 "DESIGNING", "This Set is still being designed: there is no version to pin yet."
             )
@@ -174,7 +174,7 @@ class PinService:
         else:
             found.name = found.copy.name
             owner = await self._owner_of(found.copy)
-            brewed_by = await self.pins.set_version_naming_content(
+            brewed_by = await self.pins.recipe_version_naming_content(
                 found.copy.content_hash, found.copy.name
             )
             held = (
@@ -183,11 +183,11 @@ class PinService:
                 else await self.pins.detail(owner.id)
             )
             if held is not None:
-                # A copy names one Set version for ever: a name freed by an unpin cannot be
+                # A copy names one Recipe version for ever: a name freed by an unpin cannot be
                 # reused, with the same content, by another version's pin.
                 sentence = pinned_copy_sentence(found.name, held.set_name, held.version_label)
             elif brewed_by is not None:
-                # A profile some Set version already brews is not a copy to pin.
+                # A profile some Recipe version already brews is not a copy to pin.
                 sentence = (
                     f"{brewed_by[0]} {brewed_by[1]} brews a profile called {found.name}. "
                     "Choose another name."
@@ -216,7 +216,7 @@ class PinService:
     # ── pin ──────────────────────────────────────────────────────────
 
     async def pin(self, set_id: int, version_id: int, label: str | None) -> PinAnswer:
-        """Pin a Set version: the copy and the record in one transaction.
+        """Pin a Recipe version: the copy and the record in one transaction.
 
         The same version pinned again under the same name brings its own unpinned record and its
         row back (the same name and content are the same profile version), instead of a second

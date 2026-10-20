@@ -1,10 +1,10 @@
-"""The opening context of a conversation designing a Set, and the goldens it renders to.
+"""The opening context of a conversation designing a Recipe, and the goldens it renders to.
 
 Two goldens, because the design context has two shapes worth pinning whole: a
-Set forked from a profile, of a bean that already has Sets, with a card waiting
-(`golden/design-chat-context.txt`), and a Set of a bean nobody has brewed,
+Recipe forked from a profile, of a bean that already has Recipes, with a card waiting
+(`golden/design-chat-context.txt`), and a Recipe of a bean nobody has brewed,
 forked from nothing (`golden/design-chat-context-bare.txt`). The other tests
-each pin one rule: whose Sets may appear, and when the block goes away.
+each pin one rule: whose Recipes may appear, and when the block goes away.
 
 The archive is the starting point's (`tests/starting/conftest.py`): four beans
 dialled in on two grinders, which is exactly the evidence a design is built on.
@@ -24,18 +24,18 @@ from gaggiclanker.chat.context import opening_context
 from gaggiclanker.chat.design_context import design_context
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
-from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import (
+from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
     SetRow,
-    SetsRepository,
-    SetVersionPatch,
     SetVersionWrite,
-    SetWrite,
 )
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.tools.scope import ToolScope
-from tests.sets.conftest import make_profile_version
+from tests.recipes.conftest import make_profile_version
 from tests.starting.conftest import Fixture, build_fixture
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
@@ -53,18 +53,18 @@ async def kitchen(tmp_path: Path) -> AsyncIterator[Fixture]:
 
 
 async def _bean_of(kitchen: Fixture, label: str) -> int:
-    row = await SetsRepository(kitchen.db).get(kitchen.sets[label])
+    row = await RecipesRepository(kitchen.db).get(kitchen.recipes[label])
     assert row is not None
     return row.bean_id
 
 
 async def _forked_design(kitchen: Fixture) -> SetRow:
-    """A second Set of the Kenya AA, forked from the library profile, with a card waiting."""
-    sets = SetsRepository(kitchen.db)
+    """A second Recipe of the Kenya AA, forked from the library profile, with a card waiting."""
+    recipes = RecipesRepository(kitchen.db)
     bean_id = await _bean_of(kitchen, "kenya")
     # A sibling on the other grinder that is still in use, with two versions.
-    mazzer = await sets.create(
-        SetWrite(
+    mazzer = await recipes.create(
+        RecipeWrite(
             name="Kenya AA on the Mazzer", bean_id=bean_id, grinder_id=kitchen.other_grinder_id
         ),
         SetVersionWrite(
@@ -76,22 +76,22 @@ async def _forked_design(kitchen: Fixture) -> SetRow:
         ),
         automatch=False,
     )
-    await sets.add_version(
+    await recipes.add_version(
         mazzer.id,
-        SetVersionPatch(
+        RecipeVersionPatch(
             grind_setting="6.5",
             intent="A touch finer.",
             prediction="Compared to v1, two seconds longer and sweeter.",
         ),
     )
-    # And one that is finished with: archived Sets are not part of the record.
-    archived = await sets.create(
-        SetWrite(name="Kenya AA, last year", bean_id=bean_id), SetVersionWrite(dose_g=17)
+    # And one that is finished with: archived Recipes are not part of the record.
+    archived = await recipes.create(
+        RecipeWrite(name="Kenya AA, last year", bean_id=bean_id), SetVersionWrite(dose_g=17)
     )
-    await sets.archive(archived.id)
+    await recipes.archive(archived.id)
 
-    designed = await sets.create_design(
-        SetWrite(name="Kenya AA, more body", bean_id=bean_id, grinder_id=kitchen.grinder_id),
+    designed = await recipes.create_design(
+        RecipeWrite(name="Kenya AA, more body", bean_id=bean_id, grinder_id=kitchen.grinder_id),
         DesignBrief(
             fork_profile_version_id=kitchen.profile_version_id,
             usual_grind="21",
@@ -104,13 +104,13 @@ async def _forked_design(kitchen: Fixture) -> SetRow:
     draft = await ProfileDraftsRepository(kitchen.db).create(
         ProfileDraftWrite(base_version_id=kitchen.profile_version_id, draft_version_id=drafted)
     )
-    stored = await SetProposalsRepository(kitchen.db).create(
+    stored = await RecipeProposalsRepository(kitchen.db).create(
         designed.id,
         ProposalWrite(
             kind="design",
             draft_id=draft.id,
             reason="A longer bloom and a lower peak for body.",
-            patch=SetVersionPatch(
+            patch=RecipeVersionPatch(
                 profile_version_id=drafted,
                 grind_setting="20",
                 grind_value=20,
@@ -124,8 +124,8 @@ async def _forked_design(kitchen: Fixture) -> SetRow:
 
 
 async def _bare_design(kitchen: Fixture) -> SetRow:
-    return await SetsRepository(kitchen.db).create_design(
-        SetWrite(
+    return await RecipesRepository(kitchen.db).create_design(
+        RecipeWrite(
             name="Kenya Nyeri on the Niche Zero",
             bean_id=kitchen.new_bean_id,
             grinder_id=kitchen.grinder_id,
@@ -181,12 +181,12 @@ async def test_the_numbers_the_person_chose_are_kept_and_the_rest_left_open(
     kitchen: Fixture,
 ) -> None:
     """A grind, dose or yield typed on the form is the person's, and the agent must keep it."""
-    sets = SetsRepository(kitchen.db)
+    recipes = RecipesRepository(kitchen.db)
     bean_id = await _bean_of(kitchen, "kenya")
 
     async def brief_of(brief: DesignBrief) -> str:
-        designed = await sets.create_design(
-            SetWrite(name=f"Kenya {brief!r}", bean_id=bean_id, grinder_id=kitchen.grinder_id),
+        designed = await recipes.create_design(
+            RecipeWrite(name=f"Kenya {brief!r}", bean_id=bean_id, grinder_id=kitchen.grinder_id),
             brief,
         )
         rendered = await design_context(kitchen.db, designed.id)
@@ -220,7 +220,7 @@ async def test_the_same_archive_renders_the_same_text(kitchen: Fixture) -> None:
     assert first == second
 
 
-async def test_only_this_bean_s_sets_in_use_are_its_siblings(kitchen: Fixture) -> None:
+async def test_only_this_bean_s_recipes_in_use_are_its_siblings(kitchen: Fixture) -> None:
     designed = await _forked_design(kitchen)
 
     rendered = await design_context(kitchen.db, designed.id)
@@ -230,43 +230,43 @@ async def test_only_this_bean_s_sets_in_use_are_its_siblings(kitchen: Fixture) -
     assert "Kenya AA on the Mazzer" in siblings
     # Archived: finished with, and not part of the record.
     assert "last year" not in rendered
-    # Another bean's Set is never a sibling, and this bean's are never
+    # Another bean's Recipe is never a sibling, and this bean's are never
     # "similar": they are listed once, where they belong.
     assert "Ethiopia Guji" not in siblings
     similar = rendered.split("SIMILAR SETS ON THIS GRINDER")[1].split("THE RULES THAT MATCH")[0]
     assert "Kenya AA" not in similar
     assert "Ethiopia Guji" in similar
-    # And the Set being designed is not its own sibling.
+    # And the Recipe being designed is not its own sibling.
     assert "Kenya AA, more body —" not in siblings
 
 
 async def test_the_siblings_are_capped_and_the_cut_is_said(kitchen: Fixture) -> None:
-    from gaggiclanker.chat.design_context import SIBLING_SETS
+    from gaggiclanker.chat.design_context import SIBLING_RECIPES
 
-    sets = SetsRepository(kitchen.db)
+    recipes = RecipesRepository(kitchen.db)
     bean_id = await _bean_of(kitchen, "kenya")
-    for index in range(SIBLING_SETS + 1):
-        await sets.create(
-            SetWrite(name=f"Kenya AA try {index}", bean_id=bean_id), SetVersionWrite(dose_g=18)
+    for index in range(SIBLING_RECIPES + 1):
+        await recipes.create(
+            RecipeWrite(name=f"Kenya AA try {index}", bean_id=bean_id), SetVersionWrite(dose_g=18)
         )
-    designed = await sets.create_design(
-        SetWrite(name="Kenya AA designed", bean_id=bean_id, grinder_id=kitchen.grinder_id),
+    designed = await recipes.create_design(
+        RecipeWrite(name="Kenya AA designed", bean_id=bean_id, grinder_id=kitchen.grinder_id),
         DesignBrief(),
     )
 
     rendered = await design_context(kitchen.db, designed.id)
 
     listed = [line for line in rendered.splitlines() if line.startswith("- Set ")]
-    assert len(listed) == SIBLING_SETS
+    assert len(listed) == SIBLING_RECIPES
     # Newest first: the last one created is the first one listed.
-    assert f"Kenya AA try {SIBLING_SETS}" in listed[0]
+    assert f"Kenya AA try {SIBLING_RECIPES}" in listed[0]
     assert "- and 2 older Sets of this bean." in rendered
 
 
 async def test_once_the_recipe_is_written_the_design_block_is_gone(kitchen: Fixture) -> None:
     designed = await _forked_design(kitchen)
-    await SetsRepository(kitchen.db).add_version(
-        designed.id, SetVersionPatch(grind_setting="20", dose_g=18, target_yield_g=40)
+    await RecipesRepository(kitchen.db).add_version(
+        designed.id, RecipeVersionPatch(grind_setting="20", dose_g=18, target_yield_g=40)
     )
 
     rendered = await opening_context(kitchen.db, await ToolScope.resolve(kitchen.db, designed.id))

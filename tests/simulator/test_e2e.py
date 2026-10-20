@@ -257,7 +257,7 @@ async def test_the_whole_prototype_against_the_simulator(
         lambda: _profiles_mirrored(client), timeout=60.0, what="the profile mirror to run"
     )
     assert profiles, "the simulator listed no profiles"
-    # Writes are off, so the list has no profiles: a Set starts on the machine file the sync
+    # Writes are off, so the list has no profiles: a Recipe starts on the machine file the sync
     # mirrored, and has its profile once the list adopts the file.
     profile_version_id = profiles[0]["current_version_id"]
 
@@ -310,12 +310,12 @@ async def test_the_whole_prototype_against_the_simulator(
     )
     assert judgement["rating"] == 3
 
-    # 7. Put it in a Set.
+    # 7. Put it in a Recipe.
     bean = data(
         await client.post("/api/beans", json={"name": "Simulator blend", "roaster": "nobody"})
     )
     grinder = data(await client.post("/api/grinders", json={"name": "Simulated grinder"}))
-    stored_set = data(
+    stored_recipe = data(
         await client.post(
             "/api/sets",
             json={
@@ -332,7 +332,7 @@ async def test_the_whole_prototype_against_the_simulator(
             },
         )
     )
-    version_id = stored_set["current_version_id"]
+    version_id = stored_recipe["current_version_id"]
     assigned = data(
         await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id})
     )
@@ -348,7 +348,7 @@ async def test_the_whole_prototype_against_the_simulator(
     # 9. The person records the next recipe. The new version must name the old
     #    as parent.
     new_version = data(
-        await client.post(f"/api/sets/{stored_set['id']}/versions", json={"grind_value": 21.0})
+        await client.post(f"/api/sets/{stored_recipe['id']}/versions", json={"grind_value": 21.0})
     )
     assert new_version["parent_version_id"] == version_id
     assert new_version["origin"] == "manual"

@@ -1,11 +1,11 @@
 """Only a person starts a pattern run, approves a proposal or dismisses one.
 
-A run spends a provider call, and approving writes a general insight and deletes Set insights,
+A run spends a provider call, and approving writes a general insight and deletes Recipe insights,
 so "who can do it" has one answer: the Knowledge page's buttons, through their routes. Five
 checks, each covering a way that could stop being true:
 
 1. **No registered tool can start a run or answer a proposal.** Walked over the registry
-   itself (the Set, General and design scopes and the stdio MCP server, which registers from
+   itself (the Recipe, General and design scopes and the stdio MCP server, which registers from
    the same registry) and each tool function's code.
 2. **No code outside the package, the repositories' module, the routes and the boot wiring
    names the service or the proposals' repository.** Walked over the bytecode of every module,
@@ -35,7 +35,7 @@ from gaggiclanker.db.repos.patterns import PatternProposalsRepository
 from gaggiclanker.patterns.service import PATTERNS_TASK, PatternsService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.tools.registry import ToolContext, registry
-from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
+from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, RECIPE_TOOLS
 from tests.conftest import running_app
 from tests.patterns.world import build_pattern_world, build_talking
 
@@ -113,7 +113,7 @@ def _package_files() -> list[Path]:
 def test_no_registered_tool_can_start_a_run_or_answer_a_proposal() -> None:
     every = registry.names()
     assert every, "an empty registry would pass this vacuously"
-    assert SET_TOOLS | GENERAL_TOOLS | DESIGN_TOOLS <= set(every)
+    assert RECIPE_TOOLS | GENERAL_TOOLS | DESIGN_TOOLS <= set(every)
 
     assert not [name for name in every if "pattern" in name]
     offenders: list[str] = []

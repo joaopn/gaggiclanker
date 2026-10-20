@@ -46,10 +46,10 @@ from tests.drafts.helpers import (
     draft_of,
     grind_change,
     kinds,
-    make_set_on,
+    make_recipe_on,
     manual_draft,
+    recipe_version_ids,
     same_name_draft,
-    set_version_ids,
     tombstone,
 )
 from tests.llm.conftest import FakeProvider
@@ -827,22 +827,22 @@ async def test_three_failures_in_a_row_stop_the_phase(
     assert fake.ws_requests.count("req:profiles:save") == 3
 
 
-# ── Sets ─────────────────────────────────────────────────────────────
+# ── Recipes ─────────────────────────────────────────────────────────────
 
 
-async def test_a_set_version_is_recorded_when_the_draft_is_put_and_the_pull_adds_none(
+async def test_a_recipe_version_is_recorded_when_the_draft_is_put_and_the_pull_adds_none(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
     base = row_for(await get_board(client), BASE_LABEL)
-    set_id = await make_set_on(client, "Board set", base["row"]["current_version_id"])
+    set_id = await make_recipe_on(client, "Board set", base["row"]["current_version_id"])
     await grind_change(client, set_id)
     draft = await same_name_draft(app, client, provider, BASE_LABEL, 8)
-    before = await set_version_ids(app, set_id)
+    before = await recipe_version_ids(app, set_id)
     row = await put(client, draft, major=True)
-    # The Set brews the person's own profile, and the draft keeps its name: a new version of it.
+    # The Recipe brews the person's own profile, and the draft keeps its name: a new version of it.
     assert row["id"] == base["row"]["id"]
-    after_put = await set_version_ids(app, set_id)
+    after_put = await recipe_version_ids(app, set_id)
     assert len(after_put) == len(before) + 1, "the Set follows its profile when it is put"
     majors = await app.state.db.fetch_all(
         "SELECT version_major FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id",
@@ -854,7 +854,7 @@ async def test_a_set_version_is_recorded_when_the_draft_is_put_and_the_pull_adds
 
     assert run.status == "ok", run.error
     assert len(summary_of(run)["pushed"]) == 1
-    assert await set_version_ids(app, set_id) == after_put, "the sync records nothing"
+    assert await recipe_version_ids(app, set_id) == after_put, "the sync records nothing"
     assert summary_of(run)["left"] == []
     assert row_for(await get_board(client), BASE_LABEL)["row"]["id"] == base["row"]["id"]
 
@@ -930,16 +930,16 @@ async def test_the_preview_before_adoption_lists_every_machine_profile_and_write
     assert write_frames(fake_device) == []
 
 
-async def test_a_copy_another_set_brews_is_replaced_all_the_same(
+async def test_a_copy_another_recipe_brews_is_replaced_all_the_same(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    """Changing the active version is the person's explicit choice: a Set brewing the old copy
+    """Changing the active version is the person's explicit choice: a Recipe brewing the old copy
     does not hold it back (the page warns beforehand)."""
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 8)
     mine = row_for(await get_board(client), APP_LABEL)
     old_id = mine["machine"]["device_id"]
-    set_id = await make_set_on(client, "Stays", mine["row"]["current_version_id"])
+    set_id = await make_recipe_on(client, "Stays", mine["row"]["current_version_id"])
     await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
     plan = row_for(await get_board(client), APP_LABEL)["planned"]
     assert [(a["kind"], a["device_id"]) for a in plan] == [("push", old_id)]
@@ -950,19 +950,19 @@ async def test_a_copy_another_set_brews_is_replaced_all_the_same(
     assert [i["device_id"] for i in summary_of(run)["pushed"]] == [old_id]
     assert summary_of(run)["removed"] == [] and summary_of(run)["left"] == []
     assert [str(p["id"]) for p in fake.profiles if p["label"] == APP_LABEL] == [old_id]
-    # The Set followed its profile when the draft was put.
-    assert len(await set_version_ids(app, set_id)) == 2
+    # The Recipe followed its profile when the draft was put.
+    assert len(await recipe_version_ids(app, set_id)) == 2
     assert (await get_board(client))["actions"] == []
 
 
-async def test_the_set_that_followed_its_profile_is_on_the_same_file_with_the_new_version(
+async def test_the_recipe_that_followed_its_profile_is_on_the_same_file_with_the_new_version(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 8)
     mine = row_for(await get_board(client), APP_LABEL)
     old_id = mine["machine"]["device_id"]
-    set_id = await make_set_on(client, "Moves", mine["row"]["current_version_id"])
+    set_id = await make_recipe_on(client, "Moves", mine["row"]["current_version_id"])
     await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
 
     run = await pull(app)
@@ -970,7 +970,7 @@ async def test_the_set_that_followed_its_profile_is_on_the_same_file_with_the_ne
     assert run.status == "ok", run.error
     assert summary_of(run)["removed"] == [] and summary_of(run)["left"] == []
     assert [str(p["id"]) for p in fake.profiles if p["label"] == APP_LABEL] == [old_id]
-    assert len(await set_version_ids(app, set_id)) == 2
+    assert len(await recipe_version_ids(app, set_id)) == 2
 
 
 @pytest.mark.parametrize(

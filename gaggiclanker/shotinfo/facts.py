@@ -24,8 +24,8 @@ from typing import Any
 
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
+from gaggiclanker.db.repos.recipes import SetVersionRow
 from gaggiclanker.db.repos.reviews import ReadingRecord
-from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotSampleRow
 from gaggiclanker.domain.signature import ShotChecks
 from gaggiclanker.domain.slog import FIELD_DEFS
@@ -67,7 +67,7 @@ class ShotFacts:
 
     shot: ShotDetailRow
     judgement: ShotJudgementRow | None = None
-    #: The Set version the shot is filed under, with its recipe. ``None`` for a
+    #: The Recipe version the shot is filed under, with its recipe. ``None`` for a
     #: shot in the inbox.
     version: SetVersionRow | None = None
     #: What was typed on the machine's own notes card, when it was pulled.
@@ -97,7 +97,7 @@ class ShotFacts:
 
     @property
     def version_label(self) -> str | None:
-        """The name of the Set version the shot is filed under, "v1.1"."""
+        """The name of the Recipe version the shot is filed under, "v1.1"."""
         badge = self.shot.set_badge
         return badge.version_label if badge is not None else None
 

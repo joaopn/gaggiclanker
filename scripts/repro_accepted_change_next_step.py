@@ -10,12 +10,12 @@ installed (``cd web && npm ci``).
 The bug
 -------
 
-A person accepted a grind-only change in a Set's conversation. Accepting records
+A person accepted a grind-only change in a Recipe's conversation. Accepting records
 a version and sends nothing to the machine, and for a grind change nothing needs
 sending: the profile on the machine is the one the previous version already
 brewed with, and the next shots on it are filed under the new version by
 themselves. Nothing said so. The accepted card read only "Accepted as v2", the
-Set prompt said nothing about what an accepted grind, dose or yield change means
+Recipe prompt said nothing about what an accepted grind, dose or yield change means
 for the machine, and the "Accepted:" turn did not name the change. Asked what to
 do next, the agent invented a profile push, a staging queue and a step to "log
 the shot against the version".
@@ -25,7 +25,7 @@ The check has three parts, and all of them have to pass:
 - the card's "the next step after an accept" block (Vitest): the card names what
   the person does by hand, says there is nothing to push when the profile is
   unchanged, and the "Accepted:" turn names the change;
-- the Set prompt tells the agent that an accepted non-profile change puts
+- the Recipe prompt tells the agent that an accepted non-profile change puts
   nothing on the machine (pytest);
 - ``propose_set_version`` refuses a profile version the machine does not have,
   since nothing in the app can put an existing version there (pytest).

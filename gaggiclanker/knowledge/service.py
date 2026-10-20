@@ -454,12 +454,12 @@ class KnowledgeService:
     # ── the learned tier ─────────────────────────────────────────────
 
     async def select_insights(self, attributes: dict[str, Any]) -> list[InsightRow]:
-        """The confirmed insights that apply to a Set. Oldest first.
+        """The confirmed insights that apply to a Recipe. Oldest first.
 
         ``attributes`` is the flat record :data:`SCOPE_KEYS` names — bean id,
         roast level, process, origin, grinder id, profile style, machine id —
-        with ``None`` for anything the Set does not state. Shared with the chat,
-        which builds it from whichever Set the conversation is about.
+        with ``None`` for anything the Recipe does not state. Shared with the chat,
+        which builds it from whichever Recipe the conversation is about.
         """
         return await self.insights.select(attributes)
 

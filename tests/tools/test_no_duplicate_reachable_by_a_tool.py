@@ -1,7 +1,7 @@
-"""Duplicating a Set and previewing the duplicate are a person's.
+"""Duplicating a Recipe and previewing the duplicate are a person's.
 
 A duplicate puts a new profile on the profile list (and so, at the next sync, on the machine) and
-starts a Set. Neither may be started by a chat tool or the MCP server. This file pins it by name:
+starts a Recipe. Neither may be started by a chat tool or the MCP server. This file pins it by name:
 no tool is called for it, no module of the tool package refers to its service, its writer or the
 copy function, and the routes it is meant to be reached by still exist (so the check does not pass
 for words nothing uses any more).
@@ -10,7 +10,7 @@ for words nothing uses any more).
 from __future__ import annotations
 
 from gaggiclanker.api.duplicates import duplicate_version, preview_duplicate
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.drafts.duplicates import DuplicateService
 from gaggiclanker.tools.registry import registry
 from tests.tools.test_no_proposal_is_accepted_by_a_tool import _code_objects, _tool_modules
@@ -21,7 +21,7 @@ DUPLICATE_NAMES = ("DuplicateService", "DuplicateRequest", "ProfileCopier")
 
 def test_the_duplicate_writers_and_routes_are_where_this_file_thinks_they_are() -> None:
     assert callable(DuplicateService.duplicate) and callable(DuplicateService.preview)
-    assert callable(SetsRepository.create_in_transaction)
+    assert callable(RecipesRepository.create_in_transaction)
     assert callable(duplicate_version) and callable(preview_duplicate)
 
 

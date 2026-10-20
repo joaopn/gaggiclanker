@@ -1,4 +1,5 @@
-"""Shared helpers for the draft and board tests: drafts made from the mirror, Sets to put them on.
+"""Shared helpers for the draft and board tests: drafts made from the mirror, Recipes to put them
+on.
 
 What used to live in the staged push's replace tests (``test_replace``), which went with the
 staged box; the helpers are what the board's tests still build their scenarios from.
@@ -100,8 +101,8 @@ async def same_name_draft(
     return dict(data(response))
 
 
-async def make_set(client: httpx.AsyncClient, name: str = "Replace test") -> int:
-    """A Set with one version, so a push has somewhere to record itself."""
+async def make_recipe(client: httpx.AsyncClient, name: str = "Replace test") -> int:
+    """A Recipe with one version, so a push has somewhere to record itself."""
     bean = data(await client.post("/api/beans", json={"name": name, "roaster": "nobody"}))
     stored = data(
         await client.post(
@@ -143,8 +144,8 @@ async def manual_draft(
     return dict(data(response))
 
 
-async def set_version_ids(app: FastAPI, set_id: int) -> list[int]:
-    """The ids of a Set's versions, oldest first."""
+async def recipe_version_ids(app: FastAPI, set_id: int) -> list[int]:
+    """The ids of a Recipe's versions, oldest first."""
     rows = await app.state.db.fetch_all(
         "SELECT id FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id", (set_id,)
     )
@@ -171,8 +172,8 @@ async def manual_from(
     return dict(data(response))
 
 
-async def make_set_on(client: httpx.AsyncClient, name: str, profile_version_id: int) -> int:
-    """A Set whose first version names a stored profile, as one made from the library does."""
+async def make_recipe_on(client: httpx.AsyncClient, name: str, profile_version_id: int) -> int:
+    """A Recipe whose first version names a stored profile, as one made from the library does."""
     bean = data(await client.post("/api/beans", json={"name": name, "roaster": "nobody"}))
     response = await client.post(
         "/api/sets",
@@ -190,8 +191,8 @@ async def make_set_on(client: httpx.AsyncClient, name: str, profile_version_id: 
     return int(data(response)["id"])
 
 
-async def make_set_on_a_free_profile(app: FastAPI, client: httpx.AsyncClient, name: str) -> int:
-    """A Set on the first live profile that has no Set (a profile has at most one) and is no
+async def make_recipe_on_a_free_profile(app: FastAPI, client: httpx.AsyncClient, name: str) -> int:
+    """A Recipe on the first live profile that has no Recipe (a profile has at most one) and is no
     pin's copy."""
     row = await app.state.db.fetch_one(
         "SELECT b.current_version_id AS version FROM profile_board b "
@@ -201,7 +202,7 @@ async def make_set_on_a_free_profile(app: FastAPI, client: httpx.AsyncClient, na
         "ORDER BY b.id"
     )
     assert row is not None, "every live profile has a Set"
-    return await make_set_on(client, name, int(row["version"]))
+    return await make_recipe_on(client, name, int(row["version"]))
 
 
 async def grind_change(client: httpx.AsyncClient, set_id: int) -> None:
@@ -286,17 +287,17 @@ async def assert_versions_owned(db: Any) -> None:
     assert [dict(r) for r in wrong_file] == [], (
         f"a file holds a version of a profile not on it {[dict(r) for r in wrong_file]}"
     )
-    await assert_sets_follow_their_profiles(db)
+    await assert_recipes_follow_their_profiles(db)
 
 
-async def assert_sets_follow_their_profiles(db: Any) -> None:
-    """What a Set and its profile owe each other, as the database stands.
+async def assert_recipes_follow_their_profiles(db: Any) -> None:
+    """What a Recipe and its profile owe each other, as the database stands.
 
-    * every Set version names a version its Set's profile owns (a Set with no profile names
+    * every Recipe version names a version its Recipe's profile owns (a Recipe with no profile names
       only versions nobody owns, or none);
-    * no two Sets share a profile;
-    * a Set that is not being designed has, as its current version, the version its profile has
-      active: the Set follows its profile (a revert makes the profile follow the Set).
+    * no two Recipes share a profile;
+    * a Recipe that is not being designed has, as its current version, the version its profile has
+      active: the Recipe follows its profile (a revert makes the profile follow the Recipe).
     """
     foreign = await db.fetch_all(
         "SELECT v.id, v.recipe_id, pv.board_id AS owner, s.board_id AS mine FROM recipe_versions v "

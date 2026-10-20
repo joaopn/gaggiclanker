@@ -18,7 +18,12 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.recipes import (
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
+    SetVersionWrite,
+)
 from gaggiclanker.db.repos.shots import CHECK_SORT, ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.models import Profile
@@ -28,8 +33,8 @@ from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.sync.derive import derive_shot
 from tests.lever_shot import LEVER_PROFILE, TARGET_YIELD_G, lever_shot
 from tests.profile_rows import own_version
-from tests.sets.conftest import make_profile_version
-from tests.sets.test_api import data
+from tests.recipes.conftest import make_profile_version
+from tests.recipes.test_api import data
 from tests.shotinfo.conftest import PROFILE_204, SLOG, Archive, _without_scale
 
 
@@ -43,7 +48,7 @@ async def _add_lever(archive: Archive) -> int:
         slog, slog_to_raw(slog), device_id="000900", source="import", profile=LEVER_PROFILE
     )
     shot = await ShotsRepository(archive.db).insert(derived.shot, derived.samples)
-    assert await SetsRepository(archive.db).assign_shot(shot, archive.version_id)
+    assert await RecipesRepository(archive.db).assign_shot(shot, archive.version_id)
     return shot
 
 
@@ -132,25 +137,25 @@ async def test_refiling_a_shot_changes_its_listed_warnings_and_its_place_in_the_
     archive: Archive,
 ) -> None:
     lever = await _add_lever(archive)
-    sets = SetsRepository(archive.db)
+    recipes = RecipesRepository(archive.db)
     repo = ShotsRepository(archive.db)
-    roomy = await sets.add_version(
-        archive.set_id, SetVersionPatch(target_yield_g=60.0, intent="a longer shot")
+    roomy = await recipes.add_version(
+        archive.set_id, RecipeVersionPatch(target_yield_g=60.0, intent="a longer shot")
     )
     assert roomy is not None
     # Under a 60 g target the lever's 42.2 g is 70 %: under, not over.
-    assert await sets.assign_shot(lever, roomy.id)
+    assert await recipes.assign_shot(lever, roomy.id)
     page = await repo.list_shots(limit=10, sort=CHECK_SORT)
     row = next(item for item in page.items if item.id == lever)
     assert [w.fault for w in row.checks.entries] == ["fast flow", "skipped", "under target"]
 
-    assert await sets.assign_shot(lever, None)
+    assert await recipes.assign_shot(lever, None)
     row = next(item for item in (await repo.list_shots(limit=10)).items if item.id == lever)
     assert [w.fault for w in row.checks.entries] == ["fast flow", "skipped"]
     assert row.checks.badge == "ramp: fast flow +1"
 
 
-async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
+async def test_the_list_and_the_recipe_routes_serve_the_curve_check_and_the_sort(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     db: Database = app.state.db
@@ -163,10 +168,10 @@ async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
     grinder = await GrindersRepository(db).create(
         GrinderWrite(name="Constructed", step_unit="numbers")
     )
-    sets = SetsRepository(db)
+    recipes = RecipesRepository(db)
     await own_version(db, profile.id)
-    row = await sets.create(
-        SetWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
+    row = await recipes.create(
+        RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
         SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),
     )
     slog = lever_shot()
@@ -175,7 +180,7 @@ async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
     )
     shot = await ShotsRepository(db).insert(derived.shot, derived.samples)
     assert row.current_version_id is not None
-    assert await sets.assign_shot(shot, row.current_version_id)
+    assert await recipes.assign_shot(shot, row.current_version_id)
 
     listed: dict[str, Any] = data(await client.get("/api/shots?sort=check&order=desc"))
     assert [item["id"] for item in listed["items"]] == [shot]
@@ -188,8 +193,8 @@ async def test_the_list_and_the_set_routes_serve_the_curve_check_and_the_sort(
         "over target",
     ]
     detail: dict[str, Any] = data(await client.get(f"/api/sets/{row.id}"))
-    in_set = detail["versions"][0]["shots"]
-    assert [item["checks"]["badge"] for item in in_set] == ["ramp: fast flow +2"]
+    in_recipe = detail["versions"][0]["shots"]
+    assert [item["checks"]["badge"] for item in in_recipe] == ["ramp: fast flow +2"]
     assert (await client.get("/api/shots?sort=check&cursor=abc")).status_code == 400
 
 
@@ -207,7 +212,7 @@ async def test_the_curve_check_state_sorts_entries_then_pass_then_unchecked(
         slog, SLOG.read_bytes(), device_id="000207", profile=PROFILE_204, has_pressure=True
     )
     unchecked = await ShotsRepository(db).insert(derived.shot, derived.samples)
-    assert await SetsRepository(db).assign_shot(unchecked, archive.version_id)
+    assert await RecipesRepository(db).assign_shot(unchecked, archive.version_id)
     version = await make_profile_version(db, "Alturas signed", temperature=93.0)
     await db.execute("UPDATE shots SET profile_version_id = ? WHERE id = ?", (version, passing))
     await SignatureService(db).propose(

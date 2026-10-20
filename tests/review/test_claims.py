@@ -82,7 +82,7 @@ async def test_there_is_no_confirm_all_and_no_waiting_state(api: Api) -> None:
 async def _with_a_stance(
     app: FastAPI, client: httpx.AsyncClient, provider: FakeProvider
 ) -> dict[str, object]:
-    """A review with two claims and a stance on the Set version's prediction."""
+    """A review with two claims and a stance on the Recipe version's prediction."""
     data = await build_app_fixture(app)
     await predict(data)
     stance = {"stance": "partly", "text": "The shot was faster.", "evidence": []}

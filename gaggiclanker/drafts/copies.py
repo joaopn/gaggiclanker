@@ -1,7 +1,7 @@
 """A profile copied under a new name: the one way a profile is made from an existing version.
 
-A pinned Set version and a duplicated Set both need "this version's profile, under another name,
-on the profile list". It is made by the draft constructor like every other profile document
+A pinned Recipe version and a duplicated Recipe both need "this version's profile, under another
+name, on the profile list". It is made by the draft constructor like every other profile document
 (:meth:`~gaggiclanker.drafts.proposals.DraftProposals.prepare` and ``store``), never by a second
 one, so the strict schema, the clamp, the check and the name rule apply unchanged; and it is put
 on the list by the same put a person's approval runs, in the caller's transaction, so there is no
@@ -11,8 +11,8 @@ A copy is only worth making when it brews what the original brewed. So **if the 
 number the copy is refused**, with the clamp's list: the numbers it would have changed are the
 reason, and the copy would not be the version it is a copy of.
 
-The copy records nothing on any Set (the draft is made with no Set, so the sync's recording of a
-pushed draft on its Set never fires). The signature is the caller's choice: a duplicate carries
+The copy records nothing on any Recipe (the draft is made with no Recipe, so the sync's recording of
+a pushed draft on its Recipe never fires). The signature is the caller's choice: a duplicate carries
 the original's the way every draft's new version does, a pin carries none because its shots are
 judged by the original's.
 """
@@ -32,17 +32,17 @@ from gaggiclanker.drafts.proposals import PreparedDraft, schema_errors
 from gaggiclanker.infra.errors import Conflict, Unprocessable
 
 __all__ = [
-    "SET_GONE",
-    "VERSION_NOT_OF_SET",
+    "RECIPE_GONE",
+    "VERSION_NOT_OF_RECIPE",
     "CopyBeyondPolicy",
     "PreparedCopy",
     "ProfileCopier",
 ]
 
-#: What a person is told when the Set or version a pin or a duplicate was asked about is not
+#: What a person is told when the Recipe or version a pin or a duplicate was asked about is not
 #: there: one wording for both screens that ask.
-SET_GONE = "That Set is not there any more."
-VERSION_NOT_OF_SET = "That version is not one of this Set's."
+RECIPE_GONE = "That Set is not there any more."
+VERSION_NOT_OF_RECIPE = "That version is not one of this Set's."
 
 
 class CopyBeyondPolicy(Conflict):
@@ -137,7 +137,7 @@ class ProfileCopier:
         """Store the copy and put it on the list: switched on, starred, the app's own.
 
         Inside the caller's transaction (the draft and its put are one write). The draft is made
-        with no Set, a manual edit's source and the original as its base; it is approved by the
+        with no Recipe, a manual edit's source and the original as its base; it is approved by the
         put in the same step, so it is never a proposal waiting for a person.
         """
         draft = await self.proposals.store(

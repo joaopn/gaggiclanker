@@ -1,5 +1,5 @@
-"""A profile no Set has, for a test that needs a Set (a Set brews a profile, and a profile has at
-most one Set)."""
+"""A profile no Recipe has, for a test that needs a Recipe (a Recipe brews a profile, and a profile
+has at most one Recipe)."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ _counter = itertools.count(1)
 
 
 async def free_profile_version(db: Database, label: str | None = None) -> int:
-    """A new profile on the list, switched off, with no Set: the version it has active.
+    """A new profile on the list, switched off, with no Recipe: the version it has active.
 
-    Each call makes another profile (its own label), so a test that makes several Sets gives
+    Each call makes another profile (its own label), so a test that makes several Recipes gives
     each its own.
     """
     document = json.loads(_FIXTURE.read_text())
@@ -49,7 +49,7 @@ def database_of(client: httpx.AsyncClient) -> Database:
 
 
 async def with_a_profile(client: httpx.AsyncClient, body: dict[str, Any]) -> dict[str, Any]:
-    """``POST /api/sets``'s body with a profile no Set has, when it names none."""
+    """``POST /api/sets``'s body with a profile no Recipe has, when it names none."""
     version = dict(body.get("version") or {})
     if version.get("profile_version_id") is None and "profile_version_id" not in version:
         version["profile_version_id"] = await free_profile_version(database_of(client))
@@ -57,7 +57,7 @@ async def with_a_profile(client: httpx.AsyncClient, body: dict[str, Any]) -> dic
 
 
 async def own_version(db: Database, version_id: int) -> int:
-    """Put the profile version on the list as a profile of its own (switched off), so that a Set
+    """Put the profile version on the list as a profile of its own (switched off), so that a Recipe
     can start on it; a version a profile already owns is left as it is. Returns the version."""
     version = await ProfilesRepository(db).get_version(version_id)
     assert version is not None

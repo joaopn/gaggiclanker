@@ -417,7 +417,7 @@ async def test_rejection_messages_are_fixed_strings(
     assert response.json()["error"]["details"] == [{"field": key, "message": message}]
 
 
-async def test_a_set_conversation_opens_with_at_least_one_shot(
+async def test_a_recipe_conversation_opens_with_at_least_one_shot(
     client: httpx.AsyncClient,
 ) -> None:
     """How many of a version's shots the opening context carries: 20, and never none."""

@@ -165,10 +165,10 @@ async def test_an_unknown_tool_is_refused_and_names_the_real_ones(ctx: ToolConte
 
 
 async def test_a_tool_outside_the_permission_set_is_refused_and_audited(
-    set_ctx: ToolContext,
+    recipe_ctx: ToolContext,
 ) -> None:
     """A tool this conversation *has*, refused for what the caller may do."""
-    ctx = set_ctx
+    ctx = recipe_ctx
     narrowed = ToolContext(
         db=ctx.db,
         settings=ctx.settings,

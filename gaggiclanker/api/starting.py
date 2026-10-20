@@ -2,7 +2,7 @@
 
 Three routes, and the split between them is the feature's whole shape: one
 queues a provider call and answers 202 with the row, one reads that row back,
-and one turns a chosen option into a Set. The similar-Set query has a route of
+and one turns a chosen option into a Recipe. The similar-Recipe query has a route of
 its own on the bean (`api/beans.py`), because the wizard shows those cards
 *before* anybody spends a token — "here is what you already know about beans
 like this" is useful on its own and free.
@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.api.deps import StartingPointServiceDep
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
-from gaggiclanker.db.repos.sets import SetRow, SetVersionRow
+from gaggiclanker.db.repos.recipes import SetRow, SetVersionRow
 from gaggiclanker.db.repos.starting import StartingPointRunRow
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import NotFound
@@ -50,7 +50,7 @@ class StartingPointRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bean_id: int = Field(gt=0)
-    #: Optional for the reason `sets.grinder_id` is: pre-ground coffee, and a
+    #: Optional for the reason `recipes.grinder_id` is: pre-ground coffee, and a
     #: grinder nobody has recorded, are both real.
     grinder_id: int | None = None
     #: What they normally grind espresso at, in the grinder's own units. The
@@ -167,7 +167,7 @@ async def accept_starting_point(
     return envelope_response(
         StartingPointAccepted(
             run=accepted.run,
-            set=accepted.set_row,
+            set=accepted.recipe_row,
             version=accepted.version,
             draft=accepted.draft,
         ).model_dump(mode="json"),

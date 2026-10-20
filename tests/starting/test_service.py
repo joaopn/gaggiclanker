@@ -1,7 +1,7 @@
-"""The service: a row, a call, an outcome, and the Set an accept creates.
+"""The service: a row, a call, an outcome, and the Recipe an accept creates.
 
 No real provider anywhere. The fake is scripted per test (`tests/llm/conftest.py`)
-so "it stored a failed row" and "it created the Set with origin starting_point"
+so "it stored a failed row" and "it created the Recipe with origin starting_point"
 are assertions about the database rather than about a mock library.
 """
 
@@ -17,11 +17,11 @@ import pytest
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL, ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.models import Profile
-from gaggiclanker.domain.sets import grind_value, set_name
+from gaggiclanker.domain.recipes import grind_value, set_name
 from gaggiclanker.infra.errors import Conflict, Unprocessable
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.errors import LlmApiError
@@ -112,7 +112,7 @@ async def test_citations_the_run_was_not_given_are_dropped(
     assert option.rules_used == ["light"]
     assert option.excerpts_used == []
     assert option.similar_set_version_ids == []
-    # A profile id the model was never shown is *cleared*, not kept: a Set
+    # A profile id the model was never shown is *cleared*, not kept: a Recipe
     # version pointing at an arbitrary profile would change which shots
     # auto-assignment attaches to it.
     assert option.profile_version_id is None
@@ -139,17 +139,17 @@ async def test_a_missing_bean_raises_rather_than_storing_a_failed_row(
 # ── accepting ────────────────────────────────────────────────────────
 
 
-async def test_accepting_creates_the_set_with_origin_starting_point(
+async def test_accepting_creates_the_recipe_with_origin_starting_point(
     starting: StartingPointService, fixture: Fixture
 ) -> None:
     run = await _propose(starting, fixture)
     accepted = await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
 
-    assert accepted.set_row.bean_id == fixture.new_bean_id
-    assert accepted.set_row.grinder_id == fixture.grinder_id
+    assert accepted.recipe_row.bean_id == fixture.new_bean_id
+    assert accepted.recipe_row.grinder_id == fixture.grinder_id
     # Named after the bag and the grinder: the same bean on a second grinder is
     # exactly the comparison this feature invites.
-    assert accepted.set_row.name == "Kenya Nyeri (Niche Zero)"
+    assert accepted.recipe_row.name == "Kenya Nyeri (Niche Zero)"
 
     version = accepted.version
     assert version.version_label == "v1"
@@ -157,7 +157,7 @@ async def test_accepting_creates_the_set_with_origin_starting_point(
     assert version.dose_g == 18.0
     assert version.target_yield_g == 45.0
     # This option named no profile, so the version has no temperature to show:
-    # a Set records none of its own.
+    # a Recipe records none of its own.
     assert version.profile_version_id is None
     assert version.profile_temperature_c is None
     assert version.grind_setting == "20"
@@ -168,7 +168,7 @@ async def test_accepting_creates_the_set_with_origin_starting_point(
 
     assert accepted.draft is None
     assert accepted.run.accepted_option == "recommended"
-    assert accepted.run.accepted_set_id == accepted.set_row.id
+    assert accepted.run.accepted_set_id == accepted.recipe_row.id
     assert accepted.run.accepted_set_version_id == version.id
 
 
@@ -189,7 +189,7 @@ async def test_a_relative_grind_is_stored_as_text_with_no_value(
     assert accepted.version.grind_value is None
 
 
-async def test_an_option_carrying_a_profile_becomes_a_draft_the_set_points_at(
+async def test_an_option_carrying_a_profile_becomes_a_draft_the_recipe_points_at(
     starting: StartingPointService, fixture: Fixture, provider: FakeProvider
 ) -> None:
     """Through `create_manual`, so it gets the same four layers a typed one gets."""
@@ -199,7 +199,7 @@ async def test_an_option_carrying_a_profile_becomes_a_draft_the_set_points_at(
 
     assert accepted.draft is not None
     assert accepted.draft.status == "draft"
-    # The Set means the drafted profile from now on, even though nobody has
+    # The Recipe means the drafted profile from now on, even though nobody has
     # pushed it to the machine yet.
     assert accepted.version.profile_version_id == accepted.draft.draft_version_id
     assert accepted.run.accepted_draft_id == accepted.draft.id
@@ -213,8 +213,8 @@ async def test_an_option_hotter_than_the_profile_it_picked_stages_a_draft(
     """Taking an option has to make its temperature true, and only a profile can.
 
     The option points at a profile already in the library and suggests 96 °C;
-    that profile brews at 93. A Set version records no temperature, so without
-    this the archive would carry a Set claiming 96 °C and a machine brewing 93.
+    that profile brews at 93. A Recipe version records no temperature, so without
+    this the archive would carry a Recipe claiming 96 °C and a machine brewing 93.
     The draft goes through the same path as any other — nothing is pushed.
     """
     provider.script = [
@@ -227,7 +227,7 @@ async def test_an_option_hotter_than_the_profile_it_picked_stages_a_draft(
     assert accepted.draft.status == "draft"
     assert accepted.draft.base_version_id == fixture.profile_version_id
     assert accepted.run.accepted_draft_id == accepted.draft.id
-    # The Set brews the draft, not the profile it was derived from.
+    # The Recipe brews the draft, not the profile it was derived from.
     assert accepted.version.profile_version_id == accepted.draft.draft_version_id
     assert accepted.version.profile_version_id != fixture.profile_version_id
     assert accepted.version.profile_temperature_c == 96.0
@@ -326,7 +326,7 @@ async def test_a_profile_that_states_no_temperature_is_redrafted_too(
 ) -> None:
     """No stated temperature is not agreement: it is a quieter disagreement.
 
-    The firmware writes 0 for "not set". Filing a Set whose card says 96 °C
+    The firmware writes 0 for "not set". Filing a Recipe whose card says 96 °C
     against a document that names no temperature would be the same untruth as
     filing it against one that says 93.
     """
@@ -360,7 +360,7 @@ async def test_a_clamped_draft_says_the_temperature_it_actually_carries(
 
     With the policy capped at 95 °C an option asking for 98 stages a draft that
     brews at 95, and a change summary reading "Brew at 98 °C" would be a
-    sentence contradicted by the diff underneath it — and by the Set, which
+    sentence contradicted by the diff underneath it — and by the Recipe, which
     shows 95.
     """
     await llm.settings.apply({"profilePolicyTemperatureMaxC": 95})
@@ -391,7 +391,7 @@ async def test_an_option_the_policy_caps_where_the_profile_already_brews_stages_
     """Clamped back to where it started, so there is nothing to approve.
 
     An empty draft — same document, new row, waiting on the Profiles page — is
-    a chore rather than a proposal, and the Set brews the profile it already
+    a chore rather than a proposal, and the Recipe brews the profile it already
     named.
     """
     await llm.settings.apply({"profilePolicyTemperatureMaxC": 93})
@@ -409,11 +409,11 @@ async def test_an_option_the_policy_caps_where_the_profile_already_brews_stages_
 async def test_without_a_draft_service_an_option_that_needs_one_is_refused(
     fixture: Fixture, llm: LlmService, provider: FakeProvider
 ) -> None:
-    """A Set whose stated temperature is not the one it brews is never filed.
+    """A Recipe whose stated temperature is not the one it brews is never filed.
 
     The draft service is what makes the option's temperature true, so a
     connection without one refuses the accept rather than quietly filing the
-    Set against a profile that brews at something else — and, like every other
+    Recipe against a profile that brews at something else — and, like every other
     refused accept, it creates nothing and leaves the run acceptable.
     """
     from gaggiclanker.db.repos.llm import PromptsRepository
@@ -427,13 +427,13 @@ async def test_without_a_draft_service_an_option_that_needs_one_is_refused(
     ]
     run = await _propose(unwired, fixture)
 
-    before = await SetsRepository(fixture.db).list_sets(include_archived=True)
+    before = await RecipesRepository(fixture.db).list_sets(include_archived=True)
     with pytest.raises(Unprocessable) as raised:
         await unwired.accept(run.id, "recommended")  # type: ignore[attr-defined]
     assert raised.value.status == 422
     assert "drafting is not available" in raised.value.message
 
-    after = await SetsRepository(fixture.db).list_sets(include_archived=True)
+    after = await RecipesRepository(fixture.db).list_sets(include_archived=True)
     assert [row.id for row in after] == [row.id for row in before], "nothing was created"
     versions = await fixture.db.fetch_value("SELECT COUNT(*) FROM recipe_versions")
     drafts = await fixture.db.fetch_value("SELECT COUNT(*) FROM profile_drafts")
@@ -480,7 +480,7 @@ async def test_a_profile_the_policy_refuses_never_becomes_an_ok_run(
     assert run.status == "failed"  # type: ignore[attr-defined]
     assert run.error is not None and run.error.startswith("invalid_output:")  # type: ignore[attr-defined]
 
-    rows = await SetsRepository(fixture.db).list_sets(include_archived=True)
+    rows = await RecipesRepository(fixture.db).list_sets(include_archived=True)
     assert not any(row.bean_id == fixture.new_bean_id for row in rows), "nothing was created"
 
 
@@ -492,8 +492,8 @@ async def test_a_profile_the_configured_bounds_refuse_is_a_422_and_creates_nothi
     The output model validates against the policy's defaults, because a pydantic
     validator cannot reach the settings service. Somebody who narrows the policy
     afterwards must still get their refusal — and nothing may be half-created
-    when they do: a Set pointing at a profile that was rejected is worse than no
-    Set.
+    when they do: a Recipe pointing at a profile that was rejected is worse than no
+    Recipe.
     """
     provider.script = [json.dumps(option_with(profile=THREE_PHASE_PROFILE))]
     run = await _propose(starting, fixture)
@@ -506,7 +506,7 @@ async def test_a_profile_the_configured_bounds_refuse_is_a_422_and_creates_nothi
     assert raised.value.status == 422
     assert raised.value.details, "the refusal names every violation at once"
 
-    rows = await SetsRepository(fixture.db).list_sets(include_archived=True)
+    rows = await RecipesRepository(fixture.db).list_sets(include_archived=True)
     assert not any(row.bean_id == fixture.new_bean_id for row in rows), "no half-created Set"
     assert rows, "the fixture's own Sets are untouched"
 
@@ -516,12 +516,12 @@ async def test_a_profile_the_configured_bounds_refuse_is_a_422_and_creates_nothi
     assert reread is not None and reread.accepted_option is None
 
 
-async def test_two_accepts_at_once_make_one_set_and_one_409(
+async def test_two_accepts_at_once_make_one_recipe_and_one_409(
     starting: StartingPointService, fixture: Fixture
 ) -> None:
     """The claim runs before anything is created, which is the whole fix.
 
-    With the guard as the *last* write both requests created a Set and only the
+    With the guard as the *last* write both requests created a Recipe and only the
     second was told off. Gathered rather than sequential because the race needs
     both to get past the "is it accepted yet" read before either writes.
     """
@@ -538,23 +538,23 @@ async def test_two_accepts_at_once_make_one_set_and_one_409(
     assert len(refused) == 1, results
     assert refused[0].status == 409
 
-    sets = [
+    recipes = [
         row
-        for row in await SetsRepository(fixture.db).list_sets(include_archived=True)
+        for row in await RecipesRepository(fixture.db).list_sets(include_archived=True)
         if row.bean_id == fixture.new_bean_id
     ]
-    assert len(sets) == 1, "one run, one Set — whatever the interleaving"
+    assert len(recipes) == 1, "one run, one Set — whatever the interleaving"
 
-    # The loser names the option that won. It may *not* yet name the Set: the
-    # claim is written before the Set exists, so a refusal that arrives inside
+    # The loser names the option that won. It may *not* yet name the Recipe: the
+    # claim is written before the Recipe exists, so a refusal that arrives inside
     # that window has nothing to point at. That is the right trade — a lost race
-    # with a thin error beats two Sets with a helpful one — and every later
+    # with a thin error beats two Recipes with a helpful one — and every later
     # press gets the ids, which is the case a person actually hits.
     assert refused[0].details["option"] in ("recommended", "conservative")
 
     with pytest.raises(Conflict) as later:
         await starting.accept(run.id, "adventurous")  # type: ignore[attr-defined]
-    assert later.value.details["set_id"] == sets[0].id
+    assert later.value.details["set_id"] == recipes[0].id
 
 
 async def test_accepting_twice_is_a_409_carrying_what_the_first_one_made(
@@ -566,7 +566,7 @@ async def test_accepting_twice_is_a_409_carrying_what_the_first_one_made(
     with pytest.raises(Conflict) as raised:
         await starting.accept(run.id, "conservative")  # type: ignore[attr-defined]
     assert raised.value.status == 409
-    assert raised.value.details["set_id"] == first.set_row.id
+    assert raised.value.details["set_id"] == first.recipe_row.id
     assert raised.value.details["option"] == "recommended"
 
 
@@ -654,7 +654,7 @@ async def test_an_accepted_option_s_grind_value_follows_the_shared_rule(
     assert accepted.version.grind_value == grind_value(
         option["grind_setting"], absolute=option["grind_is_absolute"]
     )
-    assert accepted.set_row.name == set_name(run.bean_name, run.grinder_name)
+    assert accepted.recipe_row.name == set_name(run.bean_name, run.grinder_name)
 
 
 async def test_the_default_draft_base_is_the_most_used_brew_profile(fixture: Fixture) -> None:

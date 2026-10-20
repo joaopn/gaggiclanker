@@ -1,10 +1,10 @@
-"""`set_outcome_proposals` — a version's grade, written by an agent, waiting for the person.
+"""`recipe_outcome_proposals` — a version's grade, written by an agent, waiting for the person.
 
 The loop this archive is built around ends every experiment with a grade, and
 the grade is what the track record, every later conversation and the "no new
 change while the last prediction is ungraded" rule read. The agent has always
 been the one who works the grade out; until this table the person then had to
-leave the conversation and type it into the Set page. A row here is the grade
+leave the conversation and type it into the Recipe page. A row here is the grade
 as the agent wrote it, **changing nothing**, until somebody answers it. Every
 method keeps one of these properties true.
 
@@ -13,7 +13,7 @@ method keeps one of these properties true.
 
 * **Nothing an agent graded is read as an outcome until a person accepted it.**
   The version's own outcome columns are written by :meth:`accept` and
-  :meth:`change` (a person's press) and by the Set page, and by nothing else.
+  :meth:`change` (a person's press) and by the Recipe page, and by nothing else.
   A proposal that is waiting, dismissed or superseded is a row in this table and
   nowhere else: no ledger, track record or other version's context reads it.
   The one reader that says "waiting" is that version's own conversation.
@@ -23,7 +23,7 @@ method keeps one of these properties true.
   same transaction, so the latest grade is the one on the card.
 
 * **Every answer is one transaction.** The proposal is still waiting, the grade
-  is recordable under the same guards the Set page's route applies, and the
+  is recordable under the same guards the Recipe page's route applies, and the
   proposal is marked, in one go; a second browser tab answering the same card
   finds it decided and gets a refusal, not a second write.
 
@@ -42,9 +42,9 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
-from gaggiclanker.db.repos.sets import (
+from gaggiclanker.db.repos.recipes import (
     TEXT_MAX,
-    SetsRepository,
+    RecipesRepository,
     SetVersionRow,
     VersionOutcomeWrite,
 )
@@ -99,7 +99,7 @@ class OutcomeProposalWrite(BaseModel):
 
     #: The conversation it was argued in. Nullable because a tool call arriving
     #: over the stdio server may have no thread to name; when one is named it
-    #: has to be a conversation of this Set.
+    #: has to be a conversation of this Recipe.
     thread_id: int | None = None
     outcome: VersionOutcome
     #: The per-claim lines, required: a grade nobody can read the reasons for is
@@ -130,7 +130,7 @@ class OutcomeProposalRow(BaseModel):
     recorded_outcome: VersionOutcome | None = None
     decision_note: str = ""
     #: What the version's own outcome is **now**, whoever recorded it. Shown
-    #: beside a waiting grade so a card that disagrees with the Set page says so.
+    #: beside a waiting grade so a card that disagrees with the Recipe page says so.
     version_outcome: VersionOutcome | None = None
     version_outcome_note: str = ""
     created_at: str
@@ -178,13 +178,13 @@ def _refusal_of(refused: str) -> OutcomeProposalRefusal:
 
 
 class OutcomeProposalsRepository(Repository):
-    """Reads and writes the grades an agent has proposed for Set versions."""
+    """Reads and writes the grades an agent has proposed for Recipe versions."""
 
     def __init__(self, db: Database) -> None:
         super().__init__(db)
         #: The versions half. Held so that an answer can record the grade
-        #: through the one guarded write the Set page uses.
-        self.sets = SetsRepository(db)
+        #: through the one guarded write the Recipe page uses.
+        self.recipes = RecipesRepository(db)
 
     # ── reading ──────────────────────────────────────────────────────
 
@@ -202,9 +202,9 @@ class OutcomeProposalsRepository(Repository):
         return self.to_model(OutcomeProposalRow, row)
 
     async def waiting_by_version(self, set_id: int) -> dict[int, OutcomeProposalRow]:
-        """Every grade waiting on this Set, keyed by the version it grades.
+        """Every grade waiting on this Recipe, keyed by the version it grades.
 
-        One query for the Set page, which shows a version's waiting grade beside
+        One query for the Recipe page, which shows a version's waiting grade beside
         its own outcome without a request per row.
         """
         rows = await self.db.fetch_all(
@@ -226,8 +226,8 @@ class OutcomeProposalsRepository(Repository):
         )
         return self.to_model(OutcomeProposalRow, row)
 
-    async def for_set(self, set_id: int, *, limit: int = 100) -> list[OutcomeProposalRow]:
-        """Every grade proposed on this Set, newest first."""
+    async def for_recipe(self, set_id: int, *, limit: int = 100) -> list[OutcomeProposalRow]:
+        """Every grade proposed on this Recipe, newest first."""
         rows = await self.db.fetch_all(
             f"{_SELECT} WHERE p.recipe_id = ? ORDER BY p.id DESC LIMIT ?", (set_id, limit)
         )
@@ -240,7 +240,7 @@ class OutcomeProposalsRepository(Repository):
     ) -> OutcomeResult:
         """Write down a grade the person has not agreed to yet.
 
-        The guards are the Set page's own for a grade — the version has a
+        The guards are the Recipe page's own for a grade — the version has a
         prediction, and a shot somebody judged Keep or Improve — because a
         proposal the person could not accept is a card that can only answer 409.
         They read inside the transaction that writes. A grade already waiting
@@ -250,12 +250,12 @@ class OutcomeProposalsRepository(Repository):
         """
         now = utc_now()
         async with self.db.transaction():
-            version = await self.sets.version_of_set(set_id, version_id)
+            version = await self.recipes.version_of_recipe(set_id, version_id)
             if version is None:
                 return OutcomeResult(refused="no_version")
             if not version.prediction:
                 return OutcomeResult(refused="no_prediction")
-            counted = await self.sets.gradable_shot_count(version_id)
+            counted = await self.recipes.gradable_shot_count(version_id)
             if counted == 0:
                 return OutcomeResult(refused="nothing_to_grade")
             if spec.thread_id is not None:
@@ -318,7 +318,7 @@ class OutcomeProposalsRepository(Repository):
             if proposal.status != "proposed":
                 return OutcomeResult(refused="not_waiting", proposal=proposal)
             outcome = proposal.outcome if change is None else change
-            written = await self.sets.grade_in_transaction(
+            written = await self.recipes.grade_in_transaction(
                 set_id,
                 proposal.set_version_id,
                 VersionOutcomeWrite(outcome=outcome, note=proposal.note if note is None else note),
@@ -332,7 +332,7 @@ class OutcomeProposalsRepository(Repository):
                 recorded_outcome=change,
             )
         log.info(
-            "set_outcome_proposal_answered",
+            "recipe_outcome_proposal_answered",
             proposal_id=proposal_id,
             set_id=set_id,
             status="accepted" if change is None else "changed",
@@ -346,7 +346,7 @@ class OutcomeProposalsRepository(Repository):
         press records the grade and appends the next version, so a second tab
         cannot record one without the other. The same guards as :meth:`accept`.
         """
-        written = await self.sets.grade_in_transaction(
+        written = await self.recipes.grade_in_transaction(
             proposal.set_id,
             proposal.set_version_id,
             VersionOutcomeWrite(outcome=proposal.outcome, note=proposal.note),

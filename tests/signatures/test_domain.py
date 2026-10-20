@@ -23,7 +23,7 @@ from gaggiclanker.domain.signature import (
 from gaggiclanker.domain.warnings import FAULTS
 from tests.lever_shot import LEVER_PROFILE, RAMP_END_G, SOAK_END_G, TARGET_YIELD_G, lever_shot
 from tests.signatures.helpers import (
-    LONG_NAME_SETS,
+    LONG_NAME_RECIPES,
     derived_lever,
     long_name_profile,
     long_name_shot,
@@ -792,7 +792,7 @@ def test_a_transition_with_no_sample_after_it_is_skipped_on_both_readings() -> N
 # ── a profile phase name longer than the log keeps ───────────────────
 
 
-@pytest.mark.parametrize("names", LONG_NAME_SETS)
+@pytest.mark.parametrize("names", LONG_NAME_RECIPES)
 def test_a_long_phase_name_is_matched_in_a_signature(names: tuple[str, ...]) -> None:
     slog = long_name_shot(names)
     profile = long_name_profile(names)

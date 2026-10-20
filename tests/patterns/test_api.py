@@ -150,7 +150,7 @@ async def test_a_press_answers_202_with_the_running_row_and_a_second_press_gets_
     assert len(provider.calls) == 1
 
 
-async def test_fewer_than_two_sets_is_a_409_with_its_own_code_and_nothing_echoed(
+async def test_fewer_than_two_recipes_is_a_409_with_its_own_code_and_nothing_echoed(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
 ) -> None:
     app, client, provider = api
@@ -261,7 +261,7 @@ class TestApproving:
             (talking.c_grinder, "gone")
         ]
 
-    async def test_fewer_than_two_sets_left_is_a_409_and_nothing_is_written(
+    async def test_fewer_than_two_recipes_left_is_a_409_and_nothing_is_written(
         self, api: tuple[FastAPI, httpx.AsyncClient, FakeProvider]
     ) -> None:
         app, client, provider = api
@@ -353,11 +353,12 @@ class TestDismissing:
         assert unknown.status_code == 404
 
 
-class TestWhatTheSourceSetsAreToldAfterApproval:
-    """Rule 5: each source Set's conversations are told the lesson exactly once, as a general one.
+class TestWhatTheSourceRecipesAreToldAfterApproval:
+    """Rule 5: each source Recipe's conversations are told the lesson exactly once, as a general
+    one.
 
     A byte comparison of the opening context and of `get_insights`, before and after: they
-    differ only in that the source insights' lines are replaced by the one general line; a Set
+    differ only in that the source insights' lines are replaced by the one general line; a Recipe
     that was no source is byte-identical.
     """
 

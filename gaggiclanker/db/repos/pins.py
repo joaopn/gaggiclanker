@@ -1,15 +1,15 @@
-"""`set_version_pins`: a Set version kept on the machine as a profile of its own.
+"""`recipe_version_pins`: a Recipe version kept on the machine as a profile of its own.
 
-A pin is a **record**, not a state of the profile-list row. It names the Set version, the row that
-carries the copy and the copy itself: the pinned version's profile under the pin's name, a
+A pin is a **record**, not a state of the profile-list row. It names the Recipe version, the row
+that carries the copy and the copy itself: the pinned version's profile under the pin's name, a
 profile version of its own because a version belongs to one profile. The copy belongs to one
-Set version for ever (``profile_version_id`` is unique), so a shot brewed on it files under that
+Recipe version for ever (``profile_version_id`` is unique), so a shot brewed on it files under that
 version even after the pin is gone, and no other version can claim it.
 
 This module also owns :func:`judged_profile_version`: the one answer to "whose signature judges a
-shot brewed on this profile version". A pin's copy is judged by the profile the pinned Set version
-names; anything else by itself. Every signature lookup for a shot goes through it, so the pinned
-version's override applies to the copy's shots and a later change to the original's signature
+shot brewed on this profile version". A pin's copy is judged by the profile the pinned Recipe
+version names; anything else by itself. Every signature lookup for a shot goes through it, so the
+pinned version's override applies to the copy's shots and a later change to the original's signature
 reaches them.
 """
 
@@ -38,7 +38,7 @@ __all__ = [
 
 
 class PinRow(BaseModel):
-    """One row of `set_version_pins`."""
+    """One row of `recipe_version_pins`."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -156,8 +156,8 @@ class PinsRepository(Repository):
         )
         return {pin.board_id: pin for pin in self.to_models(PinDetail, rows)}
 
-    async def live_for_set(self, set_id: int) -> list[PinDetail]:
-        """A Set's live pins, newest first."""
+    async def live_for_recipe(self, set_id: int) -> list[PinDetail]:
+        """A Recipe's live pins, newest first."""
         rows = await self.db.fetch_all(
             f"{_DETAIL_SELECT} WHERE v.recipe_id = ? AND p.unpinned_at IS NULL "
             "ORDER BY p.pinned_at DESC, p.id DESC",
@@ -213,10 +213,10 @@ class PinsRepository(Repository):
             )
         return True
 
-    async def unpin_set(self, set_id: int) -> list[int]:
-        """Unpin every live pin of a Set (an archived Set receives no shots). The ids."""
+    async def unpin_recipe(self, set_id: int) -> list[int]:
+        """Unpin every live pin of a Recipe (an archived Recipe receives no shots). The ids."""
         unpinned = []
-        for pin in await self.live_for_set(set_id):
+        for pin in await self.live_for_recipe(set_id):
             if await self.unpin(pin.id):
                 unpinned.append(pin.id)
         return unpinned
@@ -227,12 +227,12 @@ class PinsRepository(Repository):
             (utc_now(), pin_id),
         )
 
-    async def move_to_set_version(
+    async def move_to_recipe_version(
         self, pin_id: int, set_version_id: int | None, profile_version_id: int
     ) -> None:
         """The machine's side of the pin's file was kept: the pin's record names the machine's
-        version (the copy row's active version now) and, when the Set followed, the Set version
-        that was made for it. The row and its name are as they were."""
+        version (the copy row's active version now) and, when the Recipe followed, the Recipe
+        version that was made for it. The row and its name are as they were."""
         await self.db.execute(
             "UPDATE recipe_version_pins SET profile_version_id = ?, "
             "recipe_version_id = COALESCE(?, recipe_version_id) WHERE id = ?",
@@ -242,11 +242,11 @@ class PinsRepository(Repository):
     async def is_copy(self, profile_version_id: int) -> bool:
         return await self.by_copy(profile_version_id) is not None
 
-    async def set_version_naming_content(
+    async def recipe_version_naming_content(
         self, content_hash: str, name: str
     ) -> tuple[str, str] | None:
-        """The Set and version name of a Set version that brews this brew on a profile called
-        ``name``, if any (the first). A profile a Set version brews can never become a pin's
+        """The Recipe and version name of a Recipe version that brews this brew on a profile called
+        ``name``, if any (the first). A profile a Recipe version brews can never become a pin's
         copy."""
         row = await self.db.fetch_one(
             f"SELECT s.name AS set_name, {label_sql('v')} AS version_label "  # noqa: S608
@@ -264,8 +264,8 @@ async def judged_profile_versions(
 ) -> dict[int, int]:
     """Each profile version mapped to the one whose signature judges the shots brewed on it.
 
-    A pin's copy maps to the profile version its Set version names; every other version maps
-    to itself. A copy of a Set version that names no profile (never made: a pin needs one)
+    A pin's copy maps to the profile version its Recipe version names; every other version maps
+    to itself. A copy of a Recipe version that names no profile (never made: a pin needs one)
     would map to itself.
     """
     ids = sorted(set(profile_version_ids))

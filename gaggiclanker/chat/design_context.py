@@ -1,20 +1,20 @@
-"""What a conversation designing a Set is told before it asks anything.
+"""What a conversation designing a Recipe is told before it asks anything.
 
-A Set being designed has a bean and a grinder and no recipe, so there is no
+A Recipe being designed has a bean and a grinder and no recipe, so there is no
 ledger, no spread and no shot to put in front of the model. What it needs
 instead is what the person asked for and what this kitchen already knows about
 brewing this coffee on this kit:
 
-* **the Set and the brief** — the bean's facts, the grinder and its step unit,
+* **the Recipe and the brief** — the bean's facts, the grinder and its step unit,
   what the person wants from it and where they usually grind;
 * **the profile they asked to fork**, whole, because "like this but with a
   bloom" needs the document it is a variation of — or, when they named none,
   the plain statement that the profile is written from zero;
 * **the card on the table** — the initial recipe waiting for the person, or the
   last one they turned down and why;
-* **this bean's other Sets** — how the same coffee went on this and other
+* **this bean's other Recipes** — how the same coffee went on this and other
   grinders, version by version, with its shots, labels, ratings and outcomes;
-* **similar Sets on this grinder** — the starting point's own evidence, other
+* **similar Recipes on this grinder** — the starting point's own evidence, other
   beans only, since this bean's are in the block above;
 * **the matching rules**, in the starting point's own selection.
 
@@ -23,11 +23,11 @@ is the one the person picked to fork; listing the library invited the model to
 pick one itself, and a design with no fork came out as a copy of whatever was
 brewed most. `get_profile` still reads a profile the person asks about.
 
-**The sibling Sets are a deliberate exception** to "a Set's conversation sees
-only its Set". It holds only while the Set is being designed, it is a read-only
+**The sibling Recipes are a deliberate exception** to "a Recipe's conversation sees
+only its Recipe". It holds only while the Recipe is being designed, it is a read-only
 snapshot assembled here on the server, and nothing in the design conversation's
-tools browses other Sets. The day version 1 is filled, the next turn is an
-ordinary Set conversation and this block is gone.
+tools browses other Recipes. The day version 1 is filled, the next turn is an
+ordinary Recipe conversation and this block is gone.
 
 **The same text for the same archive**, as every other context here: no clock,
 no incidental query order, every list sorted by something the data states and
@@ -44,11 +44,11 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow, document_for
-from gaggiclanker.db.repos.set_proposals import SetProposalRow, SetProposalsRepository
-from gaggiclanker.db.repos.sets import (
+from gaggiclanker.db.repos.recipe_proposals import RecipeProposalRow, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipesRepository,
     SetRow,
-    SetsRepository,
     SetVersionRow,
     VersionLabelCounts,
 )
@@ -60,7 +60,7 @@ from gaggiclanker.domain.models import (
     TargetType,
     TransitionType,
 )
-from gaggiclanker.knowledge.rules import SetContext, render_rules
+from gaggiclanker.knowledge.rules import RecipeContext, render_rules
 from gaggiclanker.review.style import detect_style
 from gaggiclanker.signatures.lines import signature_answers_block, signature_block
 from gaggiclanker.starting.context import (
@@ -68,28 +68,28 @@ from gaggiclanker.starting.context import (
     render_similar,
     starting_rules,
 )
-from gaggiclanker.starting.similar import similar_sets
+from gaggiclanker.starting.similar import similar_recipes
 
 __all__ = [
-    "SIBLING_SETS",
+    "SIBLING_RECIPES",
     "SIBLING_VERSIONS",
-    "SIMILAR_SETS",
+    "SIMILAR_RECIPES",
     "design_context",
 ]
 
-#: How many of this bean's other Sets are written out, newest first. A bean
+#: How many of this bean's other Recipes are written out, newest first. A bean
 #: with more than this has a long history, and the newest are the ones that
 #: say how it brews now.
-SIBLING_SETS = 5
+SIBLING_RECIPES = 5
 
-#: How many versions of each sibling Set, newest first. Enough to see where it
+#: How many versions of each sibling Recipe, newest first. Enough to see where it
 #: ended up and the last few moves that got it there.
 SIBLING_VERSIONS = 6
 
-#: How many similar Sets on this grinder: the same three the starting point
-#: shows. This bean's own Sets are listed in a block of their own, so these are
+#: How many similar Recipes on this grinder: the same three the starting point
+#: shows. This bean's own Recipes are listed in a block of their own, so these are
 #: other beans only.
-SIMILAR_SETS = 3
+SIMILAR_RECIPES = 3
 
 #: How much of a person's goal and a decline note is quoted.
 _GOAL_CHARS = 2000
@@ -97,13 +97,13 @@ _NOTE_CHARS = 300
 
 
 async def design_context(db: Database, set_id: int, *, thread_id: int | None = None) -> str:
-    """The design brief and the evidence, as markdown, or "" for a Set that is gone.
+    """The design brief and the evidence, as markdown, or "" for a Recipe that is gone.
 
     ``thread_id`` is the conversation, which is told what **it** proposed as signature
     expectations and what the person did with each (and nothing any other conversation did).
     """
-    sets = SetsRepository(db)
-    row = await sets.get(set_id)
+    recipes = RecipesRepository(db)
+    row = await recipes.get(set_id)
     if row is None:
         return ""
     bean = await BeansRepository(db).get(row.bean_id)
@@ -113,7 +113,7 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
     if row.design_brief.fork_profile_version_id is not None:
         fork = await ProfilesRepository(db).get_version(row.design_brief.fork_profile_version_id)
 
-    similar = await similar_sets(
+    similar = await similar_recipes(
         db,
         roast_level=bean.roast_level if bean else None,
         process=bean.process if bean else None,
@@ -121,7 +121,7 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
         decaf=bean.decaf if bean else False,
         grinder_id=row.grinder_id,
         exclude_bean_id=row.bean_id,
-        limit=SIMILAR_SETS,
+        limit=SIMILAR_RECIPES,
     )
     style, style_reason = await planned_style(db, similar)
     if fork is not None and fork.profile:
@@ -133,7 +133,7 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
             style, style_reason = verdict.style, f"the profile to fork ({fork_name})"
     _signals, rules = await starting_rules(
         db,
-        SetContext(
+        RecipeContext(
             roast_level=bean.roast_level if bean else None,
             process=bean.process if bean else None,
             burr_type=grinder.burr_type if grinder else None,
@@ -172,7 +172,7 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
     return "\n".join(lines)
 
 
-# ── the Set and what was asked for ───────────────────────────────────
+# ── the Recipe and what was asked for ───────────────────────────────────
 
 
 def _heading(row: SetRow, bean: BeanRow | None, grinder: GrinderRow | None) -> list[str]:
@@ -297,7 +297,7 @@ def _document_shape() -> list[str]:
 
 async def _card_block(db: Database, row: SetRow) -> list[str]:
     """The initial recipe waiting for the person, or the last one they answered."""
-    proposals = SetProposalsRepository(db)
+    proposals = RecipeProposalsRepository(db)
     waiting = await proposals.waiting(row.id)
     if waiting is not None:
         return [
@@ -321,23 +321,23 @@ async def _card_block(db: Database, row: SetRow) -> list[str]:
     ]
 
 
-async def _card_recipe(proposals: SetProposalsRepository, card: SetProposalRow) -> str:
+async def _card_recipe(proposals: RecipeProposalsRepository, card: RecipeProposalRow) -> str:
     preview = await proposals.preview(card)
     if preview is None:  # pragma: no cover - only a hand-damaged row has no preview
         return "Its recipe cannot be read."
     return f"Recipe: {_recipe(preview)} (profile draft #{card.draft_id})."
 
 
-# ── this bean's other Sets ───────────────────────────────────────────
+# ── this bean's other Recipes ───────────────────────────────────────────
 
 
 async def _siblings_block(db: Database, row: SetRow) -> list[str]:
-    """This bean's other Sets that are still in use, newest first, capped."""
-    sets = SetsRepository(db)
+    """This bean's other Recipes that are still in use, newest first, capped."""
+    recipes = RecipesRepository(db)
     siblings = sorted(
         (
             other
-            for other in await sets.list_sets()
+            for other in await recipes.list_sets()
             if other.bean_id == row.bean_id and other.id != row.id
         ),
         key=lambda other: other.id,
@@ -347,23 +347,23 @@ async def _siblings_block(db: Database, row: SetRow) -> list[str]:
     if not siblings:
         lines.append("- none: this is the first Set of this bean.")
         return lines
-    for other in siblings[:SIBLING_SETS]:
-        lines += await _sibling(sets, other)
-    if len(siblings) > SIBLING_SETS:
-        lines.append(f"- and {len(siblings) - SIBLING_SETS} older Sets of this bean.")
+    for other in siblings[:SIBLING_RECIPES]:
+        lines += await _sibling(recipes, other)
+    if len(siblings) > SIBLING_RECIPES:
+        lines.append(f"- and {len(siblings) - SIBLING_RECIPES} older Sets of this bean.")
     return lines
 
 
-async def _sibling(sets: SetsRepository, other: SetRow) -> list[str]:
+async def _sibling(recipes: RecipesRepository, other: SetRow) -> list[str]:
     grinder = other.grinder_name or "no grinder recorded"
     head = f"- Set {other.id}: {other.name} — on {grinder}, {_plural(other.shot_count, 'shot')}"
     if other.designing:
         return [f"{head}; being designed, no recipe yet."]
-    versions = await sets.versions(other.id)
-    labels = await sets.label_counts(other.id)
+    versions = await recipes.versions(other.id)
+    labels = await recipes.label_counts(other.id)
     ratings = {
         summary.set_version_id: summary.avg_rating
-        for summary in (await sets.trends(other.id)).versions
+        for summary in (await recipes.trends(other.id)).versions
     }
     lines = [f"{head}."]
     for version in versions[:SIBLING_VERSIONS]:

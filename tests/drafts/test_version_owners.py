@@ -31,7 +31,7 @@ from gaggiclanker.signatures.service import SignatureService
 from tests.drafts.conftest import BASE_LABEL, base_version_id, data, profile_fixture
 from tests.drafts.helpers import (
     assert_versions_owned,
-    make_set_on,
+    make_recipe_on,
     manual_draft,
     same_name_draft,
     tombstone,
@@ -428,7 +428,7 @@ async def test_a_file_that_joins_as_a_profile_holds_that_profiles_version_and_is
 async def test_a_pin_and_a_duplicate_leave_every_version_with_its_owner(adopted: Adopted) -> None:
     app, client, _ = adopted
     base = await base_version_id(app, BASE_LABEL)
-    set_id = await make_set_on(client, "Guji", base)
+    set_id = await make_recipe_on(client, "Guji", base)
     detail = data(await client.get(f"/api/sets/{set_id}"))
     version = detail["versions"][0]["version"]["id"]
     pinned = data(await client.post(f"/api/sets/{set_id}/versions/{version}/pin", json={}))
@@ -502,9 +502,9 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
                 "duplicate",
                 "display_file",
                 "twin_drafts",
-                "set_on_a_profile",
+                "recipe_on_a_profile",
                 "set_version",
-                "set_revert",
+                "recipe_revert",
             ]
         )
         counter += 1
@@ -565,7 +565,7 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
                 files=[("files", ("p.json", json.dumps(document).encode(), "application/json"))],
             )
         elif operation == "pin" and row is not None:
-            set_id = await _set_on(client, f"S{counter}", row["row"]["current_version_id"])
+            set_id = await _recipe_on(client, f"S{counter}", row["row"]["current_version_id"])
             if set_id is None:
                 continue
             detail = data(await client.get(f"/api/sets/{set_id}"))
@@ -574,7 +574,7 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
                 json={},
             )
         elif operation == "duplicate" and row is not None:
-            set_id = await _set_on(client, f"D{counter}", row["row"]["current_version_id"])
+            set_id = await _recipe_on(client, f"D{counter}", row["row"]["current_version_id"])
             if set_id is None:
                 continue
             detail = data(await client.get(f"/api/sets/{set_id}"))
@@ -589,13 +589,13 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
             )
         elif operation == "twin_drafts":
             await _twin_drafts(app, client, f"Twin{counter}")
-        elif operation == "set_on_a_profile" and row is not None:
-            # A profile that has a Set is refused (a 409), and one that has none gets one.
-            await _set_on(client, f"W{counter}", row["row"]["current_version_id"])
-        elif operation in ("set_version", "set_revert"):
-            sets = await db_sets(app)
-            if sets:
-                chosen = rng.choice(sets)
+        elif operation == "recipe_on_a_profile" and row is not None:
+            # A profile that has a Recipe is refused (a 409), and one that has none gets one.
+            await _recipe_on(client, f"W{counter}", row["row"]["current_version_id"])
+        elif operation in ("set_version", "recipe_revert"):
+            recipes = await db_recipes(app)
+            if recipes:
+                chosen = rng.choice(recipes)
                 if operation == "set_version":
                     await client.post(
                         f"/api/sets/{chosen}/versions",
@@ -619,7 +619,7 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
     await assert_versions_owned(app.state.db)
 
 
-async def db_sets(app: FastAPI) -> list[int]:
+async def db_recipes(app: FastAPI) -> list[int]:
     rows = await app.state.db.fetch_all("SELECT id FROM recipes WHERE designing = 0 ORDER BY id")
     return [int(r["id"]) for r in rows]
 
@@ -635,8 +635,8 @@ async def _twin_drafts(app: FastAPI, client: httpx.AsyncClient, name: str) -> No
     await client.post("/api/profile-board", json={"draft_id": second["id"]})
 
 
-async def _set_on(client: httpx.AsyncClient, name: str, version_id: int) -> int | None:
-    """A Set on a profile version, or ``None`` when the app refuses it (a pin's frozen copy)."""
+async def _recipe_on(client: httpx.AsyncClient, name: str, version_id: int) -> int | None:
+    """A Recipe on a profile version, or ``None`` when the app refuses it (a pin's frozen copy)."""
     bean = data(await client.post("/api/beans", json={"name": name, "roaster": "nobody"}))
     response = await client.post(
         "/api/sets",

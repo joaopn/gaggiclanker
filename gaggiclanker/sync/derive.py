@@ -56,7 +56,7 @@ log = structlog.get_logger(__name__)
 #: Written on every new derive, and the boot step (:func:`rederive_shots`)
 #: re-derives every stored shot below it from its bytes.
 #: **A change to what derive produces bumps this**, and the next start brings the
-#: archive along, so a search, a sort or a Set never compares two definitions.
+#: archive along, so a search, a sort or a Recipe never compares two definitions.
 #: 1: puck resistance from the machine's own measurement when the shot has it.
 #: 2: the firmware analyzer's machine puck resistance, liquid resistance and water
 #: pumped (``diagnostics_json["firmware"]``).
@@ -314,7 +314,7 @@ async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:
     Returns ``(rederived, failed)``. Run at boot, before any request: the derived
     columns are rewritten from ``raw_slog`` with the same code a new shot
     goes through, and nothing else of the shot is touched (notes, judgements,
-    Set membership, samples and the device's own index fields are not derived).
+    Recipe membership, samples and the device's own index fields are not derived).
 
     The profile is the one the shot is linked to now (its versions are content-
     hashed and immutable, so it is the same document every time), and none when

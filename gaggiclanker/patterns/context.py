@@ -1,11 +1,11 @@
-"""What a pattern run is told: the confirmed Set insights, the general ones, the declined.
+"""What a pattern run is told: the confirmed Recipe insights, the general ones, the declined.
 
 Assembled by :func:`build_patterns_input` and nothing else, and **deterministic**: the same
-rows give the same input, byte for byte, because Sets are ordered by id and so are the
+rows give the same input, byte for byte, because Recipes are ordered by id and so are the
 insights under them, the general insights and the declined proposals. That is what makes a
 run traceable (the input is stored verbatim on its row) and what the golden test pins.
 
-What the model sees per Set insight is its id, text, the Set it belongs to with the
+What the model sees per Recipe insight is its id, text, the Recipe it belongs to with the
 attributes an insight's scope may name, the version it was learned at, and what it rests on
 (each version's outcome then and now, from the insight's own provenance). Not shots, not
 telemetry: this call generalises lessons, it does not re-derive them.
@@ -26,7 +26,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightRow,
     InsightScope,
     InsightsRepository,
-    home_sets,
+    home_recipes,
 )
 from gaggiclanker.db.repos.patterns import PatternProposalsRepository, PatternRunsRepository
 
@@ -34,14 +34,14 @@ __all__ = [
     "PatternDeclined",
     "PatternGeneral",
     "PatternInsight",
-    "PatternSet",
+    "PatternRecipe",
     "PatternsInput",
     "build_patterns_input",
 ]
 
 
 class PatternInsight(BaseModel):
-    """One confirmed insight of a Set."""
+    """One confirmed insight of a Recipe."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -52,15 +52,16 @@ class PatternInsight(BaseModel):
     #: Each version it rests on, as "v3 held → now failed" (the insight's own rendering).
     rests_on: list[str] = Field(default_factory=list)
     #: The id of the first original this insight was copied from, listed or not: a copy and its
-    #: original are one lesson, copies naming one original are one lesson, and a copy's Set is
-    #: not a second Set.
+    #: original are one lesson, copies naming one original are one lesson, and a copy's Recipe is
+    #: not a second Recipe.
     copy_of: int | None = None
-    #: The Set that original was learned in: the Set this lesson counts for. Not shown to the model.
+    #: The Recipe that original was learned in: the Recipe this lesson counts for. Not shown to the
+    #: model.
     copied_from_set: int | None = None
 
 
-class PatternSet(BaseModel):
-    """A Set with confirmed insights, and the attributes a scope may name for it."""
+class PatternRecipe(BaseModel):
+    """A Recipe with confirmed insights, and the attributes a scope may name for it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -70,7 +71,7 @@ class PatternSet(BaseModel):
     bean: str | None = None
     roaster: str | None = None
     grinder: str | None = None
-    #: In the shape the matching rule reads (:func:`set_attributes`), unstated ones left out.
+    #: In the shape the matching rule reads (:func:`recipe_attributes`), unstated ones left out.
     #: The post-filter checks a proposal's scope against exactly this.
     attributes: dict[str, Any] = Field(default_factory=dict)
     insights: list[PatternInsight] = Field(default_factory=list)
@@ -103,7 +104,7 @@ class PatternsInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sets: list[PatternSet] = Field(default_factory=list)
+    sets: list[PatternRecipe] = Field(default_factory=list)
     general: list[PatternGeneral] = Field(default_factory=list)
     declined: list[PatternDeclined] = Field(default_factory=list)
 
@@ -112,11 +113,11 @@ class PatternsInput(BaseModel):
         return sum(len(item.insights) for item in self.sets)
 
     @property
-    def lesson_set_count(self) -> int:
-        """How many Sets the insights come from once a copy is folded into its original's."""
+    def lesson_recipe_count(self) -> int:
+        """How many Recipes the insights come from once a copy is folded into its original's."""
         return len(
             set(
-                home_sets(
+                home_recipes(
                     (row.id, item.id, row.copied_from_set)
                     for item in self.sets
                     for row in item.insights
@@ -127,7 +128,7 @@ class PatternsInput(BaseModel):
     def render(self) -> dict[str, str]:
         """The prompt's variables: one rendered block per section."""
         return {
-            "recipe_insights": _render_sets(self.sets),
+            "recipe_insights": _render_recipes(self.sets),
             "general_insights": _render_general(self.general),
             "declined": _render_declined(self.declined),
         }
@@ -136,17 +137,17 @@ class PatternsInput(BaseModel):
 async def build_patterns_input(db: Database) -> PatternsInput:
     """Assemble what one run is told. A pure function of the database it is handed."""
     insights = InsightsRepository(db)
-    sets: list[PatternSet] = []
-    set_facts = await PatternRunsRepository(db).sets_with_confirmed_insights()
-    confirmed_by_set: dict[int, list[InsightRow]] = {
+    sets: list[PatternRecipe] = []
+    recipe_facts = await PatternRunsRepository(db).recipes_with_confirmed_insights()
+    confirmed_by_recipe: dict[int, list[InsightRow]] = {
         facts.id: [item for item in await insights.own(facts.id) if item.confirmed]
-        for facts in set_facts
+        for facts in recipe_facts
     }
-    for facts in set_facts:
+    for facts in recipe_facts:
         attributes = await insights.attributes_of(facts.id) or {}
-        confirmed = confirmed_by_set[facts.id]
+        confirmed = confirmed_by_recipe[facts.id]
         sets.append(
-            PatternSet(
+            PatternRecipe(
                 id=facts.id,
                 name=facts.name,
                 archived=facts.archived,
@@ -193,7 +194,7 @@ def _scope_words(scope: dict[str, Any]) -> str:
     return InsightScope.model_validate(scope).label() if scope else "any Set"
 
 
-def _render_sets(sets: list[PatternSet]) -> str:
+def _render_recipes(sets: list[PatternRecipe]) -> str:
     blocks: list[str] = []
     for item in sets:
         names = [f'bean "{item.bean}"' if item.bean else "no bean"]

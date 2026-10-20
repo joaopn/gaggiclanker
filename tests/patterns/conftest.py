@@ -1,4 +1,4 @@
-"""A database with three Sets and their insights, for the pattern tests."""
+"""A database with three Recipes and their insights, for the pattern tests."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def llm(db: Database, provider: FakeProvider, budget: RateLimitBudget) -> LlmSer
 
 @pytest.fixture
 async def talking(world: PatternWorld) -> Talking:
-    """The world with its Sets' insights said: three Sets, two on light roasts."""
+    """The world with its Recipes' insights said: three Recipes, two on light roasts."""
     return await build_talking(world)
 
 

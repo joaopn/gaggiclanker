@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Reproduce: a Set designed with no profile to fork is built on the library's most-used profile.
+"""Reproduce: a Recipe designed with no profile to fork is built on the library's most-used profile.
 
     uv run python scripts/repro_design_without_fork_copies_library.py
 
@@ -8,7 +8,7 @@ Exits non-zero while the bug exists, zero when it is fixed.
 The bug
 -------
 
-New Set → Design it with the agent takes an optional profile to fork. Left
+New Recipe → Design it with the agent takes an optional profile to fork. Left
 empty, the design was meant to start from nothing, and the dialog said instead
 "the agent starts from one in the library": `propose_initial_recipe` fell back
 to the library's most-used brew profile and merged the agent's document into

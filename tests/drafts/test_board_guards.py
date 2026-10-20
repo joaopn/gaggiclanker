@@ -34,9 +34,9 @@ from tests.drafts.helpers import (
     document_of,
     draft_of,
     kinds,
-    make_set_on,
+    make_recipe_on,
+    recipe_version_ids,
     same_name_draft,
-    set_version_ids,
     tombstone,
 )
 from tests.drafts.test_board import (
@@ -135,7 +135,7 @@ async def test_putting_a_deleted_profile_back_revives_its_row_instead_of_pushing
     await app_row(app, client, fake, provider)
     first = row_for(await get_board(client), APP_LABEL)
     file = first["machine"]["device_id"]
-    await make_set_on(client, "Holds", first["row"]["current_version_id"])
+    await make_recipe_on(client, "Holds", first["row"]["current_version_id"])
     await tombstone(client, first["row"]["id"])
     again = await put(client, await staged_copy_of(app, client, fake, first["row"], file))
     assert again["id"] == first["row"]["id"], "the same profile is the same row"
@@ -149,19 +149,19 @@ async def test_putting_a_deleted_profile_back_revives_its_row_instead_of_pushing
     assert kinds(await audit(app), "profile_delete") == []
 
 
-async def test_a_put_that_revives_a_row_is_followed_by_the_rows_set(
+async def test_a_put_that_revives_a_row_is_followed_by_the_rows_recipe(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    """The revived row's active version is the one put, so its Set records it like any put.
+    """The revived row's active version is the one put, so its Recipe records it like any put.
 
-    Built from a Set on the row, a change put and synced (the Set follows),
-    the row deleted, the Set sent back to its first version (the profile cannot follow a deleted
+    Built from a Recipe on the row, a change put and synced (the Recipe follows),
+    the row deleted, the Recipe sent back to its first version (the profile cannot follow a deleted
     row), then the put of exactly the later brew brings the row back."""
     app, client, fake = adopted
     db = app.state.db
     row = await app_row(app, client, fake, provider, name="Beta")
     v1 = row["current_version_id"]
-    set_id = await make_set_on(client, "BetaSet", v1)
+    set_id = await make_recipe_on(client, "BetaRecipe", v1)
     stored = data(await client.get(f"/api/profile-versions/{v1}"))
     document = copy.deepcopy(stored["profile"])
     document["phases"][0]["pump"] = {"target": "pressure", "pressure": 6.1, "flow": 0}
@@ -862,7 +862,7 @@ async def test_a_persons_profile_ending_in_the_app_label_is_continued_like_any_o
     writes_on: Live, fake_device: FakeDevice, provider: FakeProvider
 ) -> None:
     """Who made a profile decides nothing: a change that keeps its name is a new version of it,
-    plain or for a Set, and the sync replaces its file under the usual guards."""
+    plain or for a Recipe, and the sync replaces its file under the usual guards."""
     app, client = writes_on
     mine = copy.deepcopy(next(p for p in fake_device.profiles if p["id"] == "9bar"))
     mine.update(id="mine", label=STAGED)
@@ -871,13 +871,13 @@ async def test_a_persons_profile_ending_in_the_app_label_is_continued_like_any_o
     mine_row = row_for(await get_board(client), STAGED)
     assert mine_row["row"]["origin"] == "adopted"
 
-    await make_set_on(client, "OnMine", mine_row["row"]["current_version_id"])
+    await make_recipe_on(client, "OnMine", mine_row["row"]["current_version_id"])
     plain = await same_name_draft(app, client, provider, STAGED, 7)
-    for_set = await same_name_draft(app, client, provider, STAGED, 6)
+    for_recipe = await same_name_draft(app, client, provider, STAGED, 6)
     on_plain = await put(client, plain)
-    on_set = await put(client, for_set)
+    on_recipe = await put(client, for_recipe)
 
-    assert on_plain["id"] == on_set["id"] == mine_row["row"]["id"]
+    assert on_plain["id"] == on_recipe["id"] == mine_row["row"]["id"]
     run = await pull(app)
     assert run.status == "ok", run.error
     assert row_for(await get_board(client), STAGED)["row"]["id"] == mine_row["row"]["id"]
@@ -1027,15 +1027,15 @@ async def test_one_file_deleted_on_the_display_pauses_when_it_was_the_only_one(
     assert [i["reason"] for i in summary_of(back)["pushed"]] == ["missing"]
 
 
-async def test_a_deleted_copy_a_set_brews_is_removed_all_the_same(
+async def test_a_deleted_copy_a_recipe_brews_is_removed_all_the_same(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    """Deleting is the person's explicit choice; a Set brewing it does not hold the file back."""
+    """Deleting is the person's explicit choice; a Recipe brewing it does not hold the file back."""
     app, client, fake = adopted
     await app_row(app, client, fake, provider)
     row = row_for(await get_board(client), APP_LABEL)
     file = row["machine"]["device_id"]
-    set_id = await make_set_on(client, "Brews it", row["row"]["current_version_id"])
+    set_id = await make_recipe_on(client, "Brews it", row["row"]["current_version_id"])
     await tombstone(client, row["row"]["id"])
 
     run = await pull(app)
@@ -1043,7 +1043,7 @@ async def test_a_deleted_copy_a_set_brews_is_removed_all_the_same(
     assert [i["device_id"] for i in summary_of(run)["removed"]] == [file]
     assert file not in ids(fake)
     assert (await get_board(client))["pending_removals"] == []
-    assert len(await set_version_ids(app, set_id)) == 1
+    assert len(await recipe_version_ids(app, set_id)) == 1
 
 
 async def test_versions_the_policy_refuses_do_not_use_up_the_three_failure_stop(

@@ -201,7 +201,7 @@ class ProfileBoardRepository(Repository):
         machine file the pull has not dealt with.
 
         Putting the same profile back on the board while its old file is still waiting
-        (a Set may be brewing it) revives that row instead of pushing a second identical copy.
+        (a Recipe may be brewing it) revives that row instead of pushing a second identical copy.
         It is the same profile only under the same name: a new profile that brews what a
         deleted one brewed is a profile of its own.
         """
@@ -352,8 +352,8 @@ class ProfileBoardRepository(Repository):
 
         * on no profile yet: the profile takes it over (unless it already has a version of
           that brew, which is then the answer and the ownerless one is left alone), and with it
-          the one Set with no profile that brews it, when the profile has no Set; if it has one,
-          the version stays the Set's and the profile gets a copy;
+          the one Recipe with no profile that brews it, when the profile has no Recipe; if it has
+          one, the version stays the Recipe's and the profile gets a copy;
         * already this profile's: itself;
         * another profile's: a profile never takes another's version, so it gets its own copy,
           carrying the signature the way a new version of a profile does. A profile that already
@@ -380,13 +380,14 @@ class ProfileBoardRepository(Repository):
                     "UPDATE profile_versions SET board_id = ? WHERE id = ?", (row_id, version_id)
                 )
                 if taker is not None:
-                    # The Set that brewed this version while no profile had it is this profile's.
+                    # The Recipe that brewed this version while no profile had it is this profile's.
                     await self.db.execute(
                         "UPDATE recipes SET board_id = ? WHERE id = ?", (row_id, taker)
                     )
-                    await self.settle_a_sets_versions(row_id, taker)
+                    await self.settle_a_recipes_versions(row_id, taker)
                 return version_id
-            # Otherwise the version stays with the Set that names it, and the profile gets its own.
+            # Otherwise the version stays with the Recipe that names it, and the profile gets its
+            # own.
         carries = False
         if mine is not None:
             effective = int(mine)
@@ -417,13 +418,13 @@ class ProfileBoardRepository(Repository):
             )
         return effective
 
-    async def settle_a_sets_versions(
+    async def settle_a_recipes_versions(
         self, row_id: int, set_id: int, *, follow: bool = True
     ) -> None:
-        """A Set that has just become this profile's: every other version no profile owns that its
-        versions name goes through :meth:`version_for` like any other (taken over, or the profile
-        gets a copy of its own that the Set's versions then name), so all of the Set's versions
-        are the profile's."""
+        """A Recipe that has just become this profile's: every other version no profile owns that
+        its versions name goes through :meth:`version_for` like any other (taken over, or the
+        profile gets a copy of its own that the Recipe's versions then name), so all of the Recipe's
+        versions are the profile's."""
         loose = await self.db.fetch_all(
             "SELECT DISTINCT v.profile_version_id AS id FROM recipe_versions v "
             "JOIN profile_versions pv ON pv.id = v.profile_version_id "
@@ -442,24 +443,25 @@ class ProfileBoardRepository(Repository):
             await self.add_version(row_id, mine, "edit")
         if not follow:
             return
-        # The Set brews what its profile has active: a version taken over while the profile had
+        # The Recipe brews what its profile has active: a version taken over while the profile had
         # another active (one it listed without making active) is followed from.
         active = await self.db.fetch_value(
             "SELECT current_version_id FROM profile_board WHERE id = ?", (row_id,)
         )
         if active is not None:
-            # Imported here: the Sets repository reads this one's neighbours.
-            from gaggiclanker.db.repos.sets import SetsRepository
+            # Imported here: the Recipes repository reads this one's neighbours.
+            from gaggiclanker.db.repos.recipes import RecipesRepository
 
-            await SetsRepository(self.db).follow_profile(row_id, int(active))
+            await RecipesRepository(self.db).follow_profile(row_id, int(active))
 
     async def _taken_over_with(self, row_id: int, version_id: int) -> tuple[bool, int | None]:
-        """Whether this profile may take over the ownerless version, and the Set that goes with
-        it. A version no Set names is simply taken. One a Set with no profile names (the first
-        recipe a design was filled with, an authored starting point, a file a Set started on while
-        the list had none) is taken together with that Set, when the profile has no other Set and
-        the Set brews no version another profile owns, and only through the Set's current version.
-        Anything else leaves the version with the Set and the profile gets a copy of its own."""
+        """Whether this profile may take over the ownerless version, and the Recipe that goes with
+        it. A version no Recipe names is simply taken. One a Recipe with no profile names (the first
+        recipe a design was filled with, an authored starting point, a file a Recipe started on
+        while the list had none) is taken together with that Recipe, when the profile has no other
+        Recipe and the Recipe brews no version another profile owns, and only through the Recipe's
+        current version. Anything else leaves the version with the Recipe and the profile gets a
+        copy of its own."""
         named = await self.db.fetch_all(
             "SELECT DISTINCT recipe_id FROM recipe_versions WHERE profile_version_id = ?",
             (version_id,),
@@ -483,9 +485,9 @@ class ProfileBoardRepository(Repository):
             return False, None
         if owned is not None:
             return True, None
-        # A Set with no profile is taken only through its current version, as its profile is
-        # decided everywhere else: a profile that takes over a version the Set named earlier gets
-        # a copy of its own, and the version stays the Set's.
+        # A Recipe with no profile is taken only through its current version, as its profile is
+        # decided everywhere else: a profile that takes over a version the Recipe named earlier gets
+        # a copy of its own, and the version stays the Recipe's.
         current = await self.db.fetch_value(
             "SELECT v.profile_version_id FROM recipes s JOIN recipe_versions v "
             "ON v.id = s.current_version_id WHERE s.id = ?",

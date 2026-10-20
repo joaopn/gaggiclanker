@@ -21,15 +21,15 @@ from gaggiclanker.db.repos.profiles import (
     ProfilesRepository,
     ProfileVersionRow,
 )
-from gaggiclanker.db.repos.sets import (
+from gaggiclanker.db.repos.recipes import (
     FieldChange,
+    RecipesRepository,
+    RecipeVersionPatch,
+    RecipeWrite,
     SetRow,
-    SetsRepository,
     SetTrends,
-    SetVersionPatch,
     SetVersionRow,
     SetVersionWrite,
-    SetWrite,
     version_changes,
 )
 from gaggiclanker.db.repos.shots import (
@@ -69,13 +69,13 @@ __all__ = [
     "NotesRepository",
     "ProfileVersionRow",
     "ProfilesRepository",
+    "RecipeVersionPatch",
+    "RecipeWrite",
+    "RecipesRepository",
     "SetRow",
     "SetTrends",
-    "SetVersionPatch",
     "SetVersionRow",
     "SetVersionWrite",
-    "SetWrite",
-    "SetsRepository",
     "ShotDetailRow",
     "ShotInsert",
     "ShotJudgementRow",

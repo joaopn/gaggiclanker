@@ -37,7 +37,7 @@ from pydantic import ValidationError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.domain.models import (
     Profile,
 )
@@ -99,7 +99,7 @@ class ProfileDraftService:
         self.proposals = proposals or DraftProposals(db, settings)
         self.drafts = ProfileDraftsRepository(db)
         self.profiles = ProfilesRepository(db)
-        self.sets = SetsRepository(db)
+        self.recipes = RecipesRepository(db)
 
     # ── the policy ───────────────────────────────────────────────────
 
@@ -237,9 +237,9 @@ class ProfileDraftService:
             notes=notes,
             parent_draft_id=parent_draft_id,
             # A refinement is the next attempt at the same idea, so it is an
-            # attempt on the same experiment: the Set it was made for and the
+            # attempt on the same experiment: the Recipe it was made for and the
             # prediction it owes come across from the draft it supersedes.
-            # Dropping them would quietly turn a Set's second attempt into a
+            # Dropping them would quietly turn a Recipe's second attempt into a
             # draft belonging to nothing, and the push would record no
             # prediction on the version it creates.
             set_id=parent.set_id if parent is not None else None,

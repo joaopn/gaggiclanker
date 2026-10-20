@@ -101,7 +101,7 @@ class CheckOut(BaseModel):
     #: ``absent``.
     value: float | None
     unit: str
-    #: The limit the value was held against, **after** any Set version's override, as the metric
+    #: The limit the value was held against, **after** any Recipe version's override, as the metric
     #: language states it (``{"op": "<=", "value": 0.15}``: a share is a fraction here, not a
     #: percentage); ``None`` for a check with no limit.
     compare: JsonValue | None

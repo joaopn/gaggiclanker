@@ -3,7 +3,7 @@
 Read models only. A profile (a board row) has the versions it has been, newest first, each with
 where it came from and what it is used for, and **proposals**: open drafts that would land on it
 (or on no profile: a proposed new one). A proposal is a version waiting for a person; making it
-active is ``put_draft`` (with the Set recording), and
+active is ``put_draft`` (with the Recipe recording), and
 declining it is the draft's own discard.
 """
 
@@ -40,9 +40,9 @@ class SetBrewing(BaseModel):
 
     set_id: int
     name: str
-    #: The Set's current version's name, "v1.2".
+    #: The Recipe's current version's name, "v1.2".
     version_label: str
-    #: What the Set's next version would be called, as a minor.
+    #: What the Recipe's next version would be called, as a minor.
     next_minor_label: str
 
 
@@ -88,7 +88,7 @@ class ListedVersion(BaseModel):
     #: Set when this version did not read back as sent, so a sync does not try it again.
     did_not_verify: bool = False
     shots_brewed: int = 0
-    #: The profile's Set, when its current version is this very version.
+    #: The profile's Recipe, when its current version is this very version.
     set: SetBrewing | None = None
     #: The profile document, for the version's own information and for a diff.
     profile: JsonObject

@@ -16,14 +16,14 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.domain.vocab import RULE_CATEGORIES
 from gaggiclanker.knowledge.rules import (
+    RecipeContext,
     RuleSeedError,
-    SetContext,
     load_seed_rules,
     seed_rules,
     select_rules,
 )
 
-LIGHT_NATURAL = SetContext(roast_level="light", process="natural", burr_type="conical")
+LIGHT_NATURAL = RecipeContext(roast_level="light", process="natural", burr_type="conical")
 
 
 def test_the_shipped_seed_parses() -> None:
@@ -130,7 +130,7 @@ async def test_a_rule_filters_on_every_stated_dimension(db: Database) -> None:
 
     natural = await select_rules(repo, LIGHT_NATURAL, "classic", set())
     washed = await select_rules(
-        repo, SetContext(roast_level="light", process="washed"), "classic", set()
+        repo, RecipeContext(roast_level="light", process="washed"), "classic", set()
     )
     assert "natural.light" in natural.keys
     assert "natural.light" not in washed.keys
@@ -150,7 +150,7 @@ async def test_an_unstated_dimension_matches_nothing_that_filters_on_it(db: Data
     """
     repo = RulesRepository(db)
     await seed_rules(repo)
-    selection = await select_rules(repo, SetContext(), "classic", set())
+    selection = await select_rules(repo, RecipeContext(), "classic", set())
     assert not [
         rule for rule in selection.rules if rule.category == "pressure_matrix" and rule.applies
     ]
@@ -232,7 +232,7 @@ async def test_procedure_rules_always_apply(db: Database) -> None:
     """Dial-in order, increments and safety bounds are not facts about a bean."""
     repo = RulesRepository(db)
     await seed_rules(repo)
-    selection = await select_rules(repo, SetContext(), "unknown", set())
+    selection = await select_rules(repo, RecipeContext(), "unknown", set())
     categories = {rule.category for rule in selection.rules}
     assert {"dial_in_order", "increments", "safety_bounds"} <= categories
 

@@ -125,5 +125,5 @@ async def seeded_docs(knowledge: KnowledgeService) -> KnowledgeService:
 
 @pytest.fixture
 async def provenance(db: Database) -> ProvenanceWorld:
-    """Two Sets with graded versions, shots and conversations: see :mod:`insight_world`."""
+    """Two Recipes with graded versions, shots and conversations: see :mod:`insight_world`."""
     return await build_provenance_world(db)

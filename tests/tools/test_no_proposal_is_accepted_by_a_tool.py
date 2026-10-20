@@ -2,7 +2,7 @@
 
 A proposal exists so that a person decides. **Signatures are the one named exception** (the
 maintainer's decision, 2026-10-08): what an agent proposes as a profile's expectations, and an
-override of one limit on a Set version, are written in force and stay so unless a person
+override of one limit on a Recipe version, are written in force and stay so unless a person
 rejects them. Every other proposal is still guarded, and the guard below still fails if a tool
 starts writing anything else in force: the exception is exactly the list in
 :data:`SIGNATURES_IN_FORCE` and nothing wider. An agent that could accept its own
@@ -13,7 +13,7 @@ would do it while looking like the feature working.
 Three checks, and each covers a way that could stop being true:
 
 1. **No tool is named for it.** Walked over the registry itself, so a
-   `propose_set_version_and_accept` added next year fails here rather than in a
+   `propose_recipe_version_and_accept` added next year fails here rather than in a
    review.
 2. **No code in the tool package calls it.** Walked over the bytecode of every
    module under ``gaggiclanker.tools``, so a tool that reached the proposals
@@ -41,7 +41,7 @@ from types import CodeType
 import gaggiclanker.tools
 from gaggiclanker.api.knowledge import delete_insight, dismiss_insight, patch_insight
 from gaggiclanker.api.patterns import approve_proposal, dismiss_proposal
-from gaggiclanker.api.sets import (
+from gaggiclanker.api.recipes import (
     accept_insight_deletion,
     accept_outcome_proposal,
     accept_proposal,
@@ -54,8 +54,8 @@ from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.patterns import PatternProposalsRepository
-from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
+from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.tools.registry import registry
@@ -65,7 +65,7 @@ from gaggiclanker.tools.registry import registry
 #: one. The first two answer a proposed change. `change` and `dismiss` answer a
 #: proposed grade with another outcome or none; `record_in_transaction` and
 #: `grade_in_transaction` are the writes that put a grade on a version, and
-#: `set_outcome` and `clear_outcome` are the Set page's own: a tool that
+#: `set_outcome` and `clear_outcome` are the Recipe page's own: a tool that
 #: reached any of them would be recording an outcome nobody agreed to.
 DECIDING = (
     "accept",
@@ -76,12 +76,12 @@ DECIDING = (
     "grade_in_transaction",
     "set_outcome",
     "clear_outcome",
-    # An insight a Set's conversation proposed is added (confirmed) or dismissed
+    # An insight a Recipe's conversation proposed is added (confirmed) or dismissed
     # by a person: `set_confirmed` is the add and the take back, `dismiss` the
     # other card button.
     "set_confirmed",
     # An added insight leaves only by a person's press: `delete` is the Delete on the
-    # Set page and the Knowledge page, `delete_in_transaction` the write every removal
+    # Recipe page and the Knowledge page, `delete_in_transaction` the write every removal
     # runs (a replacement's Add and an accepted deletion proposal included), and
     # `keep` the other button on an agent's deletion proposal.
     "delete",
@@ -91,11 +91,11 @@ DECIDING = (
     # also stales waiting deletion proposals.
     "_add_in_transaction",
     "_take_back_in_transaction",
-    # A pattern proposal is approved (writes a general insight and deletes the Set insights
+    # A pattern proposal is approved (writes a general insight and deletes the Recipe insights
     # it came from) by a person's press on the Knowledge page, and nothing else.
     "approve",
-    # A signature's expectations and a Set version's override are rejected and restored by a
-    # person's press on the Profiles and Set pages: these are those buttons and the tier move.
+    # A signature's expectations and a Recipe version's override are rejected and restored by a
+    # person's press on the Profiles and Recipe pages: these are those buttons and the tier move.
     # (What a tool *proposes* there is in force at once; see SIGNATURES_IN_FORCE.)
     "reject",
     "restore",
@@ -179,15 +179,15 @@ def test_no_code_in_the_tool_package_accepts_or_declines_anything() -> None:
 
 def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     """Otherwise the walk above is looking for words nothing uses any more."""
-    assert callable(SetProposalsRepository.accept)
-    assert callable(SetProposalsRepository.decline)
+    assert callable(RecipeProposalsRepository.accept)
+    assert callable(RecipeProposalsRepository.decline)
     assert callable(OutcomeProposalsRepository.accept)
     assert callable(OutcomeProposalsRepository.change)
     assert callable(OutcomeProposalsRepository.dismiss)
     assert callable(OutcomeProposalsRepository.record_in_transaction)
-    assert callable(SetsRepository.grade_in_transaction)
-    assert callable(SetsRepository.set_outcome)
-    assert callable(SetsRepository.clear_outcome)
+    assert callable(RecipesRepository.grade_in_transaction)
+    assert callable(RecipesRepository.set_outcome)
+    assert callable(RecipesRepository.clear_outcome)
     assert callable(InsightsRepository.set_confirmed)
     assert callable(InsightsRepository.dismiss)
     assert callable(InsightsRepository.delete)
