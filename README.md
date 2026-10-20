@@ -4,10 +4,10 @@ A self-hosted archive and analyst for a [GaggiMate](https://gaggimate.eu)
 espresso machine. Press a button and it brings in every shot the machine holds —
 raw `.slog` bytes, every sample, phases, the device's own notes and profiles —
 shows them with curves and deterministic diagnostics, lets you judge each shot
-from the list and group shots into versioned **Sets** (bean + hardware + profile
+from the list and group shots into versioned **Recipes** (bean + hardware + profile
 + grind/dose/yield), reads a shot with a language model when you ask it to (you confirm what it
 says), and
-talks the Sets through with a tool-using chat, through whichever provider you
+talks the Recipes through with a tool-using chat, through whichever provider you
 point it at.
 
 It does not watch the machine. Nothing leaves the GaggiMate until you ask for
@@ -18,7 +18,7 @@ The machine holds a few hundred KB of flash and deletes old shots when it runs
 low. This is the thing that remembers them.
 
 > **Status: 0.1.0, the prototype, plus the profile list.** Everything in this README
-> works: sync, the shots UI, Sets and judgement, the LLM layer, a shot's review,
+> works: sync, the shots UI, Recipes and judgement, the LLM layer, a shot's review,
 > the chat, optional authentication and the container. It can now
 > also hold a list of your profiles and make the machine match it — you switch a profile on or
 > off the machine and make one of its versions active, and the next sync puts the active
@@ -94,7 +94,7 @@ while the app is stopped.
 
 ### The pages
 
-The sidebar has six rows: Shots, Chat, Sets, Profiles, **Brew setup** (Beans, Hardware,
+The sidebar has six rows: Shots, Chat, Recipes, Profiles, **Brew setup** (Beans, Hardware,
 Taste wheel) and **Settings** (one page per heading, with Knowledge just before Prompts).
 The Device page has no row: the machine status in the top bar opens it from every page. A group opens when you click it, and on its own
 when you are on one of its pages; one you open by hand stays open next time. The
@@ -102,15 +102,15 @@ pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard, and **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves the Discard ones out of the list; the Set column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The import drop zone is here; Sync is in the top bar, on every page. A shot's page names its profile as it is called now, linked to it, and says what the machine called it when the shot was brewed ("brewed as") when that was another name. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
-| **Chat** | `g c` | The tool-using conversation, with a badge per Set above it. A badge lists that Set's conversations; New there starts one already pointed at that Set. |
-| **Sets** | `g e` | How you dial in one bean: the bean, the grinder, a profile that belongs to the Set alone, and the recipe on top (grind, dose, target yield), versioned. The Set follows its profile, so a new active profile version is a new Set version; the page explains this in **How a Set works**, open while no Set is being dialled in. Each Set has the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two beans on two grinders both collect — and a Set is archived when you have finished with its bean. |
-| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Duplicate Profile** (a new profile from that version, under a name you type; see below). A version the agent proposed sits above them as the proposal card (below): marked **Proposed**, with **Approve and sync** (**Approve** with Writes off) and **Decline**; a proposed new profile is a row of its own, with its Name field. An open profile shows its name with **Rename**, which opens a Name field (Enter renames, Escape cancels; a pinned copy can be renamed too, since a pin freezes what it brews, not what it is called). Only you rename a profile; the machine gets the name at the next sync with Writes on, and a row says so ("Will be renamed on the machine at the next sync") until then. A name given at the machine is taken at the next sync, with a note under **On the machine** until the sync after. Two name conflicts wait for your choice, each as a line on the row: the machine's new name is another profile's (**Keep** your name, which renames it back on the machine, or **Rename to …**), or the name was changed on both sides (**Keep** either). A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
-| **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. Each coffee exports as a JSON file, and **Import JSON** reads one back: the file's id updates that coffee with the fields it carries, anything else adds a new one. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard, and **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves the Discard ones out of the list; the Recipe column can be dragged narrower. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and puck flow by default) and in which theme colour, remembered per browser. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Recipe, rating, source and readability; a Recipe's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The import drop zone is here; Sync is in the top bar, on every page. A shot's page names its profile as it is called now, linked to it, and says what the machine called it when the shot was brewed ("brewed as") when that was another name. A new shot is filed under the one Recipe that brews its profile: exactly one Recipe set to collect shots, whose current version names that profile (never over a Recipe you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Recipe you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
+| **Chat** | `g c` | The tool-using conversation, with a badge per Recipe above it. A badge lists that Recipe's conversations; New there starts one already pointed at that Recipe. |
+| **Recipes** | `g e` | How you dial in one bean: the bean, the grinder, a profile that belongs to the Recipe alone, and the numbers on top (grind, dose, target yield), versioned. The Recipe follows its profile, so a new active profile version is a new Recipe version; the page explains this in **How a Recipe works**, open while no Recipe is being dialled in. Each Recipe has the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old version back. Each Recipe says whether new shots on its profile are filed under it — any number of Recipes can, which is how two beans on two grinders both collect — and a Recipe is archived when you have finished with its bean. |
+| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Recipes, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Duplicate Profile** (a new profile from that version, under a name you type; see below). A version the agent proposed sits above them as the proposal card (below): marked **Proposed**, with **Approve and sync** (**Approve** with Writes off) and **Decline**; a proposed new profile is a row of its own, with its Name field. An open profile shows its name with **Rename**, which opens a Name field (Enter renames, Escape cancels; a pinned copy can be renamed too, since a pin freezes what it brews, not what it is called). Only you rename a profile; the machine gets the name at the next sync with Writes on, and a row says so ("Will be renamed on the machine at the next sync") until then. A name given at the machine is taken at the next sync, with a note under **On the machine** until the sync after. Two name conflicts wait for your choice, each as a line on the row: the machine's new name is another profile's (**Keep** your name, which renames it back on the machine, or **Rename to …**), or the name was changed on both sides (**Keep** either). A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
+| **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Recipe uses can be deleted. Each coffee exports as a JSON file, and **Import JSON** reads one back: the file's id updates that coffee with the fields it carries, anything else adds a new one. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
 | **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
-| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and your **general** insights: the ones you write by hand, any agent-written one the app could not place on a single Set, and the ones you approve from **Find patterns across Sets**. Insights learned in a Set's conversation live on that Set's page instead. |
+| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and your **general** insights: the ones you write by hand, any agent-written one the app could not place on a single Recipe, and the ones you approve from **Find patterns across Recipes**. Insights learned in a Recipe's conversation live on that Recipe's page instead. |
 | **Device** | | No sidebar row: the machine status in the top bar opens it from every page (while the machine is connected, the status also shows the boiler's temperature, read every fifteen seconds). What the machine is (its versions and its connection), then the record of the exchanges with it: the last run of each sync pass and what the archive holds (the sync itself starts from **Sync**, first in the top bar), what the last sync did to its profiles, and every write this box has attempted on it, refused ones included. Nothing but a profile is ever written to the machine. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
@@ -125,19 +125,19 @@ same cards on the Device page.
 
 ### The experiment log
 
-A Set page is a record of experiments, one per version. A version's recipe is
+A Recipe page is a record of experiments, one per version. A version's numbers are
 five things: the **profile** version, the grind as text and as a number, the
-dose and the target yield. A Set has exactly one profile, and follows it: whenever the profile gets a new active version
+dose and the target yield. A Recipe has exactly one profile, and follows it: whenever the profile gets a new active version
 (a change approved, **Make active** on the Profiles page, the machine's side kept after an edit
-there) the Set records a new version naming it, in the same step. **Change something** on the
-Set page has no profile to choose, except for a Set that has none (one being designed, or an old
-one that never named a profile), which takes a profile no Set has. That is also what keeps the
-next shots landing in the Set, because a shot joins the one Set that brews the profile it was
-pulled with. To try a bean on a copy of a Set's profile, use **Duplicate Set**, or pick that profile in New Set, which duplicates it.
+there) the Recipe records a new version naming it, in the same step. **Change something** on the
+Recipe page has no profile to choose, except for a Recipe that has none (one being designed, or an old
+one that never named a profile), which takes a profile no Recipe has. That is also what keeps the
+next shots landing in the Recipe, because a shot joins the one Recipe that brews the profile it was
+pulled with. To try a bean on a copy of a Recipe's profile, use **Duplicate Recipe**, or pick that profile in New Recipe, which duplicates it.
 
 **The brew temperature is not one of the five**, and there is nowhere to type
-one: the machine heats to what the profile says, so a number written on a Set
-would have been a claim about a document it does not control. Both recipe forms
+one: the machine heats to what the profile says, so a number written on a Recipe
+would have been a claim about a document it does not control. Both forms
 show what the picked profile brews at, read-only, and changing it means changing
 the profile — edit it on the machine and record the new version here, or draft
 one on the Profiles page. When a version switches to a profile that brews at a
@@ -158,11 +158,11 @@ minor (v1.2 → v1.3). A functional change to what the profile does is a **major
 version: the next whole number (v1.2 → v2). You decide which, with the **Major
 change** box on the Add a version form and on a change card before you accept it; each
 button names the version it will record ("Accept as v1.3", "Accept as v2"). The box
-starts off, so the version is a minor one. A Set has one profile for good, so a new
-version never switches profiles. A Set
+starts off, so the version is a minor one. A Recipe has one profile for good, so a new
+version never switches profiles. A Recipe
 follows its profile: a profile version put, made active or kept from the machine for
-the Set's profile becomes a new minor version of the Set in the same step, and
-making an older Set version current makes its profile version the active one without
+the Recipe's profile becomes a new minor version of the Recipe in the same step, and
+making an older Recipe version current makes its profile version the active one without
 adding a version. The agent may suggest major on its card, with its reason
 beside the box, but the box is yours. Versions recorded before this existed
 keep their numbers: v3 is still v3. Everywhere a version is named — the log,
@@ -192,10 +192,10 @@ worked out from all its counted (Keep or Improve) shots, with the per-claim line
 under it. It shows as a card in the chat: **Accept** records it as written,
 **Record another outcome** records your own choice of the four, **Dismiss**
 records nothing and may say why. Nothing is recorded until you press one, the
-Set page shows a waiting proposal beside the outcome and never as one, and
+Recipe page shows a waiting proposal beside the outcome and never as one, and
 nothing an agent graded reaches a later conversation, the experiment log or the
 track record unless you accepted it. You can also set or clear the outcome on the
-Set page as before; a waiting card then shows both. When the same answer also
+Recipe page as before; a waiting card then shows both. When the same answer also
 proposes the next version, accepting that version records the waiting grade
 first, in the same step: one press, as long as the outcome is still open; an
 outcome you recorded yourself is left alone and the grade stays waiting. If you dismissed the grade, the version
@@ -203,24 +203,24 @@ cannot be accepted until the version is graded.
 
 ### The spread: how much your shots vary anyway
 
-Above the log the Set page says how much its shots differ **when nothing in the
-recipe changed** — "Shot time ±1.8 s · from 9 repeat shots of 3 recipes". It is the number
+Above the log the Recipe page says how much its shots differ **when nothing in the
+version's numbers changed** — "Shot time ±1.8 s · from 9 repeat shots at 3 settings". It is the number
 every comparison on that page is held against, because "31 s against 34 s" means
 nothing until you know whether three seconds is a lot for this grinder, this
 basket and this bag. It is arithmetic the app does, the same way every time; no
 model is involved.
 
-**What counts as a repeat.** Shots brewed with the same five recipe fields —
+**What counts as a repeat.** Shots brewed with the same five fields —
 profile version, grind text, grind number, dose, target yield — are repeats of
 each other, whichever version they were filed under. That means shots filed
 under a version after you went back to it count as repeats of its earlier shots,
 and so do the shots of a version that only changed the words. Each group's
 shots are measured against their own average and those distances are pooled
-across the whole Set, so many versions of two or three shots each still add up
+across the whole Recipe, so many versions of two or three shots each still add up
 to one usable figure. A group of one contributes nothing: a single shot has no
 distance from itself.
 
-**Which shots count.** Everything filed under the Set that is not quarantined,
+**Which shots count.** Everything filed under the Recipe that is not quarantined,
 not incomplete and not labelled Discard. Shots you have not labelled count too —
 they are plain data, and leaving them out would make the number depend on how
 diligent you have been with the buttons.
@@ -233,14 +233,14 @@ rating. A shot with no scale has no cup measures, and a cup measure is never poo
 with a puck one. The
 yield is the one you typed into the judgement if you did, then the machine's
 final weight, then the volume its own index recorded — the same order the
-starting-point wizard scores a recipe by, because a machine with no scale
+starting-point wizard scores a version by, because a machine with no scale
 records nothing and the only yield that exists is the one you wrote down. A
 measure your machine or your scale records nothing for is left off the block
 rather than carried as an empty line, and so is a number the archive wrote as
 zero to mean "there was nothing to average".
 
 **Before it is measured.** It takes three degrees of freedom — four shots pulled
-with one recipe, or two recipes with three shots and two, since each recipe
+with one set of numbers, or two with three shots and two, since each
 spends one degree on its own average — before the figure is worth trusting. Until then the
 line says "not measured yet" and names a conservative floor instead: 2 s for the
 shot time, 1 s for either first drip, 1 g for the yield, 0.3 bar for the peak
@@ -268,11 +268,11 @@ None of this appears on the shot page: the prediction is hidden there until you
 have labelled the shot, and a table of what the version has been doing would
 give it away whole.
 
-Versions are listed by when they were made, newest first, with the one the Set
+Versions are listed by when they were made, newest first, with the one the Recipe
 is on marked **current** and each naming the version it was made from. A name is
 an identifier, like a tag, not a position: v1.2 may have been made after v2.
 
-**Go back to this version** puts the Set back on that version, as it was.
+**Go back to this version** puts the Recipe back on that version, as it was.
 Nothing new is recorded: its prediction, shots and outcome stay, new shots are
 filed under it, and a recorded outcome is not reopened. The log gets one line,
 "Went back to v1.2 (from v2.1)", with the date and an optional note. The next
@@ -281,13 +281,13 @@ the next free minor if that is taken), and the next major is the highest major
 plus one. When the current version has shots you want to improve on and none you
 kept, the page offers the way back to the nearest version behind it, on the line
 it was made from, that you did keep shots from.
-**Going back changes the machine, by the usual route.** The Set's profile goes back to what
+**Going back changes the machine, by the usual route.** The Recipe's profile goes back to what
 that version brews (it becomes the profile's active version), and the next sync puts it on
-the machine if the profile is switched on and writes are on. A Set has one profile, so going
+the machine if the profile is switched on and writes are on. A Recipe has one profile, so going
 back never moves it to another one.
 
 Each version's shot count is a link into the shots list narrowed to **that
-version**, not to the whole Set: the Keep / Improve / Discard counts beside it
+version**, not to the whole Recipe: the Keep / Improve / Discard counts beside it
 are that version's too.
 
 Versions off the line you are now brewing are marked **dead ends** and muted,
@@ -295,7 +295,7 @@ still fully readable: they were real attempts. The line is read backwards from
 the current version through the version each was made from, as in version
 control, and everything it does not pass through is a dead end. Go back from
 v2.1 to v1.1 and v2 and v2.1 are dead ends; go forward again onto one of them
-and the muting follows: what is live is whatever the current recipe actually came
+and the muting follows: what is live is whatever the current version actually came
 from.
 
 ### What gaggiclanker writes to the machine, and who starts it
@@ -314,13 +314,13 @@ machine is in brew mode) does what the mode buttons on the machine's web UI do. 
 there only while the switch is on, is refused while a shot or a flush is running (the
 machine would stop it) and is not recorded either.
 
-Nothing an agent does is on that list. A proposed change to a Set is a row in
+Nothing an agent does is on that list. A proposed change to a Recipe is a row in
 this archive waiting for you, and accepting it records a version — it sends
 nothing. A profile a conversation proposes is a proposal card in that conversation (and inside
 its profile on the Profiles page), which you approve yourself: **Approve and sync** with Writes
-on, **Approve** with Writes off. A profile that has a Set is that Set's profile: approving a
-change to it makes it the profile's active version and records it as the Set's next version
-in the same step (with the prediction, when it was proposed in the Set's conversation).
+on, **Approve** with Writes off. A profile that has a Recipe is that Recipe's profile: approving a
+change to it makes it the profile's active version and records it as the Recipe's next version
+in the same step (with the prediction, when it was proposed in the Recipe's conversation).
 
 The machine is a buffer, not an archive: when its storage runs low its own
 firmware deletes its oldest shots, whether or not this box has them. That is
@@ -384,12 +384,12 @@ that is already a profile is refused.
 It waits as a **proposal card**, in the conversation where the agent proposed it and inside its
 profile's dropdown on the Profiles page (marked **Proposed**), or as a row marked **New** when it
 is a new profile. The card is one proposed version of one profile and where it stands, from
-proposed to on the machine: the change in the agent's words, its prediction for a Set, the
+proposed to on the machine: the change in the agent's words, its prediction for a Recipe, the
 profile's curve beside the active version's on the same axes (pro profiles; a new profile shows
 one), what changes (a new profile is shown whole), the stop-condition warning when it moves when
 the machine stops pumping, and for a new profile a **Name** field, prefilled with the agent's
 name and checked against the list as you type. **Approve and sync** is one click: it approves the
-proposal (the profile's active version, switched on, and for a proposal made for a Set the Set's
+proposal (the profile's active version, switched on, and for a proposal made for a Recipe the Recipe's
 next version, with the **Major change** box, once the sync has put the profile on the machine)
 and then starts the same sync as the top bar's button; with Writes off it is **Approve**, and
 the profile goes to the machine at the first sync after you turn Writes on. It does not select
@@ -646,7 +646,7 @@ is going to face the internet.
 ### Backup and restore
 
 Everything is in one SQLite file under `DATA_DIR` (`./data` by default): shots with
-their raw bytes, Sets, beans, profiles, chats, knowledge and every setting. **Settings →
+their raw bytes, Recipes, beans, profiles, chats, knowledge and every setting. **Settings →
 System → Backup & restore** downloads it as one file and puts one back.
 
 **Download.** *Download backup* gives you `gaggiclanker-<UTC>.db`, a complete gaggiclanker
@@ -702,7 +702,7 @@ database reinstates the state you were trying to undo.
 ### Reset
 
 **Settings → System → Reset** puts the app back to a fresh install. It deletes every shot,
-Set, bean, profile, chat, insight, edited prompt and setting, **the API keys and tokens**, the
+Recipe, bean, profile, chat, insight, edited prompt and setting, **the API keys and tokens**, the
 downloaded Claude Code program, and any leftover upload or export; **sign-in is switched off
 afterwards** (anyone who can reach the app can use it until you set a password again). Nothing
 on the machine changes: its profiles and shots stay on it, and after you enter its address
@@ -765,8 +765,8 @@ call, started only by a click on one shot (the **Review** button in the shots ta
 page): no chat tool, batch, timer or sync step starts one, and a shot you labelled Discard or
 that never parsed is never reviewed. The model is handed the shot's own information with its
 checks first (every line the shot tools can show, whatever you set under Settings → Shot
-information, except your judgement, the note typed on the machine and your label), the Set
-version's recipe and its prediction, the free-text expectations of the profile's signature in
+information, except your judgement, the note typed on the machine and your label), the Recipe
+version's numbers and its prediction, the free-text expectations of the profile's signature in
 force, the profile the shot brewed, the detected shot style, and the knowledge rules and
 reference excerpts its telemetry selects. It is never shown your judgement, another shot, an
 earlier review or a conversation.
@@ -780,7 +780,7 @@ the kind of channel and whether the expression's own comparison held, so a figur
 is one the same expression gives on `POST /api/shots/{id}/evaluate`, never one the model typed.
 A claim whose comparison fails, or whose evidence could not be measured at all, is kept and
 marked as not borne out by the numbers. The review also answers each free-text expectation of
-the signature in force (held or not, and where), and, when the Set version was filed with a
+the signature in force (held or not, and where), and, when the Recipe version was filed with a
 prediction, says how the shot moved against it (as predicted, partly, against, not shown) plus
 a one-sentence summary for you.
 
@@ -823,7 +823,7 @@ says how the shot moved against its prediction. The summary and a rejected claim
 it. The SQL tool's `v_review_claims` holds the claims of a shot's newest finished review that
 were not rejected, and `v_reviews` only counts. The glossary and the chat's rules both say what a
 review is: a model's claims about one shot, weighed below the measured numbers and your
-judgement, never on its own a reason to change a Set.
+judgement, never on its own a reason to change a Recipe.
 
 The knowledge rules are on the **Knowledge** page: a small tier of dial-in
 heuristics — temperature by roast, the pressure matrix by roast and process,
@@ -850,15 +850,15 @@ The **Chat** page (`g c`) is the other half of the LLM layer, and it is the
 opposite shape from a review: instead of one call with everything in front
 of it, the model is given a set of tools and asks the archive its own questions.
 
-**A Set is a scope, not a filing cabinet.** Above the conversation is a row of
-badges: **General** first, then every Set you have not archived, with its current
-version and how many conversations it holds — including the Sets nobody has asked
+**A Recipe is a scope, not a filing cabinet.** Above the conversation is a row of
+badges: **General** first, then every Recipe you have not archived, with its current
+version and how many conversations it holds — including the Recipes nobody has asked
 about yet, because an empty list with a **New conversation** button in it is how
 you start. Click a badge and its conversations are listed under the row, one per
-line. Conversations about a Set you have since archived stay readable behind
-**Show archived Sets** at the end of the row, which adds a badge per archived Set. The page opens on the newest Set (the one you made
+line. Conversations about a Recipe you have since archived stay readable behind
+**Show archived Recipes** at the end of the row, which adds a badge per archived Recipe. The page opens on the newest Recipe (the one you made
 last) unless a link or an open conversation names another, and a question typed
-before you pick a conversation goes to the open badge's Set.
+before you pick a conversation goes to the open badge's Recipe.
 
 **Keep a conversation.** With a conversation open, **Download log** in its header
 saves it as one JSON file (`chat-<id>-<title>.json`,
@@ -866,35 +866,35 @@ saves it as one JSON file (`chat-<id>-<title>.json`,
 call). It holds every message in order with its time and run, the tools the
 agent called with their arguments, what they answered, and a record per run
 with the model, its tokens and any error. It leaves out what you never typed:
-the instructions and the context the app gives the agent each turn (the Set's
+the instructions and the context the app gives the agent each turn (the Recipe's
 ledger and its recent shots, the base shot glossary) are not stored with the
 conversation and so are not in the file. (The extended glossary is part of the
 stored answer to an extended read, so it is reduced along with
 that answer, as described next.) The answer of a tool that renders
 shots (`get_shot`, `get_shot_extended`, `get_shot_full`, `compare_shots`,
-`list_set_shots`), or one the provider could not pair with its call, is reduced
+`list_recipe_shots`), or one the provider could not pair with its call, is reduced
 to its size, since that is where whole shot renderings arrive; every other
 answer, and every refused or failed one, is kept word for word. If the button
 says the download was blocked before it reached the app, a content-blocking
 extension dropped the request: allow this site in it.
 
-A conversation in a Set's list is about **one version of that Set** — the
-change being argued — and it can see that Set and nothing else: its versions
+A conversation in a Recipe's list is about **one version of that Recipe** — the
+change being argued — and it can see that Recipe and nothing else: its versions
 with their predictions and outcomes, its shots, its spread, the knowledge base
 and the confirmed insights that apply. It cannot run archive-wide SQL, list your
-other coffees, or read a shot filed under another Set; a tool that would is not
-offered to it, and a shot of somebody else's Set is refused in the same words
+other coffees, or read a shot filed under another Recipe; a tool that would is not
+offered to it, and a shot of somebody else's Recipe is refused in the same words
 whether or not it exists. What it *can* do is propose how this version turned out, propose the next
-version of this Set and record what has been learned about it — each a card
+version of this Recipe and record what has been learned about it — each a card
 waiting for you to answer.
 
 **A proposed change is a question, not a change.** The agent writes down one
-change and what it expects that change to do; the Set stays exactly where it is
-until you press **Accept**, and your next shot is still filed under the recipe
+change and what it expects that change to do; the Recipe stays exactly where it is
+until you press **Accept**, and your next shot is still filed under the version
 in the hopper. The card appears in the conversation and again above the
 experiment log, with **Accept** and **Decline** on it, and it says what would
 move, why, and what is predicted — *compared to v4, expect 3 to 5 s longer and
-less sour*. Accepting records the change as the Set's next version, with that
+less sour*. Accepting records the change as the Recipe's next version, with that
 prediction on it, and sends nothing to the machine. The accepted card says what
 you do instead: for a grind, dose or yield change the profile on the machine is
 already the right one, so there is nothing to push — *set the grinder to 1 and
@@ -909,28 +909,28 @@ so is one that moves two things at once unless it says why they cannot be
 separated — and then it has to tell you the prediction cannot say which of them
 did anything. While the current version's own prediction is still ungraded it
 cannot propose the next change at all: it grades that one with you, or asks for
-another shot on the same recipe, which needs no version. Only one proposal waits
+another shot on the same version, which needs no new version. Only one proposal waits
 at a time.
 
-**An insight belongs to the Set it was learned in.** What the agent learns in a
-Set's conversation is stored with that Set and the version the conversation was
+**An insight belongs to the Recipe it was learned in.** What the agent learns in a
+Recipe's conversation is stored with that Recipe and the version the conversation was
 about, shown as a card in the chat with **Add** and **Dismiss**, and listed on
-that Set's page under the version it was learned at (waiting ones with their
-buttons, added ones with **Take back**). Added, it is told to that Set's later
-conversations and to no other Set's, even one on the same bean and grinder; the
-design chat of a new Set and Review never see it. Nothing waiting or dismissed
+that Recipe's page under the version it was learned at (waiting ones with their
+buttons, added ones with **Take back**). Added, it is told to that Recipe's later
+conversations and to no other Recipe's, even one on the same bean and grinder; the
+design chat of a new Recipe and Review never see it. Nothing waiting or dismissed
 reaches a prompt. The Knowledge page holds general knowledge only: what you write
-by hand there, and any agent-written one the app could not place on a single Set;
+by hand there, and any agent-written one the app could not place on a single Recipe;
 those keep matching by bean, grinder, roast and process and still reach every
-conversation whose Set they match. The first start of this release placed the
-agent-written insights you already had about one coffee on the one Set each fits
-(its scope names a bean, or is empty with evidence shots; it matches that Set and
+conversation whose Recipe they match. The first start of this release placed the
+agent-written insights you already had about one coffee on the one Recipe each fits
+(its scope names a bean, or is empty with evidence shots; it matches that Recipe and
 one of its evidence shots is filed there); anything scoped only by equipment, roast,
-process or origin, and anything that fits none or several Sets, stayed general.
+process or origin, and anything that fits none or several Recipes, stayed general.
 
 **What an insight rests on, and what happens when it ages.** An insight names the
-shots it comes from and the versions of its Set whose recorded outcome it depends
-on. The Set page and the chat card show each version with its outcome **as it
+shots it comes from and the versions of its Recipe whose recorded outcome it depends
+on. The Recipe page and the chat card show each version with its outcome **as it
 stands now**, and when you re-recorded or cleared that outcome after the insight
 was written they show the old one beside it with a "changed since" mark ("held →
 failed", "no outcome now"); the outcome it had when written is never rewritten. An
@@ -944,7 +944,7 @@ it deletes the old insight"): your Add adds the new one and deletes the old one 
 one step, and if the old one changed in the meantime the new one is added on its
 own and the card says so. When one is no longer supported and nothing replaces it,
 the agent proposes **deleting** it with its reason (a card with **Delete** and
-**Keep**; new tool `propose_insight_deletion`, Set conversations only). Until you
+**Keep**; new tool `propose_insight_deletion`, Recipe conversations only). Until you
 press Delete the insight stays and is still told to every conversation. At the start
 of a new version's conversation the agent is asked to look over the added insights
 and propose replacing or deleting the few the shots no longer support, never as a
@@ -954,81 +954,81 @@ the text on its card and is told what you did. Deleting a conversation also dele
 the insights it proposed that you dismissed (they existed only to stop it offering
 them again); waiting and added ones stay.
 
-**Find patterns across Sets.** A Set's insight reaches that Set alone, so a lesson that is
+**Find patterns across Recipes.** A Recipe's insight reaches that Recipe alone, so a lesson that is
 true across coffees ("this grinder channels below 9 clicks with any light roast") is learned
-again, Set by Set. On the Knowledge page's Insights tab, **Find patterns** asks one model call to
-read the confirmed insights of every Set (the Set's name and attributes, the version each was
+again, Recipe by Recipe. On the Knowledge page's Insights tab, **Find patterns** asks one model call to
+read the confirmed insights of every Recipe (the Recipe's name and attributes, the version each was
 learned at and what it rests on, the general insights that already exist, and the proposals you
-declined before) and to propose general insights that several Sets say in different words. It is
+declined before) and to propose general insights that several Recipes say in different words. It is
 not a conversation and has no tools. It runs **only when you press the button**: never on a
-timer, after a sync, at boot, or from a chat or MCP tool; the page says how many confirmed Set
-insights arrived since the last run and keeps the button off until two Sets have one. Each
-proposal is a card with its text, the Sets it applies to, and the Set insights it was derived
-from, grouped by Set and linked. A proposal that rests on one Set, names an insight it was not
-given, or states a scope that every source Set does not share (or one by profile style) is dropped
+timer, after a sync, at boot, or from a chat or MCP tool; the page says how many confirmed Recipe
+insights arrived since the last run and keeps the button off until two Recipes have one. Each
+proposal is a card with its text, the Recipes it applies to, and the Recipe insights it was derived
+from, grouped by Recipe and linked. A proposal that rests on one Recipe, names an insight it was not
+given, or states a scope that every source Recipe does not share (or one by profile style) is dropped
 before you see it and counted on the run. **Approve** writes the general insight (confirmed, scoped
-so that it reaches every one of those Sets) and **deletes the Set insights it came from** in the
-same step, so each of those Sets' conversations is told the lesson once, as a general one; when
+so that it reaches every one of those Recipes) and **deletes the Recipe insights it came from** in the
+same step, so each of those Recipes' conversations is told the lesson once, as a general one; when
 the proposal says it replaces an existing general insight, that one is deleted too. A source that
 was deleted or taken back since the run is left alone and named on the card, and the approval is
-refused when fewer than two Sets' insights remain. **Dismiss** keeps the proposal so that the next run is told you declined it. Copies of insight text
+refused when fewer than two Recipes' insights remain. **Dismiss** keeps the proposal so that the next run is told you declined it. Copies of insight text
 live one run: when a run finishes, every proposal of every earlier run is deleted (whatever
 became of it) and every earlier run's stored input is blanked, so once you delete an insight
 its words can survive in the newest run's input and proposals until the next run finishes, never
-longer (and while fewer than two Sets have a confirmed insight no run can start, so they stay until
+longer (and while fewer than two Recipes have a confirmed insight no run can start, so they stay until
 one can). Approve and Dismiss wait while a run is going: it replaces the proposals when it
 finishes, so an answer given meanwhile would be lost. The model is `modelPatterns` under
 Settings → LLM → Models, falling back to the default model.
 
-**A proposal stops waiting the moment you change the Set another way.** Record a
-version on the form, go back to a version, make a profile proposal active for the Set — whichever it
+**A proposal stops waiting the moment you change the Recipe another way.** Record a
+version on the form, go back to a version, make a profile proposal active for the Recipe — whichever it
 is, a change that was argued against the
-recipe you have just left is retired unanswered rather than sitting there with
+version you have just left is retired unanswered rather than sitting there with
 an Accept button that could only refuse. The log says so, and the next
 conversation is told, so the agent can propose afresh against what you are
 brewing now. **Accept and Decline are yours**: there is no tool, in the chat or
 over MCP, that reaches either, and a test walks the registry and the tool
 package's own bytecode to keep it that way.
 
-A profile change is a change to the recipe too — the temperature and the
+A profile change is a change to the version too — the temperature and the
 pressure curve are as much of it as the grind — so a draft proposed inside a
-Set's conversation carries a prediction and obeys the same rules. It still lands
+Recipe's conversation carries a prediction and obeys the same rules. It still lands
 on the Profiles page as a proposal inside its profile: you read the diff and make it active
-(one click, which approves it), and the Set records the new version, with the prediction, in
+(one click, which approves it), and the Recipe records the new version, with the prediction, in
 the same step.
 
 A conversation in **General** is the other way round: the whole archive,
-read-only. It runs SQL over the curated views, compares shots across Sets and
-drafts a profile, and sends a bean with no Set yet to New Set's design path — and it
-cannot change a Set, because a change to a Set is an argument that belongs in
-that Set's own room, where the ledger and the evidence are in front of the
-model. It will tell you which Set's badge to open.
+read-only. It runs SQL over the curated views, compares shots across Recipes and
+drafts a profile, and sends a bean with no Recipe yet to New Recipe's design path — and it
+cannot change a Recipe, because a change to a Recipe is an argument that belongs in
+that Recipe's own room, where the ledger and the evidence are in front of the
+model. It will tell you which Recipe's badge to open.
 
-**One conversation per change.** New in a Set's list starts a fresh one on the
-Set's current version and it stays on that version afterwards, so the list reads
+**One conversation per change.** New in a Recipe's list starts a fresh one on the
+Recipe's current version and it stays on that version afterwards, so the list reads
 as a history of what was argued rather than a pile of rooms all claiming to be
-about today's recipe. Rows are labelled `v6`, and a version the Set later went
-back past is muted and says *dead end*. **Discuss in chat** on a Set, the
-**Chat** link on every entry in the experiment log, and the Set's button in the
+about today's version. Rows are labelled `v6`, and a version the Recipe later went
+back past is muted and says *dead end*. **Discuss in chat** on a Recipe, the
+**Chat** link on every entry in the experiment log, and the Recipe's button in the
 **Chat about** bar above the shots table open or continue that version's
 conversation with the question already typed — press any of them twice and you
 land in the same room. **Accept** on a card in the conversation also tells
 the agent, as your next message ("Accepted: your proposed change (Grind 2 → 1)
-is now version 2 of this Set"), and it
+is now version 2 of this Recipe"), and it
 answers by sending you to a new conversation for the new version: the one you
 are in stays with the version it was opened on. **Decline** tells it too, with
 your reason ("Declined: the dose is not the problem", or "Declined: no reason
 given."), and it answers in the same conversation without sending that card
-again. Answering on the Set page tells no conversation.
+again. Answering on the Recipe page tells no conversation.
 
-**The agent is handed the experiment before it says a word:** the Set and the
-recipe, every version with what changed, what was predicted, against which
-version and how it turned out, the track record, how much this Set's shots vary
+**The agent is handed the experiment before it says a word:** the Recipe and its
+numbers, every version with what changed, what was predicted, against which
+version and how it turned out, the track record, how much this Recipe's shots vary
 when nothing changed, the evidence table this version's prediction is graded on,
 this version's newest shots (twenty by default, `chatRecentShots`) with the
 discards marked, the Keep shots that are the target, and the insights you have
 confirmed. So the first turn is about the coffee rather than about learning what
-Set 3 is. Beside the composer, the page lists exactly what the agent can do in
+Recipe 3 is. Beside the composer, the page lists exactly what the agent can do in
 *this* conversation.
 
 **Every shot is told in two tiers, and every field is explained.** The
@@ -1069,7 +1069,7 @@ information**: one table per group, each item with what it means, a base |
 extended | excluded control and its value on your newest judged shot, written by
 the same renderer the agent reads. An excluded item is left out of the opening
 context, the shot tools, the search and the glossary; a General chat's SQL tool
-can still read the archive's views. Shot id, Set version and whether a shot counts stay in base, since
+can still read the archive's views. Shot id, Recipe version and whether a shot counts stay in base, since
 the agent cannot search or cite without them. The page shows the cost in
 approximate tokens (base and extended per shot, the curve at `chatCurvePoints`,
 the glossary in its two halves, and the opening context's shots at `chatRecentShots`), a change
@@ -1077,49 +1077,49 @@ applies from the next turn, and
 **Reset to defaults** puts every item back. Only the items you moved are stored,
 so an item a later release adds arrives at its default.
 
-**Seventeen tools in a Set's conversation** — twelve reads and five that propose:
+**Seventeen tools in a Recipe's conversation** — twelve reads and five that propose:
 how this conversation's version turned out (`propose_outcome`), waiting for you
-to accept, record another outcome or dismiss; one change to this Set, waiting
+to accept, record another outcome or dismiss; one change to this Recipe, waiting
 for you, with the prediction that makes it gradable (the grind, the dose, the
-yield; a profile change is a separate card, drafted for the Set's own profile); an insight about this Set stored **unconfirmed** that reaches no
+yield; a profile change is a separate card, drafted for the Recipe's own profile); an insight about this Recipe stored **unconfirmed** that reaches no
 future prompt until you add it (naming the shots and versions it rests on, and the added
 insight it replaces, if any); the deletion of one added insight, waiting for you to
 delete or keep it; and a
 profile draft that goes through the same schema, safety-policy and clamp checks
-as one typed by hand. A Set conversation starts with the profile its version brews (and the
+as one typed by hand. A Recipe conversation starts with the profile its version brews (and the
 compared version's, when it is another), as stored; `get_profile` reads any
 other profile version's whole document, and three
 read one shot: `get_shot` its base information, `get_shot_extended` the rest and
-`get_shot_full` both, beside `list_set_shots`, which searches the Set's shots on
+`get_shot_full` both, beside `list_recipe_shots`, which searches the Recipe's shots on
 their base information (filters, ranges, a sort, at most ten back).
 **Seventeen in General** — sixteen reads and one proposal, the profile draft. A
-new bean is not worked out there: the General chat sends you to New Set →
-**Design it with the agent**, whose conversation ends in a first recipe you
-accept. **Eight while a Set is being designed** (below). The registry holds
+new bean is not worked out there: the General chat sends you to New Recipe →
+**Design it with the agent**, whose conversation ends in a first version you
+accept. **Eight while a Recipe is being designed** (below). The registry holds
 twenty-three in total: twelve both kinds have, ten that belong to one kind or the
 other, and `propose_initial_recipe`, which only a design has. None of them
 starts a shot's review or answers one of its claims: only a person's click does. Nothing in the
 chat can touch
 the machine — making a profile active stays a button you press.
 
-**A Set can be designed in its own conversation.** `POST /api/sets/design`
+**A Recipe can be designed in its own conversation.** `POST /api/recipes/design`
 takes a bean and a grinder (both required), optionally a profile to fork, your
 usual grind on that grinder and what you want from the coffee, and creates a
-Set whose version 1 has no recipe yet, with that version's conversation open.
-While the Set is being designed the agent is told what you asked for, the
-profile to fork in full, how this bean went in your other Sets, similar Sets on
+Recipe whose version 1 has no numbers yet, with that version's conversation open.
+While the Recipe is being designed the agent is told what you asked for, the
+profile to fork in full, how this bean went in your other Recipes, similar Recipes on
 this grinder and the matching rules; it asks what it needs and then proposes
-**the initial recipe** with `propose_initial_recipe`: a profile of its own
-(a Set has one profile, and no other Set brews it) plus grind, dose and yield, as one card you accept or
+**the first version** with `propose_initial_recipe`: a profile of its own
+(a Recipe has one profile, and no other Recipe brews it) plus grind, dose and yield, as one card you accept or
 decline. The profile starts from the one you picked to fork, or, when you
 picked none, from nothing: the agent writes it whole, and never builds on a
 profile of yours you did not choose. A newer card replaces the waiting one. Accepting fills
 version 1 in place and ends the design conversation: the agent is told, and
 tells you to talk version 1's shots through in a new conversation (Discuss in chat on
-the Set page opens one rather than the design); its profile is approved with the card, so the
-card's **Accept and sync** is the whole way to the machine. Writing a version by hand, which must name a profile no Set has, ends the design
+the Recipe page opens one rather than the design); its profile is approved with the card, so the
+card's **Accept and sync** is the whole way to the machine. Writing a version by hand, which must name a profile no Recipe has, ends the design
 the same way. A design nobody brewed anything under can be discarded
-(`DELETE /api/sets/{id}/design`).
+(`DELETE /api/recipes/{id}/design`).
 
 Every answer shows what was called, with the input and the output one click
 away, and citations are links: a shot id goes to the shot, a knowledge passage's
@@ -1130,18 +1130,18 @@ held in the tab.
 
 ### A starting point for a new coffee
 
-**New Set** is one form: a name, the bean, the grinder, the profile, the
-recipe and an optional intent. The name starts empty and fills itself in as
+**New Recipe** is one form: a name, the bean, the grinder, the profile, the
+numbers and an optional intent. The name starts empty and fills itself in as
 "<bean> (<grinder>)" once both are picked, following a later pick until
-you type your own; left empty with no grinder, the Set is called after the
-bean. The profile is one no Set has, by the version it has active; while
-Writes are off the list holds none, and the machine's own files stand in (the Set has its
-profile once the list adopts the file). Profiles that already have a Set are listed after them,
-each with its Set's name, under "Has a Set: picking one duplicates it": picking one opens
+you type your own; left empty with no grinder, the Recipe is called after the
+bean. The profile is one no Recipe has, by the version it has active; while
+Writes are off the list holds none, and the machine's own files stand in (the Recipe has its
+profile once the list adopts the file). Profiles that already have a Recipe are listed after them,
+each with its Recipe's name, under "Has a Recipe: picking one duplicates it": picking one opens
 **Duplicate Profile** on its active version, and saving the duplicate adds it and selects it in
 the picker (Cancel leaves the picker as it was). Picking a profile fills the target yield from its
 largest volumetric stop, never over a number you typed, and shows the
-temperature it brews at beside the recipe — that one is the profile's to state,
+temperature it brews at beside the numbers — that one is the profile's to state,
 not yours to type.
 
 Open a coffee nobody has brewed and **Suggest a starting point instead**, folded
@@ -1150,11 +1150,11 @@ grinder already picked and shows what this archive has already brewed on
 *this grinder* that resembles it — same roast level, same process, same
 origin — with how each one went: shots, mean rating, ratio
 and time. That half is one SQL query, costs nothing, and is worth reading on its
-own. A recipe with no shots behind it is never offered: it records an intention,
+own. A version with no shots behind it is never offered: it records an intention,
 not a result.
 
 Press **Ask for suggestions** and the model turns that plus the rule tier into
-three complete first recipes — conservative, recommended, adventurous — each
+three complete first versions — conservative, recommended, adventurous — each
 with a grind, a dose, a yield, a temperature, a profile and a rationale citing
 what it leaned on.
 
@@ -1162,27 +1162,27 @@ An option's temperature has to be true once you take it, and only a profile can
 make it so. When an option points at a profile you already have and suggests a
 temperature that profile does not brew at, the card says that taking it will
 **make a draft** of that profile at the suggested temperature, and the new
-Set's first version points at the draft. Nothing is sent to the machine: you
+Recipe's first version points at the draft. Nothing is sent to the machine: you
 make it active from the Profiles page, exactly as you would any other
 proposal, and the next sync puts it on the machine.
 
 It will not invent a grind number. A grinder's scale is arbitrary and there is
 no conversion between two of them, so a figure on your dial is offered only when
-your usual setting or a past Set on the same grinder anchors it; otherwise the
+your usual setting or a past Recipe on the same grinder anchors it; otherwise the
 answer is relative and the card says so.
 
-Taking one creates the Set with `origin=starting_point`, and — when the option
+Taking one creates the Recipe with `origin=starting_point`, and — when the option
 authored a whole profile rather than pointing at one you already have — a proposal
 waiting on the **Profiles** page. Nothing is pushed; you make it active. The Beans
 page has the same shortcut for the coffee you are looking at. The chat does not
 ask for starting points: a run it started had nowhere to be taken, and
-designing a Set with the agent (below) is the conversation for a new bean.
+designing a Recipe with the agent (below) is the conversation for a new bean.
 
-### Designing a Set with the agent
+### Designing a Recipe with the agent
 
-The third path in **New Set** is **Design it with the agent**, folded under the
+The third path in **New Recipe** is **Design it with the agent**, folded under the
 form like the suggestion. It is for a new profile rather than a first guess: a
-fork of one you have, or a bean you already brew in another Set. It uses the
+fork of one you have, or a bean you already brew in another Recipe. It uses the
 name, bean and grinder from the form, reads the form's profile as the one to
 fork from, and asks only what the form does not: your usual grind on that
 grinder and what you want from the coffee. The grinder is required here — a
@@ -1193,28 +1193,28 @@ numbers, designs the profile around them (a yield you chose is where its last
 phase stops) and works out only what you left empty, changing one of yours
 only when you ask in the conversation. A yield the picked profile filled in
 counts as filled; clear it to leave it to the agent. The intent is not sent:
-the design asks what you want from the coffee instead. The Set page shows the
+the design asks what you want from the coffee instead. The Recipe page shows the
 numbers it keeps under the brief.
 
-**Start designing** creates the Set with an empty version 1 and takes you to
+**Start designing** creates the Recipe with an empty version 1 and takes you to
 that version's conversation, with what you wanted as the first message (or
-"Help me design this Set." when you left it empty, so the agent starts by
+"Help me design this Recipe." when you left it empty, so the agent starts by
 asking). The agent already has your brief, the profile to fork, this bean's
-other Sets and similar Sets on this grinder; it asks what it needs, then
-proposes the whole first recipe as one card — a profile of its own, the grind
+other Recipes and similar Recipes on this grinder; it asks what it needs, then
+proposes the whole first version as one card — a profile of its own, the grind
 (said to be relative when nothing anchors a number on your dial), the dose and
 the yield. Nothing exists until you accept it, in the conversation or on the
-Set page. Accepting makes it version 1 and ends the design: the agent tells you
+Recipe page. Accepting makes it version 1 and ends the design: the agent tells you
 to start a new conversation about the shots, since one conversation is one
 version. Accepting also approves the card's profile, under the Name you typed on the card, and
 switches it on: **Accept and sync** with Writes on starts the sync that puts it on the machine,
 and with Writes off **Accept** leaves it for the first sync after you turn Writes on. Once it is
-on the machine and you have selected it there, shots brewed on it are filed under the new Set.
+on the machine and you have selected it there, shots brewed on it are filed under the new Recipe.
 
-Until then the Set carries a **Designing** badge on the Sets list, on its page
+Until then the Recipe carries a **Designing** badge on the Recipes list, on its page
 and on its badge on the Chat page, with **Continue designing** back into the
-conversation. Recording a version by hand on the Set page ends the design the
-same way. **Discard design** on the Set page deletes a design nobody brewed
+conversation. Recording a version by hand on the Recipe page ends the design the
+same way. **Discard design** on the Recipe page deletes a design nobody brewed
 anything under, after asking; one with a shot filed on it is kept.
 
 The conversation needs an LLM provider (Settings → LLM); everything up to it,
@@ -1226,7 +1226,7 @@ The `claude_code` provider runs the chat's tool loop inside the Claude Code CLI,
 and the CLI calls tools only through an MCP server. So for each chat turn it
 starts `gaggiclanker mcp` as a child process over stdio, pointed at the same
 `DATA_DIR` and told which conversation it is serving, and the model gets exactly
-the tools the chat has with any other provider — the Set's tools inside a Set's
+the tools the chat has with any other provider — the Recipe's tools inside a Recipe's
 folder, the archive's in General. That server is internal to the chat: it opens the database and nothing
 else — no network endpoint, no machine connection, no setting — and like every
 tool it only reads the archive or proposes something a person answers (a signature is in

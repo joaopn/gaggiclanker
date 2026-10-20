@@ -101,7 +101,7 @@ src/
     useArchive.ts     shots (paged and infinite), one shot, its fields, samples, versions
     useVirtualRows.ts the list window with one open row, and "has this row been on screen yet"
   components/
-    charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
+    charts/           chartSetup (registration + palette), Shot/Compare/RecipeTrend
     PullButton.tsx    the top bar's Sync (shots, profiles and notes)
     sync/             SyncOwner: the one owner of "a sync this app started is under way" (mounted
                       with AppShell; the top bar and the proposal cards ask it, and it toasts once, summing the
@@ -119,7 +119,7 @@ Four things about the shots table are worth knowing before editing it.
 
 **A row opens in place; it is not a link.** The row's stretched overlay is a
 `<button>` with `aria-expanded`, and the controls in the row (compare box, stars,
-Set badge or menu, the decision, the row editor) are lifted above it with `z-[1]`,
+Recipe badge or menu, the decision, the row editor) are lifted above it with `z-[1]`,
 the same arrangement the link used — a button wrapping them would be invalid HTML.
 The open panel (`ShotRowPanel`) is the shot page's own two boxes, stacked as on
 the page: `JudgementForm` across the width, saved with its button, and
@@ -146,7 +146,7 @@ column: the grids are exactly their tracks' width, the table (`min-w-max`) is
 as wide as its rows, and the page wraps it in `mx-auto w-fit max-w-full`, so
 the box is centred, ends where the last column does and a row wider than the page scrolls
 sideways. An open row's panel is `w-0 min-w-full` so its text
-cannot widen the table. The default row is Set, Time, Profile,
+cannot widen the table. The default row is Recipe, Time, Profile,
 Duration, Yield, Rating, Decision; Curve, Notes and Flags wait to be
 asked for. A stored column choice that is exactly one of the previous defaults
 (`PREVIOUS_DEFAULT_SHOT_COLUMNS`, one entry per generation, newest first) reads
@@ -206,23 +206,23 @@ src/
     PromptsPage.tsx   one card per prompt: the YAML editor, an "edited" badge, reset
 ```
 
-Sets and judgement add a fourth:
+Recipes and judgement add a fourth:
 
 ```
 src/
   lib/
-    sets.ts           how a recipe, a Set and a bean are written down, and the roasters and
+    recipes.ts        how a version's numbers, a Recipe and a bean are written down, and the roasters and
                       origins the bean form suggests
   hooks/
     useCatalog.ts     the vocabularies, the beans, the grinders, the machine
-    useSets.ts        Sets, versions, trends, the verdict and the assignment
+    useRecipes.ts     Recipes, versions, trends, the verdict and the assignment
   components/
     charts/
-      SetTrendChart.tsx   rating, duration and ratio across a Set's versions
-    sets/             SetBadge, VersionTimeline, NewSetDialog, Designing (the badge, Continue designing)
+      RecipeTrendChart.tsx   rating, duration and ratio across a Recipe's versions
+    recipes/          RecipeBadge, VersionTimeline, NewRecipeDialog, Designing (the badge, Continue designing)
     shots/            JudgementForm (the shot page and the open row), JudgementControls,
-                      AssignToSet, NeedsSetMenu
-  pages/              BeansPage, HardwarePage, SetsPage, SetDetailPage
+                      AssignToRecipe, NeedsRecipeMenu
+  pages/              BeansPage, HardwarePage, RecipesPage, RecipeDetailPage
 ```
 
 The Taste wheel is the last page of Brew setup:
@@ -292,7 +292,7 @@ elements are keyed by a sanitised id (`chunk-<path with punctuation hyphenated>`
 because `#` and `/` are legal in an `id` and unusable in a selector built from
 one; `data-chunk` keeps the real path.
 
-The Set page's insights come from `GET /api/knowledge/insights?set_id=` — the
+The Recipe page's insights come from `GET /api/knowledge/insights?recipe_id=` — the
 server does the scope matching through the same `select_insights` the chat
 uses, so the page cannot show a different answer from the prompt. Do not
 reimplement the matching rule in TypeScript.
@@ -304,12 +304,12 @@ src/
   hooks/
     useChat.ts            threads, the turn, and `useChatRun` — the live stream
   components/chat/
-    ConversationPicker.tsx  a badge per Set above the chat; the open one's conversations, one per line
+    ConversationPicker.tsx  a badge per Recipe above the chat; the open one's conversations, one per line
     ChatTranscript.tsx    questions, answers, and the trace folded under each
     ToolTrace.tsx         one row per call, collapsed, expandable to input/output
     ProposeCard.tsx       what a propose_ tool created, as a link to it
     citations.tsx         shot ids and heading paths turned into links
-    DiscussButton.tsx     the shot and Set pages' way in
+    DiscussButton.tsx     the shot and Recipe pages' way in
   pages/
     ChatPage.tsx          the page: threads, scope picker, composer, cancel
 ```
@@ -412,7 +412,7 @@ how a rule that misleads gets found and turned off.
 
 Nothing in `src/` types a coffee word. Roast levels, processes, burr types,
 grind step units, balance, the flavour wheel, the
-decisions, the Set-version origins, the shot styles, and the rule categories and
+decisions, the Recipe-version origins, the shot styles, and the rule categories and
 confidences all come
 from `GET /api/vocab`
 (`useVocabulary`, cached for the session because they change with a redeploy and
@@ -420,12 +420,12 @@ nothing else). A UI that hard-codes an enum drifts from the CHECK constraint
 behind it, and the symptom is a 422 on a value the user picked from a dropdown
 we shipped.
 
-Two conventions worth knowing before editing a Set form. The **new-version form
-starts empty**: `POST /api/sets/{id}/versions` inherits any field that is not
-sent, so prefilling it with the current recipe would record all six as changed
-and the timeline's diff would say nothing. And the mutations in `useSets`
-deliberately invalidate `shots` *and* `sets` together — saving a judgement moves
-a shot row, a Set page's copy of that row and a chart average at once, and
+Two conventions worth knowing before editing a Recipe form. The **new-version form
+starts empty**: `POST /api/recipes/{id}/versions` inherits any field that is not
+sent, so prefilling it with the current numbers would record all six as changed
+and the timeline's diff would say nothing. And the mutations in `useRecipes`
+deliberately invalidate `shots` *and* `recipes` together — saving a judgement moves
+a shot row, a Recipe page's copy of that row and a chart average at once, and
 naming three keys per call site is how one of them gets forgotten.
 
 `LlmSection` exists because a form generated from the registry cannot know that
@@ -462,7 +462,7 @@ fixture, and each chart renders a `sr-only` text summary of what it drew, which
 is what the page tests assert on.
 
 Chart.js is registered once in `components/charts/chartSetup.ts` and reaches the
-bundle through `React.lazy`: `/shots/:id`, the compare drawer and the Set trend
+bundle through `React.lazy`: `/shots/:id`, the compare drawer and the Recipe trend
 chart are code-split, so listing shots never downloads 200 kB of charting
 library.
 `npm run build` prints the split — look for `chartSetup-*.js`.
@@ -490,7 +490,7 @@ uv run python scripts/build_web_shot_fixture.py
 the shot page's tests render: the constructed lever shot filed under a version
 with a target, the same shot as a machine with no scale and with no pressure sensor
 records it (channels zeroed and the flag cleared, so those fields are absent),
-and the exported shot in no Set. Real shots through the real pipeline, regenerated
+and the exported shot in no Recipe. Real shots through the real pipeline, regenerated
 after a change to the catalogue, the phase metrics or the route:
 
 ```bash
@@ -531,7 +531,7 @@ opened by hand is remembered in `localStorage` under `sidebar.groups.v1` (group
 ids, read behind `try/catch`); one that opened because its page is showing is
 not recorded. A page inside a group keeps its own chord — `navShortcuts()`
 flattens the table for the bindings and the shortcut sheet — and a group may
-have a chord of its own that goes to its `to`. The rows are Shots, Chat, Sets, Profiles,
+have a chord of its own that goes to its `to`. The rows are Shots, Chat, Recipes, Profiles,
 Brew setup (Beans, Hardware, Taste wheel) and Settings; no group nests another. A group's children need not share its URL prefix:
 `/knowledge` is listed under Settings just before Prompts and keeps its own address
 and chord, so every citation link into it still resolves.
@@ -615,7 +615,7 @@ positioning pass** — every collision check walks the tree calling
 `getComputedStyle`, and this project has no headless browser to escape to. A
 primitive whose panel cannot be opened in a test is a primitive nothing checks,
 and the places it is used (the shots page's filter panel, column chooser, row
-editor and needs-a-Set menu) are where the behaviour matters. It does CSS
+editor and needs-a-Recipe menu) are where the behaviour matters. It does CSS
 positioning plus the behaviour a reader expects: Escape closes and returns focus
 to the trigger, a click outside closes, the trigger reports `aria-expanded`.
 

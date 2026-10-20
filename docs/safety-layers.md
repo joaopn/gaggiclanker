@@ -86,7 +86,7 @@ will be written.)
 
 **The chat adds a caller, not writes, and its tools cannot reach the machine.**
 Every tool declares a permission class, and there are exactly two: `read`, and
-`propose`, which writes to gaggiclanker — a Set version, a profile draft, an
+`propose`, which writes to gaggiclanker — a Recipe version, a profile draft, an
 unconfirmed insight, a proposed grade, and a profile's signature (in force until a person rejects it) — and to nothing else. The registry refuses to register a
 tool declaring anything else, so the chat is handed the same set whichever
 provider runs it — including `claude_code`, whose tool loop reaches the registry
@@ -171,9 +171,9 @@ With the switch on, every sync ends by making the machine match the list, in thi
    puts the recorded document back on the file (or removes the new file through the guarded
    path) and keeps the previous version; the version is not tried again until another is made
    active.
-4. **Each profile that is off**: its file is removed under the guard. A Set brewing it does not
+4. **Each profile that is off**: its file is removed under the guard. A Recipe brewing it does not
    hold it back (switching a profile off, or changing its active version, is the person's
-   explicit choice; the list serves the Sets so the page can warn beforehand).
+   explicit choice; the list serves the Recipes so the page can warn beforehand).
 5. **Each deleted row** (the old Delete) the same way.
 6. **Stars**, only for profiles that are on and from a fresh read when anything was written
    above; a star is remembered while a profile is off.

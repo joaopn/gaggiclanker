@@ -13,6 +13,17 @@ database.
 
 ## [Unreleased]
 
+### Sets are now Recipes
+
+- **Changed: what the app called a Set is now a Recipe**, everywhere you read or type it: the page, the list, the buttons, the chat, the prompts, the shots table's column and the address bar (`/recipes`, `?recipe=`). A Recipe is still one bean on one grinder with one profile, versioned. The word recipe no longer also names a version's grind, dose and yield; where the docs mean those they say the numbers.
+- **Changed: the Spread line counts settings.** "From 9 repeat shots of 3 recipes" now reads "at 3 settings" (each is one grind, dose, yield and profile version), on the Recipe page and in what the agent is told, so it cannot be read as three Recipes.
+- **What changes in the database:** every table, column, index and view named for Sets is renamed for Recipes (eight tables, eighteen columns, twenty-two indexes, four views), and the old names are rewritten wherever the app stored them inside its own documents: what an insight rests on, a pattern proposal's sources and skipped list, a starting point's output, a pattern run's dropped counts, and the action on a profile draft's outcome.
+- **Carried forward:** every row. A rename changes no value, so nothing is derived or lost, and the row ids are the ones they were.
+- **What you do:** nothing. The upgrade runs at the first start, after the automatic backup, all or nothing. A backup taken before this release is upgraded when you restore it, by the same step, and the restore preview says so.
+- **Prompts you edited keep your text.** The upgrade changes only the tool names and the two variables inside them (`set_insights`, `similar_sets`) and renames the `chat-set` prompt to `chat-recipe`; the words around them, including "Set", stay yours until you reset the prompt.
+- **Old links keep working.** `/sets`, `/sets/<id>` and `?set=` redirect to the Recipe, and the shots table reads its saved column choices and widths under the new names (they are saved under those names the next time you change one).
+- **The agent's tools are renamed** (`get_recipe`, `list_recipes`, `list_recipe_shots`, `propose_recipe_version`, and the `GAGGICLANKER_MCP_*` scope variables). This matters only to an MCP client you configured by hand, which has to use the new names. Old chat transcripts keep the names they were written with and still read correctly.
+
 ### Duplicate Profile, and Duplicate Set
 
 - **Changed: "Edit a copy" on a profile version is now Duplicate Profile.** The dialog is titled
