@@ -94,8 +94,8 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
 
         <p className="mb-2 text-muted-foreground text-xs" data-testid="chat-insight-about">
           About this Set only
-          {row.set_version_label
-            ? `, learned at ${row.set_version_label}`
+          {row.recipe_version_label
+            ? `, learned at ${row.recipe_version_label}`
             : ", version not recorded"}
           .
         </p>
@@ -163,7 +163,7 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
                   ? "The insight it was meant to replace had already changed, so nothing was deleted. "
                   : ""}
               It is on{" "}
-              <Link to={`/sets/${row.set_id}`} className="underline underline-offset-2">
+              <Link to={`/sets/${row.recipe_id}`} className="underline underline-offset-2">
                 the Set's page
               </Link>
               .

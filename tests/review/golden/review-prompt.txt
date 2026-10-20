@@ -265,7 +265,7 @@ For detailed phase-by-phase explanations and how to adapt the profile:
 dial_in_order:
   [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
   [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency).
-  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Set version is to be able to say what a single change did.
+  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Recipe version is to be able to say what a single change did.
   [taste_is_ground_truth] The user's tasting notes outrank the telemetry. Sour, weak or fast means under-extracted; bitter, harsh or slow means over-extracted — whatever the curve looked like. Never contradict a recorded taste with a number.
 
 increments:
@@ -314,7 +314,7 @@ window: `{}` for the whole shot, `{"phase": "<a phase this shot logged>"}`, or a
 Pre-infusion; Bloom; Pressurise
 
 === prediction ===
-The Set version the shot is filed under (v1) was filed with no prediction: the output has no `prediction` key.
+The Recipe version the shot is filed under (v1) was filed with no prediction: the output has no `prediction` key.
 
 === profile ===
 Medium 18g 1:2
@@ -330,7 +330,7 @@ phase 1 · Bloom: type preinfusion; start 3.0 s; duration 7.0 s; ended by Durati
 phase 2 · Pressurise: type brew; start 10.0 s; duration 18.0 s; ended by Volumetric target; pressure 8.8 bar; temperature 93.4 °C; puck volume (estimated) 31.8 ml; cup at end 36.4 g, 101.1 % of target; cup gained 36.0 g; cup share of target 101.1 %; resistance 2.40; samples 72
 [Identity and status]
 Date and time: 2026-03-03 08:25
-Set version: v1 of Set 1
+Recipe version: v1 of Recipe 1
 Profile: Medium 18g 1:2
 Machine's shot number: 000106
 [Outcome]
@@ -362,7 +362,7 @@ Resistance slope: -0.04 /s
 [Profile compliance]
 Pressure adherence: 0.31 bar
 Flow adherence: 0.44 ml/s
-[The version's recipe]
+[The version's numbers]
 Recipe grind: 22 numbers
 Recipe dose: 18.0 g
 Recipe target yield: 36.0 g

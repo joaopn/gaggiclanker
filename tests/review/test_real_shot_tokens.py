@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.recipes import SetVersionRow
+from gaggiclanker.db.repos.recipes import RecipeVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.slog import parse_slog
@@ -163,7 +163,7 @@ async def test_the_yield_faults_need_the_version_the_shot_is_filed_under(
     assert "fault:over_target" not in unfiled.signals
 
     # A shot filed under a Recipe version (a 36 g target) gets it, from the same function.
-    version = SetVersionRow.model_construct(target_yield_g=36.0)
+    version = RecipeVersionRow.model_construct(target_yield_g=36.0)
     filed = dataclasses.replace(facts, version=version)
     assert "fault:over_target" in signal_tokens(filed, UNKNOWN)
     assert "fault:under_target" not in signal_tokens(filed, UNKNOWN)

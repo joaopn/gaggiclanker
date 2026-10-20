@@ -28,7 +28,7 @@ beforeEach(() => {
   getSets.mockResolvedValue({ items: [setRow()] });
   // The Set's current version (v2) has grind 21.
   getSet.mockResolvedValue(setDetail());
-  putShotSetVersion.mockResolvedValue({ set_badge: null });
+  putShotSetVersion.mockResolvedValue({ recipe_badge: null });
   addSetVersion.mockResolvedValue(version({ id: 23, version_major: 3, parent_version_id: 22 }));
 });
 

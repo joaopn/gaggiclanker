@@ -69,7 +69,7 @@ async def test_the_signature_is_served_with_each_expectation_and_the_recipes_tha
     assert first["status"] == "confirmed" and first["needs_a_new_phase"] is False
     assert first["answered_at"] is None
     assert [e["tier"] for e in body["expectations"]] == ["critical", "important", "context"]
-    assert [s["set_name"] for s in body["sets"]] == ["Alturas"]
+    assert [s["recipe_name"] for s in body["recipes"]] == ["Alturas"]
     assert sorted(e["id"] for e in body["expectations"]) == sorted(ids)
 
 
@@ -171,10 +171,10 @@ async def test_an_override_is_rejected_and_restored_by_the_recipe_it_belongs_to(
 ) -> None:
     version, (measure, *_) = await _in_force(app)
     first, _ = await make_recipe_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
-    assert set_id is not None
+    recipe_id = await SignatureRepository(app.state.db).recipe_of_version(first)
+    assert recipe_id is not None
     proposed = await SignatureService(app.state.db).propose_override(
-        set_version_id=first,
+        recipe_version_id=first,
         profile_version_id=version,
         expectation_id=measure,
         compare={"op": "<=", "value": 0.2},
@@ -182,7 +182,7 @@ async def test_an_override_is_rejected_and_restored_by_the_recipe_it_belongs_to(
         thread_id=None,
     )
 
-    listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
+    listed = _ok(await client.get(f"/api/recipes/{recipe_id}/versions/{first}/signature-overrides"))
     (item,) = listed["items"]
     assert (item["compare_text"], item["profile_compare_text"]) == ("at most 0.2", "at most 0.15")
     # The limits as a person reads them: a share is a percentage, of what it is a share of.
@@ -194,27 +194,30 @@ async def test_an_override_is_rejected_and_restored_by_the_recipe_it_belongs_to(
     assert item["expectation_status"] == "confirmed"
     assert (
         await client.post(
-            f"/api/sets/{set_id + 1}/signature-overrides/{proposed.id}/reject", json={}
+            f"/api/recipes/{recipe_id + 1}/signature-overrides/{proposed.id}/reject", json={}
         )
     ).status_code == 404
 
     done = _ok(
         await client.post(
-            f"/api/sets/{set_id}/signature-overrides/{proposed.id}/reject", json={"reason": "x"}
+            f"/api/recipes/{recipe_id}/signature-overrides/{proposed.id}/reject",
+            json={"reason": "x"},
         )
     )
     assert done["override"]["status"] == "rejected"
     again = await client.post(
-        f"/api/sets/{set_id}/signature-overrides/{proposed.id}/reject", json={}
+        f"/api/recipes/{recipe_id}/signature-overrides/{proposed.id}/reject", json={}
     )
     assert again.status_code == 409 and _error(again)["code"] == "OVERRIDE_REJECTED"
     assert await SignatureRepository(app.state.db).confirmed_overrides([first]) == {}
-    back = _ok(await client.post(f"/api/sets/{set_id}/signature-overrides/{proposed.id}/restore"))
+    back = _ok(
+        await client.post(f"/api/recipes/{recipe_id}/signature-overrides/{proposed.id}/restore")
+    )
     assert back["override"]["status"] == "confirmed"
-    twice = await client.post(f"/api/sets/{set_id}/signature-overrides/{proposed.id}/restore")
+    twice = await client.post(f"/api/recipes/{recipe_id}/signature-overrides/{proposed.id}/restore")
     assert twice.status_code == 409 and _error(twice)["code"] == "OVERRIDE_NOT_REJECTED"
     assert (
-        await client.get(f"/api/sets/{set_id}/versions/9999/signature-overrides")
+        await client.get(f"/api/recipes/{recipe_id}/versions/9999/signature-overrides")
     ).status_code == 404
 
 
@@ -223,9 +226,9 @@ async def test_a_rejected_override_keeps_its_reason(
 ) -> None:
     version, (measure, *_) = await _in_force(app)
     first, _ = await make_recipe_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
+    recipe_id = await SignatureRepository(app.state.db).recipe_of_version(first)
     proposed = await SignatureService(app.state.db).propose_override(
-        set_version_id=first,
+        recipe_version_id=first,
         profile_version_id=version,
         expectation_id=measure,
         compare={"op": "<=", "value": 0.2},
@@ -234,7 +237,7 @@ async def test_a_rejected_override_keeps_its_reason(
     )
     out = _ok(
         await client.post(
-            f"/api/sets/{set_id}/signature-overrides/{proposed.id}/reject",
+            f"/api/recipes/{recipe_id}/signature-overrides/{proposed.id}/reject",
             json={"reason": "no, keep it tight"},
         )
     )
@@ -249,13 +252,13 @@ async def test_a_restore_is_refused_while_another_override_is_in_force_or_its_ex
 ) -> None:
     version, (measure, *_) = await _in_force(app)
     first, _ = await make_recipe_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
-    assert set_id is not None
+    recipe_id = await SignatureRepository(app.state.db).recipe_of_version(first)
+    assert recipe_id is not None
     service = SignatureService(app.state.db)
 
     async def propose(value: float) -> Any:
         return await service.propose_override(
-            set_version_id=first,
+            recipe_version_id=first,
             profile_version_id=version,
             expectation_id=measure,
             compare={"op": "<=", "value": value},
@@ -264,18 +267,18 @@ async def test_a_restore_is_refused_while_another_override_is_in_force_or_its_ex
         )
 
     one = await propose(0.2)
-    reject = f"/api/sets/{set_id}/signature-overrides/{one.id}/reject"
-    restore = f"/api/sets/{set_id}/signature-overrides/{one.id}/restore"
+    reject = f"/api/recipes/{recipe_id}/signature-overrides/{one.id}/reject"
+    restore = f"/api/recipes/{recipe_id}/signature-overrides/{one.id}/restore"
     await client.post(reject, json={})
     two = await propose(0.3)
     refused = await client.post(restore)
     assert refused.status_code == 409 and _error(refused)["code"] == "OVERRIDE_ANOTHER_IN_FORCE"
-    await client.post(f"/api/sets/{set_id}/signature-overrides/{two.id}/reject", json={})
+    await client.post(f"/api/recipes/{recipe_id}/signature-overrides/{two.id}/reject", json={})
     await client.post(f"/api/signature-expectations/{measure}/reject", json={})
     out = await client.post(restore)
     assert out.status_code == 409 and _error(out)["code"] == "EXPECTATION_NOT_CONFIRMED"
     # A replaced override is "withdrawn", listed after the one that replaced it.
-    listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
+    listed = _ok(await client.get(f"/api/recipes/{recipe_id}/versions/{first}/signature-overrides"))
     assert [i["status"] for i in listed["items"]] == ["rejected", "rejected"]
 
 
@@ -284,18 +287,18 @@ async def test_a_replaced_override_reads_as_withdrawn_and_is_not_a_rejection(
 ) -> None:
     version, (measure, *_) = await _in_force(app)
     first, _ = await make_recipe_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
+    recipe_id = await SignatureRepository(app.state.db).recipe_of_version(first)
     service = SignatureService(app.state.db)
     for value in (0.2, 0.3):
         await service.propose_override(
-            set_version_id=first,
+            recipe_version_id=first,
             profile_version_id=version,
             expectation_id=measure,
             compare={"op": "<=", "value": value},
             reason="r",
             thread_id=None,
         )
-    listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
+    listed = _ok(await client.get(f"/api/recipes/{recipe_id}/versions/{first}/signature-overrides"))
     assert [(i["status"], i["reject_reason"]) for i in listed["items"]] == [
         ("confirmed", ""),
         ("withdrawn", ""),
@@ -303,7 +306,7 @@ async def test_a_replaced_override_reads_as_withdrawn_and_is_not_a_rejection(
     withdrawn = listed["items"][1]["id"]
     # Nothing to reject or restore on a replaced one.
     assert (
-        await client.post(f"/api/sets/{set_id}/signature-overrides/{withdrawn}/restore")
+        await client.post(f"/api/recipes/{recipe_id}/signature-overrides/{withdrawn}/restore")
     ).status_code == 409
 
 
@@ -323,9 +326,9 @@ async def test_an_override_of_a_limit_in_a_unit_words_both_limits_in_it(
         reason="a lever's ramp is gentle",
     )
     first, _ = await make_recipe_versions(app.state.db, version)
-    set_id = await SignatureRepository(app.state.db).recipe_of_version(first)
+    recipe_id = await SignatureRepository(app.state.db).recipe_of_version(first)
     await SignatureService(app.state.db).propose_override(
-        set_version_id=first,
+        recipe_version_id=first,
         profile_version_id=version,
         expectation_id=row.id,
         compare={"op": "<=", "value": 4.0},
@@ -333,7 +336,7 @@ async def test_an_override_of_a_limit_in_a_unit_words_both_limits_in_it(
         thread_id=None,
     )
 
-    listed = _ok(await client.get(f"/api/sets/{set_id}/versions/{first}/signature-overrides"))
+    listed = _ok(await client.get(f"/api/recipes/{recipe_id}/versions/{first}/signature-overrides"))
 
     (item,) = listed["items"]
     assert (item["limit_text"], item["profile_limit_text"]) == ("at most 4 g/s", "at most 3 g/s")

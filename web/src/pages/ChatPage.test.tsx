@@ -72,10 +72,10 @@ vi.mock("@/api/client", async (importOriginal) => ({
 const THREAD = {
   id: 1,
   title: "Why is Guji sour?",
-  set_id: 3,
-  set_name: "Guji on the Niche",
-  set_version_id: 30,
-  set_version_label: "v4",
+  recipe_id: 3,
+  recipe_name: "Guji on the Niche",
+  recipe_version_id: 30,
+  recipe_version_label: "v4",
   dead_end: false,
   message_count: 2,
   created_at: "2026-03-01T10:00:00.000Z",
@@ -194,7 +194,7 @@ beforeEach(() => {
   getChatTools.mockResolvedValue({
     tools: [
       { name: "get_shot", permission: "read", description: "one shot" },
-      { name: "propose_set_version", permission: "propose", description: "a version" },
+      { name: "propose_recipe_version", permission: "propose", description: "a version" },
     ],
   });
   createChatThread.mockResolvedValue({ ...THREAD, id: 2, title: "", message_count: 0 });
@@ -212,8 +212,8 @@ beforeEach(() => {
 describe("ChatPage folders", () => {
   it("labels a conversation with the version it is about, and mutes a dead end", async () => {
     getChatThreads.mockResolvedValue([
-      thread({ id: 1, title: "the live one", set_version_label: "v4" }),
-      thread({ id: 2, title: "the abandoned one", set_version_label: "v2", dead_end: true }),
+      thread({ id: 1, title: "the live one", recipe_version_label: "v4" }),
+      thread({ id: 2, title: "the abandoned one", recipe_version_label: "v2", dead_end: true }),
     ]);
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
 
@@ -232,14 +232,14 @@ describe("ChatPage folders", () => {
   it("names a minor version by its name, never by its ordinal", async () => {
     // The Set's third version is v1.2: two dial-in changes after v1.
     getChatThreads.mockResolvedValue([
-      thread({ id: 1, title: "the live one", set_version_label: "v1.2" }),
+      thread({ id: 1, title: "the live one", recipe_version_label: "v1.2" }),
     ]);
     getChatThread.mockResolvedValue({
       ...DETAIL,
       thread: thread({
         id: 1,
         title: "the live one",
-        set_version_label: "v1.2",
+        recipe_version_label: "v1.2",
       }),
     });
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
@@ -296,9 +296,9 @@ describe("ChatPage folders", () => {
   it("keeps archived Sets behind a toggle, as a badge per Set and not one list", async () => {
     const user = setupUser();
     getChatThreads.mockResolvedValue([
-      thread({ id: 7, title: "the finished bag", set_id: 99, set_name: "Finished Ethiopia" }),
-      thread({ id: 8, title: "last winter", set_id: 98, set_name: "Old decaf" }),
-      thread({ id: 9, title: "more about last winter", set_id: 98, set_name: "Old decaf" }),
+      thread({ id: 7, title: "the finished bag", recipe_id: 99, recipe_name: "Finished Ethiopia" }),
+      thread({ id: 8, title: "last winter", recipe_id: 98, recipe_name: "Old decaf" }),
+      thread({ id: 9, title: "more about last winter", recipe_id: 98, recipe_name: "Old decaf" }),
     ]);
     renderWithQueryClient(<ChatPage />);
 
@@ -337,15 +337,15 @@ describe("ChatPage folders", () => {
 
   it("shows an archived Set's badge when its conversation is the one opened", async () => {
     getChatThreads.mockResolvedValue([
-      thread({ id: 7, title: "the finished bag", set_id: 99, set_name: "Finished Ethiopia" }),
+      thread({ id: 7, title: "the finished bag", recipe_id: 99, recipe_name: "Finished Ethiopia" }),
     ]);
     getChatThread.mockResolvedValue({
       ...DETAIL,
       thread: thread({
         id: 7,
         title: "the finished bag",
-        set_id: 99,
-        set_name: "Finished Ethiopia",
+        recipe_id: 99,
+        recipe_name: "Finished Ethiopia",
       }),
     });
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=7"] });
@@ -391,7 +391,7 @@ describe("ChatPage folders", () => {
       within(inside).getByRole("button", { name: "New conversation in Kenya AA on the Niche" }),
     );
 
-    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: 4 }));
+    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", recipe_id: 4 }));
     // Selected: the transcript pane is now that conversation's.
     await waitFor(() => expect(getChatThread).toHaveBeenCalledWith(2));
   });
@@ -404,7 +404,9 @@ describe("ChatPage folders", () => {
     const inside = await opened(user, "General");
     await user.click(within(inside).getByRole("button", { name: "New conversation in General" }));
 
-    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: null }));
+    await waitFor(() =>
+      expect(createChatThread).toHaveBeenCalledWith({ title: "", recipe_id: null }),
+    );
   });
 
   it("shows one badge's list at a time: aria-pressed, a region that resolves, the rest hidden", async () => {
@@ -434,9 +436,9 @@ describe("ChatPage folders", () => {
 
   it("lists the open badge's conversations one per line, with the version first", async () => {
     getChatThreads.mockResolvedValue([
-      thread({ id: 1, title: "the live one", set_version_label: "v4", message_count: 6 }),
-      thread({ id: 2, title: "the one before", set_version_label: "v3", message_count: 2 }),
-      { ...thread({ id: 3, title: "a general one" }), set_id: null, set_name: null },
+      thread({ id: 1, title: "the live one", recipe_version_label: "v4", message_count: 6 }),
+      thread({ id: 2, title: "the one before", recipe_version_label: "v3", message_count: 2 }),
+      { ...thread({ id: 3, title: "a general one" }), recipe_id: null, recipe_name: null },
     ]);
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
 
@@ -465,7 +467,7 @@ describe("ChatPage folders", () => {
     ).toBeInTheDocument();
     await user.type(screen.getByLabelText("Message"), "how is it going?");
     await user.click(screen.getByRole("button", { name: /send/i }));
-    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: 4 }));
+    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", recipe_id: 4 }));
   });
 
   it("opens General when there are no Sets", async () => {
@@ -489,7 +491,9 @@ describe("ChatPage folders", () => {
 
     await user.type(screen.getByLabelText("Message"), "what is a 1:2 ratio?");
     await user.click(screen.getByRole("button", { name: /send/i }));
-    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: null }));
+    await waitFor(() =>
+      expect(createChatThread).toHaveBeenCalledWith({ title: "", recipe_id: null }),
+    );
   });
 
   it("opens the badge holding the selected conversation, over the newest Set", async () => {
@@ -702,7 +706,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /send/i }));
 
     // And the first question creates it in that Set, not as a general one.
-    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: 3 }));
+    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", recipe_id: 3 }));
   });
 
   it("says a first question with no scope is a general conversation", async () => {
@@ -735,7 +739,7 @@ describe("ChatPage", () => {
   it("leaves no trailing space when the conversation names no version", async () => {
     getChatThread.mockResolvedValue({
       ...DETAIL,
-      thread: { ...DETAIL.thread, set_version_label: null },
+      thread: { ...DETAIL.thread, recipe_version_label: null },
     });
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
@@ -749,15 +753,15 @@ describe("ChatPage", () => {
   it("asks for the tool list of the kind of conversation it is showing", async () => {
     getChatTools.mockResolvedValue({
       tools: [
-        { name: "list_set_shots", permission: "read", description: "this Set's shots" },
-        { name: "propose_set_version", permission: "propose", description: "a version" },
+        { name: "list_recipe_shots", permission: "read", description: "this Set's shots" },
+        { name: "propose_recipe_version", permission: "propose", description: "a version" },
       ],
     });
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
     await screen.findByTestId("chat-transcript");
-    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set"));
-    expect(screen.getByTestId("chat-tools")).toHaveTextContent("list_set_shots");
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe"));
+    expect(screen.getByTestId("chat-tools")).toHaveTextContent("list_recipe_shots");
     expect(screen.getByTestId("chat-tools")).toHaveTextContent("It can see this Set only");
   });
 
@@ -807,10 +811,10 @@ describe("ChatPage, a Set being designed", () => {
   const DESIGN_THREAD = thread({
     id: 12,
     title: "Help me design this Set.",
-    set_id: 6,
-    set_name: "Guji on the DF64",
-    set_version_id: 60,
-    set_version_label: "v1",
+    recipe_id: 6,
+    recipe_name: "Guji on the DF64",
+    recipe_version_id: 60,
+    recipe_version_label: "v1",
   });
 
   it("marks the badge of a Set being designed, and no other", async () => {
@@ -834,9 +838,9 @@ describe("ChatPage, a Set being designed", () => {
     });
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=12"] });
 
-    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set", { designing: true }));
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe", { designing: true }));
     // Only that list: the ordinary Set list would be tools the agent does not have.
-    expect(getChatTools).not.toHaveBeenCalledWith("set");
+    expect(getChatTools).not.toHaveBeenCalledWith("recipe");
     expect(await screen.findByTestId("chat-tools")).toHaveTextContent("propose_initial_recipe");
     expect(screen.getByTestId("chat-tools")).toHaveTextContent("designing this Set's first recipe");
   });
@@ -845,8 +849,8 @@ describe("ChatPage, a Set being designed", () => {
     getSets.mockResolvedValue({ items: DESIGNING });
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
-    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set"));
-    expect(getChatTools).not.toHaveBeenCalledWith("set", { designing: true });
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe"));
+    expect(getChatTools).not.toHaveBeenCalledWith("recipe", { designing: true });
   });
 
   it("switches to the Set tools once the Sets list says the design is over", async () => {
@@ -856,7 +860,7 @@ describe("ChatPage, a Set being designed", () => {
     const { queryClient } = renderWithQueryClient(<ChatPage />, {
       initialEntries: ["/chat?thread=12"],
     });
-    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set", { designing: true }));
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe", { designing: true }));
 
     // Accepting the first recipe clears the flag and invalidates the list.
     getSets.mockResolvedValue({
@@ -864,7 +868,7 @@ describe("ChatPage, a Set being designed", () => {
     });
     await queryClient.invalidateQueries({ queryKey: ["sets", "list"] });
 
-    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set"));
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe"));
   });
 
   it("waits for the Sets before asking which tools a Set conversation has", async () => {
@@ -905,7 +909,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
         ...DETAIL.messages[1],
         id: 3,
         content: "",
-        tool_calls: [{ id: "c1", name: "propose_set_version", arguments: {} }],
+        tool_calls: [{ id: "c1", name: "propose_recipe_version", arguments: {} }],
       },
       {
         ...DETAIL.messages[1],
@@ -916,9 +920,9 @@ describe("ChatPage, accepting a card in the conversation", () => {
         tool_results: [
           {
             id: "c1",
-            name: "propose_set_version",
+            name: "propose_recipe_version",
             ok: true,
-            content: JSON.stringify({ proposal_id: 5, set_id: 3, changed: ["the dose"] }),
+            content: JSON.stringify({ proposal_id: 5, recipe_id: 3, changed: ["the dose"] }),
           },
         ],
       },
@@ -926,7 +930,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
   };
   const WAITING = {
     id: 5,
-    set_id: 3,
+    recipe_id: 3,
     kind: "change",
     thread_id: 1,
     base_version_id: 30,

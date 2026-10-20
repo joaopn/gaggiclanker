@@ -67,7 +67,7 @@ async def test_a_copy_is_the_originals_document_under_a_new_name_and_waits_for_n
     # Nothing waits for a person: the draft was approved by the put, in the same step.
     assert board["proposals"] == []
     draft = await ProfileDraftsRepository(app.state.db).get(row["row"]["pending_draft_id"])
-    assert draft is not None and draft.status == "approved" and draft.set_id is None
+    assert draft is not None and draft.status == "approved" and draft.recipe_id is None
     assert [r["row"]["label"] for r in board["rows"]].count("Blooming v1.2") == 1
 
 

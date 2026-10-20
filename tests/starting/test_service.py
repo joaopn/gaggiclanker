@@ -21,7 +21,7 @@ from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.models import Profile
-from gaggiclanker.domain.recipes import grind_value, set_name
+from gaggiclanker.domain.recipes import grind_value, recipe_name
 from gaggiclanker.infra.errors import Conflict, Unprocessable
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.errors import LlmApiError
@@ -101,7 +101,7 @@ async def test_citations_the_run_was_not_given_are_dropped(
     invented = option_with(
         rules_used=["light", "a_rule_that_does_not_exist"],
         excerpts_used=["NOWHERE#at-all"],
-        similar_set_version_ids=[9999],
+        similar_recipe_version_ids=[9999],
         profile_version_id=4242,
     )
     provider.script = [json.dumps(invented)]
@@ -111,7 +111,7 @@ async def test_citations_the_run_was_not_given_are_dropped(
     assert option is not None
     assert option.rules_used == ["light"]
     assert option.excerpts_used == []
-    assert option.similar_set_version_ids == []
+    assert option.similar_recipe_version_ids == []
     # A profile id the model was never shown is *cleared*, not kept: a Recipe
     # version pointing at an arbitrary profile would change which shots
     # auto-assignment attaches to it.
@@ -168,8 +168,8 @@ async def test_accepting_creates_the_recipe_with_origin_starting_point(
 
     assert accepted.draft is None
     assert accepted.run.accepted_option == "recommended"
-    assert accepted.run.accepted_set_id == accepted.recipe_row.id
-    assert accepted.run.accepted_set_version_id == version.id
+    assert accepted.run.accepted_recipe_id == accepted.recipe_row.id
+    assert accepted.run.accepted_recipe_version_id == version.id
 
 
 async def test_a_relative_grind_is_stored_as_text_with_no_value(
@@ -427,13 +427,13 @@ async def test_without_a_draft_service_an_option_that_needs_one_is_refused(
     ]
     run = await _propose(unwired, fixture)
 
-    before = await RecipesRepository(fixture.db).list_sets(include_archived=True)
+    before = await RecipesRepository(fixture.db).list_recipes(include_archived=True)
     with pytest.raises(Unprocessable) as raised:
         await unwired.accept(run.id, "recommended")  # type: ignore[attr-defined]
     assert raised.value.status == 422
     assert "drafting is not available" in raised.value.message
 
-    after = await RecipesRepository(fixture.db).list_sets(include_archived=True)
+    after = await RecipesRepository(fixture.db).list_recipes(include_archived=True)
     assert [row.id for row in after] == [row.id for row in before], "nothing was created"
     versions = await fixture.db.fetch_value("SELECT COUNT(*) FROM recipe_versions")
     drafts = await fixture.db.fetch_value("SELECT COUNT(*) FROM profile_drafts")
@@ -480,7 +480,7 @@ async def test_a_profile_the_policy_refuses_never_becomes_an_ok_run(
     assert run.status == "failed"  # type: ignore[attr-defined]
     assert run.error is not None and run.error.startswith("invalid_output:")  # type: ignore[attr-defined]
 
-    rows = await RecipesRepository(fixture.db).list_sets(include_archived=True)
+    rows = await RecipesRepository(fixture.db).list_recipes(include_archived=True)
     assert not any(row.bean_id == fixture.new_bean_id for row in rows), "nothing was created"
 
 
@@ -506,9 +506,9 @@ async def test_a_profile_the_configured_bounds_refuse_is_a_422_and_creates_nothi
     assert raised.value.status == 422
     assert raised.value.details, "the refusal names every violation at once"
 
-    rows = await RecipesRepository(fixture.db).list_sets(include_archived=True)
-    assert not any(row.bean_id == fixture.new_bean_id for row in rows), "no half-created Set"
-    assert rows, "the fixture's own Sets are untouched"
+    rows = await RecipesRepository(fixture.db).list_recipes(include_archived=True)
+    assert not any(row.bean_id == fixture.new_bean_id for row in rows), "no half-created Recipe"
+    assert rows, "the fixture's own Recipes are untouched"
 
     # And the run is acceptable again: the other two options may be fine, and a
     # claim that could not be kept must not lock them out for ever.
@@ -540,10 +540,10 @@ async def test_two_accepts_at_once_make_one_recipe_and_one_409(
 
     recipes = [
         row
-        for row in await RecipesRepository(fixture.db).list_sets(include_archived=True)
+        for row in await RecipesRepository(fixture.db).list_recipes(include_archived=True)
         if row.bean_id == fixture.new_bean_id
     ]
-    assert len(recipes) == 1, "one run, one Set — whatever the interleaving"
+    assert len(recipes) == 1, "one run, one Recipe — whatever the interleaving"
 
     # The loser names the option that won. It may *not* yet name the Recipe: the
     # claim is written before the Recipe exists, so a refusal that arrives inside
@@ -554,7 +554,7 @@ async def test_two_accepts_at_once_make_one_recipe_and_one_409(
 
     with pytest.raises(Conflict) as later:
         await starting.accept(run.id, "adventurous")  # type: ignore[attr-defined]
-    assert later.value.details["set_id"] == recipes[0].id
+    assert later.value.details["recipe_id"] == recipes[0].id
 
 
 async def test_accepting_twice_is_a_409_carrying_what_the_first_one_made(
@@ -566,7 +566,7 @@ async def test_accepting_twice_is_a_409_carrying_what_the_first_one_made(
     with pytest.raises(Conflict) as raised:
         await starting.accept(run.id, "conservative")  # type: ignore[attr-defined]
     assert raised.value.status == 409
-    assert raised.value.details["set_id"] == first.recipe_row.id
+    assert raised.value.details["recipe_id"] == first.recipe_row.id
     assert raised.value.details["option"] == "recommended"
 
 
@@ -654,7 +654,7 @@ async def test_an_accepted_option_s_grind_value_follows_the_shared_rule(
     assert accepted.version.grind_value == grind_value(
         option["grind_setting"], absolute=option["grind_is_absolute"]
     )
-    assert accepted.recipe_row.name == set_name(run.bean_name, run.grinder_name)
+    assert accepted.recipe_row.name == recipe_name(run.bean_name, run.grinder_name)
 
 
 async def test_the_default_draft_base_is_the_most_used_brew_profile(fixture: Fixture) -> None:
@@ -684,10 +684,10 @@ async def test_an_empty_library_gets_a_synthetic_base_once(tmp_path: Path) -> No
 
 
 def test_the_default_name_is_the_bean_and_its_grinder() -> None:
-    assert set_name("Ethiopia Guji", "Niche Zero") == "Ethiopia Guji (Niche Zero)"
-    assert set_name(" Kenya ", None) == "Kenya"
-    assert set_name(None, "") == "New bean"
-    assert len(set_name("x" * 300, "Niche")) == 200
+    assert recipe_name("Ethiopia Guji", "Niche Zero") == "Ethiopia Guji (Niche Zero)"
+    assert recipe_name(" Kenya ", None) == "Kenya"
+    assert recipe_name(None, "") == "New bean"
+    assert len(recipe_name("x" * 300, "Niche")) == 200
 
 
 async def test_a_second_call_for_the_same_bag_gets_the_running_row(

@@ -16,8 +16,8 @@ from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepos
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
     VersionRefused,
 )
 from tests.recipes.conftest import Fixtures, make_pin, make_profile_version
@@ -29,7 +29,7 @@ async def _a_pinned_recipe(wired: Fixtures) -> tuple[int, int, int]:
     original = await make_profile_version(wired.db, "Blooming")
     made = await wired.recipes.create(
         RecipeWrite(name="Guji", bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=original, dose_g=18.0),
+        RecipeVersionWrite(profile_version_id=original, dose_g=18.0),
     )
     v1 = await wired.recipes.current_version(made.id)
     assert v1 is not None
@@ -42,18 +42,18 @@ async def _version_count(wired: Fixtures) -> int:
 
 
 async def test_a_new_recipe_and_a_new_version_cannot_name_a_copy(wired: Fixtures) -> None:
-    set_id, _v1, copy = await _a_pinned_recipe(wired)
+    recipe_id, _v1, copy = await _a_pinned_recipe(wired)
     before = await _version_count(wired)
     recipes_before = int(await wired.db.fetch_value("SELECT COUNT(*) FROM recipes"))
 
     with pytest.raises(VersionRefused) as refused:
         await wired.recipes.create(
             RecipeWrite(name="Other", bean_id=wired.bean_id),
-            SetVersionWrite(profile_version_id=copy),
+            RecipeVersionWrite(profile_version_id=copy),
         )
     assert refused.value.code == "PROFILE_IS_A_PIN"
     with pytest.raises(VersionRefused):
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(profile_version_id=copy))
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(profile_version_id=copy))
 
     assert await _version_count(wired) == before
     assert int(await wired.db.fetch_value("SELECT COUNT(*) FROM recipes")) == recipes_before
@@ -73,9 +73,9 @@ async def test_a_design_cannot_fill_version_one_with_a_copy(wired: Fixtures) -> 
 
 
 async def test_a_proposal_naming_a_copy_is_refused_when_made(wired: Fixtures) -> None:
-    set_id, _v1, copy = await _a_pinned_recipe(wired)
+    recipe_id, _v1, copy = await _a_pinned_recipe(wired)
 
-    _, result = await _propose(wired, set_id, patch=RecipeVersionPatch(profile_version_id=copy))
+    _, result = await _propose(wired, recipe_id, patch=RecipeVersionPatch(profile_version_id=copy))
 
     assert result.refused == "profile_is_a_pin"  # type: ignore[attr-defined]
 
@@ -83,10 +83,10 @@ async def test_a_proposal_naming_a_copy_is_refused_when_made(wired: Fixtures) ->
 async def test_a_proposal_whose_profile_became_a_copy_meanwhile_cannot_be_accepted(
     wired: Fixtures,
 ) -> None:
-    set_id, v1, _copy = await _a_pinned_recipe(wired)
+    recipe_id, v1, _copy = await _a_pinned_recipe(wired)
     meanwhile = await make_profile_version(wired.db, "Blooming other")
     proposals, made = await _propose(
-        wired, set_id, patch=RecipeVersionPatch(profile_version_id=meanwhile)
+        wired, recipe_id, patch=RecipeVersionPatch(profile_version_id=meanwhile)
     )
     proposal = made.proposal  # type: ignore[attr-defined]
     assert proposal is not None
@@ -98,24 +98,24 @@ async def test_a_proposal_whose_profile_became_a_copy_meanwhile_cannot_be_accept
         BoardRowWrite(label="Blooming other", current_version_id=meanwhile, origin="draft")
     )
     await PinsRepository(wired.db).insert(
-        PinWrite(set_version_id=v1, board_id=row.id, profile_version_id=meanwhile)
+        PinWrite(recipe_version_id=v1, board_id=row.id, profile_version_id=meanwhile)
     )
     before = await _version_count(wired)
 
-    result = await proposals.accept(set_id, proposal.id)
+    result = await proposals.accept(recipe_id, proposal.id)
 
     assert result.refused == "profile_is_a_pin"
     assert await _version_count(wired) == before
-    waiting = await proposals.get(set_id, proposal.id)
+    waiting = await proposals.get(recipe_id, proposal.id)
     assert waiting is not None and waiting.status == "proposed"
 
 
 async def test_the_proposal_guard_does_not_touch_an_ordinary_profile(wired: Fixtures) -> None:
-    set_id, _v1, _copy = await _a_pinned_recipe(wired)
+    recipe_id, _v1, _copy = await _a_pinned_recipe(wired)
     ordinary = await make_profile_version(wired.db, "9 Bar Espresso")
 
     proposals, made = await _propose(
-        wired, set_id, patch=RecipeVersionPatch(profile_version_id=ordinary)
+        wired, recipe_id, patch=RecipeVersionPatch(profile_version_id=ordinary)
     )
 
     assert made.refused is None  # type: ignore[attr-defined]

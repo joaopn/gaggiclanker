@@ -13,8 +13,8 @@ from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.recipes import (
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.diagnostics import as_sample_dicts
@@ -38,7 +38,7 @@ async def make_recipe_versions(
     await own_version(db, profile_version_id)
     row = await recipes.create(
         RecipeWrite(name="Alturas", bean_id=bean.id, grinder_id=grinder.id),
-        SetVersionWrite(
+        RecipeVersionWrite(
             profile_version_id=profile_version_id,
             grind_setting="14",
             dose_g=18.0,
@@ -192,7 +192,7 @@ def long_name_shot(names_in: tuple[str, ...] = LONG_NAMES) -> Slog:
 async def add_shot(
     db: Database,
     *,
-    set_version_id: int | None,
+    recipe_version_id: int | None,
     profile_version_id: int,
     slog: Slog | None = None,
     profile: dict[str, Any] | None = None,
@@ -204,6 +204,6 @@ async def add_shot(
     await db.execute(
         "UPDATE shots SET profile_version_id = ? WHERE id = ?", (profile_version_id, shot)
     )
-    if set_version_id is not None:
-        assert await RecipesRepository(db).assign_shot(shot, set_version_id)
+    if recipe_version_id is not None:
+        assert await RecipesRepository(db).assign_shot(shot, recipe_version_id)
     return shot

@@ -80,11 +80,11 @@ async def main() -> int:
                 )
                 created = data(
                     await client.post(
-                        "/api/sets/design",
+                        "/api/recipes/design",
                         json={"bean_id": bean["id"], "grinder_id": grinder["id"]},
                     )
                 )
-                set_id = created["set"]["id"]
+                recipe_id = created["recipe"]["id"]
 
                 # The card, as `propose_initial_recipe` stores it: a draft of a
                 # new profile, and the recipe naming that draft's version.
@@ -105,7 +105,7 @@ async def main() -> int:
                     )
                 )
                 stored = await RecipeProposalsRepository(db).create(
-                    set_id,
+                    recipe_id,
                     ProposalWrite(
                         kind="design",
                         draft_id=draft.id,
@@ -124,13 +124,13 @@ async def main() -> int:
                 proposal_id = stored.proposal.id
 
                 async def fields() -> set[str]:
-                    listed = data(await client.get(f"/api/sets/{set_id}/proposals"))
+                    listed = data(await client.get(f"/api/recipes/{recipe_id}/proposals"))
                     card = next(item for item in listed["items"] if item["id"] == proposal_id)
                     return {change["field"] for change in card["changes"]}
 
                 waiting = await fields()
                 accepted = data(
-                    await client.post(f"/api/sets/{set_id}/proposals/{proposal_id}/accept")
+                    await client.post(f"/api/recipes/{recipe_id}/proposals/{proposal_id}/accept")
                 )
                 answered = {change["field"] for change in accepted["proposal"]["changes"]}
                 listed = await fields()

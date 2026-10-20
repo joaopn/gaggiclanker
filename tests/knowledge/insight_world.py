@@ -23,8 +23,8 @@ from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, Insight
 from gaggiclanker.db.repos.recipes import (
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
     VersionOutcomeWrite,
     VersionPredictionWrite,
 )
@@ -37,7 +37,7 @@ class ProvenanceWorld:
     recipes: RecipesRepository
     insights: InsightsRepository
     deletions: InsightDeletionsRepository
-    set_id: int
+    recipe_id: int
     v1: int
     v2: int
     v3: int
@@ -56,7 +56,7 @@ class ProvenanceWorld:
         *,
         confirmed: bool = True,
         version_id: int | None = None,
-        set_id: int | None = None,
+        recipe_id: int | None = None,
         thread_id: int | None = None,
         shots: list[int] | None = None,
     ) -> int:
@@ -66,8 +66,8 @@ class ProvenanceWorld:
                 text=text,
                 source="chat",
                 confirmed=confirmed,
-                set_id=self.set_id if set_id is None else set_id,
-                set_version_id=self.v2 if version_id is None else version_id,
+                recipe_id=self.recipe_id if recipe_id is None else recipe_id,
+                recipe_version_id=self.v2 if version_id is None else version_id,
                 thread_id=thread_id,
                 evidence_shot_ids=shots or [],
             )
@@ -75,20 +75,20 @@ class ProvenanceWorld:
 
     async def regrade(self, version_id: int, outcome: str) -> None:
         await self.recipes.set_outcome(
-            self.set_id, version_id, VersionOutcomeWrite.model_validate({"outcome": outcome})
+            self.recipe_id, version_id, VersionOutcomeWrite.model_validate({"outcome": outcome})
         )
 
 
 async def _graded(
     recipes: RecipesRepository,
     db: Database,
-    set_id: int,
+    recipe_id: int,
     version_id: int,
     device_id: str,
     outcome: str,
 ) -> int:
     await recipes.set_prediction(
-        set_id,
+        recipe_id,
         version_id,
         VersionPredictionWrite.model_validate(
             {"prediction": "Expect about 30 s.", "compares_to_version_id": None}
@@ -98,7 +98,7 @@ async def _graded(
     assert await recipes.assign_shot(shot, version_id)
     await JudgementsRepository(db).upsert(shot, JudgementWrite.model_validate({"decision": "keep"}))
     await recipes.set_outcome(
-        set_id, version_id, VersionOutcomeWrite.model_validate({"outcome": outcome})
+        recipe_id, version_id, VersionOutcomeWrite.model_validate({"outcome": outcome})
     )
     return shot
 
@@ -111,7 +111,7 @@ async def build_provenance_world(db: Database) -> ProvenanceWorld:
     recipes = RecipesRepository(db)
     row = await recipes.create(
         RecipeWrite(name="A", bean_id=bean.id, grinder_id=grinder.id),
-        SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert row.current_version_id is not None
     v1 = row.current_version_id
@@ -132,15 +132,15 @@ async def build_provenance_world(db: Database) -> ProvenanceWorld:
 
     stranger = await recipes.create(
         RecipeWrite(name="B", bean_id=bean.id, grinder_id=grinder.id),
-        SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert stranger.current_version_id is not None
     await _graded(recipes, db, stranger.id, stranger.current_version_id, "000604", "failed")
 
     chat = ChatRepository(db)
     threads = []
-    for set_id in (row.id, row.id, stranger.id):
-        made = await chat.create_thread(ChatThreadWrite(set_id=set_id))
+    for recipe_id in (row.id, row.id, stranger.id):
+        made = await chat.create_thread(ChatThreadWrite(recipe_id=recipe_id))
         assert made.thread is not None
         threads.append(made.thread.id)
     return ProvenanceWorld(
@@ -148,7 +148,7 @@ async def build_provenance_world(db: Database) -> ProvenanceWorld:
         recipes=recipes,
         insights=InsightsRepository(db),
         deletions=InsightDeletionsRepository(db),
-        set_id=row.id,
+        recipe_id=row.id,
         v1=v1,
         v2=second.id,
         v3=third.id,

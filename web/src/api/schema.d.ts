@@ -191,7 +191,7 @@ export interface paths {
         put: operations["update_bean_api_beans__bean_id__put"];
         post?: never;
         /**
-         * Delete a bean no Set uses
+         * Delete a bean no Recipe uses
          * @description A real delete, refused for a bean that is in use.
          *
          *     Starting-point runs about the bean go with it (their foreign key cascades).
@@ -214,7 +214,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Hide a coffee you no longer buy without breaking its Sets */
+        /** Hide a coffee you no longer buy without breaking its Recipes */
         post: operations["archive_bean_api_beans__bean_id__archive_post"];
         delete?: never;
         options?: never;
@@ -222,7 +222,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/beans/{bean_id}/similar-sets": {
+    "/api/beans/{bean_id}/similar-recipes": {
         parameters: {
             query?: never;
             header?: never;
@@ -230,15 +230,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Past Set versions that resemble this bean, best first
-         * @description The similar-Set query on its own, for the wizard's first step.
+         * Past Recipe versions that resemble this bean, best first
+         * @description The similar-Recipe query on its own, for the wizard's first step.
          *
          *     ``grinder_id`` is a filter rather than a hint: a grind number from a
          *     different grinder is not weaker evidence, it is meaningless, and putting one
          *     on a card would invite somebody to dial it. Omitting it lifts the filter,
          *     which is what a kitchen with no recorded grinder needs.
          */
-        get: operations["bean_similar_sets_api_beans__bean_id__similar_sets_get"];
+        get: operations["bean_similar_recipes_api_beans__bean_id__similar_recipes_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -350,12 +350,12 @@ export interface paths {
         get: operations["list_threads_api_chat_threads_get"];
         put?: never;
         /**
-         * Start a conversation: general, or about one version of a Set
-         * @description Always creates. New under a Set's badge is a fresh session on that Set.
+         * Start a conversation: general, or about one version of a Recipe
+         * @description Always creates. New under a Recipe's badge is a fresh session on that Recipe.
          *
-         *     With a Set and no version it is filed under whatever is current, and it
+         *     With a Recipe and no version it is filed under whatever is current, and it
          *     stays there: the conversation is the room one change was argued in, not a
-         *     view of the Set that follows it around.
+         *     view of the Recipe that follows it around.
          */
         post: operations["create_thread_api_chat_threads_post"];
         delete?: never;
@@ -468,13 +468,13 @@ export interface paths {
          * @description Read-only, and the same list the runner sends the provider.
          *
          *     Per kind, because the two are different surfaces and the page shows what
-         *     the agent can do *here*: a Set's chat that listed `query_shots` would be
+         *     the agent can do *here*: a Recipe's chat that listed `query_shots` would be
          *     promising a thing that conversation cannot do. The page never filters this
          *     itself — the scope is the server's, and a second copy of the rule in the
          *     browser is a copy that can disagree.
          *
          *     It also labels a trace: a tool call arrives as a name, and a panel that said
-         *     "propose_set_version" without saying that is a *proposal* would be hiding
+         *     "propose_recipe_version" without saying that is a *proposal* would be hiding
          *     the one thing a reader has to know.
          */
         get: operations["list_tools_api_chat_tools_get"];
@@ -744,15 +744,15 @@ export interface paths {
         };
         /**
          * What this archive has learned
-         * @description The general insights, or one Set's.
+         * @description The general insights, or one Recipe's.
          *
-         *     Without `?set_id=` this is the Knowledge page's list: **general insights
-         *     only**. A Set's own insights are never on it. With it, the answer is the Set
-         *     page's — what was learned in that Set, plus the general knowledge that
+         *     Without `?recipe_id=` this is the Knowledge page's list: **general insights
+         *     only**. A Recipe's own insights are never on it. With it, the answer is the Recipe
+         *     page's — what was learned in that Recipe, plus the general knowledge that
          *     applies — and the confirmed ones are exactly what the chat is told, because
-         *     both ask :meth:`InsightsRepository.for_set` and `own` and nothing else. It
-         *     matches on the Set's own attributes only: `profile_style` is detected *per
-         *     shot* from the profile the machine ran, so a Set has no single one and an
+         *     both ask :meth:`InsightsRepository.for_recipe` and `own` and nothing else. It
+         *     matches on the Recipe's own attributes only: `profile_style` is detected *per
+         *     shot* from the profile the machine ran, so a Recipe has no single one and an
          *     insight scoped by style is left to the shot page.
          */
         get: operations["list_insights_api_knowledge_insights_get"];
@@ -796,7 +796,7 @@ export interface paths {
          * @description Apply whichever fields were sent.
          *
          *     Confirming is what puts an insight in front of the conversations about a
-         *     matching Set; un-confirming takes it out again with nothing else to
+         *     matching Recipe; un-confirming takes it out again with nothing else to
          *     remember, the way disabling a rule does.
          */
         patch: operations["patch_insight_api_knowledge_insights__insight_id__patch"];
@@ -812,10 +812,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Turn a Set's insight down
+         * Turn a Recipe's insight down
          * @description A person's press: the card's Dismiss.
          *
-         *     Only for an insight a Set conversation proposed that is still waiting (409
+         *     Only for an insight a Recipe conversation proposed that is still waiting (409
          *     `INSIGHT_NOT_WAITING` on an added or already dismissed one: an added insight is
          *     taken back instead). It is kept, so that
          *     conversation can be told what happened to it, and it reaches no prompt and
@@ -861,8 +861,8 @@ export interface paths {
          * @description A person's press: writes the general insight and deletes what it was derived from.
          *
          *     One transaction. A source that is gone or no longer confirmed is skipped and named in
-         *     `skipped`; the approval still succeeds when at least two Sets' sources remain, and is
-         *     refused (409 `PATTERN_TOO_FEW_SETS`, nothing written) otherwise. 409 `PATTERNS_RUNNING` while
+         *     `skipped`; the approval still succeeds when at least two Recipes' sources remain, and is
+         *     refused (409 `PATTERN_TOO_FEW_RECIPES`, nothing written) otherwise. 409 `PATTERNS_RUNNING` while
          *     a run is going. There is no tool for this.
          */
         post: operations["approve_proposal_api_knowledge_patterns_proposals__proposal_id__approve_post"];
@@ -903,11 +903,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Find patterns across Sets
+         * Find patterns across Recipes
          * @description Queue the work and answer with the `running` row. 202, not 201.
          *
          *     This is the only way a run starts: a person pressing the button. 409
-         *     `PATTERNS_NOT_ENOUGH_SETS` when fewer than two Sets have a confirmed insight. A press
+         *     `PATTERNS_NOT_ENOUGH_RECIPES` when fewer than two Recipes have a confirmed insight. A press
          *     while one runs gets that running row back. ``?wait=1`` blocks until the run is finished
          *     (tests and `curl`); a browser follows the stream.
          */
@@ -1286,7 +1286,7 @@ export interface paths {
          * Make a proposal active: a new version of a profile, or a new profile
          * @description The next sync puts it on the machine. Nothing is sent to the machine now.
          *
-         *     One action for a proposal: a drafted draft is approved by it. The profile's Set, if it has
+         *     One action for a proposal: a drafted draft is approved by it. The profile's Recipe, if it has
          *     one, gets a new version naming it in the same transaction. Refused (409) for a draft that is
          *     already on the machine, discarded or overtaken, and one whose version is already in the
          *     list. A proposal continues the live profile with exactly its name, or is a new profile.
@@ -1309,7 +1309,7 @@ export interface paths {
         /**
          * Make one of a profile's versions its active one
          * @description Person-only. Any version the profile has had; the next sync puts it on the machine and
-         *     takes the profile's other file off. Records nothing on a Set (only making a proposal active
+         *     takes the profile's other file off. Records nothing on a Recipe (only making a proposal active
          *     through ``POST /api/profile-board`` does). Refused (409) for a version of another profile,
          *     the empty baseline, a version outside the safety bounds, and a name another profile has.
          */
@@ -1358,7 +1358,7 @@ export interface paths {
         get?: never;
         /**
          * Rename a profile
-         * @description Person-only. Writes the profile's name and nothing else (no version, draft, Set or
+         * @description Person-only. Writes the profile's name and nothing else (no version, draft, Recipe or
          *     signature), so it works with Writes off and on a pinned row; the next sync with Writes on gives
          *     the machine's file the new name. Refused with 422 for an empty name and 409 for one another
          *     live profile has (case ignored); the same name changes nothing. For a profile in a conflict
@@ -1683,7 +1683,7 @@ export interface paths {
          * What a profile version is for: its expectations and their status
          * @description Every expectation, proposed, confirmed and rejected, with who proposed it.
          *
-         *     A profile version nobody proposed anything for answers with no expectations (and the Sets
+         *     A profile version nobody proposed anything for answers with no expectations (and the Recipes
          *     that use it, for a link to ask the agent), not a 404.
          */
         get: operations["get_signature_api_profile_versions__version_id__signature_get"];
@@ -1812,6 +1812,678 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Recipes, the ones collecting shots first */
+        get: operations["list_recipes_api_recipes_get"];
+        put?: never;
+        /**
+         * Start a Recipe, with its first version
+         * @description Create the Recipe and version 1 atomically.
+         *
+         *     Every reference is checked here rather than left to the foreign keys. A
+         *     failed key raises `IntegrityError` from inside the transaction, which the
+         *     envelope can only report as an internal error — a 500 on a request whose
+         *     only problem is a stale id in a dropdown, and with nothing in the body
+         *     saying which of the three ids was wrong. Each check answers that instead:
+         *     422, with `details.field` naming the one at fault.
+         */
+        post: operations["create_recipe_api_recipes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One Recipe with its versions, their diffs and their shots */
+        get: operations["get_recipe_api_recipes__recipe_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a Recipe */
+        post: operations["archive_recipe_api_recipes__recipe_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/automatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Offer this Recipe to the matcher, or take it out of the running
+         * @description Any number of Recipes may be offered. Nothing is taken from another Recipe.
+         *
+         *     One route both ways rather than two: this is one flag with two values, and
+         *     the page that reads it as a switch would otherwise have to know two paths to
+         *     write it.
+         *
+         *     Turning it **on** for an archived Recipe is a 409 rather than a silent no-op:
+         *     an archived Recipe receives no shots whatever the flag says, so the page would
+         *     show a badge promising something that will never happen. Turning it off is
+         *     allowed on any Recipe — archiving does that itself.
+         */
+        put: operations["set_automatch_api_recipes__recipe_id__automatch_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/design": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discard a Recipe that is still being designed
+         * @description Delete it, its conversations and its proposals; discard its drafts.
+         *
+         *     Only while the Recipe is being designed and nothing is filed on it. A Recipe with
+         *     a recipe or a shot has history, and is archived rather than deleted: 409
+         *     `NOT_DESIGNING` or `DESIGN_HAS_SHOTS`.
+         */
+        delete: operations["discard_design_api_recipes__recipe_id__design_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/insight-deletions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every deletion an agent has proposed for this Recipe's insights
+         * @description Newest first, waiting and answered alike, so a card read days later tells the truth.
+         */
+        get: operations["list_insight_deletions_api_recipes__recipe_id__insight_deletions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/insight-deletions/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete the insight an agent proposed deleting
+         * @description The card's Delete: a person's press, and the only way a proposal removes an insight.
+         *
+         *     There is no tool for this, in the chat or over MCP: an agent that could delete
+         *     its own predecessors' insights would be rewriting what every later conversation
+         *     is told. The insight is removed outright; nothing of it is kept but the text on
+         *     the card.
+         */
+        post: operations["accept_insight_deletion_api_recipes__recipe_id__insight_deletions__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/insight-deletions/{proposal_id}/keep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep the insight an agent proposed deleting
+         * @description The card's Keep: the insight stays exactly as it is, and the agent is told.
+         */
+        post: operations["keep_insight_deletion_api_recipes__recipe_id__insight_deletions__proposal_id__keep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/outcome-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every grade an agent has proposed for this Recipe's versions
+         * @description Newest first, waiting and answered alike, so a card read days later tells the truth.
+         */
+        get: operations["list_outcome_proposals_api_recipes__recipe_id__outcome_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/outcome-proposals/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a proposed grade: record it as the version's outcome
+         * @description A person's press, and the only way an agent's grade becomes an outcome.
+         *
+         *     There is no tool for this, in the chat or over MCP: an agent that could
+         *     accept its own grade would be writing the track record every later
+         *     conversation reads.
+         */
+        post: operations["accept_outcome_proposal_api_recipes__recipe_id__outcome_proposals__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/outcome-proposals/{proposal_id}/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record another outcome than the one proposed */
+        post: operations["change_outcome_proposal_api_recipes__recipe_id__outcome_proposals__proposal_id__change_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/outcome-proposals/{proposal_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a proposed grade down, optionally saying why
+         * @description Nothing is recorded. The note is what that version's conversation is told.
+         */
+        post: operations["dismiss_outcome_proposal_api_recipes__recipe_id__outcome_proposals__proposal_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every change an agent has proposed for this Recipe
+         * @description Newest first, waiting and answered alike.
+         *
+         *     The answered ones are the point as much as the waiting one: a declined
+         *     proposal is a record of what the person did not want, and a stale one says
+         *     the Recipe moved on while somebody was thinking about it.
+         */
+        get: operations["list_proposals_api_recipes__recipe_id__proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/proposals/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a proposed change: record it as this Recipe's next version
+         * @description A person's press, and the only way a proposal becomes a version.
+         *
+         *     There is no tool for this, in the chat or over MCP, and there never will
+         *     be: an agent that could accept its own proposal would be an agent changing
+         *     what the next shot is filed under without anybody agreeing to it.
+         *
+         *     **Nothing is sent to the machine.** A proposal that names a different
+         *     profile records that this Recipe now brews with that profile, exactly as the
+         *     Add a version form does. A first recipe is accepted **together with its
+         *     profile**, in the same transaction: while its draft is still waiting it is
+         *     put on the profile list (no Recipe recording, since version 1 names it), the
+         *     profile is switched on, and version 1 names the version that put ended on.
+         *     A draft that continues an existing profile becomes that profile's active
+         *     version, exactly as approving it would. A draft that was already answered
+         *     (approved or pushed on the Profiles page, a version made active since) is
+         *     left exactly as it is, and version 1 names its version; a name sent for it
+         *     is refused. Only a sync a person starts puts the file on the machine.
+         *
+         *     The body is optional. ``major`` is the card's "Major change" box; left
+         *     out, it is a minor, never the agent's suggestion.
+         */
+        post: operations["accept_proposal_api_recipes__recipe_id__proposals__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/proposals/{proposal_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a proposed change down, optionally saying why
+         * @description Nothing is created. The note is what the next conversation is told.
+         */
+        post: operations["decline_proposal_api_recipes__recipe_id__proposals__proposal_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Go back to another version: the Recipe is on it again, and no version is written
+         * @description Move the Recipe's current version to `to_version_id` and log that it went back.
+         *
+         *     Nothing is written to the machine and no version is created: the target is
+         *     the Recipe's current version again, with its prediction, shots and outcome as
+         *     they were, and the next change continues its line (v2.1 back to v1.2, then
+         *     v1.3). The Recipe's profile is put back on the version the target brews, as Make active
+         *     would do (and refused as it would be). The answer is the version the Recipe is now on. A Recipe
+         *     still being designed has nothing to go back to: 409 `DESIGNING`.
+         */
+        post: operations["rollback_api_recipes__recipe_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/signature-overrides/{override_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject an override: this version reads the profile's own limit again */
+        post: operations["reject_override_api_recipes__recipe_id__signature_overrides__override_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/signature-overrides/{override_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a rejected override: this version's shots read its limit again
+         * @description A person's press. It applies to this Recipe version's shots and to no other.
+         */
+        post: operations["restore_override_api_recipes__recipe_id__signature_overrides__override_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Duration, ratio and rating across the Recipe's versions
+         * @description The chart's data: one point per shot, one summary per version.
+         *
+         *     Both from one pass over the Recipe's shots, so a bar can never sit off its own
+         *     points because two queries rounded differently.
+         */
+        get: operations["get_trends_api_recipes__recipe_id__trends_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change something: a new version, with its parent and its intent
+         * @description Append a version made of the current one plus the fields that were sent.
+         *
+         *     Omitting a field inherits it; sending it as `null` clears it. That
+         *     distinction is the reason the body is read with ``exclude_unset`` rather
+         *     than compared against defaults — "no dose" and "same dose as before" are
+         *     different statements about the coffee.
+         *
+         *     ``major`` names it: true is the next major, false the next minor, left out
+         *     a minor. The answer carries the name it was given (`version_label`).
+         */
+        post: operations["add_version_api_recipes__recipe_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/versions/{version_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a new Recipe from this version, on a new profile, with no history
+         * @description The new profile (the version's profile under `profile_name`, put on the list switched on and
+         *     starred), the new Recipe with its first version and the chosen insights, in one transaction.
+         *     Refused, nothing written: 404; 422 for an empty Recipe name, an empty profile name when the
+         *     version has a profile, a profile name when it has none, an insight that is not one of the
+         *     preview's, or a bean or grinder that is not there; 409 `DESIGNING`, `PROFILE_NAME_TAKEN` and
+         *     `PROFILE_POLICY_REFUSED`.
+         */
+        post: operations["duplicate_version_api_recipes__recipe_id__versions__version_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/versions/{version_id}/duplicate-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What duplicating this Recipe version would start from, without doing it
+         * @description The suggested Recipe name, the bean and grinder, the version's numbers as a line, whether the
+         *     version has a profile, and the source Recipe's own confirmed insights. 404 for a Recipe or
+         *     version that is not there, 409 `DESIGNING` for a Recipe still being designed.
+         */
+        get: operations["preview_duplicate_api_recipes__recipe_id__versions__version_id__duplicate_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/versions/{version_id}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Grade this version's prediction
+         * @description Held, partly held, failed or inconclusive, with the why beside it.
+         *
+         *     Recordable only once the version has a prediction and a shot somebody
+         *     labelled Keep or Improve; changeable afterwards as often as you like.
+         */
+        put: operations["set_outcome_api_recipes__recipe_id__versions__version_id__outcome_put"];
+        post?: never;
+        /** Take back the grade on this version's prediction */
+        delete: operations["clear_outcome_api_recipes__recipe_id__versions__version_id__outcome_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/versions/{version_id}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep this Recipe version on the machine as a profile of its own
+         * @description Copy the version's profile under a new name onto the profile list, switched on and starred,
+         *     and record the pin, in one transaction. Nothing is sent to the machine: the next sync with
+         *     Writes on puts it there. Refused (409, one code each, nothing written): `RECIPE_ARCHIVED`,
+         *     `DESIGNING`, `VERSION_HAS_NO_PROFILE`, `ALREADY_PINNED`, `PIN_NAME_TAKEN`,
+         *     `PIN_POLICY_REFUSED`; 404 for a Recipe or version that is not there; 422 for a blank label.
+         */
+        post: operations["pin_version_api_recipes__recipe_id__versions__version_id__pin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/versions/{version_id}/pin-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What pinning this Recipe version would do, without doing it
+         * @description The pin's own questions, asked and not acted on: the name the copy would have, whether it
+         *     is taken, and the sentence a refusal would carry (any refusal, not only a taken name).
+         */
+        get: operations["preview_pin_api_recipes__recipe_id__versions__version_id__pin_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/versions/{version_id}/prediction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Say what this version is expected to do differently
+         * @description Writable only while the version has no shots.
+         *
+         *     An empty `prediction` takes the prediction back, comparison and all — which
+         *     is the only way to remove one, and still only before the first shot.
+         */
+        patch: operations["set_prediction_api_recipes__recipe_id__versions__version_id__prediction_patch"];
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}/versions/{version_id}/signature-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The overrides proposed for one Recipe version's signature limits
+         * @description In force, rejected and replaced, newest first, so a card read later tells the truth.
+         */
+        get: operations["list_overrides_api_recipes__recipe_id__versions__version_id__signature_overrides_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/design": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a Recipe to be designed in its own conversation
+         * @description A Recipe with a bean and a grinder and no version yet, and the chat to design it in.
+         *
+         *     Version 1 states nothing: the agent works the recipe out with the person
+         *     in version 1's own conversation, which is opened here and answered with the
+         *     design prompt while the Recipe is being designed. Nothing is proposed, drafted
+         *     or sent anywhere by this route.
+         *
+         *     Every reference is looked up first and a missing one is a 404 naming the
+         *     field, never the value sent.
+         */
+        post: operations["design_recipe_api_recipes_design_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/profile-choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The profiles a new Recipe may start on
+         * @description The active version of each profile that has no Recipe, then each mirrored machine file no
+         *     profile stands on and no Recipe names (with Writes off the list has no profiles, so the files
+         *     are what there is). Exactly what New Recipe and a Recipe with no profile accept: one function
+         *     decides both.
+         *
+         *     `taken` lists the profiles that have a Recipe, with that Recipe, which New Recipe offers to
+         *     duplicate (Duplicate Profile) and never accepts as they are.
+         */
+        get: operations["profile_choices_api_recipes_profile_choices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reset": {
         parameters: {
             query?: never;
@@ -1867,678 +2539,6 @@ export interface paths {
          *     rather than answered, and two answers arriving together leave one consistent state.
          */
         patch: operations["answer_claim_api_reviews__review_id__claims__claim_id__patch"];
-        trace?: never;
-    };
-    "/api/sets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The Sets, the ones collecting shots first */
-        get: operations["list_sets_api_sets_get"];
-        put?: never;
-        /**
-         * Start a Set, with its first version
-         * @description Create the Set and version 1 atomically.
-         *
-         *     Every reference is checked here rather than left to the foreign keys. A
-         *     failed key raises `IntegrityError` from inside the transaction, which the
-         *     envelope can only report as an internal error — a 500 on a request whose
-         *     only problem is a stale id in a dropdown, and with nothing in the body
-         *     saying which of the three ids was wrong. Each check answers that instead:
-         *     422, with `details.field` naming the one at fault.
-         */
-        post: operations["create_set_api_sets_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** One Set with its versions, their diffs and their shots */
-        get: operations["get_set_api_sets__set_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/archive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retire a Set */
-        post: operations["archive_set_api_sets__set_id__archive_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/automatch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Offer this Set to the matcher, or take it out of the running
-         * @description Any number of Sets may be offered. Nothing is taken from another Set.
-         *
-         *     One route both ways rather than two: this is one flag with two values, and
-         *     the page that reads it as a switch would otherwise have to know two paths to
-         *     write it.
-         *
-         *     Turning it **on** for an archived Set is a 409 rather than a silent no-op:
-         *     an archived Set receives no shots whatever the flag says, so the page would
-         *     show a badge promising something that will never happen. Turning it off is
-         *     allowed on any Set — archiving does that itself.
-         */
-        put: operations["set_automatch_api_sets__set_id__automatch_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/design": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Discard a Set that is still being designed
-         * @description Delete it, its conversations and its proposals; discard its drafts.
-         *
-         *     Only while the Set is being designed and nothing is filed on it. A Set with
-         *     a recipe or a shot has history, and is archived rather than deleted: 409
-         *     `NOT_DESIGNING` or `DESIGN_HAS_SHOTS`.
-         */
-        delete: operations["discard_design_api_sets__set_id__design_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/insight-deletions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Every deletion an agent has proposed for this Set's insights
-         * @description Newest first, waiting and answered alike, so a card read days later tells the truth.
-         */
-        get: operations["list_insight_deletions_api_sets__set_id__insight_deletions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/insight-deletions/{proposal_id}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete the insight an agent proposed deleting
-         * @description The card's Delete: a person's press, and the only way a proposal removes an insight.
-         *
-         *     There is no tool for this, in the chat or over MCP: an agent that could delete
-         *     its own predecessors' insights would be rewriting what every later conversation
-         *     is told. The insight is removed outright; nothing of it is kept but the text on
-         *     the card.
-         */
-        post: operations["accept_insight_deletion_api_sets__set_id__insight_deletions__proposal_id__accept_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/insight-deletions/{proposal_id}/keep": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Keep the insight an agent proposed deleting
-         * @description The card's Keep: the insight stays exactly as it is, and the agent is told.
-         */
-        post: operations["keep_insight_deletion_api_sets__set_id__insight_deletions__proposal_id__keep_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/outcome-proposals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Every grade an agent has proposed for this Set's versions
-         * @description Newest first, waiting and answered alike, so a card read days later tells the truth.
-         */
-        get: operations["list_outcome_proposals_api_sets__set_id__outcome_proposals_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/outcome-proposals/{proposal_id}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Accept a proposed grade: record it as the version's outcome
-         * @description A person's press, and the only way an agent's grade becomes an outcome.
-         *
-         *     There is no tool for this, in the chat or over MCP: an agent that could
-         *     accept its own grade would be writing the track record every later
-         *     conversation reads.
-         */
-        post: operations["accept_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__accept_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/outcome-proposals/{proposal_id}/change": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Record another outcome than the one proposed */
-        post: operations["change_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__change_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/outcome-proposals/{proposal_id}/dismiss": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Turn a proposed grade down, optionally saying why
-         * @description Nothing is recorded. The note is what that version's conversation is told.
-         */
-        post: operations["dismiss_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__dismiss_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/proposals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Every change an agent has proposed for this Set
-         * @description Newest first, waiting and answered alike.
-         *
-         *     The answered ones are the point as much as the waiting one: a declined
-         *     proposal is a record of what the person did not want, and a stale one says
-         *     the Set moved on while somebody was thinking about it.
-         */
-        get: operations["list_proposals_api_sets__set_id__proposals_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/proposals/{proposal_id}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Accept a proposed change: record it as this Set's next version
-         * @description A person's press, and the only way a proposal becomes a version.
-         *
-         *     There is no tool for this, in the chat or over MCP, and there never will
-         *     be: an agent that could accept its own proposal would be an agent changing
-         *     what the next shot is filed under without anybody agreeing to it.
-         *
-         *     **Nothing is sent to the machine.** A proposal that names a different
-         *     profile records that this Set now brews with that profile, exactly as the
-         *     Add a version form does. A first recipe is accepted **together with its
-         *     profile**, in the same transaction: while its draft is still waiting it is
-         *     put on the profile list (no Set recording, since version 1 names it), the
-         *     profile is switched on, and version 1 names the version that put ended on.
-         *     A draft that continues an existing profile becomes that profile's active
-         *     version, exactly as approving it would. A draft that was already answered
-         *     (approved or pushed on the Profiles page, a version made active since) is
-         *     left exactly as it is, and version 1 names its version; a name sent for it
-         *     is refused. Only a sync a person starts puts the file on the machine.
-         *
-         *     The body is optional. ``major`` is the card's "Major change" box; left
-         *     out, it is a minor, never the agent's suggestion.
-         */
-        post: operations["accept_proposal_api_sets__set_id__proposals__proposal_id__accept_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/proposals/{proposal_id}/decline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Turn a proposed change down, optionally saying why
-         * @description Nothing is created. The note is what the next conversation is told.
-         */
-        post: operations["decline_proposal_api_sets__set_id__proposals__proposal_id__decline_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Go back to another version: the Set is on it again, and no version is written
-         * @description Move the Set's current version to `to_version_id` and log that it went back.
-         *
-         *     Nothing is written to the machine and no version is created: the target is
-         *     the Set's current version again, with its prediction, shots and outcome as
-         *     they were, and the next change continues its line (v2.1 back to v1.2, then
-         *     v1.3). The Set's profile is put back on the version the target brews, as Make active
-         *     would do (and refused as it would be). The answer is the version the Set is now on. A Set
-         *     still being designed has nothing to go back to: 409 `DESIGNING`.
-         */
-        post: operations["rollback_api_sets__set_id__rollback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/signature-overrides/{override_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reject an override: this version reads the profile's own limit again */
-        post: operations["reject_override_api_sets__set_id__signature_overrides__override_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/signature-overrides/{override_id}/restore": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Restore a rejected override: this version's shots read its limit again
-         * @description A person's press. It applies to this Set version's shots and to no other.
-         */
-        post: operations["restore_override_api_sets__set_id__signature_overrides__override_id__restore_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/trends": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Duration, ratio and rating across the Set's versions
-         * @description The chart's data: one point per shot, one summary per version.
-         *
-         *     Both from one pass over the Set's shots, so a bar can never sit off its own
-         *     points because two queries rounded differently.
-         */
-        get: operations["get_trends_api_sets__set_id__trends_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/versions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Change something: a new version, with its parent and its intent
-         * @description Append a version made of the current one plus the fields that were sent.
-         *
-         *     Omitting a field inherits it; sending it as `null` clears it. That
-         *     distinction is the reason the body is read with ``exclude_unset`` rather
-         *     than compared against defaults — "no dose" and "same dose as before" are
-         *     different statements about the coffee.
-         *
-         *     ``major`` names it: true is the next major, false the next minor, left out
-         *     a minor. The answer carries the name it was given (`version_label`).
-         */
-        post: operations["add_version_api_sets__set_id__versions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/versions/{version_id}/duplicate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start a new Set from this version's recipe, on a new profile, with no history
-         * @description The new profile (the version's profile under `profile_name`, put on the list switched on and
-         *     starred), the new Set with its first version and the chosen insights, in one transaction.
-         *     Refused, nothing written: 404; 422 for an empty Set name, an empty profile name when the
-         *     version has a profile, a profile name when it has none, an insight that is not one of the
-         *     preview's, or a bean or grinder that is not there; 409 `DESIGNING`, `PROFILE_NAME_TAKEN` and
-         *     `PROFILE_POLICY_REFUSED`.
-         */
-        post: operations["duplicate_version_api_sets__set_id__versions__version_id__duplicate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/versions/{version_id}/duplicate-preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * What duplicating this Set version would start from, without doing it
-         * @description The suggested Set name, the bean and grinder, the recipe as a line, whether the version has
-         *     a profile, and the source Set's own confirmed insights. 404 for a Set or version that is not
-         *     there, 409 `DESIGNING` for a Set still being designed.
-         */
-        get: operations["preview_duplicate_api_sets__set_id__versions__version_id__duplicate_preview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/versions/{version_id}/outcome": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Grade this version's prediction
-         * @description Held, partly held, failed or inconclusive, with the why beside it.
-         *
-         *     Recordable only once the version has a prediction and a shot somebody
-         *     labelled Keep or Improve; changeable afterwards as often as you like.
-         */
-        put: operations["set_outcome_api_sets__set_id__versions__version_id__outcome_put"];
-        post?: never;
-        /** Take back the grade on this version's prediction */
-        delete: operations["clear_outcome_api_sets__set_id__versions__version_id__outcome_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/versions/{version_id}/pin": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Keep this Set version on the machine as a profile of its own
-         * @description Copy the version's profile under a new name onto the profile list, switched on and starred,
-         *     and record the pin, in one transaction. Nothing is sent to the machine: the next sync with
-         *     Writes on puts it there. Refused (409, one code each, nothing written): `SET_ARCHIVED`,
-         *     `DESIGNING`, `VERSION_HAS_NO_PROFILE`, `ALREADY_PINNED`, `PIN_NAME_TAKEN`,
-         *     `PIN_POLICY_REFUSED`; 404 for a Set or version that is not there; 422 for a blank label.
-         */
-        post: operations["pin_version_api_sets__set_id__versions__version_id__pin_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/versions/{version_id}/pin-preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * What pinning this Set version would do, without doing it
-         * @description The pin's own questions, asked and not acted on: the name the copy would have, whether it
-         *     is taken, and the sentence a refusal would carry (any refusal, not only a taken name).
-         */
-        get: operations["preview_pin_api_sets__set_id__versions__version_id__pin_preview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/versions/{version_id}/prediction": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Say what this version is expected to do differently
-         * @description Writable only while the version has no shots.
-         *
-         *     An empty `prediction` takes the prediction back, comparison and all — which
-         *     is the only way to remove one, and still only before the first shot.
-         */
-        patch: operations["set_prediction_api_sets__set_id__versions__version_id__prediction_patch"];
-        trace?: never;
-    };
-    "/api/sets/{set_id}/versions/{version_id}/signature-overrides": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The overrides proposed for one Set version's signature limits
-         * @description In force, rejected and replaced, newest first, so a card read later tells the truth.
-         */
-        get: operations["list_overrides_api_sets__set_id__versions__version_id__signature_overrides_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/design": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start a Set to be designed in its own conversation
-         * @description A Set with a bean and a grinder and no recipe yet, and the chat to design it in.
-         *
-         *     Version 1 states nothing: the agent works the recipe out with the person
-         *     in version 1's own conversation, which is opened here and answered with the
-         *     design prompt while the Set is being designed. Nothing is proposed, drafted
-         *     or sent anywhere by this route.
-         *
-         *     Every reference is looked up first and a missing one is a 404 naming the
-         *     field, never the value sent.
-         */
-        post: operations["design_set_api_sets_design_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/profile-choices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The profiles a new Set may start on
-         * @description The active version of each profile that has no Set, then each mirrored machine file no
-         *     profile stands on and no Set names (with Writes off the list has no profiles, so the files
-         *     are what there is). Exactly what New Set and a Set with no profile accept: one function
-         *     decides both.
-         *
-         *     `taken` lists the profiles that have a Set, with that Set, which New Set offers to duplicate
-         *     (Duplicate Profile) and never accepts as they are.
-         */
-        get: operations["profile_choices_api_sets_profile_choices_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/settings": {
@@ -2648,12 +2648,12 @@ export interface paths {
          *     from a machine whose clock never synced has none and is excluded by any date
          *     filter, which is the honest answer.
          *
-         *     ``set_id`` and ``set_version_id`` narrow to one Set or one of its versions;
-         *     ``needs_set=1`` is the inbox — shots the archive could not attach to a Set
+         *     ``recipe_id`` and ``recipe_version_id`` narrow to one Recipe or one of its versions;
+         *     ``needs_recipe=1`` is the inbox — shots the archive could not attach to a Recipe
          *     on its own and is waiting for an answer on. Quarantined shots are excluded
          *     from it: their bytes never parsed, so there is nothing to judge and the
          *     count would never reach zero. So are shots labelled Discard: the person
-         *     already said the shot went wrong, and it counts towards no Set.
+         *     already said the shot went wrong, and it counts towards no Recipe.
          *     ``include_discarded=false`` leaves shots labelled Discard out of any list,
          *     which is the Shots page's default view.
          *
@@ -2814,6 +2814,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shots/{shot_id}/recipe-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign this shot to a Recipe version, or detach it
+         * @description The correction path, so unlike auto-assignment it overwrites.
+         *
+         *     Auto-assignment only ever fills a NULL (`db/repos/recipes.py`), which is what
+         *     keeps a hand correction from being undone by the next sync pass. This is the
+         *     hand.
+         */
+        put: operations["put_recipe_version_api_shots__shot_id__recipe_version_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shots/{shot_id}/reviews": {
         parameters: {
             query?: never;
@@ -2877,30 +2901,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/shots/{shot_id}/set-version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Assign this shot to a Set version, or detach it
-         * @description The correction path, so unlike auto-assignment it overwrites.
-         *
-         *     Auto-assignment only ever fills a NULL (`db/repos/sets.py`), which is what
-         *     keeps a hand correction from being undone by the next sync pass. This is the
-         *     hand.
-         */
-        put: operations["put_set_version_api_shots__shot_id__set_version_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/shots/profile-match": {
         parameters: {
             query?: never;
@@ -2911,7 +2911,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * File shots that need a Set under the one Set that brews their profile
+         * File shots that need a Recipe under the one Recipe that brews their profile
          * @description The button beside the `shotsProfileAutomatch` switch: the same rule, on demand.
          *
          *     Only ever fills a NULL, like auto-assignment, so pressing it twice or over
@@ -3044,18 +3044,18 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Take one option: create the Set, its first version and any draft
-         * @description Create the Set this option describes.
+         * Take one option: create the Recipe, its first version and any draft
+         * @description Create the Recipe this option describes.
          *
          *     Refused with a 409 for a run that is still running, that failed, or that
          *     somebody has already accepted — the last one carries the ids of what the
          *     first accept made, so the UI can take the person there rather than showing
-         *     them an error about a Set that exists.
+         *     them an error about a Recipe that exists.
          *
          *     Refused with a 422 when the option's profile document is one the safety
          *     policy will not allow, carrying every violation at once. Nothing is created
-         *     in that case: a Set pointing at a profile that was rejected is worse than no
-         *     Set.
+         *     in that case: a Recipe pointing at a profile that was rejected is worse than no
+         *     Recipe.
          */
         post: operations["accept_starting_point_api_starting_points__run_id__accept_post"];
         delete?: never;
@@ -3165,7 +3165,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every closed vocabulary the judgement and Set forms use */
+        /** Every closed vocabulary the judgement and Recipe forms use */
         get: operations["get_vocabulary_api_vocab_get"];
         put?: never;
         post?: never;
@@ -3777,6 +3777,78 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[RecipeDesignCreated] */
+        ApiResponse_RecipeDesignCreated_: {
+            data?: components["schemas"]["RecipeDesignCreated"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RecipeDesignDiscarded] */
+        ApiResponse_RecipeDesignDiscarded_: {
+            data?: components["schemas"]["RecipeDesignDiscarded"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RecipeDetailData] */
+        ApiResponse_RecipeDetailData_: {
+            data?: components["schemas"]["RecipeDetailData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RecipeListData] */
+        ApiResponse_RecipeListData_: {
+            data?: components["schemas"]["RecipeListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RecipeProposalDecision] */
+        ApiResponse_RecipeProposalDecision_: {
+            data?: components["schemas"]["RecipeProposalDecision"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RecipeProposalListData] */
+        ApiResponse_RecipeProposalListData_: {
+            data?: components["schemas"]["RecipeProposalListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RecipeRow] */
+        ApiResponse_RecipeRow_: {
+            data?: components["schemas"]["RecipeRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RecipeTrends] */
+        ApiResponse_RecipeTrends_: {
+            data?: components["schemas"]["RecipeTrends"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RecipeVersionRow] */
+        ApiResponse_RecipeVersionRow_: {
+            data?: components["schemas"]["RecipeVersionRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[ResetData] */
         ApiResponse_ResetData_: {
             data?: components["schemas"]["ResetData"] | null;
@@ -3857,81 +3929,9 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiResponse[SetDesignCreated] */
-        ApiResponse_SetDesignCreated_: {
-            data?: components["schemas"]["SetDesignCreated"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SetDesignDiscarded] */
-        ApiResponse_SetDesignDiscarded_: {
-            data?: components["schemas"]["SetDesignDiscarded"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SetDetailData] */
-        ApiResponse_SetDetailData_: {
-            data?: components["schemas"]["SetDetailData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SetListData] */
-        ApiResponse_SetListData_: {
-            data?: components["schemas"]["SetListData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SetProposalDecision] */
-        ApiResponse_SetProposalDecision_: {
-            data?: components["schemas"]["SetProposalDecision"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SetProposalListData] */
-        ApiResponse_SetProposalListData_: {
-            data?: components["schemas"]["SetProposalListData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SetRow] */
-        ApiResponse_SetRow_: {
-            data?: components["schemas"]["SetRow"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
         /** ApiResponse[SettingsData] */
         ApiResponse_SettingsData_: {
             data?: components["schemas"]["SettingsData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SetTrends] */
-        ApiResponse_SetTrends_: {
-            data?: components["schemas"]["SetTrends"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SetVersionRow] */
-        ApiResponse_SetVersionRow_: {
-            data?: components["schemas"]["SetVersionRow"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4025,9 +4025,9 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiResponse[SimilarSetsData] */
-        ApiResponse_SimilarSetsData_: {
-            data?: components["schemas"]["SimilarSetsData"] | null;
+        /** ApiResponse[SimilarRecipesData] */
+        ApiResponse_SimilarRecipesData_: {
+            data?: components["schemas"]["SimilarRecipesData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4127,7 +4127,7 @@ export interface components {
         };
         /**
          * AutomatchWrite
-         * @description `PUT /api/sets/{id}/automatch`: whether the matcher may file shots here.
+         * @description `PUT /api/recipes/{id}/automatch`: whether the matcher may file shots here.
          */
         AutomatchWrite: {
             /** Automatch */
@@ -4201,14 +4201,14 @@ export interface components {
             /** Origin */
             origin?: string | null;
             process?: components["schemas"]["Process"] | null;
+            /**
+             * Recipe Count
+             * @default 0
+             */
+            recipe_count: number;
             roast_level?: components["schemas"]["RoastLevel"] | null;
             /** Roaster */
             roaster?: string | null;
-            /**
-             * Set Count
-             * @default 0
-             */
-            set_count: number;
             sweetness?: components["schemas"]["BeanScale"] | null;
         };
         BeanScale: number;
@@ -4275,6 +4275,7 @@ export interface components {
          * @description Where a put of one draft would land: the row it continues, or a new profile.
          */
         BoardLanding: {
+            recipe?: components["schemas"]["LandingRecipe"] | null;
             /** Refused */
             refused?: string | null;
             /** Revives Label */
@@ -4283,7 +4284,6 @@ export interface components {
             row_id?: number | null;
             /** Row Label */
             row_label?: string | null;
-            set?: components["schemas"]["LandingSet"] | null;
         };
         /**
          * BoardMachineState
@@ -4378,7 +4378,7 @@ export interface components {
         };
         /**
          * BoardRowPin
-         * @description The live pin a profile-list row carries the copy of: which Set version it belongs to.
+         * @description The live pin a profile-list row carries the copy of: which Recipe version it belongs to.
          */
         BoardRowPin: {
             /** Original Label */
@@ -4387,12 +4387,12 @@ export interface components {
             original_version_id?: number | null;
             /** Pin Id */
             pin_id: number;
-            /** Set Id */
-            set_id: number;
-            /** Set Name */
-            set_name: string;
-            /** Set Version Id */
-            set_version_id: number;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Name */
+            recipe_name: string;
+            /** Recipe Version Id */
+            recipe_version_id: number;
             /**
              * Shot Count
              * @default 0
@@ -4427,9 +4427,9 @@ export interface components {
              * @default 0
              */
             proposed_versions: number;
+            recipe?: components["schemas"]["RecipeBrewing"] | null;
             renamed_on_machine?: components["schemas"]["RenamedOnMachine"] | null;
             row: components["schemas"]["BoardRow"];
-            set?: components["schemas"]["SetBrewing"] | null;
             /**
              * Starred
              * @default true
@@ -4492,7 +4492,7 @@ export interface components {
         /** @enum {string} */
         BurrType: "conical" | "flat" | "unknown";
         /** @enum {string} */
-        ChatKind: "general" | "set";
+        ChatKind: "general" | "recipe";
         /**
          * ChatMessageRow
          * @description One turn as stored.
@@ -4596,14 +4596,14 @@ export interface components {
              * @default 0
              */
             message_count: number;
-            /** Set Id */
-            set_id?: number | null;
-            /** Set Name */
-            set_name?: string | null;
-            /** Set Version Id */
-            set_version_id?: number | null;
-            /** Set Version Label */
-            set_version_label?: string | null;
+            /** Recipe Id */
+            recipe_id?: number | null;
+            /** Recipe Name */
+            recipe_name?: string | null;
+            /** Recipe Version Id */
+            recipe_version_id?: number | null;
+            /** Recipe Version Label */
+            recipe_version_label?: string | null;
             /**
              * Title
              * @default
@@ -4620,17 +4620,17 @@ export interface components {
          * @description A new thread.
          *
          *     Both fields optional, and what they mean together is the thread's kind.
-         *     Neither is a **general** conversation. ``set_id`` alone is a conversation
-         *     about that Set's **current** version — pressing New in a folder — and
-         *     ``set_version_id`` beside it names the version outright, which is what
-         *     continuing an older experiment looks like. A version without its Set is
+         *     Neither is a **general** conversation. ``recipe_id`` alone is a conversation
+         *     about that Recipe's **current** version — pressing New in a folder — and
+         *     ``recipe_version_id`` beside it names the version outright, which is what
+         *     continuing an older experiment looks like. A version without its Recipe is
          *     refused rather than guessed at: the two travel together everywhere else.
          */
         ChatThreadWrite: {
-            /** Set Id */
-            set_id?: number | null;
-            /** Set Version Id */
-            set_version_id?: number | null;
+            /** Recipe Id */
+            recipe_id?: number | null;
+            /** Recipe Version Id */
+            recipe_version_id?: number | null;
             /**
              * Title
              * @default
@@ -4875,13 +4875,13 @@ export interface components {
         };
         /**
          * CopiedFrom
-         * @description The "copied from" note of a Set: the version its first recipe was copied from, by name.
+         * @description The "copied from" note of a Recipe: the version it was copied from, by name.
          */
         CopiedFrom: {
-            /** Set Id */
-            set_id: number;
-            /** Set Name */
-            set_name: string;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Name */
+            recipe_name: string;
             /** Version Id */
             version_id: number;
             /** Version Label */
@@ -4908,9 +4908,9 @@ export interface components {
         Decision: "keep" | "improve" | "discard";
         /**
          * DesignBrief
-         * @description What the person asked for when they set out to design a Set in chat.
+         * @description What the person asked for when they set out to design a Recipe in chat.
          *
-         *     Stored on the Set (`sets.design_brief`) rather than only sent as the first
+         *     Stored on the Recipe (`recipes.design_brief`) rather than only sent as the first
          *     message, because the conversation reads it on every turn: a long design
          *     discussion trims its oldest messages, and the profile to fork from and the
          *     goal must not go with them. It stays after the design is done, as the
@@ -5321,31 +5321,31 @@ export interface components {
             } | null;
             /** Reason */
             reason?: string | null;
+            /** Recipe Version Label */
+            recipe_version_label?: string | null;
             /** Row Id */
             row_id?: number | null;
             /** Row Label */
             row_label?: string | null;
             /** Selected */
             selected?: boolean | null;
-            /** Set Version Label */
-            set_version_label?: string | null;
             state: components["schemas"]["StandingState"];
             /** Writes Enabled */
             writes_enabled: boolean;
         };
         /**
          * DuplicateAnswer
-         * @description `POST .../duplicate`: the new Set, and the id of the profile-list row of its new profile
+         * @description `POST .../duplicate`: the new Recipe, and the id of the profile-list row of its new profile
          *     (``None`` for a duplicate of a version that names no profile).
          */
         DuplicateAnswer: {
             /** Board Id */
             board_id?: number | null;
-            set: components["schemas"]["SetRow"];
+            recipe: components["schemas"]["RecipeRow"];
         };
         /**
          * DuplicateInsight
-         * @description One of the source Set's own confirmed insights, offered for copying.
+         * @description One of the source Recipe's own confirmed insights, offered for copying.
          */
         DuplicateInsight: {
             /** Id */
@@ -5368,30 +5368,9 @@ export interface components {
             has_profile: boolean;
             /** Insights */
             insights: components["schemas"]["DuplicateInsight"][];
-            recipe: components["schemas"]["DuplicateRecipe"];
-            /** Set Name */
-            set_name: string;
-        };
-        /**
-         * DuplicateRecipe
-         * @description The source version's recipe, as the dialog's read-only line says it.
-         */
-        DuplicateRecipe: {
-            /** Dose G */
-            dose_g?: number | null;
-            /** Grind Setting */
-            grind_setting?: string | null;
-            /** Grind Value */
-            grind_value?: number | null;
-            /**
-             * Intent
-             * @default
-             */
-            intent: string;
-            /** Profile Label */
-            profile_label?: string | null;
-            /** Target Yield G */
-            target_yield_g?: number | null;
+            /** Recipe Name */
+            recipe_name: string;
+            version_fields: components["schemas"]["DuplicateVersionFields"];
         };
         /**
          * DuplicateRequest
@@ -5409,8 +5388,29 @@ export interface components {
             insight_ids: number[];
             /** Profile Name */
             profile_name?: string | null;
-            /** Set Name */
-            set_name: string;
+            /** Recipe Name */
+            recipe_name: string;
+        };
+        /**
+         * DuplicateVersionFields
+         * @description The source version's numbers, as the dialog's read-only line says it.
+         */
+        DuplicateVersionFields: {
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /** Profile Label */
+            profile_label?: string | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
         };
         /**
          * EntryOut
@@ -5788,10 +5788,10 @@ export interface components {
              */
             notes: string;
             /**
-             * Set Count
+             * Recipe Count
              * @default 0
              */
-            set_count: number;
+            recipe_count: number;
             /** @default clicks */
             step_unit: components["schemas"]["StepUnit"];
         };
@@ -5929,7 +5929,8 @@ export interface components {
         };
         /**
          * InsightDeletionListData
-         * @description `GET /api/sets/{id}/insight-deletions`: every deletion proposed on this Set, newest first.
+         * @description `GET /api/recipes/{id}/insight-deletions`: every deletion proposed on this Recipe, newest
+         *     first.
          */
         InsightDeletionListData: {
             /** Items */
@@ -5952,8 +5953,8 @@ export interface components {
             insight_text: string;
             /** Reason */
             reason: string;
-            /** Set Id */
-            set_id: number;
+            /** Recipe Id */
+            recipe_id: number;
             /** @default proposed */
             status: components["schemas"]["InsightDeletionStatus"];
             /** Thread Id */
@@ -6006,8 +6007,8 @@ export interface components {
             confirmed_at?: string | null;
             /** Copied From Insight Id */
             copied_from_insight_id?: number | null;
-            /** Copied From Set Id */
-            copied_from_set_id?: number | null;
+            /** Copied From Recipe Id */
+            copied_from_recipe_id?: number | null;
             /**
              * Created At
              * @default
@@ -6021,13 +6022,19 @@ export interface components {
             evidence_shot_ids?: components["schemas"]["JsonList"];
             /**
              * General
-             * @description Whether it is general knowledge rather than one Set's.
+             * @description Whether it is general knowledge rather than one Recipe's.
              */
             readonly general: boolean;
             /** Id */
             id: number;
             /** Pattern Run Id */
             pattern_run_id?: number | null;
+            /** Recipe Id */
+            recipe_id?: number | null;
+            /** Recipe Version Id */
+            recipe_version_id?: number | null;
+            /** Recipe Version Label */
+            recipe_version_label?: string | null;
             /** Replaced */
             replaced?: ("deleted" | "old_changed") | null;
             /** Replaces Id */
@@ -6040,12 +6047,6 @@ export interface components {
             /** Rests On */
             rests_on?: components["schemas"]["RestsOnRow"][];
             scope?: components["schemas"]["InsightScope"];
-            /** Set Id */
-            set_id?: number | null;
-            /** Set Version Id */
-            set_version_id?: number | null;
-            /** Set Version Label */
-            set_version_label?: string | null;
             /**
              * Source
              * @default user
@@ -6120,10 +6121,10 @@ export interface components {
         /** @enum {string} */
         Kind: "measured" | "estimated" | "commanded";
         /**
-         * LandingSet
-         * @description The Set a put would give a new version: the Set of the profile it lands on.
+         * LandingRecipe
+         * @description The Recipe a put would give a new version: the Recipe of the profile it lands on.
          */
-        LandingSet: {
+        LandingRecipe: {
             /** Id */
             id: number;
             /** Name */
@@ -6156,7 +6157,7 @@ export interface components {
             /** Previous Version Id */
             previous_version_id?: number | null;
             profile: components["schemas"]["JsonObject"];
-            set?: components["schemas"]["SetBrewing"] | null;
+            recipe?: components["schemas"]["RecipeBrewing"] | null;
             /** Short Hash */
             short_hash: string;
             /**
@@ -6355,7 +6356,7 @@ export interface components {
         };
         /**
          * MeasureSpread
-         * @description One line of the Set page's Spread block: the number and its basis.
+         * @description One line of the Recipe page's Spread block: the number and its basis.
          */
         MeasureSpread: {
             /**
@@ -6389,7 +6390,7 @@ export interface components {
          * @description One measure the spread is worked out over: its slug, its words, its unit.
          *
          *     A :class:`Term` with a unit, rather than a label that already contains one:
-         *     the Set page writes "Shot time ±1.8 s" and the evidence table writes
+         *     the Recipe page writes "Shot time ±1.8 s" and the evidence table writes
          *     "held against 2.4 s", and a label of "Shot time (s)" would put the unit in
          *     the wrong half of both sentences.
          */
@@ -6460,14 +6461,14 @@ export interface components {
          * OpenBody
          * @description `POST /api/chat/threads/open`: the version to carry on talking about.
          *
-         *     ``set_version_id`` omitted is the Set's current version, which is what a
-         *     Discuss button on the Set itself means.
+         *     ``recipe_version_id`` omitted is the Recipe's current version, which is what a
+         *     Discuss button on the Recipe itself means.
          */
         OpenBody: {
-            /** Set Id */
-            set_id: number;
-            /** Set Version Id */
-            set_version_id?: number | null;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Version Id */
+            recipe_version_id?: number | null;
         };
         /** @enum {string} */
         OptionKey: "conservative" | "recommended" | "adventurous";
@@ -6497,11 +6498,12 @@ export interface components {
          */
         OutcomeProposalDecision: {
             proposal: components["schemas"]["OutcomeProposalRow"];
-            version?: components["schemas"]["SetVersionRow"] | null;
+            version?: components["schemas"]["RecipeVersionRow"] | null;
         };
         /**
          * OutcomeProposalListData
-         * @description `GET /api/sets/{id}/outcome-proposals`: every grade proposed on this Set, newest first.
+         * @description `GET /api/recipes/{id}/outcome-proposals`: every grade proposed on this Recipe, newest
+         *     first.
          */
         OutcomeProposalListData: {
             /** Items */
@@ -6536,11 +6538,11 @@ export interface components {
             /** Note */
             note: string;
             outcome: components["schemas"]["VersionOutcome"];
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Version Id */
+            recipe_version_id: number;
             recorded_outcome?: components["schemas"]["VersionOutcome"] | null;
-            /** Set Id */
-            set_id: number;
-            /** Set Version Id */
-            set_version_id: number;
             /** @default proposed */
             status: components["schemas"]["OutcomeProposalStatus"];
             /** Thread Id */
@@ -6564,7 +6566,7 @@ export interface components {
         };
         /**
          * OverrideListData
-         * @description `GET /api/sets/{id}/versions/{id}/signature-overrides`: newest first.
+         * @description `GET /api/recipes/{id}/versions/{id}/signature-overrides`: newest first.
          */
         OverrideListData: {
             /** Items */
@@ -6572,7 +6574,7 @@ export interface components {
         };
         /**
          * OverrideOut
-         * @description An override of one expectation's limit on one Set version, with what it overrides.
+         * @description An override of one expectation's limit on one Recipe version, with what it overrides.
          */
         OverrideOut: {
             /** Answered At */
@@ -6604,12 +6606,12 @@ export interface components {
             proposed_by_thread_id: number | null;
             /** Reason */
             reason: string;
+            /** Recipe Version Id */
+            recipe_version_id: number;
             /** Reject Reason */
             reject_reason: string;
             /** Sentence */
             sentence: string;
-            /** Set Version Id */
-            set_version_id: number;
             /**
              * Status
              * @enum {string}
@@ -6760,10 +6762,10 @@ export interface components {
              */
             provider: string;
             /**
-             * Sets Read
+             * Recipes Read
              * @default 0
              */
-            sets_read: number;
+            recipes_read: number;
             /** @default running */
             status: components["schemas"]["PatternRunStatus"];
             /** Usage */
@@ -6781,10 +6783,10 @@ export interface components {
             /** Counted From */
             counted_from?: string | null;
             /**
-             * Min Sets
+             * Min Recipes
              * @default 2
              */
-            min_sets: number;
+            min_recipes: number;
             /**
              * New Since Last Run
              * @default 0
@@ -6792,12 +6794,12 @@ export interface components {
             new_since_last_run: number;
             /** Proposals */
             proposals?: components["schemas"]["PatternProposalRow"][];
-            run?: components["schemas"]["PatternRunRow"] | null;
             /**
-             * Sets With Insights
+             * Recipes With Insights
              * @default 0
              */
-            sets_with_insights: number;
+            recipes_with_insights: number;
+            run?: components["schemas"]["PatternRunRow"] | null;
         };
         /**
          * PatternSkipped
@@ -6807,8 +6809,8 @@ export interface components {
             /** Insight Id */
             insight_id?: number | null;
             reason: components["schemas"]["SkipReason"];
-            /** Set Id */
-            set_id?: number | null;
+            /** Recipe Id */
+            recipe_id?: number | null;
             /** Text */
             text: string;
         };
@@ -6819,10 +6821,10 @@ export interface components {
         PatternSource: {
             /** Insight Id */
             insight_id: number;
-            /** Set Id */
-            set_id: number;
-            /** Set Name */
-            set_name: string;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Name */
+            recipe_name: string;
             /** Text */
             text: string;
         };
@@ -6886,16 +6888,16 @@ export interface components {
             /** Profile Version Id */
             profile_version_id: number;
             /**
-             * Set Archived
+             * Recipe Archived
              * @default false
              */
-            set_archived: boolean;
-            /** Set Id */
-            set_id: number;
-            /** Set Name */
-            set_name: string;
-            /** Set Version Id */
-            set_version_id: number;
+            recipe_archived: boolean;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Name */
+            recipe_name: string;
+            /** Recipe Version Id */
+            recipe_version_id: number;
             /**
              * Shot Count
              * @default 0
@@ -6952,7 +6954,7 @@ export interface components {
         Process: "washed" | "natural" | "honey" | "anaerobic" | "other";
         /**
          * ProfileChoice
-         * @description What a Set may start on: the version to name and the profile's name.
+         * @description What a Recipe may start on: the version to name and the profile's name.
          */
         ProfileChoice: {
             /** Label */
@@ -7077,8 +7079,16 @@ export interface components {
              * @default false
              */
             pushed_saved: boolean;
-            /** Recorded Set Name */
-            recorded_set_name?: string | null;
+            /** Recipe Id */
+            recipe_id?: number | null;
+            /** Recipe Name */
+            recipe_name?: string | null;
+            /** Recipe Next Major Label */
+            recipe_next_major_label?: string | null;
+            /** Recipe Next Minor Label */
+            recipe_next_minor_label?: string | null;
+            /** Recorded Recipe Name */
+            recorded_recipe_name?: string | null;
             /** Recorded Version Id */
             recorded_version_id?: number | null;
             /** Recorded Version Label */
@@ -7089,14 +7099,6 @@ export interface components {
             replaced_device_profile_id?: string | null;
             /** Replaced Version Id */
             replaced_version_id?: number | null;
-            /** Set Id */
-            set_id?: number | null;
-            /** Set Name */
-            set_name?: string | null;
-            /** Set Next Major Label */
-            set_next_major_label?: string | null;
-            /** Set Next Minor Label */
-            set_next_minor_label?: string | null;
             /** Source Analysis Id */
             source_analysis_id?: number | null;
             /** Source Suggestion Id */
@@ -7140,7 +7142,7 @@ export interface components {
          * ProfileMatchRequest
          * @description `POST /api/shots/profile-match`: which shots to offer the profile match.
          *
-         *     No `shot_ids` means every shot that needs a Set (the Shots page's button),
+         *     No `shot_ids` means every shot that needs a Recipe (the Shots page's button),
          *     which leaves out a shot labelled Discard; a list is the one-shot button on a
          *     shot's own page, which files the shot it names whatever its label.
          */
@@ -7241,7 +7243,7 @@ export interface components {
             pin?: components["schemas"]["VersionPin"] | null;
             /** Profile Name */
             profile_name: string;
-            set?: components["schemas"]["VersionSet"] | null;
+            recipe?: components["schemas"]["VersionRecipe"] | null;
             /**
              * Shot Count
              * @default 0
@@ -7400,6 +7402,789 @@ export interface components {
             stopped: boolean;
         };
         /**
+         * RecipeBrewing
+         * @description The Recipe a profile has, so a page can warn before the profile is changed: the Recipe
+         *     follows it with a version of its own.
+         */
+        RecipeBrewing: {
+            /** Name */
+            name: string;
+            /** Next Minor Label */
+            next_minor_label: string;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Version Label */
+            version_label: string;
+        };
+        /**
+         * RecipeCreate
+         * @description `POST /api/recipes`: the identity and the first version, in one request.
+         */
+        RecipeCreate: {
+            /**
+             * Automatch
+             * @default true
+             */
+            automatch: boolean;
+            /** Bean Id */
+            bean_id: number;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * @default {
+             *       "intent": "",
+             *       "prediction": "",
+             *       "origin": "manual"
+             *     }
+             */
+            version: components["schemas"]["RecipeVersionWrite"];
+        };
+        /**
+         * RecipeDesignCreate
+         * @description `POST /api/recipes/design`: what the design wizard asks, and the brief it stores.
+         *
+         *     The brief's own fields — the profile to fork, the usual grind, the goal and
+         *     whichever of the grind, dose and yield the form already had filled in — are
+         *     inherited from :class:`DesignBrief`, so the route and the stored brief cannot
+         *     disagree about their limits.
+         */
+        RecipeDesignCreate: {
+            /** Bean Id */
+            bean_id: number;
+            /** Dose G */
+            dose_g?: number | null;
+            /** Fork Profile Version Id */
+            fork_profile_version_id?: number | null;
+            /**
+             * Goal
+             * @default
+             */
+            goal: string;
+            /**
+             * Grind Setting
+             * @default
+             */
+            grind_setting: string;
+            /** Grinder Id */
+            grinder_id: number;
+            /** Name */
+            name?: string | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+            /**
+             * Usual Grind
+             * @default
+             */
+            usual_grind: string;
+        };
+        /**
+         * RecipeDesignCreated
+         * @description What starting a design produced: the Recipe, its empty version 1, and its chat.
+         */
+        RecipeDesignCreated: {
+            recipe: components["schemas"]["RecipeRow"];
+            /** Thread Id */
+            thread_id: number;
+            version: components["schemas"]["RecipeVersionRow"];
+        };
+        /**
+         * RecipeDesignDiscarded
+         * @description `DELETE /api/recipes/{id}/design`: the Recipe that no longer exists.
+         */
+        RecipeDesignDiscarded: {
+            /**
+             * Discarded
+             * @default true
+             */
+            discarded: boolean;
+            /** Recipe Id */
+            recipe_id: number;
+        };
+        /**
+         * RecipeDetailData
+         * @description `GET /api/recipes/{id}`: everything the Recipe page draws.
+         */
+        RecipeDetailData: {
+            /** Judgements */
+            judgements: {
+                [key: string]: components["schemas"]["ShotJudgementRow"];
+            };
+            outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
+            /**
+             * Pins
+             * @default []
+             */
+            pins: components["schemas"]["RecipePin"][];
+            proposal?: components["schemas"]["RecipeProposalDetail"] | null;
+            recipe: components["schemas"]["RecipeRow"];
+            /**
+             * Reverts
+             * @default []
+             */
+            reverts: components["schemas"]["RecipeRevertRow"][];
+            /** Rollback Target Version Id */
+            rollback_target_version_id?: number | null;
+            /**
+             * Spread
+             * @default []
+             */
+            spread: components["schemas"]["MeasureSpread"][];
+            /**
+             * @default {
+             *       "no_prediction": 0,
+             *       "open": 0,
+             *       "held": 0,
+             *       "partly_held": 0,
+             *       "failed": 0,
+             *       "inconclusive": 0,
+             *       "graded": 0
+             *     }
+             */
+            track_record: components["schemas"]["RecipeTrackRecord"];
+            /** Versions */
+            versions: components["schemas"]["RecipeVersionDetail"][];
+        };
+        /** RecipeListData */
+        RecipeListData: {
+            /** Items */
+            items: components["schemas"]["RecipeRow"][];
+        };
+        /**
+         * RecipePin
+         * @description One live pin, as the Recipe page's "Pinned on the machine" card lists it.
+         */
+        RecipePin: {
+            /** Board Id */
+            board_id: number;
+            /** Name */
+            name: string;
+            /** Pin Id */
+            pin_id: number;
+            /** Pinned At */
+            pinned_at: string;
+            /** Recipe Version Id */
+            recipe_version_id: number;
+            /** Shot Count */
+            shot_count: number;
+            /** Version Label */
+            version_label: string;
+        };
+        /**
+         * RecipeProposalDecision
+         * @description What accepting one produced: the proposal as it now stands, and the version.
+         */
+        RecipeProposalDecision: {
+            /** Profile Draft Id */
+            profile_draft_id?: number | null;
+            /** Profile Row Id */
+            profile_row_id?: number | null;
+            proposal: components["schemas"]["RecipeProposalDetail"];
+            version?: components["schemas"]["RecipeVersionRow"] | null;
+        };
+        /**
+         * RecipeProposalDetail
+         * @description One proposed change, as the card that asks about it needs it.
+         *
+         *     Written out field by field rather than dumped from the repository's row,
+         *     because the row carries the change as a **patch** — a shape whose nulls mean
+         *     "clear this field" and whose absences mean "leave it alone". That is the
+         *     right thing to store and the wrong thing to hand a browser, which wants the
+         *     same before-and-after lines the experiment log already draws. So the patch
+         *     stays inside the repository and `changes` comes out.
+         */
+        RecipeProposalDetail: {
+            /**
+             * Base Is Current
+             * @default true
+             */
+            base_is_current: boolean;
+            /** Base Version Id */
+            base_version_id: number;
+            /** Base Version Label */
+            base_version_label?: string | null;
+            /**
+             * Changed
+             * @default []
+             */
+            changed: string[];
+            /**
+             * Changes
+             * @default []
+             */
+            changes: components["schemas"]["FieldChange"][];
+            /**
+             * Combined Reason
+             * @default
+             */
+            combined_reason: string;
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Compares To Version Label */
+            compares_to_version_label?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Decline Note
+             * @default
+             */
+            decline_note: string;
+            /** Draft Id */
+            draft_id?: number | null;
+            /** Id */
+            id: number;
+            /** @default change */
+            kind: components["schemas"]["ProposalKind"];
+            /**
+             * Major Reason
+             * @default
+             */
+            major_reason: string;
+            /**
+             * Next Major Label
+             * @default
+             */
+            next_major_label: string;
+            /**
+             * Next Minor Label
+             * @default
+             */
+            next_minor_label: string;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
+            /**
+             * Readable
+             * @default true
+             */
+            readable: boolean;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Recipe Id */
+            recipe_id: number;
+            records_outcome?: components["schemas"]["OutcomeProposalRow"] | null;
+            /** Resulting Version Id */
+            resulting_version_id?: number | null;
+            /** Resulting Version Label */
+            resulting_version_label?: string | null;
+            /** @default proposed */
+            status: components["schemas"]["ProposalStatus"];
+            /**
+             * Suggest Major
+             * @default false
+             */
+            suggest_major: boolean;
+            /** Thread Id */
+            thread_id?: number | null;
+        };
+        /**
+         * RecipeProposalListData
+         * @description `GET /api/recipes/{id}/proposals`: every change ever proposed, newest first.
+         */
+        RecipeProposalListData: {
+            /** Items */
+            items: components["schemas"]["RecipeProposalDetail"][];
+        };
+        /**
+         * RecipeRevertRow
+         * @description One time a Recipe went back to another version: a line of the log, not a version.
+         */
+        RecipeRevertRow: {
+            /** Created At */
+            created_at: string;
+            /** From Version Id */
+            from_version_id: number;
+            /** From Version Label */
+            from_version_label: string;
+            /** Id */
+            id: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Recipe Id */
+            recipe_id: number;
+            /** To Version Id */
+            to_version_id: number;
+            /** To Version Label */
+            to_version_label: string;
+        };
+        /**
+         * RecipeRow
+         * @description One row of `recipes`, with the current version and the joined names.
+         */
+        RecipeRow: {
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /**
+             * Automatch
+             * @default false
+             */
+            automatch: boolean;
+            /** Bean Id */
+            bean_id: number;
+            /** Bean Name */
+            bean_name?: string | null;
+            /** Board Id */
+            board_id?: number | null;
+            copied_from?: components["schemas"]["CopiedFrom"] | null;
+            /** Created At */
+            created_at: string;
+            /** Current Version Id */
+            current_version_id?: number | null;
+            /**
+             * Current Version Label
+             * @default
+             */
+            current_version_label: string;
+            design_brief?: components["schemas"]["DesignBrief"];
+            /**
+             * Designing
+             * @default false
+             */
+            designing: boolean;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Grinder Name */
+            grinder_name?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Next Major Label
+             * @default
+             */
+            next_major_label: string;
+            /**
+             * Next Minor Label
+             * @default
+             */
+            next_minor_label: string;
+            /** Profile Label */
+            profile_label?: string | null;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
+            /**
+             * Version Count
+             * @default 0
+             */
+            version_count: number;
+        };
+        /**
+         * RecipeTrackRecord
+         * @description How often this Recipe's predictions turned out right.
+         *
+         *     ``graded`` is the four recorded outcomes together, which is the denominator
+         *     of the sentence the page leads with. The un-graded two are counted as well
+         *     rather than folded away: "four of six held" reads very differently beside
+         *     "and nine versions predicted nothing".
+         */
+        RecipeTrackRecord: {
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Graded
+             * @default 0
+             */
+            graded: number;
+            /**
+             * Held
+             * @default 0
+             */
+            held: number;
+            /**
+             * Inconclusive
+             * @default 0
+             */
+            inconclusive: number;
+            /**
+             * No Prediction
+             * @default 0
+             */
+            no_prediction: number;
+            /**
+             * Open
+             * @default 0
+             */
+            open: number;
+            /**
+             * Partly Held
+             * @default 0
+             */
+            partly_held: number;
+        };
+        /**
+         * RecipeTrendCounts
+         * @description How many shots each of a version's means is over.
+         *
+         *     A mean is over the counted shots that have the value: a shot nobody rated
+         *     adds nothing to the rating, a machine with no pressure sensor nothing to the
+         *     first drip. Next to the version's counted total this says which means rest on
+         *     fewer shots than the version has.
+         */
+        RecipeTrendCounts: {
+            /**
+             * Duration S
+             * @default 0
+             */
+            duration_s: number;
+            /**
+             * First Drip S
+             * @default 0
+             */
+            first_drip_s: number;
+            /**
+             * Rating
+             * @default 0
+             */
+            rating: number;
+            /**
+             * Ratio
+             * @default 0
+             */
+            ratio: number;
+            /**
+             * Yield G
+             * @default 0
+             */
+            yield_g: number;
+        };
+        /**
+         * RecipeTrendPoint
+         * @description One shot on the Recipe's trend chart.
+         */
+        RecipeTrendPoint: {
+            /** Device Id */
+            device_id: string;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Rating */
+            rating?: number | null;
+            /** Ratio */
+            ratio?: number | null;
+            /** Recipe Version Id */
+            recipe_version_id: number;
+            /** Shot Id */
+            shot_id: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Version Label */
+            version_label: string;
+        };
+        /**
+         * RecipeTrends
+         * @description `GET /api/recipes/{id}/trends`: the per-version summary and every shot.
+         */
+        RecipeTrends: {
+            /** Recipe Id */
+            recipe_id: number;
+            /** Shots */
+            shots: components["schemas"]["RecipeTrendPoint"][];
+            /** Versions */
+            versions: components["schemas"]["RecipeTrendVersion"][];
+        };
+        /**
+         * RecipeTrendVersion
+         * @description One version's averages: what `get_recipe`'s trajectory and the chat's ledger read.
+         *
+         *     The averages are over the version's **counted** shots (the ones the spread
+         *     and the evidence use: not quarantined, not incomplete, not a Discard), so a
+         *     knocked-over cup does not pull a bar down. ``shots`` is every shot filed
+         *     under the version, ``counted_shots`` the ones the means can be over.
+         */
+        RecipeTrendVersion: {
+            /**
+             * @default {
+             *       "duration_s": 0,
+             *       "yield_g": 0,
+             *       "ratio": 0,
+             *       "rating": 0,
+             *       "first_drip_s": 0
+             *     }
+             */
+            averaged_over: components["schemas"]["RecipeTrendCounts"];
+            /** Avg Duration S */
+            avg_duration_s?: number | null;
+            /** Avg First Drip S */
+            avg_first_drip_s?: number | null;
+            /** Avg Rating */
+            avg_rating?: number | null;
+            /** Avg Ratio */
+            avg_ratio?: number | null;
+            /** Avg Yield G */
+            avg_yield_g?: number | null;
+            /**
+             * Counted Shots
+             * @default 0
+             */
+            counted_shots: number;
+            /** Created At */
+            created_at: string;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /**
+             * Origin
+             * @default manual
+             */
+            origin: string;
+            /** Recipe Version Id */
+            recipe_version_id: number;
+            /**
+             * Shots
+             * @default 0
+             */
+            shots: number;
+            /** Version Label */
+            version_label: string;
+        };
+        /** RecipeUsingOut */
+        RecipeUsingOut: {
+            /** Archived */
+            archived: boolean;
+            /** Is Current */
+            is_current: boolean;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Name */
+            recipe_name: string;
+            /** Version Id */
+            version_id: number;
+            /** Version Label */
+            version_label: string;
+        };
+        /**
+         * RecipeVersionAdd
+         * @description `POST /api/recipes/{id}/versions`: the change, and whether it is a major one.
+         *
+         *     ``major`` is the person's answer to the form's "Major change" box: true
+         *     starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
+         *     Left out, it is a minor. It is not part of the recipe, so it is split off
+         *     before the patch reaches the repository. Strictly a boolean: "yes" or 1 is
+         *     a request somebody should look at, not a guess this route makes.
+         */
+        RecipeVersionAdd: {
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /** Major */
+            major?: boolean | null;
+            /** @default manual */
+            origin: components["schemas"]["RecipeVersionOrigin"];
+            /** Origin Analysis Id */
+            origin_analysis_id?: number | null;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+        };
+        /**
+         * RecipeVersionAssignment
+         * @description `PUT /api/shots/{id}/recipe-version`: which Recipe version this shot belongs to.
+         *
+         *     A body with an explicit `null` rather than a DELETE, because "this shot was
+         *     not part of any Recipe" is a statement the user makes, and it lands in the same
+         *     place a correction does.
+         */
+        RecipeVersionAssignment: {
+            /** Recipe Version Id */
+            recipe_version_id?: number | null;
+        };
+        /**
+         * RecipeVersionDetail
+         * @description One version, its diff against its parent, and the shots pulled with it.
+         */
+        RecipeVersionDetail: {
+            /** Changes */
+            changes: components["schemas"]["FieldChange"][];
+            /** Chat Thread Id */
+            chat_thread_id?: number | null;
+            /**
+             * Dead End
+             * @default false
+             */
+            dead_end: boolean;
+            evidence?: components["schemas"]["VersionEvidence"] | null;
+            /**
+             * @default {
+             *       "keep": 0,
+             *       "improve": 0,
+             *       "discard": 0,
+             *       "unlabelled": 0
+             *     }
+             */
+            labels: components["schemas"]["VersionLabelCounts"];
+            outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
+            pinned?: components["schemas"]["VersionPinned"] | null;
+            /** Shots */
+            shots: components["schemas"]["ShotListItem"][];
+            version: components["schemas"]["RecipeVersionRow"];
+        };
+        /** @enum {string} */
+        RecipeVersionOrigin: "manual" | "analysis" | "chat" | "starting_point";
+        /**
+         * RecipeVersionRow
+         * @description One row of `recipe_versions`, with the labels a reader needs beside it.
+         */
+        RecipeVersionRow: {
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Compares To Version Label */
+            compares_to_version_label?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /** Id */
+            id: number;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+            /** @default manual */
+            origin: components["schemas"]["RecipeVersionOrigin"];
+            /** Origin Analysis Id */
+            origin_analysis_id?: number | null;
+            outcome?: components["schemas"]["VersionOutcome"] | null;
+            /** Outcome At */
+            outcome_at?: string | null;
+            /**
+             * Outcome Note
+             * @default
+             */
+            outcome_note: string;
+            /**
+             * @description What the experiment log shows for this version.
+             *
+             *     Derived rather than stored, because it is two columns read together and
+             *     a stored copy would be a third value that can disagree with both. The
+             *     distinction that matters is between "nobody predicted anything" and
+             *     "somebody predicted something and has not said how it went": the first
+             *     is not a gap in the record, the second is.
+             */
+            readonly outcome_state: components["schemas"]["OutcomeState"];
+            /** Parent Version Id */
+            parent_version_id?: number | null;
+            /** Parent Version Label */
+            parent_version_label?: string | null;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
+            /** Prediction At */
+            prediction_at?: string | null;
+            /** Profile Label */
+            profile_label?: string | null;
+            /** Profile Temperature C */
+            profile_temperature_c?: number | null;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Restores Version Id */
+            restores_version_id?: number | null;
+            /** Restores Version Label */
+            restores_version_label?: string | null;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+            /**
+             * Version Label
+             * @description "v1", "v1.1": the name every screen, tool and prompt shows.
+             */
+            readonly version_label: string;
+            /** Version Major */
+            version_major: number;
+            /**
+             * Version Minor
+             * @default 0
+             */
+            version_minor: number;
+        };
+        /**
+         * RecipeVersionWrite
+         * @description A complete first version. What `POST /api/recipes` stores as version 1.
+         */
+        RecipeVersionWrite: {
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /** @default manual */
+            origin: components["schemas"]["RecipeVersionOrigin"];
+            /** Origin Analysis Id */
+            origin_analysis_id?: number | null;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+        };
+        /**
          * RejectBody
          * @description `POST .../reject`: an optional one-line reason, which the proposing conversation is told.
          */
@@ -7466,8 +8251,8 @@ export interface components {
         RestoreCounts: {
             /** Beans */
             beans: number;
-            /** Sets */
-            sets: number;
+            /** Recipes */
+            recipes: number;
             /** Shots */
             shots: number;
         };
@@ -7490,8 +8275,8 @@ export interface components {
             label: string;
             outcome_now?: components["schemas"]["VersionOutcome"] | null;
             outcome_then?: components["schemas"]["VersionOutcome"] | null;
-            /** Set Version Id */
-            set_version_id: number;
+            /** Recipe Version Id */
+            recipe_version_id: number;
         };
         /**
          * Result
@@ -7643,9 +8428,9 @@ export interface components {
         RoastLevel: "light" | "medium-light" | "medium" | "medium-dark" | "dark";
         /**
          * RollbackWrite
-         * @description `POST /api/sets/{id}/rollback`: go back to a version that worked.
+         * @description `POST /api/recipes/{id}/rollback`: go back to a version that worked.
          *
-         *     A revert writes no version: the Set is on the target again, as it was, with
+         *     A revert writes no version: the Recipe is on the target again, as it was, with
          *     its prediction, shots and outcome untouched. So it takes no prediction (the
          *     target already has one, or has shots), and ``extra="forbid"`` makes a body
          *     that still carries one a 422 rather than a silently dropped field.
@@ -7766,393 +8551,6 @@ export interface components {
             run: components["schemas"]["ChatRunRow"];
         };
         /**
-         * SetBrewing
-         * @description The Set a profile has, so a page can warn before the profile is changed: the Set follows
-         *     it with a version of its own.
-         */
-        SetBrewing: {
-            /** Name */
-            name: string;
-            /** Next Minor Label */
-            next_minor_label: string;
-            /** Set Id */
-            set_id: number;
-            /** Version Label */
-            version_label: string;
-        };
-        /**
-         * SetCreate
-         * @description `POST /api/sets`: the identity and the first recipe, in one request.
-         */
-        SetCreate: {
-            /**
-             * Automatch
-             * @default true
-             */
-            automatch: boolean;
-            /** Bean Id */
-            bean_id: number;
-            /** Grinder Id */
-            grinder_id?: number | null;
-            /** Name */
-            name: string;
-            /**
-             * @default {
-             *       "intent": "",
-             *       "prediction": "",
-             *       "origin": "manual"
-             *     }
-             */
-            version: components["schemas"]["SetVersionWrite"];
-        };
-        /**
-         * SetDesignCreate
-         * @description `POST /api/sets/design`: what the design wizard asks, and the brief it stores.
-         *
-         *     The brief's own fields — the profile to fork, the usual grind, the goal and
-         *     whichever of the grind, dose and yield the form already had filled in — are
-         *     inherited from :class:`DesignBrief`, so the route and the stored brief cannot
-         *     disagree about their limits.
-         */
-        SetDesignCreate: {
-            /** Bean Id */
-            bean_id: number;
-            /** Dose G */
-            dose_g?: number | null;
-            /** Fork Profile Version Id */
-            fork_profile_version_id?: number | null;
-            /**
-             * Goal
-             * @default
-             */
-            goal: string;
-            /**
-             * Grind Setting
-             * @default
-             */
-            grind_setting: string;
-            /** Grinder Id */
-            grinder_id: number;
-            /** Name */
-            name?: string | null;
-            /** Target Yield G */
-            target_yield_g?: number | null;
-            /**
-             * Usual Grind
-             * @default
-             */
-            usual_grind: string;
-        };
-        /**
-         * SetDesignCreated
-         * @description What starting a design produced: the Set, its empty version 1, and its chat.
-         */
-        SetDesignCreated: {
-            set: components["schemas"]["SetRow"];
-            /** Thread Id */
-            thread_id: number;
-            version: components["schemas"]["SetVersionRow"];
-        };
-        /**
-         * SetDesignDiscarded
-         * @description `DELETE /api/sets/{id}/design`: the Set that no longer exists.
-         */
-        SetDesignDiscarded: {
-            /**
-             * Discarded
-             * @default true
-             */
-            discarded: boolean;
-            /** Set Id */
-            set_id: number;
-        };
-        /**
-         * SetDetailData
-         * @description `GET /api/sets/{id}`: everything the Set page draws.
-         */
-        SetDetailData: {
-            /** Judgements */
-            judgements: {
-                [key: string]: components["schemas"]["ShotJudgementRow"];
-            };
-            outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
-            /**
-             * Pins
-             * @default []
-             */
-            pins: components["schemas"]["SetPin"][];
-            proposal?: components["schemas"]["SetProposalDetail"] | null;
-            /**
-             * Reverts
-             * @default []
-             */
-            reverts: components["schemas"]["SetRevertRow"][];
-            /** Rollback Target Version Id */
-            rollback_target_version_id?: number | null;
-            set: components["schemas"]["SetRow"];
-            /**
-             * Spread
-             * @default []
-             */
-            spread: components["schemas"]["MeasureSpread"][];
-            /**
-             * @default {
-             *       "no_prediction": 0,
-             *       "open": 0,
-             *       "held": 0,
-             *       "partly_held": 0,
-             *       "failed": 0,
-             *       "inconclusive": 0,
-             *       "graded": 0
-             *     }
-             */
-            track_record: components["schemas"]["SetTrackRecord"];
-            /** Versions */
-            versions: components["schemas"]["SetVersionDetail"][];
-        };
-        /** SetListData */
-        SetListData: {
-            /** Items */
-            items: components["schemas"]["SetRow"][];
-        };
-        /**
-         * SetPin
-         * @description One live pin, as the Set page's "Pinned on the machine" card lists it.
-         */
-        SetPin: {
-            /** Board Id */
-            board_id: number;
-            /** Name */
-            name: string;
-            /** Pin Id */
-            pin_id: number;
-            /** Pinned At */
-            pinned_at: string;
-            /** Set Version Id */
-            set_version_id: number;
-            /** Shot Count */
-            shot_count: number;
-            /** Version Label */
-            version_label: string;
-        };
-        /**
-         * SetProposalDecision
-         * @description What accepting one produced: the proposal as it now stands, and the version.
-         */
-        SetProposalDecision: {
-            /** Profile Draft Id */
-            profile_draft_id?: number | null;
-            /** Profile Row Id */
-            profile_row_id?: number | null;
-            proposal: components["schemas"]["SetProposalDetail"];
-            version?: components["schemas"]["SetVersionRow"] | null;
-        };
-        /**
-         * SetProposalDetail
-         * @description One proposed change, as the card that asks about it needs it.
-         *
-         *     Written out field by field rather than dumped from the repository's row,
-         *     because the row carries the change as a **patch** — a shape whose nulls mean
-         *     "clear this field" and whose absences mean "leave it alone". That is the
-         *     right thing to store and the wrong thing to hand a browser, which wants the
-         *     same before-and-after lines the experiment log already draws. So the patch
-         *     stays inside the repository and `changes` comes out.
-         */
-        SetProposalDetail: {
-            /**
-             * Base Is Current
-             * @default true
-             */
-            base_is_current: boolean;
-            /** Base Version Id */
-            base_version_id: number;
-            /** Base Version Label */
-            base_version_label?: string | null;
-            /**
-             * Changed
-             * @default []
-             */
-            changed: string[];
-            /**
-             * Changes
-             * @default []
-             */
-            changes: components["schemas"]["FieldChange"][];
-            /**
-             * Combined Reason
-             * @default
-             */
-            combined_reason: string;
-            /** Compares To Version Id */
-            compares_to_version_id?: number | null;
-            /** Compares To Version Label */
-            compares_to_version_label?: string | null;
-            /** Created At */
-            created_at: string;
-            /** Decided At */
-            decided_at?: string | null;
-            /**
-             * Decline Note
-             * @default
-             */
-            decline_note: string;
-            /** Draft Id */
-            draft_id?: number | null;
-            /** Id */
-            id: number;
-            /** @default change */
-            kind: components["schemas"]["ProposalKind"];
-            /**
-             * Major Reason
-             * @default
-             */
-            major_reason: string;
-            /**
-             * Next Major Label
-             * @default
-             */
-            next_major_label: string;
-            /**
-             * Next Minor Label
-             * @default
-             */
-            next_minor_label: string;
-            /**
-             * Prediction
-             * @default
-             */
-            prediction: string;
-            /**
-             * Readable
-             * @default true
-             */
-            readable: boolean;
-            /**
-             * Reason
-             * @default
-             */
-            reason: string;
-            records_outcome?: components["schemas"]["OutcomeProposalRow"] | null;
-            /** Resulting Version Id */
-            resulting_version_id?: number | null;
-            /** Resulting Version Label */
-            resulting_version_label?: string | null;
-            /** Set Id */
-            set_id: number;
-            /** @default proposed */
-            status: components["schemas"]["ProposalStatus"];
-            /**
-             * Suggest Major
-             * @default false
-             */
-            suggest_major: boolean;
-            /** Thread Id */
-            thread_id?: number | null;
-        };
-        /**
-         * SetProposalListData
-         * @description `GET /api/sets/{id}/proposals`: every change ever proposed, newest first.
-         */
-        SetProposalListData: {
-            /** Items */
-            items: components["schemas"]["SetProposalDetail"][];
-        };
-        /**
-         * SetRevertRow
-         * @description One time a Set went back to another version: a line of the log, not a version.
-         */
-        SetRevertRow: {
-            /** Created At */
-            created_at: string;
-            /** From Version Id */
-            from_version_id: number;
-            /** From Version Label */
-            from_version_label: string;
-            /** Id */
-            id: number;
-            /**
-             * Note
-             * @default
-             */
-            note: string;
-            /** Set Id */
-            set_id: number;
-            /** To Version Id */
-            to_version_id: number;
-            /** To Version Label */
-            to_version_label: string;
-        };
-        /**
-         * SetRow
-         * @description One row of `sets`, with the current version and the joined names.
-         */
-        SetRow: {
-            /**
-             * Archived
-             * @default false
-             */
-            archived: boolean;
-            /**
-             * Automatch
-             * @default false
-             */
-            automatch: boolean;
-            /** Bean Id */
-            bean_id: number;
-            /** Bean Name */
-            bean_name?: string | null;
-            /** Board Id */
-            board_id?: number | null;
-            copied_from?: components["schemas"]["CopiedFrom"] | null;
-            /** Created At */
-            created_at: string;
-            /** Current Version Id */
-            current_version_id?: number | null;
-            /**
-             * Current Version Label
-             * @default
-             */
-            current_version_label: string;
-            design_brief?: components["schemas"]["DesignBrief"];
-            /**
-             * Designing
-             * @default false
-             */
-            designing: boolean;
-            /** Grinder Id */
-            grinder_id?: number | null;
-            /** Grinder Name */
-            grinder_name?: string | null;
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /**
-             * Next Major Label
-             * @default
-             */
-            next_major_label: string;
-            /**
-             * Next Minor Label
-             * @default
-             */
-            next_minor_label: string;
-            /** Profile Label */
-            profile_label?: string | null;
-            /** Profile Version Id */
-            profile_version_id?: number | null;
-            /**
-             * Shot Count
-             * @default 0
-             */
-            shot_count: number;
-            /**
-             * Version Count
-             * @default 0
-             */
-            version_count: number;
-        };
-        /**
          * SettingsData
          * @description Registry key -> resolved setting. Secrets carry a hint, never a value.
          */
@@ -8167,402 +8565,6 @@ export interface components {
             [key: string]: components["schemas"]["SettingValue"];
         };
         SettingValue: string | number | boolean | null;
-        /**
-         * SetTrackRecord
-         * @description How often this Set's predictions turned out right.
-         *
-         *     ``graded`` is the four recorded outcomes together, which is the denominator
-         *     of the sentence the page leads with. The un-graded two are counted as well
-         *     rather than folded away: "four of six held" reads very differently beside
-         *     "and nine versions predicted nothing".
-         */
-        SetTrackRecord: {
-            /**
-             * Failed
-             * @default 0
-             */
-            failed: number;
-            /**
-             * Graded
-             * @default 0
-             */
-            graded: number;
-            /**
-             * Held
-             * @default 0
-             */
-            held: number;
-            /**
-             * Inconclusive
-             * @default 0
-             */
-            inconclusive: number;
-            /**
-             * No Prediction
-             * @default 0
-             */
-            no_prediction: number;
-            /**
-             * Open
-             * @default 0
-             */
-            open: number;
-            /**
-             * Partly Held
-             * @default 0
-             */
-            partly_held: number;
-        };
-        /**
-         * SetTrendCounts
-         * @description How many shots each of a version's means is over.
-         *
-         *     A mean is over the counted shots that have the value: a shot nobody rated
-         *     adds nothing to the rating, a machine with no pressure sensor nothing to the
-         *     first drip. Next to the version's counted total this says which means rest on
-         *     fewer shots than the version has.
-         */
-        SetTrendCounts: {
-            /**
-             * Duration S
-             * @default 0
-             */
-            duration_s: number;
-            /**
-             * First Drip S
-             * @default 0
-             */
-            first_drip_s: number;
-            /**
-             * Rating
-             * @default 0
-             */
-            rating: number;
-            /**
-             * Ratio
-             * @default 0
-             */
-            ratio: number;
-            /**
-             * Yield G
-             * @default 0
-             */
-            yield_g: number;
-        };
-        /**
-         * SetTrendPoint
-         * @description One shot on the Set's trend chart.
-         */
-        SetTrendPoint: {
-            /** Device Id */
-            device_id: string;
-            /** Duration S */
-            duration_s?: number | null;
-            /** Rating */
-            rating?: number | null;
-            /** Ratio */
-            ratio?: number | null;
-            /** Set Version Id */
-            set_version_id: number;
-            /** Shot Id */
-            shot_id: number;
-            /** Started At */
-            started_at?: string | null;
-            /** Version Label */
-            version_label: string;
-        };
-        /**
-         * SetTrends
-         * @description `GET /api/sets/{id}/trends`: the per-version summary and every shot.
-         */
-        SetTrends: {
-            /** Set Id */
-            set_id: number;
-            /** Shots */
-            shots: components["schemas"]["SetTrendPoint"][];
-            /** Versions */
-            versions: components["schemas"]["SetTrendVersion"][];
-        };
-        /**
-         * SetTrendVersion
-         * @description One version's averages: what `get_set`'s trajectory and the chat's ledger read.
-         *
-         *     The averages are over the version's **counted** shots (the ones the spread
-         *     and the evidence use: not quarantined, not incomplete, not a Discard), so a
-         *     knocked-over cup does not pull a bar down. ``shots`` is every shot filed
-         *     under the version, ``counted_shots`` the ones the means can be over.
-         */
-        SetTrendVersion: {
-            /**
-             * @default {
-             *       "duration_s": 0,
-             *       "yield_g": 0,
-             *       "ratio": 0,
-             *       "rating": 0,
-             *       "first_drip_s": 0
-             *     }
-             */
-            averaged_over: components["schemas"]["SetTrendCounts"];
-            /** Avg Duration S */
-            avg_duration_s?: number | null;
-            /** Avg First Drip S */
-            avg_first_drip_s?: number | null;
-            /** Avg Rating */
-            avg_rating?: number | null;
-            /** Avg Ratio */
-            avg_ratio?: number | null;
-            /** Avg Yield G */
-            avg_yield_g?: number | null;
-            /**
-             * Counted Shots
-             * @default 0
-             */
-            counted_shots: number;
-            /** Created At */
-            created_at: string;
-            /**
-             * Intent
-             * @default
-             */
-            intent: string;
-            /**
-             * Origin
-             * @default manual
-             */
-            origin: string;
-            /** Set Version Id */
-            set_version_id: number;
-            /**
-             * Shots
-             * @default 0
-             */
-            shots: number;
-            /** Version Label */
-            version_label: string;
-        };
-        /** SetUsingOut */
-        SetUsingOut: {
-            /** Archived */
-            archived: boolean;
-            /** Is Current */
-            is_current: boolean;
-            /** Set Id */
-            set_id: number;
-            /** Set Name */
-            set_name: string;
-            /** Version Id */
-            version_id: number;
-            /** Version Label */
-            version_label: string;
-        };
-        /**
-         * SetVersionAdd
-         * @description `POST /api/sets/{id}/versions`: the change, and whether it is a major one.
-         *
-         *     ``major`` is the person's answer to the form's "Major change" box: true
-         *     starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
-         *     Left out, it is a minor. It is not part of the recipe, so it is split off
-         *     before the patch reaches the repository. Strictly a boolean: "yes" or 1 is
-         *     a request somebody should look at, not a guess this route makes.
-         */
-        SetVersionAdd: {
-            /** Compares To Version Id */
-            compares_to_version_id?: number | null;
-            /** Dose G */
-            dose_g?: number | null;
-            /** Grind Setting */
-            grind_setting?: string | null;
-            /** Grind Value */
-            grind_value?: number | null;
-            /**
-             * Intent
-             * @default
-             */
-            intent: string;
-            /** Major */
-            major?: boolean | null;
-            /** @default manual */
-            origin: components["schemas"]["SetVersionOrigin"];
-            /** Origin Analysis Id */
-            origin_analysis_id?: number | null;
-            /**
-             * Prediction
-             * @default
-             */
-            prediction: string;
-            /** Profile Version Id */
-            profile_version_id?: number | null;
-            /** Target Yield G */
-            target_yield_g?: number | null;
-        };
-        /**
-         * SetVersionAssignment
-         * @description `PUT /api/shots/{id}/set-version`: which Set version this shot belongs to.
-         *
-         *     A body with an explicit `null` rather than a DELETE, because "this shot was
-         *     not part of any Set" is a statement the user makes, and it lands in the same
-         *     place a correction does.
-         */
-        SetVersionAssignment: {
-            /** Set Version Id */
-            set_version_id?: number | null;
-        };
-        /**
-         * SetVersionDetail
-         * @description One version, its diff against its parent, and the shots pulled with it.
-         */
-        SetVersionDetail: {
-            /** Changes */
-            changes: components["schemas"]["FieldChange"][];
-            /** Chat Thread Id */
-            chat_thread_id?: number | null;
-            /**
-             * Dead End
-             * @default false
-             */
-            dead_end: boolean;
-            evidence?: components["schemas"]["VersionEvidence"] | null;
-            /**
-             * @default {
-             *       "keep": 0,
-             *       "improve": 0,
-             *       "discard": 0,
-             *       "unlabelled": 0
-             *     }
-             */
-            labels: components["schemas"]["VersionLabelCounts"];
-            outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
-            pinned?: components["schemas"]["VersionPinned"] | null;
-            /** Shots */
-            shots: components["schemas"]["ShotListItem"][];
-            version: components["schemas"]["SetVersionRow"];
-        };
-        /** @enum {string} */
-        SetVersionOrigin: "manual" | "analysis" | "chat" | "starting_point";
-        /**
-         * SetVersionRow
-         * @description One row of `set_versions`, with the labels a reader needs beside it.
-         */
-        SetVersionRow: {
-            /** Compares To Version Id */
-            compares_to_version_id?: number | null;
-            /** Compares To Version Label */
-            compares_to_version_label?: string | null;
-            /** Created At */
-            created_at: string;
-            /** Dose G */
-            dose_g?: number | null;
-            /** Grind Setting */
-            grind_setting?: string | null;
-            /** Grind Value */
-            grind_value?: number | null;
-            /** Id */
-            id: number;
-            /**
-             * Intent
-             * @default
-             */
-            intent: string;
-            /**
-             * Is Current
-             * @default false
-             */
-            is_current: boolean;
-            /** @default manual */
-            origin: components["schemas"]["SetVersionOrigin"];
-            /** Origin Analysis Id */
-            origin_analysis_id?: number | null;
-            outcome?: components["schemas"]["VersionOutcome"] | null;
-            /** Outcome At */
-            outcome_at?: string | null;
-            /**
-             * Outcome Note
-             * @default
-             */
-            outcome_note: string;
-            /**
-             * @description What the experiment log shows for this version.
-             *
-             *     Derived rather than stored, because it is two columns read together and
-             *     a stored copy would be a third value that can disagree with both. The
-             *     distinction that matters is between "nobody predicted anything" and
-             *     "somebody predicted something and has not said how it went": the first
-             *     is not a gap in the record, the second is.
-             */
-            readonly outcome_state: components["schemas"]["OutcomeState"];
-            /** Parent Version Id */
-            parent_version_id?: number | null;
-            /** Parent Version Label */
-            parent_version_label?: string | null;
-            /**
-             * Prediction
-             * @default
-             */
-            prediction: string;
-            /** Prediction At */
-            prediction_at?: string | null;
-            /** Profile Label */
-            profile_label?: string | null;
-            /** Profile Temperature C */
-            profile_temperature_c?: number | null;
-            /** Profile Version Id */
-            profile_version_id?: number | null;
-            /** Restores Version Id */
-            restores_version_id?: number | null;
-            /** Restores Version Label */
-            restores_version_label?: string | null;
-            /** Set Id */
-            set_id: number;
-            /**
-             * Shot Count
-             * @default 0
-             */
-            shot_count: number;
-            /** Target Yield G */
-            target_yield_g?: number | null;
-            /**
-             * Version Label
-             * @description "v1", "v1.1": the name every screen, tool and prompt shows.
-             */
-            readonly version_label: string;
-            /** Version Major */
-            version_major: number;
-            /**
-             * Version Minor
-             * @default 0
-             */
-            version_minor: number;
-        };
-        /**
-         * SetVersionWrite
-         * @description A complete recipe. What `POST /api/sets` stores as version 1.
-         */
-        SetVersionWrite: {
-            /** Dose G */
-            dose_g?: number | null;
-            /** Grind Setting */
-            grind_setting?: string | null;
-            /** Grind Value */
-            grind_value?: number | null;
-            /**
-             * Intent
-             * @default
-             */
-            intent: string;
-            /** @default manual */
-            origin: components["schemas"]["SetVersionOrigin"];
-            /** Origin Analysis Id */
-            origin_analysis_id?: number | null;
-            /**
-             * Prediction
-             * @default
-             */
-            prediction: string;
-            /** Profile Version Id */
-            profile_version_id?: number | null;
-            /** Target Yield G */
-            target_yield_g?: number | null;
-        };
         /**
          * ShotCounts
          * @description The headline numbers `GET /api/sync/status` reports.
@@ -8579,10 +8581,10 @@ export interface components {
              */
             incomplete: number;
             /**
-             * Needs Set
+             * Needs Recipe
              * @default 0
              */
-            needs_set: number;
+            needs_recipe: number;
             /**
              * Quarantined
              * @default 0
@@ -8613,10 +8615,10 @@ export interface components {
             checks: components["schemas"]["ChecksBlock"];
             judgement?: components["schemas"]["ShotJudgementRow"] | null;
             notes?: components["schemas"]["DeviceShotNotesRow"] | null;
+            recipe_version?: components["schemas"]["RecipeVersionRow"] | null;
             review: components["schemas"]["ReviewBlock"];
             /** Reviews */
             reviews?: components["schemas"]["ShotReviewRow"][];
-            set_version?: components["schemas"]["SetVersionRow"] | null;
             shot: components["schemas"]["ShotDetailRow"];
         };
         /**
@@ -8720,6 +8722,9 @@ export interface components {
              * @default 0
              */
             raw_bytes: number;
+            recipe_badge?: components["schemas"]["ShotRecipeBadge"] | null;
+            /** Recipe Version Id */
+            recipe_version_id?: number | null;
             /**
              * Sample Count
              * @default 0
@@ -8732,9 +8737,6 @@ export interface components {
              * @default false
              */
             scale_connected: boolean;
-            set_badge?: components["schemas"]["ShotSetBadge"] | null;
-            /** Set Version Id */
-            set_version_id?: number | null;
             /** Slog Version */
             slog_version?: number | null;
             /**
@@ -8960,6 +8962,9 @@ export interface components {
             quarantined: boolean;
             /** Rating */
             rating?: number | null;
+            recipe_badge?: components["schemas"]["ShotRecipeBadge"] | null;
+            /** Recipe Version Id */
+            recipe_version_id?: number | null;
             review: components["schemas"]["ReviewBlock"];
             /**
              * Sample Count
@@ -8971,9 +8976,6 @@ export interface components {
              * @default false
              */
             scale_connected: boolean;
-            set_badge?: components["schemas"]["ShotSetBadge"] | null;
-            /** Set Version Id */
-            set_version_id?: number | null;
             /**
              * Source
              * @default device
@@ -8990,6 +8992,22 @@ export interface components {
             synced_at: string;
             /** Volume G */
             volume_g?: number | null;
+        };
+        /**
+         * ShotRecipeBadge
+         * @description The Recipe a shot belongs to, in the three fields a badge renders.
+         *
+         *     Nested on the list row rather than three flat columns because it is one
+         *     fact — "this shot is Ethiopia natural v1.1" — and a row with
+         *     `recipe_name: null, version_label: "v2"` would be a shape nothing can render.
+         */
+        ShotRecipeBadge: {
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Name */
+            recipe_name: string;
+            /** Version Label */
+            version_label: string;
         };
         /**
          * ShotReviewDetail
@@ -9158,22 +9176,6 @@ export interface components {
             total: number;
         };
         /**
-         * ShotSetBadge
-         * @description The Set a shot belongs to, in the three fields a badge renders.
-         *
-         *     Nested on the list row rather than three flat columns because it is one
-         *     fact — "this shot is Ethiopia natural v1.1" — and a row with
-         *     `set_name: null, version_label: "v2"` would be a shape nothing can render.
-         */
-        ShotSetBadge: {
-            /** Set Id */
-            set_id: number;
-            /** Set Name */
-            set_name: string;
-            /** Version Label */
-            version_label: string;
-        };
-        /**
          * SignatureAnswer
          * @description What answering one expectation did, and the signature as it now stands.
          */
@@ -9199,10 +9201,10 @@ export interface components {
             profile_label: string;
             /** Profile Version Id */
             profile_version_id: number;
+            /** Recipes */
+            recipes: components["schemas"]["RecipeUsingOut"][];
             /** Rejected */
             rejected: number;
-            /** Sets */
-            sets: components["schemas"]["SetUsingOut"][];
         };
         /**
          * SignatureStateOut
@@ -9220,7 +9222,7 @@ export interface components {
          * SimilarOutcome
          * @description How a candidate version actually turned out, over its own shots.
          *
-         *     Every field is nullable because every field can be genuinely unknown: a Set
+         *     Every field is nullable because every field can be genuinely unknown: a Recipe
          *     pulled before anybody started judging shots has no rating, a shot with no
          *     dose typed against it has no ratio. ``None`` is the honest answer and the
          *     prompt renders it as "not recorded" — a zero here would read as "rated it
@@ -9240,10 +9242,10 @@ export interface components {
             shots: number;
         };
         /**
-         * SimilarSet
-         * @description One past Set version offered as an anchor, with why it was offered.
+         * SimilarRecipe
+         * @description One past Recipe version offered as an anchor, with why it was offered.
          */
-        SimilarSet: {
+        SimilarRecipe: {
             /** Attribute Score */
             attribute_score: number;
             /** Bean Id */
@@ -9302,6 +9304,12 @@ export interface components {
             profile_version_id?: number | null;
             /** Ratio */
             ratio?: number | null;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Name */
+            recipe_name: string;
+            /** Recipe Version Id */
+            recipe_version_id: number;
             /** Roast Level */
             roast_level?: string | null;
             /**
@@ -9311,28 +9319,22 @@ export interface components {
             roast_match: string;
             /** Score */
             score: number;
-            /** Set Id */
-            set_id: number;
-            /** Set Name */
-            set_name: string;
-            /** Set Version Id */
-            set_version_id: number;
             /** Target Yield G */
             target_yield_g?: number | null;
             /** Version Label */
             version_label: string;
         };
         /**
-         * SimilarSetsData
+         * SimilarRecipesData
          * @description What the archive already knows about beans like this one.
          */
-        SimilarSetsData: {
+        SimilarRecipesData: {
             /** Bean Id */
             bean_id: number;
             /** Grinder Id */
             grinder_id?: number | null;
             /** Items */
-            items: components["schemas"]["SimilarSet"][];
+            items: components["schemas"]["SimilarRecipe"][];
         };
         /** @enum {string} */
         SkipReason: "gone" | "not_confirmed" | "scope_changed" | "replaced_gone";
@@ -9362,9 +9364,9 @@ export interface components {
          */
         StartingPointAccepted: {
             draft?: components["schemas"]["ProfileDraftRow"] | null;
+            recipe: components["schemas"]["RecipeRow"];
             run: components["schemas"]["StartingPointRunRow"];
-            set: components["schemas"]["SetRow"];
-            version: components["schemas"]["SetVersionRow"];
+            version: components["schemas"]["RecipeVersionRow"];
         };
         /**
          * StartingPointAcceptRequest
@@ -9406,10 +9408,10 @@ export interface components {
             accepted_draft_id?: number | null;
             /** Accepted Option */
             accepted_option?: string | null;
-            /** Accepted Set Id */
-            accepted_set_id?: number | null;
-            /** Accepted Set Version Id */
-            accepted_set_version_id?: number | null;
+            /** Accepted Recipe Id */
+            accepted_recipe_id?: number | null;
+            /** Accepted Recipe Version Id */
+            accepted_recipe_version_id?: number | null;
             /** Bean Id */
             bean_id: number;
             /** Bean Name */
@@ -9640,17 +9642,18 @@ export interface components {
         };
         /**
          * TakenProfileChoice
-         * @description A profile a new Set cannot start on because it has a Set: New Set lists it to duplicate.
+         * @description A profile a new Recipe cannot start on because it has a Recipe: New Recipe lists it to
+         *     duplicate.
          */
         TakenProfileChoice: {
             /** Label */
             label: string;
             /** Profile Version Id */
             profile_version_id: number;
-            /** Set Id */
-            set_id: number;
-            /** Set Name */
-            set_name: string;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Name */
+            recipe_name: string;
         };
         /**
          * TargetSpec
@@ -9849,10 +9852,10 @@ export interface components {
         VersionPin: {
             /** Pin Id */
             pin_id: number;
-            /** Set Id */
-            set_id: number;
-            /** Set Version Id */
-            set_version_id: number;
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Version Id */
+            recipe_version_id: number;
         };
         /**
          * VersionPinned
@@ -9875,7 +9878,7 @@ export interface components {
          *     the text when it goes, because a comparison with nothing to compare would be
          *     a dangling reference nobody can read.
          *
-         *     ``compares_to_version_id`` follows :class:`SetVersionPatch`: omitted is the
+         *     ``compares_to_version_id`` follows :class:`RecipeVersionPatch`: omitted is the
          *     parent, an explicit null is "nothing to compare against".
          */
         VersionPredictionWrite: {
@@ -9885,10 +9888,10 @@ export interface components {
             prediction: string;
         };
         /**
-         * VersionSet
-         * @description The Set a profile has (a profile has at most one, archived or not).
+         * VersionRecipe
+         * @description The Recipe a profile has (a profile has at most one, archived or not).
          */
-        VersionSet: {
+        VersionRecipe: {
             /** Id */
             id: number;
             /** Name */
@@ -10385,7 +10388,7 @@ export interface operations {
             };
         };
     };
-    bean_similar_sets_api_beans__bean_id__similar_sets_get: {
+    bean_similar_recipes_api_beans__bean_id__similar_recipes_get: {
         parameters: {
             query?: {
                 grinder_id?: number | null;
@@ -10405,7 +10408,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_SimilarSetsData_"];
+                    "application/json": components["schemas"]["ApiResponse_SimilarRecipesData_"];
                 };
             };
             /** @description Validation Error */
@@ -10842,7 +10845,7 @@ export interface operations {
     list_tools_api_chat_tools_get: {
         parameters: {
             query?: {
-                /** @description For a Set conversation: whether its Set is being designed. */
+                /** @description For a Recipe conversation: whether its Recipe is being designed. */
                 designing?: boolean;
                 /** @description Which kind of conversation to answer for. */
                 kind?: components["schemas"]["ChatKind"];
@@ -11303,8 +11306,8 @@ export interface operations {
         parameters: {
             query?: {
                 confirmed?: boolean | null;
-                /** @description That Set's page: what was learned in this Set (waiting and confirmed, each with the version it was learned at) and the confirmed **general** insights whose scope matches it, marked `general`. The selection the Set's conversations are given is the confirmed part of this. */
-                set_id?: number | null;
+                /** @description That Recipe's page: what was learned in this Recipe (waiting and confirmed, each with the version it was learned at) and the confirmed **general** insights whose scope matches it, marked `general`. The selection the Recipe's conversations are given is the confirmed part of this. */
+                recipe_id?: number | null;
             };
             header?: never;
             path?: never;
@@ -13029,6 +13032,1030 @@ export interface operations {
             };
         };
     };
+    list_recipes_api_recipes_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_recipe_api_recipes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recipe_api_recipes__recipe_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_recipe_api_recipes__recipe_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_automatch_api_recipes__recipe_id__automatch_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomatchWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_design_api_recipes__recipe_id__design_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeDesignDiscarded_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_insight_deletions_api_recipes__recipe_id__insight_deletions_get: {
+        parameters: {
+            query?: {
+                /** @description Only what this conversation proposed, with no cap: the chat's cards read their proposal this way, so one is found however old it is. */
+                thread_id?: number | null;
+            };
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightDeletionListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_insight_deletion_api_recipes__recipe_id__insight_deletions__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightDeletionDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    keep_insight_deletion_api_recipes__recipe_id__insight_deletions__proposal_id__keep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightDeletionDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_outcome_proposals_api_recipes__recipe_id__outcome_proposals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_outcome_proposal_api_recipes__recipe_id__outcome_proposals__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_outcome_proposal_api_recipes__recipe_id__outcome_proposals__proposal_id__change_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_outcome_proposal_api_recipes__recipe_id__outcome_proposals__proposal_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeDismiss"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_api_recipes__recipe_id__proposals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeProposalListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_proposal_api_recipes__recipe_id__proposals__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProposalAccept"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_proposal_api_recipes__recipe_id__proposals__proposal_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalDecline"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_api_recipes__recipe_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_override_api_recipes__recipe_id__signature_overrides__override_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                override_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OverrideAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_override_api_recipes__recipe_id__signature_overrides__override_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                override_id: number;
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OverrideAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trends_api_recipes__recipe_id__trends_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeTrends_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_version_api_recipes__recipe_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeVersionAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_version_api_recipes__recipe_id__versions__version_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DuplicateAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_duplicate_api_recipes__recipe_id__versions__version_id__duplicate_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DuplicatePreview_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_outcome_api_recipes__recipe_id__versions__version_id__outcome_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionOutcomeWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_outcome_api_recipes__recipe_id__versions__version_id__outcome_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pin_version_api_recipes__recipe_id__versions__version_id__pin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PinBody"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PinAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_pin_api_recipes__recipe_id__versions__version_id__pin_preview_get: {
+        parameters: {
+            query?: {
+                label?: string | null;
+            };
+            header?: never;
+            path: {
+                recipe_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PinPreview_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_prediction_api_recipes__recipe_id__versions__version_id__prediction_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionPredictionWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_overrides_api_recipes__recipe_id__versions__version_id__signature_overrides_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OverrideListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    design_recipe_api_recipes_design_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeDesignCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipeDesignCreated_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_choices_api_recipes_profile_choices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileChoiceListData_"];
+                };
+            };
+        };
+    };
     reset_app_api_reset_post: {
         parameters: {
             query?: never;
@@ -13125,1030 +14152,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_sets_api_sets_get: {
-        parameters: {
-            query?: {
-                include_archived?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetListData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_set_api_sets_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_set_api_sets__set_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetDetailData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    archive_set_api_sets__set_id__archive_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_automatch_api_sets__set_id__automatch_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AutomatchWrite"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    discard_design_api_sets__set_id__design_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetDesignDiscarded_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_insight_deletions_api_sets__set_id__insight_deletions_get: {
-        parameters: {
-            query?: {
-                /** @description Only what this conversation proposed, with no cap: the chat's cards read their proposal this way, so one is found however old it is. */
-                thread_id?: number | null;
-            };
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_InsightDeletionListData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    accept_insight_deletion_api_sets__set_id__insight_deletions__proposal_id__accept_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_InsightDeletionDecision_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    keep_insight_deletion_api_sets__set_id__insight_deletions__proposal_id__keep_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_InsightDeletionDecision_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_outcome_proposals_api_sets__set_id__outcome_proposals_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalListData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    accept_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__accept_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    change_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__change_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OutcomeChange"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    dismiss_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__dismiss_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OutcomeDismiss"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_proposals_api_sets__set_id__proposals_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetProposalListData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    accept_proposal_api_sets__set_id__proposals__proposal_id__accept_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["ProposalAccept"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetProposalDecision_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decline_proposal_api_sets__set_id__proposals__proposal_id__decline_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProposalDecline"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetProposalDecision_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rollback_api_sets__set_id__rollback_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RollbackWrite"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reject_override_api_sets__set_id__signature_overrides__override_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                override_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RejectBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_OverrideAnswer_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    restore_override_api_sets__set_id__signature_overrides__override_id__restore_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                override_id: number;
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_OverrideAnswer_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_trends_api_sets__set_id__trends_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetTrends_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    add_version_api_sets__set_id__versions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetVersionAdd"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    duplicate_version_api_sets__set_id__versions__version_id__duplicate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DuplicateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_DuplicateAnswer_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_duplicate_api_sets__set_id__versions__version_id__duplicate_preview_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_DuplicatePreview_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_outcome_api_sets__set_id__versions__version_id__outcome_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VersionOutcomeWrite"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    clear_outcome_api_sets__set_id__versions__version_id__outcome_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    pin_version_api_sets__set_id__versions__version_id__pin_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["PinBody"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_PinAnswer_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_pin_api_sets__set_id__versions__version_id__pin_preview_get: {
-        parameters: {
-            query?: {
-                label?: string | null;
-            };
-            header?: never;
-            path: {
-                set_id: number;
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_PinPreview_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_prediction_api_sets__set_id__versions__version_id__prediction_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VersionPredictionWrite"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_overrides_api_sets__set_id__versions__version_id__signature_overrides_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-                version_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_OverrideListData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    design_set_api_sets_design_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetDesignCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetDesignCreated_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    profile_choices_api_sets_profile_choices_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_ProfileChoiceListData_"];
                 };
             };
         };
@@ -14290,13 +14293,13 @@ export interface operations {
                 include_discarded?: boolean;
                 limit?: number;
                 min_rating?: number | null;
-                needs_set?: boolean | null;
+                needs_recipe?: boolean | null;
                 offset?: number | null;
                 order?: "asc" | "desc";
                 profile_version_id?: number | null;
                 quarantined?: boolean | null;
-                set_id?: number | null;
-                set_version_id?: number | null;
+                recipe_id?: number | null;
+                recipe_version_id?: number | null;
                 sort?: components["schemas"]["SortKey"];
                 source?: ("device" | "import") | null;
                 to?: string | null;
@@ -14552,6 +14555,41 @@ export interface operations {
             };
         };
     };
+    put_recipe_version_api_shots__shot_id__recipe_version_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeVersionAssignment"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotDetailRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_reviews_api_shots__shot_id__reviews_get: {
         parameters: {
             query?: never;
@@ -14640,41 +14678,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ShotSamplesData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_set_version_api_shots__shot_id__set_version_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                shot_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetVersionAssignment"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_ShotDetailRow_"];
                 };
             };
             /** @description Validation Error */

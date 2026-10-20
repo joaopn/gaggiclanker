@@ -52,7 +52,7 @@ EXTENDED_TOOLS = ("get_shot_extended", "get_shot_full", "compare_shots")
 
 _PREAMBLE = (
     "SHOT FIELDS",
-    "Base is what get_shot returns and what a Set conversation's opening context and its shot "
+    "Base is what get_shot returns and what a Recipe conversation's opening context and its shot "
     "search show; extended is what get_shot_extended adds; get_shot_full returns both. A shot "
     "is written as `shot <id>`, then `[Group]` headings with `label: value` lines; the brew "
     "phases are every phase but pre-infusion.",

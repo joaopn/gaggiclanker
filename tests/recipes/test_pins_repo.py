@@ -12,7 +12,7 @@ from gaggiclanker.db.repos.pins import (
     judged_profile_version,
     judged_profile_versions,
 )
-from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeVersionWrite, RecipeWrite
 from tests.recipes.conftest import Fixtures, make_pin, make_profile_version, make_shot
 
 
@@ -20,7 +20,7 @@ async def _a_recipe(wired: Fixtures, original: int) -> tuple[int, int]:
     """A Recipe on ``original`` with v1 and a later v1.1: their ids."""
     made = await wired.recipes.create(
         RecipeWrite(name="Guji", bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=original, dose_g=18.0),
+        RecipeVersionWrite(profile_version_id=original, dose_g=18.0),
     )
     first = await wired.recipes.current_version(made.id)
     assert first is not None
@@ -85,7 +85,7 @@ async def test_live_pins_of_a_recipe_come_newest_first_and_leave_out_unpinned_on
     old_pin, _, _ = await make_pin(wired.db, v1, "Blooming v1")
     new_pin, _, _ = await make_pin(wired.db, v2, "Blooming v1.1")
     pins = PinsRepository(wired.db)
-    made = await wired.recipes.get((await wired.recipes.versions_by_id([v1]))[v1].set_id)
+    made = await wired.recipes.get((await wired.recipes.versions_by_id([v1]))[v1].recipe_id)
     assert made is not None
 
     assert [p.id for p in await pins.live_for_recipe(made.id)] == [new_pin, old_pin]
@@ -100,10 +100,10 @@ async def test_a_copy_belongs_to_one_pin_and_a_version_to_one_live_pin(wired: Fi
     pins = PinsRepository(wired.db)
 
     with pytest.raises(sqlite3.IntegrityError):
-        await pins.insert(PinWrite(set_version_id=v2, board_id=row, profile_version_id=copy))
+        await pins.insert(PinWrite(recipe_version_id=v2, board_id=row, profile_version_id=copy))
     other = await make_profile_version(wired.db, "Blooming other")
     with pytest.raises(sqlite3.IntegrityError):
-        await pins.insert(PinWrite(set_version_id=v1, board_id=row, profile_version_id=other))
+        await pins.insert(PinWrite(recipe_version_id=v1, board_id=row, profile_version_id=other))
 
 
 async def test_archiving_and_unpinning_are_one_transaction(
@@ -113,7 +113,7 @@ async def test_archiving_and_unpinning_are_one_transaction(
     original = await make_profile_version(wired.db, "Blooming")
     v1, _v2 = await _a_recipe(wired, original)
     pin_id, _copy, row_id = await make_pin(wired.db, v1, "Blooming v1")
-    set_id = (await wired.recipes.versions_by_id([v1]))[v1].set_id
+    recipe_id = (await wired.recipes.versions_by_id([v1]))[v1].recipe_id
     real = PinsRepository.unpin_recipe
 
     async def unpin_then_fail(self: PinsRepository, which: int) -> list[int]:
@@ -123,9 +123,9 @@ async def test_archiving_and_unpinning_are_one_transaction(
     monkeypatch.setattr(PinsRepository, "unpin_recipe", unpin_then_fail)
 
     with pytest.raises(RuntimeError):
-        await wired.recipes.archive(set_id)
+        await wired.recipes.archive(recipe_id)
 
-    row = await wired.recipes.get(set_id)
+    row = await wired.recipes.get(recipe_id)
     assert row is not None and row.archived is False and row.automatch is True
     pin = await PinsRepository(wired.db).get(pin_id)
     assert pin is not None and pin.unpinned_at is None

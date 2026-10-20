@@ -195,8 +195,8 @@ function Preview({
           </tr>
           <tr>
             <td className="pr-6">Sets</td>
-            <td className="pr-6">{check.in_file.sets}</td>
-            <td>{check.now.sets}</td>
+            <td className="pr-6">{check.in_file.recipes}</td>
+            <td>{check.now.recipes}</td>
           </tr>
           <tr>
             <td className="pr-6">Beans</td>

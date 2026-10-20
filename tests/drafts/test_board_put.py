@@ -146,29 +146,29 @@ async def test_the_recipes_version_and_the_major_choice_ride_on_the_put(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
-    row = await variant_draft(app, client, "For a set", 8)
+    row = await variant_draft(app, client, "For a Recipe", 8)
     first = await put(client, row)
-    set_id = await make_recipe_on(client, "One click set", first["current_version_id"])
-    newer = await same_name_draft(app, client, provider, "For a set", 7)
+    recipe_id = await make_recipe_on(client, "One click recipe", first["current_version_id"])
+    newer = await same_name_draft(app, client, provider, "For a Recipe", 7)
     await app.state.db.execute(
-        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, newer["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (recipe_id, newer["id"])
     )
     await pull(app)
-    before = await recipe_version_ids(app, set_id)
+    before = await recipe_version_ids(app, recipe_id)
 
     await put(client, newer, major=True)
 
-    assert len(await recipe_version_ids(app, set_id)) == len(before) + 1
+    assert len(await recipe_version_ids(app, recipe_id)) == len(before) + 1
     major = await app.state.db.fetch_value(
         "SELECT version_major FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at DESC, "
         "id DESC",
-        (set_id,),
+        (recipe_id,),
     )
     assert major == 2
     run = await pull(app)
 
     assert run.status == "ok", run.error
-    assert len(await recipe_version_ids(app, set_id)) == len(before) + 1
+    assert len(await recipe_version_ids(app, recipe_id)) == len(before) + 1
     assert (await draft_status(client, newer))["status"] == "pushed"
 
 

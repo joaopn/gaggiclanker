@@ -11,8 +11,8 @@ function set(id: number, created_at: string, over: Partial<SetRow> = {}): SetRow
   return { id, name: `Set ${id}`, created_at, current_version_label: "v1", ...over } as SetRow;
 }
 
-function thread(id: number, set_id: number | null): ChatThread {
-  return { id, set_id, title: `t${id}`, updated_at: "2026-03-01T10:00:00.000Z" } as ChatThread;
+function thread(id: number, recipe_id: number | null): ChatThread {
+  return { id, recipe_id, title: `t${id}`, updated_at: "2026-03-01T10:00:00.000Z" } as ChatThread;
 }
 
 describe("latestSetId", () => {
@@ -82,9 +82,9 @@ describe("buildFolders", () => {
 describe("buildFolders, archived Sets", () => {
   it("gives each archived Set its own folder, named from its conversations, after the live ones", () => {
     const threads = [
-      { ...thread(1, 98), set_name: "Old decaf" },
-      { ...thread(2, 99), set_name: "Finished Ethiopia" },
-      { ...thread(3, 98), set_name: "Old decaf" },
+      { ...thread(1, 98), recipe_name: "Old decaf" },
+      { ...thread(2, 99), recipe_name: "Finished Ethiopia" },
+      { ...thread(3, 98), recipe_name: "Old decaf" },
       thread(4, 1),
     ] as ChatThread[];
     const folders = buildFolders(threads, [set(1, "2026-01-01T00:00:00Z")]);

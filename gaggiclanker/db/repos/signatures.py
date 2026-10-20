@@ -188,7 +188,7 @@ class OverrideWrite(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    set_version_id: int
+    recipe_version_id: int
     expectation_id: int
     compare: Compare
     reason: str = ""
@@ -201,7 +201,7 @@ class OverrideRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_version_id: int
+    recipe_version_id: int
     expectation_id: int
     compare: Compare | None = None
     readable: bool = True
@@ -519,10 +519,10 @@ class SignatureRepository(Repository):
         return self.to_model(OverrideRow, row)
 
     async def overrides_for_recipe_version(
-        self, set_version_id: int, *, statuses: Iterable[str] | None = None
+        self, recipe_version_id: int, *, statuses: Iterable[str] | None = None
     ) -> list[OverrideRow]:
         where: list[str] = ["recipe_version_id = ?"]
-        params: list[Any] = [set_version_id]
+        params: list[Any] = [recipe_version_id]
         if statuses is not None:
             wanted = list(statuses)
             where.append(f"status IN ({', '.join('?' * len(wanted))})")
@@ -547,7 +547,7 @@ class SignatureRepository(Repository):
             f"WHERE status = 'confirmed' AND recipe_version_id IN ({', '.join('?' * len(ids))})",
             ids,
         )
-        return {row.set_version_id: row for row in self.to_models(OverrideRow, rows)}
+        return {row.recipe_version_id: row for row in self.to_models(OverrideRow, rows)}
 
     async def overrides_proposed_in_thread(self, thread_id: int) -> list[OverrideRow]:
         rows = await self.db.fetch_all(
@@ -568,7 +568,7 @@ class SignatureRepository(Repository):
         async with self._transaction():
             now = utc_now()
             for live in await self.overrides_for_recipe_version(
-                write.set_version_id, statuses=["confirmed"]
+                write.recipe_version_id, statuses=["confirmed"]
             ):
                 if live.expectation_id != write.expectation_id:
                     raise AnotherOverrideInForce(live.expectation_id)
@@ -576,7 +576,7 @@ class SignatureRepository(Repository):
                 "UPDATE recipe_version_signature_overrides SET status = 'withdrawn', answered_at "
                 "= ? "
                 "WHERE recipe_version_id = ? AND status IN ('proposed', 'confirmed')",
-                (now, write.set_version_id),
+                (now, write.recipe_version_id),
             )
             cursor = await self.db.execute(
                 """
@@ -586,7 +586,7 @@ class SignatureRepository(Repository):
                 VALUES (?, ?, ?, ?, 'confirmed', ?, ?)
                 """,
                 (
-                    write.set_version_id,
+                    write.recipe_version_id,
                     write.expectation_id,
                     write.compare.model_dump_json(exclude_none=True),
                     write.reason,
@@ -628,7 +628,7 @@ class SignatureRepository(Repository):
             if target is None or target.status != "confirmed":
                 return OverrideAnswer(refused="expectation_not_confirmed")
             if await self.overrides_for_recipe_version(
-                row.set_version_id, statuses=["proposed", "confirmed"]
+                row.recipe_version_id, statuses=["proposed", "confirmed"]
             ):
                 return OverrideAnswer(refused="another_in_force")
             cursor = await self.db.execute(
@@ -645,7 +645,7 @@ class SignatureRepository(Repository):
         signature when it has none. The newest such version of each, live Recipes first."""
         rows = await self.db.fetch_all(
             f"""
-            SELECT st.id AS set_id, st.name AS set_name, st.archived AS archived,
+            SELECT st.id AS recipe_id, st.name AS recipe_name, st.archived AS archived,
                    sv.id AS version_id, {label_sql("sv")} AS version_label,
                    (st.current_version_id = sv.id) AS is_current
             FROM recipe_versions sv
@@ -659,9 +659,9 @@ class SignatureRepository(Repository):
         )
         return [row_to_dict(row) for row in rows]
 
-    async def recipe_of_version(self, set_version_id: int) -> int | None:
+    async def recipe_of_version(self, recipe_version_id: int) -> int | None:
         value = await self.db.fetch_value(
-            "SELECT recipe_id FROM recipe_versions WHERE id = ?", (set_version_id,)
+            "SELECT recipe_id FROM recipe_versions WHERE id = ?", (recipe_version_id,)
         )
         return None if value is None else int(value)
 

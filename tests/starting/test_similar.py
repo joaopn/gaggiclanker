@@ -6,7 +6,7 @@ time — see `conftest.py` for the table and why each row is in it.
 
 from __future__ import annotations
 
-from gaggiclanker.starting.similar import SimilarSet, similar_recipes
+from gaggiclanker.starting.similar import SimilarRecipe, similar_recipes
 from tests.starting.conftest import Fixture
 
 #: What the new bag is: light, washed, Kenyan. Spelled once, because every test
@@ -25,7 +25,7 @@ async def _for_the_new_bag(
     grinder_id: int | None = -1,
     exclude_recipe_id: int | None = None,
     exclude_bean_id: int | None = None,
-) -> list[SimilarSet]:
+) -> list[SimilarRecipe]:
     return await similar_recipes(
         fixture.db,
         roast_level="light" if roast_level is _UNSET else roast_level,
@@ -44,7 +44,7 @@ async def test_the_best_match_is_the_one_that_matches_on_everything(fixture: Fix
     rows = await _for_the_new_bag(fixture)
     assert rows, "the fixture archive should offer at least one anchor"
     best = rows[0]
-    assert best.set_version_id == fixture.versions["kenya"]
+    assert best.recipe_version_id == fixture.versions["kenya"]
     assert best.roast_match == "same"
     assert best.process_match is True
     assert best.origin_match is True
@@ -85,7 +85,7 @@ async def test_the_temperature_reported_is_the_profiles(fixture: Fixture) -> Non
         (unset.id, fixture.versions["sumatra"]),
     )
 
-    rows = {row.set_version_id: row for row in await _for_the_new_bag(fixture, grinder_id=None)}
+    rows = {row.recipe_version_id: row for row in await _for_the_new_bag(fixture, grinder_id=None)}
     assert rows[fixture.versions["kenya"]].profile_temperature_c == 96.0
     assert rows[fixture.versions["guji"]].profile_temperature_c is None
     assert rows[fixture.versions["sumatra"]].profile_temperature_c is None
@@ -103,7 +103,7 @@ async def test_an_adjacent_roast_scores_one_and_two_steps_away_scores_nothing(
     same", or every roast level would score.
     """
     rows = await _for_the_new_bag(fixture)
-    by_version = {row.set_version_id: row for row in rows}
+    by_version = {row.recipe_version_id: row for row in rows}
     brazil = by_version[fixture.versions["brazil"]]
     assert brazil.roast_match == "none"
     assert brazil.process_match is True
@@ -113,7 +113,7 @@ async def test_an_adjacent_roast_scores_one_and_two_steps_away_scores_nothing(
     adjacent = await _for_the_new_bag(
         fixture, roast_level="medium-light", origin=None, process=None
     )
-    guji = {row.set_version_id: row for row in adjacent}[fixture.versions["guji"]]
+    guji = {row.recipe_version_id: row for row in adjacent}[fixture.versions["guji"]]
     assert guji.roast_match == "adjacent"
     assert guji.attribute_score == 1.0
 
@@ -126,7 +126,7 @@ async def test_a_version_with_no_shots_is_never_offered(fixture: Fixture) -> Non
     rather than intentions.
     """
     rows = await _for_the_new_bag(fixture)
-    assert fixture.versions["untouched"] not in {row.set_version_id for row in rows}
+    assert fixture.versions["untouched"] not in {row.recipe_version_id for row in rows}
 
 
 async def test_the_grinder_is_a_filter_not_a_score_term(fixture: Fixture) -> None:
@@ -137,20 +137,20 @@ async def test_the_grinder_is_a_filter_not_a_score_term(fixture: Fixture) -> Non
     does not have, would be the number on the card.
     """
     rows = await _for_the_new_bag(fixture)
-    assert fixture.versions["sumatra"] not in {row.set_version_id for row in rows}
+    assert fixture.versions["sumatra"] not in {row.recipe_version_id for row in rows}
 
     on_the_other = await _for_the_new_bag(fixture, grinder_id=fixture.other_grinder_id)
-    assert [row.set_version_id for row in on_the_other] == [fixture.versions["sumatra"]]
+    assert [row.recipe_version_id for row in on_the_other] == [fixture.versions["sumatra"]]
 
     # No grinder at all lifts the filter rather than matching none.
     unfiltered = await _for_the_new_bag(fixture, grinder_id=None)
-    assert fixture.versions["sumatra"] in {row.set_version_id for row in unfiltered}
+    assert fixture.versions["sumatra"] in {row.recipe_version_id for row in unfiltered}
 
 
 async def test_the_outcome_term_rewards_shots_and_ratings(fixture: Fixture) -> None:
     """Five shots at 4.4 stars beat three at 3, and the numbers are on the row."""
     rows = await _for_the_new_bag(fixture)
-    by_version = {row.set_version_id: row for row in rows}
+    by_version = {row.recipe_version_id: row for row in rows}
     kenya = by_version[fixture.versions["kenya"]]
     guji = by_version[fixture.versions["guji"]]
 
@@ -173,7 +173,7 @@ async def test_a_version_with_no_judgements_has_no_outcome_term(
     """
     await fixture.db.execute("DELETE FROM shot_judgements")
     rows = await _for_the_new_bag(fixture)
-    kenya = {row.set_version_id: row for row in rows}[fixture.versions["kenya"]]
+    kenya = {row.recipe_version_id: row for row in rows}[fixture.versions["kenya"]]
     assert kenya.outcome.mean_rating is None
     assert kenya.outcome_score == 0
 
@@ -197,7 +197,7 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     otherwise be free to choose.
     """
     rows = await _for_the_new_bag(fixture)
-    original = {row.set_version_id: row for row in rows}[fixture.versions["kenya"]]
+    original = {row.recipe_version_id: row for row in rows}[fixture.versions["kenya"]]
 
     # A second version of the same Recipe, with the same shots moved onto it,
     # would change the first one's shot count — so copy the *Recipe* instead.
@@ -243,8 +243,8 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
         )
 
     tied = await _for_the_new_bag(fixture)
-    ranked = [row.set_version_id for row in tied]
-    assert ranked.index(copy_version) < ranked.index(original.set_version_id), (
+    ranked = [row.recipe_version_id for row in tied]
+    assert ranked.index(copy_version) < ranked.index(original.recipe_version_id), (
         "an exact tie breaks on the newer version id"
     )
 
@@ -270,7 +270,7 @@ async def test_a_field_the_other_bean_leaves_empty_is_unknown_not_different(
         (fixture.recipes["kenya"],),
     )
     rows = await _for_the_new_bag(fixture)
-    kenya = next(row for row in rows if row.set_version_id == fixture.versions["kenya"])
+    kenya = next(row for row in rows if row.recipe_version_id == fixture.versions["kenya"])
     assert (kenya.roast_match, kenya.process_match, kenya.origin_match) == ("unknown", None, None)
     # Scoring is untouched: an unknown still earns nothing.
     assert kenya.attribute_score == 0.0
@@ -289,7 +289,7 @@ async def test_the_prompt_never_calls_an_unrecorded_field_different(fixture: Fix
         await build_context(fixture.db, bean_id=bare.id, grinder_id=fixture.grinder_id, as_of=AS_OF)
     ).render()["similar_recipes"]
 
-    assert "[set_version" in rendered, "the archive's Sets are still offered"
+    assert "[recipe_version" in rendered, "the archive's Recipes are still offered"
     assert "different" not in rendered
     assert "same roast" not in rendered
     assert "why it is similar" not in rendered
@@ -297,17 +297,17 @@ async def test_the_prompt_never_calls_an_unrecorded_field_different(fixture: Fix
 
 async def test_a_recipe_can_be_excluded_from_its_own_suggestions(fixture: Fixture) -> None:
     rows = await _for_the_new_bag(fixture, exclude_recipe_id=fixture.recipes["kenya"])
-    assert fixture.versions["kenya"] not in {row.set_version_id for row in rows}
+    assert fixture.versions["kenya"] not in {row.recipe_version_id for row in rows}
 
 
 async def test_one_bean_s_recipes_can_be_left_out_altogether(fixture: Fixture) -> None:
     """For the design conversation, which lists that bean's Recipes in a block of their own."""
     every = await _for_the_new_bag(fixture)
-    kenya = next(row for row in every if row.set_version_id == fixture.versions["kenya"])
+    kenya = next(row for row in every if row.recipe_version_id == fixture.versions["kenya"])
 
     rows = await _for_the_new_bag(fixture, exclude_bean_id=kenya.bean_id)
 
-    assert rows, "the other beans' Sets still anchor the answer"
+    assert rows, "the other beans' Recipes still anchor the answer"
     assert all(row.bean_id != kenya.bean_id for row in rows)
 
 
@@ -318,7 +318,7 @@ async def test_a_quarantined_shot_does_not_count_as_evidence(fixture: Fixture) -
         (fixture.versions["guji"],),
     )
     rows = await _for_the_new_bag(fixture)
-    assert fixture.versions["guji"] not in {row.set_version_id for row in rows}
+    assert fixture.versions["guji"] not in {row.recipe_version_id for row in rows}
 
 
 async def test_a_decaf_recipe_never_outranks_a_caffeinated_exact_match(fixture: Fixture) -> None:
@@ -336,17 +336,17 @@ async def test_a_decaf_recipe_never_outranks_a_caffeinated_exact_match(fixture: 
         (fixture.recipes["guji"],),
     )
     rows = await _for_the_new_bag(fixture)
-    by_version = {row.set_version_id: row for row in rows}
+    by_version = {row.recipe_version_id: row for row in rows}
     guji = by_version[fixture.versions["guji"]]
     assert guji.decaf_match is False
     assert guji.attribute_score == 1.0
     # Still offered — it has shots behind it and is the only other light roast.
-    assert rows[0].set_version_id == fixture.versions["kenya"]
+    assert rows[0].recipe_version_id == fixture.versions["kenya"]
 
     # ... and for a decaf bag the sign flips: the decaf Recipe is now the match and
     # every caffeinated one takes the penalty.
     for_decaf = await _for_the_new_bag(fixture, decaf=True)
-    decaf_rows = {row.set_version_id: row for row in for_decaf}
+    decaf_rows = {row.recipe_version_id: row for row in for_decaf}
     assert decaf_rows[fixture.versions["guji"]].decaf_match is True
     assert decaf_rows[fixture.versions["kenya"]].decaf_match is False
     assert decaf_rows[fixture.versions["kenya"]].attribute_score == 4.0
@@ -389,5 +389,5 @@ async def test_the_mean_ratio_uses_the_version_s_dose_when_no_dose_was_typed(
     )
     assert found is not None
     dose = found["dose_g"]
-    kenya = {row.set_version_id: row for row in await _for_the_new_bag(fixture)}[version]
+    kenya = {row.recipe_version_id: row for row in await _for_the_new_bag(fixture)}[version]
     assert kenya.outcome.mean_ratio == round(36.0 / dose, 2)

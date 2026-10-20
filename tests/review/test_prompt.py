@@ -24,7 +24,7 @@ def test_the_summary_carries_no_figures_either() -> None:
 def test_it_says_exactly_what_the_review_is_and_is_not_given() -> None:
     system = _system()
     # What it is given, including the prediction and what that does and does not reveal.
-    assert "the recipe of the Set version the shot is filed under" in system
+    assert "the numbers of the Recipe version the shot is filed under" in system
     assert "the prediction that version was filed with" in system
     assert "told nothing about that version beyond its name" in system
     assert "the signature's free-text expectations" in system

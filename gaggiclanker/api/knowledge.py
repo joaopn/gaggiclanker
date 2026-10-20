@@ -17,7 +17,7 @@ shapes because the tiers are owned by different people:
   distinct verb from editing: nothing unconfirmed ever reaches a prompt. An
   insight is **general** (this page, matched to a Recipe by its attributes) or
   **a Recipe's own** (learned in that Recipe's conversations, listed under
-  `?set_id=` and never on this page's list): adding one is the confirm, and
+  `?recipe_id=` and never on this page's list): adding one is the confirm, and
   dismissing one is a state of its own that only the conversation which
   proposed it ever sees.
 """
@@ -323,7 +323,7 @@ class InsightListData(BaseModel):
     #: The dimensions a scope may name, so the form renders from data rather
     #: than from a list typed into a component.
     scope_keys: list[str]
-    #: With `?set_id=`: the deletions an agent proposed for this Recipe's insights that are
+    #: With `?recipe_id=`: the deletions an agent proposed for this Recipe's insights that are
     #: still waiting for a person, so the Recipe page can say which insight has one and link
     #: into the chat. Empty otherwise.
     waiting_deletions: list[InsightDeletionRow] = Field(default_factory=list)
@@ -374,39 +374,41 @@ async def list_insights(
     insights: InsightsRepoDep,
     deletions: InsightDeletionsRepoDep,
     confirmed: Annotated[bool | None, Query()] = None,
-    set_id: Annotated[
+    recipe_id: Annotated[
         int | None,
         Query(
             description=(
-                "That Set's page: what was learned in this Set (waiting and confirmed, each "
+                "That Recipe's page: what was learned in this Recipe (waiting and confirmed, each "
                 "with the version it was learned at) and the confirmed **general** insights "
-                "whose scope matches it, marked `general`. The selection the Set's "
+                "whose scope matches it, marked `general`. The selection the Recipe's "
                 "conversations are given is the confirmed part of this."
             )
         ),
     ] = None,
 ) -> JSONResponse:
-    """The general insights, or one Set's.
+    """The general insights, or one Recipe's.
 
-    Without `?set_id=` this is the Knowledge page's list: **general insights
-    only**. A Set's own insights are never on it. With it, the answer is the Set
-    page's — what was learned in that Set, plus the general knowledge that
+    Without `?recipe_id=` this is the Knowledge page's list: **general insights
+    only**. A Recipe's own insights are never on it. With it, the answer is the Recipe
+    page's — what was learned in that Recipe, plus the general knowledge that
     applies — and the confirmed ones are exactly what the chat is told, because
-    both ask :meth:`InsightsRepository.for_set` and `own` and nothing else. It
-    matches on the Set's own attributes only: `profile_style` is detected *per
-    shot* from the profile the machine ran, so a Set has no single one and an
+    both ask :meth:`InsightsRepository.for_recipe` and `own` and nothing else. It
+    matches on the Recipe's own attributes only: `profile_style` is detected *per
+    shot* from the profile the machine ran, so a Recipe has no single one and an
     insight scoped by style is left to the shot page.
     """
-    if set_id is not None:
-        if await insights.attributes_of(set_id) is None:
-            raise NotFound(f"No Set {set_id}")
-        own = await insights.own(set_id)
-        applying = {item.id for item in await insights.for_recipe(set_id) if item.set_id is None}
+    if recipe_id is not None:
+        if await insights.attributes_of(recipe_id) is None:
+            raise NotFound(f"No Recipe {recipe_id}")
+        own = await insights.own(recipe_id)
+        applying = {
+            item.id for item in await insights.for_recipe(recipe_id) if item.recipe_id is None
+        }
         general = [
             item for item in await insights.list_insights(confirmed=True) if item.id in applying
         ]
         items = sorted([*own, *general], key=lambda item: (item.created_at, item.id))
-        waiting = await deletions.waiting_for_recipe(set_id)
+        waiting = await deletions.waiting_for_recipe(recipe_id)
     else:
         items = await insights.list_insights(confirmed=confirmed)
         waiting = []
@@ -463,16 +465,16 @@ async def patch_insight(
     """Apply whichever fields were sent.
 
     Confirming is what puts an insight in front of the conversations about a
-    matching Set; un-confirming takes it out again with nothing else to
+    matching Recipe; un-confirming takes it out again with nothing else to
     remember, the way disabling a rule does.
     """
     existing = await insights.get(insight_id)
     if existing is None:
         raise NotFound(f"No insight {insight_id}")
-    if existing.set_id is not None and body.scope is not None and body.scope.stated():
+    if existing.recipe_id is not None and body.scope is not None and body.scope.stated():
         raise Unprocessable(
-            "An insight that belongs to a Set states no attribute scope",
-            details={"field": "scope", "message": "it applies to its own Set only"},
+            "An insight that belongs to a Recipe states no attribute scope",
+            details={"field": "scope", "message": "it applies to its own Recipe only"},
         )
     await insights.update(
         insight_id,
@@ -491,12 +493,12 @@ async def patch_insight(
 @router.post(
     "/insights/{insight_id}/dismiss",
     response_model=ApiResponse[InsightRow],
-    summary="Turn a Set's insight down",
+    summary="Turn a Recipe's insight down",
 )
 async def dismiss_insight(insight_id: int, insights: InsightsRepoDep) -> JSONResponse:
     """A person's press: the card's Dismiss.
 
-    Only for an insight a Set conversation proposed that is still waiting (409
+    Only for an insight a Recipe conversation proposed that is still waiting (409
     `INSIGHT_NOT_WAITING` on an added or already dismissed one: an added insight is
     taken back instead). It is kept, so that
     conversation can be told what happened to it, and it reaches no prompt and
@@ -507,12 +509,12 @@ async def dismiss_insight(insight_id: int, insights: InsightsRepoDep) -> JSONRes
     existing = await insights.get(insight_id)
     if existing is None:
         raise NotFound(f"No insight {insight_id}")
-    if existing.set_id is None:
+    if existing.recipe_id is None:
         raise Conflict(
-            f"Insight {insight_id} is general knowledge, not a Set's",
-            code="INSIGHT_NOT_SET_OWNED",
+            f"Insight {insight_id} is general knowledge, not a Recipe's",
+            code="INSIGHT_NOT_RECIPE_OWNED",
             details={
-                "field": "set_id",
+                "field": "recipe_id",
                 "message": "general insights are confirmed or deleted on the Knowledge page",
             },
         )

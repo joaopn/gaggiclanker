@@ -36,8 +36,8 @@ const CHECK: RestoreCheckData = {
     created_at: "2026-10-01T10:15:00Z",
     keys_included: false,
   },
-  in_file: { shots: 412, sets: 6, beans: 9 },
-  now: { shots: 431, sets: 7, beans: 9 },
+  in_file: { shots: 412, recipes: 6, beans: 9 },
+  now: { shots: 431, recipes: 7, beans: 9 },
   keys_in_file: false,
   keys_here: true,
 };

@@ -55,16 +55,16 @@ class ChatThreadWrite(BaseModel):
     """A new thread.
 
     Both fields optional, and what they mean together is the thread's kind.
-    Neither is a **general** conversation. ``set_id`` alone is a conversation
-    about that Set's **current** version — pressing New in a folder — and
-    ``set_version_id`` beside it names the version outright, which is what
-    continuing an older experiment looks like. A version without its Set is
+    Neither is a **general** conversation. ``recipe_id`` alone is a conversation
+    about that Recipe's **current** version — pressing New in a folder — and
+    ``recipe_version_id`` beside it names the version outright, which is what
+    continuing an older experiment looks like. A version without its Recipe is
     refused rather than guessed at: the two travel together everywhere else.
     """
 
     title: str = Field(default="", max_length=200)
-    set_id: int | None = None
-    set_version_id: int | None = None
+    recipe_id: int | None = None
+    recipe_version_id: int | None = None
 
 
 class ChatThreadRow(BaseModel):
@@ -72,13 +72,13 @@ class ChatThreadRow(BaseModel):
 
     id: int
     title: str = ""
-    set_id: int | None = None
-    set_name: str | None = None
-    #: The version this conversation is about. NULL exactly when ``set_id`` is.
-    set_version_id: int | None = None
+    recipe_id: int | None = None
+    recipe_name: str | None = None
+    #: The version this conversation is about. NULL exactly when ``recipe_id`` is.
+    recipe_version_id: int | None = None
     #: That version's name, joined in: a folder row reads "v1.1 · title", and a
     #: reader thinks in "v1.1" rather than in a row id.
-    set_version_label: str | None = None
+    recipe_version_label: str | None = None
     #: The Recipe is on another line now: this version is not reachable from the one
     #: it is on (a revert went back past it). Derived from the Recipe's line,
     #: never stored — it is a fact about what came after — and carried here so
@@ -184,12 +184,12 @@ class ChatRepository(Repository):
         under a recipe nobody had brewed with yet.
         """
         async with self.db.transaction():
-            resolved = await self._resolve_version(spec.set_id, spec.set_version_id)
+            resolved = await self._resolve_version(spec.recipe_id, spec.recipe_version_id)
             if isinstance(resolved, str):
                 return ThreadWriteResult(refused=resolved)
             cursor = await self.db.execute(
                 "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES (?, ?, ?)",
-                (spec.title.strip(), spec.set_id, resolved),
+                (spec.title.strip(), spec.recipe_id, resolved),
             )
             thread_id = int(cursor.lastrowid or 0)
         row = await self.get_thread(thread_id)
@@ -197,7 +197,7 @@ class ChatRepository(Repository):
         return ThreadWriteResult(thread=row)
 
     async def open_thread(
-        self, set_id: int, set_version_id: int | None = None
+        self, recipe_id: int, recipe_version_id: int | None = None
     ) -> ThreadWriteResult:
         """The conversation about this version, or a new one when there is none.
 
@@ -216,7 +216,7 @@ class ChatRepository(Repository):
         proposed in — the only trace a design leaves on a thread.
         """
         async with self.db.transaction():
-            resolved = await self._resolve_version(set_id, set_version_id)
+            resolved = await self._resolve_version(recipe_id, recipe_version_id)
             if isinstance(resolved, str):
                 return ThreadWriteResult(refused=resolved)
             existing = await self.db.fetch_value(
@@ -231,7 +231,7 @@ class ChatRepository(Repository):
                 cursor = await self.db.execute(
                     "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES (?, ?, "
                     "?)",
-                    ("", set_id, resolved),
+                    ("", recipe_id, resolved),
                 )
                 existing = int(cursor.lastrowid or 0)
         row = await self.get_thread(int(existing))
@@ -239,7 +239,7 @@ class ChatRepository(Repository):
         return ThreadWriteResult(thread=row)
 
     async def _resolve_version(
-        self, set_id: int | None, set_version_id: int | None
+        self, recipe_id: int | None, recipe_version_id: int | None
     ) -> int | ThreadRefusal | None:
         """Which version a thread belongs to: the id, ``None``, or a refusal.
 
@@ -249,17 +249,17 @@ class ChatRepository(Repository):
         how a thread would come to be filed under a version the Recipe page does
         not think is current.
         """
-        if set_id is None:
-            return "version_without_recipe" if set_version_id is not None else None
+        if recipe_id is None:
+            return "version_without_recipe" if recipe_version_id is not None else None
         recipes = RecipesRepository(self.db)
-        if set_version_id is None:
-            current = await recipes.current_version(set_id)
+        if recipe_version_id is None:
+            current = await recipes.current_version(recipe_id)
             if current is None:
                 return "no_recipe"
             return current.id
-        if await recipes.version_of_recipe(set_id, set_version_id) is None:
+        if await recipes.version_of_recipe(recipe_id, recipe_version_id) is None:
             return "no_version"
-        return set_version_id
+        return recipe_version_id
 
     async def get_thread(self, thread_id: int) -> ChatThreadRow | None:
         row = await self.db.fetch_one(
@@ -288,13 +288,13 @@ class ChatRepository(Repository):
         rather than one per conversation.
         """
         rows = list(threads)
-        recipe_ids = {row.set_id for row in rows if row.set_id is not None}
+        recipe_ids = {row.recipe_id for row in rows if row.recipe_id is not None}
         if not recipe_ids:
             return rows
         dead = await RecipesRepository(self.db).dead_end_versions(recipe_ids)
         return [
-            row.model_copy(update={"dead_end": row.set_version_id in dead})
-            if row.set_version_id is not None
+            row.model_copy(update={"dead_end": row.recipe_version_id in dead})
+            if row.recipe_version_id is not None
             else row
             for row in rows
         ]
@@ -533,9 +533,9 @@ class ToolCallsRepository(Repository):
 
 
 _THREAD_SELECT = f"""
-SELECT t.id, t.title, t.recipe_id, s.name AS set_name,
+SELECT t.id, t.title, t.recipe_id, s.name AS recipe_name,
        t.recipe_version_id,
-       {label_sql("v")} AS set_version_label,
+       {label_sql("v")} AS recipe_version_label,
        (SELECT COUNT(*) FROM chat_messages m
          WHERE m.thread_id = t.id AND m.role IN ('user', 'assistant')) AS message_count,
        t.created_at, t.updated_at

@@ -127,12 +127,12 @@ async def main() -> int:
                 )
                 created = data(
                     await client.post(
-                        "/api/sets/design",
+                        "/api/recipes/design",
                         json={"bean_id": bean["id"], "grinder_id": grinder["id"]},
                     )
                 )
                 ctx = app.state.chat.tool_context(
-                    scope=await ToolScope.resolve(db, created["set"]["id"]), run_id=None
+                    scope=await ToolScope.resolve(db, created["recipe"]["id"]), run_id=None
                 )
                 outcome = await registry.dispatch(
                     ctx,
@@ -151,7 +151,7 @@ async def main() -> int:
                     return 1
                 detail = data(await client.get(f"/api/profile-drafts/{outcome.data['draft_id']}"))
                 ok &= verdict(
-                    "(a) a Set designed with no fork",
+                    "(a) a Recipe designed with no fork",
                     detail,
                     await listed(client, outcome.data["draft_id"]),
                     new=True,

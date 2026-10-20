@@ -138,7 +138,12 @@ describe("the list", () => {
         rows: [
           row({
             row: { id: 1, label: "With a Set" },
-            set: { set_id: 4, name: "Kenya AA", version_label: "v1", next_minor_label: "v1.1" },
+            recipe: {
+              recipe_id: 4,
+              name: "Kenya AA",
+              version_label: "v1",
+              next_minor_label: "v1.1",
+            },
           }),
           row({ row: { id: 2, label: "Without", device_profile_id: "two" } }),
         ],
@@ -401,8 +406,8 @@ describe("the two switches", () => {
       boardView({
         rows: [
           row({
-            set: {
-              set_id: 3,
+            recipe: {
+              recipe_id: 3,
               name: "Ethiopia washed",
               version_label: "v1.1",
               next_minor_label: "v1.2",
@@ -777,8 +782,8 @@ describe("the dropdown", () => {
       boardView({
         rows: [
           row({
-            set: {
-              set_id: 3,
+            recipe: {
+              recipe_id: 3,
               name: "Ethiopia washed",
               version_label: "v1.1",
               next_minor_label: "v1.2",
@@ -918,17 +923,22 @@ describe("proposed versions", () => {
     const user = setupUser();
     withProposal(
       {
-        set_id: 3,
-        set_name: "Ethiopia washed",
-        set_next_minor_label: "v1.2",
-        set_next_major_label: "v2",
+        recipe_id: 3,
+        recipe_name: "Ethiopia washed",
+        recipe_next_minor_label: "v1.2",
+        recipe_next_major_label: "v2",
         prediction: "Less bitter",
       },
       {
         plain: {
           row_id: 1,
           row_label: "9 Bar Espresso",
-          set: { id: 3, name: "Ethiopia washed", next_minor_label: "v1.2", next_major_label: "v2" },
+          recipe: {
+            id: 3,
+            name: "Ethiopia washed",
+            next_minor_label: "v1.2",
+            next_major_label: "v2",
+          },
         },
       },
     );

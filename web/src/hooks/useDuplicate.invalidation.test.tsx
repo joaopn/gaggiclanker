@@ -57,7 +57,7 @@ const VARIABLES = {
   setId: 3,
   versionId: 22,
   body: {
-    set_name: "Guji milk",
+    recipe_name: "Guji milk",
     profile_name: "Blooming milk",
     bean_id: 1,
     grinder_id: 1,

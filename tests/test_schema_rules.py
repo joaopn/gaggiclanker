@@ -200,13 +200,13 @@ async def test_a_deleted_run_takes_its_proposals_and_leaves_the_insight_it_wrote
 
 async def test_deleting_a_recipe_empties_what_is_its_own(db: Database) -> None:
     await db.execute("INSERT INTO beans (name) VALUES ('Guji')")
-    for set_id in (1, 2):
-        await db.execute("INSERT INTO recipes (id, name, bean_id) VALUES (?, 'S', 1)", (set_id,))
-    for vid, set_id, minor in ((1, 1, 0), (2, 1, 1), (3, 2, 0), (4, 2, 1)):
+    for recipe_id in (1, 2):
+        await db.execute("INSERT INTO recipes (id, name, bean_id) VALUES (?, 'S', 1)", (recipe_id,))
+    for vid, recipe_id, minor in ((1, 1, 0), (2, 1, 1), (3, 2, 0), (4, 2, 1)):
         await db.execute(
             "INSERT INTO recipe_versions (id, recipe_id, version_major, version_minor) "
             "VALUES (?, ?, 1, ?)",
-            (vid, set_id, minor),
+            (vid, recipe_id, minor),
         )
     await db.execute("INSERT INTO chat_threads (id, recipe_id, recipe_version_id) VALUES (1, 2, 3)")
     await db.execute("INSERT INTO chat_messages (thread_id, role, content) VALUES (1, 'user', 'x')")
@@ -405,11 +405,11 @@ async def test_the_views_the_chat_reads_answer_through_the_sql_tool(db: Database
 async def test_a_copied_insight_names_its_original_without_a_foreign_key(db: Database) -> None:
     """The flag outlives the insight it names: an approved pattern deletes its sources."""
     keys = await db.fetch_all("PRAGMA foreign_key_list(knowledge_insights)")
-    assert not {"copied_from_insight_id", "copied_from_set_id"} & {key["from"] for key in keys}
+    assert not {"copied_from_insight_id", "copied_from_recipe_id"} & {key["from"] for key in keys}
     await db.execute(
         "INSERT INTO knowledge_insights (id, text, copied_from_insight_id, copied_from_recipe_id) "
         "VALUES (7, 'x', 99, 98)"
     )
     row = await db.fetch_one("SELECT * FROM knowledge_insights")
     assert row is not None
-    assert (row["copied_from_insight_id"], row["copied_from_set_id"]) == (99, 98)
+    assert (row["copied_from_insight_id"], row["copied_from_recipe_id"]) == (99, 98)

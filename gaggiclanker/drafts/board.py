@@ -112,7 +112,7 @@ from gaggiclanker.drafts.board_versions import (
     ListedVersion,
     ProfileVersionsView,
     ProposedVersion,
-    SetBrewing,
+    RecipeBrewing,
     short_hash,
 )
 from gaggiclanker.drafts.live_lineage import LiveLineage
@@ -245,14 +245,14 @@ class BoardMachineState(BaseModel):
 
 
 class BoardRowPin(BaseModel):
-    """The live pin a profile-list row carries the copy of: which Set version it belongs to."""
+    """The live pin a profile-list row carries the copy of: which Recipe version it belongs to."""
 
     model_config = ConfigDict(extra="forbid")
 
     pin_id: int
-    set_id: int
-    set_name: str
-    set_version_id: int
+    recipe_id: int
+    recipe_name: str
+    recipe_version_id: int
     #: The pinned version's name, "v1.2".
     version_label: str
     #: The profile the pinned version brews, the one whose signature judges the copy's shots.
@@ -292,7 +292,7 @@ class BoardRowView(BaseModel):
     #: The profile's Recipe (a profile has at most one, and archived Recipes do not count): changing
     #: the active version gives it a version of its own, and switching the profile off changes what
     #: the machine holds for it.
-    set: SetBrewing | None = None
+    recipe: RecipeBrewing | None = None
     #: In conflict: the machine's file differs from everything the app knows, so a sync does
     #: nothing for this profile until a person chooses a side (``POST .../conflict``).
     in_conflict: bool = False
@@ -308,8 +308,8 @@ class BoardRowView(BaseModel):
     renamed_on_machine: RenamedOnMachine | None = None
 
 
-class LandingSet(BaseModel):
-    """The Set a put would give a new version: the Set of the profile it lands on."""
+class LandingRecipe(BaseModel):
+    """The Recipe a put would give a new version: the Recipe of the profile it lands on."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -336,7 +336,7 @@ class BoardLanding(BaseModel):
     refused: str | None = None
     #: The Recipe of the profile the put lands on, which follows it with a version of its own;
     #: ``None`` when the profile has no Recipe (and for a new profile).
-    set: LandingSet | None = None
+    recipe: LandingRecipe | None = None
 
 
 class DraftLanding(BaseModel):
@@ -387,7 +387,7 @@ class DraftStanding(BaseModel):
     selected: bool | None = None
     #: The Recipe version making this proposal active recorded; ``None`` while it waits, and for a
     #: proposal whose profile has no Recipe.
-    set_version_label: str | None = None
+    recipe_version_label: str | None = None
     writes_enabled: bool
 
 
@@ -591,7 +591,7 @@ class BoardService:
                         shots_brewed=counts.get(plan.version.id, 0),
                         profile=stored_document(plan.version, plan.row.label),
                     ),
-                    set=_recipe_brewing(brews.get(plan.row.id)),
+                    recipe=_recipe_brewing(brews.get(plan.row.id)),
                     in_conflict=plan.conflict_file is not None,
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),
@@ -839,7 +839,7 @@ class BoardService:
         """A pin's file was edited on the machine and the person kept that: the Recipe's profile
         gets its own version of the machine's brew (under its own name), made active like any other,
         which gives the Recipe a new minor version, and the pin names that Recipe version."""
-        owner = await self.recipes.get(pin.set_id)
+        owner = await self.recipes.get(pin.recipe_id)
         target = (
             None
             if owner is None or owner.board_id is None
@@ -1005,7 +1005,7 @@ class BoardService:
             row_id=row_id,
             row_label=row_label,
             selected=facts.selected if facts is not None and found.state == "on_machine" else None,
-            set_version_label=draft.recorded_version_label,
+            recipe_version_label=draft.recorded_version_label,
             writes_enabled=writes_enabled,
         )
 
@@ -1073,7 +1073,7 @@ class BoardService:
                     is_on_machine=version.id in on_machine,
                     did_not_verify=row.failed_version_id == version.id,
                     shots_brewed=counts.get(version.id, 0),
-                    set=_recipe_brewing(
+                    recipe=_recipe_brewing(
                         brewing if brewing and brewing.brewing_version_id == version.id else None
                     ),
                     profile=stored_document(version, row.label),
@@ -1160,15 +1160,15 @@ class BoardService:
         # Every proposal is an independent candidate: making another one active never blocks or
         # undoes this one, so there is nothing to say about newer drafts.
         return BoardLanding(
-            row_id=row.id, row_label=row.label, set=await self._landing_recipe(row.id)
+            row_id=row.id, row_label=row.label, recipe=await self._landing_recipe(row.id)
         )
 
-    async def _landing_recipe(self, board_id: int) -> LandingSet | None:
+    async def _landing_recipe(self, board_id: int) -> LandingRecipe | None:
         found = await self.recipes.recipe_of_profile(board_id)
         if found is None:
             return None
         names = await next_names(self.db, found[0])
-        return LandingSet(
+        return LandingRecipe(
             id=found[0], name=found[1], next_minor_label=names.minor, next_major_label=names.major
         )
 
@@ -1459,7 +1459,7 @@ class BoardService:
         if draft is not None:
             extra["intent"] = draft.change_summary[:500]
             extra["origin_analysis_id"] = draft.source_analysis_id
-            if draft.set_id == found[0] and draft.prediction:
+            if draft.recipe_id == found[0] and draft.prediction:
                 compares_to = draft.compares_to_version_id
                 if compares_to is not None and (
                     await self.recipes.version_of_recipe(found[0], compares_to) is None
@@ -1612,17 +1612,17 @@ class BoardService:
             await self._recipe_follows(row.id, version.id)
             return updated
 
-    async def revert_recipe(self, set_id: int, spec: RollbackWrite) -> VersionWriteResult:
+    async def revert_recipe(self, recipe_id: int, spec: RollbackWrite) -> VersionWriteResult:
         """Put a Recipe back on another of its versions, and its profile on the version that
         version brews: one transaction, and no Recipe version is written (the Recipe is going back
         to one it already has). Everything that can refuse making a version active refuses the
         revert, and then nothing has moved."""
         async with self.db.transaction():
-            result = await self.recipes.rollback(set_id, spec)
+            result = await self.recipes.rollback(recipe_id, spec)
             version = result.version
             if version is None or version.profile_version_id is None:
                 return result
-            found = await self.recipes.get(set_id)
+            found = await self.recipes.get(recipe_id)
             row = None
             if found is not None and found.board_id is not None:
                 row = await self.board.get(found.board_id)
@@ -2844,9 +2844,9 @@ def _row_pin(pin: PinDetail | None) -> BoardRowPin | None:
         return None
     return BoardRowPin(
         pin_id=pin.id,
-        set_id=pin.set_id,
-        set_name=pin.set_name,
-        set_version_id=pin.set_version_id,
+        recipe_id=pin.recipe_id,
+        recipe_name=pin.recipe_name,
+        recipe_version_id=pin.recipe_version_id,
         version_label=pin.version_label,
         original_label=pin.original_label,
         original_version_id=pin.original_version_id,
@@ -2874,12 +2874,12 @@ def _machine_state(plan: RowPlan, machine: MachineState) -> BoardMachineState:
     )
 
 
-def _recipe_brewing(found: LiveRecipe | None) -> SetBrewing | None:
+def _recipe_brewing(found: LiveRecipe | None) -> RecipeBrewing | None:
     """The profile's Recipe as the pages show it, or ``None``."""
     if found is None:
         return None
-    return SetBrewing(
-        set_id=found.set_id,
+    return RecipeBrewing(
+        recipe_id=found.recipe_id,
         name=found.name,
         version_label=found.version_label,
         next_minor_label=found.next_minor_label,

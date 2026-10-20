@@ -86,7 +86,7 @@ from gaggiclanker.domain.vocab import (
     VERSION_OUTCOMES,
     Decision,
     OutcomeState,
-    SetVersionOrigin,
+    RecipeVersionOrigin,
     VersionOutcome,
 )
 
@@ -102,18 +102,18 @@ __all__ = [
     "LiveRecipe",
     "ProfileMatch",
     "ProfileMatchSummary",
+    "RecipeRevertRow",
+    "RecipeRow",
     "RecipeShotRow",
+    "RecipeTrackRecord",
+    "RecipeTrends",
     "RecipeVersionChange",
     "RecipeVersionPatch",
+    "RecipeVersionRow",
+    "RecipeVersionWrite",
     "RecipeWrite",
     "RecipesRepository",
     "RollbackWrite",
-    "SetRevertRow",
-    "SetRow",
-    "SetTrackRecord",
-    "SetTrends",
-    "SetVersionRow",
-    "SetVersionWrite",
     "VersionLabelCounts",
     "VersionLink",
     "VersionNode",
@@ -151,9 +151,9 @@ class RecipeWrite(BaseModel):
 
 
 class DesignBrief(BaseModel):
-    """What the person asked for when they set out to design a Set in chat.
+    """What the person asked for when they set out to design a Recipe in chat.
 
-    Stored on the Set (`sets.design_brief`) rather than only sent as the first
+    Stored on the Recipe (`recipes.design_brief`) rather than only sent as the first
     message, because the conversation reads it on every turn: a long design
     discussion trims its oldest messages, and the profile to fork from and the
     goal must not go with them. It stays after the design is done, as the
@@ -180,8 +180,8 @@ class DesignBrief(BaseModel):
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
 
 
-class SetVersionWrite(BaseModel):
-    """A complete recipe. What `POST /api/sets` stores as version 1."""
+class RecipeVersionWrite(BaseModel):
+    """A complete first version. What `POST /api/recipes` stores as version 1."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -202,7 +202,7 @@ class SetVersionWrite(BaseModel):
     #: `compares_to_version_id` here: the prediction is graded against the
     #: numbers this version itself states.
     prediction: LongText = ""
-    origin: SetVersionOrigin = "manual"
+    origin: RecipeVersionOrigin = "manual"
     #: The analysis whose accepted suggestion produced this version, for a
     #: version made before the per-shot analysis was retired; the carried
     #: review of the same id when that analysis finished. Nothing sets it now
@@ -240,7 +240,7 @@ class RecipeVersionChange(BaseModel):
     #: nothing: the prediction is graded on the numbers this version states.
     #: The two are told apart by ``exclude_unset``, like every other field here.
     compares_to_version_id: int | None = None
-    origin: SetVersionOrigin = "manual"
+    origin: RecipeVersionOrigin = "manual"
     origin_analysis_id: int | None = None
 
 
@@ -254,13 +254,13 @@ class RecipeVersionPatch(RecipeVersionChange):
     profile_version_id: int | None = None
 
 
-class SetVersionRow(BaseModel):
-    """One row of `set_versions`, with the labels a reader needs beside it."""
+class RecipeVersionRow(BaseModel):
+    """One row of `recipe_versions`, with the labels a reader needs beside it."""
 
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_id: int
+    recipe_id: int
     #: The version's name, v<major>.<minor>. A dial-in change bumps the minor,
     #: a functional change starts the next major (`domain/recipes.py`).
     version_major: int
@@ -288,7 +288,7 @@ class SetVersionRow(BaseModel):
     #: profile.
     profile_temperature_c: float | None = None
     intent: str = ""
-    origin: SetVersionOrigin = "manual"
+    origin: RecipeVersionOrigin = "manual"
     origin_analysis_id: int | None = None
     #: What this version was expected to do differently, in the person's words.
     #: Empty is the common case and means exactly that: nobody committed to a
@@ -342,7 +342,7 @@ class VersionPredictionWrite(BaseModel):
     the text when it goes, because a comparison with nothing to compare would be
     a dangling reference nobody can read.
 
-    ``compares_to_version_id`` follows :class:`SetVersionPatch`: omitted is the
+    ``compares_to_version_id`` follows :class:`RecipeVersionPatch`: omitted is the
     parent, an explicit null is "nothing to compare against".
     """
 
@@ -362,9 +362,9 @@ class VersionOutcomeWrite(BaseModel):
 
 
 class RollbackWrite(BaseModel):
-    """`POST /api/sets/{id}/rollback`: go back to a version that worked.
+    """`POST /api/recipes/{id}/rollback`: go back to a version that worked.
 
-    A revert writes no version: the Set is on the target again, as it was, with
+    A revert writes no version: the Recipe is on the target again, as it was, with
     its prediction, shots and outcome untouched. So it takes no prediction (the
     target already has one, or has shots), and ``extra="forbid"`` makes a body
     that still carries one a 422 rather than a silently dropped field.
@@ -381,13 +381,13 @@ class RollbackWrite(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
-class SetRevertRow(BaseModel):
-    """One time a Set went back to another version: a line of the log, not a version."""
+class RecipeRevertRow(BaseModel):
+    """One time a Recipe went back to another version: a line of the log, not a version."""
 
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_id: int
+    recipe_id: int
     from_version_id: int
     from_version_label: str
     to_version_id: int
@@ -408,8 +408,8 @@ class VersionLabelCounts(BaseModel):
     unlabelled: int = 0
 
 
-class SetTrackRecord(BaseModel):
-    """How often this Set's predictions turned out right.
+class RecipeTrackRecord(BaseModel):
+    """How often this Recipe's predictions turned out right.
 
     ``graded`` is the four recorded outcomes together, which is the denominator
     of the sentence the page leads with. The un-graded two are counted as well
@@ -444,7 +444,7 @@ type VersionRefusal = Literal[
     "design_has_versions",
     "design_has_shots",
     "profile_is_a_pin",
-    "profile_has_a_set",
+    "profile_has_a_recipe",
     "other_profile",
     "not_the_active_version",
     "profile_deleted",
@@ -465,25 +465,26 @@ type DesignRefusal = Literal[
 #: accepted initial recipe and the discard route all meet the same two.
 _DESIGN_REFUSALS: dict[str, str] = {
     "design_has_versions": (
-        "This Set is being designed but already has more than one version, so there is no "
+        "This Recipe is being designed but already has more than one version, so there is no "
         "empty version 1 left to fill"
     ),
     "design_has_shots": (
-        "This Set is being designed and a shot is already filed on it, so its version 1 is no "
-        "longer an empty recipe; unfile the shot first"
+        "This Recipe is being designed and a shot is already filed on it, so its version 1 is no "
+        "longer empty; unfile the shot first"
     ),
-    "designing": "This Set is being designed: there is nothing to go back to yet",
-    "not_designing": "This Set is not being designed",
-    "no_recipe": "There is no such Set",
+    "designing": "This Recipe is being designed: there is nothing to go back to yet",
+    "not_designing": "This Recipe is not being designed",
+    "no_recipe": "There is no such Recipe",
     "profile_is_a_pin": (
-        "That profile is the frozen copy of a pinned version. A Set version names the profile the "
+        "That profile is the frozen copy of a pinned version. A Recipe version names the profile "
+        "the "
         "copy was made from, never the copy"
     ),
-    "profile_has_a_set": "That profile already has a Set",
-    "other_profile": "A Set brews one profile: that profile version belongs to another",
+    "profile_has_a_recipe": "That profile already has a Recipe",
+    "other_profile": "A Recipe brews one profile: that profile version belongs to another",
     "profile_deleted": "That profile was deleted from the list: pick one that is on it",
     "not_the_active_version": (
-        "A Set starts on a profile's active version: pick a profile that has no Set"
+        "A Recipe starts on a profile's active version: pick a profile that has no Recipe"
     ),
 }
 
@@ -526,7 +527,7 @@ class VersionWriteResult:
     message. Exactly one of the two fields is set.
     """
 
-    version: SetVersionRow | None = None
+    version: RecipeVersionRow | None = None
     refused: VersionRefusal | None = None
 
 
@@ -534,7 +535,7 @@ class VersionWriteResult:
 class LiveRecipe:
     """A profile's Recipe, for a page that warns before the profile changes."""
 
-    set_id: int
+    recipe_id: int
     name: str
     #: The profile version the Recipe's current version brews.
     brewing_version_id: int | None
@@ -551,7 +552,7 @@ class ProfileMatch(BaseModel):
 
     outcome: Literal["matched", "unmatched"]
     #: The version the shot was filed under; only set when ``matched``.
-    set_version_id: int | None = None
+    recipe_version_id: int | None = None
 
 
 class ProfileMatchSummary(BaseModel):
@@ -566,18 +567,18 @@ class ProfileMatchSummary(BaseModel):
 
 
 class CopiedFrom(BaseModel):
-    """The "copied from" note of a Set: the version its first recipe was copied from, by name."""
+    """The "copied from" note of a Recipe: the version it was copied from, by name."""
 
     model_config = ConfigDict(extra="forbid")
 
-    set_id: int
-    set_name: str
+    recipe_id: int
+    recipe_name: str
     version_id: int
     version_label: str
 
 
-class SetRow(BaseModel):
-    """One row of `sets`, with the current version and the joined names."""
+class RecipeRow(BaseModel):
+    """One row of `recipes`, with the current version and the joined names."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -655,19 +656,19 @@ class SetRow(BaseModel):
     @classmethod
     def _name_the_note(cls, data: Any) -> Any:
         """Turn the columns that name where the Recipe was copied from into one note, or none."""
-        if not isinstance(data, dict) or "copied_from_set_id" not in data:
+        if not isinstance(data, dict) or "copied_from_recipe_id" not in data:
             return data
         payload = dict(data)
-        set_id = payload.pop("copied_from_set_id")
-        set_name = payload.pop("copied_from_recipe_name", None)
+        recipe_id = payload.pop("copied_from_recipe_id")
+        recipe_name = payload.pop("copied_from_recipe_name", None)
         version_label = payload.pop("copied_from_version_label", None)
         version_id = payload.pop("copied_from_version_id", None)
         payload["copied_from"] = (
             None
-            if set_id is None or version_id is None
+            if recipe_id is None or version_id is None
             else {
-                "set_id": set_id,
-                "set_name": set_name,
+                "recipe_id": recipe_id,
+                "recipe_name": recipe_name,
                 "version_id": version_id,
                 "version_label": version_label,
             }
@@ -763,14 +764,14 @@ class RecipeShotRow(BaseModel):
         return value
 
 
-class SetTrendPoint(BaseModel):
-    """One shot on the Set's trend chart."""
+class RecipeTrendPoint(BaseModel):
+    """One shot on the Recipe's trend chart."""
 
     model_config = ConfigDict(extra="forbid")
 
     shot_id: int
     device_id: str
-    set_version_id: int
+    recipe_version_id: int
     version_label: str
     started_at: str | None = None
     duration_s: float | None = None
@@ -782,7 +783,7 @@ class SetTrendPoint(BaseModel):
     rating: int | None = None
 
 
-class SetTrendCounts(BaseModel):
+class RecipeTrendCounts(BaseModel):
     """How many shots each of a version's means is over.
 
     A mean is over the counted shots that have the value: a shot nobody rated
@@ -800,8 +801,8 @@ class SetTrendCounts(BaseModel):
     first_drip_s: int = 0
 
 
-class SetTrendVersion(BaseModel):
-    """One version's averages: what `get_set`'s trajectory and the chat's ledger read.
+class RecipeTrendVersion(BaseModel):
+    """One version's averages: what `get_recipe`'s trajectory and the chat's ledger read.
 
     The averages are over the version's **counted** shots (the ones the spread
     and the evidence use: not quarantined, not incomplete, not a Discard), so a
@@ -811,7 +812,7 @@ class SetTrendVersion(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    set_version_id: int
+    recipe_version_id: int
     version_label: str
     intent: str = ""
     origin: str = "manual"
@@ -823,17 +824,17 @@ class SetTrendVersion(BaseModel):
     avg_ratio: float | None = None
     avg_rating: float | None = None
     avg_first_drip_s: float | None = None
-    averaged_over: SetTrendCounts = SetTrendCounts()
+    averaged_over: RecipeTrendCounts = RecipeTrendCounts()
 
 
-class SetTrends(BaseModel):
-    """`GET /api/sets/{id}/trends`: the per-version summary and every shot."""
+class RecipeTrends(BaseModel):
+    """`GET /api/recipes/{id}/trends`: the per-version summary and every shot."""
 
     model_config = ConfigDict(extra="forbid")
 
-    set_id: int
-    versions: list[SetTrendVersion]
-    shots: list[SetTrendPoint]
+    recipe_id: int
+    versions: list[RecipeTrendVersion]
+    shots: list[RecipeTrendPoint]
 
 
 #: The recipe fields, with the label the timeline shows and how to render a
@@ -864,8 +865,8 @@ def _render(value: Any, kind: str, labels: dict[int, str] | None = None) -> str 
 
 
 def version_changes(
-    version: SetVersionRow,
-    parent: SetVersionRow | None,
+    version: RecipeVersionRow,
+    parent: RecipeVersionRow | None,
     profile_labels: dict[int, str] | None = None,
 ) -> list[FieldChange]:
     """What this version changed, against the one it came from.
@@ -949,7 +950,7 @@ def _prediction_values(prediction: str, compares_to: int | None, *, now: str) ->
 class VersionNode(Protocol):
     """What walking a Recipe's line needs off a version, and nothing else.
 
-    A structural type rather than :class:`SetVersionRow` because two callers
+    A structural type rather than :class:`RecipeVersionRow` because two callers
     want two different rows: the Recipe page holds the full version and the Chat
     page's folders want four columns for several Recipes at once. One walk, either
     row — the alternative is a second copy of the rule, and a dead end the log
@@ -967,7 +968,7 @@ class VersionLink(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_id: int
+    recipe_id: int
     parent_version_id: int | None = None
     restores_version_id: int | None = None
 
@@ -1011,7 +1012,7 @@ def dead_end_ids(versions: Sequence[VersionNode], current_id: int | None) -> set
     return {version.id for version in versions if version.id not in live}
 
 
-def track_record(versions: Sequence[SetVersionRow]) -> SetTrackRecord:
+def track_record(versions: Sequence[RecipeVersionRow]) -> RecipeTrackRecord:
     """How this Recipe's predictions have gone, counted by state.
 
     ``graded`` is every state that is a grade, derived from the vocabulary
@@ -1019,11 +1020,11 @@ def track_record(versions: Sequence[SetVersionRow]) -> SetTrackRecord:
     `VersionOutcome` and forgotten in this sum would quietly shrink the
     denominator of the only number the Recipe page leads with.
     """
-    counts: dict[str, int] = dict.fromkeys(SetTrackRecord.model_fields, 0)
+    counts: dict[str, int] = dict.fromkeys(RecipeTrackRecord.model_fields, 0)
     for version in versions:
         counts[version.outcome_state] += 1
     counts["graded"] = sum(counts[outcome] for outcome in VERSION_OUTCOMES)
-    return SetTrackRecord(**counts)
+    return RecipeTrackRecord(**counts)
 
 
 #: The eight measures, read out of what is stored, for every caller that wants
@@ -1113,7 +1114,7 @@ _RECIPE_SELECT = f"""
            {state_sql("cur")},
            cur.profile_version_id AS profile_version_id,
            COALESCE(pb.label, {version_name_sql("pv")}) AS profile_label,
-           cfs.id AS copied_from_set_id,
+           cfs.id AS copied_from_recipe_id,
            cfs.name AS copied_from_recipe_name,
            {label_sql("cf")} AS copied_from_version_label,
            (SELECT COUNT(*) FROM recipe_versions v WHERE v.recipe_id = s.id) AS version_count,
@@ -1123,8 +1124,8 @@ _RECIPE_SELECT = f"""
     FROM recipes s
     JOIN beans b ON b.id = s.bean_id
     LEFT JOIN grinders g ON g.id = s.grinder_id
-    -- The current version is the Set's pointer, not the newest row: a revert
-    -- moves the Set back onto an older version without writing a new one.
+    -- The current version is the Recipe's pointer, not the newest row: a revert
+    -- moves the Recipe back onto an older version without writing a new one.
     LEFT JOIN recipe_versions cur ON cur.id = s.current_version_id
     LEFT JOIN profile_versions pv ON pv.id = cur.profile_version_id
     LEFT JOIN profile_board pb ON pb.id = s.board_id
@@ -1140,7 +1141,7 @@ _VERSION_SELECT = f"""
            -- The brew temperature, out of the profile's own document: the
            -- firmware's 0 means "not set", which is the same rule
            -- `profile_recipe` applies to the same field. Read here rather than
-           -- by loading every profile document into the process, because a Set
+           -- by loading every profile document into the process, because a Recipe
            -- page shows a dozen versions and only ever wants this one number.
            CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
                  AND json_extract(pv.json, '$.temperature') > 0
@@ -1167,11 +1168,11 @@ class RecipesRepository(Repository):
     async def create(
         self,
         spec: RecipeWrite,
-        version: SetVersionWrite,
+        version: RecipeVersionWrite,
         *,
         automatch: bool = True,
         from_a_draft: bool = False,
-    ) -> SetRow:
+    ) -> RecipeRow:
         """Create a Recipe and its first version, atomically.
 
         One transaction because a Recipe with no versions is not a Recipe — every
@@ -1186,18 +1187,18 @@ class RecipesRepository(Repository):
         tells them apart by profile.
         """
         async with self.db.transaction():
-            set_id = await self.create_in_transaction(
+            recipe_id = await self.create_in_transaction(
                 spec, version, automatch=automatch, from_a_draft=from_a_draft
             )
-        stored = await self.get(set_id)
+        stored = await self.get(recipe_id)
         if stored is None:  # pragma: no cover - the insert above guarantees it
-            raise RuntimeError("the set vanished between write and read")
+            raise RuntimeError("the Recipe vanished between write and read")
         return stored
 
     async def create_in_transaction(
         self,
         spec: RecipeWrite,
-        version: SetVersionWrite,
+        version: RecipeVersionWrite,
         *,
         automatch: bool = True,
         copied_from_version_id: int | None = None,
@@ -1232,13 +1233,13 @@ class RecipesRepository(Repository):
                 "board_id": board_id,
             },
         )
-        set_id = int(cursor.lastrowid or 0)
+        recipe_id = int(cursor.lastrowid or 0)
         values = version.model_dump()
         # Version 1 has no parent, so a prediction on it compares against
         # nothing: it is graded against the numbers the version states.
         values.update(_prediction_values(version.prediction, None, now=now))
-        await self._insert_version(set_id, None, values, now, major=True)
-        return set_id
+        await self._insert_version(recipe_id, None, values, now, major=True)
+        return recipe_id
 
     async def profile_to_start_on(
         self, profile_version_id: int | None, *, from_a_draft: bool = False
@@ -1321,16 +1322,19 @@ class RecipesRepository(Repository):
         one in New Recipe opens Duplicate Profile on its active version. A pin's copy is never
         offered, since it has no Recipe of its own and is not to be copied."""
         rows = await self.db.fetch_all(
-            "SELECT b.current_version_id AS id, b.label AS label, s.id AS set_id, "
-            "s.name AS set_name FROM profile_board b JOIN recipes s ON s.board_id = b.id "
+            "SELECT b.current_version_id AS id, b.label AS label, s.id AS recipe_id, "
+            "s.name AS recipe_name FROM profile_board b JOIN recipes s ON s.board_id = b.id "
             "WHERE b.deleted_at IS NULL "
             "AND NOT EXISTS (SELECT 1 FROM recipe_version_pins p "
             "WHERE p.profile_version_id = b.current_version_id) "
             "ORDER BY b.label COLLATE NOCASE, b.id"
         )
-        return [(int(r["id"]), str(r["label"]), int(r["set_id"]), str(r["set_name"])) for r in rows]
+        return [
+            (int(r["id"]), str(r["label"]), int(r["recipe_id"]), str(r["recipe_name"]))
+            for r in rows
+        ]
 
-    async def create_design(self, spec: RecipeWrite, brief: DesignBrief) -> SetRow:
+    async def create_design(self, spec: RecipeWrite, brief: DesignBrief) -> RecipeRow:
         """Create a Recipe to be designed in its conversation, atomically.
 
         The Recipe exists from the start, with a version 1 that states nothing —
@@ -1363,15 +1367,15 @@ class RecipesRepository(Repository):
                     "created_at": now,
                 },
             )
-            set_id = int(cursor.lastrowid or 0)
-            await self._insert_version(set_id, None, {"origin": "manual"}, now, major=True)
-        stored = await self.get(set_id)
+            recipe_id = int(cursor.lastrowid or 0)
+            await self._insert_version(recipe_id, None, {"origin": "manual"}, now, major=True)
+        stored = await self.get(recipe_id)
         if stored is None:  # pragma: no cover - the insert above guarantees it
-            raise RuntimeError("the set vanished between write and read")
+            raise RuntimeError("the Recipe vanished between write and read")
         return stored
 
     async def design_refusal(
-        self, set_id: int
+        self, recipe_id: int
     ) -> Literal["design_has_versions", "design_has_shots"] | None:
         """Why a version written to this Recipe now would be refused, if it would.
 
@@ -1389,7 +1393,7 @@ class RecipesRepository(Repository):
                      WHERE v2.recipe_id = s.id) AS shots
               FROM recipes s WHERE s.id = ?
             """,
-            (set_id,),
+            (recipe_id,),
         )
         if row is None or not row["designing"]:
             return None
@@ -1399,7 +1403,7 @@ class RecipesRepository(Repository):
             return "design_has_shots"
         return None
 
-    async def discard_design(self, set_id: int) -> DesignRefusal | None:
+    async def discard_design(self, recipe_id: int) -> DesignRefusal | None:
         """Delete a Recipe that is still being designed. ``None`` when it was deleted.
 
         Allowed only while the Recipe is being designed and nothing is filed on
@@ -1419,32 +1423,32 @@ class RecipesRepository(Repository):
         now = utc_now()
         async with self.db.transaction():
             designing = await self.db.fetch_value(
-                "SELECT designing FROM recipes WHERE id = ?", (set_id,)
+                "SELECT designing FROM recipes WHERE id = ?", (recipe_id,)
             )
             if designing is None:
                 return "no_recipe"
             if not designing:
                 return "not_designing"
-            refusal = await self.design_refusal(set_id)
+            refusal = await self.design_refusal(recipe_id)
             if refusal is not None:
                 return refusal
             drafts = await self.db.fetch_all(
                 "SELECT draft_id FROM recipe_version_proposals "
                 "WHERE recipe_id = ? AND draft_id IS NOT NULL ORDER BY id",
-                (set_id,),
+                (recipe_id,),
             )
             await ProfileDraftsRepository(self.db).discard_unsent(
                 [int(row["draft_id"]) for row in drafts], now=now, why="recipe_discarded"
             )
-            await self.db.execute("DELETE FROM recipes WHERE id = ?", (set_id,))
-        log.info("recipe_design_discarded", set_id=set_id)
+            await self.db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+        log.info("recipe_design_discarded", recipe_id=recipe_id)
         return None
 
-    async def get(self, set_id: int) -> SetRow | None:
-        row = await self.db.fetch_one(f"{_RECIPE_SELECT} WHERE s.id = ?", (set_id,))
-        return self.to_model(SetRow, row)
+    async def get(self, recipe_id: int) -> RecipeRow | None:
+        row = await self.db.fetch_one(f"{_RECIPE_SELECT} WHERE s.id = ?", (recipe_id,))
+        return self.to_model(RecipeRow, row)
 
-    async def list_sets(self, *, include_archived: bool = False) -> list[SetRow]:
+    async def list_recipes(self, *, include_archived: bool = False) -> list[RecipeRow]:
         """Every Recipe, the ones that collect shots first and the newest after."""
         where: list[str] = []
         params: list[Any] = []
@@ -1455,9 +1459,9 @@ class RecipesRepository(Repository):
             f"{_RECIPE_SELECT}{clause} ORDER BY s.automatch DESC, s.created_at DESC, s.id DESC",
             params,
         )
-        return self.to_models(SetRow, rows)
+        return self.to_models(RecipeRow, rows)
 
-    async def set_automatch(self, set_id: int, wanted: bool) -> SetRow | None:
+    async def set_automatch(self, recipe_id: int, wanted: bool) -> RecipeRow | None:
         """Offer this Recipe to the matcher, or take it out of the running.
 
         Any number of Recipes may be offered: several grinders means several
@@ -1469,15 +1473,15 @@ class RecipesRepository(Repository):
         would be a badge that promises something the archive will not do. The
         route turns the ``None`` into a 409.
         """
-        row = await self.get(set_id)
+        row = await self.get(recipe_id)
         if row is None or (wanted and row.archived):
             return None
         await self.db.execute(
-            "UPDATE recipes SET automatch = ? WHERE id = ?", (int(wanted), set_id)
+            "UPDATE recipes SET automatch = ? WHERE id = ?", (int(wanted), recipe_id)
         )
-        return await self.get(set_id)
+        return await self.get(recipe_id)
 
-    async def archive(self, set_id: int) -> SetRow | None:
+    async def archive(self, recipe_id: int) -> RecipeRow | None:
         """Retire a Recipe. Clears `automatch` too — an archived Recipe collects no shots.
 
         Its pins are unpinned in the same transaction: a copy left on the machine would brew
@@ -1486,22 +1490,22 @@ class RecipesRepository(Repository):
         """
         async with nullcontext() if self.db.in_transaction else self.db.transaction():
             cursor = await self.db.execute(
-                "UPDATE recipes SET archived = 1, automatch = 0 WHERE id = ?", (set_id,)
+                "UPDATE recipes SET archived = 1, automatch = 0 WHERE id = ?", (recipe_id,)
             )
             if cursor.rowcount == 0:
                 return None
-            await PinsRepository(self.db).unpin_recipe(set_id)
-        return await self.get(set_id)
+            await PinsRepository(self.db).unpin_recipe(recipe_id)
+        return await self.get(recipe_id)
 
     # ── versions ─────────────────────────────────────────────────────
 
     async def add_version(
         self,
-        set_id: int,
+        recipe_id: int,
         patch: RecipeVersionPatch,
         *,
         major: bool | None = None,
-    ) -> SetVersionRow | None:
+    ) -> RecipeVersionRow | None:
         """Append a version: the current one, with the sent fields changed.
 
         The parent is whatever is current *now*, read inside the transaction
@@ -1509,12 +1513,12 @@ class RecipesRepository(Repository):
         the same parent or the same name.
         """
         async with self.db.transaction():
-            version_id = await self.append_version(set_id, patch, major=major)
+            version_id = await self.append_version(recipe_id, patch, major=major)
         return None if version_id is None else await self.get_version(version_id)
 
     async def append_version(
         self,
-        set_id: int,
+        recipe_id: int,
         patch: RecipeVersionPatch,
         *,
         keep_proposal: int | None = None,
@@ -1553,14 +1557,14 @@ class RecipesRepository(Repository):
         """
         sent = patch.model_dump(exclude_unset=True)
         now = utc_now()
-        parent = await self._current_version_row(set_id)
+        parent = await self._current_version_row(recipe_id)
         if parent is None:
             return None
         designing = await self.db.fetch_value(
-            "SELECT designing FROM recipes WHERE id = ?", (set_id,)
+            "SELECT designing FROM recipes WHERE id = ?", (recipe_id,)
         )
         if designing:
-            refusal = await self.design_refusal(set_id)
+            refusal = await self.design_refusal(recipe_id)
             if refusal is not None:
                 raise VersionRefused(refusal)
             return await self._fill_design(parent, patch, sent, now, keep_proposal=keep_proposal)
@@ -1568,7 +1572,7 @@ class RecipesRepository(Repository):
         for field in RECIPE_FIELDS:
             if field in sent:
                 values[field] = sent[field]
-        await self._give_a_legacy_recipe_its_profile(set_id, sent.get("profile_version_id"))
+        await self._give_a_legacy_recipe_its_profile(recipe_id, sent.get("profile_version_id"))
         values["intent"] = patch.intent
         values["origin"] = patch.origin
         values["origin_analysis_id"] = patch.origin_analysis_id
@@ -1579,7 +1583,7 @@ class RecipesRepository(Repository):
         )
         values.update(_prediction_values(patch.prediction, compares_to, now=now))
         return await self._insert_version(
-            set_id,
+            recipe_id,
             parent.id,
             values,
             now,
@@ -1588,7 +1592,7 @@ class RecipesRepository(Repository):
         )
 
     async def _give_a_legacy_recipe_its_profile(
-        self, set_id: int, profile_version_id: int | None
+        self, recipe_id: int, profile_version_id: int | None
     ) -> None:
         """A Recipe with no profile that is given one at its next version: under New Recipe's rule.
         Each version no profile owns that its versions name goes through the profile's own
@@ -1600,7 +1604,7 @@ class RecipesRepository(Repository):
         if board is None:
             return
         if (
-            await self.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (set_id,))
+            await self.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (recipe_id,))
             is not None
         ):
             return
@@ -1612,12 +1616,14 @@ class RecipesRepository(Repository):
         # every version no profile owns that the Recipe names is settled for it: taken over, or the
         # profile gets a copy of its own that the Recipe's versions then name. The new version,
         # which names the profile's own, is written by the caller; nothing is followed from here.
-        await self.db.execute("UPDATE recipes SET board_id = ? WHERE id = ?", (board, set_id))
-        await ProfileBoardRepository(self.db).settle_a_recipes_versions(board, set_id, follow=False)
+        await self.db.execute("UPDATE recipes SET board_id = ? WHERE id = ?", (board, recipe_id))
+        await ProfileBoardRepository(self.db).settle_a_recipes_versions(
+            board, recipe_id, follow=False
+        )
 
     async def _insert_version(
         self,
-        set_id: int,
+        recipe_id: int,
         parent_version_id: int | None,
         values: dict[str, Any],
         now: str,
@@ -1650,10 +1656,10 @@ class RecipesRepository(Repository):
         backstop). ``major`` is already decided by the caller's rule.
         """
         await self._refuse_a_pins_copy(values.get("profile_version_id"))
-        await self._refuse_another_profile(set_id, values.get("profile_version_id"))
-        numbers = await next_numbers(self.db, set_id, major=major)
+        await self._refuse_another_profile(recipe_id, values.get("profile_version_id"))
+        numbers = await next_numbers(self.db, recipe_id, major=major)
         payload: dict[str, Any] = {
-            "set_id": set_id,
+            "recipe_id": recipe_id,
             "version_major": numbers.major,
             "version_minor": numbers.minor,
             "parent_version_id": parent_version_id,
@@ -1667,7 +1673,7 @@ class RecipesRepository(Repository):
         }
         for field in RECIPE_FIELDS:
             payload[field] = values.get(field)
-        columns = ", ".join("recipe_id" if name == "set_id" else name for name in payload)
+        columns = ", ".join("recipe_id" if name == "recipe_id" else name for name in payload)
         placeholders = ", ".join(f":{name}" for name in payload)
         cursor = await self.db.execute(
             f"INSERT INTO recipe_versions ({columns}) VALUES ({placeholders})",  # noqa: S608 - keys are the literal payload above
@@ -1675,13 +1681,13 @@ class RecipesRepository(Repository):
         )
         version_id = int(cursor.lastrowid or 0)
         await self.db.execute(
-            "UPDATE recipes SET current_version_id = ? WHERE id = ?", (version_id, set_id)
+            "UPDATE recipes SET current_version_id = ? WHERE id = ?", (version_id, recipe_id)
         )
-        await self._retire_waiting(set_id, now, keep_proposal=keep_proposal)
+        await self._retire_waiting(recipe_id, now, keep_proposal=keep_proposal)
         log.info(
             "recipe_version_added",
-            set_id=set_id,
-            set_version_id=version_id,
+            recipe_id=recipe_id,
+            recipe_version_id=version_id,
             version_label=numbers.label,
             major=major,
         )
@@ -1719,9 +1725,9 @@ class RecipesRepository(Repository):
         """A profile has at most one Recipe."""
         sentence = await self.taken_sentence(board_id)
         if sentence is not None:
-            raise VersionRefused("profile_has_a_set", sentence)
+            raise VersionRefused("profile_has_a_recipe", sentence)
 
-    async def _refuse_another_profile(self, set_id: int, profile_version_id: int | None) -> None:
+    async def _refuse_another_profile(self, recipe_id: int, profile_version_id: int | None) -> None:
         """Every version of a Recipe brews a version its profile owns (nothing else keeps the rule,
         since no constraint spans the two tables): checked at the one place a version is written.
         A Recipe with no profile may name only a version that no profile owns."""
@@ -1730,7 +1736,7 @@ class RecipesRepository(Repository):
         row = await self.db.fetch_one(
             "SELECT pv.board_id AS owner, s.board_id AS mine "
             "FROM profile_versions pv, recipes s WHERE pv.id = ? AND s.id = ?",
-            (profile_version_id, set_id),
+            (profile_version_id, recipe_id),
         )
         if row is not None and row["owner"] != row["mine"]:
             raise VersionRefused("other_profile")
@@ -1746,7 +1752,7 @@ class RecipesRepository(Repository):
 
     async def _fill_design(
         self,
-        current: SetVersionRow,
+        current: RecipeVersionRow,
         patch: RecipeVersionPatch,
         sent: dict[str, Any],
         now: str,
@@ -1778,9 +1784,9 @@ class RecipesRepository(Repository):
         owner = await self.profile_to_start_on(values["profile_version_id"], from_a_draft=True)
         if owner is not None:
             await self.db.execute(
-                "UPDATE recipes SET board_id = ? WHERE id = ?", (owner, current.set_id)
+                "UPDATE recipes SET board_id = ? WHERE id = ?", (owner, current.recipe_id)
             )
-        await self._refuse_another_profile(current.set_id, values["profile_version_id"])
+        await self._refuse_another_profile(current.recipe_id, values["profile_version_id"])
         await self.db.execute(
             """
             UPDATE recipe_versions
@@ -1805,9 +1811,9 @@ class RecipesRepository(Repository):
                 "id": current.id,
             },
         )
-        await self.db.execute("UPDATE recipes SET designing = 0 WHERE id = ?", (current.set_id,))
-        await self._retire_waiting(current.set_id, now, keep_proposal=keep_proposal)
-        log.info("recipe_design_filled", set_id=current.set_id, set_version_id=current.id)
+        await self.db.execute("UPDATE recipes SET designing = 0 WHERE id = ?", (current.recipe_id,))
+        await self._retire_waiting(current.recipe_id, now, keep_proposal=keep_proposal)
+        log.info("recipe_design_filled", recipe_id=current.recipe_id, recipe_version_id=current.id)
         if owner is not None:
             # The card may name a version its profile has moved on from (a later change was put
             # before the card was accepted): the Recipe follows to what the profile has active.
@@ -1819,7 +1825,7 @@ class RecipesRepository(Repository):
         return current.id
 
     async def _retire_waiting(
-        self, set_id: int, now: str, *, keep_proposal: int | None = None
+        self, recipe_id: int, now: str, *, keep_proposal: int | None = None
     ) -> None:
         """Stale whatever proposal was waiting on this Recipe, and discard its draft.
 
@@ -1830,11 +1836,11 @@ class RecipesRepository(Repository):
         orphan per revision of the design. A draft already sent to the machine
         is not touched (:meth:`ProfileDraftsRepository.discard_unsent`).
         """
-        params = {"set_id": set_id, "now": now, "keep": keep_proposal}
+        params = {"recipe_id": recipe_id, "now": now, "keep": keep_proposal}
         drafts = await self.db.fetch_all(
             """
             SELECT draft_id FROM recipe_version_proposals
-             WHERE recipe_id = :set_id
+             WHERE recipe_id = :recipe_id
                AND status = 'proposed'
                AND draft_id IS NOT NULL
                AND (:keep IS NULL OR id != :keep)
@@ -1849,7 +1855,7 @@ class RecipesRepository(Repository):
             """
             UPDATE recipe_version_proposals
                SET status = 'stale', decided_at = :now
-             WHERE recipe_id = :set_id
+             WHERE recipe_id = :recipe_id
                AND status = 'proposed'
                AND (:keep IS NULL OR id != :keep)
             """,
@@ -1863,7 +1869,7 @@ class RecipesRepository(Repository):
     # can change: a shot lands, a judgement is typed, a version is added.
 
     async def set_prediction(
-        self, set_id: int, version_id: int, spec: VersionPredictionWrite
+        self, recipe_id: int, version_id: int, spec: VersionPredictionWrite
     ) -> VersionWriteResult:
         """Write what this version is expected to do differently.
 
@@ -1878,7 +1884,7 @@ class RecipesRepository(Repository):
         """
         now = utc_now()
         async with self.db.transaction():
-            version = await self.version_of_recipe(set_id, version_id)
+            version = await self.version_of_recipe(recipe_id, version_id)
             if version is None:
                 return VersionWriteResult(refused="no_version")
             if version.shot_count > 0:
@@ -1895,7 +1901,7 @@ class RecipesRepository(Repository):
                 else version.parent_version_id
             )
             if spec.prediction and compares_to is not None:
-                if await self.comparison_target(set_id, version.id, compares_to) is None:
+                if await self.comparison_target(recipe_id, version.id, compares_to) is None:
                     return VersionWriteResult(refused="bad_compare")
             values = _prediction_values(spec.prediction, compares_to, now=now)
             await self.db.execute(
@@ -1911,7 +1917,7 @@ class RecipesRepository(Repository):
         return VersionWriteResult(version=await self.get_version(version_id))
 
     async def set_outcome(
-        self, set_id: int, version_id: int, spec: VersionOutcomeWrite
+        self, recipe_id: int, version_id: int, spec: VersionOutcomeWrite
     ) -> VersionWriteResult:
         """Grade this version's prediction. Changeable, and never automatic.
 
@@ -1922,10 +1928,10 @@ class RecipesRepository(Repository):
         prediction on one would be reading the wrong signal.
         """
         async with self.db.transaction():
-            return await self.grade_in_transaction(set_id, version_id, spec)
+            return await self.grade_in_transaction(recipe_id, version_id, spec)
 
     async def grade_in_transaction(
-        self, set_id: int, version_id: int, spec: VersionOutcomeWrite
+        self, recipe_id: int, version_id: int, spec: VersionOutcomeWrite
     ) -> VersionWriteResult:
         """The grade itself, inside a transaction the caller already holds.
 
@@ -1937,7 +1943,7 @@ class RecipesRepository(Repository):
         one they accepted in the chat are held to one rule.
         """
         now = utc_now()
-        version = await self.version_of_recipe(set_id, version_id)
+        version = await self.version_of_recipe(recipe_id, version_id)
         if version is None:
             return VersionWriteResult(refused="no_version")
         if not version.prediction:
@@ -1954,10 +1960,10 @@ class RecipesRepository(Repository):
         )
         return VersionWriteResult(version=await self.get_version(version_id))
 
-    async def clear_outcome(self, set_id: int, version_id: int) -> VersionWriteResult:
+    async def clear_outcome(self, recipe_id: int, version_id: int) -> VersionWriteResult:
         """Take a grade back. Always allowed: second thoughts are ordinary."""
         async with self.db.transaction():
-            version = await self.version_of_recipe(set_id, version_id)
+            version = await self.version_of_recipe(recipe_id, version_id)
             if version is None:
                 return VersionWriteResult(refused="no_version")
             await self.db.execute(
@@ -1967,7 +1973,7 @@ class RecipesRepository(Repository):
             )
         return VersionWriteResult(version=await self.get_version(version_id))
 
-    async def rollback(self, set_id: int, spec: RollbackWrite) -> VersionWriteResult:
+    async def rollback(self, recipe_id: int, spec: RollbackWrite) -> VersionWriteResult:
         """Put the Recipe back on another version of it. Writes no version.
 
         The target becomes the Recipe's current version again, exactly as it was:
@@ -1987,35 +1993,37 @@ class RecipesRepository(Repository):
         """
         now = utc_now()
         async with nullcontext() if self.db.in_transaction else self.db.transaction():
-            if await self.db.fetch_value("SELECT designing FROM recipes WHERE id = ?", (set_id,)):
+            if await self.db.fetch_value(
+                "SELECT designing FROM recipes WHERE id = ?", (recipe_id,)
+            ):
                 return VersionWriteResult(refused="designing")
-            current = await self._current_version_row(set_id)
+            current = await self._current_version_row(recipe_id)
             if current is None:
                 return VersionWriteResult(refused="no_version")
-            target = await self.version_of_recipe(set_id, spec.to_version_id)
+            target = await self.version_of_recipe(recipe_id, spec.to_version_id)
             if target is None:
                 return VersionWriteResult(refused="no_target")
             if target.id == current.id:
                 return VersionWriteResult(refused="current_version")
             await self.db.execute(
-                "UPDATE recipes SET current_version_id = ? WHERE id = ?", (target.id, set_id)
+                "UPDATE recipes SET current_version_id = ? WHERE id = ?", (target.id, recipe_id)
             )
             await self.db.execute(
                 "INSERT INTO recipe_version_reverts "
                 "(recipe_id, from_version_id, to_version_id, note, created_at) VALUES (?, ?, ?, "
                 "?, ?)",
-                (set_id, current.id, target.id, spec.note.strip(), now),
+                (recipe_id, current.id, target.id, spec.note.strip(), now),
             )
-            await self._retire_waiting(set_id, now)
+            await self._retire_waiting(recipe_id, now)
         log.info(
             "recipe_reverted",
-            set_id=set_id,
+            recipe_id=recipe_id,
             from_label=current.version_label,
             to_label=target.version_label,
         )
         return VersionWriteResult(version=await self.get_version(target.id))
 
-    async def reverts(self, set_id: int) -> list[SetRevertRow]:
+    async def reverts(self, recipe_id: int) -> list[RecipeRevertRow]:
         """Every time this Recipe went back, newest first, each version by its name."""
         rows = await self.db.fetch_all(
             f"""
@@ -2029,11 +2037,11 @@ class RecipesRepository(Repository):
              WHERE r.recipe_id = ?
              ORDER BY r.created_at DESC, r.id DESC
             """,  # noqa: S608 - the interpolation is the label expression, the id is bound
-            (set_id,),
+            (recipe_id,),
         )
-        return self.to_models(SetRevertRow, rows)
+        return self.to_models(RecipeRevertRow, rows)
 
-    async def reverts_into(self, version_id: int) -> list[SetRevertRow]:
+    async def reverts_into(self, version_id: int) -> list[RecipeRevertRow]:
         """Every revert that put the Recipe back on this version, oldest first."""
         rows = await self.db.fetch_all(
             f"""
@@ -2049,11 +2057,11 @@ class RecipesRepository(Repository):
             """,  # noqa: S608 - the interpolation is the label expression, the id is bound
             (version_id,),
         )
-        return self.to_models(SetRevertRow, rows)
+        return self.to_models(RecipeRevertRow, rows)
 
     async def comparison_target(
-        self, set_id: int, version_id: int, compares_to: int
-    ) -> SetVersionRow | None:
+        self, recipe_id: int, version_id: int, compares_to: int
+    ) -> RecipeVersionRow | None:
         """The version a prediction on `version_id` may name, or ``None``.
 
         Two conditions, in one place because both routes that accept a
@@ -2070,15 +2078,15 @@ class RecipesRepository(Repository):
         `POST /versions` calls :meth:`version_of_recipe` instead, because there the
         version does not exist yet and every candidate is older by construction.
         """
-        target = await self.version_of_recipe(set_id, compares_to)
-        version = await self.version_of_recipe(set_id, version_id)
+        target = await self.version_of_recipe(recipe_id, compares_to)
+        version = await self.version_of_recipe(recipe_id, version_id)
         if target is None or version is None:
             return None
         if (target.created_at, target.id) >= (version.created_at, version.id):
             return None
         return target
 
-    async def version_of_recipe(self, set_id: int, version_id: int) -> SetVersionRow | None:
+    async def version_of_recipe(self, recipe_id: int, version_id: int) -> RecipeVersionRow | None:
         """A version, but only if it belongs to the Recipe the route named.
 
         Public because the route that accepts a compared-to version on a *new*
@@ -2086,11 +2094,13 @@ class RecipesRepository(Repository):
         Recipe's" is how they come to disagree.
         """
         row = await self.db.fetch_one(
-            f"{_VERSION_SELECT} WHERE v.id = ? AND v.recipe_id = ?", (version_id, set_id)
+            f"{_VERSION_SELECT} WHERE v.id = ? AND v.recipe_id = ?", (version_id, recipe_id)
         )
-        return self.to_model(SetVersionRow, row)
+        return self.to_model(RecipeVersionRow, row)
 
-    async def version_named(self, set_id: int, major: int, minor: int) -> SetVersionRow | None:
+    async def version_named(
+        self, recipe_id: int, major: int, minor: int
+    ) -> RecipeVersionRow | None:
         """This Recipe's version called v<major>.<minor>, if it has one.
 
         For a name somebody typed — the agent's search takes "v1.1" — which is
@@ -2100,9 +2110,9 @@ class RecipesRepository(Repository):
         row = await self.db.fetch_one(
             f"{_VERSION_SELECT} WHERE v.recipe_id = ? AND v.version_major = ? AND v.version_minor "
             f"= ?",
-            (set_id, major, minor),
+            (recipe_id, major, minor),
         )
-        return self.to_model(SetVersionRow, row)
+        return self.to_model(RecipeVersionRow, row)
 
     async def _has_gradable_shot(self, version_id: int) -> bool:
         return await self.gradable_shot_count(version_id) > 0
@@ -2126,7 +2136,7 @@ class RecipesRepository(Repository):
             or 0
         )
 
-    async def label_counts(self, set_id: int) -> dict[int, VersionLabelCounts]:
+    async def label_counts(self, recipe_id: int) -> dict[int, VersionLabelCounts]:
         """How every version's shots were labelled, in one grouped pass."""
         rows = await self.db.fetch_all(
             """
@@ -2141,7 +2151,7 @@ class RecipesRepository(Repository):
             WHERE v.recipe_id = ?
             GROUP BY sh.recipe_version_id
             """,
-            (set_id,),
+            (recipe_id,),
         )
         return {
             int(row["version_id"]): VersionLabelCounts(
@@ -2153,7 +2163,7 @@ class RecipesRepository(Repository):
             for row in rows
         }
 
-    async def rollback_target(self, set_id: int) -> int | None:
+    async def rollback_target(self, recipe_id: int) -> int | None:
         """The nearest version behind the current one that is worth going back to.
 
         The nearest **ancestor** of the current version on the fork history (the
@@ -2165,12 +2175,12 @@ class RecipesRepository(Repository):
         a thing somebody said, not a thing a shot count implies.
         """
         current = await self.db.fetch_value(
-            "SELECT current_version_id FROM recipes WHERE id = ?", (set_id,)
+            "SELECT current_version_id FROM recipes WHERE id = ?", (recipe_id,)
         )
         rows = await self.db.fetch_all(
             "SELECT id, recipe_id, parent_version_id, restores_version_id "
             "FROM recipe_versions WHERE recipe_id = ?",
-            (set_id,),
+            (recipe_id,),
         )
         kept = {
             int(row["id"])
@@ -2181,7 +2191,7 @@ class RecipesRepository(Repository):
                   JOIN recipe_versions v ON v.id = sh.recipe_version_id
                  WHERE v.recipe_id = ? AND j.decision = 'keep'
                 """,
-                (set_id,),
+                (recipe_id,),
             )
         }
         line = live_line(self.to_models(VersionLink, rows), current)
@@ -2204,7 +2214,7 @@ class RecipesRepository(Repository):
         for r in rows:
             names = await next_names(self.db, int(r["id"]))
             found[int(r["board_id"])] = LiveRecipe(
-                set_id=int(r["id"]),
+                recipe_id=int(r["id"]),
                 name=str(r["name"]),
                 brewing_version_id=r["pv"],
                 version_label=str(r["version_label"]),
@@ -2218,13 +2228,13 @@ class RecipesRepository(Repository):
         profile_version_id: int,
         *,
         major: bool | None = None,
-        origin: SetVersionOrigin = "manual",
+        origin: RecipeVersionOrigin = "manual",
         origin_analysis_id: int | None = None,
         intent: str | None = None,
         prediction: str = "",
         compares_to_version_id: int | None = None,
         keep_proposal: int | None = None,
-    ) -> SetVersionRow | None:
+    ) -> RecipeVersionRow | None:
         """A profile has a new active version: its Recipe gets a new version naming it.
 
         The one place a Recipe follows its profile, called in the same transaction as every change
@@ -2255,11 +2265,11 @@ class RecipesRepository(Repository):
         )
         return None if version_id is None else await self.get_version(version_id)
 
-    async def get_version(self, version_id: int) -> SetVersionRow | None:
+    async def get_version(self, version_id: int) -> RecipeVersionRow | None:
         row = await self.db.fetch_one(f"{_VERSION_SELECT} WHERE v.id = ?", (version_id,))
-        return self.to_model(SetVersionRow, row)
+        return self.to_model(RecipeVersionRow, row)
 
-    async def versions_by_id(self, version_ids: Iterable[int]) -> dict[int, SetVersionRow]:
+    async def versions_by_id(self, version_ids: Iterable[int]) -> dict[int, RecipeVersionRow]:
         """Several versions, whichever Recipes they belong to, in one query."""
         wanted = sorted({int(version_id) for version_id in version_ids})
         if not wanted:
@@ -2269,7 +2279,7 @@ class RecipesRepository(Repository):
             f"{_VERSION_SELECT} WHERE v.id IN ({placeholders})",
             wanted,
         )
-        return {row.id: row for row in self.to_models(SetVersionRow, rows)}
+        return {row.id: row for row in self.to_models(RecipeVersionRow, rows)}
 
     async def dead_end_versions(self, recipe_ids: Iterable[int]) -> set[int]:
         """Which of these Recipes' versions are off the line still being brewed.
@@ -2279,7 +2289,7 @@ class RecipesRepository(Repository):
         conversations spread over every Recipe there is, and a query per Recipe would
         make drawing the list cost as much as opening one.
         """
-        wanted = sorted({int(set_id) for set_id in recipe_ids})
+        wanted = sorted({int(recipe_id) for recipe_id in recipe_ids})
         if not wanted:
             return set()
         placeholders = ", ".join("?" * len(wanted))
@@ -2297,29 +2307,30 @@ class RecipesRepository(Repository):
         }
         links = self.to_models(VersionLink, rows)
         dead: set[int] = set()
-        for set_id in wanted:
+        for recipe_id in wanted:
             dead |= dead_end_ids(
-                [link for link in links if link.set_id == set_id], pointers.get(set_id)
+                [link for link in links if link.recipe_id == recipe_id], pointers.get(recipe_id)
             )
         return dead
 
-    async def versions(self, set_id: int) -> list[SetVersionRow]:
+    async def versions(self, recipe_id: int) -> list[RecipeVersionRow]:
         """Every version of a Recipe, newest made first — the order the timeline reads in."""
         rows = await self.db.fetch_all(
             f"{_VERSION_SELECT} WHERE v.recipe_id = ? ORDER BY v.created_at DESC, v.id DESC",
-            (set_id,),
+            (recipe_id,),
         )
-        return self.to_models(SetVersionRow, rows)
+        return self.to_models(RecipeVersionRow, rows)
 
-    async def _current_version_row(self, set_id: int) -> SetVersionRow | None:
+    async def _current_version_row(self, recipe_id: int) -> RecipeVersionRow | None:
         row = await self.db.fetch_one(
-            f"{_VERSION_SELECT} WHERE v.id = cs.current_version_id AND v.recipe_id = ?", (set_id,)
+            f"{_VERSION_SELECT} WHERE v.id = cs.current_version_id AND v.recipe_id = ?",
+            (recipe_id,),
         )
-        return self.to_model(SetVersionRow, row)
+        return self.to_model(RecipeVersionRow, row)
 
-    async def current_version(self, set_id: int) -> SetVersionRow | None:
+    async def current_version(self, recipe_id: int) -> RecipeVersionRow | None:
         """The version a shot pulled right now would be attached to."""
-        return await self._current_version_row(set_id)
+        return await self._current_version_row(recipe_id)
 
     # ── assignment ───────────────────────────────────────────────────
 
@@ -2467,11 +2478,11 @@ class RecipesRepository(Repository):
             # the file included). Like every automatic filing it only fills a NULL.
             if not await self._fill(shot_id, pinned):
                 return ProfileMatch(outcome="unmatched")
-            return ProfileMatch(outcome="matched", set_version_id=pinned)
+            return ProfileMatch(outcome="matched", recipe_version_id=pinned)
         candidate = await self.version_naming_profile(resolved)
         if candidate is None or not await self._fill(shot_id, candidate):
             return ProfileMatch(outcome="unmatched")
-        return ProfileMatch(outcome="matched", set_version_id=candidate)
+        return ProfileMatch(outcome="matched", recipe_version_id=candidate)
 
     async def match_unfiled(self, shot_ids: Sequence[int] | None = None) -> ProfileMatchSummary:
         """Run :meth:`profile_match` over every shot that needs a Recipe.
@@ -2513,7 +2524,7 @@ class RecipesRepository(Repository):
 
     # ── the spread ───────────────────────────────────────────────────
 
-    async def counted_shots(self, set_id: int) -> list[CountedShot]:
+    async def counted_shots(self, recipe_id: int) -> list[CountedShot]:
         """Every shot of this Recipe that counts towards its spread, with its measures.
 
         "Counts" is three exclusions and no more. A **quarantined** shot never
@@ -2578,11 +2589,11 @@ class RecipesRepository(Repository):
               AND (j.decision IS NULL OR j.decision != 'discard')
             ORDER BY sh.id
             """,  # noqa: S608 - the interpolation is the module constant above, the id is bound
-            (set_id,),
+            (recipe_id,),
         )
         return self.to_models(CountedShot, rows)
 
-    async def shot_ids(self, set_id: int) -> set[int]:
+    async def shot_ids(self, recipe_id: int) -> set[int]:
         """Every shot filed under this Recipe, as a set of ids.
 
         For the callers whose question is "is this shot one of ours" — the
@@ -2596,13 +2607,13 @@ class RecipesRepository(Repository):
             JOIN recipe_versions v ON v.id = sh.recipe_version_id
             WHERE v.recipe_id = ?
             """,
-            (set_id,),
+            (recipe_id,),
         )
         return {int(row["id"]) for row in rows}
 
     async def search_shot_ids(
         self,
-        set_id: int,
+        recipe_id: int,
         *,
         version_id: int | None = None,
         decision: Decision | None = None,
@@ -2621,8 +2632,8 @@ class RecipesRepository(Repository):
         ``until`` are ``YYYY-MM-DD`` days, both inclusive, of the UTC start
         time. Ordered by id, because the order is the caller's to decide.
         """
-        where = ["v.recipe_id = :set_id"]
-        params: dict[str, Any] = {"set_id": set_id}
+        where = ["v.recipe_id = :recipe_id"]
+        params: dict[str, Any] = {"recipe_id": recipe_id}
         if version_id is not None:
             where.append("v.id = :version_id")
             params["version_id"] = version_id
@@ -2663,7 +2674,7 @@ class RecipesRepository(Repository):
 
     async def recipe_shots(
         self,
-        set_id: int,
+        recipe_id: int,
         *,
         version_id: int | None = None,
         decision: Decision | None = None,
@@ -2681,8 +2692,8 @@ class RecipesRepository(Repository):
         constant, so a number here and a number in the evidence table can never
         be two different readings of the same shot.
         """
-        where = ["v.recipe_id = :set_id"]
-        params: dict[str, Any] = {"set_id": set_id, "limit": limit}
+        where = ["v.recipe_id = :recipe_id"]
+        params: dict[str, Any] = {"recipe_id": recipe_id, "limit": limit}
         if version_id is not None:
             where.append("v.id = :version_id")
             params["version_id"] = version_id
@@ -2718,8 +2729,8 @@ class RecipesRepository(Repository):
     # ── trends ───────────────────────────────────────────────────────
 
     async def trends(
-        self, set_id: int, *, counted: Sequence[CountedShot] | None = None
-    ) -> SetTrends:
+        self, recipe_id: int, *, counted: Sequence[CountedShot] | None = None
+    ) -> RecipeTrends:
         """Every shot in the Recipe, in order, plus the per-version averages.
 
         ``counted`` is the Recipe's counted shots when the caller already holds them
@@ -2750,15 +2761,15 @@ class RecipesRepository(Repository):
             WHERE v.recipe_id = ?
             ORDER BY COALESCE(sh.started_at, ''), sh.id
             """,  # noqa: S608 - the interpolation is the label expression, the id is bound
-            (set_id,),
+            (recipe_id,),
         )
-        points: list[SetTrendPoint] = []
+        points: list[RecipeTrendPoint] = []
         for row in rows:
             points.append(
-                SetTrendPoint(
+                RecipeTrendPoint(
                     shot_id=int(row["shot_id"]),
                     device_id=str(row["device_id"]),
-                    set_version_id=int(row["set_version_id"]),
+                    recipe_version_id=int(row["recipe_version_id"]),
                     version_label=str(row["version_label"]),
                     started_at=row["started_at"],
                     duration_s=None if row["duration_ms"] is None else row["duration_ms"] / 1000,
@@ -2772,33 +2783,33 @@ class RecipesRepository(Repository):
                 )
             )
 
-        versions = await self.versions(set_id)
+        versions = await self.versions(recipe_id)
         if counted is None:
-            counted = await self.counted_shots(set_id)
+            counted = await self.counted_shots(recipe_id)
         ratios = {p.shot_id: p.ratio for p in points}
         summaries = [
             _trend_version(
                 version,
-                shots=sum(1 for p in points if p.set_version_id == version.id),
+                shots=sum(1 for p in points if p.recipe_version_id == version.id),
                 counted=[shot for shot in counted if shot.version_id == version.id],
                 ratios=ratios,
             )
             # Oldest first: a trend reads left to right.
             for version in sorted(versions, key=lambda v: (v.created_at, v.id))
         ]
-        return SetTrends(set_id=set_id, versions=summaries, shots=points)
+        return RecipeTrends(recipe_id=recipe_id, versions=summaries, shots=points)
 
 
 def _trend_version(
-    version: SetVersionRow,
+    version: RecipeVersionRow,
     *,
     shots: int,
     counted: Sequence[CountedShot],
     ratios: Mapping[int, float | None],
-) -> SetTrendVersion:
+) -> RecipeTrendVersion:
     """One version's averages: the only place they are worked out.
 
-    `get_set`'s trajectory, the chat's ledger line and the design chat's mean
+    `get_recipe`'s trajectory, the chat's ledger line and the design chat's mean
     rating all read this, so they cannot disagree. Counted shots only, means only, and
     a mean over nothing is ``None`` rather than a zero.
     """
@@ -2809,8 +2820,8 @@ def _trend_version(
         "rating": [shot.rating for shot in counted],
         "first_drip_s": [shot.first_drip_s for shot in counted],
     }
-    return SetTrendVersion(
-        set_version_id=version.id,
+    return RecipeTrendVersion(
+        recipe_version_id=version.id,
         version_label=version.version_label,
         intent=version.intent,
         origin=version.origin,
@@ -2822,7 +2833,7 @@ def _trend_version(
         avg_ratio=_mean(columns["ratio"]),
         avg_rating=_mean(columns["rating"]),
         avg_first_drip_s=_mean(columns["first_drip_s"]),
-        averaged_over=SetTrendCounts(
+        averaged_over=RecipeTrendCounts(
             **{
                 name: sum(1 for value in values if value is not None)
                 for name, values in columns.items()

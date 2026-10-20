@@ -71,7 +71,7 @@ async def test_a_rename_writes_the_profiles_name_and_nothing_else(adopted: Adopt
 
     assert response.status_code == 200, response.text
     assert data(response)["label"] == "A new name", "the name is stored trimmed"
-    assert await snapshot(app) == before, "no version, draft, Set, pin, signature or file row"
+    assert await snapshot(app) == before, "no version, draft, Recipe, pin, signature or file row"
     after = dict((await ProfileBoardRepository(app.state.db).get(row["row"]["id"])).model_dump())  # type: ignore[union-attr]
     changed = {k for k in stored if stored[k] != after[k]}
     assert changed == {"label", "updated_at"}
@@ -210,8 +210,8 @@ async def test_a_pinned_row_can_be_renamed_and_its_brew_stays_frozen(adopted: Ad
     from tests.drafts.test_pins import _pin, _recipe_with_version
 
     app, client, fake = adopted
-    set_id, version_id = await _recipe_with_version(app, client)
-    pinned = data(await _pin(client, set_id, version_id))
+    recipe_id, version_id = await _recipe_with_version(app, client)
+    pinned = data(await _pin(client, recipe_id, version_id))
     row_id = pinned["board_id"]
     before = await snapshot(app)
 
@@ -221,7 +221,7 @@ async def test_a_pinned_row_can_be_renamed_and_its_brew_stays_frozen(adopted: Ad
     assert data(response)["label"] == "My frozen copy"
     assert await snapshot(app) == before
     board = await get_board(client)
-    assert row_for(board, "My frozen copy")["pin"]["set_id"] == set_id
+    assert row_for(board, "My frozen copy")["pin"]["recipe_id"] == recipe_id
     await pull(app)
     file = row_for(await get_board(client), "My frozen copy")["machine"]["device_id"]
     assert file_called(fake, file) == "My frozen copy"
@@ -331,17 +331,17 @@ async def test_the_recipes_the_pickers_and_the_version_list_show_the_new_name(
     from tests.drafts.test_pins import _recipe_with_version
 
     app, client, _fake = adopted
-    set_id, _version_id = await _recipe_with_version(app, client)
-    free = next(r for r in (await get_board(client))["rows"] if r["set"] is None)
-    brewing = next(r for r in (await get_board(client))["rows"] if r["set"] is not None)
+    recipe_id, _version_id = await _recipe_with_version(app, client)
+    free = next(r for r in (await get_board(client))["rows"] if r["recipe"] is None)
+    brewing = next(r for r in (await get_board(client))["rows"] if r["recipe"] is not None)
     await rename(client, brewing["row"]["id"], "Renamed brewing profile")
     await rename(client, free["row"]["id"], "Renamed free profile")
 
-    recipes = data(await client.get("/api/sets"))
+    recipes = data(await client.get("/api/recipes"))
     assert "Renamed brewing profile" in str(recipes) and BASE_LABEL not in str(recipes)
-    detail = data(await client.get(f"/api/sets/{set_id}"))
+    detail = data(await client.get(f"/api/recipes/{recipe_id}"))
     assert "Renamed brewing profile" in str(detail) and BASE_LABEL not in str(detail)
-    choices = [i["label"] for i in data(await client.get("/api/sets/profile-choices"))["items"]]
+    choices = [i["label"] for i in data(await client.get("/api/recipes/profile-choices"))["items"]]
     assert "Renamed free profile" in choices and free["row"]["label"] not in choices
     listed = data(await client.get("/api/profile-versions"))["items"]
     names = {i["board_id"]: i["profile_name"] for i in listed}

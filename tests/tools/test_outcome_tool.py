@@ -13,7 +13,7 @@ from typing import Any
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
-from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, SetVersionRow
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, RecipeVersionRow
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
@@ -36,11 +36,11 @@ async def refuse(ctx: ToolContext, name: str, **arguments: Any) -> dict[str, Any
     return outcome.data
 
 
-async def _predicted_version(archive: Fixture, *, shots: int = 1) -> SetVersionRow:
+async def _predicted_version(archive: Fixture, *, shots: int = 1) -> RecipeVersionRow:
     """A version with a prediction and ``shots`` Keep shots filed under it."""
     recipes = RecipesRepository(archive.db)
     version = await recipes.add_version(
-        archive.set_id,
+        archive.recipe_id,
         RecipeVersionPatch.model_validate(
             {
                 "intent": "one click finer",
@@ -63,10 +63,10 @@ async def _predicted_version(archive: Fixture, *, shots: int = 1) -> SetVersionR
 def _in_version(
     archive: Fixture,
     settings: SettingsService,
-    version: SetVersionRow,
+    version: RecipeVersionRow,
     thread_id: int | None = None,
 ) -> ToolContext:
-    ctx = _context(archive, settings, ToolScope.for_thread(archive.set_id, version.id))
+    ctx = _context(archive, settings, ToolScope.for_thread(archive.recipe_id, version.id))
     ctx.thread_id = thread_id
     return ctx
 
@@ -100,7 +100,7 @@ async def test_it_grades_the_conversations_own_version_and_no_other(
     """Rule 2. The version is the conversation's; there is no argument to name another."""
     other = await _predicted_version(archive)
     mine = await RecipesRepository(archive.db).add_version(
-        archive.set_id,
+        archive.recipe_id,
         RecipeVersionPatch.model_validate(
             {"grind_setting": "20", "prediction": "Expect a little more body."}
         ),
@@ -125,7 +125,7 @@ async def test_a_version_argument_is_not_accepted(
     version = await _predicted_version(archive)
     ctx = _in_version(archive, settings, version)
     outcome = await registry.dispatch(
-        ctx, "propose_outcome", {"outcome": "held", "note": NOTE, "set_version_id": 1}
+        ctx, "propose_outcome", {"outcome": "held", "note": NOTE, "recipe_version_id": 1}
     )
     assert not outcome.ok
 
@@ -134,7 +134,7 @@ async def test_a_scope_with_no_version_grades_the_current_one(
     archive: Fixture, settings: SettingsService
 ) -> None:
     version = await _predicted_version(archive)
-    ctx = _context(archive, settings, ToolScope.for_thread(archive.set_id))
+    ctx = _context(archive, settings, ToolScope.for_thread(archive.recipe_id))
     data = await call(ctx, "propose_outcome", outcome="held", note=NOTE)
     assert data["version"] == version.version_label
 
@@ -159,7 +159,7 @@ async def test_the_proposal_names_the_conversation_it_came_from(
     version = await _predicted_version(archive)
     cursor = await archive.db.execute(
         "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES ('v', ?, ?)",
-        (archive.set_id, version.id),
+        (archive.recipe_id, version.id),
     )
     ctx = _in_version(archive, settings, version, int(cursor.lastrowid or 0))
     await call(ctx, "propose_outcome", outcome="held", note=NOTE)
@@ -173,11 +173,11 @@ class TestRefusals:
     async def test_no_prediction_means_nothing_to_grade(
         self, archive: Fixture, settings: SettingsService
     ) -> None:
-        first = (await RecipesRepository(archive.db).versions(archive.set_id))[0]
+        first = (await RecipesRepository(archive.db).versions(archive.recipe_id))[0]
         ctx = _in_version(archive, settings, first)
         data = await refuse(ctx, "propose_outcome", outcome="held", note=NOTE)
         assert "has no prediction, so there is nothing to grade" in data["detail"]
-        assert await OutcomeProposalsRepository(archive.db).for_recipe(archive.set_id) == []
+        assert await OutcomeProposalsRepository(archive.db).for_recipe(archive.recipe_id) == []
 
     async def test_no_counted_shot_yet(self, archive: Fixture, settings: SettingsService) -> None:
         version = await _predicted_version(archive, shots=0)
@@ -204,7 +204,7 @@ class TestRefusals:
         data = await refuse(ctx, "propose_outcome", outcome="held", note="it held")
         assert "A grade needs its reasons" in data["detail"]
         assert "at least 20 characters" in data["detail"]
-        assert await OutcomeProposalsRepository(archive.db).for_recipe(archive.set_id) == []
+        assert await OutcomeProposalsRepository(archive.db).for_recipe(archive.recipe_id) == []
 
     async def test_a_conversation_of_no_recipe_of_this_one(
         self, archive: Fixture, settings: SettingsService
@@ -213,7 +213,7 @@ class TestRefusals:
         cursor = await archive.db.execute("INSERT INTO chat_threads (title) VALUES ('general')")
         ctx = _in_version(archive, settings, version, int(cursor.lastrowid or 0))
         data = await refuse(ctx, "propose_outcome", outcome="held", note=NOTE)
-        assert "not one of this Set's" in data["detail"]
+        assert "not one of this Recipe's" in data["detail"]
 
 
 class TestWhereItExists:
@@ -228,10 +228,10 @@ class TestWhereItExists:
     async def test_it_is_absent_from_a_design_conversation(
         self, archive: Fixture, settings: SettingsService
     ) -> None:
-        ctx = _context(archive, settings, ToolScope.for_thread(archive.set_id, designing=True))
+        ctx = _context(archive, settings, ToolScope.for_thread(archive.recipe_id, designing=True))
         outcome = await registry.dispatch(ctx, "propose_outcome", {"outcome": "held", "note": NOTE})
         assert outcome.status == "refused"
-        assert "designing a Set" in outcome.error
+        assert "designing a Recipe" in outcome.error
 
     async def test_it_is_in_the_recipe_scope_and_nowhere_else(self) -> None:
         from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, RECIPE_TOOLS
@@ -250,13 +250,13 @@ class TestTheNextChangeAfterAGrade:
         ctx = _in_version(archive, settings, version)
         data = await refuse(
             ctx,
-            "propose_set_version",
+            "propose_recipe_version",
             reason="Two clicks finer.",
             grind_setting="20",
             prediction="Compared to the last one: two to four seconds longer and less sour.",
         )
         assert "Propose its outcome first (propose_outcome)" in data["detail"]
-        assert "Set page" not in data["detail"]
+        assert "Recipe page" not in data["detail"]
 
     async def test_a_waiting_grade_unlocks_the_proposal_and_the_draft(
         self, archive: Fixture, settings: SettingsService
@@ -267,7 +267,7 @@ class TestTheNextChangeAfterAGrade:
 
         proposed = await call(
             ctx,
-            "propose_set_version",
+            "propose_recipe_version",
             reason="Two clicks finer.",
             grind_setting="20",
             prediction="Compared to the last one: two to four seconds longer and less sour.",
@@ -276,7 +276,7 @@ class TestTheNextChangeAfterAGrade:
         # And nothing was recorded by proposing it.
         read = await RecipesRepository(archive.db).get_version(version.id)
         assert read is not None and read.outcome is None
-        waiting = await RecipeProposalsRepository(archive.db).waiting(archive.set_id)
+        waiting = await RecipeProposalsRepository(archive.db).waiting(archive.recipe_id)
         assert waiting is not None
 
     async def test_the_draft_rule_is_the_same_rule(
@@ -312,15 +312,15 @@ async def test_proposing_the_next_version_still_needs_the_repository_to_agree(
 
     stored = (
         await grades.create(
-            archive.set_id,
+            archive.recipe_id,
             version.id,
             OutcomeProposalWrite.model_validate({"outcome": "held", "note": NOTE}),
         )
     ).proposal
     assert stored is not None
-    await grades.dismiss(archive.set_id, stored.id)
+    await grades.dismiss(archive.recipe_id, stored.id)
     result = await RecipeProposalsRepository(archive.db).create(
-        archive.set_id,
+        archive.recipe_id,
         ProposalWrite(
             patch=RecipeVersionPatch(grind_setting="20"),
             reason="finer",

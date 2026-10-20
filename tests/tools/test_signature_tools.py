@@ -78,7 +78,7 @@ async def _thread(archive: Fixture) -> int:
     from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
 
     created = await ChatRepository(archive.db).create_thread(
-        ChatThreadWrite(title="t", set_id=archive.set_id)
+        ChatThreadWrite(title="t", recipe_id=archive.recipe_id)
     )
     assert created.thread is not None
     return created.thread.id
@@ -305,7 +305,7 @@ async def _shot_texts(ctx: ToolContext, archive: Fixture) -> dict[str, str]:
     for name in ("get_shot", "get_shot_extended", "get_shot_full"):
         texts[name] = str(await call(ctx, name, shot_id=shot))
     texts["compare_shots"] = str(await call(ctx, "compare_shots", shot_ids=[shot, other]))
-    texts["list_set_shots"] = str(await call(ctx, "list_set_shots"))
+    texts["list_recipe_shots"] = str(await call(ctx, "list_recipe_shots"))
     return texts
 
 

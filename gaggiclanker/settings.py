@@ -1007,7 +1007,7 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="string",
         default="",
         description=(
-            "Model for Find patterns across Sets, which reads every Set's confirmed insights "
+            "Model for Find patterns across Recipes, which reads every Recipe's confirmed insights "
             "in one call and wants the careful one. Empty falls back to modelDefault."
         ),
     ),
@@ -1049,9 +1049,9 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="chatRecentShots",
         type="int",
         default=20,
-        validate=_at_least(1, "a Set conversation opens with at least its newest shot"),
+        validate=_at_least(1, "a Recipe conversation opens with at least its newest shot"),
         description=(
-            "How many of a version's newest shots a Set conversation opens with, each in its "
+            "How many of a version's newest shots a Recipe conversation opens with, each in its "
             "base information. The rest are a search away, so this is what the agent sees "
             "before it asks; every shot costs a few hundred tokens on every turn."
         ),

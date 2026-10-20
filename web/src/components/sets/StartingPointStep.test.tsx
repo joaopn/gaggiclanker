@@ -67,8 +67,8 @@ beforeEach(() => {
     offset: 0,
   });
   acceptStartingPoint.mockResolvedValue({
-    run: startingPointRun({ accepted_option: "recommended", accepted_set_id: 3 }),
-    set: setRow(),
+    run: startingPointRun({ accepted_option: "recommended", accepted_recipe_id: 3 }),
+    recipe: setRow(),
     version: { id: 21 },
     draft: null,
   });
@@ -265,7 +265,7 @@ describe("StartingPointStep", () => {
     const onAccepted = vi.fn();
     acceptStartingPoint.mockResolvedValue({
       run: startingPointRun({ accepted_option: "recommended" }),
-      set: setRow({ id: 9 }),
+      recipe: setRow({ id: 9 }),
       version: { id: 21 },
       draft: { id: 4 },
     });

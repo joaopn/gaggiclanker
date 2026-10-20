@@ -232,9 +232,11 @@ class OpenAiCompatibleProvider:
     def missing_credential(self) -> str | None:
         """What stops a call before it leaves the box: no key, or nowhere to send it."""
         if not self.base_url:
-            return f"No base URL is configured for {self.id}. Set llmBaseUrl under Settings → LLM."
+            return (
+                f"No base URL is configured for {self.id}. Recipe llmBaseUrl under Settings → LLM."
+            )
         if self.preset.requires_api_key and not self.api_key:
-            return f"No API key is configured for {self.id}. Set llmApiKey under Settings → LLM."
+            return f"No API key is configured for {self.id}. Recipe llmApiKey under Settings → LLM."
         return None
 
     # -- the call ---------------------------------------------------------

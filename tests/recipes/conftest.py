@@ -2,7 +2,7 @@
 
 Same rule as the rest of the suite: a real SQLite file, the real schema, no
 mocked repositories. Half of what these tests assert is a constraint —
-``UNIQUE(set_id, major, minor)``, the foreign keys, the CHECK on every vocabulary
+``UNIQUE(recipe_id, major, minor)``, the foreign keys, the CHECK on every vocabulary
 column — and none of those exist in a mock.
 """
 
@@ -144,7 +144,7 @@ async def make_shot(
     )
 
 
-async def make_pin(db: Database, set_version_id: int, copy_label: str) -> tuple[int, int, int]:
+async def make_pin(db: Database, recipe_version_id: int, copy_label: str) -> tuple[int, int, int]:
     """A pin of a Recipe version: a profile version called ``copy_label``, its profile-list row and
     the record. Returns (pin id, the copy's profile version, the row)."""
     copy = await make_profile_version(db, copy_label)
@@ -152,6 +152,6 @@ async def make_pin(db: Database, set_version_id: int, copy_label: str) -> tuple[
         BoardRowWrite(label=copy_label, current_version_id=copy, origin="draft")
     )
     pin = await PinsRepository(db).insert(
-        PinWrite(set_version_id=set_version_id, board_id=row.id, profile_version_id=copy)
+        PinWrite(recipe_version_id=recipe_version_id, board_id=row.id, profile_version_id=copy)
     )
     return pin.id, copy, row.id

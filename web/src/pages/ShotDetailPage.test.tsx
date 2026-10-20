@@ -90,7 +90,7 @@ describe("ShotDetailPage version prediction", () => {
 
   it("keeps the prediction out of the page until the shot has been decided about", async () => {
     const user = setupUser();
-    getShot.mockResolvedValue({ ...shot129, set_version: predicted, judgement: null });
+    getShot.mockResolvedValue({ ...shot129, recipe_version: predicted, judgement: null });
     renderShot();
 
     await screen.findByTestId("version-prediction-row");
@@ -116,7 +116,7 @@ describe("ShotDetailPage version prediction", () => {
       ...shot129,
       shot: { ...shot129.shot, id, device_id: String(id) },
       judgement: null,
-      set_version: version({
+      recipe_version: version({
         id: id * 10,
         version_major: 2,
         prediction: `what ${id} was expected to do`,
@@ -160,7 +160,7 @@ describe("ShotDetailPage version prediction", () => {
   it("shows it straight away once there is a decision", async () => {
     getShot.mockResolvedValue({
       ...shot129,
-      set_version: predicted,
+      recipe_version: predicted,
       judgement: { ...shot129.judgement, decision: "improve" },
     });
     renderShot();
@@ -623,7 +623,7 @@ describe("ShotDetailPage Review box", () => {
       ...shot129,
       shot: { ...shot129.shot, id, device_id: String(id) },
       judgement: null,
-      set_version: version({ id: id * 10, version_major: 2, prediction: `what ${id} did` }),
+      recipe_version: version({ id: id * 10, version_major: 2, prediction: `what ${id} did` }),
       review: reviewBlock({ state: "reviewed", review_id: id, in_force_id: id }),
       reviews: [
         review({
@@ -796,7 +796,7 @@ describe("ShotDetailPage boxes", () => {
   it("puts the version's prediction right under the judgement, above Curves", async () => {
     getShot.mockResolvedValue({
       ...shot129,
-      set_version: version({ id: 3, version_major: 2, prediction: "a thinner end" }),
+      recipe_version: version({ id: 3, version_major: 2, prediction: "a thinner end" }),
     });
     renderShot();
 
@@ -976,7 +976,7 @@ describe("ShotDetailPage judgement prefills", () => {
       ...shot129,
       shot: { ...shot129.shot, scale_connected: true, volume_g: 36.4 },
       judgement: null,
-      set_version: version({ id: 3, dose_g: 18 }),
+      recipe_version: version({ id: 3, dose_g: 18 }),
     });
     renderShot();
     const [doseIn, doseOut] = await doses();
@@ -989,7 +989,7 @@ describe("ShotDetailPage judgement prefills", () => {
       ...shot129,
       shot: { ...shot129.shot, scale_connected: false, has_scale: false, volume_g: 36.4 },
       judgement: null,
-      set_version: null,
+      recipe_version: null,
     });
     renderShot();
     const [doseIn, doseOut] = await doses();
@@ -1003,7 +1003,7 @@ describe("ShotDetailPage judgement prefills", () => {
       ...shot129,
       shot: { ...shot129.shot, scale_connected: true, has_scale: false, volume_g: 36.4 },
       judgement: null,
-      set_version: null,
+      recipe_version: null,
     });
     const first = renderShot();
     const [, flagOnly] = await doses();
@@ -1015,7 +1015,7 @@ describe("ShotDetailPage judgement prefills", () => {
       ...shot129,
       shot: { ...shot129.shot, scale_connected: false, has_scale: true, volume_g: 36.4 },
       judgement: null,
-      set_version: null,
+      recipe_version: null,
     });
     renderShot();
     const [, weighed] = await doses();
@@ -1027,7 +1027,7 @@ describe("ShotDetailPage judgement prefills", () => {
       ...shot129,
       shot: { ...shot129.shot, scale_connected: true, volume_g: 36.4 },
       judgement: judgement({ shot_id: shot129.shot.id, dose_in_g: 17.5, dose_out_g: 38 }),
-      set_version: version({ id: 3, dose_g: 18 }),
+      recipe_version: version({ id: 3, dose_g: 18 }),
     });
     renderShot();
     const [doseIn, doseOut] = await doses();

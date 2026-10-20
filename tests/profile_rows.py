@@ -49,7 +49,7 @@ def database_of(client: httpx.AsyncClient) -> Database:
 
 
 async def with_a_profile(client: httpx.AsyncClient, body: dict[str, Any]) -> dict[str, Any]:
-    """``POST /api/sets``'s body with a profile no Recipe has, when it names none."""
+    """``POST /api/recipes``'s body with a profile no Recipe has, when it names none."""
     version = dict(body.get("version") or {})
     if version.get("profile_version_id") is None and "profile_version_id" not in version:
         version["profile_version_id"] = await free_profile_version(database_of(client))

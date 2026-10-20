@@ -47,10 +47,10 @@ from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposal
 from gaggiclanker.db.repos.recipes import (
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionRow,
+    RecipeVersionWrite,
     RecipeWrite,
     RollbackWrite,
-    SetVersionRow,
-    SetVersionWrite,
     VersionOutcomeWrite,
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -81,7 +81,7 @@ class Experiment:
     """
 
     db: Database
-    set_id: int
+    recipe_id: int
     v1: int
     v2: int
     v3: int
@@ -157,7 +157,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
 
         row = await recipes.create(
             RecipeWrite(name="Guji natural on the Niche", bean_id=bean.id, grinder_id=grinder.id),
-            SetVersionWrite(
+            RecipeVersionWrite(
                 profile_version_id=profile,
                 grind_setting="22",
                 dose_g=18.0,
@@ -165,7 +165,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 intent="Where the bag's card says to start.",
             ),
         )
-        set_id = row.id
+        recipe_id = row.id
         assert row.current_version_id is not None
         v1 = row.current_version_id
 
@@ -193,7 +193,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
 
         # v2: finer, and it did not work. Graded failed.
         version = await recipes.add_version(
-            set_id,
+            recipe_id,
             RecipeVersionPatch(
                 grind_setting="20",
                 intent="Chase the sweetness by going finer.",
@@ -224,7 +224,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             ),
         )
         graded = await recipes.set_outcome(
-            set_id,
+            recipe_id,
             v2,
             VersionOutcomeWrite(
                 outcome="failed", note="It went slower and turned bitter rather than sweeter."
@@ -235,7 +235,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         # v3: half a gram more dose, one shot, nothing conclusive. Marked a
         # major version, so the record carries both kinds of name: v2.
         version = await recipes.add_version(
-            set_id,
+            recipe_id,
             RecipeVersionPatch(
                 dose_g=18.5,
                 intent="See whether a bigger dose slows the gusher down.",
@@ -260,7 +260,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             shot, JudgementWrite(rating=2, balance="bitter", decision="improve")
         )
         graded = await recipes.set_outcome(
-            set_id,
+            recipe_id,
             v3,
             VersionOutcomeWrite(
                 outcome="inconclusive", note="One shot, and the difference is inside the spread."
@@ -276,7 +276,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         first = await recipes.get_version(v1)
         assert first is not None
         rolled = await recipes.add_version(
-            set_id,
+            recipe_id,
             RecipeVersionPatch(
                 profile_version_id=first.profile_version_id,
                 grind_setting=first.grind_setting,
@@ -327,14 +327,14 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 more, JudgementWrite(rating=rating, balance="balanced", decision="keep")
             )
         graded = await recipes.set_outcome(
-            set_id, v4, VersionOutcomeWrite(outcome="held", note="Straight back where it was.")
+            recipe_id, v4, VersionOutcomeWrite(outcome="held", note="Straight back where it was.")
         )
         assert graded.version is not None
 
         # v5: the version this conversation is about. One shot judged, one
         # discarded, and nobody has graded the prediction.
         version = await recipes.add_version(
-            set_id,
+            recipe_id,
             RecipeVersionPatch(
                 grind_setting="21",
                 intent="One number finer than the Keep recipe, for a little more body.",
@@ -391,7 +391,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         )
         # The Keep recipe of v2 is kept on the machine as a profile of its own.
         await make_pin(db, v3, "Adaptive v2 v2")
-        yield Experiment(db=db, set_id=set_id, v1=v1, v2=v2, v3=v3, v4=v4, v5=v5)
+        yield Experiment(db=db, recipe_id=recipe_id, v1=v1, v2=v2, v3=v3, v4=v4, v5=v5)
     finally:
         await db.close()
 
@@ -419,7 +419,7 @@ async def test_the_opening_context_matches_the_golden_file(
     experiment: Experiment, update_golden: bool
 ) -> None:
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     if update_golden:
@@ -436,7 +436,7 @@ async def test_the_same_archive_renders_the_same_text(experiment: Experiment) ->
     Nothing here may read the clock or iterate a set: a grade that can be traced
     needs a context that can be reproduced word for word.
     """
-    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
 
     first = await opening_context(experiment.db, scope)
     second = await opening_context(experiment.db, scope)
@@ -452,7 +452,7 @@ async def test_a_bean_with_only_a_name_is_named_and_nothing_else(experiment: Exp
     await BeansRepository(experiment.db).update(1, BeanWrite(name="Mystery"))
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert "Bean: Mystery. Grinder:" in rendered
@@ -468,7 +468,7 @@ async def test_it_is_about_the_thread_s_version_not_the_current_one(
 ) -> None:
     """A conversation opened on v1.1 is still about v1.1 three versions later."""
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v2)
     )
 
     assert "THIS VERSION IS v1.1" in rendered
@@ -480,30 +480,32 @@ async def test_a_revert_is_told_to_the_conversation_it_reopens(experiment: Exper
     """v2.2 back to v1.1: the agent must not carry on as if nothing happened in between."""
     recipes = RecipesRepository(experiment.db)
     quiet = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v2)
     )
-    assert "The Set went back to" not in quiet
+    assert "The Recipe went back to" not in quiet
 
     result = await recipes.rollback(
-        experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="v2.2 was too slow")
+        experiment.recipe_id, RollbackWrite(to_version_id=experiment.v2, note="v2.2 was too slow")
     )
     assert result.version is not None
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v2)
     )
 
-    line = next(line for line in rendered.splitlines() if line.startswith("The Set went back to"))
-    assert line.startswith("The Set went back to v1.1 from v2.2 on 20")
+    line = next(
+        line for line in rendered.splitlines() if line.startswith("The Recipe went back to")
+    )
+    assert line.startswith("The Recipe went back to v1.1 from v2.2 on 20")
     assert line.endswith("UTC. Why: v2.2 was too slow")
-    assert "THIS VERSION IS v1.1" in rendered and "the current version of this Set" in rendered
+    assert "THIS VERSION IS v1.1" in rendered and "the current version of this Recipe" in rendered
     # Another version's conversation is not told about it.
     other = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v4)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v4)
     )
-    assert "The Set went back to" not in other
+    assert "The Recipe went back to" not in other
     # And the same archive reads the same bytes.
     assert rendered == await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v2)
     )
 
 
@@ -512,11 +514,11 @@ async def test_two_reverts_into_one_version_are_told_oldest_first(
 ) -> None:
     recipes = RecipesRepository(experiment.db)
     await recipes.rollback(
-        experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="first time")
+        experiment.recipe_id, RollbackWrite(to_version_id=experiment.v2, note="first time")
     )
-    await recipes.rollback(experiment.set_id, RollbackWrite(to_version_id=experiment.v5))
+    await recipes.rollback(experiment.recipe_id, RollbackWrite(to_version_id=experiment.v5))
     await recipes.rollback(
-        experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="second time")
+        experiment.recipe_id, RollbackWrite(to_version_id=experiment.v2, note="second time")
     )
     # Forge the log's times: the second revert's row is the older one by id order only.
     rows = await experiment.db.fetch_all(
@@ -533,10 +535,10 @@ async def test_two_reverts_into_one_version_are_told_oldest_first(
     )
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v2)
     )
 
-    lines = [line for line in rendered.splitlines() if line.startswith("The Set went back to")]
+    lines = [line for line in rendered.splitlines() if line.startswith("The Recipe went back to")]
     assert len(lines) == 2
     assert "2026-05-01 10:00 UTC. Why: second time" in lines[0]
     assert "2026-05-02 10:00 UTC. Why: first time" in lines[1]
@@ -545,7 +547,7 @@ async def test_two_reverts_into_one_version_are_told_oldest_first(
 async def _graded(experiment: Experiment) -> RecipeProposalsRepository:
     """Grade v2.2, so a change can be proposed against it at all."""
     await RecipesRepository(experiment.db).set_outcome(
-        experiment.set_id,
+        experiment.recipe_id,
         experiment.v5,
         VersionOutcomeWrite(outcome="partly_held", note="Slower, but the finish is drying."),
     )
@@ -554,7 +556,7 @@ async def _graded(experiment: Experiment) -> RecipeProposalsRepository:
 
 async def _propose(experiment: Experiment, proposals: RecipeProposalsRepository) -> int:
     result = await proposals.create(
-        experiment.set_id,
+        experiment.recipe_id,
         ProposalWrite(
             patch=RecipeVersionPatch(dose_g=18.5),
             reason="Half a gram more, to carry the finish.",
@@ -573,14 +575,14 @@ async def test_a_waiting_proposal_is_in_front_of_the_agent_before_it_speaks(
     await _propose(experiment, proposals)
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert "A PROPOSAL IS WAITING FOR THE PERSON" in rendered
     assert "Dose 18 g → 18.5 g" in rendered
     assert "Half a gram more, to carry the finish." in rendered
     assert "Prediction (compared to v2.2)" in rendered
-    assert "It has changed nothing: the Set is still on v2.2" in rendered
+    assert "It has changed nothing: the Recipe is still on v2.2" in rendered
     assert "do not propose another change while it waits" in rendered
 
 
@@ -589,10 +591,10 @@ async def test_a_declined_proposal_is_told_with_the_reason_it_was_declined(
 ) -> None:
     proposals = await _graded(experiment)
     proposal_id = await _propose(experiment, proposals)
-    await proposals.decline(experiment.set_id, proposal_id, "The dose is not the problem.")
+    await proposals.decline(experiment.recipe_id, proposal_id, "The dose is not the problem.")
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert "THE LAST PROPOSAL" in rendered
@@ -605,11 +607,11 @@ async def test_an_accepted_proposal_names_the_version_it_became(
 ) -> None:
     proposals = await _graded(experiment)
     proposal_id = await _propose(experiment, proposals)
-    accepted = await proposals.accept(experiment.set_id, proposal_id)
+    accepted = await proposals.accept(experiment.recipe_id, proposal_id)
     assert accepted.version is not None
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, accepted.version.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, accepted.version.id)
     )
 
     assert "THE LAST PROPOSAL" in rendered
@@ -624,19 +626,19 @@ async def test_a_proposal_the_recipe_overtook_says_so_and_frees_the_agent(
     proposals = await _graded(experiment)
     await _propose(experiment, proposals)
     await RecipesRepository(experiment.db).add_version(
-        experiment.set_id,
+        experiment.recipe_id,
         RecipeVersionPatch(dose_g=19, intent="Changed it by hand instead."),
     )
-    versions = await RecipesRepository(experiment.db).versions(experiment.set_id)
+    versions = await RecipesRepository(experiment.db).versions(experiment.recipe_id)
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, versions[0].id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, versions[0].id)
     )
 
     assert "A PROPOSAL IS WAITING" not in rendered
     assert "THE LAST PROPOSAL" in rendered
     assert versions[0].version_label == "v2.3"
-    assert "the Set moved on to v2.3 before they did" in rendered
+    assert "the Recipe moved on to v2.3 before they did" in rendered
     assert "Propose afresh" in rendered
 
 
@@ -646,7 +648,7 @@ async def test_a_waiting_proposal_says_the_agent_suggested_a_major_version(
     """The next conversation knows what it suggested, and that the person decides."""
     proposals = await _graded(experiment)
     result = await proposals.create(
-        experiment.set_id,
+        experiment.recipe_id,
         ProposalWrite(
             patch=RecipeVersionPatch(dose_g=18.5),
             reason="Half a gram more, to carry the finish.",
@@ -658,7 +660,7 @@ async def test_a_waiting_proposal_says_the_agent_suggested_a_major_version(
     assert result.proposal is not None
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert (
@@ -674,7 +676,7 @@ async def test_a_reason_that_ends_in_a_full_stop_is_not_given_a_second_one(
     await _propose(experiment, proposals)
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert 'carry the finish."' in rendered
@@ -687,16 +689,16 @@ async def test_a_recipe_nobody_has_proposed_anything_for_says_so(
 ) -> None:
     """The block is always rendered: a section that comes and goes reads as two documents."""
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
-    assert "PROPOSALS\nNothing has been proposed to the person on this Set yet." in rendered
+    assert "PROPOSALS\nNothing has been proposed to the person on this Recipe yet." in rendered
 
 
 async def test_the_ledger_carries_the_dead_ends_and_the_track_record(
     experiment: Experiment,
 ) -> None:
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert "- v1.1 (dead end) ·" in rendered
@@ -708,11 +710,11 @@ async def test_the_ledger_carries_the_dead_ends_and_the_track_record(
 
 async def test_the_evidence_and_the_spread_are_the_page_s_own(experiment: Experiment) -> None:
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert "THE EVIDENCE FOR v2.2 AGAINST v2.1" in rendered
-    assert "HOW MUCH THIS SET VARIES WHEN NOTHING CHANGED" in rendered
+    assert "HOW MUCH THIS RECIPE VARIES WHEN NOTHING CHANGED" in rendered
     # The yardstick is stated with what it was held against, in both forms.
     assert "held against" in rendered
     assert "not measured yet" in rendered or "repeat shots" in rendered
@@ -722,7 +724,7 @@ async def test_a_discarded_shot_is_listed_and_marked_as_not_counted(
     experiment: Experiment,
 ) -> None:
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert "Counted: not counted: discarded" in rendered
@@ -740,19 +742,19 @@ async def test_the_shots_are_this_version_s_newest_in_base_and_no_other_version_
     recipes = RecipesRepository(experiment.db)
     mine = [
         row.shot_id
-        for row in await recipes.recipe_shots(experiment.set_id, version_id=experiment.v5)
+        for row in await recipes.recipe_shots(experiment.recipe_id, version_id=experiment.v5)
     ]
     compared = {
         row.shot_id
-        for row in await recipes.recipe_shots(experiment.set_id, version_id=experiment.v4)
+        for row in await recipes.recipe_shots(experiment.recipe_id, version_id=experiment.v4)
     }
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert "ALL 2 SHOTS OF v2.2 (newest first)" in rendered
-    assert _shot_headers(rendered) == mine, "newest first, as the Set page lists them"
+    assert _shot_headers(rendered) == mine, "newest first, as the Recipe page lists them"
     assert not set(_shot_headers(rendered)) & compared
     # Base only: the extended lines are a tool call away.
     assert "Rating: 3/5" in rendered
@@ -763,14 +765,14 @@ async def test_the_number_of_shots_follows_what_the_caller_asks_for(
     experiment: Experiment,
 ) -> None:
     recipes = RecipesRepository(experiment.db)
-    newest = (await recipes.recipe_shots(experiment.set_id, version_id=experiment.v4))[0].shot_id
+    newest = (await recipes.recipe_shots(experiment.recipe_id, version_id=experiment.v4))[0].shot_id
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v4), recent_shots=1
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v4), recent_shots=1
     )
 
     assert "THE LAST 1 OF 3 SHOTS OF v2.1 (newest first)" in rendered
-    assert "The other 2 of v2.1's shots, and every other version's, are a list_set_shots" in (
+    assert "The other 2 of v2.1's shots, and every other version's, are a list_recipe_shots" in (
         rendered
     )
     assert _shot_headers(rendered) == [newest]
@@ -781,7 +783,7 @@ async def test_the_shots_block_names_the_ids_of_the_shots_it_contains(
     experiment: Experiment,
 ) -> None:
     """So the agent can tell "is this shot already here?" from one line."""
-    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     every = await opening_context(experiment.db, scope)
     ids = _shot_headers(every)
     assert f"Shots written out below: {', '.join(map(str, ids))}." in every
@@ -794,12 +796,12 @@ async def test_the_shots_block_names_the_ids_of_the_shots_it_contains(
 
 async def test_a_version_with_no_shots_says_so(experiment: Experiment) -> None:
     version = await RecipesRepository(experiment.db).add_version(
-        experiment.set_id, RecipeVersionPatch(intent="Nothing pulled on this yet.")
+        experiment.recipe_id, RecipeVersionPatch(intent="Nothing pulled on this yet.")
     )
     assert version is not None
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, version.id)
     )
 
     assert version.version_label == "v2.3"
@@ -817,7 +819,7 @@ async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(
     from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 
     on_a_dead_end = await RecipesRepository(experiment.db).recipe_shots(
-        experiment.set_id, version_id=experiment.v2
+        experiment.recipe_id, version_id=experiment.v2
     )
     assert on_a_dead_end
     await JudgementsRepository(experiment.db).upsert(
@@ -825,7 +827,7 @@ async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(
     )
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     gold = next(line for line in rendered.splitlines() if "Keep shot" in line)
@@ -839,13 +841,13 @@ async def test_a_recipe_with_no_shots_says_the_spread_is_not_measured_and_names_
     """A heading with nothing under it reads as a bug rather than as "not yet"."""
     empty = await RecipesRepository(experiment.db).create(
         RecipeWrite(name="Nothing pulled yet", bean_id=1),
-        SetVersionWrite(grind_setting="20"),
+        RecipeVersionWrite(grind_setting="20"),
         automatch=False,
     )
 
     rendered = await opening_context(experiment.db, ToolScope.for_thread(empty.id))
 
-    assert "Nothing is measured yet: this Set has no shots that count." in rendered
+    assert "Nothing is measured yet: this Recipe has no shots that count." in rendered
     assert "Shot time 2.00 s" in rendered
     assert "Rating 0.50" in rendered
 
@@ -866,7 +868,7 @@ async def test_the_insights_block_is_bounded_and_says_how_many_more_there_are(
         )
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     block = rendered.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1]
@@ -885,7 +887,7 @@ async def test_the_gold_standard_is_the_keep_shots_still_on_the_line(
     experiment: Experiment,
 ) -> None:
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert "5 Keep shots on the line being brewed, on v1, v2.1" in rendered
@@ -903,13 +905,13 @@ async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_mat
     recipes = RecipesRepository(experiment.db)
     for number in range(LEDGER_VERSIONS + 2):
         version = await recipes.add_version(
-            experiment.set_id, RecipeVersionPatch(intent=f"Filler {number}.")
+            experiment.recipe_id, RecipeVersionPatch(intent=f"Filler {number}.")
         )
         assert version is not None
     # The newest version, predicting against v2.2 — which is by now far enough
     # back that the budget would otherwise have summarised it away.
     argued = await recipes.add_version(
-        experiment.set_id,
+        experiment.recipe_id,
         RecipeVersionPatch(
             grind_setting="20.5",
             intent="Split the difference.",
@@ -920,7 +922,7 @@ async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_mat
     assert argued is not None
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, argued.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, argued.id)
     )
 
     assert "Not written out here:" in rendered
@@ -930,7 +932,7 @@ async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_mat
     # The summary names what it summarised and nothing else: v2.2 is written
     # out three lines below it, so a span that swallowed it would be a lie.
     made_in_order = sorted(
-        await recipes.versions(experiment.set_id),
+        await recipes.versions(experiment.recipe_id),
         key=lambda version: (version.created_at, version.id),
     )
     ordinals = {version.version_label: index + 1 for index, version in enumerate(made_in_order)}
@@ -949,11 +951,11 @@ async def test_the_version_being_argued_survives_the_budget_however_old_it_is(
     recipes = RecipesRepository(experiment.db)
     for number in range(LEDGER_VERSIONS + 4):
         assert await recipes.add_version(
-            experiment.set_id, RecipeVersionPatch(intent=f"Filler {number}.")
+            experiment.recipe_id, RecipeVersionPatch(intent=f"Filler {number}.")
         )
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v2)
     )
 
     assert "THIS VERSION IS v1.1" in rendered
@@ -991,9 +993,9 @@ def _averages_of(line: str) -> dict[str, float]:
 async def test_each_ledger_line_carries_the_means_get_recipe_serves(experiment: Experiment) -> None:
     """The ledger and the trajectory are one function's two readers: no number differs."""
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
-    trends = await RecipesRepository(experiment.db).trends(experiment.set_id)
+    trends = await RecipesRepository(experiment.db).trends(experiment.recipe_id)
 
     assert len(trends.versions) == 5
     for version in trends.versions:
@@ -1011,7 +1013,7 @@ async def test_each_ledger_line_carries_the_means_get_recipe_serves(experiment: 
 async def test_the_ledger_averages_count_only_the_shots_that_count(experiment: Experiment) -> None:
     """v2.2 has a 36.0 s shot and a discarded 12.0 s one: its mean is the first alone."""
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
     line = _ledger_line_of(rendered, "v2.2")
 
@@ -1024,14 +1026,14 @@ async def test_the_ledger_averages_count_only_the_shots_that_count(experiment: E
 async def test_a_version_with_shots_but_none_that_count_says_so(experiment: Experiment) -> None:
     recipes = RecipesRepository(experiment.db)
     await JudgementsRepository(experiment.db).upsert(
-        (await recipes.recipe_shots(experiment.set_id, version_id=experiment.v2, limit=1))[
+        (await recipes.recipe_shots(experiment.recipe_id, version_id=experiment.v2, limit=1))[
             0
         ].shot_id,
         JudgementWrite(decision="discard"),
     )
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
     line = _ledger_line_of(rendered, "v1.1")
 
@@ -1042,12 +1044,12 @@ async def test_a_version_with_shots_but_none_that_count_says_so(experiment: Expe
 async def test_a_version_with_no_shots_has_no_averages_part(experiment: Experiment) -> None:
     recipes = RecipesRepository(experiment.db)
     empty = await recipes.add_version(
-        experiment.set_id, RecipeVersionPatch(intent="Not brewed yet.")
+        experiment.recipe_id, RecipeVersionPatch(intent="Not brewed yet.")
     )
     assert empty is not None
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, empty.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, empty.id)
     )
     line = _ledger_line_of(rendered, empty.version_label)
 
@@ -1061,7 +1063,7 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_says_how_many(
 ) -> None:
     """Both rows: every mean on the same shots says so once; mixed counts say it per mean."""
     recipes = RecipesRepository(experiment.db)
-    shots = await recipes.recipe_shots(experiment.set_id, version_id=experiment.v4, limit=10)
+    shots = await recipes.recipe_shots(experiment.recipe_id, version_id=experiment.v4, limit=10)
     assert len(shots) == 3
     # One of v2.1's three shots had no rating; the rest of its numbers stay on all three.
     await experiment.db.execute(
@@ -1069,7 +1071,7 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_says_how_many(
     )
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
     line = _ledger_line_of(rendered, "v2.1")
 
@@ -1085,10 +1087,10 @@ async def test_the_budget_still_trims_with_the_averages_in_the_lines(
     recipes = RecipesRepository(experiment.db)
     for number in range(LEDGER_VERSIONS + 2):
         assert await recipes.add_version(
-            experiment.set_id, RecipeVersionPatch(intent=f"Filler {number}.")
+            experiment.recipe_id, RecipeVersionPatch(intent=f"Filler {number}.")
         )
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v2)
     )
 
     ledger = [line for line in rendered.splitlines() if line.startswith("- v")]
@@ -1112,7 +1114,9 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_sa
     """
     recipes = RecipesRepository(experiment.db)
     judgements = JudgementsRepository(experiment.db)
-    version = await recipes.add_version(experiment.set_id, RecipeVersionPatch(intent="Ten pulls."))
+    version = await recipes.add_version(
+        experiment.recipe_id, RecipeVersionPatch(intent="Ten pulls.")
+    )
     assert version is not None
     for index in range(10):
         shot = await _shot(
@@ -1132,7 +1136,7 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_sa
             await judgements.upsert(shot, JudgementWrite(rating=4))
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, version.id)
     )
     line = _ledger_line_of(rendered, version.version_label)
 
@@ -1145,7 +1149,9 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_sa
 
 async def test_counted_shots_that_recorded_nothing_say_so(experiment: Experiment) -> None:
     recipes = RecipesRepository(experiment.db)
-    version = await recipes.add_version(experiment.set_id, RecipeVersionPatch(intent="Blank logs."))
+    version = await recipes.add_version(
+        experiment.recipe_id, RecipeVersionPatch(intent="Blank logs.")
+    )
     assert version is not None
     shot = await ShotsRepository(experiment.db).insert(
         ShotInsert(
@@ -1158,7 +1164,7 @@ async def test_counted_shots_that_recorded_nothing_say_so(experiment: Experiment
     assert await recipes.assign_shot(shot, version.id)
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, version.id)
     )
     line = _ledger_line_of(rendered, version.version_label)
 
@@ -1171,13 +1177,13 @@ async def test_the_context_reads_the_counted_shots_once(
     calls = 0
     original = RecipesRepository.counted_shots
 
-    async def counting(self: RecipesRepository, set_id: int) -> list[CountedShot]:
+    async def counting(self: RecipesRepository, recipe_id: int) -> list[CountedShot]:
         nonlocal calls
         calls += 1
-        return await original(self, set_id)
+        return await original(self, recipe_id)
 
     monkeypatch.setattr(RecipesRepository, "counted_shots", counting)
-    await opening_context(experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5))
+    await opening_context(experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5))
 
     assert calls == 1
 
@@ -1206,7 +1212,7 @@ async def test_the_profile_the_version_brews_is_in_the_context_as_stored(
 ) -> None:
     """Byte-equal to the profile version's `json` column, and to what `get_profile` serves."""
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
     profile_id = await _own_profile_version(experiment)
     column = await experiment.db.fetch_value(
@@ -1216,7 +1222,7 @@ async def test_the_profile_the_version_brews_is_in_the_context_as_stored(
         db=experiment.db,
         settings=SettingsService(SettingsRepository(experiment.db)),
         knowledge=KnowledgeService(experiment.db),
-        scope=ToolScope.for_thread(experiment.set_id, experiment.v5),
+        scope=ToolScope.for_thread(experiment.recipe_id, experiment.v5),
         caller="test",
         permissions=CHAT_PERMISSIONS,
     )
@@ -1235,7 +1241,7 @@ async def test_the_machine_s_own_fields_and_defaults_are_not_in_the_profile(
 ) -> None:
     """Nothing invented: no favorite, no selected, no phase temperature the author never wrote."""
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
     line = _document_line(rendered, PROFILE_HEADING)
 
@@ -1262,13 +1268,13 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
     db = experiment.db
     recipes = RecipesRepository(db)
     version = await _other_profile_version(experiment)
-    scope = ToolScope.for_thread(experiment.set_id, version.id)
+    scope = ToolScope.for_thread(experiment.recipe_id, version.id)
 
     async def render() -> str:
         return await opening_context(db, scope)
 
     first = await render()
-    block_end = first.index("THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET")
+    block_end = first.index("THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE")
     assert first.startswith(f"THE PROFILE {version.version_label} BREWS")
     assert first.count("as stored (compact JSON") == 2, "both profiles are in the protected block"
 
@@ -1287,22 +1293,22 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
     await JudgementsRepository(db).upsert(shot, JudgementWrite(rating=3, decision="improve"))
     states.append(("a shot", await render()))
     graded = await recipes.set_outcome(
-        experiment.set_id,
+        experiment.recipe_id,
         version.id,
         VersionOutcomeWrite(outcome="partly_held", note="Slower, but the finish is drying."),
     )
     assert graded.version is not None, graded
     states.append(("a grade", await render()))
-    newer = await recipes.add_version(experiment.set_id, RecipeVersionPatch(intent="One finer."))
+    newer = await recipes.add_version(experiment.recipe_id, RecipeVersionPatch(intent="One finer."))
     assert newer is not None
     states.append(("a new version", await render()))
     await recipes.set_outcome(
-        experiment.set_id,
+        experiment.recipe_id,
         newer.id,
         VersionOutcomeWrite(outcome="held", note="Straight where it should be."),
     )
     result = await RecipeProposalsRepository(db).create(
-        experiment.set_id,
+        experiment.recipe_id,
         ProposalWrite(
             patch=RecipeVersionPatch(dose_g=18.5),
             reason="Half a gram more, to carry the finish.",
@@ -1312,7 +1318,8 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
     assert result.proposal is not None, result.refused
     states.append(("a proposal", await render()))
     await recipes.rollback(
-        experiment.set_id, RollbackWrite(to_version_id=version.id, note="One finer was no better")
+        experiment.recipe_id,
+        RollbackWrite(to_version_id=version.id, note="One finer was no better"),
     )
     states.append(("a revert", await render()))
     previous = first
@@ -1325,7 +1332,7 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
     # What the signature *means* may move the block, and nothing else may. A proposal puts the
     # signature there at once (under the document and ahead of everything that moves); a
     # rejection takes it out and puts the ask back; a restore returns it.
-    thread = await _thread(db, experiment.set_id, version.id)
+    thread = await _thread(db, experiment.recipe_id, version.id)
 
     async def render_for_thread() -> str:
         return await opening_context(db, scope, thread_id=thread)
@@ -1354,13 +1361,13 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
 async def test_a_version_with_no_profile_says_so(experiment: Experiment) -> None:
     recipes = RecipesRepository(experiment.db)
     bare = await recipes.add_version(
-        experiment.set_id,
+        experiment.recipe_id,
         RecipeVersionPatch(profile_version_id=None, intent="Any profile will do for this one."),
     )
     assert bare is not None and bare.profile_version_id is None
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, bare.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, bare.id)
     )
 
     assert f"THE PROFILE {bare.version_label} BREWS" in rendered
@@ -1368,7 +1375,7 @@ async def test_a_version_with_no_profile_says_so(experiment: Experiment) -> None
     assert "as stored (compact JSON" not in rendered
 
 
-async def _other_profile_version(experiment: Experiment) -> SetVersionRow:
+async def _other_profile_version(experiment: Experiment) -> RecipeVersionRow:
     other = await another_version(
         experiment.db,
         await _own_profile_version(experiment),
@@ -1376,7 +1383,7 @@ async def _other_profile_version(experiment: Experiment) -> SetVersionRow:
         temperature=92.0,
     )
     version = await RecipesRepository(experiment.db).add_version(
-        experiment.set_id,
+        experiment.recipe_id,
         RecipeVersionPatch(
             profile_version_id=other,
             intent="Try the other profile.",
@@ -1395,7 +1402,7 @@ async def test_a_compared_version_on_another_profile_adds_that_profile_once(
     version = await _other_profile_version(experiment)
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, version.id)
     )
 
     assert rendered.count('"description":"Lever ramp"') == 1
@@ -1413,7 +1420,7 @@ async def test_a_compared_version_on_another_profile_adds_that_profile_once(
 async def test_a_compared_version_on_the_same_profile_adds_nothing(experiment: Experiment) -> None:
     """v2.2 is compared against v2.1: the same profile version, so one document."""
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     assert rendered.count("THE PROFILE ") == 1
@@ -1424,7 +1431,7 @@ async def test_a_version_with_no_profile_still_gets_the_compared_versions_profil
     experiment: Experiment,
 ) -> None:
     bare = await RecipesRepository(experiment.db).add_version(
-        experiment.set_id,
+        experiment.recipe_id,
         RecipeVersionPatch(
             profile_version_id=None,
             intent="Any profile.",
@@ -1435,7 +1442,7 @@ async def test_a_version_with_no_profile_still_gets_the_compared_versions_profil
     assert bare is not None
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, bare.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, bare.id)
     )
 
     assert "This version names no profile" in rendered
@@ -1447,12 +1454,12 @@ async def test_a_version_with_a_profile_compared_against_one_that_names_none_add
 ) -> None:
     recipes = RecipesRepository(experiment.db)
     bare = await recipes.add_version(
-        experiment.set_id,
+        experiment.recipe_id,
         RecipeVersionPatch(profile_version_id=None, intent="Any profile."),
     )
     assert bare is not None and bare.profile_version_id is None
     profiled = await recipes.add_version(
-        experiment.set_id,
+        experiment.recipe_id,
         RecipeVersionPatch(
             profile_version_id=await _own_profile_version(experiment),
             intent="Back on the Classic profile.",
@@ -1463,7 +1470,7 @@ async def test_a_version_with_a_profile_compared_against_one_that_names_none_add
     assert profiled is not None
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, profiled.id)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, profiled.id)
     )
 
     assert rendered.count("THE PROFILE ") == 1
@@ -1497,11 +1504,11 @@ async def test_a_profile_with_words_beyond_ascii_is_shown_as_stored(tmp_path: Pa
 # ── the signature ────────────────────────────────────────────────────
 
 
-async def _thread(db: Database, set_id: int, version_id: int) -> int:
+async def _thread(db: Database, recipe_id: int, version_id: int) -> int:
     from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
 
     created = await ChatRepository(db).create_thread(
-        ChatThreadWrite(title="t", set_id=set_id, set_version_id=version_id)
+        ChatThreadWrite(title="t", recipe_id=recipe_id, recipe_version_id=version_id)
     )
     assert created.thread is not None
     return created.thread.id
@@ -1558,7 +1565,7 @@ async def test_a_profile_with_no_signature_in_force_says_so_and_asks_for_one(
 ) -> None:
     profile_id = await _own_profile_version(experiment)
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
     # Pinned as the whole sentence: it is what asks the chat to propose, once, when the
@@ -1586,9 +1593,9 @@ async def test_only_the_signature_in_force_is_in_the_block_tier_first(
     await repo.reject(rows[0].id, reason="not this one")
     await repo.reject(rows[5].id, reason="nor this")
 
-    rendered = await opening_context(db, ToolScope.for_thread(experiment.set_id, experiment.v5))
+    rendered = await opening_context(db, ToolScope.for_thread(experiment.recipe_id, experiment.v5))
 
-    block_end = rendered.index("THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET")
+    block_end = rendered.index("THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE")
     block = rendered[:block_end]
     lines = [line for line in block.splitlines() if line.startswith("- #")]
     assert [line.removeprefix("- #").split(" ", 1)[1].split(": ")[0] for line in lines] == [
@@ -1613,14 +1620,14 @@ async def test_an_override_in_force_states_the_versions_own_limit_beside_the_pro
     rows = await SignatureService(db).propose(profile_id, EXPECTATIONS[1:2], reason="r")
     repo = SignatureRepository(db)
     proposal = await SignatureService(db).propose_override(
-        set_version_id=experiment.v5,
+        recipe_version_id=experiment.v5,
         profile_version_id=profile_id,
         expectation_id=rows[0].id,
         compare={"op": "<=", "value": 1.0},
         reason="a coarser bean",
         thread_id=None,
     )
-    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     rendered = await opening_context(db, scope)
     assert (
         "cup weight at the end of the Ramp down, as a share of the target yield, at most 1 "
@@ -1630,7 +1637,7 @@ async def test_an_override_in_force_states_the_versions_own_limit_beside_the_pro
     await repo.reject_override(proposal.id, reason="too loose")
     assert "this version's limit" not in await opening_context(db, scope)
     # Another version of the Recipe reads the profile's own limit.
-    other = await opening_context(db, ToolScope.for_thread(experiment.set_id, experiment.v4))
+    other = await opening_context(db, ToolScope.for_thread(experiment.recipe_id, experiment.v4))
     assert "this version's limit" not in other
 
 
@@ -1639,13 +1646,13 @@ async def test_the_proposing_conversation_sees_its_proposals_in_force_and_is_tol
 ) -> None:
     db = experiment.db
     profile_id = await _own_profile_version(experiment)
-    mine = await _thread(db, experiment.set_id, experiment.v5)
-    other = await _thread(db, experiment.set_id, experiment.v5)
+    mine = await _thread(db, experiment.recipe_id, experiment.v5)
+    other = await _thread(db, experiment.recipe_id, experiment.v5)
     service = SignatureService(db)
     first, second = await service.propose(profile_id, EXPECTATIONS[:2], reason="r", thread_id=mine)
     await service.propose(profile_id, EXPECTATIONS[2:3], reason="r", thread_id=other)
     repo = SignatureRepository(db)
-    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
 
     in_force = await opening_context(db, scope, thread_id=mine)
     assert "SIGNATURE EXPECTATIONS YOU PROPOSED IN THIS CONVERSATION" in in_force
@@ -1700,7 +1707,7 @@ async def test_get_profile_serves_the_signature_in_force_and_nothing_else(
         db=db,
         settings=SettingsService(SettingsRepository(db)),
         knowledge=KnowledgeService(db),
-        scope=ToolScope.for_thread(experiment.set_id, experiment.v5),
+        scope=ToolScope.for_thread(experiment.recipe_id, experiment.v5),
         caller="test",
         permissions=CHAT_PERMISSIONS,
     )
@@ -1717,14 +1724,14 @@ async def test_a_withdrawn_override_is_told_as_no_longer_in_force_a_rejected_one
 ) -> None:
     db = experiment.db
     profile_id = await _own_profile_version(experiment)
-    thread = await _thread(db, experiment.set_id, experiment.v5)
+    thread = await _thread(db, experiment.recipe_id, experiment.v5)
     service = SignatureService(db)
     repo = SignatureRepository(db)
     (row,) = await service.propose(profile_id, EXPECTATIONS[1:2], reason="r")
 
     async def propose(value: float) -> OverrideRow:
         return await service.propose_override(
-            set_version_id=experiment.v5,
+            recipe_version_id=experiment.v5,
             profile_version_id=profile_id,
             expectation_id=row.id,
             compare={"op": "<=", "value": value},
@@ -1733,7 +1740,7 @@ async def test_a_withdrawn_override_is_told_as_no_longer_in_force_a_rejected_one
         )
 
     first = await propose(1.0)
-    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     told = await opening_context(db, scope, thread_id=thread)
     assert "a different limit for expectation #" in told
     assert (
@@ -1760,7 +1767,7 @@ async def test_rows_proposed_before_signatures_were_in_force_are_told_as_not_in_
 ) -> None:
     db = experiment.db
     profile_id = await _own_profile_version(experiment)
-    thread = await _thread(db, experiment.set_id, experiment.v5)
+    thread = await _thread(db, experiment.recipe_id, experiment.v5)
     (row,) = await SignatureService(db).propose(
         profile_id, EXPECTATIONS[1:2], reason="r", thread_id=thread
     )
@@ -1775,7 +1782,7 @@ async def test_rows_proposed_before_signatures_were_in_force_are_told_as_not_in_
     )
 
     told = await opening_context(
-        db, ToolScope.for_thread(experiment.set_id, experiment.v5), thread_id=thread
+        db, ToolScope.for_thread(experiment.recipe_id, experiment.v5), thread_id=thread
     )
 
     assert "(not in force: nothing is checked against it)" in told
@@ -1787,7 +1794,7 @@ async def test_rows_proposed_before_signatures_were_in_force_are_told_as_not_in_
 async def test_each_live_pin_is_one_line_naming_the_version_and_the_copy(
     experiment: Experiment,
 ) -> None:
-    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     assert (await opening_context(experiment.db, scope)).count("Pinned on the machine:") == 1
 
     older, _, _ = await make_pin(experiment.db, experiment.v2, "Blooming v1.1")

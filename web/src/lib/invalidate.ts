@@ -116,7 +116,7 @@ export function invalidateChatThread(queryClient: QueryClient, threadId: string)
  * Every open shot detail, and no other shots query.
  *
  * A version's prediction reaches a shot through that shot's own detail
- * (`set_version`), and it is the only thing about a shot that a Set-side write
+ * (`recipe_version`), and it is the only thing about a shot that a Set-side write
  * can change. The shots *list* has no prediction column and the sync counts
  * have nothing to do with it, so `invalidateShots` — which sweeps `["shots"]`
  * and therefore every open list and its filters — would be a page-wide refetch

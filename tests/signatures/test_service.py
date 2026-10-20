@@ -74,7 +74,7 @@ async def test_an_override_changes_only_the_numbers_of_a_measure_in_force(db: Da
 
     async def propose(expectation: int, compare: dict[str, object]) -> OverrideRow:
         return await service.propose_override(
-            set_version_id=first,
+            recipe_version_id=first,
             profile_version_id=version,
             expectation_id=expectation,
             compare=compare,
@@ -94,7 +94,7 @@ async def test_an_override_changes_only_the_numbers_of_a_measure_in_force(db: Da
         await propose(measure.id, {"op": "<=", "low": 1})
     with pytest.raises(SignatureRefused, match="not one of this version's"):
         await service.propose_override(
-            set_version_id=first,
+            recipe_version_id=first,
             profile_version_id=None,
             expectation_id=measure.id,
             compare={"op": "<=", "value": 0.2},
@@ -133,7 +133,7 @@ async def test_a_newer_override_replaces_the_same_expectations_and_refuses_anoth
 
     async def propose(expectation: int, value: float) -> OverrideRow:
         return await service.propose_override(
-            set_version_id=first,
+            recipe_version_id=first,
             profile_version_id=version,
             expectation_id=expectation,
             compare={"op": "<=", "value": value},

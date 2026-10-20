@@ -70,23 +70,23 @@ class ThreadDetail(BaseModel):
 class OpenBody(BaseModel):
     """`POST /api/chat/threads/open`: the version to carry on talking about.
 
-    ``set_version_id`` omitted is the Set's current version, which is what a
-    Discuss button on the Set itself means.
+    ``recipe_version_id`` omitted is the Recipe's current version, which is what a
+    Discuss button on the Recipe itself means.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    set_id: int
-    set_version_id: int | None = None
+    recipe_id: int
+    recipe_version_id: int | None = None
 
 
 #: Each refusal the thread repository can answer with, and what it is called and
 #: blamed on. All 422: every one of them is a body naming something that does
 #: not resolve, and none of them is a state the caller could wait out.
 _THREAD_REFUSALS: dict[ThreadRefusal, tuple[str, str]] = {
-    "no_recipe": ("set_id", "that Set does not exist"),
-    "no_version": ("set_version_id", "that is not a version of this Set"),
-    "version_without_recipe": ("set_id", "name the Set the version belongs to"),
+    "no_recipe": ("recipe_id", "that Recipe does not exist"),
+    "no_version": ("recipe_version_id", "that is not a version of this Recipe"),
+    "version_without_recipe": ("recipe_id", "name the Recipe the version belongs to"),
 }
 
 
@@ -149,24 +149,24 @@ async def list_tools(
     ),
     designing: Annotated[
         bool,
-        Query(description="For a Set conversation: whether its Set is being designed."),
+        Query(description="For a Recipe conversation: whether its Recipe is being designed."),
     ] = False,
 ) -> JSONResponse:
     """Read-only, and the same list the runner sends the provider.
 
     Per kind, because the two are different surfaces and the page shows what
-    the agent can do *here*: a Set's chat that listed `query_shots` would be
+    the agent can do *here*: a Recipe's chat that listed `query_shots` would be
     promising a thing that conversation cannot do. The page never filters this
     itself — the scope is the server's, and a second copy of the rule in the
     browser is a copy that can disagree.
 
     It also labels a trace: a tool call arrives as a name, and a panel that said
-    "propose_set_version" without saying that is a *proposal* would be hiding
+    "propose_recipe_version" without saying that is a *proposal* would be hiding
     the one thing a reader has to know.
     """
     # Only the kind and the design flag matter here, so the ids are left out:
     # which Recipe a conversation is about never changes which tools it has.
-    scope = ToolScope(kind=kind, designing=kind == "set" and designing)
+    scope = ToolScope(kind=kind, designing=kind == "recipe" and designing)
     return envelope_response(
         ToolList(
             tools=[
@@ -193,14 +193,14 @@ async def list_threads(
     "/threads",
     response_model=ApiResponse[ChatThreadRow],
     status_code=201,
-    summary="Start a conversation: general, or about one version of a Set",
+    summary="Start a conversation: general, or about one version of a Recipe",
 )
 async def create_thread(body: ChatThreadWrite, db: DatabaseDep) -> JSONResponse:
-    """Always creates. New under a Set's badge is a fresh session on that Set.
+    """Always creates. New under a Recipe's badge is a fresh session on that Recipe.
 
-    With a Set and no version it is filed under whatever is current, and it
+    With a Recipe and no version it is filed under whatever is current, and it
     stays there: the conversation is the room one change was argued in, not a
-    view of the Set that follows it around.
+    view of the Recipe that follows it around.
     """
     return _thread(await ChatRepository(db).create_thread(body), status_code=201)
 
@@ -217,7 +217,7 @@ async def open_thread(body: OpenBody, db: DatabaseDep) -> JSONResponse:
     than for a new one — which is also what makes a second press of Discuss
     harmless instead of a second empty conversation.
     """
-    result = await ChatRepository(db).open_thread(body.set_id, body.set_version_id)
+    result = await ChatRepository(db).open_thread(body.recipe_id, body.recipe_version_id)
     return _thread(result)
 
 

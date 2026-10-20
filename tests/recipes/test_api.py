@@ -72,7 +72,7 @@ async def _make_recipe(client: httpx.AsyncClient, bean_id: int, **over: Any) -> 
         "profile_version_id": await free_profile_version(database_of(client)),
         **body["version"],
     }
-    response = await client.post("/api/sets", json=body)
+    response = await client.post("/api/recipes", json=body)
     assert response.status_code == 201, response.text
     return data(response)
 
@@ -241,9 +241,9 @@ class TestBeans:
         assert response.status_code == 409
         body = error(response)
         assert body["code"] == "CONFLICT"
-        assert body["message"] == "2 Sets use this bean. Archive it instead."
+        assert body["message"] == "2 Recipes use this bean. Archive it instead."
         # Still there, and still resolving for the Recipes that point at it.
-        assert data(await client.get(f"/api/beans/{bean_id}"))["set_count"] == 2
+        assert data(await client.get(f"/api/beans/{bean_id}"))["recipe_count"] == 2
 
     async def test_deleting_a_bean_removes_its_starting_point_runs(
         self, client: httpx.AsyncClient, app: FastAPI
@@ -311,7 +311,7 @@ class TestBeanImport:
             )
         )
         exported = {
-            k: v for k, v in created.items() if k not in ("archived", "created_at", "set_count")
+            k: v for k, v in created.items() if k not in ("archived", "created_at", "recipe_count")
         }
         body = data(await client.post("/api/beans/import", json=exported))
         assert body["created"] is False
@@ -330,7 +330,7 @@ class TestBeanImport:
         "payload",
         [
             {"name": "x", "process": "boiled"},
-            {"name": "x", "set_count": 3},
+            {"name": "x", "recipe_count": 3},
             {"roaster": "no name"},
             {"id": "7", "name": "x"},
             {"id": True, "name": "x"},
@@ -426,7 +426,7 @@ class TestRecipes:
 
         added = data(
             await client.post(
-                f"/api/sets/{created['id']}/versions",
+                f"/api/recipes/{created['id']}/versions",
                 json={"grind_setting": "21", "intent": "chasing the sourness out"},
             )
         )
@@ -434,7 +434,7 @@ class TestRecipes:
         assert added["grind_setting"] == "21"
         assert added["dose_g"] == 18.0
 
-        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        detail = data(await client.get(f"/api/recipes/{created['id']}"))
         assert [entry["version"]["version_label"] for entry in detail["versions"]] == [
             "v1.1",
             "v1",
@@ -447,7 +447,7 @@ class TestRecipes:
     async def test_a_recipe_on_a_bean_that_is_not_there_names_the_field(
         self, client: httpx.AsyncClient
     ) -> None:
-        response = await client.post("/api/sets", json={"name": "x", "bean_id": 909})
+        response = await client.post("/api/recipes", json={"name": "x", "bean_id": 909})
         assert response.status_code == 422
         assert error(response)["details"]["field"] == "bean_id"
 
@@ -457,44 +457,46 @@ class TestRecipes:
         first = await _make_recipe(client, bean_id)
         second = await _make_recipe(client, bean_id, name="A different bag")
         # Both collect, which is the point: two bags, two grinders, one morning.
-        assert data(await client.get(f"/api/sets/{first['id']}"))["set"]["automatch"] is True
+        assert data(await client.get(f"/api/recipes/{first['id']}"))["recipe"]["automatch"] is True
 
         off = data(
-            await client.put(f"/api/sets/{first['id']}/automatch", json={"automatch": False})
+            await client.put(f"/api/recipes/{first['id']}/automatch", json={"automatch": False})
         )
         assert off["automatch"] is False
-        other = data(await client.get(f"/api/sets/{second['id']}"))["set"]
+        other = data(await client.get(f"/api/recipes/{second['id']}"))["recipe"]
         assert (other["automatch"], other["archived"]) == (True, False)
 
-        on = data(await client.put(f"/api/sets/{first['id']}/automatch", json={"automatch": True}))
+        on = data(
+            await client.put(f"/api/recipes/{first['id']}/automatch", json={"automatch": True})
+        )
         assert on["automatch"] is True
 
     async def test_archive_hides_it_from_the_list(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
-        archived = data(await client.post(f"/api/sets/{created['id']}/archive"))
+        archived = data(await client.post(f"/api/recipes/{created['id']}/archive"))
         assert (archived["archived"], archived["automatch"]) == (True, False)
-        assert data(await client.get("/api/sets"))["items"] == []
-        assert len(data(await client.get("/api/sets?include_archived=true"))["items"]) == 1
+        assert data(await client.get("/api/recipes"))["items"] == []
+        assert len(data(await client.get("/api/recipes?include_archived=true"))["items"]) == 1
 
     async def test_routes_on_a_recipe_that_is_not_there_are_404s(
         self, client: httpx.AsyncClient
     ) -> None:
-        assert (await client.get("/api/sets/404")).status_code == 404
-        assert (await client.post("/api/sets/404/versions", json={})).status_code == 404
+        assert (await client.get("/api/recipes/404")).status_code == 404
+        assert (await client.post("/api/recipes/404/versions", json={})).status_code == 404
         assert (
-            await client.put("/api/sets/404/automatch", json={"automatch": True})
+            await client.put("/api/recipes/404/automatch", json={"automatch": True})
         ).status_code == 404
-        assert (await client.post("/api/sets/404/archive")).status_code == 404
-        assert (await client.get("/api/sets/404/trends")).status_code == 404
+        assert (await client.post("/api/recipes/404/archive")).status_code == 404
+        assert (await client.get("/api/recipes/404/trends")).status_code == 404
 
 
 class TestPredictionsAndOutcomes:
     """The experiment log's writes, over HTTP: envelope, codes, and no echo."""
 
-    async def _version_ids(self, client: httpx.AsyncClient, set_id: int) -> list[int]:
-        detail = data(await client.get(f"/api/sets/{set_id}"))
+    async def _version_ids(self, client: httpx.AsyncClient, recipe_id: int) -> list[int]:
+        detail = data(await client.get(f"/api/recipes/{recipe_id}"))
         return [entry["version"]["id"] for entry in reversed(detail["versions"])]
 
     async def _labelled_shot(
@@ -508,7 +510,9 @@ class TestPredictionsAndOutcomes:
         shot_id = await ShotsRepository(app.state.db).insert(
             ShotInsert(device_id=device_id, raw_slog=b"not-a-slog")
         )
-        await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id})
+        await client.put(
+            f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
+        )
         await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": decision})
         return shot_id
 
@@ -516,12 +520,12 @@ class TestPredictionsAndOutcomes:
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
-        await client.post(f"/api/sets/{created['id']}/versions", json={"intent": "one finer"})
+        await client.post(f"/api/recipes/{created['id']}/versions", json={"intent": "one finer"})
         first, second = await self._version_ids(client, created["id"])
 
         body = data(
             await client.patch(
-                f"/api/sets/{created['id']}/versions/{second}/prediction",
+                f"/api/recipes/{created['id']}/versions/{second}/prediction",
                 json={"prediction": "less bitter, a shorter shot"},
             )
         )
@@ -539,7 +543,7 @@ class TestPredictionsAndOutcomes:
         await self._labelled_shot(client, app, first, "000801", "keep")
 
         response = await client.patch(
-            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            f"/api/recipes/{created['id']}/versions/{first}/prediction",
             json={"prediction": "a secret I am typing afterwards"},
         )
 
@@ -559,7 +563,7 @@ class TestPredictionsAndOutcomes:
         (mine,) = await self._version_ids(client, created["id"])
 
         response = await client.patch(
-            f"/api/sets/{created['id']}/versions/{mine}/prediction",
+            f"/api/recipes/{created['id']}/versions/{mine}/prediction",
             json={"prediction": "x", "compares_to_version_id": foreign},
         )
 
@@ -568,7 +572,7 @@ class TestPredictionsAndOutcomes:
 
         # The same check on the route that creates a version with one.
         refused = await client.post(
-            f"/api/sets/{created['id']}/versions",
+            f"/api/recipes/{created['id']}/versions",
             json={"intent": "one finer", "prediction": "x", "compares_to_version_id": foreign},
         )
         assert refused.status_code == 422
@@ -586,17 +590,17 @@ class TestPredictionsAndOutcomes:
         created = await _make_recipe(client, bean_id)
         (first,) = await self._version_ids(client, created["id"])
         await client.patch(
-            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            f"/api/recipes/{created['id']}/versions/{first}/prediction",
             json={"prediction": "less bitter"},
         )
 
         response = await client.patch(
-            f"/api/sets/{created['id']}/versions/{first}/prediction", json={}
+            f"/api/recipes/{created['id']}/versions/{first}/prediction", json={}
         )
 
         assert response.status_code == 400
         assert error(response)["code"] == "INVALID_REQUEST"
-        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        detail = data(await client.get(f"/api/recipes/{created['id']}"))
         assert detail["versions"][0]["version"]["prediction"] == "less bitter"
 
     async def test_a_comparison_must_be_older_than_the_version_making_it(
@@ -605,12 +609,13 @@ class TestPredictionsAndOutcomes:
         created = await _make_recipe(client, bean_id)
         for step in ("21", "20"):
             await client.post(
-                f"/api/sets/{created['id']}/versions", json={"grind_setting": step, "intent": step}
+                f"/api/recipes/{created['id']}/versions",
+                json={"grind_setting": step, "intent": step},
             )
         _first, second, third = await self._version_ids(client, created["id"])
 
         response = await client.patch(
-            f"/api/sets/{created['id']}/versions/{second}/prediction",
+            f"/api/recipes/{created['id']}/versions/{second}/prediction",
             json={"prediction": "x", "compares_to_version_id": third},
         )
 
@@ -625,7 +630,7 @@ class TestPredictionsAndOutcomes:
         (mine,) = await self._version_ids(client, created["id"])
 
         response = await client.post(
-            "/api/sets/909/versions",
+            "/api/recipes/909/versions",
             json={"intent": "x", "prediction": "y", "compares_to_version_id": mine},
         )
 
@@ -637,12 +642,12 @@ class TestPredictionsAndOutcomes:
     ) -> None:
         """Over the wire too: omitting the key and sending null differ."""
         created = await _make_recipe(client, bean_id)
-        await client.post(f"/api/sets/{created['id']}/versions", json={"intent": "one finer"})
+        await client.post(f"/api/recipes/{created['id']}/versions", json={"intent": "one finer"})
         first, second = await self._version_ids(client, created["id"])
 
         omitted = data(
             await client.patch(
-                f"/api/sets/{created['id']}/versions/{second}/prediction",
+                f"/api/recipes/{created['id']}/versions/{second}/prediction",
                 json={"prediction": "less bitter"},
             )
         )
@@ -650,7 +655,7 @@ class TestPredictionsAndOutcomes:
 
         explicit = data(
             await client.patch(
-                f"/api/sets/{created['id']}/versions/{second}/prediction",
+                f"/api/recipes/{created['id']}/versions/{second}/prediction",
                 json={"prediction": "less bitter", "compares_to_version_id": None},
             )
         )
@@ -662,18 +667,18 @@ class TestPredictionsAndOutcomes:
         created = await _make_recipe(client, bean_id)
         (first,) = await self._version_ids(client, created["id"])
         await client.patch(
-            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            f"/api/recipes/{created['id']}/versions/{first}/prediction",
             json={"prediction": "less bitter"},
         )
         shot_id = await self._labelled_shot(client, app, first, "000805", "keep")
         await client.put(
-            f"/api/sets/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
+            f"/api/recipes/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
         )
         # Unfiling the shot reopens the "no shots" window; the grade does not.
-        await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": None})
+        await client.put(f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": None})
 
         response = await client.patch(
-            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            f"/api/recipes/{created['id']}/versions/{first}/prediction",
             json={"prediction": "a different claim"},
         )
 
@@ -684,10 +689,10 @@ class TestPredictionsAndOutcomes:
         assert "different claim" not in response.text
 
         # Clearing the grade opens it again.
-        await client.delete(f"/api/sets/{created['id']}/versions/{first}/outcome")
+        await client.delete(f"/api/recipes/{created['id']}/versions/{first}/outcome")
         assert (
             await client.patch(
-                f"/api/sets/{created['id']}/versions/{first}/prediction",
+                f"/api/recipes/{created['id']}/versions/{first}/prediction",
                 json={"prediction": "a different claim"},
             )
         ).status_code == 200
@@ -701,17 +706,17 @@ class TestPredictionsAndOutcomes:
         # No prediction at all: 422, because the request is impossible, not
         # merely premature.
         response = await client.put(
-            f"/api/sets/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
+            f"/api/recipes/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
         )
         assert response.status_code == 422
         assert error(response)["details"]["field"] == "outcome"
 
         await client.patch(
-            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            f"/api/recipes/{created['id']}/versions/{first}/prediction",
             json={"prediction": "a clean 1:2"},
         )
         response = await client.put(
-            f"/api/sets/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
+            f"/api/recipes/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
         )
         assert response.status_code == 409
         assert error(response)["code"] == "NOTHING_TO_GRADE"
@@ -719,14 +724,16 @@ class TestPredictionsAndOutcomes:
         await self._labelled_shot(client, app, first, "000802", "improve")
         body = data(
             await client.put(
-                f"/api/sets/{created['id']}/versions/{first}/outcome",
+                f"/api/recipes/{created['id']}/versions/{first}/outcome",
                 json={"outcome": "partly_held", "note": "shorter, still sharp"},
             )
         )
         assert body["outcome"] == "partly_held"
         assert body["outcome_state"] == "partly_held"
 
-        cleared = data(await client.delete(f"/api/sets/{created['id']}/versions/{first}/outcome"))
+        cleared = data(
+            await client.delete(f"/api/recipes/{created['id']}/versions/{first}/outcome")
+        )
         assert cleared["outcome"] is None
         assert cleared["outcome_state"] == "open"
 
@@ -738,7 +745,7 @@ class TestPredictionsAndOutcomes:
         (first,) = await self._version_ids(client, created["id"])
 
         response = await client.put(
-            f"/api/sets/{created['id']}/versions/{first}/outcome", json={"outcome": "sort of"}
+            f"/api/recipes/{created['id']}/versions/{first}/outcome", json={"outcome": "sort of"}
         )
 
         assert response.status_code == 400
@@ -749,12 +756,13 @@ class TestPredictionsAndOutcomes:
     ) -> None:
         created = await _make_recipe(client, bean_id)
         await client.post(
-            f"/api/sets/{created['id']}/versions", json={"grind_setting": "19", "intent": "a turbo"}
+            f"/api/recipes/{created['id']}/versions",
+            json={"grind_setting": "19", "intent": "a turbo"},
         )
         first, second = await self._version_ids(client, created["id"])
 
         response = await client.post(
-            f"/api/sets/{created['id']}/rollback",
+            f"/api/recipes/{created['id']}/rollback",
             json={"to_version_id": first, "note": "that was worse"},
         )
 
@@ -764,10 +772,10 @@ class TestPredictionsAndOutcomes:
         assert (body["id"], body["version_label"], body["is_current"]) == (first, "v1", True)
         assert body["grind_setting"] == "22"
         assert await self._version_ids(client, created["id"]) == [first, second]
-        detail = data(await client.get(f"/api/sets/{created['id']}"))
-        assert detail["set"]["current_version_id"] == first
-        assert detail["set"]["current_version_label"] == "v1"
-        assert (detail["set"]["next_minor_label"], detail["set"]["next_major_label"]) == (
+        detail = data(await client.get(f"/api/recipes/{created['id']}"))
+        assert detail["recipe"]["current_version_id"] == first
+        assert detail["recipe"]["current_version_label"] == "v1"
+        assert (detail["recipe"]["next_minor_label"], detail["recipe"]["next_major_label"]) == (
             "v1.2",
             "v2",
         )
@@ -778,14 +786,14 @@ class TestPredictionsAndOutcomes:
 
         # Going back to where you already are is a 422 naming the field.
         refused = await client.post(
-            f"/api/sets/{created['id']}/rollback", json={"to_version_id": first}
+            f"/api/recipes/{created['id']}/rollback", json={"to_version_id": first}
         )
         assert refused.status_code == 422
         assert error(refused)["details"]["field"] == "to_version_id"
         assert "earlier" not in error(refused)["details"]["message"]
         # A prediction is not part of a revert.
         extra = await client.post(
-            f"/api/sets/{created['id']}/rollback",
+            f"/api/recipes/{created['id']}/rollback",
             json={"to_version_id": second, "prediction": "better"},
         )
         assert extra.status_code == 400
@@ -797,7 +805,7 @@ class TestPredictionsAndOutcomes:
             RecipeWrite(name="Designing", bean_id=bean_id), DesignBrief()
         )
         response = await client.post(
-            f"/api/sets/{designed.id}/rollback",
+            f"/api/recipes/{designed.id}/rollback",
             json={"to_version_id": designed.current_version_id},
         )
         assert response.status_code == 409
@@ -807,19 +815,19 @@ class TestPredictionsAndOutcomes:
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
-        await client.post(f"/api/sets/{created['id']}/versions", json={"intent": "one finer"})
+        await client.post(f"/api/recipes/{created['id']}/versions", json={"intent": "one finer"})
         first, second = await self._version_ids(client, created["id"])
         await self._labelled_shot(client, app, first, "000803", "keep")
         await client.patch(
-            f"/api/sets/{created['id']}/versions/{second}/prediction",
+            f"/api/recipes/{created['id']}/versions/{second}/prediction",
             json={"prediction": "less bitter"},
         )
         await self._labelled_shot(client, app, second, "000804", "improve")
         await client.put(
-            f"/api/sets/{created['id']}/versions/{second}/outcome", json={"outcome": "failed"}
+            f"/api/recipes/{created['id']}/versions/{second}/outcome", json={"outcome": "failed"}
         )
 
-        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        detail = data(await client.get(f"/api/recipes/{created['id']}"))
 
         assert detail["track_record"]["failed"] == 1
         assert detail["track_record"]["graded"] == 1
@@ -835,12 +843,13 @@ class TestPredictionsAndOutcomes:
         created = await _make_recipe(client, bean_id)
         for step in ("21", "20"):
             await client.post(
-                f"/api/sets/{created['id']}/versions", json={"grind_setting": step, "intent": step}
+                f"/api/recipes/{created['id']}/versions",
+                json={"grind_setting": step, "intent": step},
             )
         first, second, _third = await self._version_ids(client, created["id"])
-        await client.post(f"/api/sets/{created['id']}/rollback", json={"to_version_id": first})
+        await client.post(f"/api/recipes/{created['id']}/rollback", json={"to_version_id": first})
 
-        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        detail = data(await client.get(f"/api/recipes/{created['id']}"))
 
         muted = {
             entry["version"]["version_label"] for entry in detail["versions"] if entry["dead_end"]
@@ -852,7 +861,7 @@ class TestPredictionsAndOutcomes:
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
-        base = f"/api/sets/{created['id']}/versions/909"
+        base = f"/api/recipes/{created['id']}/versions/909"
 
         assert (
             await client.patch(f"{base}/prediction", json={"prediction": "x"})
@@ -860,7 +869,7 @@ class TestPredictionsAndOutcomes:
         assert (await client.put(f"{base}/outcome", json={"outcome": "held"})).status_code == 404
         assert (await client.delete(f"{base}/outcome")).status_code == 404
         assert (
-            await client.post("/api/sets/404/rollback", json={"to_version_id": 1})
+            await client.post("/api/recipes/404/rollback", json={"to_version_id": 1})
         ).status_code == 404
 
 
@@ -967,32 +976,34 @@ class TestJudgementAndAssignment:
         bean_id: int,
     ) -> None:
         created = await _make_recipe(client, bean_id)
-        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        detail = data(await client.get(f"/api/recipes/{created['id']}"))
         version_id = detail["versions"][0]["version"]["id"]
 
         assigned = data(
             await client.put(
-                f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id}
+                f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
             )
         )
-        assert assigned["set_version_id"] == version_id
-        assert assigned["set_badge"]["set_name"] == "Guji on the Niche"
-        assert assigned["set_badge"]["version_label"] == "v1"
+        assert assigned["recipe_version_id"] == version_id
+        assert assigned["recipe_badge"]["recipe_name"] == "Guji on the Niche"
+        assert assigned["recipe_badge"]["version_label"] == "v1"
 
         detached = data(
-            await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": None})
+            await client.put(
+                f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": None}
+            )
         )
-        assert detached["set_version_id"] is None
-        assert detached["set_badge"] is None
+        assert detached["recipe_version_id"] is None
+        assert detached["recipe_badge"] is None
 
     async def test_assigning_to_a_version_that_does_not_exist_names_the_field(
         self, client: httpx.AsyncClient, shot_id: int
     ) -> None:
         response = await client.put(
-            f"/api/shots/{shot_id}/set-version", json={"set_version_id": 4040}
+            f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": 4040}
         )
         assert response.status_code == 422
-        assert error(response)["details"]["field"] == "set_version_id"
+        assert error(response)["details"]["field"] == "recipe_version_id"
 
     async def test_the_needs_recipe_filter_and_its_count(
         self,
@@ -1000,19 +1011,21 @@ class TestJudgementAndAssignment:
         shot_id: int,
         bean_id: int,
     ) -> None:
-        assert data(await client.get("/api/shots?needs_set=true"))["total"] == 1
-        assert data(await client.get("/api/sync/status"))["counts"]["needs_set"] == 1
+        assert data(await client.get("/api/shots?needs_recipe=true"))["total"] == 1
+        assert data(await client.get("/api/sync/status"))["counts"]["needs_recipe"] == 1
 
         created = await _make_recipe(client, bean_id)
-        version_id = data(await client.get(f"/api/sets/{created['id']}"))["versions"][0]["version"][
-            "id"
-        ]
-        await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id})
+        version_id = data(await client.get(f"/api/recipes/{created['id']}"))["versions"][0][
+            "version"
+        ]["id"]
+        await client.put(
+            f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
+        )
 
-        assert data(await client.get("/api/shots?needs_set=true"))["total"] == 0
-        assert data(await client.get(f"/api/shots?set_id={created['id']}"))["total"] == 1
-        assert data(await client.get(f"/api/shots?set_version_id={version_id}"))["total"] == 1
-        assert data(await client.get("/api/sync/status"))["counts"]["needs_set"] == 0
+        assert data(await client.get("/api/shots?needs_recipe=true"))["total"] == 0
+        assert data(await client.get(f"/api/shots?recipe_id={created['id']}"))["total"] == 1
+        assert data(await client.get(f"/api/shots?recipe_version_id={version_id}"))["total"] == 1
+        assert data(await client.get("/api/sync/status"))["counts"]["needs_recipe"] == 0
 
     async def test_a_discarded_shot_leaves_the_inbox(
         self, client: httpx.AsyncClient, shot_id: int
@@ -1025,8 +1038,8 @@ class TestJudgementAndAssignment:
         """
 
         async def waiting() -> tuple[int, int]:
-            listed = data(await client.get("/api/shots?needs_set=true"))["total"]
-            counted = data(await client.get("/api/sync/status"))["counts"]["needs_set"]
+            listed = data(await client.get("/api/shots?needs_recipe=true"))["total"]
+            counted = data(await client.get("/api/sync/status"))["counts"]["needs_recipe"]
             return listed, counted
 
         for decision, expected in (
@@ -1042,7 +1055,7 @@ class TestJudgementAndAssignment:
         # Still an unfiled shot: the list of every shot shows it, and the
         # filter for filed shots does not.
         assert data(await client.get("/api/shots"))["total"] == 1
-        assert data(await client.get("/api/shots?needs_set=false"))["total"] == 0
+        assert data(await client.get("/api/shots?needs_recipe=false"))["total"] == 0
 
         await client.delete(f"/api/shots/{shot_id}/judgement")
         assert await waiting() == (1, 1)
@@ -1102,7 +1115,7 @@ class TestRecipeReferencesAndRefusals:
             "bean_id": bean_id,
             **body,
         }
-        response = await client.post("/api/sets", json=payload)
+        response = await client.post("/api/recipes", json=payload)
 
         assert response.status_code == 422, response.text
         assert error(response)["details"]["field"] == field
@@ -1113,7 +1126,7 @@ class TestRecipeReferencesAndRefusals:
         """A Recipe can name no grinder (pre-ground coffee), but it brews a profile."""
         profile = await free_profile_version(database_of(client))
         fine = await client.post(
-            "/api/sets",
+            "/api/recipes",
             json={
                 "name": "Whatever is loaded",
                 "bean_id": bean_id,
@@ -1122,7 +1135,7 @@ class TestRecipeReferencesAndRefusals:
             },
         )
         none = await client.post(
-            "/api/sets",
+            "/api/recipes",
             json={
                 "name": "Any profile",
                 "bean_id": bean_id,
@@ -1137,38 +1150,38 @@ class TestRecipeReferencesAndRefusals:
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         old = await _make_recipe(client, bean_id, name="Last month's bag")
-        await client.post(f"/api/sets/{old['id']}/archive")
+        await client.post(f"/api/recipes/{old['id']}/archive")
 
-        response = await client.put(f"/api/sets/{old['id']}/automatch", json={"automatch": True})
+        response = await client.put(f"/api/recipes/{old['id']}/automatch", json={"automatch": True})
 
         assert response.status_code == 409
         assert error(response)["code"] == "CONFLICT"
         assert error(response)["details"]["field"] == "archived"
-        assert data(await client.get(f"/api/sets/{old['id']}"))["set"]["automatch"] is False
+        assert data(await client.get(f"/api/recipes/{old['id']}"))["recipe"]["automatch"] is False
 
         # Turning it *off* is allowed on anything: archiving does it itself, and
         # a refusal there would be a no-op dressed up as an error.
-        off = await client.put(f"/api/sets/{old['id']}/automatch", json={"automatch": False})
+        off = await client.put(f"/api/recipes/{old['id']}/automatch", json={"automatch": False})
         assert off.status_code == 200, off.text
 
     async def test_filing_a_shot_under_an_archived_recipe_is_refused(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
-        version_id = data(await client.get(f"/api/sets/{created['id']}"))["versions"][0]["version"][
-            "id"
-        ]
-        await client.post(f"/api/sets/{created['id']}/archive")
+        version_id = data(await client.get(f"/api/recipes/{created['id']}"))["versions"][0][
+            "version"
+        ]["id"]
+        await client.post(f"/api/recipes/{created['id']}/archive")
         shot_id = await ShotsRepository(app.state.db).insert(
             ShotInsert(device_id="000600", raw_slog=b"not-a-slog")
         )
 
         response = await client.put(
-            f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id}
+            f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
         )
 
         assert response.status_code == 422
-        assert error(response)["details"]["field"] == "set_version_id"
+        assert error(response)["details"]["field"] == "recipe_version_id"
 
 
 class TestTrendsRoute:
@@ -1176,9 +1189,9 @@ class TestTrendsRoute:
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
-        version_id = data(await client.get(f"/api/sets/{created['id']}"))["versions"][0]["version"][
-            "id"
-        ]
+        version_id = data(await client.get(f"/api/recipes/{created['id']}"))["versions"][0][
+            "version"
+        ]["id"]
         shot_id = await ShotsRepository(app.state.db).insert(
             ShotInsert(
                 device_id="000601",
@@ -1187,15 +1200,17 @@ class TestTrendsRoute:
                 duration_ms=28_000,
             )
         )
-        await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id})
+        await client.put(
+            f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
+        )
         await client.put(
             f"/api/shots/{shot_id}/judgement",
             json={"rating": 4, "dose_in_g": 18, "dose_out_g": 36},
         )
 
-        body = data(await client.get(f"/api/sets/{created['id']}/trends"))
+        body = data(await client.get(f"/api/recipes/{created['id']}/trends"))
 
-        assert body["set_id"] == created["id"]
+        assert body["recipe_id"] == created["id"]
         assert [version["version_label"] for version in body["versions"]] == ["v1"]
         assert body["versions"][0]["shots"] == 1
         point = body["shots"][0]
@@ -1215,14 +1230,16 @@ class TestProposals:
     """
 
     @staticmethod
-    async def _propose(app: FastAPI, set_id: int, **over: Any) -> Any:
+    async def _propose(app: FastAPI, recipe_id: int, **over: Any) -> Any:
         spec: dict[str, Any] = {
             "patch": RecipeVersionPatch(grind_setting="21"),
             "reason": "one click finer, chasing the sourness out",
             "prediction": "Compared to v1: two to four seconds longer and less sour.",
         }
         spec.update(over)
-        result = await RecipeProposalsRepository(app.state.db).create(set_id, ProposalWrite(**spec))
+        result = await RecipeProposalsRepository(app.state.db).create(
+            recipe_id, ProposalWrite(**spec)
+        )
         assert result.proposal is not None, result.refused
         return result.proposal
 
@@ -1232,7 +1249,7 @@ class TestProposals:
         created = await _make_recipe(client, bean_id)
         await self._propose(app, created["id"])
 
-        body = data(await client.get(f"/api/sets/{created['id']}"))
+        body = data(await client.get(f"/api/recipes/{created['id']}"))
         proposal = body["proposal"]
         assert proposal["status"] == "proposed"
         assert proposal["changed"] == ["the grind"]
@@ -1249,13 +1266,13 @@ class TestProposals:
             }
         ]
         # Nothing has changed yet: the Recipe is still on v1.
-        assert body["set"]["current_version_label"] == "v1"
+        assert body["recipe"]["current_version_label"] == "v1"
 
     async def test_a_recipe_with_nothing_waiting_says_so(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
-        assert data(await client.get(f"/api/sets/{created['id']}"))["proposal"] is None
+        assert data(await client.get(f"/api/recipes/{created['id']}"))["proposal"] is None
 
     async def test_accept_records_the_version_and_links_the_log_to_the_chat(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
@@ -1264,13 +1281,15 @@ class TestProposals:
         thread = data(
             await client.post(
                 "/api/chat/threads",
-                json={"title": "About v1", "set_id": created["id"]},
+                json={"title": "About v1", "recipe_id": created["id"]},
             )
         )
         proposal = await self._propose(app, created["id"], thread_id=thread["id"])
 
         body = data(
-            await client.post(f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={})
+            await client.post(
+                f"/api/recipes/{created['id']}/proposals/{proposal.id}/accept", json={}
+            )
         )
         assert body["proposal"]["status"] == "accepted"
         assert body["version"]["version_label"] == "v1.1"
@@ -1279,7 +1298,7 @@ class TestProposals:
         assert body["version"]["intent"] == "one click finer, chasing the sourness out"
         assert body["version"]["prediction"].startswith("Compared to v1")
 
-        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        detail = data(await client.get(f"/api/recipes/{created['id']}"))
         assert detail["proposal"] is None
         assert detail["versions"][0]["chat_thread_id"] == thread["id"]
 
@@ -1290,22 +1309,22 @@ class TestProposals:
         created = await _make_recipe(client, bean_id)
         proposal = await self._propose(app, created["id"])
         await client.post(
-            f"/api/sets/{created['id']}/versions",
+            f"/api/recipes/{created['id']}/versions",
             json={"dose_g": 19.0, "intent": "by hand"},
         )
 
-        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        detail = data(await client.get(f"/api/recipes/{created['id']}"))
         assert detail["proposal"] is None
-        listed = data(await client.get(f"/api/sets/{created['id']}/proposals"))["items"]
+        listed = data(await client.get(f"/api/recipes/{created['id']}/proposals"))["items"]
         assert [item["status"] for item in listed] == ["stale"]
 
         response = await client.post(
-            f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={}
+            f"/api/recipes/{created['id']}/proposals/{proposal.id}/accept", json={}
         )
         assert response.status_code == 409
         assert error(response)["code"] == "PROPOSAL_DECIDED"
         # Two versions, not three: the hand-made change is where the Recipe is.
-        assert len(data(await client.get(f"/api/sets/{created['id']}"))["versions"]) == 2
+        assert len(data(await client.get(f"/api/recipes/{created['id']}"))["versions"]) == 2
 
     async def test_accept_answers_the_stale_code_when_it_is_the_one_to_catch_it(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
@@ -1314,14 +1333,14 @@ class TestProposals:
         created = await _make_recipe(client, bean_id)
         proposal = await self._propose(app, created["id"])
         await client.post(
-            f"/api/sets/{created['id']}/versions", json={"dose_g": 19.0, "intent": "by hand"}
+            f"/api/recipes/{created['id']}/versions", json={"dose_g": 19.0, "intent": "by hand"}
         )
         await app.state.db.execute(
             "UPDATE recipe_version_proposals SET status = 'proposed' WHERE id = ?", (proposal.id,)
         )
 
         response = await client.post(
-            f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={}
+            f"/api/recipes/{created['id']}/proposals/{proposal.id}/accept", json={}
         )
         assert response.status_code == 409
         body = error(response)
@@ -1333,28 +1352,28 @@ class TestProposals:
     ) -> None:
         created = await _make_recipe(client, bean_id)
         proposal = await self._propose(app, created["id"])
-        version_id = data(await client.get(f"/api/sets/{created['id']}"))["versions"][0]["version"][
-            "id"
-        ]
+        version_id = data(await client.get(f"/api/recipes/{created['id']}"))["versions"][0][
+            "version"
+        ]["id"]
         await client.patch(
-            f"/api/sets/{created['id']}/versions/{version_id}/prediction",
+            f"/api/recipes/{created['id']}/versions/{version_id}/prediction",
             json={"prediction": "Expect about 30 s.", "compares_to_version_id": None},
         )
 
         response = await client.post(
-            f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={}
+            f"/api/recipes/{created['id']}/proposals/{proposal.id}/accept", json={}
         )
         assert response.status_code == 409
         assert error(response)["code"] == "PROPOSAL_OUTCOME_OPEN"
         # Still waiting, so the person can grade and come back to it.
-        assert data(await client.get(f"/api/sets/{created['id']}"))["proposal"] is not None
+        assert data(await client.get(f"/api/recipes/{created['id']}"))["proposal"] is not None
 
     async def test_accepting_twice_is_a_conflict(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
         proposal = await self._propose(app, created["id"])
-        url = f"/api/sets/{created['id']}/proposals/{proposal.id}/accept"
+        url = f"/api/recipes/{created['id']}/proposals/{proposal.id}/accept"
         assert (await client.post(url, json={})).status_code == 200
         response = await client.post(url, json={})
         assert response.status_code == 409
@@ -1368,24 +1387,24 @@ class TestProposals:
 
         body = data(
             await client.post(
-                f"/api/sets/{created['id']}/proposals/{proposal.id}/decline",
+                f"/api/recipes/{created['id']}/proposals/{proposal.id}/decline",
                 json={"note": "tried that last week"},
             )
         )
         assert body["proposal"]["status"] == "declined"
         assert body["proposal"]["decline_note"] == "tried that last week"
         assert body["version"] is None
-        assert len(data(await client.get(f"/api/sets/{created['id']}"))["versions"]) == 1
+        assert len(data(await client.get(f"/api/recipes/{created['id']}"))["versions"]) == 1
 
     async def test_the_list_holds_the_answered_ones_too(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
         first = await self._propose(app, created["id"])
-        await client.post(f"/api/sets/{created['id']}/proposals/{first.id}/decline", json={})
+        await client.post(f"/api/recipes/{created['id']}/proposals/{first.id}/decline", json={})
         await self._propose(app, created["id"], patch=RecipeVersionPatch(dose_g=18.5))
 
-        items = data(await client.get(f"/api/sets/{created['id']}/proposals"))["items"]
+        items = data(await client.get(f"/api/recipes/{created['id']}/proposals"))["items"]
         assert [item["status"] for item in items] == ["proposed", "declined"]
         assert [item["changed"] for item in items] == [["the dose"], ["the grind"]]
 
@@ -1397,7 +1416,7 @@ class TestProposals:
         proposal = await self._propose(app, theirs["id"])
 
         response = await client.post(
-            f"/api/sets/{mine['id']}/proposals/{proposal.id}/accept", json={}
+            f"/api/recipes/{mine['id']}/proposals/{proposal.id}/accept", json={}
         )
         assert response.status_code == 404
 
@@ -1412,23 +1431,27 @@ class TestProposals:
             ("not json at all", proposal.id),
         )
 
-        served = data(await client.get(f"/api/sets/{created['id']}"))["proposal"]
+        served = data(await client.get(f"/api/recipes/{created['id']}"))["proposal"]
         assert served["readable"] is False
         assert served["changes"] == []
         assert served["changed"] == []
         assert (
-            data(await client.get(f"/api/sets/{created['id']}/proposals"))["items"][0]["readable"]
+            data(await client.get(f"/api/recipes/{created['id']}/proposals"))["items"][0][
+                "readable"
+            ]
             is False
         )
 
         refused = await client.post(
-            f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={}
+            f"/api/recipes/{created['id']}/proposals/{proposal.id}/accept", json={}
         )
         assert refused.status_code == 409
         assert error(refused)["code"] == "PROPOSAL_UNREADABLE"
 
         declined = data(
-            await client.post(f"/api/sets/{created['id']}/proposals/{proposal.id}/decline", json={})
+            await client.post(
+                f"/api/recipes/{created['id']}/proposals/{proposal.id}/decline", json={}
+            )
         )
         assert declined["proposal"]["status"] == "declined"
 
@@ -1439,7 +1462,7 @@ class TestProposals:
         proposal = await self._propose(app, created["id"])
 
         response = await client.post(
-            f"/api/sets/{created['id']}/proposals/{proposal.id}/decline",
+            f"/api/recipes/{created['id']}/proposals/{proposal.id}/decline",
             json={"note": "x" * 501},
         )
 
@@ -1447,7 +1470,7 @@ class TestProposals:
         # malformed body, which a note ten times its cap is.
         assert response.status_code == 400
         # And it is still waiting: a refused note declines nothing.
-        assert data(await client.get(f"/api/sets/{created['id']}"))["proposal"] is not None
+        assert data(await client.get(f"/api/recipes/{created['id']}"))["proposal"] is not None
 
     async def test_a_decline_note_of_five_hundred_is_kept(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
@@ -1457,7 +1480,7 @@ class TestProposals:
 
         body = data(
             await client.post(
-                f"/api/sets/{created['id']}/proposals/{proposal.id}/decline",
+                f"/api/recipes/{created['id']}/proposals/{proposal.id}/decline",
                 json={"note": "y" * 500},
             )
         )
@@ -1469,10 +1492,12 @@ class TestProposals:
         created = await _make_recipe(client, bean_id)
         proposal = await self._propose(app, created["id"])
         await client.post(
-            f"/api/sets/{created['id']}/versions", json={"dose_g": 19.0, "intent": "by hand"}
+            f"/api/recipes/{created['id']}/versions", json={"dose_g": 19.0, "intent": "by hand"}
         )
         body = error(
-            await client.post(f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={})
+            await client.post(
+                f"/api/recipes/{created['id']}/proposals/{proposal.id}/accept", json={}
+            )
         )
         rendered = str(body)
         assert "chasing the sourness out" not in rendered

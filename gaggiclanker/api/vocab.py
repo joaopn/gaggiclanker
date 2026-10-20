@@ -25,7 +25,7 @@ router = APIRouter(prefix="/vocab", tags=["vocab"])
 @router.get(
     "",
     response_model=ApiResponse[Vocabulary],
-    summary="Every closed vocabulary the judgement and Set forms use",
+    summary="Every closed vocabulary the judgement and Recipe forms use",
 )
 async def get_vocabulary() -> JSONResponse:
     return envelope_response(vocabulary().model_dump(mode="json"))

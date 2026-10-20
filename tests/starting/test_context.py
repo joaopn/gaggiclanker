@@ -16,7 +16,7 @@ from pathlib import Path
 
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.starting.context import DEFAULT_STYLE, build_context, render_similar
-from gaggiclanker.starting.similar import SimilarSet
+from gaggiclanker.starting.similar import SimilarRecipe
 from tests.starting.conftest import AS_OF, Fixture
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "starting-point-prompt.txt"
@@ -85,11 +85,11 @@ async def test_a_bean_with_only_a_name_gives_the_model_only_its_name(fixture: Fi
 
 
 def test_a_similar_recipe_s_bean_line_carries_only_what_its_bean_states() -> None:
-    def entry(**bean: object) -> SimilarSet:
-        return SimilarSet(
-            set_id=1,
-            set_name="Old",
-            set_version_id=1,
+    def entry(**bean: object) -> SimilarRecipe:
+        return SimilarRecipe(
+            recipe_id=1,
+            recipe_name="Old",
+            recipe_version_id=1,
             version_label="v1",
             created_at="2026-01-01T00:00:00Z",
             score=0.5,
@@ -219,7 +219,7 @@ async def test_the_candidates_are_the_active_versions_of_profiles_with_no_recipe
     await fixture.db.execute(
         "UPDATE profile_board SET current_version_id = ? WHERE id = ?", (newer, board)
     )
-    held = await free_profile_version(fixture.db, "Held by a Set")
+    held = await free_profile_version(fixture.db, "Held by a Recipe")
     held_board = await fixture.db.fetch_value(
         "SELECT board_id FROM profile_versions WHERE id = ?", (held,)
     )

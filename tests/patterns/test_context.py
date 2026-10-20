@@ -38,10 +38,10 @@ async def _with_extras(talking: Talking) -> None:
     run_id = await runs.start(PatternRunStart())
     sources = [
         PatternSource(
-            insight_id=talking.a_grinder, set_id=world.a, set_name="Guji daily", text="A."
+            insight_id=talking.a_grinder, recipe_id=world.a, recipe_name="Guji daily", text="A."
         ),
         PatternSource(
-            insight_id=talking.b_grinder, set_id=world.b, set_name="Yirg daily", text="B."
+            insight_id=talking.b_grinder, recipe_id=world.b, recipe_name="Yirg daily", text="B."
         ),
     ]
     await runs.finish_done(
@@ -58,7 +58,7 @@ async def _with_extras(talking: Talking) -> None:
     )
     for proposal in await proposals.for_run(run_id):
         await proposals.dismiss(proposal.id)
-    await world.sets.archive(world.c)
+    await world.recipes.archive(world.c)
 
 
 async def _rendered(service: PatternsService, talking: Talking) -> str:
@@ -92,8 +92,8 @@ async def test_the_same_rows_give_the_same_input(talking: Talking) -> None:
 async def test_the_input_is_ordered_by_recipe_id_then_insight_id(talking: Talking) -> None:
     given = await build_patterns_input(talking.world.db)
 
-    assert [item.id for item in given.sets] == sorted(item.id for item in given.sets)
-    for item in given.sets:
+    assert [item.id for item in given.recipes] == sorted(item.id for item in given.recipes)
+    for item in given.recipes:
         assert [i.id for i in item.insights] == sorted(i.id for i in item.insights)
 
 
@@ -102,11 +102,11 @@ async def test_only_confirmed_insights_of_recipes_that_are_not_being_designed_ar
 ) -> None:
     given = await build_patterns_input(talking.world.db)
 
-    read = {insight.id for item in given.sets for insight in item.insights}
+    read = {insight.id for item in given.recipes for insight in item.insights}
     assert talking.waiting not in read
     assert talking.designing not in read
     assert {talking.a_grinder, talking.a_only, talking.b_grinder, talking.c_grinder} == read
-    assert talking.world.designing not in {item.id for item in given.sets}
+    assert talking.world.designing not in {item.id for item in given.recipes}
     assert [item.id for item in given.general] == [talking.general]
 
 
@@ -114,7 +114,7 @@ async def test_a_recipe_is_shown_with_the_attributes_a_scope_may_name(talking: T
     given = await build_patterns_input(talking.world.db)
     world = talking.world
 
-    by_id = {item.id: item for item in given.sets}
+    by_id = {item.id: item for item in given.recipes}
     assert by_id[world.a].attributes == {
         "bean_id": world.bean_a,
         "roast_level": "light",
@@ -128,7 +128,7 @@ async def test_a_recipe_is_shown_with_the_attributes_a_scope_may_name(talking: T
 
 async def test_what_an_insight_rests_on_is_told_as_then_and_now(talking: Talking) -> None:
     world = talking.world
-    version = await world.sets.get(world.a)
+    version = await world.recipes.get(world.a)
     assert version is not None
     await world.db.execute(
         "UPDATE recipe_versions SET outcome = 'failed' WHERE id = ?", (version.current_version_id,)
@@ -138,7 +138,7 @@ async def test_what_an_insight_rests_on_is_told_as_then_and_now(talking: Talking
 
     line = next(
         insight
-        for item in given.sets
+        for item in given.recipes
         for insight in item.insights
         if insight.id == talking.a_grinder
     )
@@ -160,14 +160,14 @@ async def test_declined_proposals_are_told_with_their_sources(talking: Talking) 
                 sources=[
                     PatternSource(
                         insight_id=talking.a_grinder,
-                        set_id=world.a,
-                        set_name="Guji daily",
+                        recipe_id=world.a,
+                        recipe_name="Guji daily",
                         text="A.",
                     ),
                     PatternSource(
                         insight_id=talking.b_grinder,
-                        set_id=world.b,
-                        set_name="Yirg daily",
+                        recipe_id=world.b,
+                        recipe_name="Yirg daily",
                         text="B.",
                     ),
                 ],
@@ -187,14 +187,14 @@ async def test_declined_proposals_are_told_with_their_sources(talking: Talking) 
 
 async def test_archived_recipes_are_read_and_designing_ones_are_not(talking: Talking) -> None:
     world = talking.world
-    await world.sets.archive(world.c)
+    await world.recipes.archive(world.c)
 
     given = await build_patterns_input(world.db)
 
-    assert [item.id for item in given.sets] == [world.a, world.b, world.c]
-    assert next(item for item in given.sets if item.id == world.c).archived is True
+    assert [item.id for item in given.recipes] == [world.a, world.b, world.c]
+    assert next(item for item in given.recipes if item.id == world.c).archived is True
     assert "(archived)" in given.render()["recipe_insights"]
-    assert world.designing not in {item.id for item in given.sets}
+    assert world.designing not in {item.id for item in given.recipes}
 
 
 async def test_general_and_declined_blocks_are_in_id_order_whatever_the_words(

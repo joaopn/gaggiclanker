@@ -19,10 +19,10 @@ from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrit
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
     RecipeVersionPatch,
+    RecipeVersionRow,
+    RecipeVersionWrite,
     RecipeWrite,
     RollbackWrite,
-    SetVersionRow,
-    SetVersionWrite,
     VersionOutcomeWrite,
     VersionPredictionWrite,
     dead_end_ids,
@@ -45,11 +45,13 @@ INHERITED = (
 )
 
 
-async def _recipe_with_versions(wired: Fixtures, count: int = 2) -> tuple[int, list[SetVersionRow]]:
+async def _recipe_with_versions(
+    wired: Fixtures, count: int = 2
+) -> tuple[int, list[RecipeVersionRow]]:
     """A Recipe with ``count`` versions, oldest first."""
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-        SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     for step in range(2, count + 1):
         await wired.recipes.add_version(
@@ -76,10 +78,12 @@ async def _judged_shot(
 class TestPrediction:
     async def test_it_defaults_to_comparing_against_the_parent(self, wired: Fixtures) -> None:
         """ "Less bitter" means "than the version I changed from", nine times in ten."""
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
 
         result = await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="less bitter, a bit shorter")
+            recipe_id,
+            versions[1].id,
+            VersionPredictionWrite(prediction="less bitter, a bit shorter"),
         )
 
         assert result.refused is None
@@ -94,10 +98,10 @@ class TestPrediction:
         self, wired: Fixtures
     ) -> None:
         """There is nothing earlier, so it is graded against its own numbers."""
-        set_id, versions = await _recipe_with_versions(wired, count=1)
+        recipe_id, versions = await _recipe_with_versions(wired, count=1)
 
         result = await wired.recipes.set_prediction(
-            set_id, versions[0].id, VersionPredictionWrite(prediction="a clean 1:2 in 28 s")
+            recipe_id, versions[0].id, VersionPredictionWrite(prediction="a clean 1:2 in 28 s")
         )
 
         assert result.version is not None
@@ -105,10 +109,10 @@ class TestPrediction:
         assert result.version.outcome_state == "open"
 
     async def test_an_explicit_comparison_is_kept(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired, count=3)
+        recipe_id, versions = await _recipe_with_versions(wired, count=3)
 
         result = await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             versions[2].id,
             VersionPredictionWrite(
                 prediction="back to where v1 was", compares_to_version_id=versions[0].id
@@ -122,23 +126,23 @@ class TestPrediction:
         self, wired: Fixtures
     ) -> None:
         """Two Recipes are two coffees; the comparison would mean nothing."""
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         other_id, other_versions = await _recipe_with_versions(wired, count=1)
 
         result = await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             versions[1].id,
             VersionPredictionWrite(prediction="x", compares_to_version_id=other_versions[0].id),
         )
 
         assert result.refused == "bad_compare"
-        assert other_id != set_id
+        assert other_id != recipe_id
 
     async def test_a_version_cannot_be_compared_against_itself(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
 
         result = await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             versions[1].id,
             VersionPredictionWrite(prediction="x", compares_to_version_id=versions[1].id),
         )
@@ -151,10 +155,10 @@ class TestPrediction:
         The comparison is what the prediction is graded against, so it has to be
         something this version could have been expected to improve on.
         """
-        set_id, versions = await _recipe_with_versions(wired, count=3)
+        recipe_id, versions = await _recipe_with_versions(wired, count=3)
 
         result = await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             versions[1].id,
             VersionPredictionWrite(prediction="x", compares_to_version_id=versions[2].id),
         )
@@ -163,7 +167,7 @@ class TestPrediction:
         # And the older one is accepted, so the rule is about the direction
         # rather than about the field being rejected outright.
         allowed = await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             versions[1].id,
             VersionPredictionWrite(prediction="x", compares_to_version_id=versions[0].id),
         )
@@ -171,11 +175,11 @@ class TestPrediction:
 
     async def test_it_is_refused_once_the_version_has_a_shot(self, wired: Fixtures) -> None:
         """The whole point: a prediction typed after the cup is a memory."""
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         await _judged_shot(wired, versions[1].id, "000701", None)
 
         result = await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="too late")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="too late")
         )
 
         assert result.refused == "has_shots"
@@ -183,13 +187,13 @@ class TestPrediction:
         assert stored is not None and stored.prediction == ""
 
     async def test_an_empty_prediction_clears_the_comparison_with_it(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
 
         result = await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="")
         )
 
         assert result.version is not None
@@ -215,10 +219,10 @@ class TestPrediction:
         — and a repository that defaulted both to the parent would make the
         second choice unavailable on every version but the first.
         """
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
 
         result = await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             versions[1].id,
             VersionPredictionWrite(prediction="a clean 1:2 in 28 s", compares_to_version_id=None),
         )
@@ -230,10 +234,10 @@ class TestPrediction:
     async def test_a_new_version_can_be_told_to_compare_against_nothing(
         self, wired: Fixtures
     ) -> None:
-        set_id, _ = await _recipe_with_versions(wired)
+        recipe_id, _ = await _recipe_with_versions(wired)
 
         version = await wired.recipes.add_version(
-            set_id,
+            recipe_id,
             RecipeVersionPatch(
                 intent="a fresh baseline", prediction="a clean 1:2", compares_to_version_id=None
             ),
@@ -244,10 +248,10 @@ class TestPrediction:
 
     async def test_whitespace_is_not_a_prediction(self, wired: Fixtures) -> None:
         """Three spaces are "no prediction", not a prediction nobody can read."""
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
 
         result = await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="   ")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="   ")
         )
 
         assert result.version is not None
@@ -257,7 +261,7 @@ class TestPrediction:
 
         # And the surrounding whitespace comes off a real one.
         kept = await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="  less bitter  ")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="  less bitter  ")
         )
         assert kept.version is not None and kept.version.prediction == "less bitter"
 
@@ -269,17 +273,19 @@ class TestPrediction:
         prediction underneath it would leave it attached to something nobody
         ever predicted.
         """
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
         shot_id = await _judged_shot(wired, versions[1].id, "000740", "keep")
-        await wired.recipes.set_outcome(set_id, versions[1].id, VersionOutcomeWrite(outcome="held"))
+        await wired.recipes.set_outcome(
+            recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
+        )
         # Unfiling the shot reopens the "no shots" window; the grade does not.
         assert await wired.recipes.assign_shot(shot_id, None)
 
         result = await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="something else entirely")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="something else entirely")
         )
 
         assert result.refused == "has_outcome"
@@ -288,18 +294,18 @@ class TestPrediction:
 
         # Taking the grade back opens it again: the rule is against the habit,
         # not against somebody deliberately rewriting their own record.
-        await wired.recipes.clear_outcome(set_id, versions[1].id)
+        await wired.recipes.clear_outcome(recipe_id, versions[1].id)
         rewritten = await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="something else entirely")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="something else entirely")
         )
         assert rewritten.version is not None
 
     async def test_a_new_version_can_carry_its_prediction_at_birth(self, wired: Fixtures) -> None:
         """The form asks for it beside the intent, so one request records both."""
-        set_id, versions = await _recipe_with_versions(wired, count=1)
+        recipe_id, versions = await _recipe_with_versions(wired, count=1)
 
         version = await wired.recipes.add_version(
-            set_id,
+            recipe_id,
             RecipeVersionPatch(grind_setting="21", intent="one finer", prediction="less sour"),
         )
 
@@ -311,33 +317,33 @@ class TestPrediction:
 
 class TestOutcome:
     async def test_it_is_refused_with_no_prediction(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         await _judged_shot(wired, versions[1].id, "000702", "keep")
 
         result = await wired.recipes.set_outcome(
-            set_id, versions[1].id, VersionOutcomeWrite(outcome="held")
+            recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
         )
 
         assert result.refused == "no_prediction"
 
     async def test_it_is_refused_until_a_shot_has_been_judged(self, wired: Fixtures) -> None:
         """A discarded shot says the shot went wrong, not that the recipe did."""
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
         await _judged_shot(wired, versions[1].id, "000703", None)
         await _judged_shot(wired, versions[1].id, "000704", "discard")
 
         assert (
             await wired.recipes.set_outcome(
-                set_id, versions[1].id, VersionOutcomeWrite(outcome="held")
+                recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
             )
         ).refused == "nothing_to_grade"
 
         await _judged_shot(wired, versions[1].id, "000705", "improve")
         result = await wired.recipes.set_outcome(
-            set_id,
+            recipe_id,
             versions[1].id,
             VersionOutcomeWrite(outcome="partly_held", note="shorter, still bitter"),
         )
@@ -357,38 +363,42 @@ class TestOutcome:
         exactly: Clear on any graded version, Change only while a judged,
         non-discarded shot is still filed under it.
         """
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
         shot_id = await _judged_shot(wired, versions[1].id, "000741", "keep")
-        await wired.recipes.set_outcome(set_id, versions[1].id, VersionOutcomeWrite(outcome="held"))
+        await wired.recipes.set_outcome(
+            recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
+        )
         assert await wired.recipes.assign_shot(shot_id, None)
 
         changed = await wired.recipes.set_outcome(
-            set_id, versions[1].id, VersionOutcomeWrite(outcome="failed")
+            recipe_id, versions[1].id, VersionOutcomeWrite(outcome="failed")
         )
         assert changed.refused == "nothing_to_grade"
 
-        cleared = await wired.recipes.clear_outcome(set_id, versions[1].id)
+        cleared = await wired.recipes.clear_outcome(recipe_id, versions[1].id)
         assert cleared.version is not None and cleared.version.outcome is None
 
     async def test_a_grade_can_be_changed_and_taken_back(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         await wired.recipes.set_prediction(
-            set_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
+            recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
         await _judged_shot(wired, versions[1].id, "000706", "keep")
-        await wired.recipes.set_outcome(set_id, versions[1].id, VersionOutcomeWrite(outcome="held"))
+        await wired.recipes.set_outcome(
+            recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
+        )
 
         changed = await wired.recipes.set_outcome(
-            set_id,
+            recipe_id,
             versions[1].id,
             VersionOutcomeWrite(outcome="failed", note="second one was awful"),
         )
         assert changed.version is not None and changed.version.outcome == "failed"
 
-        cleared = await wired.recipes.clear_outcome(set_id, versions[1].id)
+        cleared = await wired.recipes.clear_outcome(recipe_id, versions[1].id)
         assert cleared.version is not None
         assert cleared.version.outcome is None
         assert cleared.version.outcome_note == ""
@@ -402,26 +412,26 @@ class TestRevert:
     async def test_it_writes_no_version_and_leaves_the_target_untouched(
         self, wired: Fixtures
     ) -> None:
-        set_id, versions = await _recipe_with_versions(wired, count=3)
+        recipe_id, versions = await _recipe_with_versions(wired, count=3)
         target = versions[1]
         await wired.recipes.set_prediction(
-            set_id, target.id, VersionPredictionWrite(prediction="less bitter, a bit shorter")
+            recipe_id, target.id, VersionPredictionWrite(prediction="less bitter, a bit shorter")
         )
         shot_id = await _judged_shot(wired, target.id, "000001", "keep")
         await wired.recipes.set_outcome(
-            set_id, target.id, VersionOutcomeWrite(outcome="held", note="it did")
+            recipe_id, target.id, VersionOutcomeWrite(outcome="held", note="it did")
         )
         before = await wired.recipes.get_version(target.id)
         assert before is not None
         rows_before = await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions")
 
         result = await wired.recipes.rollback(
-            set_id, RollbackWrite(to_version_id=target.id, note="that was worse")
+            recipe_id, RollbackWrite(to_version_id=target.id, note="that was worse")
         )
 
         assert result.refused is None and result.version is not None
         assert await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions") == rows_before
-        row = await wired.recipes.get(set_id)
+        row = await wired.recipes.get(recipe_id)
         assert row is not None and row.current_version_id == target.id
         # What the version says is byte for byte what it said, apart from being current.
         after = await wired.recipes.get_version(target.id)
@@ -434,7 +444,7 @@ class TestRevert:
         )
         assert after.shot_count == 1
         # Exactly one log row, naming both versions.
-        [revert] = await wired.recipes.reverts(set_id)
+        [revert] = await wired.recipes.reverts(recipe_id)
         assert (revert.from_version_id, revert.to_version_id) == (versions[2].id, target.id)
         assert (revert.from_version_label, revert.to_version_label) == ("v1.2", "v1.1")
         assert revert.note == "that was worse" and revert.created_at
@@ -447,18 +457,20 @@ class TestRevert:
             RollbackWrite.model_validate({"to_version_id": 1, "intent": "back"})
 
     async def test_reverting_to_the_current_version_is_refused(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
 
-        result = await wired.recipes.rollback(set_id, RollbackWrite(to_version_id=versions[-1].id))
+        result = await wired.recipes.rollback(
+            recipe_id, RollbackWrite(to_version_id=versions[-1].id)
+        )
 
         assert result.refused == "current_version"
-        assert await wired.recipes.reverts(set_id) == []
+        assert await wired.recipes.reverts(recipe_id) == []
 
     async def test_a_version_of_another_recipe_is_not_a_target(self, wired: Fixtures) -> None:
-        set_id, _ = await _recipe_with_versions(wired)
+        recipe_id, _ = await _recipe_with_versions(wired)
         _, other = await _recipe_with_versions(wired, count=1)
 
-        result = await wired.recipes.rollback(set_id, RollbackWrite(to_version_id=other[0].id))
+        result = await wired.recipes.rollback(recipe_id, RollbackWrite(to_version_id=other[0].id))
 
         assert result.refused == "no_target"
 
@@ -478,7 +490,7 @@ class TestRevert:
         profile = await make_profile_version(wired.db, "Older profile")
         row = await wired.recipes.create(
             RecipeWrite(name="Guji", bean_id=wired.bean_id),
-            SetVersionWrite(profile_version_id=profile, dose_g=18),
+            RecipeVersionWrite(profile_version_id=profile, dose_g=18),
         )
         first = await wired.recipes.current_version(row.id)
         assert first is not None
@@ -495,7 +507,7 @@ class TestRevert:
         match = await wired.recipes.profile_match(
             shot, profile_version_id=profile, device_profile_id=""
         )
-        assert (match.outcome, match.set_version_id) == ("matched", first.id)
+        assert (match.outcome, match.recipe_version_id) == ("matched", first.id)
         other_shot = await make_shot(wired.db, "000002", profile_version_id=other)
         assert (
             await wired.recipes.profile_match(
@@ -513,7 +525,7 @@ class TestTheWayBackOffer:
 
     async def test_after_going_back_the_offer_does_not_point_forward(self, wired: Fixtures) -> None:
         row = await wired.recipes.create(
-            RecipeWrite(name="Guji", bean_id=wired.bean_id), SetVersionWrite(dose_g=18)
+            RecipeWrite(name="Guji", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
         )
         v1 = await wired.recipes.current_version(row.id)
         assert v1 is not None
@@ -532,7 +544,7 @@ class TestTheWayBackOffer:
         assert await wired.recipes.rollback_target(row.id) == v1.id
 
     async def test_an_old_roll_back_row_steps_to_what_it_restored(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired, count=3)
+        recipe_id, versions = await _recipe_with_versions(wired, count=3)
         await _judged_shot(wired, versions[0].id, "000001", "keep")
         await _judged_shot(wired, versions[1].id, "000002", "keep")
         await wired.db.execute(
@@ -540,7 +552,7 @@ class TestTheWayBackOffer:
             (versions[0].id, versions[2].id),
         )
 
-        assert await wired.recipes.rollback_target(set_id) == versions[0].id
+        assert await wired.recipes.rollback_target(recipe_id) == versions[0].id
 
 
 class TestDeadEnds:
@@ -551,9 +563,9 @@ class TestDeadEnds:
     (`restores_version_id`) steps to what it restored instead.
     """
 
-    async def _labels(self, wired: Fixtures, set_id: int) -> tuple[set[str], list[str]]:
-        versions = await wired.recipes.versions(set_id)
-        current = (await wired.recipes.get(set_id)).current_version_id  # type: ignore[union-attr]
+    async def _labels(self, wired: Fixtures, recipe_id: int) -> tuple[set[str], list[str]]:
+        versions = await wired.recipes.versions(recipe_id)
+        current = (await wired.recipes.get(recipe_id)).current_version_id  # type: ignore[union-attr]
         by_id = {version.id: version.version_label for version in versions}
         return (
             {by_id[version_id] for version_id in dead_end_ids(versions, current)},
@@ -563,7 +575,7 @@ class TestDeadEnds:
     async def _fork(self, wired: Fixtures) -> tuple[int, dict[str, int]]:
         """v1 -> v1.1 -> v2 -> v2.1, by name."""
         row = await wired.recipes.create(
-            RecipeWrite(name="Guji", bean_id=wired.bean_id), SetVersionWrite(dose_g=18)
+            RecipeWrite(name="Guji", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
         )
         ids = {"v1": (await wired.recipes.current_version(row.id)).id}  # type: ignore[union-attr]
         for label, patch, major in (
@@ -577,23 +589,23 @@ class TestDeadEnds:
         return row.id, ids
 
     async def test_a_revert_makes_what_it_went_back_past_a_dead_end(self, wired: Fixtures) -> None:
-        set_id, ids = await self._fork(wired)
-        await wired.recipes.rollback(set_id, RollbackWrite(to_version_id=ids["v1.1"]))
-        added = await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19))
+        recipe_id, ids = await self._fork(wired)
+        await wired.recipes.rollback(recipe_id, RollbackWrite(to_version_id=ids["v1.1"]))
+        added = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19))
         assert added is not None and added.version_label == "v1.2"
 
-        dead, line = await self._labels(wired, set_id)
+        dead, line = await self._labels(wired, recipe_id)
 
         assert dead == {"v2", "v2.1"}
         assert line == ["v1.2", "v1.1", "v1"]
 
     async def test_going_back_again_to_a_dead_end_brings_it_back(self, wired: Fixtures) -> None:
-        set_id, ids = await self._fork(wired)
-        await wired.recipes.rollback(set_id, RollbackWrite(to_version_id=ids["v1.1"]))
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19))
-        await wired.recipes.rollback(set_id, RollbackWrite(to_version_id=ids["v2.1"]))
+        recipe_id, ids = await self._fork(wired)
+        await wired.recipes.rollback(recipe_id, RollbackWrite(to_version_id=ids["v1.1"]))
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19))
+        await wired.recipes.rollback(recipe_id, RollbackWrite(to_version_id=ids["v2.1"]))
 
-        dead, line = await self._labels(wired, set_id)
+        dead, line = await self._labels(wired, recipe_id)
 
         assert dead == {"v1.2"}
         assert line == ["v2.1", "v2", "v1.1", "v1"]
@@ -602,22 +614,22 @@ class TestDeadEnds:
         self, wired: Fixtures
     ) -> None:
         """Rows written before a revert became a move of the pointer keep their meaning."""
-        set_id, ids = await self._fork(wired)
+        recipe_id, ids = await self._fork(wired)
         # v2.1 stands for an old roll back of v1: parent v2, restores v1.
         await wired.db.execute(
             "UPDATE recipe_versions SET restores_version_id = ? WHERE id = ?",
             (ids["v1"], ids["v2.1"]),
         )
 
-        dead, line = await self._labels(wired, set_id)
+        dead, line = await self._labels(wired, recipe_id)
 
         assert line == ["v2.1", "v1"]
         assert dead == {"v1.1", "v2"}
 
     async def test_a_recipe_with_no_revert_has_no_dead_end(self, wired: Fixtures) -> None:
-        set_id, _ = await _recipe_with_versions(wired, count=3)
-        versions = await wired.recipes.versions(set_id)
-        current = (await wired.recipes.get(set_id)).current_version_id  # type: ignore[union-attr]
+        recipe_id, _ = await _recipe_with_versions(wired, count=3)
+        versions = await wired.recipes.versions(recipe_id)
+        current = (await wired.recipes.get(recipe_id)).current_version_id  # type: ignore[union-attr]
         assert dead_end_ids(versions, current) == set()
         assert len(live_line(versions, current)) == 3
 
@@ -636,11 +648,11 @@ class TestTheLineOnMalformedData:
     write that could produce them.
     """
 
-    def _row(self, number: int, **over: object) -> SetVersionRow:
-        return SetVersionRow.model_validate(
+    def _row(self, number: int, **over: object) -> RecipeVersionRow:
+        return RecipeVersionRow.model_validate(
             {
                 "id": number,
-                "set_id": 1,
+                "recipe_id": 1,
                 "version_major": number,
                 "created_at": "2026-04-01T08:00:00.000Z",
                 **over,
@@ -688,23 +700,23 @@ class TestTrackRecordAndTarget:
         `graded` has to keep up with it.
         """
         # One version per grade, plus one open and one that predicted nothing.
-        set_id, versions = await _recipe_with_versions(wired, count=len(VERSION_OUTCOMES) + 2)
+        recipe_id, versions = await _recipe_with_versions(wired, count=len(VERSION_OUTCOMES) + 2)
         graded = list(zip(versions[1:], VERSION_OUTCOMES, strict=False))
         for index, (version, outcome) in enumerate(graded):
             await wired.recipes.set_prediction(
-                set_id, version.id, VersionPredictionWrite(prediction="less bitter")
+                recipe_id, version.id, VersionPredictionWrite(prediction="less bitter")
             )
             await _judged_shot(wired, version.id, f"00074{index}", "keep")
             result = await wired.recipes.set_outcome(
-                set_id, version.id, VersionOutcomeWrite(outcome=cast("VersionOutcome", outcome))
+                recipe_id, version.id, VersionOutcomeWrite(outcome=cast("VersionOutcome", outcome))
             )
             assert result.version is not None, outcome
         # The last version is left open: a prediction nobody has graded yet.
         await wired.recipes.set_prediction(
-            set_id, versions[-1].id, VersionPredictionWrite(prediction="still guessing")
+            recipe_id, versions[-1].id, VersionPredictionWrite(prediction="still guessing")
         )
 
-        record = track_record(await wired.recipes.versions(set_id))
+        record = track_record(await wired.recipes.versions(recipe_id))
 
         for outcome in VERSION_OUTCOMES:
             assert getattr(record, outcome) == 1, outcome
@@ -715,7 +727,7 @@ class TestTrackRecordAndTarget:
     async def test_the_roll_back_target_is_the_last_version_with_a_keep(
         self, wired: Fixtures
     ) -> None:
-        set_id, versions = await _recipe_with_versions(wired, count=4)
+        recipe_id, versions = await _recipe_with_versions(wired, count=4)
         await _judged_shot(wired, versions[0].id, "000720", "keep")
         await _judged_shot(wired, versions[1].id, "000721", "keep")
         # Discarded and unlabelled shots are not somebody saying "it worked".
@@ -724,22 +736,22 @@ class TestTrackRecordAndTarget:
         # The current version's own Keep does not count: you are already there.
         await _judged_shot(wired, versions[3].id, "000724", "keep")
 
-        assert await wired.recipes.rollback_target(set_id) == versions[1].id
+        assert await wired.recipes.rollback_target(recipe_id) == versions[1].id
 
     async def test_there_is_no_target_when_nothing_was_ever_kept(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired, count=2)
+        recipe_id, versions = await _recipe_with_versions(wired, count=2)
         await _judged_shot(wired, versions[0].id, "000725", "improve")
 
-        assert await wired.recipes.rollback_target(set_id) is None
+        assert await wired.recipes.rollback_target(recipe_id) is None
 
     async def test_the_label_counts_are_grouped_per_version(self, wired: Fixtures) -> None:
-        set_id, versions = await _recipe_with_versions(wired)
+        recipe_id, versions = await _recipe_with_versions(wired)
         await _judged_shot(wired, versions[1].id, "000730", "keep")
         await _judged_shot(wired, versions[1].id, "000731", "keep")
         await _judged_shot(wired, versions[1].id, "000732", "improve")
         await _judged_shot(wired, versions[1].id, "000733", None)
 
-        counts = await wired.recipes.label_counts(set_id)
+        counts = await wired.recipes.label_counts(recipe_id)
 
         assert counts[versions[1].id].keep == 2
         assert counts[versions[1].id].improve == 1

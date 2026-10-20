@@ -97,7 +97,7 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
     subject = fixture.shots[-1]
     recipes = RecipesRepository(db)
     predicted = await recipes.add_version(
-        fixture.set_id,
+        fixture.recipe_id,
         RecipeVersionPatch(prediction=PREDICTION, compares_to_version_id=fixture.version_id),
     )
     assert predicted is not None
@@ -193,7 +193,7 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
     assert review.version == "v1.1"
     assert review.prediction == PREDICTION
     assert review.compares_to == "v1"
-    assert f"v1.1 of Set {fixture.set_id}" in review.shot
+    assert f"v1.1 of Recipe {fixture.recipe_id}" in review.shot
     assert "Recipe " in review.shot or "recipe" in review.shot.lower()
     rendered = review.render()["prediction"]
     assert PREDICTION in rendered and "measured against v1" in rendered
@@ -215,7 +215,7 @@ async def test_with_no_prediction_or_no_recipe_version_it_says_so(fixture: Fixtu
     )
     unfiled = await build_review_input(fixture.db, shot_id)
     assert unfiled.version == "" and unfiled.prediction == ""
-    assert "not filed under a Set version" in unfiled.render()["prediction"]
+    assert "not filed under a Recipe version" in unfiled.render()["prediction"]
 
 
 async def test_a_prediction_measured_against_nothing_says_so(fixture: Fixture) -> None:
@@ -315,7 +315,7 @@ def test_a_review_reads_every_item_but_the_judgement_the_note_the_label_and_itse
     assert not [key for key in keys if key.startswith("reading_")]
     # The Recipe version's recipe and where the shot is filed are read: the checks' shares of the
     # target need them.
-    assert {"recipe_grind", "recipe_yield", "set_version", "checks"} <= keys
+    assert {"recipe_grind", "recipe_yield", "recipe_version", "checks"} <= keys
     # Excluded-by-default items are read too: the curve's extra channels.
     assert {"curve_pump_flow", "curve_target_temperature", "machine_shot_number"} <= keys
 

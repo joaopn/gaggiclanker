@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from collections.abc import AsyncIterator, Iterable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -44,58 +44,6 @@ _PRAGMAS: tuple[str, ...] = (
     # holds the working set of a few thousand shots' index rows.
     "PRAGMA cache_size = -64000",
 )
-
-
-#: The columns the Recipe rename moved, by their new name, with the name the Python code
-#: still reads them under. A bridge: the served names move with the contract, after the
-#: database, so a row read from the database answers to the name its readers still know.
-_LEGACY_KEYS: dict[str, str] = {
-    "recipe_id": "set_id",
-    "recipe_version_id": "set_version_id",
-    "accepted_recipe_id": "accepted_set_id",
-    "accepted_recipe_version_id": "accepted_set_version_id",
-    "copied_from_recipe_id": "copied_from_set_id",
-    "recipes_read": "sets_read",
-    "recipe_name": "set_name",
-    "recipe_version_label": "set_version_label",
-}
-
-
-class _LegacyRow:
-    """A row whose renamed columns are listed, and answer, under their old names as well."""
-
-    __slots__ = ("_index", "_names", "_values")
-
-    def __init__(self, names: list[str], values: tuple[Any, ...]) -> None:
-        self._names = [_LEGACY_KEYS.get(name, name) for name in names]
-        self._values = values
-        self._index = {name: i for i, name in reversed(list(enumerate(names)))}
-        for i, name in reversed(list(enumerate(self._names))):
-            self._index[name] = i
-
-    def keys(self) -> list[str]:
-        return list(self._names)
-
-    def __getitem__(self, key: Any) -> Any:
-        if isinstance(key, str):
-            return self._values[self._index[key]]
-        return self._values[key]
-
-    def __iter__(self) -> Iterator[Any]:
-        return iter(self._values)
-
-    def __len__(self) -> int:
-        return len(self._values)
-
-    def __repr__(self) -> str:
-        return f"<row {dict(zip(self._names, self._values, strict=True))}>"
-
-
-def _legacy(cursor: aiosqlite.Cursor, rows: list[aiosqlite.Row]) -> list[aiosqlite.Row]:
-    names = [column[0] for column in cursor.description or ()]
-    if not rows or not any(name in _LEGACY_KEYS for name in names):
-        return rows
-    return [cast("aiosqlite.Row", _LegacyRow(names, tuple(row))) for row in rows]
 
 
 _IN_TRANSACTION: contextvars.ContextVar[bool] = contextvars.ContextVar(
@@ -173,12 +121,11 @@ class Database:
 
     async def fetch_one(self, sql: str, params: SqlParams = ()) -> aiosqlite.Row | None:
         async with self.connection.execute(sql, params) as cursor:
-            row = await cursor.fetchone()
-            return None if row is None else _legacy(cursor, [row])[0]
+            return await cursor.fetchone()
 
     async def fetch_all(self, sql: str, params: SqlParams = ()) -> list[aiosqlite.Row]:
         async with self.connection.execute(sql, params) as cursor:
-            return _legacy(cursor, list(await cursor.fetchall()))
+            return list(await cursor.fetchall())
 
     async def fetch_value(self, sql: str, params: SqlParams = ()) -> Any:
         """The first column of the first row, or ``None``."""

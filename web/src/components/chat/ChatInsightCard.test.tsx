@@ -25,9 +25,9 @@ function insight(overrides: Parameters<typeof knowledgeInsight>[0] = {}) {
   return knowledgeInsight({
     id: 7,
     text: "Two clicks finer on the Niche.",
-    set_id: 3,
-    set_version_id: 22,
-    set_version_label: "v2",
+    recipe_id: 3,
+    recipe_version_id: 22,
+    recipe_version_label: "v2",
     general: false,
     scope: {},
     evidence_shot_ids: [4, 6],
@@ -81,7 +81,7 @@ describe("ChatInsightCard", () => {
 
   it("says when no version is recorded", async () => {
     getKnowledgeInsight.mockResolvedValue(
-      insight({ set_version_id: null, set_version_label: null }),
+      insight({ recipe_version_id: null, recipe_version_label: null }),
     );
     renderCard();
     expect(await screen.findByTestId("chat-insight-about")).toHaveTextContent(
@@ -195,14 +195,14 @@ describe("ChatInsightCard", () => {
 
   describe("what it rests on and what it replaces", () => {
     const REST_CHANGED = {
-      set_version_id: 21,
+      recipe_version_id: 21,
       label: "v1",
       outcome_then: "held",
       outcome_now: "failed",
       changed: true,
     } as const;
     const REST_SAME = {
-      set_version_id: 22,
+      recipe_version_id: 22,
       label: "v2",
       outcome_then: "held",
       outcome_now: "held",

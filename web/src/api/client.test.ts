@@ -132,9 +132,9 @@ describe("the insight deletion requests", () => {
     await getInsightDeletions(3);
     await getInsightDeletions(3, null);
 
-    expect(spy.mock.calls[0]?.[0]).toBe("/api/sets/3/insight-deletions?thread_id=14");
-    expect(spy.mock.calls[1]?.[0]).toBe("/api/sets/3/insight-deletions");
-    expect(spy.mock.calls[2]?.[0]).toBe("/api/sets/3/insight-deletions");
+    expect(spy.mock.calls[0]?.[0]).toBe("/api/recipes/3/insight-deletions?thread_id=14");
+    expect(spy.mock.calls[1]?.[0]).toBe("/api/recipes/3/insight-deletions");
+    expect(spy.mock.calls[2]?.[0]).toBe("/api/recipes/3/insight-deletions");
   });
 });
 

@@ -39,11 +39,13 @@ async def _pinned_lever(db: Database) -> tuple[Lever, int, int]:
         BoardRowWrite(label=document["label"], current_version_id=copy_version, origin="draft")
     )
     await PinsRepository(db).insert(
-        PinWrite(set_version_id=lever.set_version, board_id=row.id, profile_version_id=copy_version)
+        PinWrite(
+            recipe_version_id=lever.recipe_version, board_id=row.id, profile_version_id=copy_version
+        )
     )
     shot = await add_shot(
         db,
-        set_version_id=lever.set_version,
+        recipe_version_id=lever.recipe_version,
         profile_version_id=copy_version,
         profile=document,
         device_id="000950",
@@ -78,7 +80,7 @@ async def test_the_pinned_versions_override_applies_to_a_shot_on_the_copy(db: Da
     assert (await _row(db, shot)).checks.badge == "ramp: early yield +4"
 
     await SignatureService(db).propose_override(
-        set_version_id=lever.set_version,
+        recipe_version_id=lever.recipe_version,
         profile_version_id=lever.version,
         expectation_id=ramp.id,
         compare={"op": "<=", "value": 1.3},
@@ -89,7 +91,10 @@ async def test_the_pinned_versions_override_applies_to_a_shot_on_the_copy(db: Da
     assert (await _row(db, shot)).checks.badge == "decline: skipped +3"
     # The version the Recipe moved on to is not the pinned one: its shots read the profile's own.
     other = await add_shot(
-        db, set_version_id=lever.other_version, profile_version_id=lever.version, device_id="000951"
+        db,
+        recipe_version_id=lever.other_version,
+        profile_version_id=lever.version,
+        device_id="000951",
     )
     assert (await _row(db, other)).checks.badge == "ramp: early yield +4"
 
@@ -110,7 +115,7 @@ async def test_a_rejection_on_the_original_reaches_the_copys_shots_at_once(db: D
 async def test_an_unpinned_copy_is_still_judged_by_the_original(db: Database) -> None:
     lever, _copy, shot = await _pinned_lever(db)
     await _propose(lever, confirm=True)
-    pin = await PinsRepository(db).live_for_version(lever.set_version)
+    pin = await PinsRepository(db).live_for_version(lever.recipe_version)
     assert pin is not None
     await PinsRepository(db).mark_unpinned(pin.id)
 
@@ -123,8 +128,8 @@ async def test_the_lines_and_the_review_input_read_the_originals_signature(db: D
 
     assert await signature_lines(db, copy_version) == await signature_lines(db, lever.version)
     assert await signature_lines(db, copy_version)
-    block = await signature_block(db, copy_version, lever.set_version)
-    assert block == await signature_block(db, lever.version, lever.set_version)
+    block = await signature_block(db, copy_version, lever.recipe_version)
+    assert block == await signature_block(db, lever.version, lever.recipe_version)
     review = await build_review_input(db, shot)
     original = await build_review_input(db, lever.shot)
     assert review.signature_confirmed == original.signature_confirmed == 4

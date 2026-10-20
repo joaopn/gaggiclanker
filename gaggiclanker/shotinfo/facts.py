@@ -24,7 +24,7 @@ from typing import Any
 
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
-from gaggiclanker.db.repos.recipes import SetVersionRow
+from gaggiclanker.db.repos.recipes import RecipeVersionRow
 from gaggiclanker.db.repos.reviews import ReadingRecord
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotSampleRow
 from gaggiclanker.domain.signature import ShotChecks
@@ -69,7 +69,7 @@ class ShotFacts:
     judgement: ShotJudgementRow | None = None
     #: The Recipe version the shot is filed under, with its recipe. ``None`` for a
     #: shot in the inbox.
-    version: SetVersionRow | None = None
+    version: RecipeVersionRow | None = None
     #: What was typed on the machine's own notes card, when it was pulled.
     note: DeviceShotNotesRow | None = None
     #: What the shot's readings are: the newest review of any status, the newest finished one and
@@ -91,14 +91,14 @@ class ShotFacts:
         return self.shot.id
 
     @property
-    def set_id(self) -> int | None:
-        badge = self.shot.set_badge
-        return badge.set_id if badge is not None else None
+    def recipe_id(self) -> int | None:
+        badge = self.shot.recipe_badge
+        return badge.recipe_id if badge is not None else None
 
     @property
     def version_label(self) -> str | None:
         """The name of the Recipe version the shot is filed under, "v1.1"."""
-        badge = self.shot.set_badge
+        badge = self.shot.recipe_badge
         return badge.version_label if badge is not None else None
 
     @property
@@ -185,7 +185,7 @@ class ShotFacts:
         return CheckSubject(
             shot_id=shot.id,
             profile_version_id=shot.profile_version_id,
-            set_version_id=shot.set_version_id,
+            recipe_version_id=shot.recipe_version_id,
             warnings=self.warnings,
             phases=self.phases,
             duration_s=shot.duration_ms / 1000,

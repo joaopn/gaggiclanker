@@ -184,7 +184,7 @@ async def test_the_summary_is_never_served_to_the_chat(
         assert SUMMARY not in (await call(tool_context, tool, shot_id=shot))["text"], tool
     compared = (await call(ctx, "compare_shots", shot_ids=[shot, archive.shots[0]]))["shots"]
     assert SUMMARY not in json.dumps(compared)
-    listed = await call(recipe_ctx, "list_set_shots")
+    listed = await call(recipe_ctx, "list_recipe_shots")
     assert SUMMARY not in json.dumps(listed)
 
 
@@ -373,7 +373,7 @@ async def test_the_recipe_chat_s_opening_context_holds_every_claim_not_rejected(
     review_id = await _reading(archive.db, shot, claims=claims)
     await _answer(archive.db, review_id, 1, keep=False)
 
-    text = await opening_context(archive.db, ToolScope.for_thread(archive.set_id))
+    text = await opening_context(archive.db, ToolScope.for_thread(archive.recipe_id))
     assert CLAIM in text
     assert OTHER_CLAIM not in text
     assert SUMMARY not in text
@@ -532,7 +532,7 @@ async def test_a_newer_review_that_did_not_finish_hides_nothing_of_the_one_in_fo
         assert "2 claims kept, 1 rejected" in text, (status, tool)
         assert CLAIM in text and ANSWER in text, (status, tool)
         assert OTHER_CLAIM not in text and SUMMARY not in text, (status, tool)
-    context = await opening_context(archive.db, ToolScope.for_thread(archive.set_id))
+    context = await opening_context(archive.db, ToolScope.for_thread(archive.recipe_id))
     assert CLAIM in context and OTHER_CLAIM not in context
 
     # The view serves the same review's claims, not nothing and not a newer one's.

@@ -4,21 +4,21 @@ Profile version 1, Classic 9 bar, as stored (compact JSON, every field it stores
 
 This profile version has no signature in force, so its shots are read without one. When the conversation turns to how its shots behave, propose one with propose_signature (profile version 1): what the profile is built to do, in a few expectations, never what one shot did. What you propose is in force at once, every shot on the profile is checked against it, and the person can reject any expectation.
 
-THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET
+THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE
 
-Set 1: Guji natural on the Niche. Bean: Ethiopia Guji, light roast, natural process; taste acidity 4 (1 low to 5 high). Grinder: Niche Zero, adjusted in numbers.
+Recipe 1: Guji natural on the Niche. Bean: Ethiopia Guji, light roast, natural process; taste acidity 4 (1 low to 5 high). Grinder: Niche Zero, adjusted in numbers.
 5 versions, 9 shots. In use. New shots on its profile are filed here.
 Pinned on the machine: v2 as "Adaptive v2 v2".
 
-THIS VERSION IS v2.2 — the current version of this Set
-Recipe: grind 21, 18 g in, 36 g out, 93 °C from its profile.
+THIS VERSION IS v2.2 — the current version of this Recipe
+Version numbers: grind 21, 18 g in, 36 g out, 93 °C from its profile.
 Changed against v2.1: Grind 22 → 21.
 What you are trying: One number finer than the Keep recipe, for a little more body.
 Prediction (compared to v2.1): Shot time up by 2 to 3 s against v2.1, yield the same, and no more bitterness.
 Outcome: open — nobody has graded it yet.
 
 PROPOSALS
-Nothing has been proposed to the person on this Set yet.
+Nothing has been proposed to the person on this Recipe yet.
 
 THE EXPERIMENT SO FAR (oldest first)
 - v1 · grind 22, 18 g in, 36 g out, 93 °C from its profile · 2 shots (2 Keep, 0 Improve, 0 Discard) · averages over counted shots: shot time 33.5 s, yield 36.1 g, ratio 1:2.00, rating 4.0, first puck flow 7.2 s · no prediction
@@ -28,14 +28,14 @@ THE EXPERIMENT SO FAR (oldest first)
 - v2.2 ← this version · Grind 22 → 21 · 2 shots (0 Keep, 1 Improve, 1 Discard) · averages over 1 counted shot: shot time 36.0 s, yield 36.3 g, ratio 1:2.02, rating 3.0, first puck flow 8.0 s · predicted against v2.1: Shot time up by 2 to 3 s against v2.1, yield the same, and no more bitterness. → open — nobody has graded it yet
 Track record: 1 of 3 graded predictions held (0 partly, 1 failed, 1 inconclusive); 1 open, 1 with no prediction.
 
-HOW MUCH THIS SET VARIES WHEN NOTHING CHANGED
+HOW MUCH THIS RECIPE VARIES WHEN NOTHING CHANGED
 This is the yardstick. A difference smaller than it is not a result.
-- Shot time: ±0.8 s, from 5 repeat shots of 1 recipe.
-- First puck flow: ±0.3 s, from 5 repeat shots of 1 recipe.
-- Yield: ±0.2 g, from 5 repeat shots of 1 recipe.
-- Peak pressure: ±0.08 bar, from 5 repeat shots of 1 recipe.
-- Puck flow: ±0.06 ml/s, from 5 repeat shots of 1 recipe.
-- Rating: ±0.4, from 5 repeat shots of 1 recipe.
+- Shot time: ±0.8 s, from 5 repeat shots at 1 setting.
+- First puck flow: ±0.3 s, from 5 repeat shots at 1 setting.
+- Yield: ±0.2 g, from 5 repeat shots at 1 setting.
+- Peak pressure: ±0.08 bar, from 5 repeat shots at 1 setting.
+- Puck flow: ±0.06 ml/s, from 5 repeat shots at 1 setting.
+- Rating: ±0.4, from 5 repeat shots at 1 setting.
 
 THE EVIDENCE FOR v2.2 AGAINST v2.1
 Every counted shot of both versions, never a chosen one.
@@ -55,7 +55,7 @@ v2.2: 1 counted shot — 0 sour, 1 balanced, 0 bitter; 0 Keep, 1 Improve, 0 unla
 v2.1: 3 counted shots — 0 sour, 3 balanced, 0 bitter; 3 Keep, 0 Improve, 0 unlabelled.
 
 ALL 2 SHOTS OF v2.2 (newest first)
-Each in its base information. Every other version's shots are a list_set_shots search away; get_shot_extended adds any one shot's diagnostics, phases and curve.
+Each in its base information. Every other version's shots are a list_recipe_shots search away; get_shot_extended adds any one shot's diagnostics, phases and curve.
 Shots written out below: 9, 8.
 
 shot 9
@@ -63,7 +63,7 @@ shot 9
 signature: read without a signature
 [Identity and status]
 Date and time: 2026-04-05 08:10
-Set version: v2.2 of Set 1
+Recipe version: v2.2 of Recipe 1
 Label: Discard
 Counted: not counted: discarded
 Machine's shot number: 000007
@@ -87,7 +87,7 @@ shot 8
 signature: read without a signature
 [Identity and status]
 Date and time: 2026-04-05 08:00
-Set version: v2.2 of Set 1
+Recipe version: v2.2 of Recipe 1
 Label: Improve
 Counted: counted
 Machine's shot number: 000006

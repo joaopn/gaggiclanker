@@ -11,14 +11,14 @@ from __future__ import annotations
 import json
 
 from gaggiclanker.db.repos.judgements import JudgementWrite
-from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeVersionWrite, RecipeWrite
 from tests.recipes.conftest import Fixtures, make_shot
 
 
 async def _three_versions_and_ten_shots(wired: Fixtures) -> int:
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-        SetVersionWrite(dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
+        RecipeVersionWrite(dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
     )
     versions = [(await wired.recipes.current_version(row.id))]
     for grind, intent in (("21", "finer"), ("20", "finer still")):
@@ -55,10 +55,10 @@ async def _three_versions_and_ten_shots(wired: Fixtures) -> int:
 
 class TestTrends:
     async def test_the_shape_the_chart_draws(self, wired: Fixtures) -> None:
-        set_id = await _three_versions_and_ten_shots(wired)
-        trends = await wired.recipes.trends(set_id)
+        recipe_id = await _three_versions_and_ten_shots(wired)
+        trends = await wired.recipes.trends(recipe_id)
 
-        assert trends.set_id == set_id
+        assert trends.recipe_id == recipe_id
         assert len(trends.shots) == 10
         # Oldest version first: a trend reads left to right.
         assert [version.version_label for version in trends.versions] == ["v1", "v1.1", "v1.2"]
@@ -74,8 +74,8 @@ class TestTrends:
     async def test_a_shot_with_no_judgement_takes_the_versions_dose_for_its_ratio(
         self, wired: Fixtures
     ) -> None:
-        set_id = await _three_versions_and_ten_shots(wired)
-        trends = await wired.recipes.trends(set_id)
+        recipe_id = await _three_versions_and_ten_shots(wired)
+        trends = await wired.recipes.trends(recipe_id)
         unjudged = [point for point in trends.shots if point.rating is None]
         assert unjudged, "the fixture is supposed to leave some shots unjudged"
         # No dose typed: the version's 18 g and the scale's 36 g.
@@ -83,7 +83,7 @@ class TestTrends:
 
     async def test_a_shot_with_no_dose_anywhere_has_no_ratio(self, wired: Fixtures) -> None:
         row = await wired.recipes.create(
-            RecipeWrite(name="No dose", bean_id=wired.bean_id), SetVersionWrite()
+            RecipeWrite(name="No dose", bean_id=wired.bean_id), RecipeVersionWrite()
         )
         assert row.current_version_id is not None
         shot_id = await make_shot(wired.db, "000777")
@@ -98,7 +98,7 @@ class TestTrends:
         """A zero would draw a bar at the bottom saying the recipe was terrible."""
         row = await wired.recipes.create(
             RecipeWrite(name="Fresh start", bean_id=wired.bean_id),
-            SetVersionWrite(),
+            RecipeVersionWrite(),
         )
         trends = await wired.recipes.trends(row.id)
         assert trends.shots == []
@@ -114,13 +114,13 @@ class TestTrends:
         The route itself is exercised in `test_api.py::TestTrendsRoute`; this is
         about the payload's keys, which are what a chart component destructures.
         """
-        set_id = await _three_versions_and_ten_shots(wired)
-        payload = (await wired.recipes.trends(set_id)).model_dump(mode="json")
-        assert set(payload) == {"set_id", "versions", "shots"}
+        recipe_id = await _three_versions_and_ten_shots(wired)
+        payload = (await wired.recipes.trends(recipe_id)).model_dump(mode="json")
+        assert set(payload) == {"recipe_id", "versions", "shots"}
         assert set(payload["shots"][0]) == {
             "shot_id",
             "device_id",
-            "set_version_id",
+            "recipe_version_id",
             "version_label",
             "started_at",
             "duration_s",
@@ -134,7 +134,7 @@ async def test_points_are_in_the_order_the_shots_were_pulled_not_the_versions_ma
 ) -> None:
     """After going back, new shots of an older version come after the newer version's."""
     row = await wired.recipes.create(
-        RecipeWrite(name="Order", bean_id=wired.bean_id), SetVersionWrite(dose_g=18)
+        RecipeWrite(name="Order", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
     )
     first = await wired.recipes.current_version(row.id)
     assert first is not None
@@ -178,7 +178,7 @@ async def _counted_recipe(wired: Fixtures) -> tuple[int, int]:
     """
     row = await wired.recipes.create(
         RecipeWrite(name="Counted", bean_id=wired.bean_id),
-        SetVersionWrite(dose_g=18.0, target_yield_g=36.0),
+        RecipeVersionWrite(dose_g=18.0, target_yield_g=36.0),
     )
     assert row.current_version_id is not None
     version = row.current_version_id
@@ -214,8 +214,8 @@ async def _counted_recipe(wired: Fixtures) -> tuple[int, int]:
 
 class TestTheAveragesAreOverCountedShots:
     async def test_a_discarded_and_an_incomplete_shot_pull_no_mean(self, wired: Fixtures) -> None:
-        set_id, _ = await _counted_recipe(wired)
-        (version,) = (await wired.recipes.trends(set_id)).versions
+        recipe_id, _ = await _counted_recipe(wired)
+        (version,) = (await wired.recipes.trends(recipe_id)).versions
 
         assert version.shots == 5
         assert version.counted_shots == 3
@@ -227,8 +227,8 @@ class TestTheAveragesAreOverCountedShots:
         assert version.avg_ratio == round((2.0 + 2.11) / 2, 3)
 
     async def test_each_mean_says_how_many_shots_it_is_over(self, wired: Fixtures) -> None:
-        set_id, _ = await _counted_recipe(wired)
-        (version,) = (await wired.recipes.trends(set_id)).versions
+        recipe_id, _ = await _counted_recipe(wired)
+        (version,) = (await wired.recipes.trends(recipe_id)).versions
 
         counts = version.averaged_over
         assert (counts.duration_s, counts.yield_g, counts.ratio) == (3, 2, 2)
@@ -236,7 +236,8 @@ class TestTheAveragesAreOverCountedShots:
 
     async def test_a_version_with_only_uncounted_shots_has_no_mean(self, wired: Fixtures) -> None:
         row = await wired.recipes.create(
-            RecipeWrite(name="Only a discard", bean_id=wired.bean_id), SetVersionWrite(dose_g=18.0)
+            RecipeWrite(name="Only a discard", bean_id=wired.bean_id),
+            RecipeVersionWrite(dose_g=18.0),
         )
         assert row.current_version_id is not None
         shot = await make_shot(wired.db, "000810")
@@ -253,7 +254,8 @@ class TestTheAveragesAreOverCountedShots:
         self, wired: Fixtures
     ) -> None:
         row = await wired.recipes.create(
-            RecipeWrite(name="Standard board", bean_id=wired.bean_id), SetVersionWrite(dose_g=18.0)
+            RecipeWrite(name="Standard board", bean_id=wired.bean_id),
+            RecipeVersionWrite(dose_g=18.0),
         )
         assert row.current_version_id is not None
         shot = await make_shot(wired.db, "000811")
@@ -272,7 +274,7 @@ class TestTheAveragesAreOverCountedShots:
 async def test_the_ratio_s_dose_is_the_judgement_s_when_one_was_typed(wired: Fixtures) -> None:
     """18 g in the version, 20 g typed on one shot: that shot's ratio is yield over 20."""
     row = await wired.recipes.create(
-        RecipeWrite(name="Typed dose", bean_id=wired.bean_id), SetVersionWrite(dose_g=18.0)
+        RecipeWrite(name="Typed dose", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18.0)
     )
     assert row.current_version_id is not None
     for device, dose_in in (("000820", None), ("000821", 20.0)):
@@ -288,8 +290,10 @@ async def test_the_ratio_s_dose_is_the_judgement_s_when_one_was_typed(wired: Fix
 
 
 async def test_trends_can_be_given_the_counted_shots_it_would_read(wired: Fixtures) -> None:
-    set_id, _ = await _counted_recipe(wired)
+    recipe_id, _ = await _counted_recipe(wired)
 
-    given = await wired.recipes.trends(set_id, counted=await wired.recipes.counted_shots(set_id))
+    given = await wired.recipes.trends(
+        recipe_id, counted=await wired.recipes.counted_shots(recipe_id)
+    )
 
-    assert given == await wired.recipes.trends(set_id)
+    assert given == await wired.recipes.trends(recipe_id)

@@ -20,9 +20,9 @@ from fastapi import FastAPI
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.recipes import (
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
     RollbackWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
@@ -104,7 +104,7 @@ async def a_recipe(wired: Fixtures) -> tuple[int, int]:
     """A Recipe with one version, and both ids."""
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-        SetVersionWrite(dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
+        RecipeVersionWrite(dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
     )
     assert row.current_version_id is not None
     return row.id, row.current_version_id
@@ -113,7 +113,7 @@ async def a_recipe(wired: Fixtures) -> tuple[int, int]:
 class TestWhichShotsCount:
     async def test_discards_quarantines_and_incompletes_are_left_out(self, wired: Fixtures) -> None:
         """Three exclusions, and an unlabelled shot is not one of them."""
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         judgements = JudgementsRepository(wired.db)
         plain = await store_shot(wired.shots, "000001")
         kept = await store_shot(wired.shots, "000002")
@@ -125,7 +125,7 @@ class TestWhichShotsCount:
         await judgements.upsert(kept, JudgementWrite(decision="keep"))
         await judgements.upsert(discarded, JudgementWrite(decision="discard"))
 
-        counted = await wired.recipes.counted_shots(set_id)
+        counted = await wired.recipes.counted_shots(recipe_id)
 
         assert [shot.shot_id for shot in counted] == [plain, kept]
         assert [shot.decision for shot in counted] == [None, "keep"]
@@ -133,10 +133,10 @@ class TestWhichShotsCount:
     async def test_a_shot_filed_under_another_recipe_is_not_this_recipes_evidence(
         self, wired: Fixtures
     ) -> None:
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         other = await wired.recipes.create(
             RecipeWrite(name="Kenya on the Niche", bean_id=wired.bean_id),
-            SetVersionWrite(dose_g=18.0),
+            RecipeVersionWrite(dose_g=18.0),
         )
         mine = await store_shot(wired.shots, "000001")
         theirs = await store_shot(wired.shots, "000002")
@@ -145,7 +145,7 @@ class TestWhichShotsCount:
         assert await wired.recipes.assign_shot(theirs, other.current_version_id)
         assert unfiled  # filed under no Recipe at all
 
-        counted = await wired.recipes.counted_shots(set_id)
+        counted = await wired.recipes.counted_shots(recipe_id)
 
         assert [shot.shot_id for shot in counted] == [mine]
 
@@ -155,7 +155,7 @@ class TestWhereEachMeasureComesFrom:
         self, wired: Fixtures
     ) -> None:
         """Two columns, three JSON paths out of the stored diagnostics, one judgement."""
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         shot_id = await store_shot(
             wired.shots,
             "000001",
@@ -167,7 +167,7 @@ class TestWhereEachMeasureComesFrom:
             shot_id, JudgementWrite(rating=4, balance="sour", decision="improve")
         )
 
-        counted = (await wired.recipes.counted_shots(set_id))[0]
+        counted = (await wired.recipes.counted_shots(recipe_id))[0]
 
         assert counted.shot_time_s == 28.0
         assert counted.first_drip_s == 6.5
@@ -188,7 +188,7 @@ class TestWhereEachMeasureComesFrom:
         no time, and a machine with no pressure sensor stores no pressure block
         at all.
         """
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         bare = await store_shot(wired.shots, "000001", duration_ms=0, final_weight_g=None)
         blind = await store_shot(
             wired.shots, "000002", diagnostics_json=diagnostics(max_bar=None, first_drip_s=None)
@@ -196,7 +196,7 @@ class TestWhereEachMeasureComesFrom:
         for shot_id in (bare, blind):
             assert await wired.recipes.assign_shot(shot_id, version_id)
 
-        counted = {shot.shot_id: shot for shot in await wired.recipes.counted_shots(set_id)}
+        counted = {shot.shot_id: shot for shot in await wired.recipes.counted_shots(recipe_id)}
 
         assert counted[bare].shot_time_s is None
         assert counted[bare].yield_g is None
@@ -218,13 +218,13 @@ class TestWhereEachMeasureComesFrom:
         happened, so both are read as absent — the same rule the header's zero
         duration already gets.
         """
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         empty = await store_shot(
             wired.shots, "000001", diagnostics_json=diagnostics(max_bar=0.0, brew_flow=0.0)
         )
         assert await wired.recipes.assign_shot(empty, version_id)
 
-        counted = (await wired.recipes.counted_shots(set_id))[0]
+        counted = (await wired.recipes.counted_shots(recipe_id))[0]
 
         assert counted.peak_pressure_bar is None
         assert counted.brew_flow_ml_s is None
@@ -236,13 +236,13 @@ class TestWhereEachMeasureComesFrom:
         hidden behind a zero there, and reading 0.0 as absent would throw away
         the fastest shots.
         """
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         fast = await store_shot(
             wired.shots, "000001", diagnostics_json=diagnostics(first_drip_s=0.0)
         )
         assert await wired.recipes.assign_shot(fast, version_id)
 
-        counted = (await wired.recipes.counted_shots(set_id))[0]
+        counted = (await wired.recipes.counted_shots(recipe_id))[0]
 
         assert counted.first_drip_s == 0.0
 
@@ -264,13 +264,13 @@ class TestWhereEachMeasureComesFrom:
             name: derive_shot(shot, slog_to_raw(shot), device_id="000001").shot.diagnostics_json
             for name, shot in (("scale", slog), ("bare", blank))
         }
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         ids = {}
         for number, (name, blob) in enumerate(stored.items(), start=1):
             ids[name] = await store_shot(wired.shots, f"00000{number}", diagnostics_json=blob)
             assert await wired.recipes.assign_shot(ids[name], version_id)
 
-        counted = {shot.shot_id: shot for shot in await wired.recipes.counted_shots(set_id)}
+        counted = {shot.shot_id: shot for shot in await wired.recipes.counted_shots(recipe_id)}
 
         assert counted[ids["scale"]].cup_first_drip_s == 12.0
         assert counted[ids["scale"]].cup_flow_g_s is not None
@@ -290,7 +290,7 @@ class TestWhereEachMeasureComesFrom:
         Recipe page that answered 500 over one odd blob in one shot's diagnostics
         would be a bad trade for a number that is only ever an average.
         """
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         shot_id = await store_shot(
             wired.shots,
             "000001",
@@ -300,7 +300,7 @@ class TestWhereEachMeasureComesFrom:
         )
         assert await wired.recipes.assign_shot(shot_id, version_id)
 
-        counted = (await wired.recipes.counted_shots(set_id))[0]
+        counted = (await wired.recipes.counted_shots(recipe_id))[0]
 
         assert counted.first_drip_s is None
         assert counted.peak_pressure_bar is None
@@ -333,7 +333,7 @@ class TestWhereEachMeasureComesFrom:
         the one somebody wrote down; and where both exist the typed one is that
         person correcting the scale.
         """
-        set_id, version_id = await a_recipe(wired)
+        recipe_id, version_id = await a_recipe(wired)
         shot_id = await store_shot(
             wired.shots,
             "000001",
@@ -346,25 +346,25 @@ class TestWhereEachMeasureComesFrom:
                 shot_id, JudgementWrite(dose_out_g=dose_out_g)
             )
 
-        counted = (await wired.recipes.counted_shots(set_id))[0]
+        counted = (await wired.recipes.counted_shots(recipe_id))[0]
 
         assert counted.yield_g == expected
 
     async def test_each_shot_carries_its_versions_recipe(self, wired: Fixtures) -> None:
         """Which is what makes a revert's shots repeats of what they were."""
-        set_id, first = await a_recipe(wired)
+        recipe_id, first = await a_recipe(wired)
         second = await wired.recipes.add_version(
-            set_id, RecipeVersionPatch(grind_setting="21", intent="one finer")
+            recipe_id, RecipeVersionPatch(grind_setting="21", intent="one finer")
         )
         assert second is not None
         # Going back writes no version: the shot below is on the first again.
-        reverted = await wired.recipes.rollback(set_id, RollbackWrite(to_version_id=first))
+        reverted = await wired.recipes.rollback(recipe_id, RollbackWrite(to_version_id=first))
         assert reverted.version is not None and reverted.version.id == first
         for index, version_id in enumerate((first, second.id, first)):
             shot_id = await store_shot(wired.shots, f"00000{index + 1}")
             assert await wired.recipes.assign_shot(shot_id, version_id)
 
-        counted = await wired.recipes.counted_shots(set_id)
+        counted = await wired.recipes.counted_shots(recipe_id)
 
         recipes = [shot.recipe for shot in counted]
         assert recipes[0] == recipes[2], (
@@ -409,7 +409,7 @@ class TestTheRecipeDetail:
         )
         created = self.data(
             await client.post(
-                "/api/sets",
+                "/api/recipes",
                 json=await with_a_profile(
                     client,
                     {
@@ -427,7 +427,7 @@ class TestTheRecipeDetail:
         )
         second = self.data(
             await client.post(
-                f"/api/sets/{created['id']}/versions",
+                f"/api/recipes/{created['id']}/versions",
                 json={
                     "grind_setting": "21",
                     "intent": "one finer",
@@ -437,7 +437,7 @@ class TestTheRecipeDetail:
         )
         third = self.data(
             await client.post(
-                f"/api/sets/{created['id']}/versions",
+                f"/api/recipes/{created['id']}/versions",
                 json={"dose_g": 18.5, "intent": "a touch more coffee"},
             )
         )
@@ -451,14 +451,14 @@ class TestTheRecipeDetail:
         for version_id, device_id, duration_ms, rating in plan:
             shot_id = await store_shot(shots, device_id, duration_ms=duration_ms)
             await client.put(
-                f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id}
+                f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
             )
             await client.put(
                 f"/api/shots/{shot_id}/judgement",
                 json={"rating": rating, "balance": "balanced", "decision": "improve"},
             )
         return {
-            "set_id": created["id"],
+            "recipe_id": created["id"],
             "v1": created["current_version_id"],
             "v2": second["id"],
             "v3": third["id"],
@@ -467,7 +467,7 @@ class TestTheRecipeDetail:
     async def test_the_detail_carries_the_spread_with_its_basis(
         self, client: httpx.AsyncClient, seeded: dict[str, Any]
     ) -> None:
-        detail = self.data(await client.get(f"/api/sets/{seeded['set_id']}"))
+        detail = self.data(await client.get(f"/api/recipes/{seeded['recipe_id']}"))
 
         spread = {entry["measure"]: entry for entry in detail["spread"]}
         assert [entry["measure"] for entry in detail["spread"]] == list(SPREAD_MEASURES)
@@ -491,7 +491,7 @@ class TestTheRecipeDetail:
     async def test_a_version_with_a_prediction_carries_its_evidence(
         self, client: httpx.AsyncClient, seeded: dict[str, Any]
     ) -> None:
-        detail = self.data(await client.get(f"/api/sets/{seeded['set_id']}"))
+        detail = self.data(await client.get(f"/api/recipes/{seeded['recipe_id']}"))
 
         evidence = self.version(detail, 2)["evidence"]
         assert evidence["version_id"] == seeded["v2"]
@@ -519,7 +519,7 @@ class TestTheRecipeDetail:
         self, client: httpx.AsyncClient, seeded: dict[str, Any]
     ) -> None:
         """It is evidence *for* a prediction; a version that made none needs none."""
-        detail = self.data(await client.get(f"/api/sets/{seeded['set_id']}"))
+        detail = self.data(await client.get(f"/api/recipes/{seeded['recipe_id']}"))
 
         third = self.version(detail, 3)
         assert third["version"]["prediction"] == ""
@@ -528,7 +528,7 @@ class TestTheRecipeDetail:
     async def test_a_prediction_compared_against_nothing_gets_its_own_side_only(
         self, client: httpx.AsyncClient, seeded: dict[str, Any]
     ) -> None:
-        detail = self.data(await client.get(f"/api/sets/{seeded['set_id']}"))
+        detail = self.data(await client.get(f"/api/recipes/{seeded['recipe_id']}"))
 
         evidence = self.version(detail, 1)["evidence"]
         assert evidence["compares_to_version_id"] is None
@@ -550,7 +550,7 @@ class TestTheRecipeDetail:
         """
         fourth = self.data(
             await client.post(
-                f"/api/sets/{seeded['set_id']}/versions",
+                f"/api/recipes/{seeded['recipe_id']}/versions",
                 json={
                     "grind_setting": "20",
                     "intent": "two finer",
@@ -563,10 +563,10 @@ class TestTheRecipeDetail:
         for device_id in ("000010", "000011"):
             shot_id = await store_shot(shots, device_id, duration_ms=31_000)
             await client.put(
-                f"/api/shots/{shot_id}/set-version", json={"set_version_id": fourth["id"]}
+                f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": fourth["id"]}
             )
 
-        detail = self.data(await client.get(f"/api/sets/{seeded['set_id']}"))
+        detail = self.data(await client.get(f"/api/recipes/{seeded['recipe_id']}"))
 
         evidence = self.version(detail, 4)["evidence"]
         assert evidence["compares_to_version_id"] == seeded["v3"]
@@ -605,7 +605,7 @@ class TestTheRecipeDetail:
         bean = self.data(await client.post("/api/beans", json={"name": "Kenya AA"}))
         created = self.data(
             await client.post(
-                "/api/sets",
+                "/api/recipes",
                 json=await with_a_profile(
                     client,
                     {
@@ -618,7 +618,7 @@ class TestTheRecipeDetail:
         )
         second = self.data(
             await client.post(
-                f"/api/sets/{created['id']}/versions",
+                f"/api/recipes/{created['id']}/versions",
                 json={"grind_setting": "21", "intent": "one finer", "prediction": "a hair longer"},
             )
         )
@@ -632,10 +632,10 @@ class TestTheRecipeDetail:
         for version_id, device_id, duration_ms in plan:
             shot_id = await store_shot(shots, device_id, duration_ms=duration_ms)
             await client.put(
-                f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id}
+                f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
             )
 
-        detail = self.data(await client.get(f"/api/sets/{created['id']}"))
+        detail = self.data(await client.get(f"/api/recipes/{created['id']}"))
 
         times = next(
             row
@@ -654,12 +654,12 @@ class TestTheRecipeDetail:
         bean = self.data(await client.post("/api/beans", json={"name": "Kenya AA"}))
         created = self.data(
             await client.post(
-                "/api/sets",
+                "/api/recipes",
                 json=await with_a_profile(client, {"name": "Kenya", "bean_id": bean["id"]}),
             )
         )
 
-        detail = self.data(await client.get(f"/api/sets/{created['id']}"))
+        detail = self.data(await client.get(f"/api/recipes/{created['id']}"))
 
         assert len(detail["spread"]) == len(SPREAD_MEASURES)
         assert all(entry["value"] is None for entry in detail["spread"])

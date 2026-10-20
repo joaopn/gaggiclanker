@@ -45,7 +45,7 @@ from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.recipes import (
     TEXT_MAX,
     RecipesRepository,
-    SetVersionRow,
+    RecipeVersionRow,
     VersionOutcomeWrite,
 )
 from gaggiclanker.db.repos.version_names import label_sql
@@ -114,8 +114,8 @@ class OutcomeProposalRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_id: int
-    set_version_id: int
+    recipe_id: int
+    recipe_version_id: int
     #: The graded version's name, "v3", joined in.
     version_label: str | None = None
     thread_id: int | None = None
@@ -144,7 +144,7 @@ class OutcomeResult:
     proposal: OutcomeProposalRow | None = None
     refused: OutcomeProposalRefusal | None = None
     #: The version carrying the recorded grade, filled by an answer that records one.
-    version: SetVersionRow | None = None
+    version: RecipeVersionRow | None = None
     #: The waiting grade a new one replaced, when :meth:`create` replaced one.
     replaced: OutcomeProposalRow | None = None
 
@@ -188,9 +188,9 @@ class OutcomeProposalsRepository(Repository):
 
     # ── reading ──────────────────────────────────────────────────────
 
-    async def get(self, set_id: int, proposal_id: int) -> OutcomeProposalRow | None:
+    async def get(self, recipe_id: int, proposal_id: int) -> OutcomeProposalRow | None:
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.id = ? AND p.recipe_id = ?", (proposal_id, set_id)
+            f"{_SELECT} WHERE p.id = ? AND p.recipe_id = ?", (proposal_id, recipe_id)
         )
         return self.to_model(OutcomeProposalRow, row)
 
@@ -201,16 +201,16 @@ class OutcomeProposalsRepository(Repository):
         )
         return self.to_model(OutcomeProposalRow, row)
 
-    async def waiting_by_version(self, set_id: int) -> dict[int, OutcomeProposalRow]:
+    async def waiting_by_version(self, recipe_id: int) -> dict[int, OutcomeProposalRow]:
         """Every grade waiting on this Recipe, keyed by the version it grades.
 
         One query for the Recipe page, which shows a version's waiting grade beside
         its own outcome without a request per row.
         """
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE p.recipe_id = ? AND p.status = 'proposed'", (set_id,)
+            f"{_SELECT} WHERE p.recipe_id = ? AND p.status = 'proposed'", (recipe_id,)
         )
-        return {row.set_version_id: row for row in self.to_models(OutcomeProposalRow, rows)}
+        return {row.recipe_version_id: row for row in self.to_models(OutcomeProposalRow, rows)}
 
     async def last_answered(self, version_id: int) -> OutcomeProposalRow | None:
         """What the person last did with a grade of this version.
@@ -226,17 +226,17 @@ class OutcomeProposalsRepository(Repository):
         )
         return self.to_model(OutcomeProposalRow, row)
 
-    async def for_recipe(self, set_id: int, *, limit: int = 100) -> list[OutcomeProposalRow]:
+    async def for_recipe(self, recipe_id: int, *, limit: int = 100) -> list[OutcomeProposalRow]:
         """Every grade proposed on this Recipe, newest first."""
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE p.recipe_id = ? ORDER BY p.id DESC LIMIT ?", (set_id, limit)
+            f"{_SELECT} WHERE p.recipe_id = ? ORDER BY p.id DESC LIMIT ?", (recipe_id, limit)
         )
         return self.to_models(OutcomeProposalRow, rows)
 
     # ── writing ──────────────────────────────────────────────────────
 
     async def create(
-        self, set_id: int, version_id: int, spec: OutcomeProposalWrite
+        self, recipe_id: int, version_id: int, spec: OutcomeProposalWrite
     ) -> OutcomeResult:
         """Write down a grade the person has not agreed to yet.
 
@@ -250,7 +250,7 @@ class OutcomeProposalsRepository(Repository):
         """
         now = utc_now()
         async with self.db.transaction():
-            version = await self.recipes.version_of_recipe(set_id, version_id)
+            version = await self.recipes.version_of_recipe(recipe_id, version_id)
             if version is None:
                 return OutcomeResult(refused="no_version")
             if not version.prediction:
@@ -261,7 +261,7 @@ class OutcomeProposalsRepository(Repository):
             if spec.thread_id is not None:
                 mine = await self.db.fetch_value(
                     "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?",
-                    (spec.thread_id, set_id),
+                    (spec.thread_id, recipe_id),
                 )
                 if mine is None:
                     return OutcomeResult(refused="bad_thread")
@@ -273,11 +273,11 @@ class OutcomeProposalsRepository(Repository):
                 INSERT INTO recipe_outcome_proposals
                     (recipe_id, recipe_version_id, thread_id, outcome, note, counted_shots,
                      status, created_at)
-                VALUES (:set_id, :version_id, :thread_id, :outcome, :note, :counted,
+                VALUES (:recipe_id, :version_id, :thread_id, :outcome, :note, :counted,
                         'proposed', :now)
                 """,
                 {
-                    "set_id": set_id,
+                    "recipe_id": recipe_id,
                     "version_id": version_id,
                     "thread_id": spec.thread_id,
                     "outcome": spec.outcome,
@@ -288,16 +288,16 @@ class OutcomeProposalsRepository(Repository):
             )
             proposal_id = int(cursor.lastrowid or 0)
         return OutcomeResult(
-            proposal=await self.get(set_id, proposal_id),
+            proposal=await self.get(recipe_id, proposal_id),
             replaced=replaced,
         )
 
-    async def accept(self, set_id: int, proposal_id: int) -> OutcomeResult:
+    async def accept(self, recipe_id: int, proposal_id: int) -> OutcomeResult:
         """Record the proposed grade on the version, as written. A person's press."""
-        return await self._answer(set_id, proposal_id, change=None, note=None)
+        return await self._answer(recipe_id, proposal_id, change=None, note=None)
 
     async def change(
-        self, set_id: int, proposal_id: int, outcome: VersionOutcome, note: str | None = None
+        self, recipe_id: int, proposal_id: int, outcome: VersionOutcome, note: str | None = None
     ) -> OutcomeResult:
         """Record a different grade from the card's, and say so (`changed`).
 
@@ -305,22 +305,22 @@ class OutcomeProposalsRepository(Repository):
         per-claim lines are what the grade rested on, and the person is
         choosing a different grade of the same evidence.
         """
-        return await self._answer(set_id, proposal_id, change=outcome, note=note)
+        return await self._answer(recipe_id, proposal_id, change=outcome, note=note)
 
     async def _answer(
-        self, set_id: int, proposal_id: int, *, change: VersionOutcome | None, note: str | None
+        self, recipe_id: int, proposal_id: int, *, change: VersionOutcome | None, note: str | None
     ) -> OutcomeResult:
         now = utc_now()
         async with self.db.transaction():
-            proposal = await self.get(set_id, proposal_id)
+            proposal = await self.get(recipe_id, proposal_id)
             if proposal is None:
                 return OutcomeResult(refused="no_proposal")
             if proposal.status != "proposed":
                 return OutcomeResult(refused="not_waiting", proposal=proposal)
             outcome = proposal.outcome if change is None else change
             written = await self.recipes.grade_in_transaction(
-                set_id,
-                proposal.set_version_id,
+                recipe_id,
+                proposal.recipe_version_id,
                 VersionOutcomeWrite(outcome=outcome, note=proposal.note if note is None else note),
             )
             if written.refused is not None:
@@ -334,10 +334,12 @@ class OutcomeProposalsRepository(Repository):
         log.info(
             "recipe_outcome_proposal_answered",
             proposal_id=proposal_id,
-            set_id=set_id,
+            recipe_id=recipe_id,
             status="accepted" if change is None else "changed",
         )
-        return OutcomeResult(proposal=await self.get(set_id, proposal_id), version=written.version)
+        return OutcomeResult(
+            proposal=await self.get(recipe_id, proposal_id), version=written.version
+        )
 
     async def record_in_transaction(self, proposal: OutcomeProposalRow, now: str) -> OutcomeResult:
         """Accept a waiting grade inside a transaction the caller already holds.
@@ -347,8 +349,8 @@ class OutcomeProposalsRepository(Repository):
         cannot record one without the other. The same guards as :meth:`accept`.
         """
         written = await self.recipes.grade_in_transaction(
-            proposal.set_id,
-            proposal.set_version_id,
+            proposal.recipe_id,
+            proposal.recipe_version_id,
             VersionOutcomeWrite(outcome=proposal.outcome, note=proposal.note),
         )
         if written.refused is not None:
@@ -356,17 +358,17 @@ class OutcomeProposalsRepository(Repository):
         await self._decide(proposal.id, "accepted", now)
         return OutcomeResult(proposal=proposal, version=written.version)
 
-    async def dismiss(self, set_id: int, proposal_id: int, note: str = "") -> OutcomeResult:
+    async def dismiss(self, recipe_id: int, proposal_id: int, note: str = "") -> OutcomeResult:
         """Turn a grade down, optionally saying why. Records nothing."""
         now = utc_now()
         async with self.db.transaction():
-            proposal = await self.get(set_id, proposal_id)
+            proposal = await self.get(recipe_id, proposal_id)
             if proposal is None:
                 return OutcomeResult(refused="no_proposal")
             if proposal.status != "proposed":
                 return OutcomeResult(refused="not_waiting", proposal=proposal)
             await self._decide(proposal_id, "dismissed", now, note=note.strip())
-        return OutcomeResult(proposal=await self.get(set_id, proposal_id))
+        return OutcomeResult(proposal=await self.get(recipe_id, proposal_id))
 
     async def _decide(
         self,

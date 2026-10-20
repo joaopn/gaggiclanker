@@ -666,17 +666,19 @@ async def test_the_application_reads_every_rewritten_document_as_it_wrote_it(
 
         proposal = await PatternProposalsRepository(db).get(ids["proposal_row"])
         assert proposal is not None
-        assert [(s.set_id, s.set_name) for s in proposal.sources] == [(ids["set1"], "Morning")]
+        assert [(s.recipe_id, s.recipe_name) for s in proposal.sources] == [
+            (ids["set1"], "Morning")
+        ]
         assert [s.insight_id for s in proposal.skipped] == [2]
         run = await PatternRunsRepository(db).get(ids["patterns"])
-        assert run is not None and run.dropped == {"one_set": 2, "invented_source": 1}
-        assert run.sets_read == 2
+        assert run is not None and run.dropped == {"one_recipe": 2, "invented_source": 1}
+        assert run.recipes_read == 2
 
         started = await StartingPointRunsRepository(db).get(ids["run"])
         assert started is not None and started.output is not None
         option = StartingPointOption.model_validate(started.output["options"][0] | _OPTION)
-        assert option.similar_set_version_ids == [ids["v1"]]
-        assert started.accepted_set_id == ids["set1"]
+        assert option.similar_recipe_version_ids == [ids["v1"]]
+        assert started.accepted_recipe_id == ids["set1"]
 
         drafts = ProfileDraftsRepository(db)
         for name, state in (

@@ -14,7 +14,7 @@ template: |
   only when one of these anchors it:
 
     * the person gave their usual espresso setting on this grinder, or
-    * a Set in the record you were given was pulled on the SAME grinder and
+    * a Recipe in the record you were given was pulled on the SAME grinder and
       records one.
 
   State the anchor, and give the grind as a number of that grinder's own steps

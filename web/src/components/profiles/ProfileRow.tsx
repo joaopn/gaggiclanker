@@ -49,7 +49,7 @@ export function ProfileRow({
   const [renaming, setRenaming] = useState(false);
   const state = rowStateOf(view, entry);
   const nameConflict = nameConflictOf(entry);
-  const set = entry.set ?? null;
+  const set = entry.recipe ?? null;
   const selected = entry.machine.selected === true;
   const pin = entry.pin ?? null;
   const waiting = proposals.length > 0 ? proposals.length : (entry.proposed_versions ?? 0);
@@ -132,13 +132,13 @@ export function ProfileRow({
               unpinning, so it has no switch; the badge says whose it is and goes to that Set. */}
           {pin ? (
             <Link
-              to={`/sets/${pin.set_id}`}
+              to={`/sets/${pin.recipe_id}`}
               data-testid="pinned-badge"
               className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs underline-offset-2 hover:underline"
             >
               <span aria-hidden="true">📌</span>
               <span className="min-w-0 break-words">
-                Pinned: {pin.set_name} {pin.version_label}
+                Pinned: {pin.recipe_name} {pin.version_label}
               </span>
             </Link>
           ) : (

@@ -27,9 +27,9 @@ from gaggiclanker.db.repos.recipe_proposals import (
 )
 from gaggiclanker.db.repos.recipes import (
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
     RollbackWrite,
-    SetVersionWrite,
     VersionOutcomeWrite,
     VersionPredictionWrite,
 )
@@ -41,13 +41,13 @@ PREDICTION = "Compared to v1: two to four seconds longer and less sour."
 async def _recipe(wired: Fixtures) -> int:
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     return row.id
 
 
 async def _propose(
-    wired: Fixtures, set_id: int, **over: object
+    wired: Fixtures, recipe_id: int, **over: object
 ) -> tuple[RecipeProposalsRepository, object]:
     proposals = RecipeProposalsRepository(wired.db)
     spec: dict[str, object] = {
@@ -56,7 +56,7 @@ async def _propose(
         "prediction": PREDICTION,
     }
     spec.update(over)
-    return proposals, await proposals.create(set_id, ProposalWrite(**spec))  # type: ignore[arg-type]
+    return proposals, await proposals.create(recipe_id, ProposalWrite(**spec))  # type: ignore[arg-type]
 
 
 class TestWhatOneChangeIs:
@@ -83,12 +83,12 @@ class TestWhatOneChangeIs:
 
 class TestProposing:
     async def test_a_proposal_creates_no_version(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        proposals, result = await _propose(wired, set_id)
+        recipe_id = await _recipe(wired)
+        proposals, result = await _propose(wired, recipe_id)
         assert result.refused is None  # type: ignore[attr-defined]
-        assert len(await wired.recipes.versions(set_id)) == 1
+        assert len(await wired.recipes.versions(recipe_id)) == 1
 
-        waiting = await proposals.waiting(set_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
         assert waiting.status == "proposed"
         assert waiting.prediction == PREDICTION
@@ -98,33 +98,33 @@ class TestProposing:
         assert waiting.base_is_current is True
 
     async def test_only_one_proposal_waits_at_a_time(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        await _propose(wired, set_id)
-        _, second = await _propose(wired, set_id, patch=RecipeVersionPatch(dose_g=18.5))
+        recipe_id = await _recipe(wired)
+        await _propose(wired, recipe_id)
+        _, second = await _propose(wired, recipe_id, patch=RecipeVersionPatch(dose_g=18.5))
         assert second.refused == "already_waiting"  # type: ignore[attr-defined]
         assert second.waiting is not None  # type: ignore[attr-defined]
         assert second.waiting.changed == ["the grind"]  # type: ignore[attr-defined]
 
     async def test_an_open_outcome_blocks_a_new_proposal(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        current = await wired.recipes.current_version(set_id)
+        recipe_id = await _recipe(wired)
+        current = await wired.recipes.current_version(recipe_id)
         assert current is not None
         await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             current.id,
             VersionPredictionWrite.model_validate(
                 {"prediction": "Expect about 30 s.", "compares_to_version_id": None}
             ),
         )
-        _, result = await _propose(wired, set_id)
+        _, result = await _propose(wired, recipe_id)
         assert result.refused == "outcome_open"  # type: ignore[attr-defined]
 
     async def test_a_graded_outcome_does_not_block(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        current = await wired.recipes.current_version(set_id)
+        recipe_id = await _recipe(wired)
+        current = await wired.recipes.current_version(recipe_id)
         assert current is not None
         await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             current.id,
             VersionPredictionWrite.model_validate(
                 {"prediction": "Expect about 30 s.", "compares_to_version_id": None}
@@ -133,32 +133,34 @@ class TestProposing:
         shot_id = await make_shot(wired.db, "000401")
         await wired.recipes.assign_shot(shot_id, current.id)
         await JudgementsRepository(wired.db).upsert(shot_id, JudgementWrite(decision="improve"))
-        await wired.recipes.set_outcome(set_id, current.id, VersionOutcomeWrite(outcome="failed"))
+        await wired.recipes.set_outcome(
+            recipe_id, current.id, VersionOutcomeWrite(outcome="failed")
+        )
 
-        _, result = await _propose(wired, set_id)
+        _, result = await _propose(wired, recipe_id)
         assert result.refused is None  # type: ignore[attr-defined]
 
     async def test_a_version_with_no_prediction_never_blocks(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        _, result = await _propose(wired, set_id)
+        recipe_id = await _recipe(wired)
+        _, result = await _propose(wired, recipe_id)
         assert result.refused is None  # type: ignore[attr-defined]
 
     async def test_a_comparison_outside_the_recipe_is_refused(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
+        recipe_id = await _recipe(wired)
         other = await wired.recipes.create(
             RecipeWrite(name="Another coffee", bean_id=wired.bean_id),
-            SetVersionWrite(dose_g=18),
+            RecipeVersionWrite(dose_g=18),
         )
         theirs = await wired.recipes.current_version(other.id)
         assert theirs is not None
-        _, result = await _propose(wired, set_id, compares_to_version_id=theirs.id)
+        _, result = await _propose(wired, recipe_id, compares_to_version_id=theirs.id)
         assert result.refused == "bad_compare"  # type: ignore[attr-defined]
 
     async def test_a_comparison_against_nothing_is_stored_as_nothing(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
+        recipe_id = await _recipe(wired)
         proposals = RecipeProposalsRepository(wired.db)
         result = await proposals.create(
-            set_id,
+            recipe_id,
             ProposalWrite.model_validate(
                 {
                     "patch": RecipeVersionPatch(dose_g=18.5),
@@ -174,12 +176,12 @@ class TestProposing:
 
 class TestAccepting:
     async def test_accept_records_the_version_the_proposal_described(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
 
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
         assert result.refused is None
         version = result.version
         assert version is not None
@@ -196,13 +198,13 @@ class TestAccepting:
         assert result.proposal.status == "accepted"
         assert result.proposal.resulting_version_id == version.id
         assert result.proposal.resulting_version_label == "v1.1"
-        assert await proposals.waiting(set_id) is None
+        assert await proposals.waiting(recipe_id) is None
 
     async def test_accept_keeps_a_comparison_against_nothing(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
+        recipe_id = await _recipe(wired)
         proposals = RecipeProposalsRepository(wired.db)
         made = await proposals.create(
-            set_id,
+            recipe_id,
             ProposalWrite.model_validate(
                 {
                     "patch": RecipeVersionPatch(dose_g=18.5),
@@ -213,7 +215,7 @@ class TestAccepting:
             ),
         )
         assert made.proposal is not None
-        result = await proposals.accept(set_id, made.proposal.id)
+        result = await proposals.accept(recipe_id, made.proposal.id)
         assert result.version is not None
         # Not the parent: the person accepted "graded on its own numbers".
         assert result.version.compares_to_version_id is None
@@ -221,38 +223,38 @@ class TestAccepting:
     async def test_a_patch_naming_a_profile_is_previewed_with_its_label_and_temperature(
         self, wired: Fixtures
     ) -> None:
-        set_id = await _recipe(wired)
+        recipe_id = await _recipe(wired)
         profile_id = await make_profile_version(
             wired.db, "Hotter [AI]", temperature=94, owned=False
         )
         proposals, _ = await _propose(
-            wired, set_id, patch=RecipeVersionPatch(profile_version_id=profile_id)
+            wired, recipe_id, patch=RecipeVersionPatch(profile_version_id=profile_id)
         )
-        waiting = await proposals.waiting(set_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
         preview = await proposals.preview(waiting)
         assert preview is not None
         assert preview.profile_label == "Hotter [AI]"
         assert preview.profile_temperature_c == 94
 
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
         assert result.version is not None
         assert result.version.profile_version_id == profile_id
 
     async def test_a_recipe_that_moved_on_leaves_nothing_to_accept(self, wired: Fixtures) -> None:
         """The Recipe overtook it, so it is already stale by the time anybody presses."""
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
 
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
         assert result.refused == "not_waiting"
         assert result.proposal is not None
         assert result.proposal.status == "stale"
         # No third version: the Recipe is where the hand-made change left it.
-        assert len(await wired.recipes.versions(set_id)) == 2
+        assert len(await wired.recipes.versions(recipe_id)) == 2
 
     async def test_accept_still_checks_the_base_itself(self, wired: Fixtures) -> None:
         """The defence behind the retirement, for the race the retirement cannot see.
@@ -262,87 +264,87 @@ class TestAccepting:
         would still refuse rather than apply a change to a recipe nobody is
         brewing.
         """
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
         await wired.db.execute(
             "UPDATE recipe_version_proposals SET status = 'proposed' WHERE id = ?", (waiting.id,)
         )
-        revived = await proposals.waiting(set_id)
+        revived = await proposals.waiting(recipe_id)
         assert revived is not None
         assert revived.base_is_current is False
 
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
         assert result.refused == "stale"
         assert result.proposal is not None and result.proposal.status == "stale"
-        assert len(await wired.recipes.versions(set_id)) == 2
+        assert len(await wired.recipes.versions(recipe_id)) == 2
 
     async def test_an_outcome_opened_after_the_proposal_blocks_accept(
         self, wired: Fixtures
     ) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        current = await wired.recipes.current_version(set_id)
+        current = await wired.recipes.current_version(recipe_id)
         assert current is not None
         await wired.recipes.set_prediction(
-            set_id,
+            recipe_id,
             current.id,
             VersionPredictionWrite.model_validate(
                 {"prediction": "Expect about 30 s.", "compares_to_version_id": None}
             ),
         )
 
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
         assert result.refused == "outcome_open"
-        assert len(await wired.recipes.versions(set_id)) == 1
+        assert len(await wired.recipes.versions(recipe_id)) == 1
         # Still waiting: the person grades, then accepts.
-        assert (await proposals.waiting(set_id)) is not None
+        assert (await proposals.waiting(recipe_id)) is not None
 
     async def test_accepting_twice_is_refused(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        await proposals.accept(set_id, waiting.id)
-        again = await proposals.accept(set_id, waiting.id)
+        await proposals.accept(recipe_id, waiting.id)
+        again = await proposals.accept(recipe_id, waiting.id)
         assert again.refused == "not_waiting"
-        assert len(await wired.recipes.versions(set_id)) == 2
+        assert len(await wired.recipes.versions(recipe_id)) == 2
 
 
 class TestDeclining:
     async def test_decline_records_the_note_and_creates_nothing(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
 
-        result = await proposals.decline(set_id, waiting.id, "tried that last week")
+        result = await proposals.decline(recipe_id, waiting.id, "tried that last week")
         assert result.proposal is not None
         assert result.proposal.status == "declined"
         assert result.proposal.decline_note == "tried that last week"
-        assert len(await wired.recipes.versions(set_id)) == 1
-        assert await proposals.waiting(set_id) is None
+        assert len(await wired.recipes.versions(recipe_id)) == 1
+        assert await proposals.waiting(recipe_id) is None
 
     async def test_a_declined_proposal_frees_the_slot(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        await proposals.decline(set_id, waiting.id)
-        _, second = await _propose(wired, set_id, patch=RecipeVersionPatch(dose_g=18.5))
+        await proposals.decline(recipe_id, waiting.id)
+        _, second = await _propose(wired, recipe_id, patch=RecipeVersionPatch(dose_g=18.5))
         assert second.refused is None  # type: ignore[attr-defined]
 
     async def test_the_last_decided_proposal_is_readable(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        await proposals.decline(set_id, waiting.id, "not the grind")
-        last = await proposals.last_decided(set_id)
+        await proposals.decline(recipe_id, waiting.id, "not the grind")
+        last = await proposals.last_decided(recipe_id)
         assert last is not None
         assert last.decline_note == "not the grind"
 
@@ -350,39 +352,39 @@ class TestDeclining:
 class TestTheChatItCameFrom:
     async def test_a_proposal_outlives_a_deleted_chat(self, wired: Fixtures) -> None:
         """Old conversations are disposable; the experiment log is not."""
-        set_id = await _recipe(wired)
-        current = await wired.recipes.current_version(set_id)
+        recipe_id = await _recipe(wired)
+        current = await wired.recipes.current_version(recipe_id)
         assert current is not None
         cursor = await wired.db.execute(
             "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES (?, ?, ?)",
-            ("About v1", set_id, current.id),
+            ("About v1", recipe_id, current.id),
         )
         thread_id = int(cursor.lastrowid or 0)
-        proposals, _ = await _propose(wired, set_id, thread_id=thread_id)
-        waiting = await proposals.waiting(set_id)
+        proposals, _ = await _propose(wired, recipe_id, thread_id=thread_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
         assert waiting.thread_id == thread_id
 
         await wired.db.execute("DELETE FROM chat_threads WHERE id = ?", (thread_id,))
-        survived = await proposals.waiting(set_id)
+        survived = await proposals.waiting(recipe_id)
         assert survived is not None
         assert survived.thread_id is None
 
     async def test_an_accepted_version_names_its_conversation(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        current = await wired.recipes.current_version(set_id)
+        recipe_id = await _recipe(wired)
+        current = await wired.recipes.current_version(recipe_id)
         assert current is not None
         cursor = await wired.db.execute(
             "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES (?, ?, ?)",
-            ("About v1", set_id, current.id),
+            ("About v1", recipe_id, current.id),
         )
         thread_id = int(cursor.lastrowid or 0)
-        proposals, _ = await _propose(wired, set_id, thread_id=thread_id)
-        waiting = await proposals.waiting(set_id)
+        proposals, _ = await _propose(wired, recipe_id, thread_id=thread_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
         assert result.version is not None
-        assert await proposals.accepted_threads(set_id) == {result.version.id: thread_id}
+        assert await proposals.accepted_threads(recipe_id) == {result.version.id: thread_id}
 
 
 class TestWhatCreateAcceptsAcceptCanApply:
@@ -396,38 +398,38 @@ class TestWhatCreateAcceptsAcceptCanApply:
     """
 
     async def test_a_profile_version_that_does_not_exist_is_refused(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
+        recipe_id = await _recipe(wired)
         _, result = await _propose(
-            wired, set_id, patch=RecipeVersionPatch(profile_version_id=987_654)
+            wired, recipe_id, patch=RecipeVersionPatch(profile_version_id=987_654)
         )
         assert result.refused == "bad_profile"  # type: ignore[attr-defined]
-        assert await RecipeProposalsRepository(wired.db).waiting(set_id) is None
+        assert await RecipeProposalsRepository(wired.db).waiting(recipe_id) is None
 
     async def test_a_profile_version_that_exists_is_accepted(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
+        recipe_id = await _recipe(wired)
         profile_id = await make_profile_version(
             wired.db, "Hotter [AI]", temperature=94, owned=False
         )
         _, result = await _propose(
-            wired, set_id, patch=RecipeVersionPatch(profile_version_id=profile_id)
+            wired, recipe_id, patch=RecipeVersionPatch(profile_version_id=profile_id)
         )
         assert result.refused is None  # type: ignore[attr-defined]
 
     async def test_clearing_the_profile_is_not_a_missing_profile(self, wired: Fixtures) -> None:
         """An explicit null means "this Recipe names no profile", which is real."""
-        set_id = await _recipe(wired)
+        recipe_id = await _recipe(wired)
         proposals = RecipeProposalsRepository(wired.db)
         result = await proposals.create(
-            set_id,
+            recipe_id,
             ProposalWrite(
                 patch=RecipeVersionPatch.model_validate({"profile_version_id": None}),
-                reason="Stop pinning this Set to one profile.",
+                reason="Stop pinning this Recipe to one profile.",
                 prediction=PREDICTION,
             ),
         )
         assert result.refused is None
         assert result.proposal is not None
-        accepted = await proposals.accept(set_id, result.proposal.id)
+        accepted = await proposals.accept(recipe_id, result.proposal.id)
         assert accepted.version is not None
         assert accepted.version.profile_version_id is None
 
@@ -451,9 +453,9 @@ class TestWhatCreateAcceptsAcceptCanApply:
             {"target_yield_g": 499.5},
         ]
         for fields in candidates:
-            set_id = await _recipe(wired)
+            recipe_id = await _recipe(wired)
             result = await proposals.create(
-                set_id,
+                recipe_id,
                 ProposalWrite(
                     patch=RecipeVersionPatch.model_validate(fields),
                     reason="Walking the patch.",
@@ -464,7 +466,7 @@ class TestWhatCreateAcceptsAcceptCanApply:
                 assert result.proposal is None, fields
                 continue
             assert result.proposal is not None, fields
-            accepted = await proposals.accept(set_id, result.proposal.id)
+            accepted = await proposals.accept(recipe_id, result.proposal.id)
             assert accepted.refused is None, (fields, accepted.refused)
             assert accepted.version is not None, fields
 
@@ -477,57 +479,57 @@ class TestTheRecipeMovingOnRetiresWhatWasWaiting:
     """
 
     async def test_adding_a_version_by_hand_stales_it(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
 
-        assert await proposals.waiting(set_id) is None
-        last = await proposals.last_decided(set_id)
+        assert await proposals.waiting(recipe_id) is None
+        last = await proposals.last_decided(recipe_id)
         assert last is not None and last.status == "stale"
 
     async def test_a_roll_back_stales_it(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        first = await wired.recipes.current_version(set_id)
+        recipe_id = await _recipe(wired)
+        first = await wired.recipes.current_version(recipe_id)
         assert first is not None
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
-        proposals, _ = await _propose(wired, set_id)
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
+        proposals, _ = await _propose(wired, recipe_id)
 
         await wired.recipes.rollback(
-            set_id, RollbackWrite(to_version_id=first.id, note="back to the start")
+            recipe_id, RollbackWrite(to_version_id=first.id, note="back to the start")
         )
 
-        assert await proposals.waiting(set_id) is None
-        last = await proposals.last_decided(set_id)
+        assert await proposals.waiting(recipe_id) is None
+        last = await proposals.last_decided(recipe_id)
         assert last is not None and last.status == "stale"
 
     async def test_a_proposal_after_a_revert_is_built_on_the_version_the_recipe_is_on(
         self, wired: Fixtures
     ) -> None:
-        set_id = await _recipe(wired)
-        first = await wired.recipes.current_version(set_id)
+        recipe_id = await _recipe(wired)
+        first = await wired.recipes.current_version(recipe_id)
         assert first is not None
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
-        await wired.recipes.rollback(set_id, RollbackWrite(to_version_id=first.id))
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
+        await wired.recipes.rollback(recipe_id, RollbackWrite(to_version_id=first.id))
 
-        proposals, created = await _propose(wired, set_id)
+        proposals, created = await _propose(wired, recipe_id)
 
-        waiting = await proposals.waiting(set_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None and created is not None
         assert (waiting.base_version_id, waiting.base_is_current) == (first.id, True)
         assert waiting.compares_to_version_id == first.id
-        assert (await proposals.next_names(set_id)).minor == "v1.2"
-        accepted = await proposals.accept(set_id, waiting.id)
+        assert (await proposals.next_names(recipe_id)).minor == "v1.2"
+        accepted = await proposals.accept(recipe_id, waiting.id)
         assert accepted.version is not None
         assert accepted.version.parent_version_id == first.id
         assert accepted.version.version_label == "v1.2"
 
     async def test_accepting_does_not_stale_the_proposal_it_accepts(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
 
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
 
         assert result.proposal is not None
         assert result.proposal.status == "accepted"
@@ -544,15 +546,15 @@ class TestTheRecipeMovingOnRetiresWhatWasWaiting:
         self, wired: Fixtures
     ) -> None:
         """The way out is proposing again, not declining what the Recipe overtook."""
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19, intent="by hand"))
 
-        _, second = await _propose(wired, set_id, patch=RecipeVersionPatch(grind_setting="20"))
+        _, second = await _propose(wired, recipe_id, patch=RecipeVersionPatch(grind_setting="20"))
         assert second.refused is None  # type: ignore[attr-defined]
-        waiting = await proposals.waiting(set_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
         assert result.version is not None
         assert result.version.version_label == "v1.2"
 
@@ -568,16 +570,16 @@ class TestTheConversationAProposalNames:
         assert result.refused == "bad_thread"  # type: ignore[attr-defined]
 
     async def test_a_thread_that_does_not_exist_is_refused(self, wired: Fixtures) -> None:
-        set_id = await _recipe(wired)
-        _, result = await _propose(wired, set_id, thread_id=987_654)
+        recipe_id = await _recipe(wired)
+        _, result = await _propose(wired, recipe_id, thread_id=987_654)
         assert result.refused == "bad_thread"  # type: ignore[attr-defined]
 
     async def test_a_general_conversation_is_not_one_of_this_recipe_s(
         self, wired: Fixtures
     ) -> None:
-        set_id = await _recipe(wired)
+        recipe_id = await _recipe(wired)
         cursor = await wired.db.execute("INSERT INTO chat_threads (title) VALUES (?)", ("General",))
-        _, result = await _propose(wired, set_id, thread_id=int(cursor.lastrowid or 0))
+        _, result = await _propose(wired, recipe_id, thread_id=int(cursor.lastrowid or 0))
         assert result.refused == "bad_thread"  # type: ignore[attr-defined]
 
 
@@ -603,9 +605,9 @@ class TestTheIndexIsTheRealGuard:
         conversations can reach `create` at once and only the index is there
         for the second of them.
         """
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
 
         with pytest.raises(sqlite3.IntegrityError):
@@ -615,17 +617,17 @@ class TestTheIndexIsTheRealGuard:
                     (recipe_id, base_version_id, patch_json, reason, prediction, status, created_at)
                 VALUES (?, ?, '{"dose_g": 19}', 'second', 'p', 'proposed', '2026-04-01T00:00:00Z')
                 """,
-                (set_id, waiting.base_version_id),
+                (recipe_id, waiting.base_version_id),
             )
 
     async def test_a_decided_row_leaves_the_slot_free_for_the_index_too(
         self, wired: Fixtures
     ) -> None:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
-        await proposals.decline(set_id, waiting.id)
+        await proposals.decline(recipe_id, waiting.id)
 
         await wired.db.execute(
             """
@@ -633,9 +635,9 @@ class TestTheIndexIsTheRealGuard:
                 (recipe_id, base_version_id, patch_json, reason, prediction, status, created_at)
             VALUES (?, ?, '{"dose_g": 19}', 'second', 'p', 'proposed', '2026-04-01T00:00:00Z')
             """,
-            (set_id, waiting.base_version_id),
+            (recipe_id, waiting.base_version_id),
         )
-        assert await proposals.waiting(set_id) is not None
+        assert await proposals.waiting(recipe_id) is not None
 
 
 class TestAProposalNobodyCanRead:
@@ -643,42 +645,42 @@ class TestAProposalNobodyCanRead:
 
     @staticmethod
     async def _damaged(wired: Fixtures, patch_json: str) -> tuple[RecipeProposalsRepository, int]:
-        set_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, set_id)
-        waiting = await proposals.waiting(set_id)
+        recipe_id = await _recipe(wired)
+        proposals, _ = await _propose(wired, recipe_id)
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
         await wired.db.execute(
             "UPDATE recipe_version_proposals SET patch_json = ? WHERE id = ?",
             (patch_json, waiting.id),
         )
-        return proposals, set_id
+        return proposals, recipe_id
 
     async def test_it_reads_back_as_unreadable_rather_than_raising(self, wired: Fixtures) -> None:
         for damaged in ('{"dose_g": "a lot"}', "not json at all", "[1, 2, 3]"):
-            proposals, set_id = await self._damaged(wired, damaged)
-            waiting = await proposals.waiting(set_id)
+            proposals, recipe_id = await self._damaged(wired, damaged)
+            waiting = await proposals.waiting(recipe_id)
             assert waiting is not None, damaged
             assert waiting.readable is False, damaged
             assert waiting.changed == [], damaged
             assert await proposals.preview(waiting) is None, damaged
 
     async def test_accept_refuses_it_and_creates_nothing(self, wired: Fixtures) -> None:
-        proposals, set_id = await self._damaged(wired, '{"dose_g": "a lot"}')
-        waiting = await proposals.waiting(set_id)
+        proposals, recipe_id = await self._damaged(wired, '{"dose_g": "a lot"}')
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
 
-        result = await proposals.accept(set_id, waiting.id)
+        result = await proposals.accept(recipe_id, waiting.id)
 
         assert result.refused == "unreadable"
-        assert len(await wired.recipes.versions(set_id)) == 1
+        assert len(await wired.recipes.versions(recipe_id)) == 1
 
     async def test_decline_works_without_reading_the_patch(self, wired: Fixtures) -> None:
-        proposals, set_id = await self._damaged(wired, "not json at all")
-        waiting = await proposals.waiting(set_id)
+        proposals, recipe_id = await self._damaged(wired, "not json at all")
+        waiting = await proposals.waiting(recipe_id)
         assert waiting is not None
 
-        result = await proposals.decline(set_id, waiting.id, "whatever that was")
+        result = await proposals.decline(recipe_id, waiting.id, "whatever that was")
 
         assert result.proposal is not None
         assert result.proposal.status == "declined"
-        assert await proposals.waiting(set_id) is None
+        assert await proposals.waiting(recipe_id) is None

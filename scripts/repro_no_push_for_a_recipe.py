@@ -12,7 +12,7 @@ The bug
 
 A draft the agent proposes in a Recipe's conversation carries that Recipe and a
 prediction. The server records both as the Recipe's next version when the draft is
-put on the board with the Recipe's id (``POST /api/profile-board`` with ``set_id``)
+put on the board with the Recipe's id (``POST /api/profile-board`` with ``recipe_id``)
 and the next sync puts it on the machine, and the draft card promised exactly
 that: "It is recorded on the Recipe when you put this draft on the board for that
 Recipe". (Before the staged push went, the same promise was made of the push, and
@@ -46,7 +46,7 @@ from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 TEST = "src/components/drafts/DraftCard.test.tsx"
-BLOCK = "putting a Set's draft on the board"
+BLOCK = "putting a Recipe's draft on the board"
 # Where this project's container keeps Node; nothing is installed in the image.
 CONTAINER_NODE = Path("/workspace/.tools/node/bin")
 
@@ -91,11 +91,11 @@ def main() -> int:
     failed = results.get("numFailedTests", 0)
     if passed == 0 or failed > 0:
         print(
-            f"FAIL: a Set's draft is not put on the board for its Set "
+            f"FAIL: a Recipe's draft is not put on the board for its Recipe "
             f"({passed} passed, {failed} failed)"
         )
         return 1
-    print(f"PASS: a Set's draft is put on the board for its Set by default ({passed} checks)")
+    print(f"PASS: a Recipe's draft is put on the board for its Recipe by default ({passed} checks)")
     return 0
 
 

@@ -56,7 +56,7 @@ export function AssignToSet({
   // a shot that was just assigned under this page.
   useEffect(() => setChoice(preselected), [preselected]);
 
-  const assignedSet = rows.find((row) => row.id === setVersion?.set_id);
+  const assignedSet = rows.find((row) => row.id === setVersion?.recipe_id);
   const chosenSet = rows.find((row) => String(row.current_version_id) === choice);
   const branchTarget = assignedSet ?? chosenSet;
   const dirty = choice !== preselected;
@@ -64,7 +64,7 @@ export function AssignToSet({
   // belongs to the Set version, so it is set here and not in the judgement.
   const target = useSet(branching ? branchTarget?.id : undefined);
   const parent = target.data?.versions.find(
-    (entry) => entry.version.id === target.data?.set.current_version_id,
+    (entry) => entry.version.id === target.data?.recipe.current_version_id,
   )?.version;
   const recipeGrind = parent?.grind_setting ?? "";
   const grind = grindInput ?? recipeGrind;
@@ -76,7 +76,7 @@ export function AssignToSet({
       actions={
         setVersion ? (
           <Link
-            to={`/sets/${setVersion.set_id}`}
+            to={`/sets/${setVersion.recipe_id}`}
             className="text-muted-foreground text-xs underline underline-offset-2"
           >
             Open the Set

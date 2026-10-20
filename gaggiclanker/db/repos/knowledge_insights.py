@@ -16,7 +16,7 @@ predict, and the point of showing these to a model is that the user knows what
 it was told.
 
 **An insight is general or belongs to one Recipe.** A general insight
-(``set_id`` NULL: hand-written, or an agent-written one nobody could place) keeps
+(``recipe_id`` NULL: hand-written, or an agent-written one nobody could place) keeps
 the attribute matching above and reaches every conversation whose Recipe it
 matches. An insight written in a Recipe's conversation carries that Recipe and the
 version the conversation was about, has no attribute scope, and is given to that
@@ -186,7 +186,7 @@ class RestsOn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    set_version_id: int
+    recipe_version_id: int
     outcome: VersionOutcome
 
 
@@ -195,7 +195,7 @@ class RestsOnRow(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    set_version_id: int
+    recipe_version_id: int
     #: "v3", joined in from the version.
     label: str
     #: The outcome the version had when the insight was written. Never changes.
@@ -240,8 +240,8 @@ def home_recipes(facts: Iterable[tuple[int, int, int | None]]) -> dict[int, int]
     count Recipes behind insights without it.
     """
     return {
-        insight_id: set_id if copied_from_set is None else copied_from_set
-        for insight_id, set_id, copied_from_set in facts
+        insight_id: recipe_id if copied_from_recipe is None else copied_from_recipe
+        for insight_id, recipe_id, copied_from_recipe in facts
     }
 
 
@@ -263,9 +263,9 @@ def grouped_by_version(
     def place(insight: InsightRow) -> int:
         if insight.copied_from_insight_id is not None:
             return copied
-        if insight.set_version_id is None:
+        if insight.recipe_version_id is None:
             return unversioned
-        return rank.get(insight.set_version_id, unknown)
+        return rank.get(insight.recipe_version_id, unknown)
 
     return sorted(insights, key=place)  # stable: a group keeps its own order
 
@@ -283,9 +283,9 @@ class InsightWrite(BaseModel):
     #: The Recipe this insight belongs to, when it was learned in one. A Recipe's
     #: insight states no attribute scope: it is about this Recipe whatever its bean
     #: and grinder are shared with.
-    set_id: int | None = None
+    recipe_id: int | None = None
     #: The version the conversation that wrote it was about.
-    set_version_id: int | None = None
+    recipe_version_id: int | None = None
     #: The conversation that wrote it, when a chat did.
     thread_id: int | None = None
     #: The versions it rests on with the outcome each had at this moment. Written
@@ -301,16 +301,16 @@ class InsightWrite(BaseModel):
     #: The first original, when this is a copy made by duplicating a Recipe; nothing else writes it.
     copied_from_insight_id: int | None = None
     #: The Recipe that original was learned in; written with it, by the duplicate only.
-    copied_from_set_id: int | None = None
+    copied_from_recipe_id: int | None = None
 
     @model_validator(mode="after")
     def _a_recipe_insight_has_no_scope(self) -> InsightWrite:
-        if (self.rests_on or self.replaces_id is not None) and self.set_id is None:
-            raise ValueError("only a Set's insight rests on versions or replaces another")
-        if self.set_version_id is not None and self.set_id is None:
-            raise ValueError("an insight learned at a version belongs to that version's Set")
-        if self.set_id is not None and self.scope.stated():
-            raise ValueError("an insight that belongs to a Set states no attribute scope")
+        if (self.rests_on or self.replaces_id is not None) and self.recipe_id is None:
+            raise ValueError("only a Recipe's insight rests on versions or replaces another")
+        if self.recipe_version_id is not None and self.recipe_id is None:
+            raise ValueError("an insight learned at a version belongs to that version's Recipe")
+        if self.recipe_id is not None and self.scope.stated():
+            raise ValueError("an insight that belongs to a Recipe states no attribute scope")
         return self
 
     @field_validator("text")
@@ -342,11 +342,11 @@ class InsightRow(BaseModel):
     updated_at: str = ""
     confirmed_at: str | None = None
     #: The Recipe it belongs to; NULL is a general insight.
-    set_id: int | None = None
+    recipe_id: int | None = None
     #: The version it was learned at, and its name ("v3"). NULL for "learned
     #: before versions were recorded", and for a general insight.
-    set_version_id: int | None = None
-    set_version_label: str | None = None
+    recipe_version_id: int | None = None
+    recipe_version_label: str | None = None
     #: The conversation that proposed it. NULL for one that was placed or written by hand.
     thread_id: int | None = None
     #: The person turned the card down. Kept for the conversation that proposed
@@ -378,21 +378,21 @@ class InsightRow(BaseModel):
     copied_from_insight_id: int | None = None
     #: The Recipe that original was learned in: this copy's home Recipe when insights are weighed
     #: across Recipes, whatever became of the original.
-    copied_from_set_id: int | None = None
+    copied_from_recipe_id: int | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def general(self) -> bool:
-        """Whether it is general knowledge rather than one Set's."""
-        return self.set_id is None
+        """Whether it is general knowledge rather than one Recipe's."""
+        return self.recipe_id is None
 
     @property
     def scope_label(self) -> str:
-        if self.set_id is not None:
+        if self.recipe_id is not None:
             return (
-                f"this Set, learned at {self.set_version_label}"
-                if self.set_version_label
-                else "this Set"
+                f"this Recipe, learned at {self.recipe_version_label}"
+                if self.recipe_version_label
+                else "this Recipe"
             )
         return self.scope.label()
 
@@ -411,7 +411,7 @@ class InsightRow(BaseModel):
         if text_chars is not None and len(text) > text_chars:
             text = text[:text_chars].rstrip() + "…"
         facts = [self.scope_label]
-        if self.set_id is not None:
+        if self.recipe_id is not None:
             if self.rests_on:
                 facts.append("rests on " + ", ".join(item.render() for item in self.rests_on))
             if self.filed_shots:
@@ -424,9 +424,9 @@ class InsightRow(BaseModel):
 #: query per insight. The "now" half is the version's outcome at read time. A version
 #: that no longer exists is simply not listed.
 _SELECT = f"""
-    SELECT i.*, {label_sql("v")} AS set_version_label,
+    SELECT i.*, {label_sql("v")} AS recipe_version_label,
            (SELECT json_group_array(json_object(
-                       'set_version_id', rv.id,
+                       'recipe_version_id', rv.id,
                        'label', {label_sql("rv")},
                        'outcome_then', json_extract(e.value, '$.outcome'),
                        'outcome_now', rv.outcome))
@@ -491,7 +491,7 @@ class InsightsRepository(Repository):
         )
         return [self._decode(row) for row in rows]
 
-    async def own(self, set_id: int, *, include_dismissed: bool = False) -> list[InsightRow]:
+    async def own(self, recipe_id: int, *, include_dismissed: bool = False) -> list[InsightRow]:
         """What was learned **in** this Recipe, in any state, oldest first.
 
         Dismissed ones only when asked: the conversation that proposed one is
@@ -501,7 +501,7 @@ class InsightsRepository(Repository):
             f"{_SELECT} WHERE i.recipe_id = ? "
             + ("" if include_dismissed else "AND i.dismissed = 0 ")
             + "ORDER BY i.created_at, i.id",
-            (set_id,),
+            (recipe_id,),
         )
         return [self._decode(row) for row in rows]
 
@@ -509,7 +509,7 @@ class InsightsRepository(Repository):
         """What **this conversation** proposed, in every state, newest last.
 
         Keyed by the thread that wrote the insight, so an insight placed on the
-        Set by the one-time move (which has no thread) is never told to a
+        Recipe by the one-time move (which has no thread) is never told to a
         conversation as its own.
 
         The one reader of a dismissed insight: the conversation that proposed it
@@ -537,7 +537,7 @@ class InsightsRepository(Repository):
             if scope_matches(insight.scope.stated(), attributes)
         ]
 
-    async def for_recipe(self, set_id: int) -> list[InsightRow]:
+    async def for_recipe(self, recipe_id: int) -> list[InsightRow]:
         """What applies to a Recipe: its own confirmed insights, then the general ones that match.
 
         **The one selection** for a Recipe's conversations (opening context and
@@ -547,14 +547,14 @@ class InsightsRepository(Repository):
         prompt. Oldest first across both, so a later insight that qualifies an
         earlier one reads after it.
         """
-        attributes = await self.attributes_of(set_id)
+        attributes = await self.attributes_of(recipe_id)
         if attributes is None:
             return []
-        mine = [item for item in await self.own(set_id) if item.confirmed]
+        mine = [item for item in await self.own(recipe_id) if item.confirmed]
         general = await self.select(attributes)
         return sorted([*mine, *general], key=lambda item: (item.created_at, item.id))
 
-    async def attributes_of(self, set_id: int) -> dict[str, Any] | None:
+    async def attributes_of(self, recipe_id: int) -> dict[str, Any] | None:
         """A Recipe's attributes in the shape :func:`scope_matches` reads, or ``None`` for no such
         Recipe.
 
@@ -563,7 +563,7 @@ class InsightsRepository(Repository):
         an insight scoped by style belongs on the shot page.
         """
         row = await self.db.fetch_one(
-            "SELECT bean_id, grinder_id FROM recipes WHERE id = ?", (set_id,)
+            "SELECT bean_id, grinder_id FROM recipes WHERE id = ?", (recipe_id,)
         )
         if row is None:
             return None
@@ -590,14 +590,14 @@ class InsightsRepository(Repository):
                  thread_id, rests_on_json, replaces_id, replaces_text, pattern_run_id,
                  copied_from_insight_id, copied_from_recipe_id)
             VALUES (:scope, :text, :evidence, :source,
-                    :confirmed, :now, :now, :confirmed_at, :set_id, :set_version_id,
+                    :confirmed, :now, :now, :confirmed_at, :recipe_id, :recipe_version_id,
                     :thread_id, :rests_on, :replaces_id, :replaces_text, :pattern_run_id,
-                    :copied_from, :copied_from_set)
+                    :copied_from, :copied_from_recipe)
             """,
             {
                 "rests_on": dumps(
                     [
-                        {"recipe_version_id": item.set_version_id, "outcome": item.outcome}
+                        {"recipe_version_id": item.recipe_version_id, "outcome": item.outcome}
                         for item in insight.rests_on
                     ]
                 ),
@@ -605,9 +605,9 @@ class InsightsRepository(Repository):
                 "replaces_text": insight.replaces_text,
                 "pattern_run_id": insight.pattern_run_id,
                 "copied_from": insight.copied_from_insight_id,
-                "copied_from_set": insight.copied_from_set_id,
-                "set_id": insight.set_id,
-                "set_version_id": insight.set_version_id,
+                "copied_from_recipe": insight.copied_from_recipe_id,
+                "recipe_id": insight.recipe_id,
+                "recipe_version_id": insight.recipe_version_id,
                 "thread_id": insight.thread_id,
                 "scope": dumps(insight.scope.stated()),
                 "text": insight.text,
@@ -638,8 +638,8 @@ class InsightsRepository(Repository):
         The evidence shots are the caller's to check (they are this Recipe's shots, as
         for any insight); this does not look at them beyond counting.
         """
-        if insight.set_id is None:
-            raise ValueError("only a Set's insight is proposed through this door")
+        if insight.recipe_id is None:
+            raise ValueError("only a Recipe's insight is proposed through this door")
         async with self.db.transaction():
             if not version_ids and not insight.evidence_shot_ids:
                 return InsightProposeResult(refused="nothing_to_rest_on")
@@ -647,13 +647,13 @@ class InsightsRepository(Repository):
             for version_id in dict.fromkeys(version_ids):
                 found = await self.db.fetch_one(
                     "SELECT outcome FROM recipe_versions WHERE id = ? AND recipe_id = ?",
-                    (version_id, insight.set_id),
+                    (version_id, insight.recipe_id),
                 )
                 if found is None:
                     return InsightProposeResult(refused="bad_version", subject=version_id)
                 if found["outcome"] is None:
                     return InsightProposeResult(refused="no_outcome", subject=version_id)
-                rests_on.append(RestsOn(set_version_id=version_id, outcome=found["outcome"]))
+                rests_on.append(RestsOn(recipe_version_id=version_id, outcome=found["outcome"]))
             replaces_text = ""
             if insight.replaces_id is not None:
                 old = await self.db.fetch_one(
@@ -663,11 +663,11 @@ class InsightsRepository(Repository):
                 )
                 if old is None:
                     return InsightProposeResult(refused="bad_replaces", subject=insight.replaces_id)
-                if old["set_id"] is None:
+                if old["recipe_id"] is None:
                     return InsightProposeResult(
                         refused="replaces_general", subject=insight.replaces_id
                     )
-                if old["set_id"] != insight.set_id:
+                if old["recipe_id"] != insight.recipe_id:
                     return InsightProposeResult(refused="bad_replaces", subject=insight.replaces_id)
                 if not old["confirmed"] or old["dismissed"]:
                     return InsightProposeResult(
@@ -775,7 +775,7 @@ class InsightsRepository(Repository):
             )
             if (
                 old is not None
-                and old["set_id"] == row["set_id"]
+                and old["recipe_id"] == row["recipe_id"]
                 and old["confirmed"]
                 and not old["dismissed"]
             ):
@@ -886,7 +886,7 @@ class InsightsRepository(Repository):
             listed = []
         # Oldest version first: the order the versions were made in, whatever order
         # the insight's author named them.
-        payload["rests_on_resolved"] = sorted(listed, key=lambda item: item["set_version_id"])
+        payload["rests_on_resolved"] = sorted(listed, key=lambda item: item["recipe_version_id"])
         filed = payload.get("filed_shots_resolved")
         try:
             payload["filed_shots_resolved"] = sorted(json.loads(filed)) if filed else []

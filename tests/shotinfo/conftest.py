@@ -28,7 +28,7 @@ from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.notes import NotesRepository
-from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionWrite, RecipeWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw
@@ -55,7 +55,7 @@ SHOT_129 = Path(__file__).resolve().parents[1] / "fixtures" / "exports" / "shot-
 @dataclass(slots=True)
 class Archive:
     db: Database
-    set_id: int
+    recipe_id: int
     version_id: int
     #: The judged shot the goldens are rendered from.
     shot: int
@@ -118,7 +118,7 @@ async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
         recipes = RecipesRepository(db)
         row = await recipes.create(
             RecipeWrite(name="Alturas on the Niche", bean_id=bean.id, grinder_id=grinder.id),
-            SetVersionWrite(
+            RecipeVersionWrite(
                 profile_version_id=profile,
                 grind_setting="14",
                 dose_g=18.0,
@@ -166,7 +166,7 @@ async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
         )
         yield Archive(
             db=db,
-            set_id=row.id,
+            recipe_id=row.id,
             version_id=version_id,
             shot=shot,
             no_scale=no_scale,

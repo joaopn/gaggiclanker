@@ -85,7 +85,7 @@ function pinnedDetail(overrides: Partial<SetDetailData> = {}): SetDetailData {
     ...extra,
   });
   return setDetail({
-    set: setRow({ current_version_id: 23, current_version_label: "v1.3", version_count: 3 }),
+    recipe: setRow({ current_version_id: 23, current_version_label: "v1.3", version_count: 3 }),
     versions: [entry(23, 3), entry(22, 2, { pinned: { pin_id: 5, shot_count: 14 } }), entry(21, 1)],
     pins: [setPin()],
     ...overrides,
@@ -150,7 +150,7 @@ describe("the timeline's pins", () => {
   });
 
   it("offers no pin on an archived Set", async () => {
-    getSet.mockResolvedValue(pinnedDetail({ set: setRow({ archived: true }) }));
+    getSet.mockResolvedValue(pinnedDetail({ recipe: setRow({ archived: true }) }));
     renderWithQueryClient(<SetDetailPage />);
     await screen.findByTestId("version-timeline");
 
@@ -158,7 +158,7 @@ describe("the timeline's pins", () => {
   });
 
   it("offers no pin on a Set being designed, even when its first version names a profile", async () => {
-    const detail = pinnedDetail({ set: setRow({ designing: true }), pins: [] });
+    const detail = pinnedDetail({ recipe: setRow({ designing: true }), pins: [] });
     getSet.mockResolvedValue(detail);
     renderWithQueryClient(<SetDetailPage />);
     await screen.findByTestId("version-timeline");
@@ -747,7 +747,9 @@ describe("Archive", () => {
     expect(screen.getByTestId("archive-confirm")).toBeInTheDocument();
 
     routeSetId = "4";
-    getSet.mockResolvedValue(pinnedDetail({ set: setRow({ id: 4, name: "Other Set" }), pins: [] }));
+    getSet.mockResolvedValue(
+      pinnedDetail({ recipe: setRow({ id: 4, name: "Other Set" }), pins: [] }),
+    );
     rerender(<SetDetailPage />);
     await screen.findByRole("heading", { name: "Other Set" });
     routeSetId = "3";
@@ -788,7 +790,7 @@ describe("Archive", () => {
     routeSetId = "4";
     getSet.mockResolvedValue(
       pinnedDetail({
-        set: setRow({ id: 4, name: "Other Set" }),
+        recipe: setRow({ id: 4, name: "Other Set" }),
         pins: [setPin({ pin_id: 9, name: "Other v1.1" })],
       }),
     );
@@ -820,7 +822,7 @@ describe("focus after a pin", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, gcTime: 600_000 } },
     });
-    const other = () => pinnedDetail({ set: setRow({ id: 4, name: "Other Set" }), pins: [] });
+    const other = () => pinnedDetail({ recipe: setRow({ id: 4, name: "Other Set" }), pins: [] });
     const user = setupUser();
     // The other Set is read first, so moving to it later finds it cached and the timeline stays
     // mounted (production keeps its cache; a loading skeleton would reset the state by itself).

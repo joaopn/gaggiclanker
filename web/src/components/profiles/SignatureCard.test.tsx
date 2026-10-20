@@ -269,13 +269,13 @@ describe("what the card shows", () => {
     const link = screen.getByTestId("signature-set-chat");
     expect(link).toHaveTextContent("Constructed lever");
     const href = link.getAttribute("href") ?? "";
-    expect(href).toContain(`set=${signatureNone.sets[0].set_id}`);
-    expect(href).toContain(`version=${signatureNone.sets[0].version_id}`);
+    expect(href).toContain(`set=${signatureNone.recipes[0].recipe_id}`);
+    expect(href).toContain(`version=${signatureNone.recipes[0].version_id}`);
   });
 
   it("offers the general chat when no Set brews the version", async () => {
     const user = setupUser();
-    renderCard({ ...signatureNone, sets: [] });
+    renderCard({ ...signatureNone, recipes: [] });
     await openCard(user);
 
     expect(await screen.findByTestId("signature-general-chat")).toBeInTheDocument();

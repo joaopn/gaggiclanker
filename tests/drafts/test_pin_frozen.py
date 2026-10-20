@@ -35,8 +35,8 @@ SENTENCE = f"{NAME} is pinned to Guji v1: unpin it to change it."
 
 
 async def _pinned_row(app: FastAPI, client: httpx.AsyncClient) -> dict[str, Any]:
-    set_id, version_id = await _recipe_with_version(app, client)
-    data(await _pin(client, set_id, version_id))
+    recipe_id, version_id = await _recipe_with_version(app, client)
+    data(await _pin(client, recipe_id, version_id))
     return dict(row_for(await get_board(client), NAME))
 
 
@@ -110,12 +110,14 @@ async def test_keeping_the_machines_side_of_a_pinned_files_conflict_gives_the_re
     has a new minor version, and the pin names that Recipe version. The copy keeps the file and the
     machine's version."""
     app, client, fake = adopted
-    set_id = int(await app.state.db.fetch_value("SELECT MAX(id) FROM recipes") or 0)
+    recipe_id = int(await app.state.db.fetch_value("SELECT MAX(id) FROM recipes") or 0)
     row, body = await _edited_on_the_machine(app, client, fake)
     row_id = row["row"]["id"]
-    set_id = int(await app.state.db.fetch_value("SELECT id FROM recipes ORDER BY id DESC LIMIT 1"))
+    recipe_id = int(
+        await app.state.db.fetch_value("SELECT id FROM recipes ORDER BY id DESC LIMIT 1")
+    )
     own = int(
-        await app.state.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (set_id,))
+        await app.state.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (recipe_id,))
     )
     before = int(
         await app.state.db.fetch_value(
@@ -128,13 +130,15 @@ async def test_keeping_the_machines_side_of_a_pinned_files_conflict_gives_the_re
     )
 
     assert kept.status_code == 200, kept.text
-    recipe_row = data(await client.get(f"/api/sets/{set_id}"))["set"]
+    recipe_row = data(await client.get(f"/api/recipes/{recipe_id}"))["recipe"]
     assert recipe_row["current_version_label"] == "v1.1"
     new_version = recipe_row["current_version_id"]
     pin = await app.state.db.fetch_one(
         "SELECT * FROM recipe_version_pins WHERE board_id = ?", (row_id,)
     )
-    assert pin is not None and pin["set_version_id"] == new_version and pin["unpinned_at"] is None
+    assert (
+        pin is not None and pin["recipe_version_id"] == new_version and pin["unpinned_at"] is None
+    )
     # ... and it names one version, the one the file holds now (the copy row's active version).
     assert (
         pin["profile_version_id"]
@@ -207,7 +211,7 @@ async def test_a_shot_brewed_on_the_kept_file_files_under_the_pins_new_recipe_ve
     assert summary.matched == 1
     assert (
         await app.state.db.fetch_value("SELECT recipe_version_id FROM shots WHERE id = ?", (shot,))
-        == pin["set_version_id"]
+        == pin["recipe_version_id"]
     )
 
 
@@ -309,8 +313,8 @@ async def test_the_name_check_says_what_the_put_would_say_about_an_unpinned_copy
 ) -> None:
     """After the unpin no profile has the name, but the document is still the pin's copy."""
     app, client, _fake = adopted
-    set_id, version_id = await _recipe_with_version(app, client)
-    made = data(await _pin(client, set_id, version_id))["pin"]
+    recipe_id, version_id = await _recipe_with_version(app, client)
+    made = data(await _pin(client, recipe_id, version_id))["pin"]
     copy_version = made["profile_version_id"]
     document = data(await client.get(f"/api/profile-versions/{copy_version}"))["profile"]
     draft = data(
@@ -337,8 +341,8 @@ async def test_the_name_check_says_what_the_put_would_say_about_an_unpinned_copy
 
 async def _a_stored_draft_equal_to_the_copy(app: FastAPI, client: httpx.AsyncClient) -> Any:
     """A pin, and a waiting draft made before it for a new profile with the copy's name and brew."""
-    set_id, version_id = await _recipe_with_version(app, client)
-    made = data(await _pin(client, set_id, version_id))["pin"]
+    recipe_id, version_id = await _recipe_with_version(app, client)
+    made = data(await _pin(client, recipe_id, version_id))["pin"]
     base = await base_version_id(app, BASE_LABEL)
     draft = await ProfileDraftsRepository(app.state.db).create(
         ProfileDraftWrite(

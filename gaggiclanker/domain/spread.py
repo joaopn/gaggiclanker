@@ -222,7 +222,7 @@ class Spread:
 
 
 class MeasureSpread(BaseModel):
-    """One line of the Set page's Spread block: the number and its basis."""
+    """One line of the Recipe page's Spread block: the number and its basis."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -237,7 +237,7 @@ class MeasureSpread(BaseModel):
     #: What ``measured`` is decided on. The Spread block reads it too, as the
     #: other half of the basis: subtracted from ``shots`` it is the number of
     #: repeat groups that contributed — one degree goes on each group's own
-    #: average — so the line can say "from 9 repeat shots of 3 recipes", which
+    #: average — so the line can say "from 9 repeat shots at 3 settings", which
     #: is a different piece of evidence from 9 shots of one.
     degrees_of_freedom: int = 0
     #: Counted shots holding a value for this measure at all, repeats or not.

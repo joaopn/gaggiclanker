@@ -57,8 +57,8 @@ class PatternsData(BaseModel):
     #: before any run has finished, which is also when the count is of everything.
     counted_from: str | None = None
     #: How many Recipes have a confirmed insight, and how many a run needs.
-    sets_with_insights: int = 0
-    min_sets: int = MIN_RECIPES
+    recipes_with_insights: int = 0
+    min_recipes: int = MIN_RECIPES
 
 
 class PatternRunRequest(BaseModel):
@@ -106,7 +106,7 @@ async def get_patterns(
         proposals=[] if latest_done is None else await proposals.for_run(latest_done.id),
         new_since_last_run=await runs.new_since_last_run(),
         counted_from=None if latest_done is None else latest_done.created_at,
-        sets_with_insights=await runs.sets_with_insights(),
+        recipes_with_insights=await runs.recipes_with_insights(),
     )
     return envelope_response(data.model_dump(mode="json"))
 
@@ -115,7 +115,7 @@ async def get_patterns(
     "/runs",
     response_model=ApiResponse[PatternRunRow],
     status_code=202,
-    summary="Find patterns across Sets",
+    summary="Find patterns across Recipes",
     # A run spends a provider call; the registry already makes a second press while one
     # runs idempotent, and this bounds a loop of presses over time.
     dependencies=[Depends(rate_limit("patterns", REVIEW_RATE_LIMIT))],
@@ -130,7 +130,7 @@ async def start_run(
     """Queue the work and answer with the `running` row. 202, not 201.
 
     This is the only way a run starts: a person pressing the button. 409
-    `PATTERNS_NOT_ENOUGH_SETS` when fewer than two Sets have a confirmed insight. A press
+    `PATTERNS_NOT_ENOUGH_RECIPES` when fewer than two Recipes have a confirmed insight. A press
     while one runs gets that running row back. ``?wait=1`` blocks until the run is finished
     (tests and `curl`); a browser follows the stream.
     """
@@ -140,12 +140,12 @@ async def start_run(
         )
     except NotEnoughRecipes as exc:
         raise Conflict(
-            "Fewer than two Sets have a confirmed insight",
-            code="PATTERNS_NOT_ENOUGH_SETS",
+            "Fewer than two Recipes have a confirmed insight",
+            code="PATTERNS_NOT_ENOUGH_RECIPES",
             details={
-                "field": "sets",
+                "field": "recipes",
                 "message": (
-                    f"A pattern needs {MIN_RECIPES} Sets that have each confirmed an insight; "
+                    f"A pattern needs {MIN_RECIPES} Recipes that have each confirmed an insight; "
                     f"{exc.found} do."
                 ),
             },
@@ -189,13 +189,13 @@ def _refused(refused: str | None, proposal_id: int) -> Conflict | NotFound:
         )
     if refused == "too_few_recipes":
         return Conflict(
-            "Fewer than two Sets' insights are left to replace",
-            code="PATTERN_TOO_FEW_SETS",
+            "Fewer than two Recipes' insights are left to replace",
+            code="PATTERN_TOO_FEW_RECIPES",
             details={
                 "field": "sources",
                 "message": (
-                    "The Set insights this was derived from have changed since it was proposed, "
-                    "and fewer than two Sets' are left. Dismiss it."
+                    "The Recipe insights this was derived from have changed since it was proposed, "
+                    "and fewer than two Recipes' are left. Dismiss it."
                 ),
             },
         )
@@ -218,8 +218,8 @@ async def approve_proposal(proposal_id: int, proposals: PatternProposalsRepoDep)
     """A person's press: writes the general insight and deletes what it was derived from.
 
     One transaction. A source that is gone or no longer confirmed is skipped and named in
-    `skipped`; the approval still succeeds when at least two Sets' sources remain, and is
-    refused (409 `PATTERN_TOO_FEW_SETS`, nothing written) otherwise. 409 `PATTERNS_RUNNING` while
+    `skipped`; the approval still succeeds when at least two Recipes' sources remain, and is
+    refused (409 `PATTERN_TOO_FEW_RECIPES`, nothing written) otherwise. 409 `PATTERNS_RUNNING` while
     a run is going. There is no tool for this.
     """
     result = await proposals.approve(proposal_id)

@@ -93,14 +93,14 @@ async def main() -> int:
                 )
                 created = data(
                     await client.post(
-                        "/api/sets/design",
+                        "/api/recipes/design",
                         json={"bean_id": bean["id"], "grinder_id": grinder["id"]},
                     )
                 )
-            set_id = created["set"]["id"]
+            recipe_id = created["recipe"]["id"]
 
             ctx = app.state.chat.tool_context(
-                scope=await ToolScope.resolve(db, set_id), run_id=None
+                scope=await ToolScope.resolve(db, recipe_id), run_id=None
             )
             outcome = await registry.dispatch(
                 ctx,

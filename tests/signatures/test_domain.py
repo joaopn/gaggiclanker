@@ -542,7 +542,7 @@ def test_an_override_changes_only_that_expectations_limit() -> None:
     result = _lever_checks(expectations, override=(2, loose))
     ramp = next(c for c in result.checks if c.expectation_id == 2)
     assert ramp.status == "held"
-    assert "this Set version's limit; the profile's is at most 0.15" in ramp.detail
+    assert "this Recipe version's limit; the profile's is at most 0.15" in ramp.detail
     # The soak expectation's own limit is untouched, and so is every other result.
     soak = next(c for c in result.checks if c.expectation_id == 3)
     assert soak.status == "failed"
@@ -703,7 +703,7 @@ def test_a_check_serves_its_effective_limit_and_reads_a_share_as_a_percentage() 
     )
     assert loose.compare == Compare(op="<=", value=1.3)
     assert loose.limit_text == "at most 130 % of target"
-    assert "(this Set version's limit; the profile's is at most 0.15)" in loose.detail
+    assert "(this Recipe version's limit; the profile's is at most 0.15)" in loose.detail
 
 
 def test_a_limit_that_is_not_a_share_names_its_unit() -> None:

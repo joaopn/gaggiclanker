@@ -162,14 +162,14 @@ class ChatRequest:
     #: The Recipe this conversation is scoped to, when it is scoped to one. Only
     #: ``claude_code`` reads it, and it has to: the CLI runs the tool loop
     #: itself against our MCP server, so a scope the runner keeps to itself
-    #: would make `get_set` with no argument answer "not scoped" on the default
+    #: would make `get_recipe` with no argument answer "not scoped" on the default
     #: provider and succeed on every other one — and, worse, would leave the
     #: CLI's child offering the whole archive's tools inside a conversation
     #: about one Recipe.
-    set_id: int | None = None
+    recipe_id: int | None = None
     #: The version being argued, beside it. Carried for the same reason and
     #: forwarded to the same place; the two travel together everywhere.
-    set_version_id: int | None = None
+    recipe_version_id: int | None = None
     #: Which conversation this turn belongs to. Not a scope — it narrows
     #: nothing — but a change proposed inside the CLI's own tool loop records
     #: the room it was argued in, and the child can only know that if it is

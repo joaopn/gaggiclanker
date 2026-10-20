@@ -85,7 +85,7 @@ class CheckSubject:
     #: judged by the signature of the profile it was copied from (`judged_profile_version`).
     profile_version_id: int | None
     #: The Recipe version it is filed under: whose override applies.
-    set_version_id: int | None
+    recipe_version_id: int | None
     warnings: Sequence[ShotWarning]
     phases: Sequence[Mapping[str, Any]]
     duration_s: float
@@ -190,7 +190,7 @@ def _key(
         # Whose signature judged it: a pin's copy is judged by its original's, so the key moves
         # with that, not only with the shot's own profile.
         judged,
-        subject.set_version_id,
+        subject.recipe_version_id,
         subject.scale_connected,
         subject.has_pressure,
         subject.final_weight_g,
@@ -234,7 +234,7 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
     live = [s for s in subjects if not s.quarantined]
     applying = [s for s in live if (j := judged_by(s)) is not None and confirmed.get(j)]
     overrides = await repo.confirmed_overrides(
-        {s.set_version_id for s in applying if s.set_version_id is not None}
+        {s.recipe_version_id for s in applying if s.recipe_version_id is not None}
     )
 
     found: dict[int, ShotChecks] = {}
@@ -248,8 +248,8 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
         judged = judged_by(subject)
         expectations: Sequence[ExpectationRow] = confirmed.get(judged, []) if judged else []
         override = None
-        if expectations and subject.set_version_id is not None:
-            stored = overrides.get(subject.set_version_id)
+        if expectations and subject.recipe_version_id is not None:
+            stored = overrides.get(subject.recipe_version_id)
             if stored is not None and stored.compare is not None:
                 # Applied to the expectation it names and to nothing else; an expectation of
                 # another profile version's signature is never in this list to be hit.

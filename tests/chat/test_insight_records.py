@@ -40,7 +40,7 @@ async def provenance(tmp_path: Path) -> AsyncIterator[ProvenanceWorld]:
 
 @pytest.fixture
 def scope(provenance: ProvenanceWorld) -> ToolScope:
-    return ToolScope.for_thread(provenance.set_id, provenance.v3)
+    return ToolScope.for_thread(provenance.recipe_id, provenance.v3)
 
 
 async def _context(world: ProvenanceWorld, scope: ToolScope, thread: int | None) -> str:
@@ -61,8 +61,8 @@ async def _propose(
         InsightWrite(
             text=text,
             source="chat",
-            set_id=world.set_id,
-            set_version_id=world.v3,
+            recipe_id=world.recipe_id,
+            recipe_version_id=world.v3,
             thread_id=world.thread if thread is None else thread,
             replaces_id=replaces,
         ),
@@ -126,7 +126,7 @@ class TestWhatItProposedAsInsights:
 class TestWhatItProposedDeleting:
     async def _propose(self, world: ProvenanceWorld, target: int, reason: str = REASON) -> int:
         result = await world.deletions.propose(
-            world.set_id,
+            world.recipe_id,
             InsightDeletionWrite(thread_id=world.thread, insight_id=target, reason=reason),
         )
         assert result.proposal is not None
@@ -141,8 +141,8 @@ class TestWhatItProposedDeleting:
         kept = await world.own("Kept by the press.")
         gone = await world.own("Gone another way.")
         await self._propose(world, waiting)
-        await world.deletions.accept(world.set_id, await self._propose(world, deleted))
-        await world.deletions.keep(world.set_id, await self._propose(world, kept))
+        await world.deletions.accept(world.recipe_id, await self._propose(world, deleted))
+        await world.deletions.keep(world.recipe_id, await self._propose(world, kept))
         await self._propose(world, gone)
         await world.insights.delete(gone)
 
@@ -160,7 +160,9 @@ class TestWhatItProposedDeleting:
         self, provenance: ProvenanceWorld, scope: ToolScope
     ) -> None:
         target = await provenance.own("Kept, then deleted: zyxwvut.")
-        await provenance.deletions.keep(provenance.set_id, await self._propose(provenance, target))
+        await provenance.deletions.keep(
+            provenance.recipe_id, await self._propose(provenance, target)
+        )
         assert "(kept by the person)" in await _context(provenance, scope, provenance.thread)
 
         await provenance.insights.delete(target)
@@ -173,7 +175,9 @@ class TestWhatItProposedDeleting:
         self, provenance: ProvenanceWorld, scope: ToolScope
     ) -> None:
         target = await provenance.own("Kept claim.")
-        await provenance.deletions.keep(provenance.set_id, await self._propose(provenance, target))
+        await provenance.deletions.keep(
+            provenance.recipe_id, await self._propose(provenance, target)
+        )
 
         text = await _context(provenance, scope, provenance.thread)
 
@@ -214,7 +218,7 @@ class TestRemovedMeansRemoved:
         target = await world.own("Doomed claim, with a rare phrase: zyxwvut.")
         proposal = (
             await world.deletions.propose(
-                world.set_id,
+                world.recipe_id,
                 InsightDeletionWrite(thread_id=world.thread, insight_id=target, reason=REASON),
             )
         ).proposal
@@ -238,7 +242,7 @@ class TestRemovedMeansRemoved:
         before = await self._prompts(provenance, scope)
         _, proposal = await self._doomed(provenance)
 
-        await provenance.deletions.accept(provenance.set_id, proposal)
+        await provenance.deletions.accept(provenance.recipe_id, proposal)
 
         assert await self._prompts(provenance, scope) == before
         # The conversation that asked is told what went; nobody else is.

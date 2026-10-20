@@ -31,8 +31,8 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.recipes import (
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.schema import create_schema
@@ -86,7 +86,7 @@ async def lever(tmp_path: Path) -> AsyncIterator[tuple[Database, int, int]]:
         await own_version(db, profile.id)
         row = await RecipesRepository(db).create(
             RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
-            SetVersionWrite(
+            RecipeVersionWrite(
                 profile_version_id=profile.id,
                 grind_setting="14",
                 dose_g=18.0,
@@ -390,7 +390,9 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
     await own_version(db, profile.id)
     row = await recipes.create(
         RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
-        SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),
+        RecipeVersionWrite(
+            profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G
+        ),
     )
     slog = lever_shot()
     derived = derive_shot(

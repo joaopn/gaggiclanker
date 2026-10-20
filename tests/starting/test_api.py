@@ -85,13 +85,13 @@ async def test_similar_recipes_is_readable_without_spending_anything(
     """The wizard's first step shows these before anybody presses a button."""
     _app, client, fixture, provider = api
     response = await client.get(
-        f"/api/beans/{fixture.new_bean_id}/similar-sets",
+        f"/api/beans/{fixture.new_bean_id}/similar-recipes",
         params={"grinder_id": fixture.grinder_id},
     )
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["bean_id"] == fixture.new_bean_id
-    assert data["items"][0]["set_version_id"] == fixture.versions["kenya"]
+    assert data["items"][0]["recipe_version_id"] == fixture.versions["kenya"]
     assert data["items"][0]["outcome"]["shots"] == 5
     assert provider.calls == [], "reading the archive costs no tokens"
 
@@ -100,7 +100,7 @@ async def test_similar_recipes_404s_for_a_bean_that_does_not_exist(
     api: tuple[FastAPI, httpx.AsyncClient, Fixture, FakeProvider],
 ) -> None:
     _app, client, _fixture, _provider = api
-    response = await client.get("/api/beans/9999/similar-sets")
+    response = await client.get("/api/beans/9999/similar-recipes")
     assert response.status_code == 404
     assert response.json()["ok"] is False
 
@@ -187,15 +187,15 @@ async def test_accepting_answers_201_with_the_recipe_and_its_version(
     )
     assert response.status_code == 201
     data = response.json()["data"]
-    assert data["set"]["bean_id"] == fixture.new_bean_id
+    assert data["recipe"]["bean_id"] == fixture.new_bean_id
     assert data["version"]["origin"] == "starting_point"
     assert data["version"]["version_label"] == "v1"
     assert data["draft"] is None
     assert data["run"]["accepted_option"] == "recommended"
 
     # ... and the Recipe is where the Recipes page will find it.
-    listed = await client.get("/api/sets")
-    assert any(row["id"] == data["set"]["id"] for row in listed.json()["data"]["items"])
+    listed = await client.get("/api/recipes")
+    assert any(row["id"] == data["recipe"]["id"] for row in listed.json()["data"]["items"])
 
 
 async def test_accepting_an_option_with_a_profile_returns_the_draft_to_open(
@@ -235,7 +235,7 @@ async def test_accepting_twice_is_a_409(
     assert second.status_code == 409
     # The refusal carries what the first accept made, so the UI can take the
     # person there rather than showing them an error about a Recipe that exists.
-    assert second.json()["error"]["details"]["set_id"]
+    assert second.json()["error"]["details"]["recipe_id"]
 
 
 async def test_an_option_key_that_is_not_one_of_the_three_is_refused(

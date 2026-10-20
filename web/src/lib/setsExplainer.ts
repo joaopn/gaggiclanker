@@ -8,12 +8,12 @@
  * access is guarded: a private window or blocked site data simply means the
  * page decides every visit.
  */
-export const SETS_EXPLAINER_KEY = "sets.explainer.v1";
+export const RECIPES_EXPLAINER_KEY = "sets.explainer.v1";
 
 /** The stored choice, or `null` when nobody has made one (or it is unreadable). */
 export function loadExplainerOpen(storage: Storage | undefined = safeStorage()): boolean | null {
   try {
-    const value = storage?.getItem(SETS_EXPLAINER_KEY);
+    const value = storage?.getItem(RECIPES_EXPLAINER_KEY);
     if (value === "1") return true;
     if (value === "0") return false;
     return null;
@@ -27,7 +27,7 @@ export function saveExplainerOpen(
   storage: Storage | undefined = safeStorage(),
 ): void {
   try {
-    storage?.setItem(SETS_EXPLAINER_KEY, open ? "1" : "0");
+    storage?.setItem(RECIPES_EXPLAINER_KEY, open ? "1" : "0");
   } catch {
     // A view preference is not worth a toast.
   }

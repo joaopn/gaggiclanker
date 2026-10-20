@@ -20,7 +20,7 @@ export type ShotFilterState = {
   /**
    * "" any Set, "needs" the inbox, otherwise a Set id.
    *
-   * One control for two different server parameters (`needs_set` and `set_id`)
+   * One control for two different server parameters (`needs_recipe` and `recipe_id`)
    * because to a reader they are one question — "which Set?" — and "not in one
    * yet" is one of its answers.
    */
@@ -170,11 +170,11 @@ export function toParams(state: ShotFilterState, limit: number): ShotListParams 
     to: dayEnd(state.to),
     profile_version_id: Number.isFinite(profileVersionId) ? profileVersionId : undefined,
     // "needs" is not a Set id, so the two never travel together.
-    needs_set: state.set === "needs" ? true : undefined,
-    set_id: inSet ? setId : undefined,
+    needs_recipe: state.set === "needs" ? true : undefined,
+    recipe_id: inSet ? setId : undefined,
     // Never on its own: the same rule `fromSearchParams` applies, repeated here
     // because `toParams` is also called with state built by hand.
-    set_version_id: inSet && Number.isFinite(versionId) ? versionId : undefined,
+    recipe_version_id: inSet && Number.isFinite(versionId) ? versionId : undefined,
     min_rating: Number.isFinite(rating) ? rating : undefined,
     source: state.source || undefined,
     quarantined: state.quarantined === "" ? undefined : state.quarantined === "yes",

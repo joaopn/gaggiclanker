@@ -78,7 +78,7 @@ function profileVersion(overrides: Partial<ProfileVersionSummary>): ProfileVersi
     // A profile no Set has, by the version it has active: what a new Set may take.
     board_id: overrides.id ?? 7,
     is_active: true,
-    set: null,
+    recipe: null,
     ...overrides,
     profile_name: overrides.profile_name ?? overrides.label ?? "9 Bar Espresso",
   };
@@ -122,7 +122,7 @@ beforeEach(() => {
           deleted_on_device: 0,
           incomplete: 0,
           samples: 1000,
-          needs_set: 0,
+          needs_recipe: 0,
         },
       },
     ],
@@ -145,8 +145,8 @@ beforeEach(() => {
   getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: 1, items: [] });
   createStartingPoint.mockResolvedValue(startingPointRun({ status: "running", output: null }));
   designSet.mockResolvedValue({
-    set: setRow({ id: 6, name: "Ethiopia Guji (Niche Zero)", designing: true }),
-    version: version({ id: 60, set_id: 6, profile_version_id: null, shot_count: 0 }),
+    recipe: setRow({ id: 6, name: "Ethiopia Guji (Niche Zero)", designing: true }),
+    version: version({ id: 60, recipe_id: 6, profile_version_id: null, shot_count: 0 }),
     thread_id: 12,
   });
   sendChatMessage.mockResolvedValue({
@@ -203,7 +203,12 @@ describe("NewSetDialog", () => {
   });
 
   describe("a profile that already has a Set", () => {
-    const TAKEN = { profile_version_id: 30, label: "Lever 6 bar", set_id: 4, set_name: "Kenya" };
+    const TAKEN = {
+      profile_version_id: 30,
+      label: "Lever 6 bar",
+      recipe_id: 4,
+      recipe_name: "Kenya",
+    };
 
     beforeEach(() => {
       getProfileChoices.mockResolvedValue({
@@ -622,7 +627,7 @@ describe("NewSetDialog", () => {
       await waitFor(() => expect(createSet).toHaveBeenCalled());
       const body = createSet.mock.calls[0][0];
       // Not "is null": the key is gone from the API, and a body carrying it
-      // would be refused by the model behind `POST /api/sets`.
+      // would be refused by the model behind `POST /api/recipes`.
       expect(Object.keys(body.version)).not.toContain("target_temperature_c");
       expect(JSON.stringify(body)).not.toContain("temperature");
       expect(body.version).toEqual(
@@ -923,7 +928,7 @@ describe("followName", () => {
   });
 });
 
-/** The name the dialog fills in: the server's `set_name`. */
+/** The name the dialog fills in: the server's `recipe_name`. */
 describe("designName", () => {
   it("trims the bean and the grinder, and keeps the spaces inside them", () => {
     expect(designName("  Ethiopia Guji  ", " Niche Zero ")).toBe("Ethiopia Guji (Niche Zero)");

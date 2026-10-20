@@ -46,7 +46,6 @@ from gaggiclanker.db.repos.knowledge_insights import (
     home_recipes,
     scope_matches,
 )
-from gaggiclanker.db.repos.renamed_keys import DROPPED, SKIPPED, SOURCES, from_stored, to_stored
 from gaggiclanker.db.repository import Repository
 
 log = structlog.get_logger(__name__)
@@ -83,9 +82,9 @@ class PatternSource(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     insight_id: int
-    set_id: int
+    recipe_id: int
     #: The Recipe's name when the run read it, so a card can say where a lesson came from.
-    set_name: str
+    recipe_name: str
     text: str
 
 
@@ -98,7 +97,7 @@ class PatternSkipped(BaseModel):
     #: no id to name (the link to it clears when it goes).
     insight_id: int | None = None
     #: ``None`` for the general insight a proposal replaces.
-    set_id: int | None = None
+    recipe_id: int | None = None
     text: str
     reason: SkipReason
 
@@ -129,7 +128,7 @@ class PatternRunStart(BaseModel):
     #: declined proposals as they were at this moment.
     input: dict[str, Any] = Field(default_factory=dict)
     insights_read: int = 0
-    sets_read: int = 0
+    recipes_read: int = 0
 
 
 class PatternRunOutcome(BaseModel):
@@ -161,7 +160,7 @@ class PatternRunRow(BaseModel):
     prompt_name: str = ""
     prompt_version: str = ""
     insights_read: int = 0
-    sets_read: int = 0
+    recipes_read: int = 0
     proposals_kept: int = 0
     proposals_dropped: int = 0
     dropped: dict[str, int] = Field(default_factory=dict)
@@ -242,7 +241,7 @@ _RUN_COLUMNS = (
 
 def _decode_run(row: Any) -> PatternRunRow:
     payload = dict(zip(row.keys(), tuple(row), strict=True))
-    payload["dropped"] = from_stored(_loads(payload.pop("dropped_json", "{}"), {}), DROPPED)
+    payload["dropped"] = _loads(payload.pop("dropped_json", "{}"), {})
     usage = payload.pop("usage_json", None)
     payload["usage"] = None if usage is None else _loads(usage, None)
     return PatternRunRow.model_validate(payload)
@@ -252,8 +251,8 @@ def _decode_proposal(row: Any) -> PatternProposalRow:
     payload = dict(zip(row.keys(), tuple(row), strict=True))
     scope = _loads(payload.pop("scope_json", "{}"), {})
     payload["scope"] = InsightScope.model_validate(scope)
-    payload["sources"] = from_stored(_loads(payload.pop("sources_json", "[]"), []), SOURCES)
-    payload["skipped"] = from_stored(_loads(payload.pop("skipped_json", "[]"), []), SKIPPED)
+    payload["sources"] = _loads(payload.pop("sources_json", "[]"), [])
+    payload["skipped"] = _loads(payload.pop("skipped_json", "[]"), [])
     return PatternProposalRow.model_validate(payload)
 
 
@@ -276,7 +275,7 @@ async def read_home_recipes(db: Database) -> dict[int, int]:
         "JOIN recipes s ON s.id = i.recipe_id "
         "WHERE i.confirmed = 1 AND i.dismissed = 0 AND s.designing = 0"
     )
-    return home_recipes((row["id"], row["set_id"], row["copied_from_set_id"]) for row in rows)
+    return home_recipes((row["id"], row["recipe_id"], row["copied_from_recipe_id"]) for row in rows)
 
 
 class PatternRunsRepository(Repository):
@@ -290,7 +289,7 @@ class PatternRunsRepository(Repository):
                 (status, provider, model, prompt_name, prompt_version, input_json,
                  insights_read, recipes_read, created_at)
             VALUES ('running', :provider, :model, :prompt_name, :prompt_version, :input_json,
-                    :insights_read, :sets_read, :created_at)
+                    :insights_read, :recipes_read, :created_at)
             """,
             {
                 "provider": spec.provider,
@@ -299,7 +298,7 @@ class PatternRunsRepository(Repository):
                 "prompt_version": spec.prompt_version,
                 "input_json": dumps(spec.input),
                 "insights_read": spec.insights_read,
-                "sets_read": spec.sets_read,
+                "recipes_read": spec.recipes_read,
                 "created_at": utc_now(),
             },
         )
@@ -345,9 +344,7 @@ class PatternRunsRepository(Repository):
                         "run_id": run_id,
                         "text": proposal.text,
                         "scope": dumps(proposal.scope.stated()),
-                        "sources": dumps(
-                            to_stored([item.model_dump() for item in proposal.sources], SOURCES)
-                        ),
+                        "sources": dumps([item.model_dump() for item in proposal.sources]),
                         "replaces_id": proposal.replaces_id,
                         "replaces_text": proposal.replaces_text,
                         "now": now,
@@ -382,7 +379,7 @@ class PatternRunsRepository(Repository):
                 "error": None if outcome.error is None else outcome.error[:ERROR_MAX],
                 "kept": kept,
                 "dropped": dropped,
-                "dropped_json": dumps(to_stored(dict(sorted(outcome.dropped.items())), DROPPED)),
+                "dropped_json": dumps(dict(sorted(outcome.dropped.items()))),
                 "usage_json": None if outcome.usage is None else dumps(outcome.usage),
                 "llm_call_id": outcome.llm_call_id,
                 "provider": outcome.provider,
@@ -468,7 +465,7 @@ class PatternRunsRepository(Repository):
 
     # ── the page's two numbers ───────────────────────────────────────
 
-    async def sets_with_insights(self) -> int:
+    async def recipes_with_insights(self) -> int:
         """How many Recipes have at least one confirmed insight of their own: the run needs two.
 
         A copy made by duplicating a Recipe counts for the Recipe of the insight it copies
@@ -570,7 +567,7 @@ class PatternProposalsRepository(Repository):
                     skipped.append(
                         PatternSkipped(
                             insight_id=source.insight_id,
-                            set_id=source.set_id,
+                            recipe_id=source.recipe_id,
                             text=source.text,
                             reason=reason,
                         )
@@ -578,7 +575,7 @@ class PatternProposalsRepository(Repository):
             # Different lessons, not different Recipes, as the run counted them: a copy and its
             # original are one, whatever the sources that remain happen to be.
             home = await read_home_recipes(self.db)
-            if len({home.get(source.insight_id, source.set_id) for source in kept}) < 2:
+            if len({home.get(source.insight_id, source.recipe_id) for source in kept}) < 2:
                 return ApproveResult(proposal=proposal, refused="too_few_recipes", skipped=skipped)
 
             if proposal.replaces_id is not None or proposal.replaces_text:
@@ -593,7 +590,7 @@ class PatternProposalsRepository(Repository):
                         (proposal.replaces_id,),
                     )
                 )
-                if old is not None and old["set_id"] is None:
+                if old is not None and old["recipe_id"] is None:
                     assert proposal.replaces_id is not None
                     await self.insights.delete_in_transaction(proposal.replaces_id)
                 else:
@@ -628,7 +625,7 @@ class PatternProposalsRepository(Repository):
                 {
                     "now": now,
                     "insight_id": general_id,
-                    "skipped": dumps(to_stored([item.model_dump() for item in skipped], SKIPPED)),
+                    "skipped": dumps([item.model_dump() for item in skipped]),
                     "id": proposal_id,
                 },
             )
@@ -669,11 +666,11 @@ class PatternProposalsRepository(Repository):
             "SELECT recipe_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
             (source.insight_id,),
         )
-        if row is None or row["set_id"] != source.set_id:
+        if row is None or row["recipe_id"] != source.recipe_id:
             return "gone"
         if not row["confirmed"] or row["dismissed"]:
             return "not_confirmed"
-        attributes = await self.insights.attributes_of(source.set_id)
+        attributes = await self.insights.attributes_of(source.recipe_id)
         if attributes is None:
             return "gone"
         if not scope_matches(scope, attributes):

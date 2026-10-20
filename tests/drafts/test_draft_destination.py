@@ -225,8 +225,8 @@ async def test_a_copy_is_a_draft_for_a_new_profile_and_its_version_belongs_to_th
     adopted: Adopted,
 ) -> None:
     app, client, _ = adopted
-    set_id, version_id = await _recipe_with_version(app, client)
-    made = data(await _pin(client, set_id, version_id))
+    recipe_id, version_id = await _recipe_with_version(app, client)
+    made = data(await _pin(client, recipe_id, version_id))
     row_id, copy_version = made["board_id"], made["pin"]["profile_version_id"]
 
     drafts = await app.state.db.fetch_all(

@@ -205,7 +205,7 @@ function Waiting({
   const stopChanges = stopConditionChangesOf(draft);
   const clamps = clampChangesOf(draft);
   // The Set of the profile this lands on follows it with a version of its own.
-  const landingSet = landing?.plain.set ?? null;
+  const landingSet = landing?.plain.recipe ?? null;
   const forSet =
     landingSet !== null
       ? {
@@ -357,7 +357,7 @@ function Waiting({
           data-testid="proposal-prediction"
         >
           <p className="text-muted-foreground text-xs">
-            Prediction for {draft.set_name ?? "its Set"}
+            Prediction for {draft.recipe_name ?? "its Set"}
             {draft.compares_to_version_label
               ? ` · compared to ${draft.compares_to_version_label}`
               : ""}
@@ -616,8 +616,8 @@ function Answered({
   );
   const [curveOpen, setCurveOpen] = useState(false);
   const recorded =
-    standing.set_version_label && draft.recorded_set_name
-      ? ` → ${standing.set_version_label} of ${draft.recorded_set_name}`
+    standing.recipe_version_label && draft.recorded_recipe_name
+      ? ` → ${standing.recipe_version_label} of ${draft.recorded_recipe_name}`
       : "";
   // "Approved as Gentle Bloom (proposed as Soft Bloom)": only when the person changed the name.
   // Only when the name it was proposed under differs from the stored one: exact, after trimming

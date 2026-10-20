@@ -213,7 +213,7 @@ async def test_a_backup_from_before_the_rename_is_accepted_and_upgraded_with_its
         data = response.json()["data"]
         assert data["upgrade_from_level"] == level
         assert data["in_file"]["beans"] == 1
-        assert data["in_file"]["sets"] == 1
+        assert data["in_file"]["recipes"] == 1
         applied = await client.post(f"{ROUTE}/{data['token']}/apply")
         assert applied.status_code == 202, applied.text
 

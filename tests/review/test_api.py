@@ -140,7 +140,7 @@ async def test_only_what_a_person_did_not_reject_reaches_the_chat(
     data = await build_app_fixture(app)
     shot_id = data.shots[-1]
     judged = (await client.get(f"/api/shots/{shot_id}")).json()["data"]["judgement"]
-    ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(data.set_id), run_id=None)
+    ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(data.recipe_id), run_id=None)
 
     async def read_back() -> str:
         outcome = await registry.dispatch(ctx, "get_shot_full", {"shot_id": shot_id})
@@ -281,8 +281,8 @@ async def test_a_second_press_while_one_runs_gets_the_same_row(
         ("get", "/api/analyses/1"),
         ("post", "/api/suggestions/1/accept"),
         ("post", "/api/suggestions/1/reject"),
-        ("get", "/api/sets/{set}/suggestions"),
-        ("post", "/api/sets/{set}/analyse"),
+        ("get", "/api/recipes/{recipe}/suggestions"),
+        ("post", "/api/recipes/{recipe}/analyse"),
     ],
 )
 async def test_the_analysis_routes_are_gone(
@@ -292,7 +292,7 @@ async def test_the_analysis_routes_are_gone(
     data = await build_app_fixture(app)
 
     response = await client.request(
-        method.upper(), path.format(shot=data.shots[-1], set=data.set_id), json={}
+        method.upper(), path.format(shot=data.shots[-1], recipe=data.recipe_id), json={}
     )
 
     assert response.status_code == 404

@@ -65,7 +65,7 @@ __all__ = [
     "DEFAULT_LIMIT",
     "OUTCOME_CONFIDENCE_SHOTS",
     "SimilarOutcome",
-    "SimilarSet",
+    "SimilarRecipe",
     "similar_recipes",
 ]
 
@@ -82,7 +82,7 @@ OUTCOME_CONFIDENCE_SHOTS = 5
 class SimilarOutcome(BaseModel):
     """How a candidate version actually turned out, over its own shots.
 
-    Every field is nullable because every field can be genuinely unknown: a Set
+    Every field is nullable because every field can be genuinely unknown: a Recipe
     pulled before anybody started judging shots has no rating, a shot with no
     dose typed against it has no ratio. ``None`` is the honest answer and the
     prompt renders it as "not recorded" — a zero here would read as "rated it
@@ -97,14 +97,14 @@ class SimilarOutcome(BaseModel):
     mean_duration_s: float | None = None
 
 
-class SimilarSet(BaseModel):
-    """One past Set version offered as an anchor, with why it was offered."""
+class SimilarRecipe(BaseModel):
+    """One past Recipe version offered as an anchor, with why it was offered."""
 
     model_config = ConfigDict(extra="forbid")
 
-    set_id: int
-    set_name: str
-    set_version_id: int
+    recipe_id: int
+    recipe_name: str
+    recipe_version_id: int
     #: The version's name, "v1.1", which is what the card and the prompt show.
     version_label: str
     created_at: str
@@ -190,7 +190,7 @@ WITH outcomes AS (
        AND sh.quarantined = 0
      GROUP BY sh.recipe_version_id
 )
-SELECT v.id                                         AS set_version_id,
+SELECT v.id                                         AS recipe_version_id,
        v.recipe_id,
        {label_sql("v")}                              AS version_label,
        v.created_at,
@@ -205,7 +205,7 @@ SELECT v.id                                         AS set_version_id,
             THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
        v.profile_version_id,
        {version_name_sql("pv")}                     AS profile_label,
-       s.name                                       AS set_name,
+       s.name                                       AS recipe_name,
        s.grinder_id,
        g.name                                       AS grinder_name,
        b.id                                         AS bean_id,
@@ -235,7 +235,7 @@ SELECT v.id                                         AS set_version_id,
          + (CASE WHEN :process IS NOT NULL AND b.process = :process THEN 2.0 ELSE 0.0 END)
          + (CASE WHEN :origin IS NOT NULL AND b.origin = :origin THEN 1.0 ELSE 0.0 END)
          -- Not a filter: see the module docstring. Two points, which is enough
-         -- that an otherwise identical caffeinated Set always wins.
+         -- that an otherwise identical caffeinated Recipe always wins.
          + (CASE WHEN b.decaf = :decaf THEN 0.0 ELSE -2.0 END),
        3)                                           AS attribute_score,
        ROUND(
@@ -267,7 +267,7 @@ async def similar_recipes(
     exclude_recipe_id: int | None = None,
     exclude_bean_id: int | None = None,
     limit: int = DEFAULT_LIMIT,
-) -> list[SimilarSet]:
+) -> list[SimilarRecipe]:
     """The best few past Recipe versions to anchor a new bean on.
 
     ``grinder_id`` is a filter rather than a score term, and deliberately: a
@@ -306,8 +306,8 @@ async def similar_recipes(
             "limit": max(1, limit),
         },
     )
-    ratios = await _mean_ratios(db, [int(row["set_version_id"]) for row in rows])
-    return [_to_model(dict(row), ratios.get(int(row["set_version_id"]))) for row in rows]
+    ratios = await _mean_ratios(db, [int(row["recipe_version_id"]) for row in rows])
+    return [_to_model(dict(row), ratios.get(int(row["recipe_version_id"]))) for row in rows]
 
 
 async def _mean_ratios(db: Database, version_ids: list[int]) -> dict[int, float]:
@@ -341,19 +341,19 @@ async def _mean_ratios(db: Database, version_ids: list[int]) -> dict[int, float]
             scale_yield_g=row["volume_g"],
         )
         if found is not None:
-            by_version.setdefault(int(row["set_version_id"]), []).append(found)
+            by_version.setdefault(int(row["recipe_version_id"]), []).append(found)
     return {version: sum(values) / len(values) for version, values in by_version.items()}
 
 
-def _to_model(row: dict[str, Any], mean_ratio: float | None) -> SimilarSet:
+def _to_model(row: dict[str, Any], mean_ratio: float | None) -> SimilarRecipe:
     attribute = float(row["attribute_score"])
     outcome = float(row["outcome_score"])
     dose = row["dose_g"]
     yield_g = row["target_yield_g"]
-    return SimilarSet(
-        set_id=int(row["set_id"]),
-        set_name=str(row["set_name"]),
-        set_version_id=int(row["set_version_id"]),
+    return SimilarRecipe(
+        recipe_id=int(row["recipe_id"]),
+        recipe_name=str(row["recipe_name"]),
+        recipe_version_id=int(row["recipe_version_id"]),
         version_label=str(row["version_label"]),
         created_at=str(row["created_at"]),
         score=round(attribute + outcome, 3),

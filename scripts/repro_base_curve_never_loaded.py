@@ -11,7 +11,7 @@ The bug
 Settings → Shot information lets a person move any curve channel (pressure,
 puck flow, …) into base, which is what a Recipe conversation's opening context and
 the shot search show for every shot. The shot tools load a shot's samples when
-their tier carries a curve, but the opening context and `list_set_shots`
+their tier carries a curve, but the opening context and `list_recipe_shots`
 loaded their shots without samples, so the curve the person asked for came out
 empty: the channel was silently left out. The settings page's base and
 autoload estimates did count it, so they overstated what a conversation sent.
@@ -83,7 +83,7 @@ async def main() -> int:
                 )
                 made = data(
                     await client.post(
-                        "/api/sets",
+                        "/api/recipes",
                         json={
                             "name": "Kenya on the Niche",
                             "bean_id": bean["id"],
@@ -92,7 +92,7 @@ async def main() -> int:
                         },
                     )
                 )
-            set_id = made["id"]
+            recipe_id = made["id"]
             shot_id = next(
                 row["shot_id"] for row in imported["items"] if row.get("shot_id") is not None
             )
@@ -102,10 +102,10 @@ async def main() -> int:
                 ShotInfoTierWrite(item_key="curve_pressure", tier="base")
             )
 
-            scope = await ToolScope.resolve(db, set_id)
+            scope = await ToolScope.resolve(db, recipe_id)
             context = await opening_context(db, scope, tiers=await effective_tiers(db))
             ctx = app.state.chat.tool_context(scope=scope, run_id=None)
-            outcome = await registry.dispatch(ctx, "list_set_shots", {})
+            outcome = await registry.dispatch(ctx, "list_recipe_shots", {})
             if not outcome.ok:
                 print(f"the search refused: {outcome.data}")
                 return 1
@@ -116,7 +116,7 @@ async def main() -> int:
     found = {
         "get_shot": has_curve(shown.data["text"]),
         "opening context": has_curve(context),
-        "list_set_shots": has_curve(hit["text"]),
+        "list_recipe_shots": has_curve(hit["text"]),
     }
     for where, curve in found.items():
         print(f"{where:16} pressure curve in base: {'yes' if curve else 'NO'}")

@@ -23,7 +23,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.base import utc_now
-from gaggiclanker.db.repos.renamed_keys import STARTING_OUTPUT, from_stored, to_stored
 from gaggiclanker.db.repository import Repository
 
 __all__ = [
@@ -79,8 +78,8 @@ class StartingPointRunRow(BaseModel):
     error: str | None = None
     llm_call_id: str | None = None
     accepted_option: str | None = None
-    accepted_set_id: int | None = None
-    accepted_set_version_id: int | None = None
+    accepted_recipe_id: int | None = None
+    accepted_recipe_version_id: int | None = None
     accepted_draft_id: int | None = None
     accepted_at: str | None = None
     created_at: str
@@ -173,9 +172,7 @@ class StartingPointRunsRepository(Repository):
                 "output_json": (
                     None
                     if output is None
-                    else json.dumps(
-                        to_stored(output, STARTING_OUTPUT), separators=(",", ":"), sort_keys=True
-                    )
+                    else json.dumps(output, separators=(",", ":"), sort_keys=True)
                 ),
                 "usage_json": (None if usage is None else json.dumps(usage, separators=(",", ":"))),
                 "error": error,
@@ -235,23 +232,23 @@ class StartingPointRunsRepository(Repository):
         self,
         run_id: int,
         *,
-        set_id: int,
-        set_version_id: int,
+        recipe_id: int,
+        recipe_version_id: int,
         draft_id: int | None = None,
     ) -> None:
         """Record what the claimed option produced. The other half of :meth:`claim`."""
         await self.db.execute(
             """
             UPDATE starting_point_runs
-               SET accepted_recipe_id = :set_id,
-                   accepted_recipe_version_id = :set_version_id,
+               SET accepted_recipe_id = :recipe_id,
+                   accepted_recipe_version_id = :recipe_version_id,
                    accepted_draft_id = :draft_id
              WHERE id = :id
             """,
             {
                 "id": run_id,
-                "set_id": set_id,
-                "set_version_id": set_version_id,
+                "recipe_id": recipe_id,
+                "recipe_version_id": recipe_version_id,
                 "draft_id": draft_id,
             },
         )
@@ -289,6 +286,6 @@ class StartingPointRunsRepository(Repository):
     def _to_row(self, row: Any) -> StartingPointRunRow:
         data = dict(row)
         data["input"] = _decode(data.pop("input_json", None)) or {}
-        data["output"] = from_stored(_decode(data.pop("output_json", None)), STARTING_OUTPUT)
+        data["output"] = _decode(data.pop("output_json", None))
         data["usage"] = _decode(data.pop("usage_json", None))
         return StartingPointRunRow.model_validate(data)

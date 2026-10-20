@@ -68,7 +68,7 @@ async def check(
         "GROUP BY v.profile_version_id HAVING n > 1"
     )
     if shared:
-        raise Failed(f"two Sets' current versions name one version: {[dict(r) for r in shared]}")
+        raise Failed(f"two Recipes' current versions name one version: {[dict(r) for r in shared]}")
     recipes = await db.fetch_all(
         "SELECT s.id, s.name, s.current_version_id cur, v.profile_version_id pv FROM recipes s "
         "JOIN recipe_versions v ON v.id = s.current_version_id WHERE v.profile_version_id IS NOT NULL"
@@ -88,7 +88,7 @@ async def check(
             got = await db.fetch_value("SELECT recipe_version_id FROM shots WHERE id = ?", (shot,))
             if got != s["cur"]:
                 raise Failed(
-                    f"a shot on Set {s['name']}'s current brew (pv {s['pv']}) filed under {got}, "
+                    f"a shot on Recipe {s['name']}'s current brew (pv {s['pv']}) filed under {got}, "
                     f"not {s['cur']} ({'linked' if shot == linked else 'by file'})"
                 )
 
@@ -140,13 +140,13 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                     ops += ["hide_file"]
                 op = rnd.choice(ops)
                 if op == "new_recipe":
-                    choices = data(await client.get("/api/sets/profile-choices"))["items"]
+                    choices = data(await client.get("/api/recipes/profile-choices"))["items"]
                     if not choices:
                         continue
                     pick = rnd.choice(choices)
                     n_recipes += 1
                     r = await client.post(
-                        "/api/sets",
+                        "/api/recipes",
                         json={
                             "name": f"S{n_recipes}",
                             "bean_id": bean["id"],
@@ -158,7 +158,7 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                     )
                     log.append(f"{step}: new_recipe on {pick['label']} -> {r.status_code}")
                     if r.status_code >= 500:
-                        raise Failed(f"500 on new set: {r.text}")
+                        raise Failed(f"500 on new recipe: {r.text}")
                 elif op == "add":
                     recipes = await db.fetch_all(
                         "SELECT id, name, board_id FROM recipes WHERE designing = 0"
@@ -168,11 +168,11 @@ async def run_one(seed: int, tmp_path: Path) -> list[str]:
                     s = rnd.choice(recipes)
                     body: dict[str, Any] = {"dose_g": round(rnd.uniform(16, 20), 1)}
                     if s["board_id"] is None and rnd.random() < 0.8:
-                        choices = data(await client.get("/api/sets/profile-choices"))["items"]
+                        choices = data(await client.get("/api/recipes/profile-choices"))["items"]
                         if choices:
                             pick = rnd.choice(choices)
                             body["profile_version_id"] = pick["profile_version_id"]
-                    r = await client.post(f"/api/sets/{s['id']}/versions", json=body)
+                    r = await client.post(f"/api/recipes/{s['id']}/versions", json=body)
                     log.append(
                         f"{step}: add to {s['name']} {body} -> {r.status_code} {r.json().get('error', {}).get('code') if r.status_code >= 300 else ''}"
                     )

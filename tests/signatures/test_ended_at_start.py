@@ -27,7 +27,7 @@ async def _shot(db: Database, items: list[ExpectationInput] | None = None) -> in
     slog, _, profile = fill_ended_shot()
     version = await _version(db, profile)
     shot = await add_shot(
-        db, set_version_id=None, profile_version_id=version, slog=slog, profile=profile
+        db, recipe_version_id=None, profile_version_id=version, slog=slog, profile=profile
     )
     if items:
         await SignatureService(db).propose(version, items, reason="what the lever is for")

@@ -31,7 +31,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightsRepository,
     InsightWrite,
 )
-from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionWrite, RecipeWrite
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.settings_service import SettingsService
@@ -75,7 +75,7 @@ async def world(tmp_path: Path) -> AsyncIterator[World]:
         for name, bean_id in (("A", bean.id), ("B", bean.id), ("Other", elsewhere.id)):
             row = await recipes.create(
                 RecipeWrite(name=name, bean_id=bean_id, grinder_id=grinder.id),
-                SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+                RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
             )
             made.append(row)
         yield World(
@@ -94,15 +94,15 @@ async def world(tmp_path: Path) -> AsyncIterator[World]:
 
 
 async def _own(
-    world: World, set_id: int, version_id: int, text: str, *, confirmed: bool = True
+    world: World, recipe_id: int, version_id: int, text: str, *, confirmed: bool = True
 ) -> int:
     return await world.insights.insert(
         InsightWrite(
             text=text,
             source="chat",
             confirmed=confirmed,
-            set_id=set_id,
-            set_version_id=version_id,
+            recipe_id=recipe_id,
+            recipe_version_id=version_id,
         )
     )
 
@@ -124,27 +124,27 @@ class TestWhatIsStored:
         stored = await world.insights.get(insight_id)
 
         assert stored is not None
-        assert (stored.set_id, stored.set_version_id) == (world.a, world.a_version)
-        assert stored.set_version_label == "v1"
+        assert (stored.recipe_id, stored.recipe_version_id) == (world.a, world.a_version)
+        assert stored.recipe_version_label == "v1"
         assert stored.scope.stated() == {}
         assert stored.general is False
         assert stored.dismissed is False
-        assert stored.scope_label == "this Set, learned at v1"
+        assert stored.scope_label == "this Recipe, learned at v1"
 
     async def test_a_general_insight_is_general(self, world: World) -> None:
         stored = await world.insights.get(await _general(world, "Wash the burrs.", bean_id=1))
         assert stored is not None
-        assert stored.general is True and stored.set_id is None
-        assert stored.set_version_label is None
+        assert stored.general is True and stored.recipe_id is None
+        assert stored.recipe_version_label is None
         assert stored.scope_label == "bean_id=1"
 
     def test_an_insight_learned_at_a_version_needs_its_recipe(self) -> None:
         with pytest.raises(ValidationError):
-            InsightWrite(text="x", set_version_id=3)
+            InsightWrite(text="x", recipe_version_id=3)
 
     def test_a_recipes_insight_states_no_attribute_scope(self) -> None:
         with pytest.raises(ValidationError):
-            InsightWrite(text="x", set_id=1, scope=InsightScope(bean_id=1))
+            InsightWrite(text="x", recipe_id=1, scope=InsightScope(bean_id=1))
 
     async def test_deleting_a_version_keeps_the_insight(self, world: World) -> None:
         insight_id = await _own(world, world.a, world.a_version, "Kept.")
@@ -158,7 +158,7 @@ class TestWhatIsStored:
         )
         await world.db.execute("DELETE FROM recipe_versions WHERE id = ?", (world.a_version,))
         stored = await world.insights.get(insight_id)
-        assert stored is not None and stored.set_version_id is None
+        assert stored is not None and stored.recipe_version_id is None
 
     async def test_dismissing_confirms_nothing_and_adding_undoes_it(self, world: World) -> None:
         insight_id = await _own(world, world.a, world.a_version, "Maybe.", confirmed=False)
@@ -201,8 +201,8 @@ class TestTheOneSelection:
         await _general(world, "Dark roasts want it coarser.", roast_level="dark")
         await _general(world, "Everything.")
 
-        for set_id in (world.a, world.b):
-            assert _texts(await world.insights.for_recipe(set_id)) == [
+        for recipe_id in (world.a, world.b):
+            assert _texts(await world.insights.for_recipe(recipe_id)) == [
                 "Naturals like it finer.",
                 "This grinder drifts.",
                 "Everything.",
@@ -279,7 +279,7 @@ class TestEveryReaderAgrees:
         block_b = b.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1].split("\n\n")[0]
         assert "A's confirmed lesson." in block_a
         assert "General, for naturals." in block_a
-        assert "[this Set, learned at v1] A's confirmed lesson." in block_a
+        assert "[this Recipe, learned at v1] A's confirmed lesson." in block_a
         for absent in ("A's waiting", "A's dismissed", "B's confirmed", "for darks"):
             assert absent not in block_a
         assert "B's confirmed lesson." in block_b
@@ -312,7 +312,7 @@ class TestEveryReaderAgrees:
         outcome = await registry.dispatch(
             self._ctx(world, ToolScope.for_thread(world.b, world.b_version)),
             "get_insights",
-            {"set_id": world.a},
+            {"recipe_id": world.a},
         )
         assert not outcome.ok
         assert "A's" not in str(outcome.data)
@@ -337,7 +337,7 @@ class TestEveryReaderAgrees:
     ) -> None:
         await self._seed(world)
         outcome = await registry.dispatch(
-            self._ctx(world, ToolScope()), "get_insights", {"set_id": world.a}
+            self._ctx(world, ToolScope()), "get_insights", {"recipe_id": world.a}
         )
         assert [i["text"] for i in outcome.data["insights"]] == [
             "A's confirmed lesson.",
@@ -377,7 +377,7 @@ async def _api_world(client: httpx.AsyncClient, app: FastAPI) -> dict[str, int]:
     for name in ("A", "B"):
         created = (
             await client.post(
-                "/api/sets",
+                "/api/recipes",
                 json=await with_a_profile(
                     client,
                     {
@@ -404,8 +404,8 @@ class TestTheRoutes:
             InsightWrite(
                 text="A's waiting.",
                 source="chat",
-                set_id=ids["A"],
-                set_version_id=ids["A_version"],
+                recipe_id=ids["A"],
+                recipe_version_id=ids["A_version"],
             )
         )
         await repo.insert(
@@ -413,12 +413,12 @@ class TestTheRoutes:
                 text="A's confirmed.",
                 source="chat",
                 confirmed=True,
-                set_id=ids["A"],
-                set_version_id=ids["A_version"],
+                recipe_id=ids["A"],
+                recipe_version_id=ids["A_version"],
             )
         )
         gone = await repo.insert(
-            InsightWrite(text="A's dismissed.", source="chat", set_id=ids["A"])
+            InsightWrite(text="A's dismissed.", source="chat", recipe_id=ids["A"])
         )
         await repo.dismiss(gone)
         await repo.insert(
@@ -447,7 +447,7 @@ class TestTheRoutes:
         ]
         assert all(item["general"] for item in general)
 
-        mine = (await client.get(f"/api/knowledge/insights?set_id={ids['A']}")).json()["data"][
+        mine = (await client.get(f"/api/knowledge/insights?recipe_id={ids['A']}")).json()["data"][
             "items"
         ]
         assert [(item["text"], item["general"]) for item in mine] == [
@@ -455,16 +455,16 @@ class TestTheRoutes:
             ("A's confirmed.", False),
             ("General, natural.", True),
         ]
-        assert mine[0]["set_version_label"] == "v1"
+        assert mine[0]["recipe_version_label"] == "v1"
         assert mine[0]["confirmed"] is False and mine[1]["confirmed"] is True
 
-        other = (await client.get(f"/api/knowledge/insights?set_id={ids['B']}")).json()["data"][
+        other = (await client.get(f"/api/knowledge/insights?recipe_id={ids['B']}")).json()["data"][
             "items"
         ]
         assert [item["text"] for item in other] == ["General, natural."]
 
     async def test_an_unknown_recipe_is_404(self, client: httpx.AsyncClient) -> None:
-        assert (await client.get("/api/knowledge/insights?set_id=999")).status_code == 404
+        assert (await client.get("/api/knowledge/insights?recipe_id=999")).status_code == 404
 
     async def test_add_dismiss_take_back_and_read_one(
         self, client: httpx.AsyncClient, app: FastAPI
@@ -472,7 +472,10 @@ class TestTheRoutes:
         ids = await _api_world(client, app)
         insight_id = await InsightsRepository(app.state.db).insert(
             InsightWrite(
-                text="Finer helps.", source="chat", set_id=ids["A"], set_version_id=ids["A_version"]
+                text="Finer helps.",
+                source="chat",
+                recipe_id=ids["A"],
+                recipe_version_id=ids["A_version"],
             )
         )
         url = f"/api/knowledge/insights/{insight_id}"
@@ -481,7 +484,7 @@ class TestTheRoutes:
         assert dismissed["dismissed"] is True and dismissed["confirmed"] is False
         assert (await client.get(url)).json()["data"]["dismissed"] is True
         # Shown nowhere else.
-        listed = (await client.get(f"/api/knowledge/insights?set_id={ids['A']}")).json()["data"]
+        listed = (await client.get(f"/api/knowledge/insights?recipe_id={ids['A']}")).json()["data"]
         assert listed["items"] == []
 
         added = (await client.patch(url, json={"confirmed": True})).json()["data"]
@@ -495,9 +498,11 @@ class TestTheRoutes:
         ids = await _api_world(client, app)
         repo = InsightsRepository(app.state.db)
         added = await repo.insert(
-            InsightWrite(text="Added.", source="chat", confirmed=True, set_id=ids["A"])
+            InsightWrite(text="Added.", source="chat", confirmed=True, recipe_id=ids["A"])
         )
-        waiting = await repo.insert(InsightWrite(text="Waiting.", source="chat", set_id=ids["A"]))
+        waiting = await repo.insert(
+            InsightWrite(text="Waiting.", source="chat", recipe_id=ids["A"])
+        )
 
         refused = await client.post(f"/api/knowledge/insights/{added}/dismiss")
         assert refused.status_code == 409
@@ -518,7 +523,7 @@ class TestTheRoutes:
         )
         response = await client.post(f"/api/knowledge/insights/{insight_id}/dismiss")
         assert response.status_code == 409
-        assert response.json()["error"]["code"] == "INSIGHT_NOT_SET_OWNED"
+        assert response.json()["error"]["code"] == "INSIGHT_NOT_RECIPE_OWNED"
 
     async def test_an_unknown_insight_is_404_everywhere(self, client: httpx.AsyncClient) -> None:
         assert (await client.get("/api/knowledge/insights/999")).status_code == 404
@@ -529,7 +534,7 @@ class TestTheRoutes:
     ) -> None:
         ids = await _api_world(client, app)
         insight_id = await InsightsRepository(app.state.db).insert(
-            InsightWrite(text="Finer helps.", source="chat", set_id=ids["A"])
+            InsightWrite(text="Finer helps.", source="chat", recipe_id=ids["A"])
         )
         response = await client.patch(
             f"/api/knowledge/insights/{insight_id}", json={"scope": {"bean_id": ids["bean"]}}

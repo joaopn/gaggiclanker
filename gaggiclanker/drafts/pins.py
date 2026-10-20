@@ -25,7 +25,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.lineage import person_taken_sentence, pinned_copy_sentence
 from gaggiclanker.db.repos.pins import PinDetail, PinRow, PinsRepository, PinWrite
 from gaggiclanker.db.repos.profile_board import BoardRow, BoardRowPatch
-from gaggiclanker.db.repos.recipes import RecipesRepository, SetRow, SetVersionRow
+from gaggiclanker.db.repos.recipes import RecipeRow, RecipesRepository, RecipeVersionRow
 from gaggiclanker.domain.profile_policy import PolicyChange
 from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.copies import (
@@ -90,8 +90,8 @@ class PinAnswer(BaseModel):
 class _Inspection:
     """What one look at a version found: the name, and the refusal if there is one."""
 
-    recipe_row: SetRow
-    version: SetVersionRow
+    recipe_row: RecipeRow
+    version: RecipeVersionRow
     name: str
     copy: PreparedCopy | None = None
     refusal: PinRefused | None = None
@@ -111,17 +111,17 @@ class PinService:
 
     # ── the one look ─────────────────────────────────────────────────
 
-    async def inspect(self, set_id: int, version_id: int, label: str | None) -> _Inspection:
+    async def inspect(self, recipe_id: int, version_id: int, label: str | None) -> _Inspection:
         """Every question a pin asks, in the order it asks them. Reads only.
 
         Raises for what is not a pin's state at all (404: no such Recipe or version, or the version
         is not the Recipe's; 422: a blank label); returns a refusal as a value, so the preview can
         say it and the pin can raise it.
         """
-        recipe_row = await self.recipes.get(set_id)
+        recipe_row = await self.recipes.get(recipe_id)
         if recipe_row is None:
             raise NotFound(RECIPE_GONE)
-        version = await self.recipes.version_of_recipe(set_id, version_id)
+        version = await self.recipes.version_of_recipe(recipe_id, version_id)
         if version is None:
             raise NotFound(VERSION_NOT_OF_RECIPE)
         if label is not None and not label.strip():
@@ -138,11 +138,11 @@ class PinService:
         found = _Inspection(recipe_row=recipe_row, version=version, name=name)
         if recipe_row.archived:
             found.refusal = PinRefused(
-                "SET_ARCHIVED", "This Set is archived: an archived Set receives no shots."
+                "RECIPE_ARCHIVED", "This Recipe is archived: an archived Recipe receives no shots."
             )
         elif recipe_row.designing:
             found.refusal = PinRefused(
-                "DESIGNING", "This Set is still being designed: there is no version to pin yet."
+                "DESIGNING", "This Recipe is still being designed: there is no version to pin yet."
             )
         elif version.profile_version_id is None:
             found.refusal = PinRefused(
@@ -179,13 +179,13 @@ class PinService:
             )
             held = (
                 None
-                if owner is None or owner.set_version_id == version.id
+                if owner is None or owner.recipe_version_id == version.id
                 else await self.pins.detail(owner.id)
             )
             if held is not None:
                 # A copy names one Recipe version for ever: a name freed by an unpin cannot be
                 # reused, with the same content, by another version's pin.
-                sentence = pinned_copy_sentence(found.name, held.set_name, held.version_label)
+                sentence = pinned_copy_sentence(found.name, held.recipe_name, held.version_label)
             elif brewed_by is not None:
                 # A profile some Recipe version already brews is not a copy to pin.
                 sentence = (
@@ -204,8 +204,8 @@ class PinService:
         """The pin record, live or not, whose copy has exactly this content."""
         return await self.pins.by_copy_content(copy.content_hash, copy.name)
 
-    async def preview(self, set_id: int, version_id: int, label: str | None) -> PinPreview:
-        found = await self.inspect(set_id, version_id, label)
+    async def preview(self, recipe_id: int, version_id: int, label: str | None) -> PinPreview:
+        found = await self.inspect(recipe_id, version_id, label)
         return PinPreview(
             name=found.name,
             taken=found.taken,
@@ -215,7 +215,7 @@ class PinService:
 
     # ── pin ──────────────────────────────────────────────────────────
 
-    async def pin(self, set_id: int, version_id: int, label: str | None) -> PinAnswer:
+    async def pin(self, recipe_id: int, version_id: int, label: str | None) -> PinAnswer:
         """Pin a Recipe version: the copy and the record in one transaction.
 
         The same version pinned again under the same name brings its own unpinned record and its
@@ -226,7 +226,7 @@ class PinService:
         version_label = "That version"
         try:
             async with self.db.transaction():
-                found = await self.inspect(set_id, version_id, label)
+                found = await self.inspect(recipe_id, version_id, label)
                 version_label = found.version.version_label
                 if found.refusal is not None:
                     raise found.refusal
@@ -238,7 +238,7 @@ class PinService:
                     row = await self.copier.put(found.copy, carry_signature=False)
                     pin = await self.pins.insert(
                         PinWrite(
-                            set_version_id=found.version.id,
+                            recipe_version_id=found.version.id,
                             board_id=row.id,
                             profile_version_id=row.current_version_id,
                         )

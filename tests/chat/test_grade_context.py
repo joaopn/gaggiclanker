@@ -62,7 +62,7 @@ async def _thread(experiment: Experiment, version_id: int) -> int:
         return int(found)
     cursor = await experiment.db.execute(
         "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES ('v', ?, ?)",
-        (experiment.set_id, version_id),
+        (experiment.recipe_id, version_id),
     )
     return int(cursor.lastrowid or 0)
 
@@ -78,7 +78,7 @@ async def _contexts(experiment: Experiment) -> dict[str, str]:
     return {
         name: await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, vid),
+            ToolScope.for_thread(experiment.recipe_id, vid),
             thread_id=await _thread(experiment, vid),
         )
         for name, vid in ids.items()
@@ -90,11 +90,11 @@ class TestThisVersionsConversation:
         self, experiment: Experiment
     ) -> None:
         grades = OutcomeProposalsRepository(experiment.db)
-        await grades.create(experiment.set_id, experiment.v5, _grade())
+        await grades.create(experiment.recipe_id, experiment.v5, _grade())
 
         text = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v5),
             thread_id=await _thread(experiment, experiment.v5),
         )
 
@@ -108,7 +108,7 @@ class TestThisVersionsConversation:
         from tests.recipes.conftest import make_shot
 
         grades = OutcomeProposalsRepository(experiment.db)
-        await grades.create(experiment.set_id, experiment.v5, _grade())
+        await grades.create(experiment.recipe_id, experiment.v5, _grade())
         recipes = RecipesRepository(experiment.db)
         extra = await make_shot(experiment.db, "000950", started_at="2026-04-06T08:00:00.000Z")
         assert await recipes.assign_shot(extra, experiment.v5)
@@ -120,7 +120,7 @@ class TestThisVersionsConversation:
 
         text = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v5),
             thread_id=await _thread(experiment, experiment.v5),
         )
         assert "1 shot counted since you wrote it" in text
@@ -129,10 +129,10 @@ class TestThisVersionsConversation:
         self, experiment: Experiment
     ) -> None:
         grades = OutcomeProposalsRepository(experiment.db)
-        await grades.create(experiment.set_id, experiment.v3, _grade("failed"))
+        await grades.create(experiment.recipe_id, experiment.v3, _grade("failed"))
         text = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v3),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v3),
             thread_id=await _thread(experiment, experiment.v3),
         )
         assert "v2's outcome is still inconclusive, as the person recorded it." in text
@@ -141,10 +141,10 @@ class TestThisVersionsConversation:
         self, experiment: Experiment
     ) -> None:
         grades = OutcomeProposalsRepository(experiment.db)
-        await grades.create(experiment.set_id, experiment.v5, _grade())
+        await grades.create(experiment.recipe_id, experiment.v5, _grade())
         text = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v5),
             thread_id=await _thread(experiment, experiment.v5),
         )
         assert "accepting that version records this grade" in text
@@ -161,18 +161,18 @@ class TestThisVersionsConversation:
         self, experiment: Experiment, answer: str, expected: str
     ) -> None:
         grades = OutcomeProposalsRepository(experiment.db)
-        stored = (await grades.create(experiment.set_id, experiment.v5, _grade())).proposal
+        stored = (await grades.create(experiment.recipe_id, experiment.v5, _grade())).proposal
         assert stored is not None
         if answer == "accept":
-            await grades.accept(experiment.set_id, stored.id)
+            await grades.accept(experiment.recipe_id, stored.id)
         elif answer == "change":
-            await grades.change(experiment.set_id, stored.id, "failed")
+            await grades.change(experiment.recipe_id, stored.id, "failed")
         else:
-            await grades.dismiss(experiment.set_id, stored.id, "one shot is not a result")
+            await grades.dismiss(experiment.recipe_id, stored.id, "one shot is not a result")
 
         text = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v5),
             thread_id=await _thread(experiment, experiment.v5),
         )
 
@@ -182,11 +182,11 @@ class TestThisVersionsConversation:
 
     async def test_a_superseded_grade_is_not_an_answer(self, experiment: Experiment) -> None:
         grades = OutcomeProposalsRepository(experiment.db)
-        await grades.create(experiment.set_id, experiment.v5, _grade("held"))
-        await grades.create(experiment.set_id, experiment.v5, _grade("failed"))
+        await grades.create(experiment.recipe_id, experiment.v5, _grade("held"))
+        await grades.create(experiment.recipe_id, experiment.v5, _grade("failed"))
         text = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v5),
             thread_id=await _thread(experiment, experiment.v5),
         )
         assert text.count("You proposed") == 1
@@ -197,7 +197,7 @@ class TestThisVersionsConversation:
     ) -> None:
         text = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v5),
             thread_id=await _thread(experiment, experiment.v5),
         )
         assert not any(heading in text for heading in (*GRADE_HEADINGS, INSIGHT_HEADING))
@@ -212,8 +212,8 @@ class TestThisVersionsConversation:
                 InsightWrite(
                     text=f"The {name} lesson.",
                     source="chat",
-                    set_id=experiment.set_id,
-                    set_version_id=experiment.v5,
+                    recipe_id=experiment.recipe_id,
+                    recipe_version_id=experiment.v5,
                     thread_id=await _thread(experiment, experiment.v5),
                 )
             )
@@ -222,7 +222,7 @@ class TestThisVersionsConversation:
 
         text = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v5),
             thread_id=await _thread(experiment, experiment.v5),
         )
 
@@ -248,7 +248,7 @@ class TestProposedInThisConversation:
         other = (
             await experiment.db.execute(
                 "INSERT INTO chat_threads (title, recipe_id, recipe_version_id) VALUES ('2', ?, ?)",
-                (experiment.set_id, experiment.v5),
+                (experiment.recipe_id, experiment.v5),
             )
         ).lastrowid
         insights = InsightsRepository(experiment.db)
@@ -257,12 +257,12 @@ class TestProposedInThisConversation:
                 InsightWrite(
                     text=text,
                     source="chat",
-                    set_id=experiment.set_id,
-                    set_version_id=experiment.v5,
+                    recipe_id=experiment.recipe_id,
+                    recipe_version_id=experiment.v5,
                     thread_id=thread,
                 )
             )
-        scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+        scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
 
         text = await opening_context(experiment.db, scope, thread_id=mine)
         assert "- Mine. (waiting" in text and "Somebody else's." not in text
@@ -278,8 +278,8 @@ class TestProposedInThisConversation:
             InsightWrite(
                 text="Moved, waiting.",
                 source="chat",
-                set_id=experiment.set_id,
-                set_version_id=experiment.v5,
+                recipe_id=experiment.recipe_id,
+                recipe_version_id=experiment.v5,
             )
         )
         confirmed = await insights.insert(
@@ -287,21 +287,21 @@ class TestProposedInThisConversation:
                 text="Moved, confirmed.",
                 source="analysis",
                 confirmed=True,
-                set_id=experiment.set_id,
-                set_version_id=experiment.v5,
+                recipe_id=experiment.recipe_id,
+                recipe_version_id=experiment.v5,
             )
         )
         assert confirmed
         for version_id in (experiment.v1, experiment.v5):
             text = await opening_context(
                 experiment.db,
-                ToolScope.for_thread(experiment.set_id, version_id),
+                ToolScope.for_thread(experiment.recipe_id, version_id),
                 thread_id=await _thread(experiment, version_id),
             )
             # An unconfirmed moved insight reaches no prompt at all.
             assert "Moved, waiting." not in text
             # A confirmed one comes through the Recipe's selection and only that.
-            assert "[this Set, learned at v2.2] Moved, confirmed." in text
+            assert "[this Recipe, learned at v2.2] Moved, confirmed." in text
             assert INSIGHT_HEADING not in text
 
 
@@ -312,18 +312,20 @@ class TestNothingUnansweredReachesAnyoneElse:
         grades = OutcomeProposalsRepository(experiment.db)
         # Waiting on the version in question, waiting on a graded older one, and a
         # dismissed one on another.
-        await grades.create(experiment.set_id, experiment.v5, _grade("held"))
-        await grades.create(experiment.set_id, experiment.v3, _grade("failed"))
-        dismissed = (await grades.create(experiment.set_id, experiment.v2, _grade("held"))).proposal
+        await grades.create(experiment.recipe_id, experiment.v5, _grade("held"))
+        await grades.create(experiment.recipe_id, experiment.v3, _grade("failed"))
+        dismissed = (
+            await grades.create(experiment.recipe_id, experiment.v2, _grade("held"))
+        ).proposal
         assert dismissed is not None
-        await grades.dismiss(experiment.set_id, dismissed.id, "no")
+        await grades.dismiss(experiment.recipe_id, dismissed.id, "no")
         insights = InsightsRepository(experiment.db)
         waiting = await insights.insert(
             InsightWrite(
                 text="A waiting lesson about v5.",
                 source="chat",
-                set_id=experiment.set_id,
-                set_version_id=experiment.v5,
+                recipe_id=experiment.recipe_id,
+                recipe_version_id=experiment.v5,
                 thread_id=await _thread(experiment, experiment.v5),
             )
         )
@@ -331,8 +333,8 @@ class TestNothingUnansweredReachesAnyoneElse:
             InsightWrite(
                 text="A dismissed lesson about v2.",
                 source="chat",
-                set_id=experiment.set_id,
-                set_version_id=experiment.v2,
+                recipe_id=experiment.recipe_id,
+                recipe_version_id=experiment.v2,
                 thread_id=await _thread(experiment, experiment.v2),
             )
         )
@@ -363,23 +365,23 @@ class TestNothingUnansweredReachesAnyoneElse:
     ) -> None:
         recipes = RecipesRepository(experiment.db)
         before_versions = [
-            v.model_dump(mode="json") for v in await recipes.versions(experiment.set_id)
+            v.model_dump(mode="json") for v in await recipes.versions(experiment.recipe_id)
         ]
-        before_record = track_record(await recipes.versions(experiment.set_id)).model_dump(
+        before_record = track_record(await recipes.versions(experiment.recipe_id)).model_dump(
             mode="json"
         )
         await self._seed(experiment)
 
         after_versions = [
-            v.model_dump(mode="json") for v in await recipes.versions(experiment.set_id)
+            v.model_dump(mode="json") for v in await recipes.versions(experiment.recipe_id)
         ]
-        after_record = track_record(await recipes.versions(experiment.set_id)).model_dump(
+        after_record = track_record(await recipes.versions(experiment.recipe_id)).model_dump(
             mode="json"
         )
 
         assert after_versions == before_versions
         assert after_record == before_record
-        v5 = next(v for v in await recipes.versions(experiment.set_id) if v.id == experiment.v5)
+        v5 = next(v for v in await recipes.versions(experiment.recipe_id) if v.id == experiment.v5)
         assert v5.outcome is None and v5.outcome_state == "open"
 
     async def test_no_tool_output_carries_a_proposed_grade(self, experiment: Experiment) -> None:
@@ -388,15 +390,15 @@ class TestNothingUnansweredReachesAnyoneElse:
                 db=experiment.db,
                 settings=SettingsService(SettingsRepository(experiment.db)),
                 knowledge=KnowledgeService(experiment.db),
-                scope=ToolScope.for_thread(experiment.set_id, experiment.v4),
+                scope=ToolScope.for_thread(experiment.recipe_id, experiment.v4),
                 caller="test",
                 permissions=CHAT_PERMISSIONS,
             )
 
         calls: tuple[tuple[str, dict[str, object]], ...] = (
-            ("get_set", {}),
+            ("get_recipe", {}),
             ("get_insights", {}),
-            ("list_set_shots", {}),
+            ("list_recipe_shots", {}),
         )
         before = {
             name: (await registry.dispatch(context(), name, args)).data for name, args in calls
@@ -413,10 +415,10 @@ class TestNothingUnansweredReachesAnyoneElse:
     ) -> None:
         """The version proposal block is Recipe-wide, so it must not mention a waiting grade."""
         await OutcomeProposalsRepository(experiment.db).create(
-            experiment.set_id, experiment.v5, _grade("held")
+            experiment.recipe_id, experiment.v5, _grade("held")
         )
         result = await RecipeProposalsRepository(experiment.db).create(
-            experiment.set_id,
+            experiment.recipe_id,
             ProposalWrite(
                 patch=RecipeVersionPatch(grind_setting="20"),
                 reason="one finer again",
@@ -426,7 +428,7 @@ class TestNothingUnansweredReachesAnyoneElse:
         assert result.proposal is not None
         older = await opening_context(
             experiment.db,
-            ToolScope.for_thread(experiment.set_id, experiment.v4),
+            ToolScope.for_thread(experiment.recipe_id, experiment.v4),
             thread_id=await _thread(experiment, experiment.v4),
         )
         assert "A PROPOSAL IS WAITING FOR THE PERSON" in older
@@ -440,15 +442,15 @@ async def test_the_context_with_a_grade_and_insights_matches_the_golden_file(
     experiment: Experiment, update_golden: bool
 ) -> None:
     grades = OutcomeProposalsRepository(experiment.db)
-    await grades.create(experiment.set_id, experiment.v5, _grade())
+    await grades.create(experiment.recipe_id, experiment.v5, _grade())
     insights = InsightsRepository(experiment.db)
     for name in ("waiting", "added", "dismissed"):
         stored = await insights.insert(
             InsightWrite(
                 text=f"The {name} lesson, which rests on the one Improve shot.",
                 source="chat",
-                set_id=experiment.set_id,
-                set_version_id=experiment.v5,
+                recipe_id=experiment.recipe_id,
+                recipe_version_id=experiment.v5,
                 thread_id=await _thread(experiment, experiment.v5),
                 evidence_shot_ids=[],
             )
@@ -458,7 +460,7 @@ async def test_the_context_with_a_grade_and_insights_matches_the_golden_file(
         if name == "dismissed":
             await insights.dismiss(stored)
     await RecipeProposalsRepository(experiment.db).create(
-        experiment.set_id,
+        experiment.recipe_id,
         ProposalWrite(
             patch=RecipeVersionPatch(grind_setting="20"),
             reason="one finer again",
@@ -468,7 +470,7 @@ async def test_the_context_with_a_grade_and_insights_matches_the_golden_file(
 
     rendered = await opening_context(
         experiment.db,
-        ToolScope.for_thread(experiment.set_id, experiment.v5),
+        ToolScope.for_thread(experiment.recipe_id, experiment.v5),
         thread_id=await _thread(experiment, experiment.v5),
     )
 

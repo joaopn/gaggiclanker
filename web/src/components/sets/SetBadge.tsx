@@ -23,9 +23,9 @@ export function SetBadge({ badge, className }: { badge: ShotSetBadge; className?
       // stay. The whole name is on hover.
       className={cn("max-w-full gap-1", className)}
     >
-      <Link to={`/sets/${badge.set_id}`} title={`${badge.set_name}, ${badge.version_label}`}>
+      <Link to={`/sets/${badge.recipe_id}`} title={`${badge.recipe_name}, ${badge.version_label}`}>
         <Layers className="size-3 shrink-0" aria-hidden="true" />
-        <span className="min-w-0 truncate">{badge.set_name}</span>
+        <span className="min-w-0 truncate">{badge.recipe_name}</span>
         <span className="shrink-0 tabular-nums opacity-70">{badge.version_label}</span>
       </Link>
     </Badge>

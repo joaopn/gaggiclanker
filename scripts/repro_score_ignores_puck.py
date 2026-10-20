@@ -37,7 +37,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionWrite, RecipeWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import slog_to_raw
@@ -79,7 +79,7 @@ async def read_base_rendering() -> str:
             )
             row = await RecipesRepository(db).create(
                 RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
-                SetVersionWrite(
+                RecipeVersionWrite(
                     profile_version_id=version.id,
                     grind_setting="14",
                     dose_g=18.0,

@@ -43,9 +43,9 @@ PAUSED = "Syncing is paused because the machine looks reset: resume it from the 
 NEWER_PROPOSAL = "A newer proposal replaced this one."
 NOT_IN_LIST = "That profile is no longer in the list."
 ANOTHER_ACTIVE = "Another version of this profile is active now."
-NEWER_FIRST_RECIPE = "A newer first recipe replaced this one."
-RECIPE_WRITTEN_OTHERWISE = "The Set's first recipe was written another way."
-RECIPE_DISCARDED = "That Set was discarded."
+NEWER_FIRST_RECIPE = "A newer first version replaced this one."
+RECIPE_WRITTEN_OTHERWISE = "The Recipe's first version was written another way."
+RECIPE_DISCARDED = "That Recipe was discarded."
 TOOK_OFF = "The profile is switched off, so the sync took it off the machine."
 
 

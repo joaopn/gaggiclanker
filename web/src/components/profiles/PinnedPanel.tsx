@@ -48,15 +48,15 @@ export function PinnedPanel({
 
       <p className="text-sm" data-testid="pinned-frozen">
         Frozen: this copy of {pin.original_label ?? "a profile"} belongs to {pin.version_label} of{" "}
-        {pin.set_name}. It changes only by unpinning.
+        {pin.recipe_name}. It changes only by unpinning.
       </p>
 
       <div className="flex flex-wrap gap-2" data-testid="pinned-actions">
         {/* The dialog lives on the Set page: this goes there with it open for the pinned version. */}
         <Button type="button" size="sm" variant="outline" asChild>
           <Link
-            to={`/sets/${pin.set_id}?duplicate=${pin.set_version_id}`}
-            aria-label={`Duplicate Set: ${pin.version_label} of ${pin.set_name}`}
+            to={`/sets/${pin.recipe_id}?duplicate=${pin.recipe_version_id}`}
+            aria-label={`Duplicate Set: ${pin.version_label} of ${pin.recipe_name}`}
             data-testid="pinned-duplicate"
           >
             Duplicate Set

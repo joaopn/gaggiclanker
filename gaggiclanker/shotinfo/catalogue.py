@@ -947,7 +947,7 @@ def _items() -> tuple[Item, ...]:
     phases = "Phases"
     curve = "Curve"
     judgement = "Your judgement"
-    recipe = "The version's recipe"
+    recipe = "The version's numbers"
     note = "The note typed on the machine"
     review = REVIEW_GROUP
     checks = CHECKS_GROUP
@@ -1022,20 +1022,20 @@ def _items() -> tuple[Item, ...]:
             ),
         ),
         Item(
-            key="set_version",
+            key="recipe_version",
             group=identity,
-            name="Set version",
-            label="Set version",
+            name="Recipe version",
+            label="Recipe version",
             meaning=(
-                "The version of the Set the shot is filed under, and that Set's id: which recipe "
-                "it was brewed on. A shot in no Set says so."
+                "The version of the Recipe the shot is filed under, and that Recipe's id: which "
+                "Recipe it was brewed on. A shot in no Recipe says so."
             ),
             default_tier="base",
             locked=True,
             shot=lambda f: (
-                f"{f.version_label} of Set {f.set_id}"
+                f"{f.version_label} of Recipe {f.recipe_id}"
                 if f.version_label is not None
-                else "not filed in a Set"
+                else "not filed in a Recipe"
             ),
         ),
         Item(
@@ -1046,7 +1046,7 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 "The person's verdict on the shot. Keep: this is what good tastes like here (the "
                 "target). Improve: what is being worked on. Discard: the shot went wrong rather "
-                "than the recipe (a knocked cup, a bad puck), so it is not evidence. A shot "
+                "than the numbers (a knocked cup, a bad puck), so it is not evidence. A shot "
                 "nobody labelled says not labelled."
             ),
             default_tier="base",
@@ -1060,7 +1060,7 @@ def _items() -> tuple[Item, ...]:
             name="Counted, or why not (quarantined, incomplete, discarded)",
             label="Counted",
             meaning=(
-                "Whether the shot's numbers count towards the Set's spread and a prediction's "
+                "Whether the shot's numbers count towards the Recipe's spread and a prediction's "
                 "evidence. Not counted when it is quarantined (the file never parsed, so its "
                 "numbers are whatever the header held), stopped early (its time measures the "
                 "interruption) or discarded. Read such a shot, but never average it."
@@ -1102,7 +1102,8 @@ def _items() -> tuple[Item, ...]:
             label="Shot time",
             meaning=(
                 "How long the shot ran, in seconds, from the start of the brew to the moment the "
-                "machine stopped recording it. The Set page's shot time, and one of the measures a "
+                "machine stopped recording it. The Recipe page's shot time, and one of the "
+                "measures a "
                 "prediction is graded on."
             ),
             default_tier="base",
@@ -1182,7 +1183,8 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 "Seconds from the start of the shot to the first sample whose weight is at least "
                 "half a gram above the scale's first reading: when coffee first reached the cup. "
-                "Later usually means a finer grind or a longer pre-infusion. The Set page's first "
+                "Later usually means a finer grind or a longer pre-infusion. The Recipe page's "
+                "first "
                 "drip. Needs a scale; without one the shot has the estimate below instead."
             ),
             default_tier="base",
@@ -1198,7 +1200,7 @@ def _items() -> tuple[Item, ...]:
                 "flow is an estimate from the pump model and does not track when coffee reaches "
                 "the cup: it can come seconds after the cup began to fill, or much earlier (a "
                 "long pre-infusion). It is only given for a shot with no scale, where there is no "
-                "cup reading, and then only as a rough guide to the first drip. The Set page's "
+                "cup reading, and then only as a rough guide to the first drip. The Recipe page's "
                 "first puck flow."
             ),
             default_tier="base",
@@ -1254,7 +1256,7 @@ def _items() -> tuple[Item, ...]:
             label="Target temperature",
             meaning=(
                 "The mean temperature the profile asked for over the shot, in °C. The machine "
-                "heats to the profile's temperature; the Set records none of its own."
+                "heats to the profile's temperature; the Recipe records none of its own."
             ),
             default_tier="extended",
             shot=lambda f: _qty(_temperature(f, "target_avg_c"), 1, "°C"),
@@ -1284,7 +1286,7 @@ def _items() -> tuple[Item, ...]:
             name="Peak pressure",
             label="Peak pressure",
             meaning=(
-                "The highest pressure measured at the puck during the shot, in bar. The Set "
+                "The highest pressure measured at the puck during the shot, in bar. The Recipe "
                 "page's peak pressure."
             ),
             default_tier="base",
@@ -1326,7 +1328,7 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 f"The mean cup flow {_BREW}, in g/s: how fast coffee reached the cup, as the "
                 "scale measured it. It usually runs well below the puck flow, which is an estimate "
-                "from the pump model that stays near the pump's own flow. The Set page's cup "
+                "from the pump model that stays near the pump's own flow. The Recipe page's cup "
                 "flow. Needs a scale."
             ),
             default_tier="base",
@@ -1340,7 +1342,7 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 f"The mean puck flow {_BREW}, in ml/s. Puck flow is the machine's estimate from "
                 "the pump model, not what reaches the cup. Faster usually means a coarser grind "
-                "or a lighter puck. The Set page's puck flow."
+                "or a lighter puck. The Recipe page's puck flow."
             ),
             default_tier="base",
             shot=lambda f: _measure("brew_flow_ml_s", brew_flow(f)),
@@ -1978,7 +1980,7 @@ def _items() -> tuple[Item, ...]:
             group=recipe,
             name="Recipe grind",
             label="Recipe grind",
-            meaning="The grind the shot's Set version prescribes, in the grinder's own units.",
+            meaning="The grind the shot's Recipe version prescribes, in the grinder's own units.",
             default_tier="excluded",
             shot=lambda f: (
                 (f.version.grind_setting or "").strip() or None if f.version is not None else None
@@ -1989,7 +1991,7 @@ def _items() -> tuple[Item, ...]:
             group=recipe,
             name="Recipe dose",
             label="Recipe dose",
-            meaning="The dose the shot's Set version prescribes, in grams.",
+            meaning="The dose the shot's Recipe version prescribes, in grams.",
             default_tier="excluded",
             shot=lambda f: _qty(f.version.dose_g, 1, "g") if f.version is not None else None,
         ),
@@ -1998,7 +2000,7 @@ def _items() -> tuple[Item, ...]:
             group=recipe,
             name="Recipe target yield",
             label="Recipe target yield",
-            meaning="The yield the shot's Set version aims for, in grams.",
+            meaning="The yield the shot's Recipe version aims for, in grams.",
             default_tier="excluded",
             shot=lambda f: (
                 _qty(f.version.target_yield_g, 1, "g") if f.version is not None else None
@@ -2009,7 +2011,7 @@ def _items() -> tuple[Item, ...]:
             group=recipe,
             name="Recipe profile",
             label="Recipe profile",
-            meaning="The profile the shot's Set version names.",
+            meaning="The profile the shot's Recipe version names.",
             default_tier="excluded",
             shot=lambda f: f.version.profile_label or None if f.version is not None else None,
         ),
@@ -2120,10 +2122,10 @@ def _items() -> tuple[Item, ...]:
             name="How the shot moved against its version's prediction",
             label="Review, against the prediction",
             meaning=(
-                "The review's verdict on the prediction the Set version was filed with: as "
+                "The review's verdict on the prediction the Recipe version was filed with: as "
                 "predicted, partly, against, or not shown by this shot, with the sentence and "
                 "numbers behind it. Absent when the version has no prediction or the person "
-                "rejected the verdict. One shot grades nothing: the Set's own evidence does. "
+                "rejected the verdict. One shot grades nothing: the Recipe's own evidence does. "
                 + _MODEL_WRITTEN
                 + _NOT_REJECTED
             ),

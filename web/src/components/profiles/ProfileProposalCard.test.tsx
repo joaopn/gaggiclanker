@@ -75,7 +75,7 @@ function brandNew(overrides: Record<string, unknown> = {}): DraftStanding {
       draft_id: 1,
       already_on_board_label: null,
       plain: { row_id: null, row_label: null },
-      for_set: null,
+      for_recipe: null,
     },
     row_id: null,
     row_label: null,
@@ -87,8 +87,8 @@ function brandNew(overrides: Record<string, unknown> = {}): DraftStanding {
 function forSet(overrides: Record<string, unknown> = {}): DraftStanding {
   return standing({
     draft: draft({
-      set_id: 3,
-      set_name: "Guji natural",
+      recipe_id: 3,
+      recipe_name: "Guji natural",
       prediction: "Sweeter and rounder.",
       compares_to_version_label: "v1.1",
     }),
@@ -98,7 +98,7 @@ function forSet(overrides: Record<string, unknown> = {}): DraftStanding {
       plain: {
         row_id: 4,
         row_label: "9 Bar Espresso",
-        set: { id: 3, name: "Guji natural", next_minor_label: "v1.2", next_major_label: "v2" },
+        recipe: { id: 3, name: "Guji natural", next_minor_label: "v1.2", next_major_label: "v2" },
       },
     },
     ...overrides,
@@ -138,7 +138,7 @@ beforeEach(() => {
       deleted_on_device: 0,
       incomplete: 0,
       samples: 0,
-      needs_set: 0,
+      needs_recipe: 0,
     },
     recent_events: [],
   });
@@ -222,7 +222,7 @@ describe("a proposal waiting for a person", () => {
       standing({
         draft: draft({
           prediction: "Sweeter and rounder.",
-          set_name: "Guji natural",
+          recipe_name: "Guji natural",
           compares_to_version_label: "v1.1",
           clamp_changes: [
             { path: "phases[0].pump.pressure", before: "13", after: "12", reason: "policy" },
@@ -258,7 +258,7 @@ describe("a proposal waiting for a person", () => {
           already_on_board_label: null,
           // What the server really sends for a new or renamed draft whose name is taken.
           plain: { row_id: null, row_label: null, refused: taken },
-          for_set: null,
+          for_recipe: null,
         },
       }),
     );
@@ -676,9 +676,9 @@ describe("a proposal that has been answered", () => {
         draft: draft({
           status: "approved",
           draft_label: "Adaptive Bloom",
-          recorded_set_name: "Guji natural",
+          recorded_recipe_name: "Guji natural",
         }),
-        set_version_label: "v1.2",
+        recipe_version_label: "v1.2",
       }),
     );
     renderCard();

@@ -8,6 +8,7 @@ import { ProfileProposalCard } from "@/components/profiles/ProfileProposalCard";
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
 import { useSetProposals } from "@/hooks/useSets";
+import { currentToolName, recipeIdOf } from "@/lib/legacyTools";
 
 /**
  * What a `propose_` tool created, as a card that links to it.
@@ -22,7 +23,7 @@ import { useSetProposals } from "@/hooks/useSets";
  */
 
 export type Proposal = {
-  kind: "set_version" | "initial_recipe" | "draft" | "insight" | "insight_deletion" | "outcome";
+  kind: "recipe_version" | "initial_recipe" | "draft" | "insight" | "insight_deletion" | "outcome";
   label: string;
   detail: string;
   href: string;
@@ -57,14 +58,15 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
   if (entry.ok !== true) return null;
   const output = parse(entry.content);
   if (!output) return null;
+  const name = currentToolName(entry.name);
 
-  if (entry.name === "propose_set_version") {
+  if (name === "propose_recipe_version") {
     const proposalId = output.proposal_id;
-    const setId = output.set_id;
+    const setId = recipeIdOf(output);
     if (proposalId === undefined || setId === undefined) return null;
     const changed = Array.isArray(output.changed) ? (output.changed as string[]) : [];
     return {
-      kind: "set_version",
+      kind: "recipe_version",
       // "Proposed", not "created": the version does not exist until the person
       // presses Accept, and this card is where they press it.
       label: `A change to this Set${changed.length > 0 ? `: ${changed.join(", ")}` : ""}`,
@@ -76,9 +78,9 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
-  if (entry.name === "propose_initial_recipe") {
+  if (name === "propose_initial_recipe") {
     const proposalId = output.proposal_id;
-    const setId = output.set_id;
+    const setId = recipeIdOf(output);
     if (proposalId === undefined || setId === undefined) return null;
     const recipe =
       output.recipe && typeof output.recipe === "object"
@@ -105,9 +107,9 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
-  if (entry.name === "propose_outcome") {
+  if (name === "propose_outcome") {
     const proposalId = output.proposal_id;
-    const setId = output.set_id;
+    const setId = recipeIdOf(output);
     if (proposalId === undefined || setId === undefined) return null;
     const version = String(output.version ?? "this version");
     const outcome = String(output.outcome ?? "");
@@ -126,7 +128,7 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
-  if (entry.name === "draft_profile") {
+  if (name === "draft_profile") {
     const draftId = output.draft_id;
     if (draftId === undefined) return null;
     const patch = entry.arguments.patch;
@@ -145,9 +147,9 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
-  if (entry.name === "propose_insight_deletion") {
+  if (name === "propose_insight_deletion") {
     const proposalId = output.proposal_id;
-    const setId = output.set_id;
+    const setId = recipeIdOf(output);
     if (proposalId === undefined || setId === undefined) return null;
     const text = String(output.insight_text ?? "");
     return {
@@ -164,7 +166,7 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
-  if (entry.name === "record_insight") {
+  if (name === "record_insight") {
     const insightId = output.insight_id;
     if (insightId === undefined) return null;
     return {
@@ -261,7 +263,7 @@ export function ProposeCard({ proposal }: { proposal: Proposal }) {
     );
   }
   if (
-    (proposal.kind === "set_version" || proposal.kind === "initial_recipe") &&
+    (proposal.kind === "recipe_version" || proposal.kind === "initial_recipe") &&
     proposal.setId &&
     proposal.proposalId
   ) {

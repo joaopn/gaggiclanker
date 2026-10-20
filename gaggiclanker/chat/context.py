@@ -47,10 +47,10 @@ from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document_json
 from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
+    RecipeRow,
     RecipesRepository,
-    SetRow,
-    SetTrendVersion,
-    SetVersionRow,
+    RecipeTrendVersion,
+    RecipeVersionRow,
     dead_end_ids,
     track_record,
     version_changes,
@@ -142,7 +142,7 @@ async def opening_context(
 ) -> str:
     """The experiment so far, as markdown, or an empty string for a general chat.
 
-    ``scope.set_version_id`` is the version being argued. A scope that names a
+    ``scope.recipe_version_id`` is the version being argued. A scope that names a
     Recipe and no version falls back to the current one rather than refusing: a
     thread always stores both, and a caller assembling a context by hand (a
     test, a script) should get the obvious answer.
@@ -152,7 +152,7 @@ async def opening_context(
     curve moved into base is cut; the runner reads all three at the start of
     the turn, so the context and the tools of one turn agree.
     """
-    if scope.kind != "set" or scope.set_id is None:
+    if scope.kind != "recipe" or scope.recipe_id is None:
         return ""
     if scope.designing:
         # A Recipe being designed has no experiment yet: its conversation is told
@@ -160,24 +160,24 @@ async def opening_context(
         # because that module renders with this one's helpers.
         from gaggiclanker.chat.design_context import design_context
 
-        return await design_context(db, scope.set_id, thread_id=thread_id)
+        return await design_context(db, scope.recipe_id, thread_id=thread_id)
     recipes = RecipesRepository(db)
-    row = await recipes.get(scope.set_id)
+    row = await recipes.get(scope.recipe_id)
     if row is None:
         return ""
-    versions = await recipes.versions(scope.set_id)
-    version = _this_version(versions, scope.set_version_id, row.current_version_id)
+    versions = await recipes.versions(scope.recipe_id)
+    version = _this_version(versions, scope.recipe_version_id, row.current_version_id)
     if version is None:
         return ""
     current = next((item for item in versions if item.is_current), version)
 
     by_id = {item.id: item for item in versions}
     dead_ends = dead_end_ids(versions, row.current_version_id)
-    labels = await recipes.label_counts(scope.set_id)
+    labels = await recipes.label_counts(scope.recipe_id)
     # One pass over the counted shots feeds the spread and the evidence, exactly
     # as the Recipe page does it: two passes could answer with two different sets
     # of shots if one landed between them.
-    counted = await recipes.counted_shots(scope.set_id)
+    counted = await recipes.counted_shots(scope.recipe_id)
     spreads = pooled_spreads(counted)
     compared = by_id.get(version.compares_to_version_id or 0)
     evidence = (
@@ -194,12 +194,12 @@ async def opening_context(
     )
 
     profile_labels = _profile_labels(versions)
-    # Each version's averages, from the one function `get_set`'s trajectory is served by.
+    # Each version's averages, from the one function `get_recipe`'s trajectory is served by.
     # Handed the counted shots read above, so the spread, the evidence and the means are
     # one pass over one list.
     averages = {
-        item.set_version_id: item
-        for item in (await recipes.trends(scope.set_id, counted=counted)).versions
+        item.recipe_version_id: item
+        for item in (await recipes.trends(scope.recipe_id, counted=counted)).versions
     }
     lines: list[str] = []
     # First, and nothing that moves between turns before it: see `_profile_block`.
@@ -207,8 +207,8 @@ async def opening_context(
     lines += [""]
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
     lines += await _reverts_block(recipes, version)
-    lines += ["", *await _proposal_block(db, scope.set_id, profile_labels, current)]
-    grade = await _grade_block(db, scope.set_id, version)
+    lines += ["", *await _proposal_block(db, scope.recipe_id, profile_labels, current)]
+    grade = await _grade_block(db, scope.recipe_id, version)
     if grade:
         lines += ["", *grade]
     lines += ["", *_ledger(versions, dead_ends, labels, version, by_id, profile_labels, averages)]
@@ -219,7 +219,7 @@ async def opening_context(
         "",
         *await _shots_block(
             db,
-            scope.set_id,
+            scope.recipe_id,
             version,
             recent=max(1, recent_shots),
             tiers=tiers if tiers is not None else await effective_tiers(db),
@@ -246,8 +246,8 @@ async def opening_context(
 
 
 def _this_version(
-    versions: Sequence[SetVersionRow], version_id: int | None, current_id: int | None
-) -> SetVersionRow | None:
+    versions: Sequence[RecipeVersionRow], version_id: int | None, current_id: int | None
+) -> RecipeVersionRow | None:
     """The version the conversation is about; the Recipe's current one when unsaid."""
     wanted = version_id if version_id is not None else current_id
     return next((version for version in versions if version.id == wanted), None)
@@ -258,10 +258,10 @@ def _this_version(
 
 async def _heading(
     db: Database,
-    row: SetRow,
-    version: SetVersionRow,
-    versions: Sequence[SetVersionRow],
-    by_id: dict[int, SetVersionRow],
+    row: RecipeRow,
+    version: RecipeVersionRow,
+    versions: Sequence[RecipeVersionRow],
+    by_id: dict[int, RecipeVersionRow],
     dead_ends: set[int],
 ) -> list[str]:
     bean = await BeansRepository(db).get(row.bean_id) if row.bean_id else None
@@ -284,9 +284,9 @@ async def _heading(
     changes = version_changes(version, parent, _profile_labels(versions))
 
     lines = [
-        "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET",
+        "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE",
         "",
-        f"Set {row.id}: {row.name}."
+        f"Recipe {row.id}: {row.name}."
         + (f" Bean: {bean_line}." if bean_line else "")
         + (f" Grinder: {grinder_line}." if grinder_line else ""),
         f"{_plural(row.version_count, 'version')}, {_plural(row.shot_count, 'shot')}. "
@@ -298,12 +298,12 @@ async def _heading(
         ],
         "",
         f"THIS VERSION IS {version.version_label}"
-        + (" (a dead end: the Set went back past it)" if version.id in dead_ends else "")
-        + (" — the current version of this Set" if version.is_current else ""),
-        f"Recipe: {_recipe(version, profile=False)}.",
+        + (" (a dead end: the Recipe went back past it)" if version.id in dead_ends else "")
+        + (" — the current version of this Recipe" if version.is_current else ""),
+        f"Version numbers: {_recipe(version, profile=False)}.",
         f"Changed against {parent.version_label}: {_changes(changes)}."
         if parent is not None
-        else "It is the Set's first version: a baseline, not a change to anything.",
+        else "It is the Recipe's first version: a baseline, not a change to anything.",
     ]
     if version.intent:
         lines.append(f"What you are trying: {version.intent}")
@@ -311,7 +311,7 @@ async def _heading(
     return lines
 
 
-async def _reverts_block(recipes: RecipesRepository, version: SetVersionRow) -> list[str]:
+async def _reverts_block(recipes: RecipesRepository, version: RecipeVersionRow) -> list[str]:
     """Every time the Recipe went back to this version, oldest first, and when.
 
     A revert reopens this version's conversation as the Recipe's live one, and the
@@ -328,11 +328,11 @@ async def _reverts_block(recipes: RecipesRepository, version: SetVersionRow) -> 
         when = revert.created_at[:16].replace("T", " ") + " UTC"
         note = f" Why: {revert.note}" if revert.note else ""
         lines.append(
-            f"The Set went back to {revert.to_version_label} from "
+            f"The Recipe went back to {revert.to_version_label} from "
             f"{revert.from_version_label} on {when}.{note}"
         )
     lines.append(
-        "What was said in this conversation before then was said while the Set was on this "
+        "What was said in this conversation before then was said while the Recipe was on this "
         "version; the versions it went back past are dead ends now."
     )
     return lines
@@ -340,8 +340,8 @@ async def _reverts_block(recipes: RecipesRepository, version: SetVersionRow) -> 
 
 async def _profile_block(
     db: Database,
-    version: SetVersionRow,
-    compared: SetVersionRow | None,
+    version: RecipeVersionRow,
+    compared: RecipeVersionRow | None,
     thread_id: int | None = None,
 ) -> list[str]:
     """The profile this version brews, in full, and the compared version's when it differs.
@@ -409,7 +409,7 @@ async def _profile_text(
     ]
 
 
-def _profile_labels(versions: Sequence[SetVersionRow]) -> dict[int, str]:
+def _profile_labels(versions: Sequence[RecipeVersionRow]) -> dict[int, str]:
     return {
         version.profile_version_id: version.profile_label
         for version in versions
@@ -419,7 +419,7 @@ def _profile_labels(versions: Sequence[SetVersionRow]) -> dict[int, str]:
 
 def _changes(changes: Sequence[Any]) -> str:
     if not changes:
-        return "nothing in the recipe — only the intent"
+        return "nothing in the version's numbers — only the intent"
     return "; ".join(
         (
             "the brew changed (a new version of the profile)"
@@ -433,7 +433,7 @@ def _changes(changes: Sequence[Any]) -> str:
     )
 
 
-def _prediction_line(version: SetVersionRow) -> str:
+def _prediction_line(version: RecipeVersionRow) -> str:
     if not version.prediction:
         return "Prediction: none was written for this version, so there is nothing to grade."
     against = (
@@ -448,7 +448,7 @@ def _prediction_line(version: SetVersionRow) -> str:
     )
 
 
-def _recipe(version: SetVersionRow, *, profile: bool = True) -> str:
+def _recipe(version: RecipeVersionRow, *, profile: bool = True) -> str:
     """One line of numbers, omitting what the version does not state.
 
     A blank where a dose should be is a fact — this Recipe has never recorded one —
@@ -475,7 +475,7 @@ def _recipe(version: SetVersionRow, *, profile: bool = True) -> str:
 
 
 async def _proposal_block(
-    db: Database, set_id: int, profile_labels: dict[int, str], current: SetVersionRow
+    db: Database, recipe_id: int, profile_labels: dict[int, str], current: RecipeVersionRow
 ) -> list[str]:
     """What has been proposed to the person, and what they did about it.
 
@@ -489,13 +489,13 @@ async def _proposal_block(
     differ in one row read as two different documents.
     """
     proposals = RecipeProposalsRepository(db)
-    waiting = await proposals.waiting(set_id)
+    waiting = await proposals.waiting(recipe_id)
     if waiting is not None:
         return [
             "A PROPOSAL IS WAITING FOR THE PERSON",
             f"It changes {await _proposal_change(proposals, waiting, profile_labels)}. "
             f"Reason: {_quote(waiting.reason)} {_proposal_prediction(waiting)}",
-            "It has changed nothing: the Set is still on "
+            "It has changed nothing: the Recipe is still on "
             f"{waiting.base_version_label} until they accept it. Talk about this one — do not "
             "propose another change while it waits."
             + (
@@ -505,11 +505,11 @@ async def _proposal_block(
                 else ""
             ),
         ]
-    last = await proposals.last_decided(set_id)
+    last = await proposals.last_decided(recipe_id)
     if last is None:
         return [
             "PROPOSALS",
-            "Nothing has been proposed to the person on this Set yet.",
+            "Nothing has been proposed to the person on this Recipe yet.",
         ]
     if last.kind == "design":
         return ["THE LAST PROPOSAL", await _design_line(proposals, last)]
@@ -529,16 +529,16 @@ async def _design_line(proposals: RecipeProposalsRepository, row: Any) -> str:
     recipe does. It carried no prediction, because a version 1 is a baseline.
     """
     preview = await proposals.preview(row)
-    recipe = _recipe(preview) if preview is not None else "(its recipe cannot be read)"
+    recipe = _recipe(preview) if preview is not None else "(its version cannot be read)"
     if row.status == "accepted":
         return (
-            f"This Set was designed in conversation, and its initial recipe was accepted as "
+            f"This Recipe was designed in conversation, and its initial recipe was accepted as "
             f"{row.resulting_version_label}: {recipe}. Reason: {_quote(row.reason)} It is the "
             "baseline; every change since is in the ledger below."
         )
     return (
-        f"The last initial recipe proposed for this Set was {row.status} before anything was "
-        f"brewed: {recipe}. The Set's recipe was written another way."
+        f"The last initial recipe proposed for this Recipe was {row.status} before anything was "
+        f"brewed: {recipe}. The Recipe's version 1 was written another way."
     )
 
 
@@ -592,7 +592,7 @@ def _proposal_prediction(row: Any) -> str:
     return f"Prediction{against}: {_quote(row.prediction)}{combined}"
 
 
-def _decided_line(row: Any, current: SetVersionRow) -> str:
+def _decided_line(row: Any, current: RecipeVersionRow) -> str:
     """How it was answered, in the words that are useful next time."""
     if row.status == "accepted":
         return (
@@ -610,7 +610,8 @@ def _decided_line(row: Any, current: SetVersionRow) -> str:
             "not something to send again."
         )
     return (
-        f"Nobody answered it: the Set moved on to {current.version_label} before they did, so it "
+        f"Nobody answered it: the Recipe moved on to {current.version_label} before they did, so "
+        f"it "
         "was never applied and it is not waiting for anything. Propose afresh if the change "
         "still makes sense against what is being brewed now."
     )
@@ -619,7 +620,7 @@ def _decided_line(row: Any, current: SetVersionRow) -> str:
 # ── the grade ────────────────────────────────────────────────────────
 
 
-async def _grade_block(db: Database, set_id: int, version: SetVersionRow) -> list[str]:
+async def _grade_block(db: Database, recipe_id: int, version: RecipeVersionRow) -> list[str]:
     """What this conversation proposed as the version's outcome, and what the person did.
 
     **This version's only.** A grade the agent proposed is words until the
@@ -666,7 +667,7 @@ def _grade_words(row: OutcomeProposalRow) -> str:
     )
 
 
-def _recorded_words(version: SetVersionRow) -> str:
+def _recorded_words(version: RecipeVersionRow) -> str:
     if version.outcome is None:
         return "open"
     return f"{_OUTCOMES[version.outcome]}, as the person recorded it"
@@ -695,13 +696,13 @@ def _grade_answer(row: OutcomeProposalRow) -> str:
 
 
 def _ledger(
-    versions: Sequence[SetVersionRow],
+    versions: Sequence[RecipeVersionRow],
     dead_ends: set[int],
     labels: dict[int, Any],
-    this: SetVersionRow,
-    by_id: dict[int, SetVersionRow],
+    this: RecipeVersionRow,
+    by_id: dict[int, RecipeVersionRow],
     profile_labels: dict[int, str],
-    averages: Mapping[int, SetTrendVersion],
+    averages: Mapping[int, RecipeTrendVersion],
 ) -> list[str]:
     """Every version, oldest first, one line each — budgeted from the old end.
 
@@ -732,12 +733,12 @@ def _ledger(
     return lines
 
 
-def _oldest_first(versions: Iterable[SetVersionRow]) -> list[SetVersionRow]:
+def _oldest_first(versions: Iterable[RecipeVersionRow]) -> list[RecipeVersionRow]:
     """By `created_at`; the row id only breaks a tie and is never shown."""
     return sorted(versions, key=lambda version: (version.created_at, version.id))
 
 
-def _dropped_line(dropped: Sequence[SetVersionRow], every: Sequence[SetVersionRow]) -> str:
+def _dropped_line(dropped: Sequence[RecipeVersionRow], every: Sequence[RecipeVersionRow]) -> str:
     """The versions the budget left out, named exactly.
 
     Named rather than spanned: the two the budget never drops sit inside the
@@ -752,11 +753,11 @@ def _dropped_line(dropped: Sequence[SetVersionRow], every: Sequence[SetVersionRo
     )
     return (
         f"- Not written out here: {_ranges(dropped, every)} "
-        f"({len(dropped)} versions: {states}). get_set has them all."
+        f"({len(dropped)} versions: {states}). get_recipe has them all."
     )
 
 
-def _ranges(versions: Iterable[SetVersionRow], every: Sequence[SetVersionRow]) -> str:
+def _ranges(versions: Iterable[RecipeVersionRow], every: Sequence[RecipeVersionRow]) -> str:
     """ "v1, v1.3 to v2.1, v3" — versions made one after another collapsed, in order.
 
     "One after another" is by when they were made among **all** the Recipe's
@@ -768,7 +769,7 @@ def _ranges(versions: Iterable[SetVersionRow], every: Sequence[SetVersionRow]) -
     ordered = sorted(
         {version.id: version for version in versions}.values(), key=lambda v: position[v.id]
     )
-    spans: list[tuple[SetVersionRow, SetVersionRow]] = []
+    spans: list[tuple[RecipeVersionRow, RecipeVersionRow]] = []
     for version in ordered:
         if spans and position[version.id] == position[spans[-1][1].id] + 1:
             spans[-1] = (spans[-1][0], version)
@@ -781,13 +782,13 @@ def _ranges(versions: Iterable[SetVersionRow], every: Sequence[SetVersionRow]) -
 
 
 def _ledger_line(
-    version: SetVersionRow,
+    version: RecipeVersionRow,
     dead_ends: set[int],
     labels: dict[int, Any],
-    this: SetVersionRow,
-    by_id: dict[int, SetVersionRow],
+    this: RecipeVersionRow,
+    by_id: dict[int, RecipeVersionRow],
     profile_labels: dict[int, str],
-    averages: Mapping[int, SetTrendVersion],
+    averages: Mapping[int, RecipeTrendVersion],
 ) -> str:
     """One version: what it changed, what it produced, and how it was graded.
 
@@ -798,7 +799,7 @@ def _ledger_line(
     the compared version's own recipes are written out in full above.
 
     What it **produced** is the version's means over its counted shots, the same
-    numbers `get_set`'s trajectory serves (:func:`_averages`), so the first
+    numbers `get_recipe`'s trajectory serves (:func:`_averages`), so the first
     question about a change ("did it move anything?") needs no tool call.
 
     The outcome carries **its note**. The note is the only place the reason a
@@ -852,7 +853,7 @@ def _ledger_line(
     return f"- {' · '.join(parts)}"
 
 
-def _averages(version: SetVersionRow, trend: SetTrendVersion | None) -> list[str]:
+def _averages(version: RecipeVersionRow, trend: RecipeTrendVersion | None) -> list[str]:
     """The ledger's "what did it do" part: means over counted shots, or why there are none.
 
     Means only, no spread per version (the spread block is the yardstick). A
@@ -907,13 +908,13 @@ def _averages(version: SetVersionRow, trend: SetTrendVersion | None) -> list[str
     return ["averages over counted shots: " + ", ".join(parts)]
 
 
-def _against(version: SetVersionRow) -> str:
+def _against(version: RecipeVersionRow) -> str:
     return (
         f" against {version.compares_to_version_label}" if version.compares_to_version_label else ""
     )
 
 
-def _track_record_line(versions: Sequence[SetVersionRow]) -> str:
+def _track_record_line(versions: Sequence[RecipeVersionRow]) -> str:
     record = track_record(versions)
     return (
         f"Track record: {record.held} of {record.graded} graded predictions held "
@@ -929,7 +930,7 @@ def _track_record_line(versions: Sequence[SetVersionRow]) -> str:
 def _spread_block(spreads: dict[SpreadMeasure, Spread]) -> list[str]:
     """How much this Recipe's shots vary when nothing in the recipe changed."""
     lines = [
-        "HOW MUCH THIS SET VARIES WHEN NOTHING CHANGED",
+        "HOW MUCH THIS RECIPE VARIES WHEN NOTHING CHANGED",
         "This is the yardstick. A difference smaller than it is not a result.",
     ]
     if not any(spreads[measure].recorded for measure in SPREAD_MEASURES):
@@ -941,7 +942,7 @@ def _spread_block(spreads: dict[SpreadMeasure, Spread]) -> list[str]:
             for measure in SPREAD_MEASURES
         )
         lines.append(
-            "Nothing is measured yet: this Set has no shots that count. Until it has, a "
+            "Nothing is measured yet: this Recipe has no shots that count. Until it has, a "
             f"difference is held against these floors — {floors}."
         )
         return lines
@@ -951,10 +952,10 @@ def _spread_block(spreads: dict[SpreadMeasure, Spread]) -> list[str]:
         if not spread.recorded:
             continue
         if spread.measured and spread.value is not None:
-            recipes = spread.shots - spread.degrees_of_freedom
+            groups = spread.shots - spread.degrees_of_freedom
             lines.append(
                 f"- {term.label}: ±{_number(measure, spread.value)}{_unit(measure)}, from "
-                f"{_plural(spread.shots, 'repeat shot')} of {_plural(recipes, 'recipe')}."
+                f"{_plural(spread.shots, 'repeat shot')} at {_plural(groups, 'setting')}."
             )
         else:
             lines.append(
@@ -965,7 +966,7 @@ def _spread_block(spreads: dict[SpreadMeasure, Spread]) -> list[str]:
 
 
 def _evidence_block(
-    evidence: VersionEvidence, version: SetVersionRow, compared: SetVersionRow | None
+    evidence: VersionEvidence, version: RecipeVersionRow, compared: RecipeVersionRow | None
 ) -> list[str]:
     """This version's shots against the compared version's, measure by measure."""
     this_label = version.version_label
@@ -1026,8 +1027,8 @@ def _counts_line(label: str, counts: Any) -> str:
 
 async def _shots_block(
     db: Database,
-    set_id: int,
-    version: SetVersionRow,
+    recipe_id: int,
+    version: RecipeVersionRow,
     *,
     recent: int,
     tiers: Mapping[str, Tier],
@@ -1041,7 +1042,7 @@ async def _shots_block(
     out like the rest — "when did it go wrong" is a question it is part of the
     answer to — and says so on its own line.
     """
-    rows = await RecipesRepository(db).recipe_shots(set_id, version_id=version.id, limit=recent)
+    rows = await RecipesRepository(db).recipe_shots(recipe_id, version_id=version.id, limit=recent)
     # The samples only when a person moved a curve channel into base: at the
     # default tiers the opening context carries no curve and reads none.
     shots = await load_shots(
@@ -1055,7 +1056,7 @@ async def _shots_block(
         heading = f"THE LAST {len(shots)} OF {total} SHOTS OF {number} (newest first)"
         rest = (
             f"The other {total - len(shots)} of {number}'s shots, and every other version's, "
-            "are a list_set_shots search away"
+            "are a list_recipe_shots search away"
         )
     else:
         heading = (
@@ -1063,7 +1064,7 @@ async def _shots_block(
             if total == 1
             else f"ALL {total} SHOTS OF {number} (newest first)"
         )
-        rest = "Every other version's shots are a list_set_shots search away"
+        rest = "Every other version's shots are a list_recipe_shots search away"
     lines = [
         heading,
         f"Each in its base information. {rest}; get_shot_extended adds any one shot's "
@@ -1082,13 +1083,13 @@ async def _shots_block(
 
 
 def _gold_standard(
-    counted: Sequence[Any], versions: Sequence[SetVersionRow], dead_ends: set[int]
+    counted: Sequence[Any], versions: Sequence[RecipeVersionRow], dead_ends: set[int]
 ) -> list[str]:
     """What good has looked like in this Recipe: the Keep shots still on the line.
 
     On the live line only, because a Keep shot under a version a roll back
     stepped over is a cup somebody liked on a branch nobody is brewing any more
-    — worth finding with `list_set_shots`, not worth holding an Improve shot up
+    — worth finding with `list_recipe_shots`, not worth holding an Improve shot up
     against.
     """
     live = {version.id for version in versions if version.id not in dead_ends}
@@ -1126,7 +1127,7 @@ def _mean(shots: Sequence[Any], measure: SpreadMeasure) -> float | None:
 # ── the insights ─────────────────────────────────────────────────────
 
 
-async def _insights_block(db: Database, row: SetRow) -> list[str]:
+async def _insights_block(db: Database, row: RecipeRow) -> list[str]:
     """The confirmed insights that apply, newest first and bounded.
 
     Bounded because this is the one section whose length is not a property of
@@ -1156,7 +1157,7 @@ def _cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit].rstrip() + "…"
 
 
-async def _insights(db: Database, row: SetRow) -> list[Any]:
+async def _insights(db: Database, row: RecipeRow) -> list[Any]:
     """Through the one selection, so the chat and the Recipe page cannot disagree."""
     return await InsightsRepository(db).for_recipe(row.id)
 

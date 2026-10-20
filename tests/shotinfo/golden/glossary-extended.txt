@@ -15,7 +15,7 @@ The meanings of the extended fields, sent once in the conversation, with a shot 
 
 [Temperature]
 - Average temperature [extended]: The mean measured brew water temperature over the whole shot, in °C.
-- Target temperature [extended]: The mean temperature the profile asked for over the shot, in °C. The machine heats to the profile's temperature; the Set records none of its own.
+- Target temperature [extended]: The mean temperature the profile asked for over the shot, in °C. The machine heats to the profile's temperature; the Recipe records none of its own.
 - Minimum temperature [extended]: The lowest measured temperature during the shot, in °C.
 - Maximum temperature [extended]: The highest measured temperature during the shot, in °C.
 

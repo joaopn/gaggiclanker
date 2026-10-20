@@ -486,8 +486,8 @@ def build_mcp_config(
     *,
     data_dir: str,
     executable: str,
-    set_id: int | None = None,
-    set_version_id: int | None = None,
+    recipe_id: int | None = None,
+    recipe_version_id: int | None = None,
     thread_id: int | None = None,
     meanings_in_context: bool = False,
 ) -> str:
@@ -508,10 +508,10 @@ def build_mcp_config(
     providers go through.
     """
     env: dict[str, str] = {"DATA_DIR": data_dir}
-    if set_id is not None:
-        env["GAGGICLANKER_MCP_SET_ID"] = str(set_id)
-        if set_version_id is not None:
-            env["GAGGICLANKER_MCP_SET_VERSION_ID"] = str(set_version_id)
+    if recipe_id is not None:
+        env["GAGGICLANKER_MCP_RECIPE_ID"] = str(recipe_id)
+        if recipe_version_id is not None:
+            env["GAGGICLANKER_MCP_RECIPE_VERSION_ID"] = str(recipe_version_id)
     # Which conversation, not what it may touch. The child records it on a
     # change it proposes so the experiment log can lead back to the room the
     # change was argued in; it narrows nothing, so it travels on its own.
@@ -769,10 +769,10 @@ class ClaudeCodeProvider:
                         executable=sys.executable,
                         # The conversation's scope, so the CLI's own loop gets
                         # the tools this conversation has and no others — and so
-                        # an unqualified `get_set` answers the same question it
+                        # an unqualified `get_recipe` answers the same question it
                         # does on every other provider.
-                        set_id=request.set_id,
-                        set_version_id=request.set_version_id,
+                        recipe_id=request.recipe_id,
+                        recipe_version_id=request.recipe_version_id,
                         thread_id=request.thread_id,
                         meanings_in_context=request.meanings_in_context,
                     )

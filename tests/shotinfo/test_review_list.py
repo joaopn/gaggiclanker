@@ -21,8 +21,8 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.recipes import (
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.repos.shots import CHECK_SORT, ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
@@ -140,7 +140,7 @@ async def test_refiling_a_shot_changes_its_listed_warnings_and_its_place_in_the_
     recipes = RecipesRepository(archive.db)
     repo = ShotsRepository(archive.db)
     roomy = await recipes.add_version(
-        archive.set_id, RecipeVersionPatch(target_yield_g=60.0, intent="a longer shot")
+        archive.recipe_id, RecipeVersionPatch(target_yield_g=60.0, intent="a longer shot")
     )
     assert roomy is not None
     # Under a 60 g target the lever's 42.2 g is 70 %: under, not over.
@@ -172,7 +172,9 @@ async def test_the_list_and_the_recipe_routes_serve_the_curve_check_and_the_sort
     await own_version(db, profile.id)
     row = await recipes.create(
         RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
-        SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),
+        RecipeVersionWrite(
+            profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G
+        ),
     )
     slog = lever_shot()
     derived = derive_shot(
@@ -192,7 +194,7 @@ async def test_the_list_and_the_recipe_routes_serve_the_curve_check_and_the_sort
         "skipped",
         "over target",
     ]
-    detail: dict[str, Any] = data(await client.get(f"/api/sets/{row.id}"))
+    detail: dict[str, Any] = data(await client.get(f"/api/recipes/{row.id}"))
     in_recipe = detail["versions"][0]["shots"]
     assert [item["checks"]["badge"] for item in in_recipe] == ["ramp: fast flow +2"]
     assert (await client.get("/api/shots?sort=check&cursor=abc")).status_code == 400

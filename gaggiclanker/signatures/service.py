@@ -343,7 +343,7 @@ class SignatureService:
     async def propose_override(
         self,
         *,
-        set_version_id: int,
+        recipe_version_id: int,
         profile_version_id: int | None,
         expectation_id: int,
         compare: Mapping[str, Any],
@@ -385,7 +385,7 @@ class SignatureService:
                 f"{old.op!r}, so use {old.op!r} with other values."
             )
         for item in await self.repo.overrides_for_recipe_version(
-            set_version_id, statuses=["rejected"]
+            recipe_version_id, statuses=["rejected"]
         ):
             if item.expectation_id == expectation_id and item.compare == new:
                 raise SignatureRefused(
@@ -399,7 +399,7 @@ class SignatureService:
         try:
             return await self.repo.add_override(
                 OverrideWrite(
-                    set_version_id=set_version_id,
+                    recipe_version_id=recipe_version_id,
                     expectation_id=expectation_id,
                     compare=new,
                     reason=reason,
@@ -410,6 +410,6 @@ class SignatureService:
             raise SignatureRefused(
                 f"This version already has an override in force for expectation "
                 f"#{other.expectation_id}, and a version has one at a time. The person can "
-                "reject it on the Set page, and then you can put another in force. Say what "
+                "reject it on the Recipe page, and then you can put another in force. Say what "
                 "you would change instead of proposing one now."
             ) from None

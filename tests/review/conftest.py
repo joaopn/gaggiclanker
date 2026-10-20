@@ -38,7 +38,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionWrite, RecipeWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow, ShotsRepository
 from gaggiclanker.db.repos.signatures import ExpectationWrite, SignatureRepository
 from gaggiclanker.db.schema import create_schema
@@ -127,7 +127,7 @@ async def give_the_recipe_its_profile(found: Fixture) -> None:
     """
     from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 
-    if await found.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (found.set_id,)):
+    if await found.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (found.recipe_id,)):
         return
     version = await ProfilesRepository(found.db).get_version(found.profile_version_id)
     assert version is not None
@@ -136,7 +136,9 @@ async def give_the_recipe_its_profile(found: Fixture) -> None:
             label=version.label, current_version_id=version.id, origin="adopted", on_machine=False
         )
     )
-    await found.db.execute("UPDATE recipes SET board_id = ? WHERE id = ?", (row.id, found.set_id))
+    await found.db.execute(
+        "UPDATE recipes SET board_id = ? WHERE id = ?", (row.id, found.recipe_id)
+    )
 
 
 @dataclass(slots=True)
@@ -146,7 +148,7 @@ class Fixture:
     db: Database
     bean_id: int
     grinder_id: int
-    set_id: int
+    recipe_id: int
     version_id: int
     profile_version_id: int
     #: Oldest first. `shots[-1]` is the one a review reads; the five before it
@@ -391,7 +393,7 @@ async def build_fixture(db: Database) -> Fixture:
             bean_id=bean.id,
             grinder_id=grinder.id,
         ),
-        SetVersionWrite(
+        RecipeVersionWrite(
             profile_version_id=profile_version.id,
             grind_setting="22 numbers",
             grind_value=22.0,
@@ -511,7 +513,7 @@ async def build_fixture(db: Database) -> Fixture:
         db=db,
         bean_id=bean.id,
         grinder_id=grinder.id,
-        set_id=stored_recipe.id,
+        recipe_id=stored_recipe.id,
         version_id=version_id,
         profile_version_id=profile_version.id,
         shots=shot_ids,

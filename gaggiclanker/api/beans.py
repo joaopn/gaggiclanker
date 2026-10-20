@@ -12,7 +12,7 @@ Beans page exports: the bean with the file's `id` is updated with the fields
 the file carries, and a file with no id, or an id this archive does not hold,
 creates a new bean.
 
-`GET /api/beans/{id}/similar-sets` is the wizard's evidence query on its own. It
+`GET /api/beans/{id}/similar-recipes` is the wizard's evidence query on its own. It
 lives here rather than under `/api/starting-points` because it is a fact about a
 bean and it costs nothing — the wizard shows those cards before anybody presses
 a button that spends money, and "here is what you already know about beans like
@@ -31,7 +31,7 @@ from gaggiclanker.api.deps import BeansRepoDep, DatabaseDep
 from gaggiclanker.db.repos.beans import BeanRow, BeanWrite
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import BadRequest, Conflict, NotFound
-from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_recipes
+from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarRecipe, similar_recipes
 
 __all__ = ["router"]
 
@@ -44,7 +44,7 @@ class BeanListData(BaseModel):
     items: list[BeanRow]
 
 
-class SimilarSetsData(BaseModel):
+class SimilarRecipesData(BaseModel):
     """What the archive already knows about beans like this one."""
 
     model_config = ConfigDict(extra="forbid")
@@ -53,7 +53,7 @@ class SimilarSetsData(BaseModel):
     #: Echoed back so the card can say "on the Niche" rather than leaving the
     #: reader to remember what they filtered by.
     grinder_id: int | None = None
-    items: list[SimilarSet]
+    items: list[SimilarRecipe]
 
 
 @router.get("", response_model=ApiResponse[BeanListData], summary="The beans, freshest first")
@@ -96,7 +96,7 @@ async def update_bean(bean_id: int, body: BeanWrite, beans: BeansRepoDep) -> JSO
 @router.delete(
     "/{bean_id}",
     response_model=ApiResponse[dict[str, bool]],
-    summary="Delete a bean no Set uses",
+    summary="Delete a bean no Recipe uses",
 )
 async def delete_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
     """A real delete, refused for a bean that is in use.
@@ -110,10 +110,10 @@ async def delete_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
     if not outcome.found:
         raise NotFound(f"No bean {bean_id}")
     if not outcome.deleted:
-        noun = "Set uses" if outcome.set_count == 1 else "Sets use"
+        noun = "Recipe uses" if outcome.recipe_count == 1 else "Recipes use"
         raise Conflict(
-            f"{outcome.set_count} {noun} this bean. Archive it instead.",
-            details={"field": "bean_id", "message": "archive a bean that Sets use"},
+            f"{outcome.recipe_count} {noun} this bean. Archive it instead.",
+            details={"field": "bean_id", "message": "archive a bean that Recipes use"},
         )
     return envelope_response({"deleted": True})
 
@@ -121,7 +121,7 @@ async def delete_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
 @router.post(
     "/{bean_id}/archive",
     response_model=ApiResponse[BeanRow],
-    summary="Hide a coffee you no longer buy without breaking its Sets",
+    summary="Hide a coffee you no longer buy without breaking its Recipes",
 )
 async def archive_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
     row = await beans.set_archived(bean_id, archived=True)
@@ -178,18 +178,18 @@ async def import_bean(body: Annotated[dict[str, Any], Body()], beans: BeansRepoD
 
 
 @router.get(
-    "/{bean_id}/similar-sets",
-    response_model=ApiResponse[SimilarSetsData],
-    summary="Past Set versions that resemble this bean, best first",
+    "/{bean_id}/similar-recipes",
+    response_model=ApiResponse[SimilarRecipesData],
+    summary="Past Recipe versions that resemble this bean, best first",
 )
-async def bean_similar_sets(
+async def bean_similar_recipes(
     bean_id: int,
     beans: BeansRepoDep,
     db: DatabaseDep,
     grinder_id: Annotated[int | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=10)] = DEFAULT_LIMIT,
 ) -> JSONResponse:
-    """The similar-Set query on its own, for the wizard's first step.
+    """The similar-Recipe query on its own, for the wizard's first step.
 
     ``grinder_id`` is a filter rather than a hint: a grind number from a
     different grinder is not weaker evidence, it is meaningless, and putting one
@@ -209,5 +209,7 @@ async def bean_similar_sets(
         limit=limit,
     )
     return envelope_response(
-        SimilarSetsData(bean_id=bean_id, grinder_id=grinder_id, items=items).model_dump(mode="json")
+        SimilarRecipesData(bean_id=bean_id, grinder_id=grinder_id, items=items).model_dump(
+            mode="json"
+        )
     )

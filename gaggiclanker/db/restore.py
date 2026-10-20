@@ -106,7 +106,7 @@ class RestoreRefused(AppError):
 
 class RestoreCounts(BaseModel):
     shots: int
-    sets: int
+    recipes: int
     beans: int
 
 
@@ -349,7 +349,7 @@ def _validate_open(
             manifest=_read_manifest(conn),
             counts=RestoreCounts(
                 shots=_scalar(conn, "SELECT COUNT(*) FROM shots"),
-                sets=_scalar(conn, "SELECT COUNT(*) FROM recipes"),
+                recipes=_scalar(conn, "SELECT COUNT(*) FROM recipes"),
                 beans=_scalar(conn, "SELECT COUNT(*) FROM beans"),
             ),
             keys_in_file=keys_in_file,

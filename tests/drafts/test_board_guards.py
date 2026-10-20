@@ -161,7 +161,7 @@ async def test_a_put_that_revives_a_row_is_followed_by_the_rows_recipe(
     db = app.state.db
     row = await app_row(app, client, fake, provider, name="Beta")
     v1 = row["current_version_id"]
-    set_id = await make_recipe_on(client, "BetaRecipe", v1)
+    recipe_id = await make_recipe_on(client, "BetaRecipe", v1)
     stored = data(await client.get(f"/api/profile-versions/{v1}"))
     document = copy.deepcopy(stored["profile"])
     document["phases"][0]["pump"] = {"target": "pressure", "pressure": 6.1, "flow": 0}
@@ -172,10 +172,10 @@ async def test_a_put_that_revives_a_row_is_followed_by_the_rows_recipe(
     await pull(app)
     first = await db.fetch_value(
         "SELECT id FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id LIMIT 1",
-        (set_id,),
+        (recipe_id,),
     )
     await tombstone(client, row["id"])
-    back = await client.post(f"/api/sets/{set_id}/rollback", json={"to_version_id": first})
+    back = await client.post(f"/api/recipes/{recipe_id}/rollback", json={"to_version_id": first})
     assert back.status_code == 200, back.text
 
     async def named() -> int:
@@ -183,11 +183,11 @@ async def test_a_put_that_revives_a_row_is_followed_by_the_rows_recipe(
             await db.fetch_value(
                 "SELECT v.profile_version_id FROM recipes s "
                 "JOIN recipe_versions v ON v.id = s.current_version_id WHERE s.id = ?",
-                (set_id,),
+                (recipe_id,),
             )
         )
 
-    assert await named() == v1, "the Set went back; the deleted profile did not follow"
+    assert await named() == v1, "the Recipe went back; the deleted profile did not follow"
     same = await app.state.draft_proposals.create_manual(
         base_version_id=v2,
         document=copy.deepcopy(data(await client.get(f"/api/profile-versions/{v2}"))["profile"]),
@@ -198,7 +198,7 @@ async def test_a_put_that_revives_a_row_is_followed_by_the_rows_recipe(
 
     assert revived.status_code < 300, revived.text
     assert data(revived)["id"] == row["id"], "the same profile is the same row"
-    assert await named() == v2, "the Set follows the revived row's active version"
+    assert await named() == v2, "the Recipe follows the revived row's active version"
 
 
 async def test_a_removal_is_refused_while_a_live_row_stands_on_the_file(
@@ -1035,7 +1035,7 @@ async def test_a_deleted_copy_a_recipe_brews_is_removed_all_the_same(
     await app_row(app, client, fake, provider)
     row = row_for(await get_board(client), APP_LABEL)
     file = row["machine"]["device_id"]
-    set_id = await make_recipe_on(client, "Brews it", row["row"]["current_version_id"])
+    recipe_id = await make_recipe_on(client, "Brews it", row["row"]["current_version_id"])
     await tombstone(client, row["row"]["id"])
 
     run = await pull(app)
@@ -1043,7 +1043,7 @@ async def test_a_deleted_copy_a_recipe_brews_is_removed_all_the_same(
     assert [i["device_id"] for i in summary_of(run)["removed"]] == [file]
     assert file not in ids(fake)
     assert (await get_board(client))["pending_removals"] == []
-    assert len(await recipe_version_ids(app, set_id)) == 1
+    assert len(await recipe_version_ids(app, recipe_id)) == 1
 
 
 async def test_versions_the_policy_refuses_do_not_use_up_the_three_failure_stop(

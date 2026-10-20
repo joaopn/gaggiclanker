@@ -46,7 +46,7 @@ async def another_recipe(client: httpx.AsyncClient) -> dict[str, Any]:
     return dict(
         data(
             await client.post(
-                "/api/sets",
+                "/api/recipes",
                 json={
                     "name": "Another coffee",
                     "bean_id": bean["id"],
@@ -60,7 +60,7 @@ async def another_recipe(client: httpx.AsyncClient) -> dict[str, Any]:
 
 async def drafted_for(
     app: FastAPI,
-    set_id: int | None,
+    recipe_id: int | None,
     *,
     prediction: str = "Compared to v1: less of the dry finish, and no slower.",
     compares_to_version_id: int | None = None,
@@ -82,17 +82,17 @@ async def drafted_for(
         document=document,
         change_summary=f"Down to {bar:g} bar.",
         notes="Proposed in chat.",
-        set_id=set_id,
-        prediction=prediction if set_id is not None else "",
+        recipe_id=recipe_id,
+        prediction=prediction if recipe_id is not None else "",
         compares_to_version_id=compares_to_version_id,
         **more,
     )
     return dict(row.model_dump(mode="json"))
 
 
-async def versions_of(client: httpx.AsyncClient, set_id: int) -> list[dict[str, Any]]:
+async def versions_of(client: httpx.AsyncClient, recipe_id: int) -> list[dict[str, Any]]:
     """A Recipe's versions as the Recipe page lists them: the newest first."""
-    return [e["version"] for e in data(await client.get(f"/api/sets/{set_id}"))["versions"]]
+    return [e["version"] for e in data(await client.get(f"/api/recipes/{recipe_id}"))["versions"]]
 
 
 async def draft_row(client: httpx.AsyncClient, draft_id: int) -> dict[str, Any]:
@@ -129,7 +129,7 @@ async def test_a_put_on_the_recipes_profile_records_the_version_at_once_and_no_i
     assert (await draft_row(client, draft["id"]))["recorded_version_label"] == "v1.1"
     ended = await put_and_sync(app, client, await a_draft(app, client, provider))
     assert ended["status"] == "pushed"
-    assert len(await versions_of(client, a_recipe)) == 2, "the sync records nothing on the Set"
+    assert len(await versions_of(client, a_recipe)) == 2, "the sync records nothing on the Recipe"
 
 
 async def test_a_recipes_own_draft_records_its_prediction_on_the_version(
@@ -160,12 +160,14 @@ async def test_a_recipes_draft_says_which_version_the_put_records_before_and_aft
     """
     app, client, _ = adopted
     draft = await drafted_for(app, a_recipe)
-    assert draft["set_next_minor_label"] == "v1.1" and draft["recorded_version_label"] is None
+    assert draft["recipe_next_minor_label"] == "v1.1" and draft["recorded_version_label"] is None
 
     await put(client, draft)
 
     reread = await draft_row(client, draft["id"])
-    assert reread["recorded_version_label"] == "v1.1" and reread["set_next_minor_label"] == "v1.2"
+    assert (
+        reread["recorded_version_label"] == "v1.1" and reread["recipe_next_minor_label"] == "v1.2"
+    )
 
 
 async def test_a_put_records_a_minor_version_unless_marked_major(
@@ -186,8 +188,8 @@ async def test_a_put_records_a_minor_version_unless_marked_major(
     )
     assert (
         first["suggest_major"],
-        first["set_next_minor_label"],
-        first["set_next_major_label"],
+        first["recipe_next_minor_label"],
+        first["recipe_next_major_label"],
     ) == (
         True,
         "v1.1",
@@ -199,7 +201,7 @@ async def test_a_put_records_a_minor_version_unless_marked_major(
     assert (await draft_row(client, first["id"]))["recorded_version_label"] == "v1.1"
     second = await drafted_for(app, a_recipe, bar=7.0, prediction="Compared to v1.1: softer still.")
     reread = await draft_row(client, second["id"])
-    assert (reread["set_next_minor_label"], reread["set_next_major_label"]) == ("v1.2", "v2")
+    assert (reread["recipe_next_minor_label"], reread["recipe_next_major_label"]) == ("v1.2", "v2")
 
     await put(client, second, major=True)
 
@@ -249,7 +251,7 @@ async def test_a_draft_argued_in_another_recipes_chat_records_no_prediction_here
     await put(client, draft)
 
     version = (await versions_of(client, a_recipe))[0]
-    assert version["set_id"] == a_recipe and version["version_label"] == "v1.1"
+    assert version["recipe_id"] == a_recipe and version["version_label"] == "v1.1"
     assert version["prediction"] == "" and version["compares_to_version_id"] is None
     assert (await draft_row(client, draft["id"]))["recorded_version_label"] == "v1.1"
     assert len(await versions_of(client, other["id"])) == 1
@@ -260,7 +262,7 @@ async def test_a_draft_without_a_recipe_has_no_version_to_record(
 ) -> None:
     app, client, _ = adopted
     draft = await a_draft(app, client, provider)
-    assert draft["set_next_minor_label"] is None and draft["recorded_version_label"] is None
+    assert draft["recipe_next_minor_label"] is None and draft["recorded_version_label"] is None
 
 
 async def test_a_prediction_against_a_version_of_another_recipe_falls_back_to_the_current_one(
@@ -349,7 +351,7 @@ async def test_recording_a_version_retires_the_change_waiting_on_the_recipe(
     await put(client, draft)
 
     assert await RecipeProposalsRepository(app.state.db).waiting(a_recipe) is None
-    assert data(await client.get(f"/api/sets/{a_recipe}"))["proposal"] is None
+    assert data(await client.get(f"/api/recipes/{a_recipe}"))["proposal"] is None
 
 
 async def test_a_refinement_keeps_the_agents_major_suggestion_and_the_recipe(
@@ -380,5 +382,5 @@ async def test_a_refinement_keeps_the_agents_major_suggestion_and_the_recipe(
         True,
         "Eight bar is a different kind of shot from nine, not a nudge.",
     )
-    assert refined["set_id"] == a_recipe and refined["prediction"] == parent["prediction"]
+    assert refined["recipe_id"] == a_recipe and refined["prediction"] == parent["prediction"]
     assert refined["compares_to_version_id"] == parent["compares_to_version_id"]

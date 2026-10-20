@@ -8,7 +8,7 @@ tests forge the cases where the three disagree.
 
 from __future__ import annotations
 
-from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeVersionWrite, RecipeWrite
 from tests.profile_rows import another_version
 from tests.recipes.conftest import Fixtures, make_profile_version, make_shot
 
@@ -16,7 +16,7 @@ from tests.recipes.conftest import Fixtures, make_profile_version, make_shot
 async def _recipe(wired: Fixtures, **recipe: object) -> int:
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-        SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22", **recipe),  # type: ignore[arg-type]
+        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22", **recipe),  # type: ignore[arg-type]
     )
     return row.id
 
@@ -24,16 +24,16 @@ async def _recipe(wired: Fixtures, **recipe: object) -> int:
 async def test_the_pointer_is_written_by_create_and_moved_by_every_append(
     wired: Fixtures,
 ) -> None:
-    set_id = await _recipe(wired)
-    first = await wired.recipes.current_version(set_id)
+    recipe_id = await _recipe(wired)
+    first = await wired.recipes.current_version(recipe_id)
     assert first is not None and first.is_current
-    assert (await wired.recipes.get(set_id)).current_version_id == first.id  # type: ignore[union-attr]
+    assert (await wired.recipes.get(recipe_id)).current_version_id == first.id  # type: ignore[union-attr]
 
-    second = await wired.recipes.add_version(set_id, RecipeVersionPatch(grind_setting="21"))
+    second = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(grind_setting="21"))
 
     assert second is not None and second.is_current
     assert second.parent_version_id == first.id and second.parent_version_label == "v1"
-    row = await wired.recipes.get(set_id)
+    row = await wired.recipes.get(recipe_id)
     assert row is not None and row.current_version_id == second.id
     assert row.current_version_label == "v1.1"
     reread = await wired.recipes.get_version(first.id)
@@ -42,16 +42,16 @@ async def test_the_pointer_is_written_by_create_and_moved_by_every_append(
 
 async def test_the_pointer_not_the_newest_row_decides_what_is_current(wired: Fixtures) -> None:
     """Everything that reads "current" follows the Recipe's pointer, whatever else exists."""
-    set_id = await _recipe(wired)
-    first = await wired.recipes.current_version(set_id)
+    recipe_id = await _recipe(wired)
+    first = await wired.recipes.current_version(recipe_id)
     assert first is not None
-    await wired.recipes.add_version(set_id, RecipeVersionPatch(grind_setting="21"))
+    await wired.recipes.add_version(recipe_id, RecipeVersionPatch(grind_setting="21"))
     await wired.db.execute(
-        "UPDATE recipes SET current_version_id = ? WHERE id = ?", (first.id, set_id)
+        "UPDATE recipes SET current_version_id = ? WHERE id = ?", (first.id, recipe_id)
     )
 
-    current = await wired.recipes.current_version(set_id)
-    row = await wired.recipes.get(set_id)
+    current = await wired.recipes.current_version(recipe_id)
+    row = await wired.recipes.get(recipe_id)
 
     assert current is not None and current.id == first.id
     assert row is not None and row.current_version_label == "v1"
@@ -63,13 +63,13 @@ async def test_the_pointer_not_the_newest_row_decides_what_is_current(wired: Fix
 async def test_automatch_files_a_shot_under_the_version_the_recipe_is_on(wired: Fixtures) -> None:
     profile = await make_profile_version(wired.db, "Older profile")
     other = await another_version(wired.db, profile, description="newer")
-    set_id = await _recipe(wired, profile_version_id=profile)
-    first = await wired.recipes.current_version(set_id)
+    recipe_id = await _recipe(wired, profile_version_id=profile)
+    first = await wired.recipes.current_version(recipe_id)
     assert first is not None
-    newer = await wired.recipes.add_version(set_id, RecipeVersionPatch(profile_version_id=other))
+    newer = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(profile_version_id=other))
     assert newer is not None
     await wired.db.execute(
-        "UPDATE recipes SET current_version_id = ? WHERE id = ?", (first.id, set_id)
+        "UPDATE recipes SET current_version_id = ? WHERE id = ?", (first.id, recipe_id)
     )
 
     shot = await make_shot(wired.db, "000001", profile_version_id=profile)
@@ -81,16 +81,16 @@ async def test_automatch_files_a_shot_under_the_version_the_recipe_is_on(wired: 
         elsewhere, profile_version_id=other, device_profile_id=""
     )
 
-    assert (match.outcome, match.set_version_id) == ("matched", first.id)
+    assert (match.outcome, match.recipe_version_id) == ("matched", first.id)
     assert unmatched.outcome == "unmatched"
 
 
 async def test_versions_are_ordered_by_when_they_were_made_not_by_id(wired: Fixtures) -> None:
-    set_id = await _recipe(wired)
-    first = await wired.recipes.current_version(set_id)
+    recipe_id = await _recipe(wired)
+    first = await wired.recipes.current_version(recipe_id)
     assert first is not None
-    second = await wired.recipes.add_version(set_id, RecipeVersionPatch(grind_setting="21"))
-    third = await wired.recipes.add_version(set_id, RecipeVersionPatch(grind_setting="20"))
+    second = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(grind_setting="21"))
+    third = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(grind_setting="20"))
     assert second is not None and third is not None
     # Forge it: the third row was made before the second, whatever its id says.
     await wired.db.execute(
@@ -102,19 +102,19 @@ async def test_versions_are_ordered_by_when_they_were_made_not_by_id(wired: Fixt
         (first.id,),
     )
 
-    versions = await wired.recipes.versions(set_id)
+    versions = await wired.recipes.versions(recipe_id)
 
     assert [v.id for v in versions] == [second.id, third.id, first.id]
-    trends = await wired.recipes.trends(set_id)
-    assert [v.set_version_id for v in trends.versions] == [first.id, third.id, second.id]
+    trends = await wired.recipes.trends(recipe_id)
+    assert [v.recipe_version_id for v in trends.versions] == [first.id, third.id, second.id]
 
 
 async def test_a_prediction_compares_only_to_a_version_made_earlier(wired: Fixtures) -> None:
-    set_id = await _recipe(wired)
-    first = await wired.recipes.current_version(set_id)
+    recipe_id = await _recipe(wired)
+    first = await wired.recipes.current_version(recipe_id)
     assert first is not None
-    second = await wired.recipes.add_version(set_id, RecipeVersionPatch(grind_setting="21"))
-    third = await wired.recipes.add_version(set_id, RecipeVersionPatch(grind_setting="20"))
+    second = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(grind_setting="21"))
+    third = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(grind_setting="20"))
     assert second is not None and third is not None
     await wired.db.execute(
         "UPDATE recipe_versions SET created_at = '2000-01-01T00:00:00.000Z' WHERE id = ?",
@@ -122,9 +122,9 @@ async def test_a_prediction_compares_only_to_a_version_made_earlier(wired: Fixtu
     )
 
     # The third row has the higher id and the earlier time: it is older than the second.
-    assert await wired.recipes.comparison_target(set_id, second.id, third.id) is not None
-    assert await wired.recipes.comparison_target(set_id, third.id, second.id) is None
-    assert await wired.recipes.comparison_target(set_id, second.id, second.id) is None
+    assert await wired.recipes.comparison_target(recipe_id, second.id, third.id) is not None
+    assert await wired.recipes.comparison_target(recipe_id, third.id, second.id) is None
+    assert await wired.recipes.comparison_target(recipe_id, second.id, second.id) is None
 
 
 async def test_an_old_roll_back_row_keeps_its_line_and_the_next_version_forks_from_the_current(
@@ -136,8 +136,8 @@ async def test_an_old_roll_back_row_keeps_its_line_and_the_next_version_forks_fr
     pointer by parent and steps over what a roll back stepped over.
     """
     db = wired.db
-    set_id = await _recipe(wired)
-    first = await wired.recipes.current_version(set_id)
+    recipe_id = await _recipe(wired)
+    first = await wired.recipes.current_version(recipe_id)
     assert first is not None
     await db.execute("UPDATE recipe_versions SET created_at = '2026-01-01T00:00:00.000Z'")
     rows = [
@@ -150,11 +150,11 @@ async def test_an_old_roll_back_row_keeps_its_line_and_the_next_version_forks_fr
         await db.execute(
             "INSERT INTO recipe_versions (id, recipe_id, version_major, version_minor, "
             "parent_version_id, restores_version_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (vid, set_id, major, minor, parent, restores, created),
+            (vid, recipe_id, major, minor, parent, restores, created),
         )
     await db.execute("UPDATE recipes SET current_version_id = ?", (first.id + 3,))
 
-    assert await wired.recipes.dead_end_versions([set_id]) == {first.id + 2}
-    added = await wired.recipes.add_version(set_id, RecipeVersionPatch(grind_setting="19"))
+    assert await wired.recipes.dead_end_versions([recipe_id]) == {first.id + 2}
+    added = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(grind_setting="19"))
     assert added is not None and added.version_label == "v3.1"
     assert added.parent_version_id == first.id + 3

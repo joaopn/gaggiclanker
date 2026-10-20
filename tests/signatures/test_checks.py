@@ -54,19 +54,21 @@ def _lever_signature() -> list[ExpectationInput]:
 
 
 class Lever:
-    def __init__(self, db: Database, version: int, set_version: int, other_version: int, shot: int):
+    def __init__(
+        self, db: Database, version: int, recipe_version: int, other_version: int, shot: int
+    ):
         self.db = db
         self.version = version
-        self.set_version = set_version
+        self.recipe_version = recipe_version
         self.other_version = other_version
         self.shot = shot
 
 
 async def _lever(db: Database) -> Lever:
     version = await _version(db, LEVER_PROFILE)
-    set_version, other = await make_recipe_versions(db, version)
-    shot = await add_shot(db, set_version_id=set_version, profile_version_id=version)
-    return Lever(db, version, set_version, other, shot)
+    recipe_version, other = await make_recipe_versions(db, version)
+    shot = await add_shot(db, recipe_version_id=recipe_version, profile_version_id=version)
+    return Lever(db, version, recipe_version, other, shot)
 
 
 async def _propose(
@@ -143,7 +145,7 @@ async def test_proposing_changes_every_shot_at_once_and_stores_nothing_on_a_shot
     lever = await _lever(db)
     second = await add_shot(
         db,
-        set_version_id=lever.other_version,
+        recipe_version_id=lever.other_version,
         profile_version_id=lever.version,
         device_id="000901",
     )
@@ -171,7 +173,7 @@ async def test_an_override_changes_only_its_own_recipe_versions_shots(db: Databa
     lever = await _lever(db)
     other_shot = await add_shot(
         db,
-        set_version_id=lever.other_version,
+        recipe_version_id=lever.other_version,
         profile_version_id=lever.version,
         device_id="000901",
     )
@@ -179,7 +181,7 @@ async def test_an_override_changes_only_its_own_recipe_versions_shots(db: Databa
     ramp = next(r for r in rows if r.kind == "measure" and r.phase == "ramp")
     service = SignatureService(db)
     override = await service.propose_override(
-        set_version_id=lever.set_version,
+        recipe_version_id=lever.recipe_version,
         profile_version_id=lever.version,
         expectation_id=ramp.id,
         compare={"op": "<=", "value": 1.3},
@@ -208,7 +210,7 @@ async def test_the_curve_check_sort_follows_the_badge_red_amber_grey_then_none(
     turbo_recipe, _ = await make_recipe_versions(db, turbo_version, target=42.0)
     turbo = await add_shot(
         db,
-        set_version_id=turbo_recipe,
+        recipe_version_id=turbo_recipe,
         profile_version_id=turbo_version,
         slog=turbo_shot(),
         profile=turbo_profile(),
@@ -216,7 +218,7 @@ async def test_the_curve_check_sort_follows_the_badge_red_amber_grey_then_none(
     )
     no_scale = await add_shot(
         db,
-        set_version_id=lever.set_version,
+        recipe_version_id=lever.recipe_version,
         profile_version_id=lever.version,
         slog=without_scale(lever_shot()),
         device_id="000911",
@@ -251,10 +253,10 @@ async def test_the_curve_check_sort_follows_the_badge_red_amber_grey_then_none(
 
 async def test_a_turbo_with_its_fast_flow_expected_shows_no_amber(db: Database) -> None:
     version = await _version(db, turbo_profile())
-    set_version, _ = await make_recipe_versions(db, version, target=42.0)
+    recipe_version, _ = await make_recipe_versions(db, version, target=42.0)
     shot = await add_shot(
         db,
-        set_version_id=set_version,
+        recipe_version_id=recipe_version,
         profile_version_id=version,
         slog=turbo_shot(),
         profile=turbo_profile(),
@@ -392,7 +394,7 @@ async def test_a_shot_with_no_scale_is_not_measured_never_held_or_failed(db: Dat
     lever = await _lever(db)
     shot = await add_shot(
         db,
-        set_version_id=lever.set_version,
+        recipe_version_id=lever.recipe_version,
         profile_version_id=lever.version,
         slog=without_scale(lever_shot()),
         device_id="000920",
@@ -412,10 +414,10 @@ async def test_a_shot_with_no_pressure_sensor_cannot_fail_a_flow_or_pressure_exp
     db: Database,
 ) -> None:
     version = await _version(db, LEVER_PROFILE)
-    set_version, _ = await make_recipe_versions(db, version)
+    recipe_version, _ = await make_recipe_versions(db, version)
     shot = await add_shot(
         db,
-        set_version_id=set_version,
+        recipe_version_id=recipe_version,
         profile_version_id=version,
         slog=without_pressure(lever_shot()),
         device_id="000921",

@@ -21,18 +21,18 @@ from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipeRow,
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetRow,
-    SetVersionWrite,
     VersionRefused,
 )
 from tests.profile_rows import free_profile_version
 from tests.recipes.conftest import Fixtures, make_profile_version, make_shot
 
 
-async def designed(wired: Fixtures, **brief: Any) -> SetRow:
+async def designed(wired: Fixtures, **brief: Any) -> RecipeRow:
     return await wired.recipes.create_design(
         RecipeWrite(name="Guji, designed", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
         DesignBrief.model_validate(brief),
@@ -69,7 +69,7 @@ async def test_a_designed_recipe_has_the_flag_the_brief_and_an_empty_version_1(
 
 async def test_a_recipe_made_any_other_way_is_not_being_designed(wired: Fixtures) -> None:
     row = await wired.recipes.create(
-        RecipeWrite(name="By hand", bean_id=wired.bean_id), SetVersionWrite()
+        RecipeWrite(name="By hand", bean_id=wired.bean_id), RecipeVersionWrite()
     )
 
     assert row.designing is False
@@ -91,7 +91,7 @@ async def test_a_damaged_brief_reads_as_an_empty_one_rather_than_breaking_the_li
     row = await designed(wired, goal="Body.")
     await wired.db.execute("UPDATE recipes SET design_brief = 'not json' WHERE id = ?", (row.id,))
 
-    listed = await wired.recipes.list_sets()
+    listed = await wired.recipes.list_recipes()
 
     assert [item.design_brief for item in listed if item.id == row.id] == [DesignBrief()]
 
@@ -156,7 +156,7 @@ async def test_once_filled_the_recipe_appends_like_any_other(wired: Fixtures) ->
 async def test_a_hand_made_recipe_that_names_no_profile_still_appends(wired: Fixtures) -> None:
     """The "any profile" Recipe looks like an empty design and must not be treated as one."""
     row = await wired.recipes.create(
-        RecipeWrite(name="Any profile", bean_id=wired.bean_id), SetVersionWrite()
+        RecipeWrite(name="Any profile", bean_id=wired.bean_id), RecipeVersionWrite()
     )
 
     second = await wired.recipes.add_version(row.id, RecipeVersionPatch(dose_g=18))
@@ -222,7 +222,7 @@ async def test_a_design_nothing_was_filed_under_is_deleted_with_its_conversation
 
 async def test_discarding_refuses_a_recipe_that_is_not_being_designed(wired: Fixtures) -> None:
     row = await wired.recipes.create(
-        RecipeWrite(name="By hand", bean_id=wired.bean_id), SetVersionWrite()
+        RecipeWrite(name="By hand", bean_id=wired.bean_id), RecipeVersionWrite()
     )
 
     assert await wired.recipes.discard_design(row.id) == "not_designing"
@@ -251,7 +251,7 @@ async def test_a_filled_design_is_no_longer_discardable(wired: Fixtures) -> None
 # -- through the routes ------------------------------------------------------
 
 
-async def _designed_through(app: FastAPI) -> SetRow:
+async def _designed_through(app: FastAPI) -> RecipeRow:
     """A design Recipe made in the app's own archive, for the route tests."""
     db = app.state.db
     bean = await BeansRepository(db).create(BeanWrite(name="Kenya AA", roast_level="light"))
@@ -268,7 +268,7 @@ async def test_the_add_a_version_form_fills_a_designed_recipe_s_version_1(
     row = await _designed_through(app)
 
     response = await client.post(
-        f"/api/sets/{row.id}/versions",
+        f"/api/recipes/{row.id}/versions",
         json={
             "profile_version_id": await free_profile_version(app.state.db),
             "grind_setting": "18",
@@ -284,8 +284,8 @@ async def test_the_add_a_version_form_fills_a_designed_recipe_s_version_1(
     assert version["origin"] == "manual"
     detail = response.json()
     assert detail["ok"] is True
-    listed = (await client.get(f"/api/sets/{row.id}")).json()["data"]
-    assert listed["set"]["designing"] is False
+    listed = (await client.get(f"/api/recipes/{row.id}")).json()["data"]
+    assert listed["recipe"]["designing"] is False
     assert [item["version"]["version_label"] for item in listed["versions"]] == ["v1"]
 
 
@@ -298,7 +298,7 @@ async def test_the_add_a_version_form_is_refused_once_a_shot_is_filed_on_the_des
     await RecipesRepository(app.state.db).assign_shot(shot, row.current_version_id)
 
     response = await client.post(
-        f"/api/sets/{row.id}/versions",
+        f"/api/recipes/{row.id}/versions",
         json={"profile_version_id": await free_profile_version(app.state.db), "dose_g": 18},
     )
 
@@ -306,8 +306,8 @@ async def test_the_add_a_version_form_is_refused_once_a_shot_is_filed_on_the_des
     body = response.json()
     assert body["error"]["code"] == "DESIGN_HAS_SHOTS"
     assert body["error"]["details"] == {
-        "field": "set_id",
-        "message": "version 1 of this Set can no longer be filled",
+        "field": "recipe_id",
+        "message": "version 1 of this Recipe can no longer be filled",
     }
 
 
@@ -316,11 +316,11 @@ async def test_a_design_filled_by_hand_without_a_profile_is_refused_with_new_rec
 ) -> None:
     row = await _designed_through(app)
 
-    response = await client.post(f"/api/sets/{row.id}/versions", json={"dose_g": 18})
+    response = await client.post(f"/api/recipes/{row.id}/versions", json={"dose_g": 18})
 
     assert response.status_code == 422
     assert response.json()["error"]["message"] == (
-        "A Set needs a profile: pick one that has no Set, or design one with the agent."
+        "A Recipe needs a profile: pick one that has no Recipe, or design one with the agent."
     )
     after = await RecipesRepository(app.state.db).get(row.id)
     assert after is not None and after.designing is True
@@ -331,7 +331,7 @@ async def test_the_recipe_rows_carry_the_flag_and_the_brief(
 ) -> None:
     row = await _designed_through(app)
 
-    listed = (await client.get("/api/sets")).json()["data"]["items"]
+    listed = (await client.get("/api/recipes")).json()["data"]["items"]
 
     served = next(item for item in listed if item["id"] == row.id)
     assert served["designing"] is True

@@ -19,10 +19,10 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipeRow,
     RecipesRepository,
     RecipeVersionPatch,
     RecipeWrite,
-    SetRow,
 )
 from gaggiclanker.drafts import standing as words
 from tests.recipes.conftest import make_profile_version
@@ -33,7 +33,7 @@ async def _standing(client: httpx.AsyncClient, draft: Any) -> dict[str, Any]:
     return dict(data(await client.get(f"/api/profile-drafts/{draft.id}/standing")))
 
 
-async def _designed(app: FastAPI) -> SetRow:
+async def _designed(app: FastAPI) -> RecipeRow:
     db = app.state.db
     bean = await BeansRepository(db).create(BeanWrite(name="Kenya AA"))
     grinder = await GrindersRepository(db).create(GrinderWrite(name="Niche Zero"))
@@ -42,7 +42,7 @@ async def _designed(app: FastAPI) -> SetRow:
     )
 
 
-async def _card(app: FastAPI, row: SetRow, name: str = "Soft Bloom") -> tuple[Any, Any]:
+async def _card(app: FastAPI, row: RecipeRow, name: str = "Soft Bloom") -> tuple[Any, Any]:
     """A first-recipe card whose profile is a new draft under ``name``."""
     db = app.state.db
     base = await make_profile_version(db, "Library profile")
@@ -73,7 +73,7 @@ async def _card(app: FastAPI, row: SetRow, name: str = "Soft Bloom") -> tuple[An
     return draft, proposal
 
 
-async def _another_card(app: FastAPI, row: SetRow, name: str) -> tuple[Any, Any]:
+async def _another_card(app: FastAPI, row: RecipeRow, name: str) -> tuple[Any, Any]:
     return await _card(app, row, name)
 
 
@@ -127,7 +127,7 @@ async def test_a_card_the_person_declined_is_declined(
     draft, proposal = await _card(app, row)
 
     declined = await client.post(
-        f"/api/sets/{row.id}/proposals/{proposal.id}/decline", json={"note": "no"}
+        f"/api/recipes/{row.id}/proposals/{proposal.id}/decline", json={"note": "no"}
     )
     assert declined.status_code == 200, declined.text
 

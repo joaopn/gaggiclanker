@@ -242,7 +242,7 @@ class ProfileDraftService:
             # Dropping them would quietly turn a Recipe's second attempt into a
             # draft belonging to nothing, and the push would record no
             # prediction on the version it creates.
-            set_id=parent.set_id if parent is not None else None,
+            recipe_id=parent.recipe_id if parent is not None else None,
             prediction=parent.prediction if parent is not None else "",
             compares_to_version_id=(parent.compares_to_version_id if parent is not None else None),
             # And so does the agent's suggestion that it is a major version:

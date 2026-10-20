@@ -82,7 +82,7 @@ type Draft = {
    */
   autoName: string;
   /**
-   * What they normally grind espresso at. Never sent to `POST /api/sets` — it
+   * What they normally grind espresso at. Never sent to `POST /api/recipes` — it
    * is an input to the suggestion and the design, not a fact about the Set —
    * which is why `toCreateBody` ignores it.
    */
@@ -127,7 +127,7 @@ export const DESIGN_OPENER = "Help me design this Set.";
 /**
  * The name the dialog fills in: "<bean> (<grinder>)".
  *
- * The server's rule (`set_name`), so a Set started from the form, the design
+ * The server's rule (`recipe_name`), so a Set started from the form, the design
  * or a suggestion is called the same thing: the grinder is what tells two Sets
  * of one bean apart. Null until both are picked.
  */
@@ -161,7 +161,7 @@ export function followName(
 }
 
 /**
- * `POST /api/sets/design`, from the same draft the form holds.
+ * `POST /api/recipes/design`, from the same draft the form holds.
  *
  * The name as the field holds it; emptied by hand, it is left to the server,
  * which gives the same "<bean> (<grinder>)". The profile picker is read
@@ -566,7 +566,7 @@ export function NewSetDialog({
                 <optgroup label="Has a Set: picking one duplicates it" data-testid="taken-profiles">
                   {(choices.data?.taken ?? []).map((choice) => (
                     <option key={takenValue(choice)} value={takenValue(choice)}>
-                      {choice.label} ({choice.set_name})
+                      {choice.label} ({choice.recipe_name})
                     </option>
                   ))}
                 </optgroup>

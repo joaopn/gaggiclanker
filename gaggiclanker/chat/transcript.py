@@ -35,6 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.chat import ChatMessageRow, ChatRunRow, ChatThreadRow
 from gaggiclanker.tools import registry
+from gaggiclanker.tools.legacy import current_tool_name
 
 __all__ = [
     "SHOT_RENDERING_TOOLS",
@@ -54,7 +55,7 @@ _MAX_SLUG = 60
 #: are shot renderings, which the transcript leaves out. ``tests/chat/test_transcript.py``
 #: finds these in the registry's code and fails when this set is missing one.
 SHOT_RENDERING_TOOLS = frozenset(
-    {"get_shot", "get_shot_extended", "get_shot_full", "compare_shots", "list_set_shots"}
+    {"get_shot", "get_shot_extended", "get_shot_full", "compare_shots", "list_recipe_shots"}
 )
 
 
@@ -139,8 +140,8 @@ def build_transcript(
     *,
     exported_at: str,
 ) -> ChatTranscript:
-    if thread.set_name:
-        about = f"{thread.set_name} {thread.set_version_label or ''}".strip()
+    if thread.recipe_name:
+        about = f"{thread.recipe_name} {thread.recipe_version_label or ''}".strip()
     else:
         about = "General"
     return ChatTranscript(
@@ -174,7 +175,11 @@ def _message(row: ChatMessageRow) -> TranscriptMessage:
 
 
 def _hidden(name: str) -> bool:
-    """A successful result of this name is left out: a shot tool, or not a tool we know."""
+    """A successful result of this name is left out: a shot tool, or not a tool we know.
+
+    A name a tool had before it was renamed (``tools/legacy.py``) is the tool it became.
+    """
+    name = current_tool_name(name)
     return name in SHOT_RENDERING_TOOLS or name not in registry
 
 

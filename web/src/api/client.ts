@@ -743,7 +743,7 @@ export async function getSignatureOverrides(
   versionId: number,
 ): Promise<SignatureOverrideList> {
   return fetchApi<SignatureOverrideList>(
-    `/sets/${setId}/versions/${versionId}/signature-overrides`,
+    `/recipes/${setId}/versions/${versionId}/signature-overrides`,
   );
 }
 
@@ -753,7 +753,7 @@ export async function rejectSignatureOverride(
   reason: string,
 ): Promise<SignatureOverrideAnswer> {
   return fetchApi<SignatureOverrideAnswer>(
-    `/sets/${setId}/signature-overrides/${overrideId}/reject`,
+    `/recipes/${setId}/signature-overrides/${overrideId}/reject`,
     { method: "POST", body: JSON.stringify({ reason }) },
   );
 }
@@ -763,7 +763,7 @@ export async function restoreSignatureOverride(
   overrideId: number,
 ): Promise<SignatureOverrideAnswer> {
   return fetchApi<SignatureOverrideAnswer>(
-    `/sets/${setId}/signature-overrides/${overrideId}/restore`,
+    `/recipes/${setId}/signature-overrides/${overrideId}/restore`,
     { method: "POST" },
   );
 }
@@ -1070,20 +1070,20 @@ export async function patchMachine(body: MachinePatch): Promise<MachineRow> {
 }
 
 export async function getSets(includeArchived = false): Promise<SetListData> {
-  return fetchApi<SetListData>(`/sets${queryString({ include_archived: includeArchived })}`);
+  return fetchApi<SetListData>(`/recipes${queryString({ include_archived: includeArchived })}`);
 }
 
 /** What a Set may start on: free profiles by their active version, and unadopted machine files. */
 export async function getProfileChoices(): Promise<ProfileChoiceListData> {
-  return fetchApi<ProfileChoiceListData>("/sets/profile-choices");
+  return fetchApi<ProfileChoiceListData>("/recipes/profile-choices");
 }
 
 export async function getSet(id: number): Promise<SetDetailData> {
-  return fetchApi<SetDetailData>(`/sets/${id}`);
+  return fetchApi<SetDetailData>(`/recipes/${id}`);
 }
 
 export async function createSet(body: SetCreate): Promise<SetRow> {
-  return fetchApi<SetRow>("/sets", { method: "POST", body: JSON.stringify(body) });
+  return fetchApi<SetRow>("/recipes", { method: "POST", body: JSON.stringify(body) });
 }
 
 /**
@@ -1093,7 +1093,7 @@ export async function createSet(body: SetCreate): Promise<SetRow> {
  * the page goes to next. Nothing is proposed, drafted or sent anywhere by it.
  */
 export async function designSet(body: SetDesignCreate): Promise<SetDesignCreated> {
-  return fetchApi<SetDesignCreated>("/sets/design", {
+  return fetchApi<SetDesignCreated>("/recipes/design", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -1107,7 +1107,7 @@ export async function designSet(body: SetDesignCreate): Promise<SetDesignCreated
  * is archived instead.
  */
 export async function discardDesign(id: number): Promise<SetDesignDiscarded> {
-  return fetchApi<SetDesignDiscarded>(`/sets/${id}/design`, { method: "DELETE" });
+  return fetchApi<SetDesignDiscarded>(`/recipes/${id}/design`, { method: "DELETE" });
 }
 
 /**
@@ -1118,7 +1118,7 @@ export async function discardDesign(id: number): Promise<SetDesignDiscarded> {
  * record every field as changed.
  */
 export async function addSetVersion(id: number, patch: SetVersionAdd): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/sets/${id}/versions`, {
+  return fetchApi<SetVersionRow>(`/recipes/${id}/versions`, {
     method: "POST",
     body: JSON.stringify(patch),
   });
@@ -1135,7 +1135,7 @@ export async function setVersionPrediction(
   versionId: number,
   body: VersionPredictionWrite,
 ): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/sets/${id}/versions/${versionId}/prediction`, {
+  return fetchApi<SetVersionRow>(`/recipes/${id}/versions/${versionId}/prediction`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
@@ -1146,14 +1146,14 @@ export async function setVersionOutcome(
   versionId: number,
   body: VersionOutcomeWrite,
 ): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/sets/${id}/versions/${versionId}/outcome`, {
+  return fetchApi<SetVersionRow>(`/recipes/${id}/versions/${versionId}/outcome`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
 }
 
 export async function clearVersionOutcome(id: number, versionId: number): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/sets/${id}/versions/${versionId}/outcome`, {
+  return fetchApi<SetVersionRow>(`/recipes/${id}/versions/${versionId}/outcome`, {
     method: "DELETE",
   });
 }
@@ -1163,7 +1163,7 @@ export async function clearVersionOutcome(id: number, versionId: number): Promis
  * machine; the answer is the version the Set is now on.
  */
 export async function rollbackSet(id: number, body: RollbackWrite): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/sets/${id}/rollback`, {
+  return fetchApi<SetVersionRow>(`/recipes/${id}/rollback`, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -1179,7 +1179,7 @@ export async function getPinPreview(
   label?: string,
 ): Promise<PinPreview> {
   return fetchApi<PinPreview>(
-    `/sets/${setId}/versions/${versionId}/pin-preview${queryString({ label })}`,
+    `/recipes/${setId}/versions/${versionId}/pin-preview${queryString({ label })}`,
   );
 }
 
@@ -1192,7 +1192,7 @@ export async function pinVersion(
   versionId: number,
   label?: string,
 ): Promise<PinAnswer> {
-  return fetchApi<PinAnswer>(`/sets/${setId}/versions/${versionId}/pin`, {
+  return fetchApi<PinAnswer>(`/recipes/${setId}/versions/${versionId}/pin`, {
     method: "POST",
     body: JSON.stringify(label === undefined ? {} : { label }),
   });
@@ -1206,7 +1206,7 @@ export async function getDuplicatePreview(
   setId: number,
   versionId: number,
 ): Promise<DuplicatePreview> {
-  return fetchApi<DuplicatePreview>(`/sets/${setId}/versions/${versionId}/duplicate-preview`);
+  return fetchApi<DuplicatePreview>(`/recipes/${setId}/versions/${versionId}/duplicate-preview`);
 }
 
 /** Start a new Set from a version: its profile copied under a new name, no history. */
@@ -1215,7 +1215,7 @@ export async function duplicateVersion(
   versionId: number,
   body: DuplicateRequest,
 ): Promise<DuplicateAnswer> {
-  return fetchApi<DuplicateAnswer>(`/sets/${setId}/versions/${versionId}/duplicate`, {
+  return fetchApi<DuplicateAnswer>(`/recipes/${setId}/versions/${versionId}/duplicate`, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -1249,7 +1249,7 @@ export async function unpinPin(pinId: number): Promise<PinAnswer> {
  * know whether it is still a question.
  */
 export async function getSetProposals(id: number): Promise<SetProposalListData> {
-  return fetchApi<SetProposalListData>(`/sets/${id}/proposals`);
+  return fetchApi<SetProposalListData>(`/recipes/${id}/proposals`);
 }
 
 /** Record a proposed change as the Set's next version. A person's press. */
@@ -1262,7 +1262,7 @@ export async function acceptSetProposal(
   proposalId: number,
   options: { major?: boolean; profileLabel?: string } = {},
 ): Promise<SetProposalDecision> {
-  return fetchApi<SetProposalDecision>(`/sets/${id}/proposals/${proposalId}/accept`, {
+  return fetchApi<SetProposalDecision>(`/recipes/${id}/proposals/${proposalId}/accept`, {
     method: "POST",
     body: JSON.stringify({
       ...(options.major === undefined ? {} : { major: options.major }),
@@ -1277,7 +1277,7 @@ export async function declineSetProposal(
   proposalId: number,
   body: ProposalDecline = { note: "" },
 ): Promise<SetProposalDecision> {
-  return fetchApi<SetProposalDecision>(`/sets/${id}/proposals/${proposalId}/decline`, {
+  return fetchApi<SetProposalDecision>(`/recipes/${id}/proposals/${proposalId}/decline`, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -1285,7 +1285,7 @@ export async function declineSetProposal(
 
 /** Every grade an agent has proposed for this Set's versions, newest first. */
 export async function getOutcomeProposals(id: number): Promise<OutcomeProposalListData> {
-  return fetchApi<OutcomeProposalListData>(`/sets/${id}/outcome-proposals`);
+  return fetchApi<OutcomeProposalListData>(`/recipes/${id}/outcome-proposals`);
 }
 
 /** Record a proposed grade as the version's outcome. A person's press. */
@@ -1293,9 +1293,12 @@ export async function acceptOutcomeProposal(
   id: number,
   proposalId: number,
 ): Promise<OutcomeProposalDecision> {
-  return fetchApi<OutcomeProposalDecision>(`/sets/${id}/outcome-proposals/${proposalId}/accept`, {
-    method: "POST",
-  });
+  return fetchApi<OutcomeProposalDecision>(
+    `/recipes/${id}/outcome-proposals/${proposalId}/accept`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 /** Record another outcome than the one proposed. */
@@ -1304,10 +1307,13 @@ export async function changeOutcomeProposal(
   proposalId: number,
   body: { outcome: VersionOutcome; note?: string },
 ): Promise<OutcomeProposalDecision> {
-  return fetchApi<OutcomeProposalDecision>(`/sets/${id}/outcome-proposals/${proposalId}/change`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return fetchApi<OutcomeProposalDecision>(
+    `/recipes/${id}/outcome-proposals/${proposalId}/change`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 /** Turn a proposed grade down, optionally saying why. Records nothing. */
@@ -1316,10 +1322,13 @@ export async function dismissOutcomeProposal(
   proposalId: number,
   body: { note: string } = { note: "" },
 ): Promise<OutcomeProposalDecision> {
-  return fetchApi<OutcomeProposalDecision>(`/sets/${id}/outcome-proposals/${proposalId}/dismiss`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return fetchApi<OutcomeProposalDecision>(
+    `/recipes/${id}/outcome-proposals/${proposalId}/dismiss`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 /** Every deletion an agent has proposed for this Set's insights, newest first. */
@@ -1328,7 +1337,7 @@ export async function getInsightDeletions(
   threadId?: number | null,
 ): Promise<InsightDeletionListData> {
   const query = threadId === null || threadId === undefined ? "" : `?thread_id=${threadId}`;
-  return fetchApi<InsightDeletionListData>(`/sets/${id}/insight-deletions${query}`);
+  return fetchApi<InsightDeletionListData>(`/recipes/${id}/insight-deletions${query}`);
 }
 
 /** Delete the insight an agent proposed deleting. A person's press. */
@@ -1336,9 +1345,12 @@ export async function acceptInsightDeletion(
   id: number,
   proposalId: number,
 ): Promise<InsightDeletionDecision> {
-  return fetchApi<InsightDeletionDecision>(`/sets/${id}/insight-deletions/${proposalId}/accept`, {
-    method: "POST",
-  });
+  return fetchApi<InsightDeletionDecision>(
+    `/recipes/${id}/insight-deletions/${proposalId}/accept`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 /** Keep the insight an agent proposed deleting. A person's press. */
@@ -1346,24 +1358,24 @@ export async function keepInsightDeletion(
   id: number,
   proposalId: number,
 ): Promise<InsightDeletionDecision> {
-  return fetchApi<InsightDeletionDecision>(`/sets/${id}/insight-deletions/${proposalId}/keep`, {
+  return fetchApi<InsightDeletionDecision>(`/recipes/${id}/insight-deletions/${proposalId}/keep`, {
     method: "POST",
   });
 }
 
 export async function setAutomatch(id: number, automatch: boolean): Promise<SetRow> {
-  return fetchApi<SetRow>(`/sets/${id}/automatch`, {
+  return fetchApi<SetRow>(`/recipes/${id}/automatch`, {
     method: "PUT",
     body: JSON.stringify({ automatch }),
   });
 }
 
 export async function archiveSet(id: number): Promise<SetRow> {
-  return fetchApi<SetRow>(`/sets/${id}/archive`, { method: "POST" });
+  return fetchApi<SetRow>(`/recipes/${id}/archive`, { method: "POST" });
 }
 
 export async function getSetTrends(id: number): Promise<SetTrends> {
-  return fetchApi<SetTrends>(`/sets/${id}/trends`);
+  return fetchApi<SetTrends>(`/recipes/${id}/trends`);
 }
 
 export async function putJudgement(shotId: number, body: JudgementWrite): Promise<ShotJudgement> {
@@ -1382,9 +1394,9 @@ export async function putShotSetVersion(
   shotId: number,
   setVersionId: number | null,
 ): Promise<ShotDetailRow> {
-  return fetchApi<ShotDetailRow>(`/shots/${shotId}/set-version`, {
+  return fetchApi<ShotDetailRow>(`/shots/${shotId}/recipe-version`, {
     method: "PUT",
-    body: JSON.stringify({ set_version_id: setVersionId }),
+    body: JSON.stringify({ recipe_version_id: setVersionId }),
   });
 }
 
@@ -1520,7 +1532,7 @@ export async function searchKnowledge(q: string, k = 8): Promise<KnowledgeSearch
 // boot, an insight is this box's alone.
 
 export async function getKnowledgeInsights(
-  params: { confirmed?: boolean; set_id?: number } = {},
+  params: { confirmed?: boolean; recipe_id?: number } = {},
 ): Promise<KnowledgeInsightListData> {
   return fetchApi<KnowledgeInsightListData>(`/knowledge/insights${queryString(params)}`);
 }
@@ -1586,7 +1598,7 @@ export async function openChatThread(
 ): Promise<ChatThread> {
   return fetchApi<ChatThread>("/chat/threads/open", {
     method: "POST",
-    body: JSON.stringify({ set_id: setId, set_version_id: setVersionId ?? null }),
+    body: JSON.stringify({ recipe_id: setId, recipe_version_id: setVersionId ?? null }),
   });
 }
 
@@ -1626,7 +1638,7 @@ export async function cancelChatRun(id: number): Promise<ChatRun> {
  * rule in the browser is a copy that can disagree.
  */
 export async function getChatTools(
-  kind: "general" | "set" = "general",
+  kind: "general" | "recipe" = "general",
   options: { designing?: boolean } = {},
 ): Promise<ChatToolList> {
   // `designing` only when true: a Set chat on a Set with a recipe asks exactly
@@ -1662,7 +1674,7 @@ export async function getSimilarSets(
   params: { grinderId?: number | null } = {},
 ): Promise<SimilarSetsData> {
   return fetchApi<SimilarSetsData>(
-    `/beans/${beanId}/similar-sets${queryString({
+    `/beans/${beanId}/similar-recipes${queryString({
       grinder_id: params.grinderId ?? undefined,
     })}`,
   );

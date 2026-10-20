@@ -317,7 +317,7 @@ async def test_the_whole_prototype_against_the_simulator(
     grinder = data(await client.post("/api/grinders", json={"name": "Simulated grinder"}))
     stored_recipe = data(
         await client.post(
-            "/api/sets",
+            "/api/recipes",
             json={
                 "name": "Simulator baseline",
                 "bean_id": bean["id"],
@@ -334,9 +334,11 @@ async def test_the_whole_prototype_against_the_simulator(
     )
     version_id = stored_recipe["current_version_id"]
     assigned = data(
-        await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id})
+        await client.put(
+            f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
+        )
     )
-    assert assigned["set_version_id"] == version_id
+    assert assigned["recipe_version_id"] == version_id
 
     # 8. Review it with the fake provider. `?wait=1` blocks until the task is
     #    done, which is what this route offers for exactly this case.
@@ -348,7 +350,9 @@ async def test_the_whole_prototype_against_the_simulator(
     # 9. The person records the next recipe. The new version must name the old
     #    as parent.
     new_version = data(
-        await client.post(f"/api/sets/{stored_recipe['id']}/versions", json={"grind_value": 21.0})
+        await client.post(
+            f"/api/recipes/{stored_recipe['id']}/versions", json={"grind_value": 21.0}
+        )
     )
     assert new_version["parent_version_id"] == version_id
     assert new_version["origin"] == "manual"

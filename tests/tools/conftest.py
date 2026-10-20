@@ -69,7 +69,7 @@ def ctx(archive: Fixture, settings: SettingsService) -> ToolContext:
 @pytest.fixture
 def recipe_ctx(archive: Fixture, settings: SettingsService) -> ToolContext:
     """A conversation about the fixture Recipe: its tools, and nothing else's."""
-    return _context(archive, settings, ToolScope.for_thread(archive.set_id))
+    return _context(archive, settings, ToolScope.for_thread(archive.recipe_id))
 
 
 @dataclass(frozen=True, slots=True)

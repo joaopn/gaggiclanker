@@ -21,16 +21,16 @@ from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, Profil
 from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipeRow,
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetRow,
-    SetVersionWrite,
 )
 from tests.recipes.conftest import Fixtures, make_profile_version, make_shot
 
 
-async def designed(wired: Fixtures) -> SetRow:
+async def designed(wired: Fixtures) -> RecipeRow:
     return await wired.recipes.create_design(
         RecipeWrite(name="Guji, designed", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
         DesignBrief(goal="More body."),
@@ -166,7 +166,7 @@ async def test_a_first_recipe_is_drawn_against_an_empty_one_before_and_after_acc
 async def test_a_change_is_drawn_against_the_version_it_changes(wired: Fixtures) -> None:
     row = await wired.recipes.create(
         RecipeWrite(name="By hand", bean_id=wired.bean_id),
-        SetVersionWrite(grind_setting="18", dose_g=18),
+        RecipeVersionWrite(grind_setting="18", dose_g=18),
     )
     proposals = RecipeProposalsRepository(wired.db)
     stored = (
@@ -191,7 +191,7 @@ async def test_an_initial_recipe_is_refused_on_a_recipe_that_is_not_being_design
     wired: Fixtures,
 ) -> None:
     row = await wired.recipes.create(
-        RecipeWrite(name="By hand", bean_id=wired.bean_id), SetVersionWrite(dose_g=18)
+        RecipeWrite(name="By hand", bean_id=wired.bean_id), RecipeVersionWrite(dose_g=18)
     )
     draft_id, profile = await a_draft(wired, "Designed")
 
@@ -362,7 +362,7 @@ async def test_discuss_on_version_1_leaves_the_design_conversation_once_accepted
 
     fresh = (await chat.open_thread(row.id)).thread
     assert fresh is not None and fresh.id != design_room.id
-    assert fresh.set_version_id == design_room.set_version_id
+    assert fresh.recipe_version_id == design_room.recipe_version_id
     continued = (await chat.open_thread(row.id)).thread
     assert continued is not None and continued.id == fresh.id
 
@@ -373,7 +373,7 @@ async def test_discuss_still_continues_an_ordinary_conversation_with_a_change_in
     """Only a first-recipe card marks the design: a change argued in a room keeps it."""
     row = await wired.recipes.create(
         RecipeWrite(name="Guji", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        SetVersionWrite(dose_g=18, target_yield_g=36),
+        RecipeVersionWrite(dose_g=18, target_yield_g=36),
     )
     chat = ChatRepository(wired.db)
     room = (await chat.open_thread(row.id)).thread
@@ -510,12 +510,12 @@ async def test_the_accept_route_answers_a_discarded_draft_with_its_own_409(
     discarded = await client.post(f"/api/profile-drafts/{draft.id}/discard")
     assert discarded.status_code == 200, discarded.text
 
-    response = await client.post(f"/api/sets/{row.id}/proposals/{stored.id}/accept")
+    response = await client.post(f"/api/recipes/{row.id}/proposals/{stored.id}/accept")
 
     assert response.status_code == 409
     body = response.json()["error"]
     assert body["code"] == "PROPOSAL_DRAFT_CLOSED"
     assert "ask the agent" in body["details"]["message"]
-    page = (await client.get(f"/api/sets/{row.id}")).json()["data"]
-    assert page["set"]["designing"] is True
+    page = (await client.get(f"/api/recipes/{row.id}")).json()["data"]
+    assert page["recipe"]["designing"] is True
     assert page["proposal"]["status"] == "proposed"

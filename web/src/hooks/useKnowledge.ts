@@ -166,7 +166,7 @@ export function useResetKnowledgeDoc(): UseMutationResult<KnowledgeDocDetail, Er
  */
 
 export function useKnowledgeInsights(
-  filters: { confirmed?: boolean; set_id?: number } = {},
+  filters: { confirmed?: boolean; recipe_id?: number } = {},
 ): UseQueryResult<KnowledgeInsightListData, Error> {
   return useQuery({
     queryKey: queryKeys.knowledge.insights(filters),

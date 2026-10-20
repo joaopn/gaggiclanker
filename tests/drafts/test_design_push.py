@@ -40,17 +40,17 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
     grinder = data(await client.post("/api/grinders", json={"name": "Niche Zero"}))
     created = data(
         await client.post(
-            "/api/sets/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
+            "/api/recipes/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
         )
     )
-    set_id = created["set"]["id"]
+    recipe_id = created["recipe"]["id"]
     draft = await app.state.draft_proposals.create_manual(
         base_version_id=await base_version_id(app),
         document={**lower_pressure(await base_profile(app), 8.5), "label": "Kenya AA body"},
         change_summary="A gentler peak for body.",
     )
     proposal = await RecipeProposalsRepository(app.state.db).create(
-        set_id,
+        recipe_id,
         ProposalWrite(
             kind="design",
             draft_id=draft.id,
@@ -62,7 +62,7 @@ async def test_after_accept_and_a_sync_shots_on_the_new_profile_are_filed_under_
         ),
     )
     assert proposal.proposal is not None, proposal.refused
-    data(await client.post(f"/api/sets/{set_id}/proposals/{proposal.proposal.id}/accept"))
+    data(await client.post(f"/api/recipes/{recipe_id}/proposals/{proposal.proposal.id}/accept"))
 
     run = await pull(app)
 
@@ -91,17 +91,17 @@ async def test_accepting_after_the_profile_was_synced_and_a_later_version_made_a
     grinder = data(await client.post("/api/grinders", json={"name": "Niche Zero"}))
     created = data(
         await client.post(
-            "/api/sets/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
+            "/api/recipes/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
         )
     )
-    set_id = created["set"]["id"]
+    recipe_id = created["recipe"]["id"]
     draft = await app.state.draft_proposals.create_manual(
         base_version_id=await base_version_id(app),
         document={**lower_pressure(await base_profile(app), 8.5), "label": "Kenya AA body"},
         change_summary="A gentler peak for body.",
     )
     proposal = await RecipeProposalsRepository(app.state.db).create(
-        set_id,
+        recipe_id,
         ProposalWrite(
             kind="design",
             draft_id=draft.id,
@@ -124,7 +124,7 @@ async def test_accepting_after_the_profile_was_synced_and_a_later_version_made_a
     assert (await pull(app)).status == "ok"
 
     accepted = data(
-        await client.post(f"/api/sets/{set_id}/proposals/{proposal.proposal.id}/accept")
+        await client.post(f"/api/recipes/{recipe_id}/proposals/{proposal.proposal.id}/accept")
     )
 
     after = await app.state.board.board.get(row["id"])

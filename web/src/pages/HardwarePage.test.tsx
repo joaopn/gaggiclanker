@@ -65,7 +65,7 @@ beforeEach(() => {
       deleted_on_device: 0,
       incomplete: 0,
       samples: 14_000,
-      needs_set: 0,
+      needs_recipe: 0,
     },
   });
 });
@@ -134,7 +134,7 @@ describe("HardwarePage", () => {
         deleted_on_device: 0,
         incomplete: 0,
         samples: 0,
-        needs_set: 0,
+        needs_recipe: 0,
       },
     });
     renderWithQueryClient(<HardwarePage />);

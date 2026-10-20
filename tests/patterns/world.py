@@ -25,8 +25,8 @@ from gaggiclanker.db.repos.knowledge_insights import (
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
     RecipesRepository,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 
 
@@ -34,7 +34,7 @@ from gaggiclanker.db.repos.recipes import (
 class PatternWorld:
     db: Database
     insights: InsightsRepository
-    sets: RecipesRepository
+    recipes: RecipesRepository
     grinder_id: int
     bean_a: int
     bean_b: int
@@ -44,17 +44,17 @@ class PatternWorld:
     c: int
     designing: int
 
-    async def own(self, set_id: int, text: str, *, confirmed: bool = True) -> int:
+    async def own(self, recipe_id: int, text: str, *, confirmed: bool = True) -> int:
         """A confirmed (or waiting) insight of one Recipe, written straight into the table."""
-        row = await self.sets.get(set_id)
+        row = await self.recipes.get(recipe_id)
         assert row is not None
         return await self.insights.insert(
             InsightWrite(
                 text=text,
                 source="chat",
                 confirmed=confirmed,
-                set_id=set_id,
-                set_version_id=row.current_version_id,
+                recipe_id=recipe_id,
+                recipe_version_id=row.current_version_id,
             )
         )
 
@@ -98,22 +98,22 @@ async def build_pattern_world(db: Database) -> PatternWorld:
     grinder = await GrindersRepository(db).create(
         GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
     )
-    sets = RecipesRepository(db)
+    recipes = RecipesRepository(db)
     made = []
     for name, bean_id in (("Guji daily", guji.id), ("Yirg daily", yirg.id), ("Huila", huila.id)):
         made.append(
-            await sets.create(
+            await recipes.create(
                 RecipeWrite(name=name, bean_id=bean_id, grinder_id=grinder.id),
-                SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+                RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
             )
         )
-    draft = await sets.create_design(
+    draft = await recipes.create_design(
         RecipeWrite(name="Being designed", bean_id=guji.id, grinder_id=grinder.id), DesignBrief()
     )
     return PatternWorld(
         db=db,
         insights=InsightsRepository(db),
-        sets=sets,
+        recipes=recipes,
         grinder_id=grinder.id,
         bean_a=guji.id,
         bean_b=yirg.id,
@@ -144,7 +144,7 @@ class Talking:
 
 async def build_talking(world: PatternWorld) -> Talking:
     """Insights with known ids, a version outcome to rest on, and one general insight."""
-    version = await world.sets.get(world.a)
+    version = await world.recipes.get(world.a)
     assert version is not None and version.current_version_id is not None
     await world.db.execute(
         "UPDATE recipe_versions SET outcome = 'held' WHERE id = ?", (version.current_version_id,)
@@ -154,9 +154,9 @@ async def build_talking(world: PatternWorld) -> Talking:
             text="Below 9 clicks the Niche channels on this bag.",
             source="chat",
             confirmed=True,
-            set_id=world.a,
-            set_version_id=version.current_version_id,
-            rests_on=[RestsOn(set_version_id=version.current_version_id, outcome="held")],
+            recipe_id=world.a,
+            recipe_version_id=version.current_version_id,
+            rests_on=[RestsOn(recipe_version_id=version.current_version_id, outcome="held")],
         )
     )
     a_only = await world.own(world.a, "This bag peaks at 93 degrees.")

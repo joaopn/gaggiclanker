@@ -83,11 +83,11 @@ beforeEach(() => {
     version: null,
   });
   designSet.mockResolvedValue({
-    set: setRow({ id: 6, designing: true }),
-    version: version({ id: 60, set_id: 6 }),
+    recipe: setRow({ id: 6, designing: true }),
+    version: version({ id: 60, recipe_id: 6 }),
     thread_id: 12,
   });
-  discardDesign.mockResolvedValue({ set_id: 6, discarded: true });
+  discardDesign.mockResolvedValue({ recipe_id: 6, discarded: true });
   acceptOutcomeProposal.mockResolvedValue({
     proposal: outcomeProposal({ status: "accepted" }),
     version: version({ id: 22, outcome: "partly_held" }),
@@ -279,7 +279,7 @@ describe("the Set-side writes invalidate no more than they changed", () => {
   it("accepting a first recipe reaches the Set, the list, its proposals, its conversation and the profile it put on the list", async () => {
     acceptSetProposal.mockResolvedValue({
       proposal: designProposal({ status: "accepted" }),
-      version: version({ id: 60, set_id: 6 }),
+      version: version({ id: 60, recipe_id: 6 }),
       profile_draft_id: 14,
       profile_row_id: 4,
     });

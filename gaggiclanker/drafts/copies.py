@@ -41,8 +41,8 @@ __all__ = [
 
 #: What a person is told when the Recipe or version a pin or a duplicate was asked about is not
 #: there: one wording for both screens that ask.
-RECIPE_GONE = "That Set is not there any more."
-VERSION_NOT_OF_RECIPE = "That version is not one of this Set's."
+RECIPE_GONE = "That Recipe is not there any more."
+VERSION_NOT_OF_RECIPE = "That version is not one of this Recipe's."
 
 
 class CopyBeyondPolicy(Conflict):

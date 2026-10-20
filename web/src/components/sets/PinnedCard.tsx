@@ -106,7 +106,7 @@ function PinLine({
               size="sm"
               variant="outline"
               aria-label={`Duplicate Set: ${pin.version_label}`}
-              onClick={() => onDuplicate(pin.set_version_id, duplicatePinButtonId(pin.pin_id))}
+              onClick={() => onDuplicate(pin.recipe_version_id, duplicatePinButtonId(pin.pin_id))}
             >
               Duplicate Set
             </Button>

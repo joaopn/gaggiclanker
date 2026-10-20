@@ -122,10 +122,10 @@ class PinnedCopyName(Conflict):
     The message is the agent's wording; ``person`` is the sentence under a Name field.
     """
 
-    def __init__(self, label: str, *, set_name: str, version_label: str) -> None:
-        super().__init__(pinned_copy_agent_sentence(label, set_name, version_label))
+    def __init__(self, label: str, *, recipe_name: str, version_label: str) -> None:
+        super().__init__(pinned_copy_agent_sentence(label, recipe_name, version_label))
         self.label = label
-        self.person = pinned_copy_sentence(label, set_name, version_label)
+        self.person = pinned_copy_sentence(label, recipe_name, version_label)
 
 
 class DraftProposals:
@@ -293,7 +293,7 @@ class DraftProposals:
         if detail is None:
             return None
         return PinnedCopyName(
-            document.label, set_name=detail.set_name, version_label=detail.version_label
+            document.label, recipe_name=detail.recipe_name, version_label=detail.version_label
         )
 
     async def create_manual(
@@ -303,7 +303,7 @@ class DraftProposals:
         document: dict[str, Any],
         change_summary: str = "",
         notes: str = "",
-        set_id: int | None = None,
+        recipe_id: int | None = None,
         prediction: str = "",
         compares_to_version_id: int | None = None,
         suggest_major: bool = False,
@@ -321,7 +321,7 @@ class DraftProposals:
         written from scratch (``is_new``) is a new profile, named by its document's label when
         no name is given.
 
-        ``set_id``, ``prediction`` and ``compares_to_version_id`` are the
+        ``recipe_id``, ``prediction`` and ``compares_to_version_id`` are the
         experiment half and travel together (with the agent's ``suggest_major``
         and its ``major_reason``, which the push card shows): a draft proposed inside one Recipe's
         conversation says which Recipe it is for and what it is expected to do
@@ -355,7 +355,7 @@ class DraftProposals:
             prepared=prepared,
             change_summary=change_summary or "Edited by hand.",
             notes=notes,
-            set_id=set_id,
+            recipe_id=recipe_id,
             prediction=prediction,
             compares_to_version_id=compares_to_version_id,
             suggest_major=suggest_major,
@@ -377,7 +377,7 @@ class DraftProposals:
         change_summary: str,
         notes: str,
         parent_draft_id: int | None = None,
-        set_id: int | None = None,
+        recipe_id: int | None = None,
         prediction: str = "",
         compares_to_version_id: int | None = None,
         suggest_major: bool = False,
@@ -421,7 +421,7 @@ class DraftProposals:
                         base_version_id
                     ),
                     parent_draft_id=parent_draft_id,
-                    set_id=set_id,
+                    recipe_id=recipe_id,
                     prediction=prediction,
                     compares_to_version_id=compares_to_version_id,
                     suggest_major=suggest_major,

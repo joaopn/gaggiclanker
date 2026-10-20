@@ -362,7 +362,7 @@ export function useStartDesign(): UseMutationResult<SetDesignCreated, Error, Set
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: designSet,
-    onSuccess: (created) => toast.success(`Started designing "${created.set.name}"`),
+    onSuccess: (created) => toast.success(`Started designing "${created.recipe.name}"`),
     onError: (error) => toast.error(`Could not start the design: ${error.message}`),
     onSettled: () => {
       void invalidateSetList(queryClient);
@@ -691,8 +691,8 @@ export function useAssignShot(): UseMutationResult<
     mutationFn: ({ shotId, setVersionId }) => putShotSetVersion(shotId, setVersionId),
     onSuccess: (row) =>
       toast.success(
-        row.set_badge
-          ? `Filed under ${row.set_badge.set_name} ${row.set_badge.version_label}`
+        row.recipe_badge
+          ? `Filed under ${row.recipe_badge.recipe_name} ${row.recipe_badge.version_label}`
           : "Detached from its Set",
       ),
     onError: (error) => toast.error(`Could not assign: ${error.message}`),

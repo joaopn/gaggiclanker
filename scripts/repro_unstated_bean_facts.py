@@ -40,7 +40,7 @@ from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.starting.context import build_context, render_similar
-from gaggiclanker.starting.similar import SimilarSet
+from gaggiclanker.starting.similar import SimilarRecipe
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
 
@@ -62,10 +62,10 @@ async def main() -> int:
 
             similar = render_similar(
                 [
-                    SimilarSet(
-                        set_id=1,
-                        set_name="Old",
-                        set_version_id=1,
+                    SimilarRecipe(
+                        recipe_id=1,
+                        recipe_name="Old",
+                        recipe_version_id=1,
                         version_label="v1",
                         created_at="2026-01-01T00:00:00Z",
                         score=0.5,
@@ -77,7 +77,7 @@ async def main() -> int:
             )
             for needle in ("not stated", "different"):
                 if needle in similar:
-                    problems.append("similar Set: " + _lines_with(similar, needle))
+                    problems.append("similar Recipe: " + _lines_with(similar, needle))
 
             ctx = ToolContext(
                 db=db,

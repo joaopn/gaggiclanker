@@ -23,7 +23,7 @@ from structlog.typing import EventDict, WrappedLogger
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
-from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionWrite, RecipeWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw
@@ -157,7 +157,7 @@ async def test_only_the_derived_columns_and_the_version_change(db: Database) -> 
     recipes = RecipesRepository(db)
     row = await recipes.create(
         RecipeWrite(name="Guji", bean_id=bean.id),
-        SetVersionWrite(
+        RecipeVersionWrite(
             profile_version_id=await make_profile_version(db, "p"), dose_g=18.0, target_yield_g=36.0
         ),
     )

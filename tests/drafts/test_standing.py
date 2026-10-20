@@ -58,7 +58,7 @@ async def test_a_waiting_change_serves_both_documents_and_where_it_would_land(
         "row_id",
         "row_label",
         "selected",
-        "set_version_label",
+        "recipe_version_label",
         "writes_enabled",
     }
     assert got["state"] == "waiting" and got["reason"] is None and got["selected"] is None
@@ -375,52 +375,54 @@ async def test_the_recipe_version_an_approval_is_recorded_as(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
-    first = await put(client, await manual_draft(app, client, BASE_LABEL, "For a set", 8))
-    set_id = await make_recipe_on(client, "Label set", first["current_version_id"])
+    first = await put(client, await manual_draft(app, client, BASE_LABEL, "For a Recipe", 8))
+    recipe_id = await make_recipe_on(client, "Label recipe", first["current_version_id"])
 
     async def for_recipe(bar: float) -> dict[str, Any]:
-        draft = await same_name_draft(app, client, provider, "For a set", bar)
+        draft = await same_name_draft(app, client, provider, "For a Recipe", bar)
         await app.state.db.execute(
-            "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
+            "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (recipe_id, draft["id"])
         )
         return draft
 
     plain = await for_recipe(7)
-    assert (await standing(client, plain))["set_version_label"] is None, "waiting: not yet"
+    assert (await standing(client, plain))["recipe_version_label"] is None, "waiting: not yet"
     await put(client, plain)
     got = await standing(client, plain)
-    assert got["set_version_label"] == got["draft"]["recorded_version_label"] == "v1.1"
-    assert got["draft"]["recorded_set_name"] == "Label set"
+    assert got["recipe_version_label"] == got["draft"]["recorded_version_label"] == "v1.1"
+    assert got["draft"]["recorded_recipe_name"] == "Label recipe"
 
     assert (await pull(app)).status == "ok"
-    assert (await standing(client, plain))["set_version_label"] == "v1.1", "the sync adds none"
+    assert (await standing(client, plain))["recipe_version_label"] == "v1.1", "the sync adds none"
 
     major = await for_recipe(6)
     await put(client, major, major=True)
-    assert (await standing(client, major))["set_version_label"] == "v2"
+    assert (await standing(client, major))["recipe_version_label"] == "v2"
 
-    other = await same_name_draft(app, client, provider, "For a set", 5)
+    other = await same_name_draft(app, client, provider, "For a Recipe", 5)
     await put(client, other)
     got = await standing(client, other)
-    assert got["set_version_label"] == "v2.1", "the Set follows its profile whoever drafted it"
-    assert got["draft"]["recorded_set_name"] == "Label set"
+    assert got["recipe_version_label"] == "v2.1", (
+        "the Recipe follows its profile whoever drafted it"
+    )
+    assert got["draft"]["recorded_recipe_name"] == "Label recipe"
 
 
 async def test_a_later_put_leaves_an_earlier_approvals_version_where_it_was(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
     app, client, _ = adopted
-    first = await put(client, await manual_draft(app, client, BASE_LABEL, "For a set", 8))
-    await make_recipe_on(client, "Moved set", first["current_version_id"])
-    older = await same_name_draft(app, client, provider, "For a set", 7)
-    newer = await same_name_draft(app, client, provider, "For a set", 6)
+    first = await put(client, await manual_draft(app, client, BASE_LABEL, "For a Recipe", 8))
+    await make_recipe_on(client, "Moved recipe", first["current_version_id"])
+    older = await same_name_draft(app, client, provider, "For a Recipe", 7)
+    newer = await same_name_draft(app, client, provider, "For a Recipe", 6)
     await put(client, older)
-    assert (await standing(client, older))["set_version_label"] == "v1.1"
+    assert (await standing(client, older))["recipe_version_label"] == "v1.1"
 
     await put(client, newer)
 
-    assert (await standing(client, older))["set_version_label"] == "v1.1"
-    assert (await standing(client, newer))["set_version_label"] == "v1.2"
+    assert (await standing(client, older))["recipe_version_label"] == "v1.1"
+    assert (await standing(client, newer))["recipe_version_label"] == "v1.2"
 
 
 # -- the rule: six states, exactly one for every input ---------------------------------------

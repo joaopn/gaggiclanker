@@ -70,7 +70,7 @@ async def test_a_run_stores_its_proposals_and_its_input(
     row = await service.run()
 
     assert row.status == "done" and row.error is None
-    assert (row.insights_read, row.sets_read) == (4, 3)
+    assert (row.insights_read, row.recipes_read) == (4, 3)
     assert (row.proposals_kept, row.proposals_dropped) == (1, 0)
     assert row.prompt_name == "patterns" and "+" in row.prompt_version
     assert row.usage == {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
@@ -81,13 +81,13 @@ async def test_a_run_stores_its_proposals_and_its_input(
         "roast_level": "light",
         "grinder_id": talking.world.grinder_id,
     }
-    assert [(s.insight_id, s.set_name, s.text) for s in proposal.sources] == [
+    assert [(s.insight_id, s.recipe_name, s.text) for s in proposal.sources] == [
         (talking.a_grinder, "Guji daily", "Below 9 clicks the Niche channels on this bag."),
         (talking.b_grinder, "Yirg daily", "The Niche gushes under 9 with this one."),
     ]
     stored = await PatternRunsRepository(talking.world.db).detail_input(row.id)
     assert stored is not None
-    assert [item["id"] for item in stored["sets"]] == [
+    assert [item["id"] for item in stored["recipes"]] == [
         talking.world.a,
         talking.world.b,
         talking.world.c,
@@ -227,7 +227,7 @@ class TestThePostFilter:
 
         assert proposals == []
         assert (row.status, row.proposals_kept, row.proposals_dropped) == ("done", 0, 1)
-        assert row.dropped == {"one_set": 1}
+        assert row.dropped == {"one_recipe": 1}
 
     async def test_the_same_insight_twice_is_still_one_recipe(
         self, service: PatternsService, provider: FakeProvider, talking: Talking
@@ -236,7 +236,7 @@ class TestThePostFilter:
 
         row, proposals = await self._run(service, provider, answer)
 
-        assert proposals == [] and row.dropped == {"one_set": 1}
+        assert proposals == [] and row.dropped == {"one_recipe": 1}
 
     @pytest.mark.parametrize("invented", [999, 5, 6])
     async def test_an_invented_source_is_dropped_and_counted(
@@ -493,7 +493,7 @@ class TestOneRunAtATime:
         self, db: Database, llm: LlmService, provider: FakeProvider
     ) -> None:
         world = await build_pattern_world(db)
-        await world.own(world.a, "Only one Set has said anything.")
+        await world.own(world.a, "Only one Recipe has said anything.")
         service = PatternsService(db, llm, PromptService(PromptsRepository(db)))
 
         with pytest.raises(NotEnoughRecipes):

@@ -4,10 +4,10 @@ import { setRow } from "@/test/setsFixtures";
 /** What duplicating a version starts from: the default state, a profile and five insights. */
 export function duplicatePreview(overrides: Partial<DuplicatePreview> = {}): DuplicatePreview {
   return {
-    set_name: "Guji on the Niche (copy)",
+    recipe_name: "Guji on the Niche (copy)",
     bean_id: 1,
     grinder_id: 1,
-    recipe: {
+    version_fields: {
       profile_label: "Blooming",
       grind_setting: "2.2",
       grind_value: 2.2,
@@ -30,7 +30,7 @@ export function duplicatePreview(overrides: Partial<DuplicatePreview> = {}): Dup
 /** What a duplicate answers with. */
 export function duplicateAnswer(overrides: Partial<DuplicateAnswer> = {}): DuplicateAnswer {
   return {
-    set: setRow({ id: 9, name: "Guji milk", version_count: 1, shot_count: 0 }),
+    recipe: setRow({ id: 9, name: "Guji milk", version_count: 1, shot_count: 0 }),
     board_id: 31,
     ...overrides,
   };

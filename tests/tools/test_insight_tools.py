@@ -46,7 +46,7 @@ def conversation(
     archive: Fixture, settings: SettingsService, world: ProvenanceWorld
 ) -> ToolContext:
     """A conversation about the Recipe's newest version, with a thread of its own."""
-    ctx = _context(archive, settings, ToolScope.for_thread(world.set_id, world.v3))
+    ctx = _context(archive, settings, ToolScope.for_thread(world.recipe_id, world.v3))
     ctx.thread_id = world.thread
     return ctx
 
@@ -98,7 +98,7 @@ class TestRestingOn:
             "v1.2 has no recorded outcome yet: name shots instead, or wait until the person "
             "records its grade."
         )
-        assert await world.insights.own(world.set_id, include_dismissed=True) == []
+        assert await world.insights.own(world.recipe_id, include_dismissed=True) == []
 
     async def test_it_has_to_rest_on_something(self, conversation: ToolContext) -> None:
         detail = await refuse(conversation, "record_insight", text="A bare claim.")
@@ -112,7 +112,7 @@ class TestRestingOn:
         detail = await refuse(
             conversation, "record_insight", text="x", evidence_shot_ids=sorted(other)
         )
-        assert "not a shot of this Set" in detail
+        assert "not a shot of this Recipe" in detail
 
 
 class TestReplacing:
@@ -186,7 +186,7 @@ class TestReplacing:
         self, conversation: ToolContext, world: ProvenanceWorld
     ) -> None:
         theirs = await world.own(
-            "Theirs.", set_id=world.stranger_recipe, version_id=world.stranger_version
+            "Theirs.", recipe_id=world.stranger_recipe, version_id=world.stranger_version
         )
         sentences = []
         for target in (theirs, 99_999):
@@ -199,7 +199,7 @@ class TestReplacing:
                     replaces_insight_id=target,
                 )
             )
-        assert all("is not an insight of this Set" in sentence for sentence in sentences)
+        assert all("is not an insight of this Recipe" in sentence for sentence in sentences)
         # The wording does not tell the two apart: no way to ask whether an id exists.
         masked = {
             sentence.replace(str(theirs), "N").replace("99999", "N") for sentence in sentences
@@ -221,7 +221,7 @@ class TestProposingADeletion:
         assert data["status"] == "proposed" and data["insight_text"] == "Doubtful claim."
         assert "Nothing is deleted" in data["note"] and "presses Delete" in data["note"]
         assert await world.insights.get(target) is not None
-        waiting = await world.deletions.waiting_for_recipe(world.set_id)
+        waiting = await world.deletions.waiting_for_recipe(world.recipe_id)
         assert [(row.insight_id, row.thread_id, row.reason) for row in waiting] == [
             (target, world.thread, REASON)
         ]
@@ -240,7 +240,7 @@ class TestProposingADeletion:
         )
 
         assert data["replaced_waiting_proposal"] is True
-        assert len(await world.deletions.waiting_for_recipe(world.set_id)) == 1
+        assert len(await world.deletions.waiting_for_recipe(world.recipe_id)) == 1
 
     @pytest.mark.parametrize("reason", ["", "too short", "x" * 19])
     async def test_a_short_reason_is_refused_with_what_a_reason_is(
@@ -251,7 +251,7 @@ class TestProposingADeletion:
             conversation, "propose_insight_deletion", insight_id=target, reason=reason
         )
         assert "A deletion needs its reason" in detail and "at least 20" in detail
-        assert await world.deletions.for_recipe(world.set_id) == []
+        assert await world.deletions.for_recipe(world.recipe_id) == []
 
     async def test_a_long_reason_is_refused(
         self, conversation: ToolContext, world: ProvenanceWorld
@@ -274,7 +274,7 @@ class TestProposingADeletion:
             InsightWrite(text="General.", source="user", confirmed=True)
         )
         theirs = await world.own(
-            "Theirs.", set_id=world.stranger_recipe, version_id=world.stranger_version
+            "Theirs.", recipe_id=world.stranger_recipe, version_id=world.stranger_version
         )
 
         details = {
@@ -293,15 +293,15 @@ class TestProposingADeletion:
         assert "is not an added insight" in details["waiting"]
         assert "is not an added insight" in details["dismissed"]
         assert "is general knowledge" in details["general"]
-        assert "is not an insight of this Set" in details["theirs"]
-        assert "is not an insight of this Set" in details["missing"]
-        assert await world.deletions.for_recipe(world.set_id) == []
+        assert "is not an insight of this Recipe" in details["theirs"]
+        assert "is not an insight of this Recipe" in details["missing"]
+        assert await world.deletions.for_recipe(world.recipe_id) == []
         assert await world.deletions.for_recipe(world.stranger_recipe) == []
 
     async def test_a_session_with_no_conversation_has_nowhere_for_the_card(
         self, archive: Fixture, settings: SettingsService, world: ProvenanceWorld
     ) -> None:
-        bare = _context(archive, settings, ToolScope.for_thread(world.set_id, world.v3))
+        bare = _context(archive, settings, ToolScope.for_thread(world.recipe_id, world.v3))
         target = await world.own("Doubtful claim.")
         detail = await refuse(bare, "propose_insight_deletion", insight_id=target, reason=REASON)
         assert "no conversation" in detail
@@ -315,7 +315,9 @@ class TestProposingADeletion:
             general, "propose_insight_deletion", {"insight_id": target, "reason": REASON}
         )
         assert outcome.status == "refused"
-        designing = _context(archive, settings, ToolScope.for_thread(world.set_id, designing=True))
+        designing = _context(
+            archive, settings, ToolScope.for_thread(world.recipe_id, designing=True)
+        )
         outcome = await registry.dispatch(
             designing, "propose_insight_deletion", {"insight_id": target, "reason": REASON}
         )
@@ -338,11 +340,11 @@ class TestWhatTheAgentReads:
         await world.regrade(world.v2, "failed")
 
         listed = await call(conversation, "get_insights")
-        in_recipe = await call(conversation, "get_set")
+        in_recipe = await call(conversation, "get_recipe")
 
         (insight,) = listed["insights"]
         expected = (
-            f"#{added['insight_id']} [this Set, learned at v1.2; rests on v1.1 held → now "
+            f"#{added['insight_id']} [this Recipe, learned at v1.2; rests on v1.1 held → now "
             f"failed; shots {world.shot2}] Finer lengthens it."
         )
         assert insight["line"] == expected

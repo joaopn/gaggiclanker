@@ -392,11 +392,11 @@ def test_the_flattened_prompt_keeps_tool_results_visible() -> None:
 
 
 def test_the_mcp_config_carries_the_scope_when_there_is_one() -> None:
-    config = json.loads(build_mcp_config(data_dir="/data", executable="/py", set_id=3))
+    config = json.loads(build_mcp_config(data_dir="/data", executable="/py", recipe_id=3))
 
     env = config["mcpServers"][MCP_SERVER_NAME]["env"]
     assert env["DATA_DIR"] == "/data"
-    assert env["GAGGICLANKER_MCP_SET_ID"] == "3"
+    assert env["GAGGICLANKER_MCP_RECIPE_ID"] == "3"
 
 
 async def test_a_scoped_request_puts_the_recipe_in_the_generated_config() -> None:
@@ -405,15 +405,15 @@ async def test_a_scoped_request_puts_the_recipe_in_the_generated_config() -> Non
     Every other provider gets it through the tool context, because the loop
     runs here. This one's loop runs inside the CLI against our MCP server, so
     the config is the only channel there is — and without it a scoped thread's
-    `get_set` with no argument answers "not scoped" on the default provider and
+    `get_recipe` with no argument answers "not scoped" on the default provider and
     correctly everywhere else.
     """
     stream = RecordedStream(TRANSCRIPT)
 
-    await provider(stream).chat(request(set_id=7), lambda _event: None)
+    await provider(stream).chat(request(recipe_id=7), lambda _event: None)
 
     config = json.loads(stream.argv[stream.argv.index("--mcp-config") + 1])
-    assert config["mcpServers"][MCP_SERVER_NAME]["env"]["GAGGICLANKER_MCP_SET_ID"] == "7"
+    assert config["mcpServers"][MCP_SERVER_NAME]["env"]["GAGGICLANKER_MCP_RECIPE_ID"] == "7"
 
 
 async def test_an_unscoped_request_leaves_the_scope_out() -> None:
@@ -422,4 +422,4 @@ async def test_an_unscoped_request_leaves_the_scope_out() -> None:
     await provider(stream).chat(request(), lambda _event: None)
 
     config = json.loads(stream.argv[stream.argv.index("--mcp-config") + 1])
-    assert "GAGGICLANKER_MCP_SET_ID" not in config["mcpServers"][MCP_SERVER_NAME]["env"]
+    assert "GAGGICLANKER_MCP_RECIPE_ID" not in config["mcpServers"][MCP_SERVER_NAME]["env"]

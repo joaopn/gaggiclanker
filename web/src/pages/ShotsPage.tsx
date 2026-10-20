@@ -156,7 +156,7 @@ export function ShotsPage() {
     // The name alone while the detail is in flight, rather than a flash of the
     // raw id: the Set is what the reader already knows they asked for.
     const name =
-      scopedSet.data?.set.name ?? sets.data?.items.find((row) => row.id === filteredSetId)?.name;
+      scopedSet.data?.recipe.name ?? sets.data?.items.find((row) => row.id === filteredSetId)?.name;
     if (!name) return null;
     return entry ? `${name} ${entry.version.version_label}` : name;
   }, [filters.version, filteredSetId, scopedSet.data, sets.data]);
@@ -193,7 +193,7 @@ export function ShotsPage() {
   // A shot with no Set is invisible to every trend and to the Set's
   // conversations about what has been tried, so the count is a call to action in the header
   // rather than a number buried in the filter bar.
-  const needsSet = counts?.needs_set ?? 0;
+  const needsSet = counts?.needs_recipe ?? 0;
   // An empty unfiltered list over a non-empty archive: everything is hidden
   // by the tickbox, and "No shots archived yet" would be untrue.
   const onlyDiscarded = hideDiscarded && (counts?.total ?? 0) > 0;

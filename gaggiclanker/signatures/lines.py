@@ -47,7 +47,7 @@ NO_SIGNATURE = (
 async def signature_block(
     db: Database,
     profile_version_id: int,
-    set_version_id: int | None,
+    recipe_version_id: int | None,
 ) -> list[str]:
     """A profile version's signature in force as lines, or the sentence saying there is none.
 
@@ -59,8 +59,8 @@ async def signature_block(
     if not rows:
         return ["", NO_SIGNATURE.format(id=profile_version_id)]
     override = None
-    if set_version_id is not None:
-        override = (await repo.confirmed_overrides([set_version_id])).get(set_version_id)
+    if recipe_version_id is not None:
+        override = (await repo.confirmed_overrides([recipe_version_id])).get(recipe_version_id)
     lines = [
         "",
         f"What profile version {profile_version_id} is FOR (its signature: every line is in "

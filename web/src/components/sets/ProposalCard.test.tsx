@@ -58,7 +58,7 @@ function designStanding(overrides: Record<string, unknown> = {}, newProfile = fa
       draft_id: 14,
       already_on_board_label: null,
       plain: { row_id: newProfile ? null : 4, row_label: newProfile ? null : "Guji Bloom" },
-      for_set: null,
+      for_recipe: null,
     },
     ...overrides,
   });
@@ -89,7 +89,7 @@ beforeEach(() => {
       deleted_on_device: 0,
       incomplete: 0,
       samples: 0,
-      needs_set: 0,
+      needs_recipe: 0,
     },
     recent_events: [],
   });
@@ -267,7 +267,7 @@ describe("ProposalCard", () => {
     await user.click(screen.getByRole("button", { name: /Accept/ }));
 
     await waitFor(() =>
-      expect(tell).toHaveBeenCalledWith("Accepted: your first recipe is now v1 of this Set."),
+      expect(tell).toHaveBeenCalledWith("Accepted: your first version is now v1 of this Recipe."),
     );
   });
 
@@ -682,7 +682,7 @@ describe("ProposalCard, a first recipe with a new profile", () => {
     expect(acceptSetProposal).toHaveBeenCalledWith(6, 8, { profileLabel: "Gentle Bloom" });
     expect(tell).toHaveBeenCalledTimes(1);
     expect(tell).toHaveBeenCalledWith(
-      "Accepted: your first recipe is now v1 of this Set, with its profile named Gentle Bloom (you proposed it as Guji Bloom).",
+      "Accepted: your first version is now v1 of this Recipe, with its profile named Gentle Bloom (you proposed it as Guji Bloom).",
     );
   });
 
@@ -704,7 +704,7 @@ describe("ProposalCard, a first recipe with a new profile", () => {
     await user.click(screen.getByTestId("accept-proposal"));
 
     await waitFor(() =>
-      expect(tell).toHaveBeenCalledWith("Accepted: your first recipe is now v1 of this Set."),
+      expect(tell).toHaveBeenCalledWith("Accepted: your first version is now v1 of this Recipe."),
     );
     expect(acceptSetProposal).toHaveBeenCalledWith(6, 8, { profileLabel: "Guji Bloom" });
   });
@@ -782,7 +782,7 @@ describe("ProposalCard, a first recipe with a new profile", () => {
         landing: null,
         state: "approved",
         reason: "It goes to the machine at the next sync.",
-        set_version_label: "v1",
+        recipe_version_label: "v1",
       }),
     );
     renderCard(

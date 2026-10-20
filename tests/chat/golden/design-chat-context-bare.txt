@@ -1,16 +1,16 @@
-THIS CONVERSATION IS DESIGNING A NEW SET
+THIS CONVERSATION IS DESIGNING A NEW RECIPE
 
-Set 6: Kenya Nyeri on the Niche Zero. Bean: Kenya Nyeri, roasted by Square Mile, light roast, washed process, from Kenya; taste acidity 5, intensity 3 (1 low to 5 high). Grinder: Niche Zero (conical burrs), adjusted in numbers.
-Nothing has been brewed on it. Its version 1 has no recipe yet: no profile, no grind, no dose, no yield. What you propose, once the person accepts it, becomes that version 1.
+Recipe 6: Kenya Nyeri on the Niche Zero. Bean: Kenya Nyeri, roasted by Square Mile, light roast, washed process, from Kenya; taste acidity 5, intensity 3 (1 low to 5 high). Grinder: Niche Zero (conical burrs), adjusted in numbers.
+Nothing has been brewed on it. Its version 1 is empty: no profile, no grind, no dose, no yield. What you propose, once the person accepts it, becomes that version 1.
 About the bean: blackcurrant, tomato, cane sugar
 
 WHAT THEY ASKED FOR
-Goal: not stated. Ask what they want from this Set before proposing anything.
-Their usual espresso setting on this grinder: NOT GIVEN. Without it, or a Set below on this same grinder, you have no anchor on its scale.
-Recipe numbers they chose: none. The grind, dose and yield are yours to propose.
+Goal: not stated. Ask what they want from this Recipe before proposing anything.
+Their usual espresso setting on this grinder: NOT GIVEN. Without it, or a Recipe below on this same grinder, you have no anchor on its scale.
+Numbers they chose: none. The grind, dose and yield are yours to propose.
 
 THE PROFILE TO FORK
-They named none, so the profile is written from zero: a whole document of your own, built from what they asked for, the bean and the Sets below. Do not start from a profile in their library.
+They named none, so the profile is written from zero: a whole document of your own, built from what they asked for, the bean and the Recipes below. Do not start from a profile in their library.
 The document's keys (the schema's, not values to copy):
 - top level: label, type (standard|pro), description, temperature (°C), phases (1-10, in order)
 - a phase: name, phase (preinfusion|brew), valve (0|1), duration (s), temperature (0 = the profile's), pump (an integer percent, or {target: pressure|flow, pressure: bar, flow: ml/s}), targets ([{type: volumetric|pressure|flow|pumped, operator: gte|lte, value}]: OR-combined stop conditions), optionally transition ({type: instant|linear|ease-in|ease-out|ease-in-out, duration: s, adaptive: bool})
@@ -18,11 +18,11 @@ The document's keys (the schema's, not values to copy):
 THE RECIPE
 Nothing has been proposed to the person yet.
 
-THIS BEAN'S OTHER SETS (newest first)
-- none: this is the first Set of this bean.
+THIS BEAN'S OTHER RECIPES (newest first)
+- none: this is the first Recipe of this bean.
 
-SIMILAR SETS ON THIS GRINDER (other beans)
-[set_version 1] Kenya AA on the niche v1 — Kenya AA
+SIMILAR RECIPES ON THIS GRINDER (other beans)
+[recipe_version 1] Kenya AA on the niche v1 — Kenya AA
   why it is similar: same roast level, same process, same origin
   bean: light, washed, Kenya
   grind: 21
@@ -33,7 +33,7 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 5 shots, rating 4.4/5, ratio 1:2.5, 28 s
 
-[set_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji
+[recipe_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji
   why it is similar: same roast level, different process, different origin
   bean: light, natural, Ethiopia
   grind: 23
@@ -44,7 +44,7 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 3 shots, rating 3/5, ratio 1:2.22, 28 s
 
-[set_version 3] Brazil Cerrado on the niche v1 — Brazil Cerrado
+[recipe_version 3] Brazil Cerrado on the niche v1 — Brazil Cerrado
   why it is similar: different roast level, same process, different origin
   bean: medium-dark, washed, Brazil
   grind: 26
@@ -55,11 +55,11 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 2 shots, rating 4/5, ratio 1:1.78, 28 s
 
-THE RULES THAT MATCH (planned style: bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medium 18g 1:2))
+THE RULES THAT MATCH (planned style: bloom — the profile of the closest similar Recipe (Kenya AA on the niche v1, Medium 18g 1:2))
 dial_in_order:
   [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
   [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency).
-  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Set version is to be able to say what a single change did.
+  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Recipe version is to be able to say what a single change did.
   [taste_is_ground_truth] The user's tasting notes outrank the telemetry. Sour, weak or fast means under-extracted; bitter, harsh or slow means over-extracted — whatever the curve looked like. Never contradict a recorded taste with a number.
 
 increments:
@@ -101,4 +101,4 @@ safety_bounds:
   [pressure] Never suggest a pressure outside 0-12 bar; the firmware itself refuses more.
   [temperature] Never suggest a brew temperature outside 25-100 °C.
 
-That is a snapshot, assembled when this turn began. The other Sets above are evidence to design from; no tool here reads them further.
+That is a snapshot, assembled when this turn began. The other Recipes above are evidence to design from; no tool here reads them further.

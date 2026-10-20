@@ -424,7 +424,7 @@ class ImportService:
             status = "created"
             # Only a newly created shot is offered to the matcher. A replace is
             # a better copy of a shot we already hold, and `replace_derived`
-            # deliberately keeps its `set_version_id` — re-matching at that
+            # deliberately keeps its `recipe_version_id` — re-matching at that
             # point could move a shot the user had already filed by hand.
             await self.recipes.profile_match(
                 shot_id,

@@ -64,8 +64,8 @@
           "id": "c2",
           "name": "get_shot",
           "ok": false,
-          "characters": 67,
-          "content": "That shot is not in this Set. Ask about one of the Set's own shots."
+          "characters": 73,
+          "content": "That shot is not in this Recipe. Ask about one of the Recipe's own shots."
         },
         {
           "id": "c3",

@@ -57,11 +57,11 @@ from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
 from gaggiclanker.db.repos.recipes import (
+    RecipeRow,
     RecipesRepository,
+    RecipeVersionRow,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetRow,
-    SetVersionRow,
-    SetVersionWrite,
     VersionRefused,
     design_refusal_message,
 )
@@ -73,7 +73,7 @@ from gaggiclanker.db.repos.starting import (
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_policy import clamp
 from gaggiclanker.domain.profile_recipe import profile_recipe
-from gaggiclanker.domain.recipes import grind_value, set_name
+from gaggiclanker.domain.recipes import grind_value, recipe_name
 from gaggiclanker.drafts.proposals import DraftProposals, PinnedCopyName, TakenName
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
@@ -131,8 +131,8 @@ class AcceptedStartingPoint:
     """What an accept produced: the Recipe, its first version, and any draft."""
 
     run: StartingPointRunRow
-    recipe_row: SetRow
-    version: SetVersionRow
+    recipe_row: RecipeRow
+    version: RecipeVersionRow
     draft: ProfileDraftRow | None = None
 
 
@@ -465,8 +465,8 @@ class StartingPointService:
 
         await self.runs.finish_accept(
             run_id,
-            set_id=recipe_row.id,
-            set_version_id=version.id,
+            recipe_id=recipe_row.id,
+            recipe_version_id=version.id,
             draft_id=draft.id if draft else None,
         )
 
@@ -474,7 +474,7 @@ class StartingPointService:
             "starting_point_accepted",
             run_id=run_id,
             option=option_key,
-            set_id=recipe_row.id,
+            recipe_id=recipe_row.id,
             draft_id=draft.id if draft else None,
         )
         return AcceptedStartingPoint(
@@ -508,11 +508,11 @@ class StartingPointService:
         """
         return Conflict(
             f"Starting point {run.id} was already accepted "
-            f"({run.accepted_option}); it created Set {run.accepted_set_id}",
+            f"({run.accepted_option}); it created Recipe {run.accepted_recipe_id}",
             details={
                 "option": run.accepted_option,
-                "set_id": run.accepted_set_id,
-                "set_version_id": run.accepted_set_version_id,
+                "recipe_id": run.accepted_recipe_id,
+                "recipe_version_id": run.accepted_recipe_version_id,
                 "draft_id": run.accepted_draft_id,
             },
         )
@@ -664,7 +664,7 @@ class StartingPointService:
         run: StartingPointRunRow,
         option: StartingPointOption,
         draft: ProfileDraftRow | None,
-    ) -> tuple[SetRow, SetVersionRow]:
+    ) -> tuple[RecipeRow, RecipeVersionRow]:
         """The Recipe and its version 1.
 
         The version points at the option's chosen profile when it named one, and
@@ -679,7 +679,7 @@ class StartingPointService:
             profile_version_id = draft.draft_version_id
 
         intent = _intent(run, option, draft)
-        name = set_name(run.bean_name, run.grinder_name)
+        name = recipe_name(run.bean_name, run.grinder_name)
         try:
             stored = await self.recipes.create(
                 RecipeWrite(
@@ -687,7 +687,7 @@ class StartingPointService:
                     bean_id=run.bean_id,
                     grinder_id=run.grinder_id,
                 ),
-                SetVersionWrite(
+                RecipeVersionWrite(
                     profile_version_id=profile_version_id,
                     grind_setting=option.grind_setting[:100],
                     grind_value=grind_value(
@@ -706,7 +706,7 @@ class StartingPointService:
         version_id = stored.current_version_id
         version = None if version_id is None else await self.recipes.get_version(version_id)
         if version is None:  # pragma: no cover - create() writes version 1
-            raise RuntimeError(f"Set {stored.id} was created without a version")
+            raise RuntimeError(f"Recipe {stored.id} was created without a version")
         return stored, version
 
     # ── reading ──────────────────────────────────────────────────────
@@ -822,8 +822,8 @@ def _post_process(
                         context.bean.bean_id,
                         "excerpts",
                     ),
-                    "similar_set_version_ids": _cited(
-                        option.similar_set_version_ids,
+                    "similar_recipe_version_ids": _cited(
+                        option.similar_recipe_version_ids,
                         context.similar_version_ids,
                         context.bean.bean_id,
                         "similar_recipes",

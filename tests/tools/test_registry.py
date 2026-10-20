@@ -101,7 +101,7 @@ def test_read_only_is_a_strict_subset() -> None:
     read = {spec.name for spec in registry.specs(READ_ONLY)}
     chat = {spec.name for spec in registry.specs(CHAT_PERMISSIONS)}
     assert read < chat
-    assert "propose_set_version" in chat - read
+    assert "propose_recipe_version" in chat - read
 
 
 # -- registration ----------------------------------------------------------

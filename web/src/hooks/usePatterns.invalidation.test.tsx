@@ -77,7 +77,7 @@ describe("answering a proposal", () => {
       // `knowledge`), the chat's insight cards and the pattern run share one prefix.
       expect(keys).toContainEqual(queryKeys.knowledge.all);
       expect(queryKeys.knowledge.patterns().slice(0, 1)).toEqual(queryKeys.knowledge.all);
-      expect(queryKeys.knowledge.insights({ set_id: 3 }).slice(0, 1)).toEqual(
+      expect(queryKeys.knowledge.insights({ recipe_id: 3 }).slice(0, 1)).toEqual(
         queryKeys.knowledge.all,
       );
       expect(keys.flat()).not.toContain("shots");

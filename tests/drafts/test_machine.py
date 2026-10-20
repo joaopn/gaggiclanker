@@ -604,11 +604,13 @@ async def test_somebody_elses_claim_keeps_the_file_and_is_the_reason_given(
         device_id=old_id,
         expected_hash=document_hash(old),
         successor=new_id,
-        blocked="still the current version of the Set 'Other'",
+        blocked="still the current version of the Recipe 'Other'",
         carry_favorite=True,
     )
 
-    assert not removal.removed and removal.reason == "still the current version of the Set 'Other'"
+    assert (
+        not removal.removed and removal.reason == "still the current version of the Recipe 'Other'"
+    )
     assert writes(fake_device, mark) == []
 
 

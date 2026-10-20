@@ -255,7 +255,7 @@ export function bean(overrides: Partial<BeanRow> = {}): BeanRow {
     notes: "",
     archived: false,
     created_at: "2026-04-01T00:00:00.000Z",
-    set_count: 1,
+    recipe_count: 1,
     ...overrides,
   };
 }
@@ -269,7 +269,7 @@ export function grinder(overrides: Partial<GrinderRow> = {}): GrinderRow {
     step_unit: "numbers",
     notes: "",
     created_at: "2026-04-01T00:00:00.000Z",
-    set_count: 1,
+    recipe_count: 1,
     ...overrides,
   };
 }
@@ -313,7 +313,7 @@ export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
   const minor = overrides.version_minor ?? 0;
   return {
     id: 21,
-    set_id: 3,
+    recipe_id: 3,
     version_major: major,
     version_minor: minor,
     version_label: labelOf(major, minor),
@@ -367,7 +367,7 @@ export function judgement(overrides: Partial<ShotJudgement> = {}): ShotJudgement
 
 export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData {
   return {
-    set: setRow(),
+    recipe: setRow(),
     versions: [
       {
         version: version({
@@ -418,7 +418,7 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
 export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
   return {
     id: 5,
-    set_id: 3,
+    recipe_id: 3,
     kind: "change",
     thread_id: 9,
     base_version_id: 22,
@@ -453,8 +453,8 @@ export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
 export function outcomeProposal(overrides: Partial<OutcomeProposal> = {}): OutcomeProposal {
   return {
     id: 11,
-    set_id: 3,
-    set_version_id: 22,
+    recipe_id: 3,
+    recipe_version_id: 22,
     version_label: "v2",
     thread_id: 9,
     outcome: "partly_held",
@@ -499,7 +499,7 @@ export function designingSet(overrides: Partial<SetRow> = {}): SetRow {
 export function emptyVersion(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
   return version({
     id: 60,
-    set_id: 6,
+    recipe_id: 6,
     profile_version_id: null,
     profile_label: null,
     grind_setting: null,
@@ -515,7 +515,7 @@ export function emptyVersion(overrides: Partial<SetVersionRow> = {}): SetVersion
 /** The Set page of a Set being designed, with nothing proposed yet. */
 export function designingDetail(overrides: Partial<SetDetailData> = {}): SetDetailData {
   return setDetail({
-    set: designingSet(),
+    recipe: designingSet(),
     versions: [
       { version: emptyVersion(), changes: [], shots: [], dead_end: false, labels: labelCounts() },
     ],
@@ -531,7 +531,7 @@ export function designingDetail(overrides: Partial<SetDetailData> = {}): SetDeta
 export function designProposal(overrides: Partial<SetProposal> = {}): SetProposal {
   return proposal({
     id: 8,
-    set_id: 6,
+    recipe_id: 6,
     kind: "design",
     draft_id: 14,
     thread_id: 12,
@@ -730,10 +730,10 @@ export function evidence(overrides: Partial<VersionEvidence> = {}): VersionEvide
 
 export function trends(overrides: Partial<SetTrends> = {}): SetTrends {
   return {
-    set_id: 3,
+    recipe_id: 3,
     versions: [
       {
-        set_version_id: 21,
+        recipe_version_id: 21,
         version_label: "v1",
         intent: "",
         origin: "manual",
@@ -746,7 +746,7 @@ export function trends(overrides: Partial<SetTrends> = {}): SetTrends {
         avg_rating: 3,
       },
       {
-        set_version_id: 22,
+        recipe_version_id: 22,
         version_label: "v2",
         intent: "one click finer",
         origin: "manual",
@@ -778,7 +778,7 @@ export function point(
   return {
     shot_id: id,
     device_id: String(id).padStart(6, "0"),
-    set_version_id: versionId,
+    recipe_version_id: versionId,
     version_label: `v${versionNo}`,
     started_at: "2026-04-03T08:00:00.000Z",
     duration_s: 28,
@@ -792,9 +792,9 @@ export function point(
 
 export function similarSet(overrides: Partial<SimilarSet> = {}): SimilarSet {
   return {
-    set_id: 3,
-    set_name: "Kenya AA on the Niche",
-    set_version_id: 21,
+    recipe_id: 3,
+    recipe_name: "Kenya AA on the Niche",
+    recipe_version_id: 21,
     version_label: "v1",
     created_at: "2026-03-01T00:00:00.000Z",
     score: 8.2,
@@ -850,7 +850,7 @@ export function startingPointOption(
     rationale: "Light roasts run 93-96 °C and 1:2 to 1:3.",
     rules_used: ["light"],
     excerpts_used: [],
-    similar_set_version_ids: [21],
+    similar_recipe_version_ids: [21],
     ...overrides,
   };
 }
@@ -887,8 +887,8 @@ export function startingPointRun(overrides: Partial<StartingPointRun> = {}): Sta
     error: null,
     llm_call_id: null,
     accepted_option: null,
-    accepted_set_id: null,
-    accepted_set_version_id: null,
+    accepted_recipe_id: null,
+    accepted_recipe_version_id: null,
     accepted_draft_id: null,
     accepted_at: null,
     created_at: "2026-04-02T00:00:00.000Z",
@@ -901,7 +901,7 @@ export function startingPointRun(overrides: Partial<StartingPointRun> = {}): Sta
 export function revert(overrides: Partial<SetRevertRow> = {}): SetRevertRow {
   return {
     id: 1,
-    set_id: 3,
+    recipe_id: 3,
     from_version_id: 24,
     from_version_label: "v2.1",
     to_version_id: 22,
@@ -954,7 +954,7 @@ export function minorDetail(): SetDetailData {
     labels: labelCounts(),
   });
   return setDetail({
-    set: setRow({
+    recipe: setRow({
       current_version_id: 23,
       current_version_label: "v1.2",
       next_minor_label: "v1.3",

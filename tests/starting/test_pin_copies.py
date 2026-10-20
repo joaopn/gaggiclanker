@@ -52,7 +52,7 @@ async def _pin_it(fixture: Fixture, copy_id: int) -> int:
         ).id
     first = await fixture.db.fetch_value("SELECT id FROM recipe_versions ORDER BY id LIMIT 1")
     pin = await PinsRepository(fixture.db).insert(
-        PinWrite(set_version_id=int(first), board_id=owner, profile_version_id=copy.id)
+        PinWrite(recipe_version_id=int(first), board_id=owner, profile_version_id=copy.id)
     )
     return pin.id
 

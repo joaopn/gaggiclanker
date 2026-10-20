@@ -1,10 +1,10 @@
 {
-  "approved_for_set": "Approved: <name> as <version label> of <Set name>.",
+  "approved_for_recipe": "Approved: <name> as <version label> of <Recipe name>.",
   "approved_new_version": "Approved: <name>, a new version of that profile.",
   "approved_new_profile": "Approved: <name>, a new profile.",
   "renamed_ending": " (you proposed it as <old name>).",
   "declined": "Declined: <note>",
   "declined_no_reason": "Declined: no reason given.",
-  "accepted_first_recipe": "Accepted: your first recipe is now <version label> of this Set.",
+  "accepted_first_recipe": "Accepted: your first version is now <version label> of this Recipe.",
   "accepted_first_recipe_renamed_clause": ", with its profile named <name>"
 }

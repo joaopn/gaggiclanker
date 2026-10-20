@@ -27,7 +27,9 @@ class TestProposing:
     async def test_a_proposal_waits_and_deletes_nothing(self, provenance: ProvenanceWorld) -> None:
         target = await provenance.own("Doubtful claim.")
 
-        result = await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+        result = await provenance.deletions.propose(
+            provenance.recipe_id, _write(provenance, target)
+        )
 
         assert result.refused is None and result.proposal is not None
         assert result.proposal.status == "proposed"
@@ -67,19 +69,23 @@ class TestProposing:
             )
         elif case == "other_recipe":
             target = await provenance.own(
-                "Theirs.", set_id=provenance.stranger_recipe, version_id=provenance.stranger_version
+                "Theirs.",
+                recipe_id=provenance.stranger_recipe,
+                version_id=provenance.stranger_version,
             )
         else:
             target = 9999
 
-        result = await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+        result = await provenance.deletions.propose(
+            provenance.recipe_id, _write(provenance, target)
+        )
 
         assert (result.refused, result.proposal) == (refusal, None)
 
     async def test_the_conversation_must_be_this_recipes(self, provenance: ProvenanceWorld) -> None:
         target = await provenance.own("Doubtful claim.")
         result = await provenance.deletions.propose(
-            provenance.set_id,
+            provenance.recipe_id,
             InsightDeletionWrite(
                 thread_id=provenance.stranger_thread, insight_id=target, reason=REASON
             ),
@@ -91,30 +97,30 @@ class TestProposing:
     ) -> None:
         target = await provenance.own("Doubtful claim.")
         first = (
-            await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+            await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         ).proposal
         assert first is not None
 
         second = await provenance.deletions.propose(
-            provenance.set_id, _write(provenance, target, "A better reason, written later on.")
+            provenance.recipe_id, _write(provenance, target, "A better reason, written later on.")
         )
 
         assert second.replaced is not None and second.replaced.id == first.id
-        old = await provenance.deletions.get(provenance.set_id, first.id)
+        old = await provenance.deletions.get(provenance.recipe_id, first.id)
         assert old is not None and old.status == "superseded"
-        waiting = await provenance.deletions.waiting_for_recipe(provenance.set_id)
+        waiting = await provenance.deletions.waiting_for_recipe(provenance.recipe_id)
         assert [row.id for row in waiting] == [second.proposal.id]  # type: ignore[union-attr]
 
     async def test_one_waits_per_insight_whatever_the_repository_says(
         self, provenance: ProvenanceWorld
     ) -> None:
         target = await provenance.own("Doubtful claim.")
-        await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+        await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         with pytest.raises(sqlite3.IntegrityError):
             await provenance.db.execute(
                 "INSERT INTO recipe_insight_deletions "
                 "(recipe_id, thread_id, insight_id, insight_text, reason) VALUES (?, ?, ?, 'x', ?)",
-                (provenance.set_id, provenance.thread, target, REASON),
+                (provenance.recipe_id, provenance.thread, target, REASON),
             )
 
 
@@ -124,11 +130,11 @@ class TestAnswering:
     ) -> None:
         target = await provenance.own("Doubtful claim.")
         proposal = (
-            await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+            await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         ).proposal
         assert proposal is not None
 
-        result = await provenance.deletions.accept(provenance.set_id, proposal.id)
+        result = await provenance.deletions.accept(provenance.recipe_id, proposal.id)
 
         assert result.refused is None and result.proposal is not None
         assert result.proposal.status == "deleted"
@@ -142,11 +148,11 @@ class TestAnswering:
         target = await provenance.own("Doubtful claim.")
         before = await provenance.insights.get(target)
         proposal = (
-            await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+            await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         ).proposal
         assert proposal is not None
 
-        result = await provenance.deletions.keep(provenance.set_id, proposal.id)
+        result = await provenance.deletions.keep(provenance.recipe_id, proposal.id)
 
         assert result.proposal is not None and result.proposal.status == "kept"
         assert await provenance.insights.get(target) == before
@@ -156,13 +162,13 @@ class TestAnswering:
     ) -> None:
         target = await provenance.own("Doubtful claim.")
         proposal = (
-            await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+            await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         ).proposal
         assert proposal is not None
-        await provenance.deletions.keep(provenance.set_id, proposal.id)
+        await provenance.deletions.keep(provenance.recipe_id, proposal.id)
 
         for answer in (provenance.deletions.accept, provenance.deletions.keep):
-            result = await answer(provenance.set_id, proposal.id)
+            result = await answer(provenance.recipe_id, proposal.id)
             assert result.refused == "not_waiting"
         assert await provenance.insights.get(target) is not None
 
@@ -171,10 +177,12 @@ class TestAnswering:
     ) -> None:
         target = await provenance.own("Doubtful claim.")
         proposal = (
-            await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+            await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         ).proposal
         assert proposal is not None
-        assert (await provenance.deletions.accept(provenance.set_id, 9999)).refused == "no_proposal"
+        assert (
+            await provenance.deletions.accept(provenance.recipe_id, 9999)
+        ).refused == "no_proposal"
         assert (
             await provenance.deletions.accept(provenance.stranger_recipe, proposal.id)
         ).refused == "no_proposal"
@@ -185,7 +193,7 @@ class TestAnswering:
     ) -> None:
         target = await provenance.own("Doubtful claim.")
         proposal = (
-            await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+            await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         ).proposal
         assert proposal is not None
         # Straight into the table: taking it back through the repository already stales the
@@ -194,11 +202,11 @@ class TestAnswering:
             "UPDATE knowledge_insights SET confirmed = 0 WHERE id = ?", (target,)
         )
 
-        result = await provenance.deletions.accept(provenance.set_id, proposal.id)
+        result = await provenance.deletions.accept(provenance.recipe_id, proposal.id)
 
         assert result.refused == "insight_changed"
         assert await provenance.insights.get(target) is not None
-        stored = await provenance.deletions.get(provenance.set_id, proposal.id)
+        stored = await provenance.deletions.get(provenance.recipe_id, proposal.id)
         assert stored is not None and stored.status == "stale"
 
     async def test_a_failure_part_way_leaves_the_proposal_waiting(
@@ -206,7 +214,7 @@ class TestAnswering:
     ) -> None:
         target = await provenance.own("Doubtful claim.")
         proposal = (
-            await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+            await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         ).proposal
         assert proposal is not None
 
@@ -215,9 +223,9 @@ class TestAnswering:
 
         provenance.deletions.insights.delete_in_transaction = boom  # type: ignore[method-assign]
         with pytest.raises(RuntimeError):
-            await provenance.deletions.accept(provenance.set_id, proposal.id)
+            await provenance.deletions.accept(provenance.recipe_id, proposal.id)
 
-        stored = await provenance.deletions.get(provenance.set_id, proposal.id)
+        stored = await provenance.deletions.get(provenance.recipe_id, proposal.id)
         assert stored is not None and stored.status == "proposed"
         assert await provenance.insights.get(target) is not None
 
@@ -227,11 +235,11 @@ class TestAnswering:
         from gaggiclanker.db.repos.chat import ChatRepository
 
         target = await provenance.own("Doubtful claim.")
-        await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+        await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
 
         await ChatRepository(provenance.db).delete_thread(provenance.thread)
 
-        assert await provenance.deletions.for_recipe(provenance.set_id) == []
+        assert await provenance.deletions.for_recipe(provenance.recipe_id) == []
         # The insight itself is the person's and stays.
         assert await provenance.insights.get(target) is not None
 
@@ -240,12 +248,12 @@ class TestAnswering:
     ) -> None:
         target = await provenance.own("Doubtful claim.")
         proposal = (
-            await provenance.deletions.propose(provenance.set_id, _write(provenance, target))
+            await provenance.deletions.propose(provenance.recipe_id, _write(provenance, target))
         ).proposal
         assert proposal is not None
         await provenance.insights.set_confirmed(target, False)
 
-        result = await provenance.deletions.accept(provenance.set_id, proposal.id)
+        result = await provenance.deletions.accept(provenance.recipe_id, proposal.id)
 
         assert result.refused == "not_waiting"
         assert await provenance.insights.get(target) is not None

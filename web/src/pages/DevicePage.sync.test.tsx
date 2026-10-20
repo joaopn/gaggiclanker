@@ -79,7 +79,7 @@ function syncStatus(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
       deleted_on_device: 4,
       incomplete: 0,
       samples: 25_000,
-      needs_set: 0,
+      needs_recipe: 0,
     },
     recent_events: [],
     ...overrides,

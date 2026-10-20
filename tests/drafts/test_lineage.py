@@ -14,7 +14,7 @@ PROFILES = {"X [AI]": "x-profile", "Mine": "mine-profile"}
 
 
 class _Lookup:
-    async def by_recipe(self, set_id: int) -> str | None:
+    async def by_recipe(self, recipe_id: int) -> str | None:
         return "Mine"
 
     async def by_label(self, label: str) -> str | None:
@@ -25,7 +25,7 @@ class _Lookup:
 
 
 async def _owner(label: str, **over: object) -> str | None:
-    return await lineage_owner(_Lookup(), set_id=over.get("set_id"), version_label=label)  # type: ignore[arg-type]
+    return await lineage_owner(_Lookup(), recipe_id=over.get("recipe_id"), version_label=label)  # type: ignore[arg-type]
 
 
 async def test_a_draft_continues_the_profile_with_exactly_its_name() -> None:
@@ -34,11 +34,11 @@ async def test_a_draft_continues_the_profile_with_exactly_its_name() -> None:
 
 
 async def test_a_recipes_draft_goes_to_the_recipes_profile_only_when_that_is_the_name() -> None:
-    assert await _owner("Mine", set_id=3) == "Mine"
+    assert await _owner("Mine", recipe_id=3) == "Mine"
     # Renamed, it is a profile of its own (or the one that already has that name), never a
     # rename of the Recipe's profile.
-    assert await _owner("Renamed", set_id=3) is None
-    assert await _owner("X [AI]", set_id=3) == "X [AI]"
+    assert await _owner("Renamed", recipe_id=3) is None
+    assert await _owner("X [AI]", recipe_id=3) == "X [AI]"
 
 
 def test_the_refusal_names_the_profile_and_says_what_to_do() -> None:

@@ -7,8 +7,8 @@ import {
   overrideInForce,
   overrideRejected,
   SIGNATURE_PROFILE_VERSION_ID,
-  SIGNATURE_SET_ID,
-  SIGNATURE_SET_VERSION_ID,
+  SIGNATURE_RECIPE_ID,
+  SIGNATURE_RECIPE_VERSION_ID,
 } from "@/test/signatureFixtures";
 
 vi.mock("sonner", () => ({
@@ -30,8 +30,8 @@ function renderOverrides(items: SignatureOverride[], profileVersionId: number | 
   api.getSignatureOverrides.mockResolvedValue({ items });
   return renderWithQueryClient(
     <VersionOverrides
-      setId={SIGNATURE_SET_ID}
-      versionId={SIGNATURE_SET_VERSION_ID}
+      setId={SIGNATURE_RECIPE_ID}
+      versionId={SIGNATURE_RECIPE_VERSION_ID}
       profileVersionId={profileVersionId}
     />,
   );
@@ -82,7 +82,7 @@ describe("VersionOverrides", () => {
 
     expect(api.rejectSignatureOverride).toHaveBeenCalledTimes(1);
     expect(api.rejectSignatureOverride).toHaveBeenCalledWith(
-      SIGNATURE_SET_ID,
+      SIGNATURE_RECIPE_ID,
       overrideInForce.id,
       "not this bean",
     );
@@ -97,7 +97,7 @@ describe("VersionOverrides", () => {
 
     expect(api.restoreSignatureOverride).toHaveBeenCalledTimes(1);
     expect(api.restoreSignatureOverride).toHaveBeenCalledWith(
-      SIGNATURE_SET_ID,
+      SIGNATURE_RECIPE_ID,
       overrideRejected.id,
     );
   });

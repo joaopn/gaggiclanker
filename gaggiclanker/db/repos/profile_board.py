@@ -419,7 +419,7 @@ class ProfileBoardRepository(Repository):
         return effective
 
     async def settle_a_recipes_versions(
-        self, row_id: int, set_id: int, *, follow: bool = True
+        self, row_id: int, recipe_id: int, *, follow: bool = True
     ) -> None:
         """A Recipe that has just become this profile's: every other version no profile owns that
         its versions name goes through :meth:`version_for` like any other (taken over, or the
@@ -429,7 +429,7 @@ class ProfileBoardRepository(Repository):
             "SELECT DISTINCT v.profile_version_id AS id FROM recipe_versions v "
             "JOIN profile_versions pv ON pv.id = v.profile_version_id "
             "WHERE v.recipe_id = ? AND pv.board_id IS NULL ORDER BY v.profile_version_id",
-            (set_id,),
+            (recipe_id,),
         )
         for entry in loose:
             old = int(entry["id"])
@@ -438,7 +438,7 @@ class ProfileBoardRepository(Repository):
                 await self.db.execute(
                     "UPDATE recipe_versions SET profile_version_id = ? "
                     "WHERE recipe_id = ? AND profile_version_id = ?",
-                    (mine, set_id, old),
+                    (mine, recipe_id, old),
                 )
             await self.add_version(row_id, mine, "edit")
         if not follow:
@@ -470,16 +470,16 @@ class ProfileBoardRepository(Repository):
             return True, None
         if len(named) > 1:
             return False, None
-        set_id = int(named[0]["set_id"])
-        owned = await self.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (set_id,))
+        recipe_id = int(named[0]["recipe_id"])
+        owned = await self.db.fetch_value("SELECT board_id FROM recipes WHERE id = ?", (recipe_id,))
         busy = await self.db.fetch_value(
-            "SELECT 1 FROM recipes WHERE board_id = ? AND id != ?", (row_id, set_id)
+            "SELECT 1 FROM recipes WHERE board_id = ? AND id != ?", (row_id, recipe_id)
         )
         elsewhere = await self.db.fetch_value(
             "SELECT 1 FROM recipe_versions v JOIN profile_versions pv ON pv.id = "
             "v.profile_version_id "
             "WHERE v.recipe_id = ? AND pv.board_id IS NOT NULL AND pv.board_id != ? LIMIT 1",
-            (set_id, row_id),
+            (recipe_id, row_id),
         )
         if busy or elsewhere or (owned is not None and owned != row_id):
             return False, None
@@ -491,11 +491,11 @@ class ProfileBoardRepository(Repository):
         current = await self.db.fetch_value(
             "SELECT v.profile_version_id FROM recipes s JOIN recipe_versions v "
             "ON v.id = s.current_version_id WHERE s.id = ?",
-            (set_id,),
+            (recipe_id,),
         )
         if current != version_id:
             return False, None
-        return True, set_id
+        return True, recipe_id
 
     async def add_version(
         self,

@@ -1,4 +1,4 @@
-"""`/api/sets` — what you were trying, version by version.
+"""`/api/recipes` — what you were trying, version by version.
 
 Five routes and one shape. A Recipe is created whole (identity plus its first
 version, in one request, because a Recipe with no version is not a Recipe); everything
@@ -79,16 +79,16 @@ from gaggiclanker.db.repos.recipes import (
     DesignRefusal,
     FieldChange,
     LongText,
+    RecipeRevertRow,
+    RecipeRow,
+    RecipeTrackRecord,
+    RecipeTrends,
     RecipeVersionChange,
     RecipeVersionPatch,
+    RecipeVersionRow,
+    RecipeVersionWrite,
     RecipeWrite,
     RollbackWrite,
-    SetRevertRow,
-    SetRow,
-    SetTrackRecord,
-    SetTrends,
-    SetVersionRow,
-    SetVersionWrite,
     VersionLabelCounts,
     VersionOutcomeWrite,
     VersionPredictionWrite,
@@ -101,7 +101,7 @@ from gaggiclanker.db.repos.recipes import (
     version_changes,
 )
 from gaggiclanker.db.repos.shots import ShotListItem
-from gaggiclanker.domain.recipes import set_name
+from gaggiclanker.domain.recipes import recipe_name
 from gaggiclanker.domain.spread import (
     MeasureSpread,
     VersionEvidence,
@@ -115,7 +115,7 @@ from gaggiclanker.infra.errors import AppError, Conflict, NotFound, Unprocessabl
 
 __all__ = ["router"]
 
-router = APIRouter(prefix="/sets", tags=["sets"])
+router = APIRouter(prefix="/recipes", tags=["recipes"])
 
 #: How many shots a Recipe page loads. A Recipe that has run past this is a Recipe worth
 #: a filtered shots list, which the page links to.
@@ -127,8 +127,8 @@ SHOTS_PER_RECIPE = 500
 DECLINE_NOTE_MAX = 500
 
 
-class SetCreate(BaseModel):
-    """`POST /api/sets`: the identity and the first recipe, in one request."""
+class RecipeCreate(BaseModel):
+    """`POST /api/recipes`: the identity and the first version, in one request."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -137,7 +137,7 @@ class SetCreate(BaseModel):
     grinder_id: int | None = None
     #: Version 1. Everything on it is optional — a Recipe can start as "this bean,
     #: this grinder, we will see" — and the wizard fills it in.
-    version: SetVersionWrite = SetVersionWrite()
+    version: RecipeVersionWrite = RecipeVersionWrite()
     #: Whether the matcher may file shots under this Recipe. True by default: a
     #: Recipe is created by somebody who has just put that bean in a hopper, and one
     #: that did not collect the shots pulled on its profile would look broken.
@@ -145,8 +145,8 @@ class SetCreate(BaseModel):
     automatch: bool = True
 
 
-class SetVersionAdd(RecipeVersionChange):
-    """`POST /api/sets/{id}/versions`: the change, and whether it is a major one.
+class RecipeVersionAdd(RecipeVersionChange):
+    """`POST /api/recipes/{id}/versions`: the change, and whether it is a major one.
 
     ``major`` is the person's answer to the form's "Major change" box: true
     starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
@@ -179,8 +179,8 @@ class ProposalAccept(BaseModel):
     profile_label: str | None = Field(default=None, max_length=200)
 
 
-class SetDesignCreate(DesignBrief):
-    """`POST /api/sets/design`: what the design wizard asks, and the brief it stores.
+class RecipeDesignCreate(DesignBrief):
+    """`POST /api/recipes/design`: what the design wizard asks, and the brief it stores.
 
     The brief's own fields — the profile to fork, the usual grind, the goal and
     whichever of the grind, dose and yield the form already had filled in — are
@@ -198,42 +198,42 @@ class SetDesignCreate(DesignBrief):
     name: str | None = Field(default=None, min_length=1, max_length=200)
 
 
-class SetDesignCreated(BaseModel):
-    """What starting a design produced: the Set, its empty version 1, and its chat."""
+class RecipeDesignCreated(BaseModel):
+    """What starting a design produced: the Recipe, its empty version 1, and its chat."""
 
     model_config = ConfigDict(extra="forbid")
 
-    set: SetRow
-    version: SetVersionRow
+    recipe: RecipeRow
+    version: RecipeVersionRow
     #: Version 1's conversation, opened here so the page can go straight to it.
     thread_id: int
 
 
-class SetDesignDiscarded(BaseModel):
-    """`DELETE /api/sets/{id}/design`: the Set that no longer exists."""
+class RecipeDesignDiscarded(BaseModel):
+    """`DELETE /api/recipes/{id}/design`: the Recipe that no longer exists."""
 
     model_config = ConfigDict(extra="forbid")
 
-    set_id: int
+    recipe_id: int
     discarded: bool = True
 
 
 class AutomatchWrite(BaseModel):
-    """`PUT /api/sets/{id}/automatch`: whether the matcher may file shots here."""
+    """`PUT /api/recipes/{id}/automatch`: whether the matcher may file shots here."""
 
     model_config = ConfigDict(extra="forbid")
 
     automatch: bool
 
 
-class SetListData(BaseModel):
+class RecipeListData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    items: list[SetRow]
+    items: list[RecipeRow]
 
 
 class ProfileChoice(BaseModel):
-    """What a Set may start on: the version to name and the profile's name."""
+    """What a Recipe may start on: the version to name and the profile's name."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -242,15 +242,16 @@ class ProfileChoice(BaseModel):
 
 
 class TakenProfileChoice(BaseModel):
-    """A profile a new Set cannot start on because it has a Set: New Set lists it to duplicate."""
+    """A profile a new Recipe cannot start on because it has a Recipe: New Recipe lists it to
+    duplicate."""
 
     model_config = ConfigDict(extra="forbid")
 
     #: The profile's active version, the one Duplicate Profile opens on.
     profile_version_id: int
     label: str
-    set_id: int
-    set_name: str
+    recipe_id: int
+    recipe_name: str
 
 
 class ProfileChoiceListData(BaseModel):
@@ -273,13 +274,13 @@ class VersionPinned(BaseModel):
     shot_count: int
 
 
-class SetPin(BaseModel):
-    """One live pin, as the Set page's "Pinned on the machine" card lists it."""
+class RecipePin(BaseModel):
+    """One live pin, as the Recipe page's "Pinned on the machine" card lists it."""
 
     model_config = ConfigDict(extra="forbid")
 
     pin_id: int
-    set_version_id: int
+    recipe_version_id: int
     #: The pinned version's name, "v1.2".
     version_label: str
     #: The copy's name on the machine.
@@ -290,12 +291,12 @@ class SetPin(BaseModel):
     shot_count: int
 
 
-class SetVersionDetail(BaseModel):
+class RecipeVersionDetail(BaseModel):
     """One version, its diff against its parent, and the shots pulled with it."""
 
     model_config = ConfigDict(extra="forbid")
 
-    version: SetVersionRow
+    version: RecipeVersionRow
     #: What this version changed, computed against `parent_version_id`. Empty
     #: for version 1, which is a baseline rather than a change to anything.
     changes: list[FieldChange]
@@ -325,7 +326,7 @@ class SetVersionDetail(BaseModel):
     pinned: VersionPinned | None = None
 
 
-class SetProposalDetail(BaseModel):
+class RecipeProposalDetail(BaseModel):
     """One proposed change, as the card that asks about it needs it.
 
     Written out field by field rather than dumped from the repository's row,
@@ -339,7 +340,7 @@ class SetProposalDetail(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_id: int
+    recipe_id: int
     #: `change` for one move on a recipe, `design` for a Recipe's whole first
     #: recipe — which fills version 1 in place when accepted.
     kind: ProposalKind = "change"
@@ -395,22 +396,22 @@ class SetProposalDetail(BaseModel):
     decided_at: str | None = None
 
 
-class SetProposalListData(BaseModel):
-    """`GET /api/sets/{id}/proposals`: every change ever proposed, newest first."""
+class RecipeProposalListData(BaseModel):
+    """`GET /api/recipes/{id}/proposals`: every change ever proposed, newest first."""
 
     model_config = ConfigDict(extra="forbid")
 
-    items: list[SetProposalDetail]
+    items: list[RecipeProposalDetail]
 
 
-class SetProposalDecision(BaseModel):
+class RecipeProposalDecision(BaseModel):
     """What accepting one produced: the proposal as it now stands, and the version."""
 
     model_config = ConfigDict(extra="forbid")
 
-    proposal: SetProposalDetail
+    proposal: RecipeProposalDetail
     #: The version Accept appended. NULL after a decline, which creates none.
-    version: SetVersionRow | None = None
+    version: RecipeVersionRow | None = None
     #: The profile draft a first recipe's accept put on the list, and the profile it became,
     #: so a sync can follow. NULL when nothing was put.
     profile_draft_id: int | None = None
@@ -434,18 +435,18 @@ class ProposalDecline(BaseModel):
     note: str = Field(default="", max_length=DECLINE_NOTE_MAX)
 
 
-class SetDetailData(BaseModel):
-    """`GET /api/sets/{id}`: everything the Set page draws."""
+class RecipeDetailData(BaseModel):
+    """`GET /api/recipes/{id}`: everything the Recipe page draws."""
 
     model_config = ConfigDict(extra="forbid")
 
-    set: SetRow
-    versions: list[SetVersionDetail]
+    recipe: RecipeRow
+    versions: list[RecipeVersionDetail]
     #: Verdicts for the shots above, keyed by shot id as a string (JSON object
     #: keys are strings, and pretending otherwise costs the client a cast).
     judgements: dict[str, ShotJudgementRow]
     #: How often this Recipe's predictions held. The page's one headline number.
-    track_record: SetTrackRecord = SetTrackRecord()
+    track_record: RecipeTrackRecord = RecipeTrackRecord()
     #: How much this Recipe's shots vary when nothing in the recipe changed, per
     #: measure, with the basis under each one. Worked out by the app and not by
     #: a model, so the same shots always give the same figure.
@@ -455,16 +456,16 @@ class SetDetailData(BaseModel):
     rollback_target_version_id: int | None = None
     #: Every time this Recipe went back to another version, newest first: the
     #: log's "Went back to v1.2 (from v2.1)" lines. Not versions.
-    reverts: list[SetRevertRow] = []
+    reverts: list[RecipeRevertRow] = []
     #: The change an agent has proposed and nobody has answered yet. At most one
     #: per Recipe, and it has changed nothing: the next shot is still filed under
     #: the recipe in the hopper until somebody presses Accept.
-    proposal: SetProposalDetail | None = None
+    proposal: RecipeProposalDetail | None = None
     #: The agent's grade of the **current** version, waiting for the person.
     outcome_proposal: OutcomeProposalRow | None = None
     #: The versions of this Recipe kept on the machine as profiles of their own, newest pin first.
     #: Live pins only; empty when there are none.
-    pins: list[SetPin] = []
+    pins: list[RecipePin] = []
 
 
 def _missing(field: str, value: int, noun: str) -> NoReturn:
@@ -475,7 +476,9 @@ def _missing(field: str, value: int, noun: str) -> NoReturn:
     )
 
 
-def _unwrap(result: VersionWriteResult, set_id: int, version_id: int | None = None) -> JSONResponse:
+def _unwrap(
+    result: VersionWriteResult, recipe_id: int, version_id: int | None = None
+) -> JSONResponse:
     """The written version, or the one error its refusal means.
 
     The repository answers with a slug and no opinion about HTTP; this is the
@@ -485,14 +488,14 @@ def _unwrap(result: VersionWriteResult, set_id: int, version_id: int | None = No
     """
     if result.version is not None:
         return envelope_response(result.version.model_dump(mode="json"))
-    raise _REFUSALS[result.refused or "no_version"](set_id, version_id)
+    raise _REFUSALS[result.refused or "no_version"](recipe_id, version_id)
 
 
-def _refusal_no_version(set_id: int, version_id: int | None) -> AppError:
-    return NotFound(f"No version {version_id} in Set {set_id}")
+def _refusal_no_version(recipe_id: int, version_id: int | None) -> AppError:
+    return NotFound(f"No version {version_id} in Recipe {recipe_id}")
 
 
-def _refusal_has_shots(set_id: int, version_id: int | None) -> AppError:
+def _refusal_has_shots(recipe_id: int, version_id: int | None) -> AppError:
     return Conflict(
         f"Version {version_id} already has shots",
         code="VERSION_HAS_SHOTS",
@@ -503,7 +506,7 @@ def _refusal_has_shots(set_id: int, version_id: int | None) -> AppError:
     )
 
 
-def _refusal_has_outcome(set_id: int, version_id: int | None) -> AppError:
+def _refusal_has_outcome(recipe_id: int, version_id: int | None) -> AppError:
     return Conflict(
         f"Version {version_id} has already been graded",
         code="VERSION_HAS_OUTCOME",
@@ -514,24 +517,24 @@ def _refusal_has_outcome(set_id: int, version_id: int | None) -> AppError:
     )
 
 
-def _refusal_bad_compare(set_id: int, version_id: int | None) -> AppError:
+def _refusal_bad_compare(recipe_id: int, version_id: int | None) -> AppError:
     return Unprocessable(
         "That is not a version this prediction can be compared against",
         details={
             "field": "compares_to_version_id",
-            "message": "it must be an earlier version of this Set",
+            "message": "it must be an earlier version of this Recipe",
         },
     )
 
 
-def _refusal_no_prediction(set_id: int, version_id: int | None) -> AppError:
+def _refusal_no_prediction(recipe_id: int, version_id: int | None) -> AppError:
     return Unprocessable(
         f"Version {version_id} states no prediction",
         details={"field": "outcome", "message": "there is nothing to grade"},
     )
 
 
-def _refusal_nothing_to_grade(set_id: int, version_id: int | None) -> AppError:
+def _refusal_nothing_to_grade(recipe_id: int, version_id: int | None) -> AppError:
     return Conflict(
         f"Version {version_id} has no shot you have formed a view about",
         code="NOTHING_TO_GRADE",
@@ -542,28 +545,28 @@ def _refusal_nothing_to_grade(set_id: int, version_id: int | None) -> AppError:
     )
 
 
-def _refusal_no_target(set_id: int, version_id: int | None) -> AppError:
+def _refusal_no_target(recipe_id: int, version_id: int | None) -> AppError:
     return Unprocessable(
-        f"No such version in Set {set_id}",
-        details={"field": "to_version_id", "message": "it must be a version of this Set"},
+        f"No such version in Recipe {recipe_id}",
+        details={"field": "to_version_id", "message": "it must be a version of this Recipe"},
     )
 
 
-def _refusal_current_version(set_id: int, version_id: int | None) -> AppError:
+def _refusal_current_version(recipe_id: int, version_id: int | None) -> AppError:
     return Unprocessable(
         "That is already the current version",
         details={
             "field": "to_version_id",
-            "message": "pick another version of this Set to go back to",
+            "message": "pick another version of this Recipe to go back to",
         },
     )
 
 
-def _refusal_designing(set_id: int, version_id: int | None) -> AppError:
+def _refusal_designing(recipe_id: int, version_id: int | None) -> AppError:
     return Conflict(
         design_refusal_message("designing"),
         code="DESIGNING",
-        details={"field": "set_id", "message": "there is no other version to go back to yet"},
+        details={"field": "recipe_id", "message": "there is no other version to go back to yet"},
     )
 
 
@@ -586,7 +589,7 @@ def version_refused(exc: VersionRefused) -> AppError:
             },
         )
     if exc.refused in (
-        "profile_has_a_set",
+        "profile_has_a_recipe",
         "other_profile",
         "not_the_active_version",
         "profile_deleted",
@@ -594,16 +597,19 @@ def version_refused(exc: VersionRefused) -> AppError:
         return Conflict(
             exc.message,
             code=exc.code,
-            details={"field": "profile_version_id", "message": "a profile has at most one Set"},
+            details={"field": "profile_version_id", "message": "a profile has at most one Recipe"},
         )
     return Conflict(
         exc.message,
         code=exc.code,
-        details={"field": "set_id", "message": "version 1 of this Set can no longer be filled"},
+        details={
+            "field": "recipe_id",
+            "message": "version 1 of this Recipe can no longer be filled",
+        },
     )
 
 
-def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> AppError:
+def _proposal_error(refusal: ProposalRefusal, recipe_id: int, proposal_id: int) -> AppError:
     """A proposal refusal as the one error it means.
 
     Two of them are 409s with codes of their own, because they are the two the
@@ -620,7 +626,7 @@ def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> 
             code="PROPOSAL_STALE",
             details={
                 "field": "base_version_id",
-                "message": "the Set moved on since; ask in the chat for the change again",
+                "message": "the Recipe moved on since; ask in the chat for the change again",
             },
         )
     if refusal == "outcome_open":
@@ -661,7 +667,7 @@ def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> 
                 "field": "draft_id",
                 "message": (
                     "its draft was discarded or replaced on the Profiles page; decline this card "
-                    "and ask the agent in the Set's chat for a new one"
+                    "and ask the agent in the Recipe's chat for a new one"
                 ),
             },
         )
@@ -678,7 +684,10 @@ def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> 
         return Conflict(
             design_refusal_message(refusal),
             code=refusal.upper(),
-            details={"field": "set_id", "message": "version 1 of this Set can no longer be filled"},
+            details={
+                "field": "recipe_id",
+                "message": "version 1 of this Recipe can no longer be filled",
+            },
         )
     if refusal == "not_waiting":
         return Conflict(
@@ -686,19 +695,19 @@ def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> 
             code="PROPOSAL_DECIDED",
             details={"field": "status", "message": "it is no longer waiting for a decision"},
         )
-    return NotFound(f"No proposal {proposal_id} in Set {set_id}")
+    return NotFound(f"No proposal {proposal_id} in Recipe {recipe_id}")
 
 
-def _design_error(refusal: DesignRefusal, set_id: int) -> AppError:
+def _design_error(refusal: DesignRefusal, recipe_id: int) -> AppError:
     """A refused discard, as the one error it means. Each 409 has its own code."""
     if refusal == "no_recipe":
-        return NotFound(f"No Set {set_id}")
+        return NotFound(f"No Recipe {recipe_id}")
     return Conflict(
         design_refusal_message(refusal),
         code=refusal.upper(),
         details={
-            "field": "set_id",
-            "message": "only a Set still being designed, with nothing filed on it, is discarded",
+            "field": "recipe_id",
+            "message": "only a Recipe still being designed, with nothing filed on it, is discarded",
         },
     )
 
@@ -719,7 +728,7 @@ _REFUSALS: dict[VersionRefusal, Callable[[int, int | None], AppError]] = {
 
 async def _proposal_detail(
     proposals: RecipeProposalsRepository, row: RecipeProposalRow
-) -> SetProposalDetail:
+) -> RecipeProposalDetail:
     """One proposal with its change rendered the way the log renders a version's.
 
     The diff is computed against a version that does not exist yet — the base
@@ -741,10 +750,10 @@ async def _proposal_detail(
     changes = (
         version_changes(preview, base, labels) if base is not None and preview is not None else []
     )
-    names = await proposals.next_names(row.set_id)
-    return SetProposalDetail(
+    names = await proposals.next_names(row.recipe_id)
+    return RecipeProposalDetail(
         id=row.id,
-        set_id=row.set_id,
+        recipe_id=row.recipe_id,
         kind=row.kind,
         draft_id=row.draft_id,
         thread_id=row.thread_id,
@@ -780,13 +789,16 @@ async def _proposal_detail(
 
 
 async def _decided(
-    proposals: RecipeProposalsRepository, result: ProposalWriteResult, set_id: int, proposal_id: int
+    proposals: RecipeProposalsRepository,
+    result: ProposalWriteResult,
+    recipe_id: int,
+    proposal_id: int,
 ) -> JSONResponse:
     """The proposal as it now stands, or the one error its refusal means."""
     if result.proposal is None or result.refused is not None:
-        raise _proposal_error(result.refused or "no_proposal", set_id, proposal_id)
+        raise _proposal_error(result.refused or "no_proposal", recipe_id, proposal_id)
     return envelope_response(
-        SetProposalDecision(
+        RecipeProposalDecision(
             proposal=await _proposal_detail(proposals, result.proposal),
             version=result.version,
             profile_draft_id=result.profile_draft_id,
@@ -798,16 +810,16 @@ async def _decided(
 @router.get(
     "/profile-choices",
     response_model=ApiResponse[ProfileChoiceListData],
-    summary="The profiles a new Set may start on",
+    summary="The profiles a new Recipe may start on",
 )
 async def profile_choices(recipes: RecipesRepoDep) -> JSONResponse:
-    """The active version of each profile that has no Set, then each mirrored machine file no
-    profile stands on and no Set names (with Writes off the list has no profiles, so the files
-    are what there is). Exactly what New Set and a Set with no profile accept: one function
+    """The active version of each profile that has no Recipe, then each mirrored machine file no
+    profile stands on and no Recipe names (with Writes off the list has no profiles, so the files
+    are what there is). Exactly what New Recipe and a Recipe with no profile accept: one function
     decides both.
 
-    `taken` lists the profiles that have a Set, with that Set, which New Set offers to duplicate
-    (Duplicate Profile) and never accepts as they are."""
+    `taken` lists the profiles that have a Recipe, with that Recipe, which New Recipe offers to
+    duplicate (Duplicate Profile) and never accepts as they are."""
     return envelope_response(
         ProfileChoiceListData(
             items=[
@@ -816,9 +828,9 @@ async def profile_choices(recipes: RecipesRepoDep) -> JSONResponse:
             ],
             taken=[
                 TakenProfileChoice(
-                    profile_version_id=i, label=label, set_id=set_id, set_name=set_name
+                    profile_version_id=i, label=label, recipe_id=recipe_id, recipe_name=recipe_name
                 )
-                for i, label, set_id, set_name in await recipes.taken_profile_choices()
+                for i, label, recipe_id, recipe_name in await recipes.taken_profile_choices()
             ],
         ).model_dump(mode="json")
     )
@@ -826,31 +838,31 @@ async def profile_choices(recipes: RecipesRepoDep) -> JSONResponse:
 
 @router.get(
     "",
-    response_model=ApiResponse[SetListData],
-    summary="The Sets, the ones collecting shots first",
+    response_model=ApiResponse[RecipeListData],
+    summary="The Recipes, the ones collecting shots first",
 )
-async def list_sets(
+async def list_recipes(
     recipes: RecipesRepoDep,
     include_archived: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
-    rows = await recipes.list_sets(include_archived=include_archived)
-    return envelope_response(SetListData(items=rows).model_dump(mode="json"))
+    rows = await recipes.list_recipes(include_archived=include_archived)
+    return envelope_response(RecipeListData(items=rows).model_dump(mode="json"))
 
 
 @router.post(
     "",
-    response_model=ApiResponse[SetRow],
+    response_model=ApiResponse[RecipeRow],
     status_code=201,
-    summary="Start a Set, with its first version",
+    summary="Start a Recipe, with its first version",
 )
-async def create_set(
-    body: SetCreate,
+async def create_recipe(
+    body: RecipeCreate,
     recipes: RecipesRepoDep,
     beans: BeansRepoDep,
     grinders: GrindersRepoDep,
     profiles: ProfilesRepoDep,
 ) -> JSONResponse:
-    """Create the Set and version 1 atomically.
+    """Create the Recipe and version 1 atomically.
 
     Every reference is checked here rather than left to the foreign keys. A
     failed key raises `IntegrityError` from inside the transaction, which the
@@ -869,7 +881,7 @@ async def create_set(
     profile_version_id = body.version.profile_version_id
     if profile_version_id is None:
         raise Unprocessable(
-            "A Set needs a profile: pick one that has no Set, or design one with the agent.",
+            "A Recipe needs a profile: pick one that has no Recipe, or design one with the agent.",
             details={"field": "version.profile_version_id", "message": "a profile is required"},
         )
     if await profiles.get_version(profile_version_id) is None:
@@ -892,23 +904,23 @@ async def create_set(
 
 @router.post(
     "/design",
-    response_model=ApiResponse[SetDesignCreated],
+    response_model=ApiResponse[RecipeDesignCreated],
     status_code=201,
-    summary="Start a Set to be designed in its own conversation",
+    summary="Start a Recipe to be designed in its own conversation",
 )
-async def design_set(
-    body: SetDesignCreate,
+async def design_recipe(
+    body: RecipeDesignCreate,
     db: DatabaseDep,
     recipes: RecipesRepoDep,
     beans: BeansRepoDep,
     grinders: GrindersRepoDep,
     profiles: ProfilesRepoDep,
 ) -> JSONResponse:
-    """A Set with a bean and a grinder and no recipe yet, and the chat to design it in.
+    """A Recipe with a bean and a grinder and no version yet, and the chat to design it in.
 
     Version 1 states nothing: the agent works the recipe out with the person
     in version 1's own conversation, which is opened here and answered with the
-    design prompt while the Set is being designed. Nothing is proposed, drafted
+    design prompt while the Recipe is being designed. Nothing is proposed, drafted
     or sent anywhere by this route.
 
     Every reference is looked up first and a missing one is a 404 naming the
@@ -937,7 +949,7 @@ async def design_set(
 
     row = await recipes.create_design(
         RecipeWrite(
-            name=body.name or set_name(bean.name, grinder.name),
+            name=body.name or recipe_name(bean.name, grinder.name),
             bean_id=bean.id,
             grinder_id=grinder.id,
         ),
@@ -946,9 +958,9 @@ async def design_set(
     version = await recipes.current_version(row.id)
     opened = await ChatRepository(db).open_thread(row.id)
     if version is None or opened.thread is None:  # pragma: no cover - created just above
-        raise NotFound(f"No Set {row.id}")
+        raise NotFound(f"No Recipe {row.id}")
     return envelope_response(
-        SetDesignCreated(set=row, version=version, thread_id=opened.thread.id).model_dump(
+        RecipeDesignCreated(recipe=row, version=version, thread_id=opened.thread.id).model_dump(
             mode="json"
         ),
         status_code=201,
@@ -956,30 +968,30 @@ async def design_set(
 
 
 @router.delete(
-    "/{set_id}/design",
-    response_model=ApiResponse[SetDesignDiscarded],
-    summary="Discard a Set that is still being designed",
+    "/{recipe_id}/design",
+    response_model=ApiResponse[RecipeDesignDiscarded],
+    summary="Discard a Recipe that is still being designed",
 )
-async def discard_design(set_id: int, recipes: RecipesRepoDep) -> JSONResponse:
+async def discard_design(recipe_id: int, recipes: RecipesRepoDep) -> JSONResponse:
     """Delete it, its conversations and its proposals; discard its drafts.
 
-    Only while the Set is being designed and nothing is filed on it. A Set with
+    Only while the Recipe is being designed and nothing is filed on it. A Recipe with
     a recipe or a shot has history, and is archived rather than deleted: 409
     `NOT_DESIGNING` or `DESIGN_HAS_SHOTS`.
     """
-    refusal = await recipes.discard_design(set_id)
+    refusal = await recipes.discard_design(recipe_id)
     if refusal is not None:
-        raise _design_error(refusal, set_id)
-    return envelope_response(SetDesignDiscarded(set_id=set_id).model_dump(mode="json"))
+        raise _design_error(refusal, recipe_id)
+    return envelope_response(RecipeDesignDiscarded(recipe_id=recipe_id).model_dump(mode="json"))
 
 
 @router.get(
-    "/{set_id}",
-    response_model=ApiResponse[SetDetailData],
-    summary="One Set with its versions, their diffs and their shots",
+    "/{recipe_id}",
+    response_model=ApiResponse[RecipeDetailData],
+    summary="One Recipe with its versions, their diffs and their shots",
 )
-async def get_set(
-    set_id: int,
+async def get_recipe(
+    recipe_id: int,
     recipes: RecipesRepoDep,
     shots: ShotsRepoDep,
     judgements: JudgementsRepoDep,
@@ -987,10 +999,10 @@ async def get_set(
     outcomes: OutcomeProposalsRepoDep,
     pins: PinsRepoDep,
 ) -> JSONResponse:
-    row = await recipes.get(set_id)
+    row = await recipes.get(recipe_id)
     if row is None:
-        raise NotFound(f"No Set {set_id}")
-    versions = await recipes.versions(set_id)
+        raise NotFound(f"No Recipe {recipe_id}")
+    versions = await recipes.versions(recipe_id)
     by_id = {version.id: version for version in versions}
     labels = {
         version.profile_version_id: version.profile_label
@@ -1001,29 +1013,29 @@ async def get_set(
     # One shots query for the whole Recipe rather than one per version: a Recipe with
     # five versions is five round trips otherwise, and the rows are grouped in
     # memory from a column that is already in the projection.
-    page = await shots.list_shots(set_id=set_id, limit=SHOTS_PER_RECIPE)
+    page = await shots.list_shots(recipe_id=recipe_id, limit=SHOTS_PER_RECIPE)
     grouped: dict[int, list[ShotListItem]] = {version.id: [] for version in versions}
     for shot in page.items:
-        if shot.set_version_id in grouped:
-            grouped[shot.set_version_id].append(shot)
+        if shot.recipe_version_id in grouped:
+            grouped[shot.recipe_version_id].append(shot)
 
     dead_ends = dead_end_ids(versions, row.current_version_id)
-    counts = await recipes.label_counts(set_id)
+    counts = await recipes.label_counts(recipe_id)
     # One pass over the Recipe's counted shots feeds both the spread and every
     # version's evidence: the evidence is held against the spread, and two
     # queries could answer with two different sets of shots if one landed
     # between them.
-    counted = await recipes.counted_shots(set_id)
+    counted = await recipes.counted_shots(recipe_id)
     spreads = pooled_spreads(counted)
     # One query for every version that came out of an accepted proposal, so the
     # log can offer a way back into the conversation the change was argued in
     # without a request per row.
-    threads = await proposals.accepted_threads(set_id)
-    grades = await outcomes.waiting_by_version(set_id)
-    live_pins = await pins.live_for_recipe(set_id)
-    pin_of_version = {pin.set_version_id: pin for pin in live_pins}
+    threads = await proposals.accepted_threads(recipe_id)
+    grades = await outcomes.waiting_by_version(recipe_id)
+    live_pins = await pins.live_for_recipe(recipe_id)
+    pin_of_version = {pin.recipe_version_id: pin for pin in live_pins}
     details = [
-        SetVersionDetail(
+        RecipeVersionDetail(
             version=version,
             changes=version_changes(version, by_id.get(version.parent_version_id or 0), labels),
             shots=grouped[version.id],
@@ -1055,22 +1067,22 @@ async def get_set(
         for version in versions
     ]
     verdicts = await judgements.for_shots([shot.id for shot in page.items])
-    waiting = await proposals.waiting(set_id)
+    waiting = await proposals.waiting(recipe_id)
     return envelope_response(
-        SetDetailData(
-            set=row,
+        RecipeDetailData(
+            recipe=row,
             versions=details,
             judgements={str(shot_id): verdict for shot_id, verdict in verdicts.items()},
             track_record=track_record(versions),
             spread=spread_report(spreads),
-            rollback_target_version_id=await recipes.rollback_target(set_id),
-            reverts=await recipes.reverts(set_id),
+            rollback_target_version_id=await recipes.rollback_target(recipe_id),
+            reverts=await recipes.reverts(recipe_id),
             proposal=(await _proposal_detail(proposals, waiting) if waiting is not None else None),
             outcome_proposal=grades.get(row.current_version_id or 0),
             pins=[
-                SetPin(
+                RecipePin(
                     pin_id=pin.id,
-                    set_version_id=pin.set_version_id,
+                    recipe_version_id=pin.recipe_version_id,
                     version_label=pin.version_label,
                     name=pin.name,
                     board_id=pin.board_id,
@@ -1084,12 +1096,14 @@ async def get_set(
 
 
 @router.post(
-    "/{set_id}/versions",
-    response_model=ApiResponse[SetVersionRow],
+    "/{recipe_id}/versions",
+    response_model=ApiResponse[RecipeVersionRow],
     status_code=201,
     summary="Change something: a new version, with its parent and its intent",
 )
-async def add_version(set_id: int, body: SetVersionAdd, recipes: RecipesRepoDep) -> JSONResponse:
+async def add_version(
+    recipe_id: int, body: RecipeVersionAdd, recipes: RecipesRepoDep
+) -> JSONResponse:
     """Append a version made of the current one plus the fields that were sent.
 
     Omitting a field inherits it; sending it as `null` clears it. That
@@ -1103,19 +1117,19 @@ async def add_version(set_id: int, body: SetVersionAdd, recipes: RecipesRepoDep)
     # The Recipe first: a comparison check against a Recipe that is not there would
     # answer "that is not a version of this Recipe", which is true and useless
     # when the Recipe itself is the thing that does not exist.
-    found = await recipes.get(set_id)
+    found = await recipes.get(recipe_id)
     if found is None:
-        raise NotFound(f"No Set {set_id}")
+        raise NotFound(f"No Recipe {recipe_id}")
     if found.designing and body.profile_version_id is None:
         raise Unprocessable(
-            "A Set needs a profile: pick one that has no Set, or design one with the agent.",
+            "A Recipe needs a profile: pick one that has no Recipe, or design one with the agent.",
             details={"field": "profile_version_id", "message": "a profile is required"},
         )
     if body.profile_version_id is not None and found.board_id is not None:
         raise Unprocessable(
             f"{found.name} brews {found.profile_label}: a new version follows its profile, and "
-            "a different profile means a new Set (Duplicate this one).",
-            details={"field": "profile_version_id", "message": "this Set already has a profile"},
+            "a different profile means a new Recipe (Duplicate this one).",
+            details={"field": "profile_version_id", "message": "this Recipe already has a profile"},
         )
     if body.profile_version_id is not None:
         try:
@@ -1130,91 +1144,91 @@ async def add_version(set_id: int, body: SetVersionAdd, recipes: RecipesRepoDep)
     # is — so only the "same Recipe" half of the rule applies here.
     compare = body.compares_to_version_id
     if body.prediction and compare is not None:
-        if await recipes.version_of_recipe(set_id, compare) is None:
-            raise _refusal_bad_compare(set_id, None)
+        if await recipes.version_of_recipe(recipe_id, compare) is None:
+            raise _refusal_bad_compare(recipe_id, None)
     # The recipe half only: `major` is how to name the version, not part of it,
     # and the fields actually sent are kept as sent (inherit versus clear).
     patch = RecipeVersionPatch.model_validate(
         body.model_dump(exclude_unset=True, exclude={"major"})
     )
     try:
-        version = await recipes.add_version(set_id, patch, major=body.major)
+        version = await recipes.add_version(recipe_id, patch, major=body.major)
     except VersionRefused as exc:
         raise version_refused(exc) from None
     if version is None:  # pragma: no cover - the Recipe was checked above
-        raise NotFound(f"No Set {set_id}")
+        raise NotFound(f"No Recipe {recipe_id}")
     return envelope_response(version.model_dump(mode="json"), status_code=201)
 
 
 @router.patch(
-    "/{set_id}/versions/{version_id}/prediction",
-    response_model=ApiResponse[SetVersionRow],
+    "/{recipe_id}/versions/{version_id}/prediction",
+    response_model=ApiResponse[RecipeVersionRow],
     summary="Say what this version is expected to do differently",
 )
 async def set_prediction(
-    set_id: int, version_id: int, body: VersionPredictionWrite, recipes: RecipesRepoDep
+    recipe_id: int, version_id: int, body: VersionPredictionWrite, recipes: RecipesRepoDep
 ) -> JSONResponse:
     """Writable only while the version has no shots.
 
     An empty `prediction` takes the prediction back, comparison and all — which
     is the only way to remove one, and still only before the first shot.
     """
-    return _unwrap(await recipes.set_prediction(set_id, version_id, body), set_id, version_id)
+    return _unwrap(await recipes.set_prediction(recipe_id, version_id, body), recipe_id, version_id)
 
 
 @router.put(
-    "/{set_id}/versions/{version_id}/outcome",
-    response_model=ApiResponse[SetVersionRow],
+    "/{recipe_id}/versions/{version_id}/outcome",
+    response_model=ApiResponse[RecipeVersionRow],
     summary="Grade this version's prediction",
 )
 async def set_outcome(
-    set_id: int, version_id: int, body: VersionOutcomeWrite, recipes: RecipesRepoDep
+    recipe_id: int, version_id: int, body: VersionOutcomeWrite, recipes: RecipesRepoDep
 ) -> JSONResponse:
     """Held, partly held, failed or inconclusive, with the why beside it.
 
     Recordable only once the version has a prediction and a shot somebody
     labelled Keep or Improve; changeable afterwards as often as you like.
     """
-    return _unwrap(await recipes.set_outcome(set_id, version_id, body), set_id, version_id)
+    return _unwrap(await recipes.set_outcome(recipe_id, version_id, body), recipe_id, version_id)
 
 
 @router.delete(
-    "/{set_id}/versions/{version_id}/outcome",
-    response_model=ApiResponse[SetVersionRow],
+    "/{recipe_id}/versions/{version_id}/outcome",
+    response_model=ApiResponse[RecipeVersionRow],
     summary="Take back the grade on this version's prediction",
 )
-async def clear_outcome(set_id: int, version_id: int, recipes: RecipesRepoDep) -> JSONResponse:
-    return _unwrap(await recipes.clear_outcome(set_id, version_id), set_id, version_id)
+async def clear_outcome(recipe_id: int, version_id: int, recipes: RecipesRepoDep) -> JSONResponse:
+    return _unwrap(await recipes.clear_outcome(recipe_id, version_id), recipe_id, version_id)
 
 
 @router.get(
-    "/{set_id}/proposals",
-    response_model=ApiResponse[SetProposalListData],
-    summary="Every change an agent has proposed for this Set",
+    "/{recipe_id}/proposals",
+    response_model=ApiResponse[RecipeProposalListData],
+    summary="Every change an agent has proposed for this Recipe",
 )
 async def list_proposals(
-    set_id: int, recipes: RecipesRepoDep, proposals: RecipeProposalsRepoDep
+    recipe_id: int, recipes: RecipesRepoDep, proposals: RecipeProposalsRepoDep
 ) -> JSONResponse:
     """Newest first, waiting and answered alike.
 
     The answered ones are the point as much as the waiting one: a declined
     proposal is a record of what the person did not want, and a stale one says
-    the Set moved on while somebody was thinking about it.
+    the Recipe moved on while somebody was thinking about it.
     """
-    if await recipes.get(set_id) is None:
-        raise NotFound(f"No Set {set_id}")
-    rows = await proposals.for_recipe(set_id)
+    if await recipes.get(recipe_id) is None:
+        raise NotFound(f"No Recipe {recipe_id}")
+    rows = await proposals.for_recipe(recipe_id)
     items = [await _proposal_detail(proposals, row) for row in rows]
-    return envelope_response(SetProposalListData(items=items).model_dump(mode="json"))
+    return envelope_response(RecipeProposalListData(items=items).model_dump(mode="json"))
 
 
 @router.post(
-    "/{set_id}/proposals/{proposal_id}/accept",
-    response_model=ApiResponse[SetProposalDecision],
-    summary="Accept a proposed change: record it as this Set's next version",
+    "/{recipe_id}/proposals/{proposal_id}/accept",
+    response_model=ApiResponse[RecipeProposalDecision],
+    summary="Accept a proposed change: record it as this Recipe's next version",
 )
 async def accept_proposal(
-    set_id: int,
+    recipe_id: int,
     proposal_id: int,
     proposals: RecipeProposalsRepoDep,
     board: BoardServiceDep,
@@ -1227,10 +1241,10 @@ async def accept_proposal(
     what the next shot is filed under without anybody agreeing to it.
 
     **Nothing is sent to the machine.** A proposal that names a different
-    profile records that this Set now brews with that profile, exactly as the
+    profile records that this Recipe now brews with that profile, exactly as the
     Add a version form does. A first recipe is accepted **together with its
     profile**, in the same transaction: while its draft is still waiting it is
-    put on the profile list (no Set recording, since version 1 names it), the
+    put on the profile list (no Recipe recording, since version 1 names it), the
     profile is switched on, and version 1 names the version that put ended on.
     A draft that continues an existing profile becomes that profile's active
     version, exactly as approving it would. A draft that was already answered
@@ -1244,9 +1258,9 @@ async def accept_proposal(
     major = body.major if body is not None else None
     label = body.profile_label if body is not None else None
     put_profile: PutProfile | None = None
-    found = await proposals.get(set_id, proposal_id)
+    found = await proposals.get(recipe_id, proposal_id)
     if found is not None and found.kind != "design" and label is not None:
-        raise Unprocessable("A profile name goes only with a first recipe")
+        raise Unprocessable("A profile name goes only with a first version")
     if found is not None and found.kind == "design":
 
         async def put_in_accept(draft_id: int) -> BoardRow | None:
@@ -1256,28 +1270,34 @@ async def accept_proposal(
         put_profile = put_in_accept
 
     try:
-        accepted = await proposals.accept(set_id, proposal_id, major=major, put_profile=put_profile)
+        accepted = await proposals.accept(
+            recipe_id, proposal_id, major=major, put_profile=put_profile
+        )
     except VersionRefused as exc:
         raise version_refused(exc) from None
-    return await _decided(proposals, accepted, set_id, proposal_id)
+    return await _decided(proposals, accepted, recipe_id, proposal_id)
 
 
 @router.post(
-    "/{set_id}/proposals/{proposal_id}/decline",
-    response_model=ApiResponse[SetProposalDecision],
+    "/{recipe_id}/proposals/{proposal_id}/decline",
+    response_model=ApiResponse[RecipeProposalDecision],
     summary="Turn a proposed change down, optionally saying why",
 )
 async def decline_proposal(
-    set_id: int, proposal_id: int, body: ProposalDecline, proposals: RecipeProposalsRepoDep
+    recipe_id: int, proposal_id: int, body: ProposalDecline, proposals: RecipeProposalsRepoDep
 ) -> JSONResponse:
     """Nothing is created. The note is what the next conversation is told."""
     return await _decided(
-        proposals, await proposals.decline(set_id, proposal_id, body.note), set_id, proposal_id
+        proposals,
+        await proposals.decline(recipe_id, proposal_id, body.note),
+        recipe_id,
+        proposal_id,
     )
 
 
 class OutcomeProposalListData(BaseModel):
-    """`GET /api/sets/{id}/outcome-proposals`: every grade proposed on this Set, newest first."""
+    """`GET /api/recipes/{id}/outcome-proposals`: every grade proposed on this Recipe, newest
+    first."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1291,7 +1311,7 @@ class OutcomeProposalDecision(BaseModel):
 
     proposal: OutcomeProposalRow
     #: The version carrying the outcome that was recorded. NULL after a dismissal.
-    version: SetVersionRow | None = None
+    version: RecipeVersionRow | None = None
 
 
 class OutcomeChange(BaseModel):
@@ -1313,7 +1333,7 @@ class OutcomeDismiss(BaseModel):
 
 
 def _outcome_error(
-    refusal: OutcomeProposalRefusal, set_id: int, proposal_id: int, version: str | None
+    refusal: OutcomeProposalRefusal, recipe_id: int, proposal_id: int, version: str | None
 ) -> AppError:
     """A refused answer to a proposed grade as the one error it means.
 
@@ -1342,14 +1362,14 @@ def _outcome_error(
             f"{named} states no prediction",
             details={"field": "outcome", "message": "there is nothing to grade"},
         )
-    return NotFound(f"No outcome proposal {proposal_id} in Set {set_id}")
+    return NotFound(f"No outcome proposal {proposal_id} in Recipe {recipe_id}")
 
 
-def _outcome_decided(result: OutcomeResult, set_id: int, proposal_id: int) -> JSONResponse:
+def _outcome_decided(result: OutcomeResult, recipe_id: int, proposal_id: int) -> JSONResponse:
     if result.proposal is None or result.refused is not None:
         raise _outcome_error(
             result.refused or "no_proposal",
-            set_id,
+            recipe_id,
             proposal_id,
             result.proposal.version_label if result.proposal else None,
         )
@@ -1361,28 +1381,28 @@ def _outcome_decided(result: OutcomeResult, set_id: int, proposal_id: int) -> JS
 
 
 @router.get(
-    "/{set_id}/outcome-proposals",
+    "/{recipe_id}/outcome-proposals",
     response_model=ApiResponse[OutcomeProposalListData],
-    summary="Every grade an agent has proposed for this Set's versions",
+    summary="Every grade an agent has proposed for this Recipe's versions",
 )
 async def list_outcome_proposals(
-    set_id: int, recipes: RecipesRepoDep, outcomes: OutcomeProposalsRepoDep
+    recipe_id: int, recipes: RecipesRepoDep, outcomes: OutcomeProposalsRepoDep
 ) -> JSONResponse:
     """Newest first, waiting and answered alike, so a card read days later tells the truth."""
-    if await recipes.get(set_id) is None:
-        raise NotFound(f"No Set {set_id}")
+    if await recipes.get(recipe_id) is None:
+        raise NotFound(f"No Recipe {recipe_id}")
     return envelope_response(
-        OutcomeProposalListData(items=await outcomes.for_recipe(set_id)).model_dump(mode="json")
+        OutcomeProposalListData(items=await outcomes.for_recipe(recipe_id)).model_dump(mode="json")
     )
 
 
 @router.post(
-    "/{set_id}/outcome-proposals/{proposal_id}/accept",
+    "/{recipe_id}/outcome-proposals/{proposal_id}/accept",
     response_model=ApiResponse[OutcomeProposalDecision],
     summary="Accept a proposed grade: record it as the version's outcome",
 )
 async def accept_outcome_proposal(
-    set_id: int, proposal_id: int, outcomes: OutcomeProposalsRepoDep
+    recipe_id: int, proposal_id: int, outcomes: OutcomeProposalsRepoDep
 ) -> JSONResponse:
     """A person's press, and the only way an agent's grade becomes an outcome.
 
@@ -1390,122 +1410,129 @@ async def accept_outcome_proposal(
     accept its own grade would be writing the track record every later
     conversation reads.
     """
-    return _outcome_decided(await outcomes.accept(set_id, proposal_id), set_id, proposal_id)
+    return _outcome_decided(await outcomes.accept(recipe_id, proposal_id), recipe_id, proposal_id)
 
 
 @router.post(
-    "/{set_id}/outcome-proposals/{proposal_id}/change",
+    "/{recipe_id}/outcome-proposals/{proposal_id}/change",
     response_model=ApiResponse[OutcomeProposalDecision],
     summary="Record another outcome than the one proposed",
 )
 async def change_outcome_proposal(
-    set_id: int, proposal_id: int, body: OutcomeChange, outcomes: OutcomeProposalsRepoDep
+    recipe_id: int, proposal_id: int, body: OutcomeChange, outcomes: OutcomeProposalsRepoDep
 ) -> JSONResponse:
     return _outcome_decided(
-        await outcomes.change(set_id, proposal_id, body.outcome, body.note), set_id, proposal_id
+        await outcomes.change(recipe_id, proposal_id, body.outcome, body.note),
+        recipe_id,
+        proposal_id,
     )
 
 
 @router.post(
-    "/{set_id}/outcome-proposals/{proposal_id}/dismiss",
+    "/{recipe_id}/outcome-proposals/{proposal_id}/dismiss",
     response_model=ApiResponse[OutcomeProposalDecision],
     summary="Turn a proposed grade down, optionally saying why",
 )
 async def dismiss_outcome_proposal(
-    set_id: int, proposal_id: int, body: OutcomeDismiss, outcomes: OutcomeProposalsRepoDep
+    recipe_id: int, proposal_id: int, body: OutcomeDismiss, outcomes: OutcomeProposalsRepoDep
 ) -> JSONResponse:
     """Nothing is recorded. The note is what that version's conversation is told."""
     return _outcome_decided(
-        await outcomes.dismiss(set_id, proposal_id, body.note), set_id, proposal_id
+        await outcomes.dismiss(recipe_id, proposal_id, body.note), recipe_id, proposal_id
     )
 
 
 @router.post(
-    "/{set_id}/rollback",
-    response_model=ApiResponse[SetVersionRow],
-    summary="Go back to another version: the Set is on it again, and no version is written",
+    "/{recipe_id}/rollback",
+    response_model=ApiResponse[RecipeVersionRow],
+    summary="Go back to another version: the Recipe is on it again, and no version is written",
 )
 async def rollback(
-    set_id: int, body: RollbackWrite, recipes: RecipesRepoDep, board: BoardServiceDep
+    recipe_id: int, body: RollbackWrite, recipes: RecipesRepoDep, board: BoardServiceDep
 ) -> JSONResponse:
-    """Move the Set's current version to `to_version_id` and log that it went back.
+    """Move the Recipe's current version to `to_version_id` and log that it went back.
 
     Nothing is written to the machine and no version is created: the target is
-    the Set's current version again, with its prediction, shots and outcome as
+    the Recipe's current version again, with its prediction, shots and outcome as
     they were, and the next change continues its line (v2.1 back to v1.2, then
-    v1.3). The Set's profile is put back on the version the target brews, as Make active
-    would do (and refused as it would be). The answer is the version the Set is now on. A Set
+    v1.3). The Recipe's profile is put back on the version the target brews, as Make active
+    would do (and refused as it would be). The answer is the version the Recipe is now on. A Recipe
     still being designed has nothing to go back to: 409 `DESIGNING`.
     """
-    if await recipes.get(set_id) is None:
-        raise NotFound(f"No Set {set_id}")
-    return _unwrap(await board.revert_recipe(set_id, body), set_id, body.to_version_id)
+    if await recipes.get(recipe_id) is None:
+        raise NotFound(f"No Recipe {recipe_id}")
+    return _unwrap(await board.revert_recipe(recipe_id, body), recipe_id, body.to_version_id)
 
 
 @router.put(
-    "/{set_id}/automatch",
-    response_model=ApiResponse[SetRow],
-    summary="Offer this Set to the matcher, or take it out of the running",
+    "/{recipe_id}/automatch",
+    response_model=ApiResponse[RecipeRow],
+    summary="Offer this Recipe to the matcher, or take it out of the running",
 )
-async def set_automatch(set_id: int, body: AutomatchWrite, recipes: RecipesRepoDep) -> JSONResponse:
-    """Any number of Sets may be offered. Nothing is taken from another Set.
+async def set_automatch(
+    recipe_id: int, body: AutomatchWrite, recipes: RecipesRepoDep
+) -> JSONResponse:
+    """Any number of Recipes may be offered. Nothing is taken from another Recipe.
 
     One route both ways rather than two: this is one flag with two values, and
     the page that reads it as a switch would otherwise have to know two paths to
     write it.
 
-    Turning it **on** for an archived Set is a 409 rather than a silent no-op:
-    an archived Set receives no shots whatever the flag says, so the page would
+    Turning it **on** for an archived Recipe is a 409 rather than a silent no-op:
+    an archived Recipe receives no shots whatever the flag says, so the page would
     show a badge promising something that will never happen. Turning it off is
-    allowed on any Set — archiving does that itself.
+    allowed on any Recipe — archiving does that itself.
     """
-    existing = await recipes.get(set_id)
+    existing = await recipes.get(recipe_id)
     if existing is None:
-        raise NotFound(f"No Set {set_id}")
+        raise NotFound(f"No Recipe {recipe_id}")
     if body.automatch and existing.archived:
         raise Conflict(
-            f"Set {set_id} is archived",
+            f"Recipe {recipe_id} is archived",
             details={
                 "field": "archived",
                 "message": "un-archive it before the matcher can file shots under it",
             },
         )
-    row = await recipes.set_automatch(set_id, body.automatch)
+    row = await recipes.set_automatch(recipe_id, body.automatch)
     if row is None:  # pragma: no cover - checked above, inside the same request
-        raise NotFound(f"No Set {set_id}")
+        raise NotFound(f"No Recipe {recipe_id}")
     return envelope_response(row.model_dump(mode="json"))
 
 
-@router.post("/{set_id}/archive", response_model=ApiResponse[SetRow], summary="Retire a Set")
-async def archive_set(set_id: int, recipes: RecipesRepoDep) -> JSONResponse:
-    row = await recipes.archive(set_id)
+@router.post(
+    "/{recipe_id}/archive", response_model=ApiResponse[RecipeRow], summary="Retire a Recipe"
+)
+async def archive_recipe(recipe_id: int, recipes: RecipesRepoDep) -> JSONResponse:
+    row = await recipes.archive(recipe_id)
     if row is None:
-        raise NotFound(f"No Set {set_id}")
+        raise NotFound(f"No Recipe {recipe_id}")
     return envelope_response(row.model_dump(mode="json"))
 
 
 @router.get(
-    "/{set_id}/trends",
-    response_model=ApiResponse[SetTrends],
-    summary="Duration, ratio and rating across the Set's versions",
+    "/{recipe_id}/trends",
+    response_model=ApiResponse[RecipeTrends],
+    summary="Duration, ratio and rating across the Recipe's versions",
 )
-async def get_trends(set_id: int, recipes: RecipesRepoDep) -> JSONResponse:
+async def get_trends(recipe_id: int, recipes: RecipesRepoDep) -> JSONResponse:
     """The chart's data: one point per shot, one summary per version.
 
-    Both from one pass over the Set's shots, so a bar can never sit off its own
+    Both from one pass over the Recipe's shots, so a bar can never sit off its own
     points because two queries rounded differently.
     """
-    row = await recipes.get(set_id)
+    row = await recipes.get(recipe_id)
     if row is None:
-        raise NotFound(f"No Set {set_id}")
-    return envelope_response((await recipes.trends(set_id)).model_dump(mode="json"))
+        raise NotFound(f"No Recipe {recipe_id}")
+    return envelope_response((await recipes.trends(recipe_id)).model_dump(mode="json"))
 
 
 # ── insights the agent proposed deleting ─────────────────────────────
 
 
 class InsightDeletionListData(BaseModel):
-    """`GET /api/sets/{id}/insight-deletions`: every deletion proposed on this Set, newest first."""
+    """`GET /api/recipes/{id}/insight-deletions`: every deletion proposed on this Recipe, newest
+    first."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1520,7 +1547,7 @@ class InsightDeletionDecision(BaseModel):
     proposal: InsightDeletionRow
 
 
-def _deletion_error(refusal: InsightDeletionRefusal, set_id: int, proposal_id: int) -> AppError:
+def _deletion_error(refusal: InsightDeletionRefusal, recipe_id: int, proposal_id: int) -> AppError:
     """A refused answer to a proposed deletion as the one error it means.
 
     `details` names the field at fault and never repeats the insight or the reason.
@@ -1540,24 +1567,24 @@ def _deletion_error(refusal: InsightDeletionRefusal, set_id: int, proposal_id: i
                 "message": "it was taken back since, so there is nothing left to delete",
             },
         )
-    return NotFound(f"No insight deletion {proposal_id} in Set {set_id}")
+    return NotFound(f"No insight deletion {proposal_id} in Recipe {recipe_id}")
 
 
-def _deletion_decided(result: DeletionResult, set_id: int, proposal_id: int) -> JSONResponse:
+def _deletion_decided(result: DeletionResult, recipe_id: int, proposal_id: int) -> JSONResponse:
     if result.proposal is None or result.refused is not None:
-        raise _deletion_error(result.refused or "no_proposal", set_id, proposal_id)
+        raise _deletion_error(result.refused or "no_proposal", recipe_id, proposal_id)
     return envelope_response(
         InsightDeletionDecision(proposal=result.proposal).model_dump(mode="json")
     )
 
 
 @router.get(
-    "/{set_id}/insight-deletions",
+    "/{recipe_id}/insight-deletions",
     response_model=ApiResponse[InsightDeletionListData],
-    summary="Every deletion an agent has proposed for this Set's insights",
+    summary="Every deletion an agent has proposed for this Recipe's insights",
 )
 async def list_insight_deletions(
-    set_id: int,
+    recipe_id: int,
     recipes: RecipesRepoDep,
     deletions: InsightDeletionsRepoDep,
     thread_id: Annotated[
@@ -1571,23 +1598,23 @@ async def list_insight_deletions(
     ] = None,
 ) -> JSONResponse:
     """Newest first, waiting and answered alike, so a card read days later tells the truth."""
-    if await recipes.get(set_id) is None:
-        raise NotFound(f"No Set {set_id}")
+    if await recipes.get(recipe_id) is None:
+        raise NotFound(f"No Recipe {recipe_id}")
     items = (
-        await deletions.for_recipe(set_id)
+        await deletions.for_recipe(recipe_id)
         if thread_id is None
-        else [row for row in await deletions.for_thread(thread_id) if row.set_id == set_id]
+        else [row for row in await deletions.for_thread(thread_id) if row.recipe_id == recipe_id]
     )
     return envelope_response(InsightDeletionListData(items=items).model_dump(mode="json"))
 
 
 @router.post(
-    "/{set_id}/insight-deletions/{proposal_id}/accept",
+    "/{recipe_id}/insight-deletions/{proposal_id}/accept",
     response_model=ApiResponse[InsightDeletionDecision],
     summary="Delete the insight an agent proposed deleting",
 )
 async def accept_insight_deletion(
-    set_id: int, proposal_id: int, deletions: InsightDeletionsRepoDep
+    recipe_id: int, proposal_id: int, deletions: InsightDeletionsRepoDep
 ) -> JSONResponse:
     """The card's Delete: a person's press, and the only way a proposal removes an insight.
 
@@ -1596,16 +1623,16 @@ async def accept_insight_deletion(
     is told. The insight is removed outright; nothing of it is kept but the text on
     the card.
     """
-    return _deletion_decided(await deletions.accept(set_id, proposal_id), set_id, proposal_id)
+    return _deletion_decided(await deletions.accept(recipe_id, proposal_id), recipe_id, proposal_id)
 
 
 @router.post(
-    "/{set_id}/insight-deletions/{proposal_id}/keep",
+    "/{recipe_id}/insight-deletions/{proposal_id}/keep",
     response_model=ApiResponse[InsightDeletionDecision],
     summary="Keep the insight an agent proposed deleting",
 )
 async def keep_insight_deletion(
-    set_id: int, proposal_id: int, deletions: InsightDeletionsRepoDep
+    recipe_id: int, proposal_id: int, deletions: InsightDeletionsRepoDep
 ) -> JSONResponse:
     """The card's Keep: the insight stays exactly as it is, and the agent is told."""
-    return _deletion_decided(await deletions.keep(set_id, proposal_id), set_id, proposal_id)
+    return _deletion_decided(await deletions.keep(recipe_id, proposal_id), recipe_id, proposal_id)

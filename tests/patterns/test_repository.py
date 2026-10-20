@@ -22,10 +22,12 @@ from tests.patterns.world import PatternWorld
 DONE = PatternRunOutcome(status="done")
 
 
-async def _source(world: PatternWorld, set_id: int, insight_id: int, text: str) -> PatternSource:
-    row = await world.sets.get(set_id)
+async def _source(world: PatternWorld, recipe_id: int, insight_id: int, text: str) -> PatternSource:
+    row = await world.recipes.get(recipe_id)
     assert row is not None
-    return PatternSource(insight_id=insight_id, set_id=set_id, set_name=row.name, text=text)
+    return PatternSource(
+        insight_id=insight_id, recipe_id=recipe_id, recipe_name=row.name, text=text
+    )
 
 
 async def _two(world: PatternWorld) -> tuple[int, int, PatternProposalWrite]:
@@ -87,7 +89,8 @@ class TestARunWritesOnlyItsOwnRows:
     def test_a_proposal_needs_two_sources(self) -> None:
         with pytest.raises(ValueError):
             PatternProposalWrite(
-                text="x", sources=[PatternSource(insight_id=1, set_id=1, set_name="A", text="t")]
+                text="x",
+                sources=[PatternSource(insight_id=1, recipe_id=1, recipe_name="A", text="t")],
             )
 
 
@@ -114,14 +117,14 @@ class TestTheCountSinceTheLastRun:
         self, world: PatternWorld
     ) -> None:
         runs = PatternRunsRepository(world.db)
-        assert await runs.sets_with_insights() == 0
+        assert await runs.recipes_with_insights() == 0
         await world.own(world.a, "One.")
         await world.own(world.a, "Waiting.", confirmed=False)
         await world.own(world.designing, "Never counts.")
-        assert await runs.sets_with_insights() == 1
+        assert await runs.recipes_with_insights() == 1
         assert await runs.new_since_last_run() == 1
         await world.own(world.b, "Two.")
-        assert await runs.sets_with_insights() == 2
+        assert await runs.recipes_with_insights() == 2
         assert await runs.new_since_last_run() == 2
 
     async def test_a_finished_run_resets_it_and_a_failed_one_does_not(
@@ -171,14 +174,14 @@ class TestCopiesOfInsightTextLiveOneRun:
         self, world: PatternWorld
     ) -> None:
         runs = PatternRunsRepository(world.db)
-        first = await _finished(world, seen={"sets": "one insight, in words"})
-        failed = await runs.start(PatternRunStart(input={"sets": "a failed run's words"}))
+        first = await _finished(world, seen={"recipes": "one insight, in words"})
+        failed = await runs.start(PatternRunStart(input={"recipes": "a failed run's words"}))
         await runs.finish_failed(failed, PatternRunOutcome(status="failed", error="timeout: slow"))
-        second = await _finished(world, seen={"sets": "newest words"})
+        second = await _finished(world, seen={"recipes": "newest words"})
 
         assert await runs.detail_input(first) == {}
         assert await runs.detail_input(failed) == {}
-        assert await runs.detail_input(second) == {"sets": "newest words"}
+        assert await runs.detail_input(second) == {"recipes": "newest words"}
         old = await runs.get(first)
         assert old is not None and old.status == "done" and old.finished_at
         assert await runs.get(failed) is not None
@@ -187,12 +190,12 @@ class TestCopiesOfInsightTextLiveOneRun:
         _a, _b, proposal = await _two(world)
         proposals = PatternProposalsRepository(world.db)
         runs = PatternRunsRepository(world.db)
-        first = await _finished(world, proposal, seen={"sets": "words"})
+        first = await _finished(world, proposal, seen={"recipes": "words"})
         failed = await runs.start(PatternRunStart())
         await runs.finish_failed(failed, PatternRunOutcome(status="failed", error="timeout: slow"))
 
         assert [item.status for item in await proposals.for_run(first)] == ["proposed"]
-        assert await runs.detail_input(first) == {"sets": "words"}
+        assert await runs.detail_input(first) == {"recipes": "words"}
 
     async def test_dismissing_twice_or_an_unknown_one_is_refused(self, world: PatternWorld) -> None:
         _a, _b, proposal = await _two(world)
@@ -209,7 +212,7 @@ class TestCopiesOfInsightTextLiveOneRun:
         a, _b, proposal = await _two(world)
         words = "Below 9 clicks the Niche channels."
         proposals = PatternProposalsRepository(world.db)
-        first = await _finished(world, proposal, seen={"sets": words})
+        first = await _finished(world, proposal, seen={"recipes": words})
         (waiting,) = await proposals.for_run(first)
         await proposals.approve(waiting.id)
         # Until the next run finishes the words survive in the newest run's rows only.
@@ -252,7 +255,7 @@ class TestApproval:
         self, world: PatternWorld
     ) -> None:
         a, _b, proposal = await _two(world)
-        made = await ChatRepository(world.db).create_thread(ChatThreadWrite(set_id=world.a))
+        made = await ChatRepository(world.db).create_thread(ChatThreadWrite(recipe_id=world.a))
         assert made.thread is not None
         deletions = InsightDeletionsRepository(world.db)
         card = await deletions.propose(
@@ -300,7 +303,9 @@ class TestApproval:
 
         result = await proposals.approve(waiting.id)
 
-        assert [(item.reason, item.set_id) for item in result.skipped] == [("replaced_gone", None)]
+        assert [(item.reason, item.recipe_id) for item in result.skipped] == [
+            ("replaced_gone", None)
+        ]
 
     async def test_a_source_deleted_in_the_window_is_skipped_and_named(
         self, world: PatternWorld
@@ -509,7 +514,7 @@ class TestApproval:
             (general_id,),
         )
         assert written is not None
-        assert (written["source"], written["set_id"], written["confirmed"]) == ("user", None, 1)
+        assert (written["source"], written["recipe_id"], written["confirmed"]) == ("user", None, 1)
 
         # The one-time placement, run again as if its marker had never been written.
         await world.db.execute("DELETE FROM insight_placement_build")
@@ -520,7 +525,7 @@ class TestApproval:
             (general_id,),
         )
         assert after is not None
-        assert (after["set_id"], after["set_version_id"]) == (None, None)
+        assert (after["recipe_id"], after["recipe_version_id"]) == (None, None)
 
 
 class TestTheCounts:
@@ -551,11 +556,11 @@ class TestTheCounts:
         await world.own(world.a, "Waiting only.", confirmed=False)
         dismissed = await world.own(world.b, "Dismissed only.", confirmed=False)
         await world.insights.dismiss(dismissed)
-        assert await runs.sets_with_insights() == 0
+        assert await runs.recipes_with_insights() == 0
         assert await runs.new_since_last_run() == 0
 
         await world.own(world.c, "Confirmed.")
-        assert await runs.sets_with_insights() == 1
+        assert await runs.recipes_with_insights() == 1
 
 
 class TestNoAnswerWhileARunIsGoing:
@@ -605,8 +610,8 @@ class TestClearingIsInsideTheFinishingTransaction:
         _a, _b, proposal = await _two(world)
         proposals = PatternProposalsRepository(world.db)
         runs = PatternRunsRepository(world.db)
-        first = await _finished(world, proposal, seen={"sets": "earlier words"})
-        second = await runs.start(PatternRunStart(input={"sets": "newer words"}))
+        first = await _finished(world, proposal, seen={"recipes": "earlier words"})
+        second = await runs.start(PatternRunStart(input={"recipes": "newer words"}))
         real = world.db.execute
 
         async def execute(sql: str, *args: object, **kwargs: object) -> object:
@@ -621,6 +626,6 @@ class TestClearingIsInsideTheFinishingTransaction:
 
         assert [item.status for item in await proposals.for_run(first)] == ["proposed"]
         assert await proposals.for_run(second) == []
-        assert await runs.detail_input(first) == {"sets": "earlier words"}
+        assert await runs.detail_input(first) == {"recipes": "earlier words"}
         row = await runs.get(second)
         assert row is not None and row.status == "running"

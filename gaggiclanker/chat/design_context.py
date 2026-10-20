@@ -47,9 +47,9 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.recipe_proposals import RecipeProposalRow, RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipeRow,
     RecipesRepository,
-    SetRow,
-    SetVersionRow,
+    RecipeVersionRow,
     VersionLabelCounts,
 )
 from gaggiclanker.domain.models import (
@@ -96,14 +96,14 @@ _GOAL_CHARS = 2000
 _NOTE_CHARS = 300
 
 
-async def design_context(db: Database, set_id: int, *, thread_id: int | None = None) -> str:
+async def design_context(db: Database, recipe_id: int, *, thread_id: int | None = None) -> str:
     """The design brief and the evidence, as markdown, or "" for a Recipe that is gone.
 
     ``thread_id`` is the conversation, which is told what **it** proposed as signature
     expectations and what the person did with each (and nothing any other conversation did).
     """
     recipes = RecipesRepository(db)
-    row = await recipes.get(set_id)
+    row = await recipes.get(recipe_id)
     if row is None:
         return ""
     bean = await BeansRepository(db).get(row.bean_id)
@@ -158,7 +158,7 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
     if signed:
         lines += ["", *signed]
     lines += ["", *await _siblings_block(db, row)]
-    lines += ["", "SIMILAR SETS ON THIS GRINDER (other beans)", render_similar(similar)]
+    lines += ["", "SIMILAR RECIPES ON THIS GRINDER (other beans)", render_similar(similar)]
     lines += [
         "",
         f"THE RULES THAT MATCH (planned style: {style} — {style_reason})",
@@ -166,7 +166,7 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
     ]
     lines += [
         "",
-        "That is a snapshot, assembled when this turn began. The other Sets above are "
+        "That is a snapshot, assembled when this turn began. The other Recipes above are "
         "evidence to design from; no tool here reads them further.",
     ]
     return "\n".join(lines)
@@ -175,7 +175,7 @@ async def design_context(db: Database, set_id: int, *, thread_id: int | None = N
 # ── the Recipe and what was asked for ───────────────────────────────────
 
 
-def _heading(row: SetRow, bean: BeanRow | None, grinder: GrinderRow | None) -> list[str]:
+def _heading(row: RecipeRow, bean: BeanRow | None, grinder: GrinderRow | None) -> list[str]:
     bean_parts = [
         row.bean_name or "",
         f"roasted by {bean.roaster}" if bean is not None and bean.roaster else "",
@@ -192,12 +192,12 @@ def _heading(row: SetRow, bean: BeanRow | None, grinder: GrinderRow | None) -> l
         else "not recorded"
     )
     lines = [
-        "THIS CONVERSATION IS DESIGNING A NEW SET",
+        "THIS CONVERSATION IS DESIGNING A NEW RECIPE",
         "",
-        f"Set {row.id}: {row.name}. "
+        f"Recipe {row.id}: {row.name}. "
         f"Bean: {', '.join(part for part in bean_parts if part)}{_taste(bean)}. "
         f"Grinder: {grinder_line}.",
-        "Nothing has been brewed on it. Its version 1 has no recipe yet: no profile, no grind, "
+        "Nothing has been brewed on it. Its version 1 is empty: no profile, no grind, "
         "no dose, no yield. What you propose, once the person accepts it, becomes that "
         "version 1.",
     ]
@@ -206,17 +206,17 @@ def _heading(row: SetRow, bean: BeanRow | None, grinder: GrinderRow | None) -> l
     return lines
 
 
-def _brief(row: SetRow, grinder: GrinderRow | None) -> list[str]:
+def _brief(row: RecipeRow, grinder: GrinderRow | None) -> list[str]:
     brief = row.design_brief
     unit = grinder.step_unit if grinder is not None else "its units"
     return [
         "WHAT THEY ASKED FOR",
         f"Goal: {_quote(_cut(brief.goal, _GOAL_CHARS))}"
         if brief.goal
-        else "Goal: not stated. Ask what they want from this Set before proposing anything.",
+        else "Goal: not stated. Ask what they want from this Recipe before proposing anything.",
         f"Their usual espresso setting on this grinder: {brief.usual_grind} ({unit})."
         if brief.usual_grind
-        else "Their usual espresso setting on this grinder: NOT GIVEN. Without it, or a Set "
+        else "Their usual espresso setting on this grinder: NOT GIVEN. Without it, or a Recipe "
         "below on this same grinder, you have no anchor on its scale.",
         _chosen(brief, unit),
     ]
@@ -237,9 +237,9 @@ def _chosen(brief: DesignBrief, unit: str) -> str:
     ]
     chosen = ", ".join(part for part in parts if part)
     if not chosen:
-        return "Recipe numbers they chose: none. The grind, dose and yield are yours to propose."
+        return "Numbers they chose: none. The grind, dose and yield are yours to propose."
     return (
-        f"Recipe numbers they chose: {chosen}. Propose exactly these in the recipe and design "
+        f"Numbers they chose: {chosen}. Propose exactly these in version 1 and design "
         "the profile around them (a yield they chose is where the last phase stops); work out "
         "only what they left open. Change one of them only if they ask you to in this "
         "conversation."
@@ -252,7 +252,7 @@ def _fork_block(fork: ProfileVersionRow | None, fork_name: str) -> list[str]:
         return [
             "THE PROFILE TO FORK",
             "They named none, so the profile is written from zero: a whole document of your "
-            "own, built from what they asked for, the bean and the Sets below. Do not start "
+            "own, built from what they asked for, the bean and the Recipes below. Do not start "
             "from a profile in their library.",
             *_document_shape(),
         ]
@@ -260,7 +260,7 @@ def _fork_block(fork: ProfileVersionRow | None, fork_name: str) -> list[str]:
     return [
         f"THE PROFILE TO FORK: [profile_version {fork.id}] {fork_name}",
         "The new profile is derived from this one and gets a name of its own; this one, and "
-        "the Set that brews it, stays as it is.",
+        "the Recipe that brews it, stays as it is.",
         "```json",
         json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False),
         "```",
@@ -295,7 +295,7 @@ def _document_shape() -> list[str]:
 # ── the card ─────────────────────────────────────────────────────────
 
 
-async def _card_block(db: Database, row: SetRow) -> list[str]:
+async def _card_block(db: Database, row: RecipeRow) -> list[str]:
     """The initial recipe waiting for the person, or the last one they answered."""
     proposals = RecipeProposalsRepository(db)
     waiting = await proposals.waiting(row.id)
@@ -324,45 +324,45 @@ async def _card_block(db: Database, row: SetRow) -> list[str]:
 async def _card_recipe(proposals: RecipeProposalsRepository, card: RecipeProposalRow) -> str:
     preview = await proposals.preview(card)
     if preview is None:  # pragma: no cover - only a hand-damaged row has no preview
-        return "Its recipe cannot be read."
-    return f"Recipe: {_recipe(preview)} (profile draft #{card.draft_id})."
+        return "Its version cannot be read."
+    return f"Version 1: {_recipe(preview)} (profile draft #{card.draft_id})."
 
 
 # ── this bean's other Recipes ───────────────────────────────────────────
 
 
-async def _siblings_block(db: Database, row: SetRow) -> list[str]:
+async def _siblings_block(db: Database, row: RecipeRow) -> list[str]:
     """This bean's other Recipes that are still in use, newest first, capped."""
     recipes = RecipesRepository(db)
     siblings = sorted(
         (
             other
-            for other in await recipes.list_sets()
+            for other in await recipes.list_recipes()
             if other.bean_id == row.bean_id and other.id != row.id
         ),
         key=lambda other: other.id,
         reverse=True,
     )
-    lines = ["THIS BEAN'S OTHER SETS (newest first)"]
+    lines = ["THIS BEAN'S OTHER RECIPES (newest first)"]
     if not siblings:
-        lines.append("- none: this is the first Set of this bean.")
+        lines.append("- none: this is the first Recipe of this bean.")
         return lines
     for other in siblings[:SIBLING_RECIPES]:
         lines += await _sibling(recipes, other)
     if len(siblings) > SIBLING_RECIPES:
-        lines.append(f"- and {len(siblings) - SIBLING_RECIPES} older Sets of this bean.")
+        lines.append(f"- and {len(siblings) - SIBLING_RECIPES} older Recipes of this bean.")
     return lines
 
 
-async def _sibling(recipes: RecipesRepository, other: SetRow) -> list[str]:
+async def _sibling(recipes: RecipesRepository, other: RecipeRow) -> list[str]:
     grinder = other.grinder_name or "no grinder recorded"
-    head = f"- Set {other.id}: {other.name} — on {grinder}, {_plural(other.shot_count, 'shot')}"
+    head = f"- Recipe {other.id}: {other.name} — on {grinder}, {_plural(other.shot_count, 'shot')}"
     if other.designing:
-        return [f"{head}; being designed, no recipe yet."]
+        return [f"{head}; being designed, no version yet."]
     versions = await recipes.versions(other.id)
     labels = await recipes.label_counts(other.id)
     ratings = {
-        summary.set_version_id: summary.avg_rating
+        summary.recipe_version_id: summary.avg_rating
         for summary in (await recipes.trends(other.id)).versions
     }
     lines = [f"{head}."]
@@ -374,7 +374,7 @@ async def _sibling(recipes: RecipesRepository, other: SetRow) -> list[str]:
 
 
 def _sibling_version(
-    version: SetVersionRow, counts: VersionLabelCounts | None, ratings: dict[int, float | None]
+    version: RecipeVersionRow, counts: VersionLabelCounts | None, ratings: dict[int, float | None]
 ) -> str:
     shots = _plural(version.shot_count, "shot")
     if counts is not None and version.shot_count:

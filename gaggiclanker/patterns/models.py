@@ -55,7 +55,7 @@ TEXT_MAX = 500
 DROP_REASONS = (
     "invented_source",
     "invented_replaces",
-    "one_set",
+    "one_recipe",
     "profile_style",
     "scope_not_shared",
 )
@@ -110,7 +110,7 @@ class FilterOutcome:
 
 def filter_proposals(result: PatternsResult, given: PatternsInput) -> FilterOutcome:
     """Keep the proposals that are allowed, drop (and count) the rest."""
-    insights = {insight.id: (item, insight) for item in given.sets for insight in item.insights}
+    insights = {insight.id: (item, insight) for item in given.recipes for insight in item.insights}
     general = {item.id: item for item in given.general}
     kept: list[PatternProposalWrite] = []
     dropped: Counter[str] = Counter()
@@ -130,8 +130,8 @@ def filter_proposals(result: PatternsResult, given: PatternsInput) -> FilterOutc
                 sources=[
                     PatternSource(
                         insight_id=insight_id,
-                        set_id=insights[insight_id][0].id,
-                        set_name=insights[insight_id][0].name,
+                        recipe_id=insights[insight_id][0].id,
+                        recipe_name=insights[insight_id][0].name,
                         text=insights[insight_id][1].text,
                     )
                     for insight_id in ids
@@ -159,14 +159,14 @@ def _why_dropped(
     # that cites an insight and its copy comes from one Recipe. The scope check below still reads
     # every Recipe the sources sit in, since approving deletes the copy too.
     home = home_recipes(
-        (row.id, item.id, row.copied_from_set) for item in given.sets for row in item.insights
+        (row.id, item.id, row.copied_from_recipe) for item in given.recipes for row in item.insights
     )
     if len({home[insight_id] for insight_id in ids}) < 2:
-        return "one_set"
+        return "one_recipe"
     if proposal.scope.profile_style is not None:
         return "profile_style"
     stated = proposal.scope.stated()
-    attributes = {item.id: item.attributes for item in given.sets}
-    if not all(scope_matches(stated, attributes[set_id]) for set_id in source_recipes):
+    attributes = {item.id: item.attributes for item in given.recipes}
+    if not all(scope_matches(stated, attributes[recipe_id]) for recipe_id in source_recipes):
         return "scope_not_shared"
     return None

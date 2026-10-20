@@ -34,12 +34,12 @@ class PinBody(BaseModel):
 
 
 @router.get(
-    "/sets/{set_id}/versions/{version_id}/pin-preview",
+    "/recipes/{recipe_id}/versions/{version_id}/pin-preview",
     response_model=ApiResponse[PinPreview],
-    summary="What pinning this Set version would do, without doing it",
+    summary="What pinning this Recipe version would do, without doing it",
 )
 async def preview_pin(
-    set_id: int,
+    recipe_id: int,
     version_id: int,
     pins: PinServiceDep,
     label: str | None = Query(default=None, max_length=LABEL_MAX),
@@ -47,24 +47,24 @@ async def preview_pin(
     """The pin's own questions, asked and not acted on: the name the copy would have, whether it
     is taken, and the sentence a refusal would carry (any refusal, not only a taken name)."""
     return envelope_response(
-        (await pins.preview(set_id, version_id, label)).model_dump(mode="json")
+        (await pins.preview(recipe_id, version_id, label)).model_dump(mode="json")
     )
 
 
 @router.post(
-    "/sets/{set_id}/versions/{version_id}/pin",
+    "/recipes/{recipe_id}/versions/{version_id}/pin",
     response_model=ApiResponse[PinAnswer],
-    summary="Keep this Set version on the machine as a profile of its own",
+    summary="Keep this Recipe version on the machine as a profile of its own",
 )
 async def pin_version(
-    set_id: int, version_id: int, pins: PinServiceDep, body: PinBody | None = None
+    recipe_id: int, version_id: int, pins: PinServiceDep, body: PinBody | None = None
 ) -> JSONResponse:
     """Copy the version's profile under a new name onto the profile list, switched on and starred,
     and record the pin, in one transaction. Nothing is sent to the machine: the next sync with
-    Writes on puts it there. Refused (409, one code each, nothing written): `SET_ARCHIVED`,
+    Writes on puts it there. Refused (409, one code each, nothing written): `RECIPE_ARCHIVED`,
     `DESIGNING`, `VERSION_HAS_NO_PROFILE`, `ALREADY_PINNED`, `PIN_NAME_TAKEN`,
-    `PIN_POLICY_REFUSED`; 404 for a Set or version that is not there; 422 for a blank label."""
-    answer = await pins.pin(set_id, version_id, None if body is None else body.label)
+    `PIN_POLICY_REFUSED`; 404 for a Recipe or version that is not there; 422 for a blank label."""
+    answer = await pins.pin(recipe_id, version_id, None if body is None else body.label)
     return envelope_response(answer.model_dump(mode="json"))
 
 

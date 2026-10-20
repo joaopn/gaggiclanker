@@ -163,7 +163,9 @@ class AnthropicProvider:
 
     def missing_credential(self) -> str | None:
         if not self.api_key:
-            return "No Anthropic API key is configured. Set anthropicApiKey under Settings → LLM."
+            return (
+                "No Anthropic API key is configured. Recipe anthropicApiKey under Settings → LLM."
+            )
         return None
 
     async def complete(self, call: ProviderCall) -> ProviderReply:

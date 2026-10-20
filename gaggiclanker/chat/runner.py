@@ -107,7 +107,7 @@ def prompt_for(scope: ToolScope) -> str:
     as the Recipe is being designed: the scope is resolved from the Recipe on every
     turn, so the turn after its recipe is accepted gets the Recipe prompt.
     """
-    if scope.kind != "set":
+    if scope.kind != "recipe":
         return GENERAL_CHAT_PROMPT
     return DESIGN_CHAT_PROMPT if scope.designing else RECIPE_CHAT_PROMPT
 
@@ -229,7 +229,7 @@ class ChatRunner:
         # once per turn, here, and carried through the run — every later
         # decision about tools is this one value — so the turn after an
         # initial recipe is accepted is already an ordinary Recipe conversation.
-        scope = await ToolScope.resolve(self.db, thread.set_id, thread.set_version_id)
+        scope = await ToolScope.resolve(self.db, thread.recipe_id, thread.recipe_version_id)
         registry.spawn(run_task_name(run.id), self._background(state, scope))
         return run, stored
 
@@ -367,8 +367,8 @@ class ChatRunner:
                     system=rendered.system,
                     model=model,
                     timeout_s=(await self.llm.config()).timeout_s,
-                    set_id=scope.set_id,
-                    set_version_id=scope.set_version_id,
+                    recipe_id=scope.recipe_id,
+                    recipe_version_id=scope.recipe_version_id,
                     thread_id=state.thread_id,
                     meanings_in_context=meanings_in_history,
                     cancel=state.cancel,
@@ -444,8 +444,8 @@ class ChatRunner:
                 system=rendered.system,
                 model=model,
                 timeout_s=(await self.llm.config()).timeout_s,
-                set_id=scope.set_id,
-                set_version_id=scope.set_version_id,
+                recipe_id=scope.recipe_id,
+                recipe_version_id=scope.recipe_version_id,
                 thread_id=state.thread_id,
                 meanings_in_context=meanings_in_history,
                 cancel=state.cancel,

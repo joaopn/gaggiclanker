@@ -998,7 +998,7 @@ def build_checks(
         if override is not None and override[0] == exp.id and expr.compare is not None:
             original = compare_words(expr.compare)
             expr = expr.model_copy(update={"compare": override[1]})
-            note = f" (this Set version's limit; the profile's is {original})"
+            note = f" (this Recipe version's limit; the profile's is {original})"
         if data is None:
             checks.append(
                 _result_check(

@@ -174,7 +174,7 @@ async def test_a_recipe_draft_renamed_onto_a_profile_s_name_is_refused_by_landin
     rename never lands on a profile it is not a version of, for the Recipe or without it."""
     app, client, fake = adopted
     first = await app_row(app, client, fake, provider, 8, name="First")
-    set_id = await make_recipe_on(client, "Rename set", first["current_version_id"])
+    recipe_id = await make_recipe_on(client, "Rename set", first["current_version_id"])
     version = data(await client.get(f"/api/profile-versions/{first['current_version_id']}"))
     document = dict(version["profile"])
     document["label"] = "Second"
@@ -192,7 +192,7 @@ async def test_a_recipe_draft_renamed_onto_a_profile_s_name_is_refused_by_landin
     )
     second = await app_row(app, client, fake, provider, 7, name="Second")
     await app.state.db.execute(
-        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, renamed["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (recipe_id, renamed["id"])
     )
     await approve(app, renamed)
 
@@ -296,10 +296,10 @@ async def test_a_recipe_draft_lands_on_the_recipes_profile_and_the_landing_names
 ) -> None:
     app, client, fake = adopted
     row = await app_row(app, client, fake, provider, 8)
-    set_id = await make_recipe_on(client, "Landing set", row["current_version_id"])
+    recipe_id = await make_recipe_on(client, "Landing set", row["current_version_id"])
     draft = await draft_of(app, client, provider, BASE_LABEL, 7)
     await app.state.db.execute(
-        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (recipe_id, draft["id"])
     )
     await approve(app, draft)
 
@@ -308,8 +308,8 @@ async def test_a_recipe_draft_lands_on_the_recipes_profile_and_the_landing_names
     # A fork named like the app's profile the Recipe brews: it continues that profile, because that
     # is the profile with exactly its name, and the landing says whose Recipe follows it.
     assert found["plain"]["row_id"] == row["id"]
-    assert found["plain"]["set"] == {
-        "id": set_id,
+    assert found["plain"]["recipe"] == {
+        "id": recipe_id,
         "name": "Landing set",
         "next_minor_label": "v1.1",
         "next_major_label": "v2",

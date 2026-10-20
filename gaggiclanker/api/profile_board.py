@@ -156,7 +156,7 @@ async def get_board(
 async def put_on_board(body: BoardPut, board: BoardServiceDep) -> JSONResponse:
     """The next sync puts it on the machine. Nothing is sent to the machine now.
 
-    One action for a proposal: a drafted draft is approved by it. The profile's Set, if it has
+    One action for a proposal: a drafted draft is approved by it. The profile's Recipe, if it has
     one, gets a new version naming it in the same transaction. Refused (409) for a draft that is
     already on the machine, discarded or overtaken, and one whose version is already in the
     list. A proposal continues the live profile with exactly its name, or is a new profile.
@@ -196,7 +196,7 @@ async def put_on_machine(row_id: int, body: OnMachineBody, board: BoardServiceDe
     summary="Rename a profile",
 )
 async def put_name(row_id: int, body: RenameBody, board: BoardServiceDep) -> JSONResponse:
-    """Person-only. Writes the profile's name and nothing else (no version, draft, Set or
+    """Person-only. Writes the profile's name and nothing else (no version, draft, Recipe or
     signature), so it works with Writes off and on a pinned row; the next sync with Writes on gives
     the machine's file the new name. Refused with 422 for an empty name and 409 for one another
     live profile has (case ignored); the same name changes nothing. For a profile in a conflict
@@ -215,7 +215,7 @@ async def put_active_version(
     row_id: int, body: ActiveVersionBody, board: BoardServiceDep
 ) -> JSONResponse:
     """Person-only. Any version the profile has had; the next sync puts it on the machine and
-    takes the profile's other file off. Records nothing on a Set (only making a proposal active
+    takes the profile's other file off. Records nothing on a Recipe (only making a proposal active
     through ``POST /api/profile-board`` does). Refused (409) for a version of another profile,
     the empty baseline, a version outside the safety bounds, and a name another profile has."""
     row = await board.set_active_version(row_id, body.version_id)

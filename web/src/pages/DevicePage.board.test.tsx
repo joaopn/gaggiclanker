@@ -57,7 +57,7 @@ function status(summary: unknown): SyncStatusData {
       deleted_on_device: 0,
       incomplete: 0,
       samples: 10,
-      needs_set: 0,
+      needs_recipe: 0,
     },
     recent_events: [],
   } as SyncStatusData;

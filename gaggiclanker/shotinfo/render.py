@@ -84,7 +84,7 @@ async def load_shots(
     notes = await NotesRepository(db).for_shots(ids)
     readings = await ShotReviewsRepository(db).readings_for_shots(ids)
     versions = await RecipesRepository(db).versions_by_id(
-        row.set_version_id for row in rows if row.set_version_id is not None
+        row.recipe_version_id for row in rows if row.recipe_version_id is not None
     )
     curves: dict[int, list[ShotSampleRow]] = (
         await ShotsRepository(db).samples_for(ids) if samples else {}
@@ -93,7 +93,9 @@ async def load_shots(
         ShotFacts(
             shot=row,
             judgement=judgements.get(row.id),
-            version=versions.get(row.set_version_id) if row.set_version_id is not None else None,
+            version=versions.get(row.recipe_version_id)
+            if row.recipe_version_id is not None
+            else None,
             note=notes.get(row.id),
             reading=readings.get(row.id),
             samples=tuple(curves.get(row.id, ())) if samples else None,

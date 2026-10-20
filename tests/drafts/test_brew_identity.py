@@ -506,10 +506,12 @@ async def test_the_pin_detail_names_the_copy_by_the_pin_row(
 ) -> None:
     _app, client, _fake = adopted
     base = row_for(await get_board(client), BASE_LABEL)
-    set_id = await make_recipe_on(client, "Guji", base["row"]["current_version_id"])
-    set_version = data(await client.get(f"/api/sets/{set_id}"))["versions"][0]["version"]["id"]
+    recipe_id = await make_recipe_on(client, "Guji", base["row"]["current_version_id"])
+    recipe_version = data(await client.get(f"/api/recipes/{recipe_id}"))["versions"][0]["version"][
+        "id"
+    ]
     made = await client.post(
-        f"/api/sets/{set_id}/versions/{set_version}/pin", json={"label": "Guji copy"}
+        f"/api/recipes/{recipe_id}/versions/{recipe_version}/pin", json={"label": "Guji copy"}
     )
     assert made.status_code < 300, made.text
     pin = data(made)["pin"]

@@ -27,11 +27,11 @@ from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, Profil
 from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipeRow,
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetRow,
-    SetVersionWrite,
 )
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.tools.scope import ToolScope
@@ -58,7 +58,7 @@ async def _bean_of(kitchen: Fixture, label: str) -> int:
     return row.bean_id
 
 
-async def _forked_design(kitchen: Fixture) -> SetRow:
+async def _forked_design(kitchen: Fixture) -> RecipeRow:
     """A second Recipe of the Kenya AA, forked from the library profile, with a card waiting."""
     recipes = RecipesRepository(kitchen.db)
     bean_id = await _bean_of(kitchen, "kenya")
@@ -67,7 +67,7 @@ async def _forked_design(kitchen: Fixture) -> SetRow:
         RecipeWrite(
             name="Kenya AA on the Mazzer", bean_id=bean_id, grinder_id=kitchen.other_grinder_id
         ),
-        SetVersionWrite(
+        RecipeVersionWrite(
             profile_version_id=kitchen.profile_version_id,
             grind_setting="7",
             dose_g=20,
@@ -86,7 +86,7 @@ async def _forked_design(kitchen: Fixture) -> SetRow:
     )
     # And one that is finished with: archived Recipes are not part of the record.
     archived = await recipes.create(
-        RecipeWrite(name="Kenya AA, last year", bean_id=bean_id), SetVersionWrite(dose_g=17)
+        RecipeWrite(name="Kenya AA, last year", bean_id=bean_id), RecipeVersionWrite(dose_g=17)
     )
     await recipes.archive(archived.id)
 
@@ -95,7 +95,7 @@ async def _forked_design(kitchen: Fixture) -> SetRow:
         DesignBrief(
             fork_profile_version_id=kitchen.profile_version_id,
             usual_grind="21",
-            goal="More body than the Niche Set, and keep the blackcurrant.",
+            goal="More body than the Niche Recipe, and keep the blackcurrant.",
             dose_g=18,
             target_yield_g=40,
         ),
@@ -123,7 +123,7 @@ async def _forked_design(kitchen: Fixture) -> SetRow:
     return designed
 
 
-async def _bare_design(kitchen: Fixture) -> SetRow:
+async def _bare_design(kitchen: Fixture) -> RecipeRow:
     return await RecipesRepository(kitchen.db).create_design(
         RecipeWrite(
             name="Kenya Nyeri on the Niche Zero",
@@ -194,20 +194,18 @@ async def test_the_numbers_the_person_chose_are_kept_and_the_rest_left_open(
 
     every = await brief_of(DesignBrief(grind_setting="18", dose_g=18.5, target_yield_g=40))
     assert (
-        "Recipe numbers they chose: grind 18 (numbers), dose 18.5 g, target yield 40 g. "
+        "Numbers they chose: grind 18 (numbers), dose 18.5 g, target yield 40 g. "
         "Propose exactly these" in every
     )
     assert "work out only what they left open" in every
 
     # Only the ones filled in are named, so an empty field is never read as a zero.
     some = await brief_of(DesignBrief(target_yield_g=36))
-    assert "Recipe numbers they chose: target yield 36 g. Propose exactly these" in some
-    assert "dose" not in some.split("Recipe numbers they chose:")[1].split(".")[0]
+    assert "Numbers they chose: target yield 36 g. Propose exactly these" in some
+    assert "dose" not in some.split("Numbers they chose:")[1].split(".")[0]
 
     none = await brief_of(DesignBrief())
-    assert "Recipe numbers they chose: none. The grind, dose and yield are yours to propose." in (
-        none
-    )
+    assert "Numbers they chose: none. The grind, dose and yield are yours to propose." in (none)
     assert "Propose exactly these" not in none
 
 
@@ -224,7 +222,7 @@ async def test_only_this_bean_s_recipes_in_use_are_its_siblings(kitchen: Fixture
     designed = await _forked_design(kitchen)
 
     rendered = await design_context(kitchen.db, designed.id)
-    siblings = rendered.split("THIS BEAN'S OTHER SETS")[1].split("SIMILAR SETS")[0]
+    siblings = rendered.split("THIS BEAN'S OTHER RECIPES")[1].split("SIMILAR RECIPES")[0]
 
     assert "Kenya AA on the niche" in siblings
     assert "Kenya AA on the Mazzer" in siblings
@@ -233,7 +231,7 @@ async def test_only_this_bean_s_recipes_in_use_are_its_siblings(kitchen: Fixture
     # Another bean's Recipe is never a sibling, and this bean's are never
     # "similar": they are listed once, where they belong.
     assert "Ethiopia Guji" not in siblings
-    similar = rendered.split("SIMILAR SETS ON THIS GRINDER")[1].split("THE RULES THAT MATCH")[0]
+    similar = rendered.split("SIMILAR RECIPES ON THIS GRINDER")[1].split("THE RULES THAT MATCH")[0]
     assert "Kenya AA" not in similar
     assert "Ethiopia Guji" in similar
     # And the Recipe being designed is not its own sibling.
@@ -247,7 +245,8 @@ async def test_the_siblings_are_capped_and_the_cut_is_said(kitchen: Fixture) -> 
     bean_id = await _bean_of(kitchen, "kenya")
     for index in range(SIBLING_RECIPES + 1):
         await recipes.create(
-            RecipeWrite(name=f"Kenya AA try {index}", bean_id=bean_id), SetVersionWrite(dose_g=18)
+            RecipeWrite(name=f"Kenya AA try {index}", bean_id=bean_id),
+            RecipeVersionWrite(dose_g=18),
         )
     designed = await recipes.create_design(
         RecipeWrite(name="Kenya AA designed", bean_id=bean_id, grinder_id=kitchen.grinder_id),
@@ -256,11 +255,11 @@ async def test_the_siblings_are_capped_and_the_cut_is_said(kitchen: Fixture) -> 
 
     rendered = await design_context(kitchen.db, designed.id)
 
-    listed = [line for line in rendered.splitlines() if line.startswith("- Set ")]
+    listed = [line for line in rendered.splitlines() if line.startswith("- Recipe ")]
     assert len(listed) == SIBLING_RECIPES
     # Newest first: the last one created is the first one listed.
     assert f"Kenya AA try {SIBLING_RECIPES}" in listed[0]
-    assert "- and 2 older Sets of this bean." in rendered
+    assert "- and 2 older Recipes of this bean." in rendered
 
 
 async def test_once_the_recipe_is_written_the_design_block_is_gone(kitchen: Fixture) -> None:
@@ -272,8 +271,8 @@ async def test_once_the_recipe_is_written_the_design_block_is_gone(kitchen: Fixt
     rendered = await opening_context(kitchen.db, await ToolScope.resolve(kitchen.db, designed.id))
 
     assert rendered.startswith("THE PROFILE v")
-    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in rendered
-    assert "THIS BEAN'S OTHER SETS" not in rendered
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE" in rendered
+    assert "THIS BEAN'S OTHER RECIPES" not in rendered
     assert "Kenya AA on the Mazzer" not in rendered
 
 
@@ -287,7 +286,7 @@ async def test_the_design_is_told_what_the_forked_profile_is_for_and_what_it_pro
 
     designed = await _forked_design(kitchen)
     created = await ChatRepository(kitchen.db).create_thread(
-        ChatThreadWrite(title="design", set_id=designed.id)
+        ChatThreadWrite(title="design", recipe_id=designed.id)
     )
     assert created.thread is not None
     thread = created.thread.id

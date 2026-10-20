@@ -56,7 +56,7 @@ from gaggiclanker.knowledge.service import (
     render_excerpts,
 )
 from gaggiclanker.review.style import detect_style
-from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_recipes
+from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarRecipe, similar_recipes
 
 __all__ = [
     "CANDIDATE_PROFILES",
@@ -156,7 +156,7 @@ class StartingPointContext(BaseModel):
     #: The style rule selection was made for, and why. See the module docstring.
     planned_style: str = DEFAULT_STYLE
     planned_style_reason: str = ""
-    similar: list[SimilarSet] = Field(default_factory=list)
+    similar: list[SimilarRecipe] = Field(default_factory=list)
     profiles: list[ProfileCandidate] = Field(default_factory=list)
     signals: list[str] = Field(default_factory=list)
     #: `[{key, category, text, confidence, source}]` for every selected rule.
@@ -176,7 +176,7 @@ class StartingPointContext(BaseModel):
 
     @property
     def similar_version_ids(self) -> frozenset[int]:
-        return frozenset(entry.set_version_id for entry in self.similar)
+        return frozenset(entry.recipe_version_id for entry in self.similar)
 
     @property
     def profile_version_ids(self) -> frozenset[int]:
@@ -374,7 +374,7 @@ def _signal_tokens(style: str) -> list[str]:
     return [f"style:{style}"]
 
 
-async def planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, str]:
+async def planned_style(db: Database, similar: list[SimilarRecipe]) -> tuple[str, str]:
     """The style to plan for, and the sentence explaining the choice.
 
     The best similar Recipe's profile, when it names one. That is the closest
@@ -393,8 +393,8 @@ async def planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, s
         verdict = detect_style(version.profile, dose_g=entry.dose_g, label=name)
         if verdict.style not in ("unknown", "utility"):
             return verdict.style, (
-                f"the profile of the closest similar Set "
-                f"({entry.set_name} {entry.version_label}, {name})"
+                f"the profile of the closest similar Recipe "
+                f"({entry.recipe_name} {entry.version_label}, {name})"
             )
     return DEFAULT_STYLE, "nothing comparable has been brewed on this kit yet"
 
@@ -415,7 +415,7 @@ async def profile_candidates(db: Database) -> list[ProfileCandidate]:
           JOIN profile_versions pv ON pv.id = b.current_version_id
          WHERE b.deleted_at IS NULL AND pv.utility = 0 AND {not_synthetic_sql("pv")}
            AND NOT EXISTS (SELECT 1 FROM recipes s WHERE s.board_id = b.id)
-           -- A pin's copy belongs to one Set version for ever and no Set version may name it.
+           -- A pin's copy belongs to one Recipe version for ever and no Recipe version may name it.
            AND NOT EXISTS (SELECT 1 FROM recipe_version_pins p WHERE p.board_id = b.id)
          ORDER BY shot_count DESC, pv.id DESC
          LIMIT ?
@@ -529,7 +529,7 @@ def _render_hardware(hardware: HardwareFacts) -> str:
                 "their usual espresso setting",
                 hardware.usual_grind
                 or "NOT GIVEN — you have no anchor on this grinder's scale unless a "
-                "similar Set below supplies one",
+                "similar Recipe below supplies one",
             ),
         ]
     )
@@ -543,7 +543,7 @@ def _render_hardware(hardware: HardwareFacts) -> str:
     return f"GRINDER\n{grinder}\n\nMACHINE\n{machine}"
 
 
-def render_similar(similar: list[SimilarSet]) -> str:
+def render_similar(similar: list[SimilarRecipe]) -> str:
     if not similar:
         return (
             "Nothing comparable has been brewed on this grinder. There is no anchor on the "
@@ -577,7 +577,8 @@ def render_similar(similar: list[SimilarSet]) -> str:
         blocks.append(
             _block(
                 [
-                    f"[set_version {entry.set_version_id}] {entry.set_name} {entry.version_label} "
+                    f"[recipe_version {entry.recipe_version_id}] {entry.recipe_name} "
+                    f"{entry.version_label} "
                     f"— {entry.bean_name}",
                     _line("  why it is similar", ", ".join(match)),
                     _line(

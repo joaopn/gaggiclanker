@@ -84,10 +84,10 @@ class SearchResult:
     truncated: bool
 
 
-async def search_shots(db: Database, set_id: int, query: ShotQuery) -> SearchResult:
+async def search_shots(db: Database, recipe_id: int, query: ShotQuery) -> SearchResult:
     """This Recipe's shots that match, in order, at most ``query.limit`` of them."""
     ids = await RecipesRepository(db).search_shot_ids(
-        set_id,
+        recipe_id,
         version_id=query.version_id,
         decision=query.label,
         balance=query.balance,

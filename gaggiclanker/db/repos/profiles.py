@@ -147,12 +147,12 @@ class VersionPin(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pin_id: int
-    set_id: int
-    set_version_id: int
+    recipe_id: int
+    recipe_version_id: int
 
 
-class VersionSet(BaseModel):
-    """The Set a profile has (a profile has at most one, archived or not)."""
+class VersionRecipe(BaseModel):
+    """The Recipe a profile has (a profile has at most one, archived or not)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -206,7 +206,7 @@ class ProfileVersionSummary(BaseModel):
     #: Recipe takes a profile no Recipe has, by the version that profile has active.
     board_id: int | None = None
     is_active: bool = False
-    set: VersionSet | None = None
+    recipe: VersionRecipe | None = None
     #: Set when this version belongs to a pin's copy (the copy, live or since unpinned, or what
     #: the machine's file came to hold): the pin, its Recipe and the Recipe version it belongs to. A
     #: recipe picker leaves such a version out, because no Recipe brews a pin's profile; ``None``
@@ -529,7 +529,7 @@ class ProfilesRepository(Repository):
                    EXISTS (SELECT 1 FROM profile_board b
                             WHERE b.id = v.board_id AND b.current_version_id = v.id
                               AND b.deleted_at IS NULL) AS is_active,
-                   ps.id AS set_id, ps.name AS set_name,
+                   ps.id AS recipe_id, ps.name AS recipe_name,
                    p.id AS pin_id, pv.recipe_id AS pin_recipe_id,
                    p.recipe_version_id AS pin_recipe_version_id
             FROM profile_versions v
@@ -793,14 +793,18 @@ def _summary(row: dict[str, object]) -> ProfileVersionSummary:
     pin = (
         None
         if pin_id is None
-        else {"pin_id": pin_id, "set_id": pin_recipe_id, "set_version_id": pin_recipe_version_id}
+        else {
+            "pin_id": pin_id,
+            "recipe_id": pin_recipe_id,
+            "recipe_version_id": pin_recipe_version_id,
+        }
     )
-    set_id = row.pop("set_id", None)
-    set_name = row.pop("set_name", None)
+    recipe_id = row.pop("recipe_id", None)
+    recipe_name = row.pop("recipe_name", None)
     return ProfileVersionSummary.model_validate(
         {
             **row,
-            "set": None if set_id is None else {"id": set_id, "name": set_name},
+            "recipe": None if recipe_id is None else {"id": recipe_id, "name": recipe_name},
             "temperature_c": recipe.temperature_c,
             "target_yield_g": recipe.target_yield_g,
             "pin": pin,

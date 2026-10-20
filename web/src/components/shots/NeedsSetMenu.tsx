@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
  * couple before them; a longer list is a select box, and the shot page already
  * has one.
  */
-export const MENU_SETS = 3;
+export const MENU_RECIPES = 3;
 
 export function NeedsSetMenu({ shot, className }: { shot: ShotListRow; className?: string }) {
   const [open, setOpen] = useState(false);
@@ -108,7 +108,7 @@ function MenuBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void }) {
   const candidates = sets.data.items.filter(
     (row) => !row.archived && row.current_version_id != null,
   );
-  const offered = candidates.slice(0, MENU_SETS);
+  const offered = candidates.slice(0, MENU_RECIPES);
 
   if (offered.length === 0) {
     return (

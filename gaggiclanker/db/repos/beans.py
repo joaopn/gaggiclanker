@@ -109,7 +109,7 @@ class BeanRow(BeanWrite):
     created_at: str
     #: How many Recipes point at this bean. The archive button asks before it hides
     #: a bean that is still in use, and a delete would have to refuse.
-    set_count: int = 0
+    recipe_count: int = 0
 
 
 class BeanDeletion(BaseModel):
@@ -121,7 +121,7 @@ class BeanDeletion(BaseModel):
     deleted: bool
     #: The Recipes that pointed at the bean when the delete was asked for; a
     #: refusal names the number so the person knows why.
-    set_count: int = 0
+    recipe_count: int = 0
 
 
 #: The columns an insert or an update writes, in one place so the two SQL
@@ -143,7 +143,7 @@ _WRITABLE = (
 #: LEFT JOIN with a GROUP BY would have to repeat every column of `beans` in the
 #: grouping clause for no measurable gain.
 _SELECT = """
-    SELECT b.*, (SELECT COUNT(*) FROM recipes s WHERE s.bean_id = b.id) AS set_count
+    SELECT b.*, (SELECT COUNT(*) FROM recipes s WHERE s.bean_id = b.id) AS recipe_count
     FROM beans b
 """
 
@@ -224,13 +224,13 @@ class BeansRepository(Repository):
         async with self.db.transaction():
             if await self.db.fetch_value("SELECT 1 FROM beans WHERE id = ?", (bean_id,)) is None:
                 return BeanDeletion(found=False, deleted=False)
-            set_count = int(
+            recipe_count = int(
                 await self.db.fetch_value(
                     "SELECT COUNT(*) FROM recipes WHERE bean_id = ?", (bean_id,)
                 )
             )
-            if set_count > 0:
-                return BeanDeletion(found=True, deleted=False, set_count=set_count)
+            if recipe_count > 0:
+                return BeanDeletion(found=True, deleted=False, recipe_count=recipe_count)
             await self.db.execute("DELETE FROM beans WHERE id = ?", (bean_id,))
         return BeanDeletion(found=True, deleted=True)
 

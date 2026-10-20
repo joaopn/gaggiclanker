@@ -89,11 +89,11 @@ class ExpectationOut(BaseModel):
     answered_at: str | None
 
 
-class SetUsingOut(BaseModel):
+class RecipeUsingOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    set_id: int
-    set_name: str
+    recipe_id: int
+    recipe_name: str
     archived: bool
     #: The newest version of that Recipe on this profile version.
     version_id: int
@@ -120,7 +120,7 @@ class SignatureData(BaseModel):
     #: Tier order (critical, important, context), then in the order they were written.
     expectations: list[ExpectationOut]
     #: The Recipes with a version on this profile version, for "ask for a signature" links.
-    sets: list[SetUsingOut]
+    recipes: list[RecipeUsingOut]
 
 
 class SignatureAnswer(BaseModel):
@@ -209,8 +209,9 @@ async def _signature(
         not_in_force=sum(1 for r in rows if r.status == "proposed"),
         rejected=sum(1 for r in rows if r.status == "rejected"),
         expectations=[expectation_out(r) for r in rows],
-        sets=[
-            SetUsingOut.model_validate(item) for item in await signatures.recipes_using(version_id)
+        recipes=[
+            RecipeUsingOut.model_validate(item)
+            for item in await signatures.recipes_using(version_id)
         ],
     )
 
@@ -225,7 +226,7 @@ async def get_signature(
 ) -> JSONResponse:
     """Every expectation, proposed, confirmed and rejected, with who proposed it.
 
-    A profile version nobody proposed anything for answers with no expectations (and the Sets
+    A profile version nobody proposed anything for answers with no expectations (and the Recipes
     that use it, for a link to ask the agent), not a 404.
     """
     return envelope_response(
@@ -333,12 +334,12 @@ async def set_expectation_tier(
 
 
 class OverrideOut(BaseModel):
-    """An override of one expectation's limit on one Set version, with what it overrides."""
+    """An override of one expectation's limit on one Recipe version, with what it overrides."""
 
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_version_id: int
+    recipe_version_id: int
     expectation_id: int
     #: ``withdrawn``: a newer override for the same expectation replaced it (not a rejection).
     status: Literal["proposed", "confirmed", "rejected", "withdrawn"]
@@ -366,7 +367,7 @@ class OverrideOut(BaseModel):
 
 
 class OverrideListData(BaseModel):
-    """`GET /api/sets/{id}/versions/{id}/signature-overrides`: newest first."""
+    """`GET /api/recipes/{id}/versions/{id}/signature-overrides`: newest first."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -386,7 +387,7 @@ async def _override_out(row: OverrideRow, signatures: SignatureRepository) -> Ov
     unit = expression_unit(expression) if expression is not None else ""
     return OverrideOut(
         id=row.id,
-        set_version_id=row.set_version_id,
+        recipe_version_id=row.recipe_version_id,
         expectation_id=row.expectation_id,
         status=row.status,
         reason=row.reason,
@@ -412,16 +413,16 @@ async def _override_out(row: OverrideRow, signatures: SignatureRepository) -> Ov
 
 
 @router.get(
-    "/sets/{set_id}/versions/{version_id}/signature-overrides",
+    "/recipes/{recipe_id}/versions/{version_id}/signature-overrides",
     response_model=ApiResponse[OverrideListData],
-    summary="The overrides proposed for one Set version's signature limits",
+    summary="The overrides proposed for one Recipe version's signature limits",
 )
 async def list_overrides(
-    set_id: int, version_id: int, signatures: SignatureRepoDep, recipes: RecipesRepoDep
+    recipe_id: int, version_id: int, signatures: SignatureRepoDep, recipes: RecipesRepoDep
 ) -> JSONResponse:
     """In force, rejected and replaced, newest first, so a card read later tells the truth."""
-    if await recipes.version_of_recipe(set_id, version_id) is None:
-        raise NotFound(f"No version {version_id} in Set {set_id}")
+    if await recipes.version_of_recipe(recipe_id, version_id) is None:
+        raise NotFound(f"No version {version_id} in Recipe {recipe_id}")
     rows = await signatures.overrides_for_recipe_version(version_id)
     items = [await _override_out(row, signatures) for row in reversed(rows)]
     return envelope_response(OverrideListData(items=items).model_dump(mode="json"))
@@ -459,21 +460,23 @@ def _override_refusal(refused: str, override_id: int) -> Exception:
     )
 
 
-async def _owned_override(signatures: SignatureRepository, set_id: int, override_id: int) -> None:
+async def _owned_override(
+    signatures: SignatureRepository, recipe_id: int, override_id: int
+) -> None:
     row = await signatures.get_override(override_id)
-    if row is None or await signatures.recipe_of_version(row.set_version_id) != set_id:
-        raise NotFound(f"No signature override {override_id} in Set {set_id}")
+    if row is None or await signatures.recipe_of_version(row.recipe_version_id) != recipe_id:
+        raise NotFound(f"No signature override {override_id} in Recipe {recipe_id}")
 
 
 @router.post(
-    "/sets/{set_id}/signature-overrides/{override_id}/reject",
+    "/recipes/{recipe_id}/signature-overrides/{override_id}/reject",
     response_model=ApiResponse[OverrideAnswer],
     summary="Reject an override: this version reads the profile's own limit again",
 )
 async def reject_override(
-    set_id: int, override_id: int, body: RejectBody, signatures: SignatureRepoDep
+    recipe_id: int, override_id: int, body: RejectBody, signatures: SignatureRepoDep
 ) -> JSONResponse:
-    await _owned_override(signatures, set_id, override_id)
+    await _owned_override(signatures, recipe_id, override_id)
     result = await signatures.reject_override(override_id, reason=" ".join(body.reason.split()))
     if result.row is None:
         raise _override_refusal(result.refused or "no_override", override_id)
@@ -483,15 +486,15 @@ async def reject_override(
 
 
 @router.post(
-    "/sets/{set_id}/signature-overrides/{override_id}/restore",
+    "/recipes/{recipe_id}/signature-overrides/{override_id}/restore",
     response_model=ApiResponse[OverrideAnswer],
     summary="Restore a rejected override: this version's shots read its limit again",
 )
 async def restore_override(
-    set_id: int, override_id: int, signatures: SignatureRepoDep
+    recipe_id: int, override_id: int, signatures: SignatureRepoDep
 ) -> JSONResponse:
-    """A person's press. It applies to this Set version's shots and to no other."""
-    await _owned_override(signatures, set_id, override_id)
+    """A person's press. It applies to this Recipe version's shots and to no other."""
+    await _owned_override(signatures, recipe_id, override_id)
     result = await signatures.restore_override(override_id)
     if result.row is None:
         raise _override_refusal(result.refused or "no_override", override_id)

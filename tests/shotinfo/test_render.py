@@ -443,7 +443,7 @@ async def test_summary_level_diagnostics_are_read_as_well(archive: Archive) -> N
     assert "Pressure adherence: 0.31 bar" in rendered.splitlines()
     assert "Flow adherence: 0.41 ml/s" in rendered.splitlines()
     assert "Peak pressure: 9.20 bar" in rendered
-    assert "Set version: not filed in a Set" in rendered
+    assert "Recipe version: not filed in a Recipe" in rendered
     # No grade beside any number.
     assert not re.findall(r"\b[A-Z]{3,}_[A-Z_]{3,}\b", rendered)
 

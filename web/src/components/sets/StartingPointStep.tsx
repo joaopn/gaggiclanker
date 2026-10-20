@@ -180,7 +180,7 @@ export function StartingPointStep({
                   if (!accepted) return;
                   onAccepted({
                     option,
-                    setId: accepted.set.id,
+                    setId: accepted.recipe.id,
                     draftId: accepted.draft?.id ?? null,
                   });
                 }}
@@ -229,13 +229,13 @@ function SimilarSets({
       </p>
       {items.map((item) => (
         <div
-          key={item.set_version_id}
+          key={item.recipe_version_id}
           className="rounded-md border p-2 text-xs"
           data-testid="similar-set-card"
-          data-set-version={item.set_version_id}
+          data-set-version={item.recipe_version_id}
         >
           <div className="flex items-baseline justify-between gap-2">
-            <span className="font-medium">{item.bean_name || item.set_name}</span>
+            <span className="font-medium">{item.bean_name || item.recipe_name}</span>
             <span className="text-muted-foreground">{matchWords(item)}</span>
           </div>
           <p className="text-muted-foreground">
@@ -339,7 +339,7 @@ function OptionCard({
   pending: boolean;
   onChoose: () => void;
 }) {
-  const anchors = new Map(similar.map((item) => [item.set_version_id, item]));
+  const anchors = new Map(similar.map((item) => [item.recipe_version_id, item]));
   return (
     <div
       className="space-y-1.5 rounded-md border p-2"
@@ -416,8 +416,8 @@ function OptionCard({
  */
 function citations(option: StartingPointOption, anchors: Map<number, SimilarSet>): string {
   const parts: string[] = [];
-  const sets = (option.similar_set_version_ids ?? [])
-    .map((id) => anchors.get(id)?.bean_name || anchors.get(id)?.set_name)
+  const sets = (option.similar_recipe_version_ids ?? [])
+    .map((id) => anchors.get(id)?.bean_name || anchors.get(id)?.recipe_name)
     .filter(Boolean);
   if (sets.length > 0) parts.push(`from ${sets.join(", ")}`);
   const rules = option.rules_used ?? [];

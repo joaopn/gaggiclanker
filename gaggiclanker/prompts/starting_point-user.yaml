@@ -11,7 +11,7 @@ description: |
   The order follows the question. The coffee first, because that is the subject.
   The hardware next, because it decides what units the answer can even be given
   in — and the user's usual grind setting lives there, which is the single fact
-  that turns a relative answer into a dialable one. The similar Sets after that,
+  that turns a relative answer into a dialable one. The similar Recipes after that,
   because they are this kitchen's own evidence and the prompt says they outrank
   the rules. The profile library next, so "use the one you already have" is
   available before the model starts authoring. The planned style after that,
@@ -24,7 +24,7 @@ variables:
   - name: hardware_facts
     description: The grinder (its step unit and their usual setting) and the machine.
   - name: similar_recipes
-    description: Past Set versions on this hardware that resemble the coffee, with how they went.
+    description: Past Recipe versions on this hardware that resemble the coffee, with how they went.
   - name: profile_library
     description: Profiles already in the archive, with their shape and how used they are.
   - name: planned_style

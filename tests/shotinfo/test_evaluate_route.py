@@ -22,8 +22,8 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.recipes import (
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
@@ -72,7 +72,9 @@ async def file_lever(
     await own_version(db, profile.id)
     row = await recipes.create(
         RecipeWrite(name="Constructed lever", bean_id=bean.id, grinder_id=grinder.id),
-        SetVersionWrite(profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G),
+        RecipeVersionWrite(
+            profile_version_id=profile.id, dose_g=18.0, target_yield_g=TARGET_YIELD_G
+        ),
     )
     slog = lever_shot() if scale else without_scale(lever_shot())
     if clear_flag:
@@ -170,13 +172,13 @@ async def test_a_value_is_the_one_stored_for_the_phase(
 async def test_relative_to_follows_the_filing_and_nothing_stored_moves(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
-    shot, set_id, _ = await file_lever(app)
+    shot, recipe_id, _ = await file_lever(app)
     recipes = RecipesRepository(app.state.db)
     before = await ShotsRepository(app.state.db).get(shot)
     assert before is not None
     [first] = await evaluate(client, shot, [RAMP_CUP_SHARE])
     other = await recipes.add_version(
-        set_id, RecipeVersionPatch(target_yield_g=60.0, intent="a longer shot")
+        recipe_id, RecipeVersionPatch(target_yield_g=60.0, intent="a longer shot")
     )
     assert other is not None
     assert await recipes.assign_shot(shot, other.id)

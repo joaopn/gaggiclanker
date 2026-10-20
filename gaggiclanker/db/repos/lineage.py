@@ -82,24 +82,24 @@ def person_taken_sentence(existing_label: str) -> str:
     return f"There is already a profile called {existing_label}. Choose another name."
 
 
-def pinned_sentence(profile_name: str, set_name: str, version_label: str) -> str:
+def pinned_sentence(profile_name: str, recipe_name: str, version_label: str) -> str:
     """The refusal for a change to a profile that is the frozen copy of a pinned Recipe version."""
-    return f"{profile_name} is pinned to {set_name} {version_label}: unpin it to change it."
+    return f"{profile_name} is pinned to {recipe_name} {version_label}: unpin it to change it."
 
 
-def pinned_copy_sentence(name: str, set_name: str, version_label: str) -> str:
+def pinned_copy_sentence(name: str, recipe_name: str, version_label: str) -> str:
     """What a person is told when a name is the copy of a pin (live or since unpinned): the copy
     belongs to that Recipe version for ever, so the name is not free even when no profile has it."""
     return (
-        f"{name} is the name of the copy pinned from {set_name} {version_label}. "
+        f"{name} is the name of the copy pinned from {recipe_name} {version_label}. "
         "Choose another name."
     )
 
 
-def pinned_copy_agent_sentence(name: str, set_name: str, version_label: str) -> str:
+def pinned_copy_agent_sentence(name: str, recipe_name: str, version_label: str) -> str:
     """The same refusal in the agent's wording (as :func:`taken_name_sentence` is the agent's)."""
     return (
-        f"{name} is the name of the copy pinned from {set_name} {version_label}. Choose another "
+        f"{name} is the name of the copy pinned from {recipe_name} {version_label}. Choose another "
         "name for a new profile."
     )
 
@@ -110,7 +110,7 @@ class LineageLookup[T](Protocol):
     def label_of(self, profile: T) -> str:
         """The profile's name."""
 
-    async def by_recipe(self, set_id: int) -> T | None:
+    async def by_recipe(self, recipe_id: int) -> T | None:
         """The profile the Recipe's current version stands on, if any."""
 
     async def by_label(self, label: str) -> T | None:
@@ -118,11 +118,11 @@ class LineageLookup[T](Protocol):
 
 
 async def lineage_owner[T](
-    lookup: LineageLookup[T], *, set_id: int | None, version_label: str
+    lookup: LineageLookup[T], *, recipe_id: int | None, version_label: str
 ) -> T | None:
     """The profile a draft's version continues, or ``None`` for a new profile."""
-    if set_id is not None:
-        found = await lookup.by_recipe(set_id)
+    if recipe_id is not None:
+        found = await lookup.by_recipe(recipe_id)
         if found is not None and lookup.label_of(found) == version_label:
             return found
     return await lookup.by_label(version_label)

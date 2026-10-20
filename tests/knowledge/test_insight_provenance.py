@@ -40,8 +40,8 @@ async def _propose(
         InsightWrite(
             text=text,
             source="chat",
-            set_id=world.set_id,
-            set_version_id=world.v3,
+            recipe_id=world.recipe_id,
+            recipe_version_id=world.v3,
             thread_id=world.thread if thread is None else thread,
             evidence_shot_ids=shots or [],
             replaces_id=replaces,
@@ -88,7 +88,7 @@ class TestWhatItRestsOn:
         self, provenance: ProvenanceWorld
     ) -> None:
         insight_id = await _propose(provenance, versions=[provenance.v1])
-        await provenance.recipes.clear_outcome(provenance.set_id, provenance.v1)
+        await provenance.recipes.clear_outcome(provenance.recipe_id, provenance.v1)
 
         row = await provenance.insights.get(insight_id)
         assert row is not None
@@ -114,7 +114,8 @@ class TestWhatItRestsOn:
         row = await provenance.insights.get(insight_id)
         assert row is not None
         assert row.render() == (
-            f"#{insight_id} [this Set, learned at v1.2; rests on v1 held, v1.1 held → now failed; "
+            f"#{insight_id} [this Recipe, learned at v1.2; rests on v1 held, v1.1 held → now "
+            f"failed; "
             f"shots {provenance.shot1}, {provenance.shot2}] A finer grind lengthens the shot."
         )
 
@@ -123,7 +124,7 @@ class TestWhatItRestsOn:
         row = await provenance.insights.get(insight_id)
         assert row is not None
         line = row.render(text_chars=40)
-        assert line.startswith(f"#{insight_id} [this Set, learned at v1.2; rests on v1 held] ")
+        assert line.startswith(f"#{insight_id} [this Recipe, learned at v1.2; rests on v1 held] ")
         assert line.endswith("…")
 
     async def test_a_list_of_insights_is_one_query_for_what_they_rest_on(
@@ -140,7 +141,7 @@ class TestWhatItRestsOn:
 
         provenance.db.fetch_all = spy  # type: ignore[method-assign,assignment]
         try:
-            rows = await provenance.insights.own(provenance.set_id, include_dismissed=True)
+            rows = await provenance.insights.own(provenance.recipe_id, include_dismissed=True)
         finally:
             provenance.db.fetch_all = original  # type: ignore[method-assign]
         assert len(rows) == 5 and all(row.rests_on for row in rows)
@@ -150,18 +151,18 @@ class TestWhatItRestsOn:
 class TestWhatItMayRestOn:
     async def test_it_needs_a_shot_or_a_version(self, provenance: ProvenanceWorld) -> None:
         result = await provenance.insights.propose(
-            InsightWrite(text="A bare claim.", source="chat", set_id=provenance.set_id),
+            InsightWrite(text="A bare claim.", source="chat", recipe_id=provenance.recipe_id),
             version_ids=[],
         )
         assert result.refused == "nothing_to_rest_on"
-        assert await provenance.insights.own(provenance.set_id, include_dismissed=True) == []
+        assert await provenance.insights.own(provenance.recipe_id, include_dismissed=True) == []
 
     async def test_a_shot_alone_is_enough(self, provenance: ProvenanceWorld) -> None:
         assert await _propose(provenance, shots=[provenance.shot1])
 
     async def test_another_recipes_version_is_refused(self, provenance: ProvenanceWorld) -> None:
         result = await provenance.insights.propose(
-            InsightWrite(text="x", source="chat", set_id=provenance.set_id),
+            InsightWrite(text="x", source="chat", recipe_id=provenance.recipe_id),
             version_ids=[provenance.stranger_version],
         )
         assert (result.refused, result.subject) == ("bad_version", provenance.stranger_version)
@@ -170,7 +171,7 @@ class TestWhatItMayRestOn:
         self, provenance: ProvenanceWorld
     ) -> None:
         result = await provenance.insights.propose(
-            InsightWrite(text="x", source="chat", set_id=provenance.set_id),
+            InsightWrite(text="x", source="chat", recipe_id=provenance.recipe_id),
             version_ids=[provenance.v3],
         )
         assert (result.refused, result.subject) == ("no_outcome", provenance.v3)
@@ -178,9 +179,9 @@ class TestWhatItMayRestOn:
     async def test_a_cleared_outcome_is_refused_at_the_moment_of_writing(
         self, provenance: ProvenanceWorld
     ) -> None:
-        await provenance.recipes.clear_outcome(provenance.set_id, provenance.v1)
+        await provenance.recipes.clear_outcome(provenance.recipe_id, provenance.v1)
         result = await provenance.insights.propose(
-            InsightWrite(text="x", source="chat", set_id=provenance.set_id),
+            InsightWrite(text="x", source="chat", recipe_id=provenance.recipe_id),
             version_ids=[provenance.v1],
         )
         assert result.refused == "no_outcome"
@@ -193,7 +194,7 @@ class TestWhatItMayRestOn:
         from gaggiclanker.db.repos.knowledge_insights import RestsOn
 
         with pytest.raises(ValidationError):
-            InsightWrite(text="x", rests_on=[RestsOn(set_version_id=1, outcome="held")])
+            InsightWrite(text="x", rests_on=[RestsOn(recipe_version_id=1, outcome="held")])
 
 
 class TestReplacing:
@@ -234,7 +235,9 @@ class TestReplacing:
             )
         elif case == "other_recipe":
             target = await provenance.own(
-                "Theirs.", set_id=provenance.stranger_recipe, version_id=provenance.stranger_version
+                "Theirs.",
+                recipe_id=provenance.stranger_recipe,
+                version_id=provenance.stranger_version,
             )
         else:
             target = 9999
@@ -242,7 +245,7 @@ class TestReplacing:
             InsightWrite(
                 text="x",
                 source="chat",
-                set_id=provenance.set_id,
+                recipe_id=provenance.recipe_id,
                 evidence_shot_ids=[provenance.shot1],
                 replaces_id=target,
             ),
@@ -362,7 +365,7 @@ class TestRemovedMeansRemoved:
         """A waiting deletion proposal and a waiting replacement, both naming ``target``."""
         proposal = (
             await world.deletions.propose(
-                world.set_id,
+                world.recipe_id,
                 InsightDeletionWrite(thread_id=world.thread, insight_id=target, reason=REASON),
             )
         ).proposal
@@ -381,7 +384,7 @@ class TestRemovedMeansRemoved:
             == 0
         )
         # Nothing waits on it.
-        stored = await world.deletions.get(world.set_id, proposal_id)
+        stored = await world.deletions.get(world.recipe_id, proposal_id)
         assert stored is not None and stored.status in {"stale", "deleted"}
         assert stored.insight_id is None
         row = await world.insights.get(replacement)
@@ -395,18 +398,18 @@ class TestRemovedMeansRemoved:
         assert await provenance.insights.delete(target)
 
         await self._assert_gone(provenance, target, proposal_id, replacement)
-        stored = await provenance.deletions.get(provenance.set_id, proposal_id)
+        stored = await provenance.deletions.get(provenance.recipe_id, proposal_id)
         assert stored is not None and stored.status == "stale"
 
     async def test_an_accepted_deletion_proposal(self, provenance: ProvenanceWorld) -> None:
         target = await provenance.own("Doomed claim.")
         proposal_id, replacement = await self._waiting(provenance, target)
 
-        result = await provenance.deletions.accept(provenance.set_id, proposal_id)
+        result = await provenance.deletions.accept(provenance.recipe_id, proposal_id)
 
         assert result.refused is None
         await self._assert_gone(provenance, target, proposal_id, replacement)
-        stored = await provenance.deletions.get(provenance.set_id, proposal_id)
+        stored = await provenance.deletions.get(provenance.recipe_id, proposal_id)
         assert stored is not None and stored.status == "deleted"
 
     async def test_a_replacements_add(self, provenance: ProvenanceWorld) -> None:
@@ -419,7 +422,7 @@ class TestRemovedMeansRemoved:
 
         await provenance.insights.set_confirmed(replacement, True)
 
-        stored = await provenance.deletions.get(provenance.set_id, proposal_id)
+        stored = await provenance.deletions.get(provenance.recipe_id, proposal_id)
         assert stored is not None and stored.status == "stale" and stored.insight_id is None
         assert await provenance.insights.get(target) is None
         added = await provenance.insights.get(replacement)
@@ -473,18 +476,18 @@ class TestOnlyTheDecidingProposalKeepsTheText:
         made: dict[str, int] = {}
         first = (
             await world.deletions.propose(
-                world.set_id,
+                world.recipe_id,
                 InsightDeletionWrite(
                     thread_id=world.thread, insight_id=target, reason=REASON + " one"
                 ),
             )
         ).proposal
         assert first is not None
-        await world.deletions.keep(world.set_id, first.id)
+        await world.deletions.keep(world.recipe_id, first.id)
         made["kept"] = first.id
         second = (
             await world.deletions.propose(
-                world.set_id,
+                world.recipe_id,
                 InsightDeletionWrite(
                     thread_id=world.thread, insight_id=target, reason=REASON + " two"
                 ),
@@ -494,7 +497,7 @@ class TestOnlyTheDecidingProposalKeepsTheText:
         made["superseded"] = second.id
         last = (
             await world.deletions.propose(
-                world.set_id,
+                world.recipe_id,
                 InsightDeletionWrite(
                     thread_id=world.thread, insight_id=target, reason=REASON + " three"
                 ),
@@ -516,7 +519,7 @@ class TestOnlyTheDecidingProposalKeepsTheText:
         assert await rows_containing(provenance.db, "quokka-7731") == []
         expected = {"kept": "stale", "waiting": "stale", "superseded": "superseded"}
         for name, proposal_id in made.items():
-            row = await provenance.deletions.get(provenance.set_id, proposal_id)
+            row = await provenance.deletions.get(provenance.recipe_id, proposal_id)
             assert row is not None and row.insight_text == "" and row.status == expected[name]
 
     async def test_an_accepted_deletion_leaves_them_in_that_one_proposal(
@@ -525,15 +528,15 @@ class TestOnlyTheDecidingProposalKeepsTheText:
         target = await provenance.own(self.WORDS)
         made = await self._proposals(provenance, target)
 
-        await provenance.deletions.accept(provenance.set_id, made["waiting"])
+        await provenance.deletions.accept(provenance.recipe_id, made["waiting"])
 
         assert await rows_containing(provenance.db, "quokka-7731") == [
             f"recipe_insight_deletions#{made['waiting']}"
         ]
-        deciding = await provenance.deletions.get(provenance.set_id, made["waiting"])
+        deciding = await provenance.deletions.get(provenance.recipe_id, made["waiting"])
         assert deciding is not None and deciding.status == "deleted"
         for name, status in (("kept", "stale"), ("superseded", "superseded")):
-            other = await provenance.deletions.get(provenance.set_id, made[name])
+            other = await provenance.deletions.get(provenance.recipe_id, made[name])
             assert other is not None and other.status == status and other.insight_text == ""
 
     async def test_a_replacements_add_leaves_them_nowhere(
@@ -557,7 +560,7 @@ class TestTakingAnInsightBack:
         target = await provenance.own("Doubtful claim.")
         proposal = (
             await provenance.deletions.propose(
-                provenance.set_id,
+                provenance.recipe_id,
                 InsightDeletionWrite(thread_id=provenance.thread, insight_id=target, reason=REASON),
             )
         ).proposal
@@ -565,10 +568,10 @@ class TestTakingAnInsightBack:
 
         await provenance.insights.set_confirmed(target, False)
 
-        row = await provenance.deletions.get(provenance.set_id, proposal.id)
+        row = await provenance.deletions.get(provenance.recipe_id, proposal.id)
         assert row is not None and row.status == "stale"
         assert row.insight_text == "Doubtful claim." and row.insight_id == target
-        assert await provenance.deletions.waiting_for_recipe(provenance.set_id) == []
+        assert await provenance.deletions.waiting_for_recipe(provenance.recipe_id) == []
 
 
 class TestADamagedRow:
@@ -583,7 +586,7 @@ class TestADamagedRow:
 
         rows = {
             row.id: row
-            for row in await provenance.insights.own(provenance.set_id, include_dismissed=True)
+            for row in await provenance.insights.own(provenance.recipe_id, include_dismissed=True)
         }
 
         assert rows[damaged].rests_on == []

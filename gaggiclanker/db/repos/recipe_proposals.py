@@ -73,7 +73,7 @@ from gaggiclanker.db.repos.recipes import (
     TEXT_MAX,
     RecipesRepository,
     RecipeVersionPatch,
-    SetVersionRow,
+    RecipeVersionRow,
     VersionRefused,
 )
 from gaggiclanker.db.repos.version_names import NextNames, label_sql, next_names
@@ -226,7 +226,7 @@ class RecipeProposalRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_id: int
+    recipe_id: int
     #: `change` for the ordinary one-change proposal, `design` for the initial
     #: recipe of a Recipe being designed.
     kind: ProposalKind = "change"
@@ -341,7 +341,7 @@ class ProposalWriteResult:
 
     proposal: RecipeProposalRow | None = None
     refused: ProposalRefusal | None = None
-    version: SetVersionRow | None = None
+    version: RecipeVersionRow | None = None
     #: The proposal that was already waiting, when ``refused`` is
     #: ``already_waiting``. The refusal describes it, so the agent talks about
     #: the one on screen instead of stacking another beside it.
@@ -393,20 +393,20 @@ class RecipeProposalsRepository(Repository):
 
     # ── reading ──────────────────────────────────────────────────────
 
-    async def get(self, set_id: int, proposal_id: int) -> RecipeProposalRow | None:
+    async def get(self, recipe_id: int, proposal_id: int) -> RecipeProposalRow | None:
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.id = ? AND p.recipe_id = ?", (proposal_id, set_id)
+            f"{_SELECT} WHERE p.id = ? AND p.recipe_id = ?", (proposal_id, recipe_id)
         )
         return self.to_model(RecipeProposalRow, row)
 
-    async def waiting(self, set_id: int) -> RecipeProposalRow | None:
+    async def waiting(self, recipe_id: int) -> RecipeProposalRow | None:
         """The one proposal this Recipe has waiting, if it has one."""
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE p.recipe_id = ? AND p.status = 'proposed'", (set_id,)
+            f"{_SELECT} WHERE p.recipe_id = ? AND p.status = 'proposed'", (recipe_id,)
         )
         return self.to_model(RecipeProposalRow, row)
 
-    async def last_decided(self, set_id: int) -> RecipeProposalRow | None:
+    async def last_decided(self, recipe_id: int) -> RecipeProposalRow | None:
         """The most recent proposal somebody has already answered.
 
         What a new conversation is told when nothing is waiting: a declined
@@ -416,18 +416,18 @@ class RecipeProposalsRepository(Repository):
         row = await self.db.fetch_one(
             f"{_SELECT} WHERE p.recipe_id = ? AND p.status != 'proposed' "
             "ORDER BY p.decided_at DESC, p.id DESC LIMIT 1",
-            (set_id,),
+            (recipe_id,),
         )
         return self.to_model(RecipeProposalRow, row)
 
-    async def for_recipe(self, set_id: int, *, limit: int = 100) -> list[RecipeProposalRow]:
+    async def for_recipe(self, recipe_id: int, *, limit: int = 100) -> list[RecipeProposalRow]:
         """Every proposal this Recipe has had, newest first."""
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE p.recipe_id = ? ORDER BY p.id DESC LIMIT ?", (set_id, limit)
+            f"{_SELECT} WHERE p.recipe_id = ? ORDER BY p.id DESC LIMIT ?", (recipe_id, limit)
         )
         return self.to_models(RecipeProposalRow, rows)
 
-    async def accepted_threads(self, set_id: int) -> dict[int, int]:
+    async def accepted_threads(self, recipe_id: int) -> dict[int, int]:
         """Which conversation each accepted proposal's version came out of.
 
         Keyed by version id, so the experiment log can offer a way back into the
@@ -442,11 +442,11 @@ class RecipeProposalsRepository(Repository):
                AND resulting_version_id IS NOT NULL AND thread_id IS NOT NULL
              ORDER BY id
             """,
-            (set_id,),
+            (recipe_id,),
         )
         return {int(row["version_id"]): int(row["thread_id"]) for row in rows}
 
-    async def design_profile_versions(self, set_id: int) -> set[int]:
+    async def design_profile_versions(self, recipe_id: int) -> set[int]:
         """The profile versions this Recipe's initial recipes have drafted, in any state.
 
         The profiles a design conversation reads back when it revises its own card
@@ -457,13 +457,13 @@ class RecipeProposalsRepository(Repository):
             SELECT d.draft_version_id AS version_id
               FROM recipe_version_proposals p
               JOIN profile_drafts d ON d.id = p.draft_id
-             WHERE p.recipe_id = :set_id AND p.kind = 'design' AND d.draft_version_id IS NOT NULL
+             WHERE p.recipe_id = :recipe_id AND p.kind = 'design' AND d.draft_version_id IS NOT NULL
             """,
-            {"set_id": set_id},
+            {"recipe_id": recipe_id},
         )
         return {int(row["version_id"]) for row in rows}
 
-    async def preview(self, proposal: RecipeProposalRow) -> SetVersionRow | None:
+    async def preview(self, proposal: RecipeProposalRow) -> RecipeVersionRow | None:
         """The version this proposal would create, as a row nobody stored.
 
         Built so the same :func:`~gaggiclanker.db.repos.recipes.version_changes`
@@ -511,7 +511,7 @@ class RecipeProposalsRepository(Repository):
             candidate = candidate.model_copy(update=await self._profile_facts(candidate))
         return candidate
 
-    async def diff_base(self, proposal: RecipeProposalRow) -> SetVersionRow | None:
+    async def diff_base(self, proposal: RecipeProposalRow) -> RecipeVersionRow | None:
         """What a proposal's card is drawn against: the other side of its diff.
 
         For a change it is the version the change was made to, which stays as
@@ -536,7 +536,7 @@ class RecipeProposalsRepository(Repository):
             }
         )
 
-    async def _profile_facts(self, version: SetVersionRow) -> dict[str, Any]:
+    async def _profile_facts(self, version: RecipeVersionRow) -> dict[str, Any]:
         """A profile's label and stated brew temperature, read as a version reads them.
 
         The same expression `_VERSION_SELECT` uses, because the rule for "the
@@ -573,7 +573,7 @@ class RecipeProposalsRepository(Repository):
             and await self.outcomes.waiting_for_version(base.id) is not None
         )
 
-    async def outcome_blocks(self, current: SetVersionRow) -> bool:
+    async def outcome_blocks(self, current: RecipeVersionRow) -> bool:
         """Whether the current version's open outcome stops a new change.
 
         The one statement of the rule, read by this repository's create and by
@@ -588,13 +588,13 @@ class RecipeProposalsRepository(Repository):
             and await self.outcomes.waiting_for_version(current.id) is None
         )
 
-    async def next_names(self, set_id: int) -> NextNames:
+    async def next_names(self, recipe_id: int) -> NextNames:
         """What accepting would name the version, as a minor and as a major."""
-        return await next_names(self.db, set_id)
+        return await next_names(self.db, recipe_id)
 
     # ── writing ──────────────────────────────────────────────────────
 
-    async def create(self, set_id: int, spec: ProposalWrite) -> ProposalWriteResult:
+    async def create(self, recipe_id: int, spec: ProposalWrite) -> ProposalWriteResult:
         """Record a change the person has not agreed to yet.
 
         Every guard is about state another request can change or a reference
@@ -631,15 +631,17 @@ class RecipeProposalsRepository(Repository):
         """
         now = utc_now()
         async with self.db.transaction():
-            current = await self.recipes.current_version(set_id)
+            current = await self.recipes.current_version(recipe_id)
             if current is None:
                 return ProposalWriteResult(refused="no_current_version")
             designing = bool(
-                await self.db.fetch_value("SELECT designing FROM recipes WHERE id = ?", (set_id,))
+                await self.db.fetch_value(
+                    "SELECT designing FROM recipes WHERE id = ?", (recipe_id,)
+                )
             )
             if designing != (spec.kind == "design"):
                 return ProposalWriteResult(refused="designing" if designing else "not_designing")
-            existing = await self.waiting(set_id)
+            existing = await self.waiting(recipe_id)
             replaced = existing if existing is not None and existing.kind == "design" else None
             if existing is not None and replaced is None:
                 return ProposalWriteResult(refused="already_waiting", waiting=existing)
@@ -657,7 +659,7 @@ class RecipeProposalsRepository(Repository):
                 # Every existing version is older than the one this proposal
                 # would create, so "a version of this Recipe" is the whole rule
                 # here — the same reason `POST /versions` checks only that half.
-                if await self.recipes.version_of_recipe(set_id, compares_to) is None:
+                if await self.recipes.version_of_recipe(recipe_id, compares_to) is None:
                     return ProposalWriteResult(refused="bad_compare")
             profile_id = spec.patch.profile_version_id
             if "profile_version_id" in spec.patch.model_fields_set and profile_id is not None:
@@ -677,7 +679,7 @@ class RecipeProposalsRepository(Repository):
                 # to a transcript that says nothing about it.
                 mine = await self.db.fetch_value(
                     "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?",
-                    (spec.thread_id, set_id),
+                    (spec.thread_id, recipe_id),
                 )
                 if mine is None:
                     return ProposalWriteResult(refused="bad_thread")
@@ -701,12 +703,12 @@ class RecipeProposalsRepository(Repository):
                     (recipe_id, thread_id, base_version_id, patch_json, reason, prediction,
                      compares_to_version_id, combined_reason, kind, draft_id,
                      suggest_major, major_reason, status, created_at)
-                VALUES (:set_id, :thread_id, :base_version_id, :patch_json, :reason, :prediction,
+                VALUES (:recipe_id, :thread_id, :base_version_id, :patch_json, :reason, :prediction,
                         :compares_to_version_id, :combined_reason, :kind, :draft_id,
                         :suggest_major, :major_reason, 'proposed', :created_at)
                 """,
                 {
-                    "set_id": set_id,
+                    "recipe_id": recipe_id,
                     "thread_id": spec.thread_id,
                     "base_version_id": current.id,
                     "patch_json": json.dumps(recipe_patch(spec.patch), sort_keys=True),
@@ -722,11 +724,11 @@ class RecipeProposalsRepository(Repository):
                 },
             )
             proposal_id = int(cursor.lastrowid or 0)
-        return ProposalWriteResult(proposal=await self.get(set_id, proposal_id))
+        return ProposalWriteResult(proposal=await self.get(recipe_id, proposal_id))
 
     async def accept(
         self,
-        set_id: int,
+        recipe_id: int,
         proposal_id: int,
         *,
         major: bool | None = None,
@@ -767,12 +769,12 @@ class RecipeProposalsRepository(Repository):
         now = utc_now()
         try:
             async with self.db.transaction():
-                proposal = await self.get(set_id, proposal_id)
+                proposal = await self.get(recipe_id, proposal_id)
                 if proposal is None:
                     return ProposalWriteResult(refused="no_proposal")
                 if proposal.status != "proposed":
                     return ProposalWriteResult(refused="not_waiting", proposal=proposal)
-                current = await self.recipes.current_version(set_id)
+                current = await self.recipes.current_version(recipe_id)
                 if current is None:  # pragma: no cover - the base version proves one exists
                     return ProposalWriteResult(refused="no_current_version")
                 if current.id != proposal.base_version_id:
@@ -782,7 +784,7 @@ class RecipeProposalsRepository(Repository):
                     # agent meant. Recorded as stale so the log says what happened.
                     await self._retire(proposal, now, why="recipe_written_otherwise")
                     return ProposalWriteResult(
-                        refused="stale", proposal=await self.get(set_id, proposal_id)
+                        refused="stale", proposal=await self.get(recipe_id, proposal_id)
                     )
                 # Recorded only while the outcome is open. A person who has already
                 # recorded one (on the Recipe page, or by answering the card) has
@@ -829,7 +831,7 @@ class RecipeProposalsRepository(Repository):
                     assert settled is not None  # the draft stood a moment ago, in this transaction
                     profile_version_id = settled.draft_version_id
                 version_id = await self.recipes.append_version(
-                    set_id,
+                    recipe_id,
                     _version_patch(proposal, profile_version_id=profile_version_id),
                     keep_proposal=proposal_id,
                     major=major,
@@ -842,7 +844,7 @@ class RecipeProposalsRepository(Repository):
             # profile that has become a pin's copy; the transaction above is already undone.
             # Any other is the caller's to say (the first recipe's profile already has a Recipe).
             if exc.refused in (
-                "profile_has_a_set",
+                "profile_has_a_recipe",
                 "other_profile",
                 "not_the_active_version",
                 "profile_deleted",
@@ -854,25 +856,27 @@ class RecipeProposalsRepository(Repository):
                 else "design_has_shots"
                 if exc.refused == "design_has_shots"
                 else "design_has_versions",
-                proposal=await self.get(set_id, proposal_id),
+                proposal=await self.get(recipe_id, proposal_id),
             )
         log.info(
             "recipe_proposal_accepted",
             proposal_id=proposal_id,
-            set_id=set_id,
+            recipe_id=recipe_id,
             kind=proposal.kind,
-            set_version_id=version_id,
+            recipe_version_id=version_id,
             outcome_proposal_id=None if grade is None else grade.id,
         )
         return ProposalWriteResult(
-            proposal=await self.get(set_id, proposal_id),
+            proposal=await self.get(recipe_id, proposal_id),
             version=await self.recipes.get_version(version_id),
-            graded=None if grade is None else await self.outcomes.get(set_id, grade.id),
+            graded=None if grade is None else await self.outcomes.get(recipe_id, grade.id),
             profile_row=put,
             profile_draft_id=profile_draft_id,
         )
 
-    async def decline(self, set_id: int, proposal_id: int, note: str = "") -> ProposalWriteResult:
+    async def decline(
+        self, recipe_id: int, proposal_id: int, note: str = ""
+    ) -> ProposalWriteResult:
         """Turn a proposal down, optionally saying why.
 
         The note is worth asking for: "not that, the last two finer grinds went
@@ -886,7 +890,7 @@ class RecipeProposalsRepository(Repository):
         """
         now = utc_now()
         async with self.db.transaction():
-            proposal = await self.get(set_id, proposal_id)
+            proposal = await self.get(recipe_id, proposal_id)
             if proposal is None:
                 return ProposalWriteResult(refused="no_proposal")
             if proposal.status != "proposed":
@@ -894,7 +898,7 @@ class RecipeProposalsRepository(Repository):
             await self._decide(proposal_id, "declined", now, note=note)
             if proposal.draft_id is not None:
                 await self.drafts.discard_unsent([proposal.draft_id], now=now)
-        return ProposalWriteResult(proposal=await self.get(set_id, proposal_id))
+        return ProposalWriteResult(proposal=await self.get(recipe_id, proposal_id))
 
     async def _draft_still_stands(self, proposal: RecipeProposalRow) -> bool:
         """Whether an initial recipe's draft can still become the profile it names.

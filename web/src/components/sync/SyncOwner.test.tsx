@@ -62,7 +62,7 @@ function status(lastRuns: Record<string, unknown>): SyncStatusData {
       deleted_on_device: 0,
       incomplete: 0,
       samples: 2,
-      needs_set: 0,
+      needs_recipe: 0,
     },
     recent_events: [],
   };

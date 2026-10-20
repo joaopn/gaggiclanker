@@ -117,10 +117,10 @@ class StartingPointOption(BaseModel):
     rules_used: list[str] = Field(default_factory=list, max_length=40)
     #: The heading paths of the excerpts leaned on. Filtered the same way.
     excerpts_used: list[str] = Field(default_factory=list, max_length=20)
-    #: The `set_version_id`s of the similar Recipes this option is anchored on.
+    #: The `recipe_version_id`s of the similar Recipes this option is anchored on.
     #: Filtered against the ones the run was shown, because an anchor the model
     #: invented is worse than none: the card links to it.
-    similar_set_version_ids: list[int] = Field(default_factory=list, max_length=10)
+    similar_recipe_version_ids: list[int] = Field(default_factory=list, max_length=10)
 
     @field_serializer("profile")
     def _serialise_profile(self, profile: Profile | None) -> dict[str, Any] | None:

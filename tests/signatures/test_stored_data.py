@@ -107,7 +107,7 @@ async def test_every_expression_reads_the_same_on_stored_data_as_on_the_parsed_l
     subject = CheckSubject(
         shot_id=shot_id,
         profile_version_id=None,
-        set_version_id=None,
+        recipe_version_id=None,
         warnings=[],
         phases=phases,
         duration_s=derived.shot.duration_ms / 1000,

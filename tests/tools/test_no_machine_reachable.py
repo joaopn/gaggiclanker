@@ -303,7 +303,7 @@ async def test_nothing_the_chat_hands_a_tool_reaches_the_machine(
         # not of what may be called on it. Excluding either would leave the one
         # that was excluded untested for exactly the mistake this file exists
         # to catch.
-        ("chat/set", ToolScope.for_thread(fixture.set_id)),
+        ("chat/set", ToolScope.for_thread(fixture.recipe_id)),
         ("chat/general", ToolScope()),
     ):
         ctx = app.state.chat.tool_context(scope=scope, run_id=None)
@@ -448,7 +448,7 @@ async def test_nothing_the_stdio_server_hands_a_tool_reaches_the_machine(
         await create_schema(db)
         settings = SettingsService(SettingsRepository(db))
 
-        for label, scope in (("general", ToolScope()), ("set", ToolScope.for_thread(1))):
+        for label, scope in (("general", ToolScope()), ("recipe", ToolScope.for_thread(1))):
             ctx = stdio_tool_context(db, settings, scope=scope)
 
             assert isinstance(ctx.drafts, DraftProposals)
@@ -541,14 +541,14 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     app, client, fixture = connected
     # Each proposal is dispatched in a conversation that has it: proposing a Recipe
     # version belongs in that Recipe's own chat.
-    ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(fixture.set_id), run_id=None)
+    ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(fixture.recipe_id), run_id=None)
     proposers = {spec.name for spec in registry.specs(frozenset({"propose"}))}
     assert proposers == {
         "draft_profile",
         "propose_initial_recipe",
         "propose_insight_deletion",
         "propose_outcome",
-        "propose_set_version",
+        "propose_recipe_version",
         "propose_signature",
         "propose_signature_override",
         "record_insight",
@@ -573,7 +573,7 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
 
     versioned = await registry.dispatch(
         ctx,
-        "propose_set_version",
+        "propose_recipe_version",
         {
             "reason": "Half a gram more.",
             "dose_g": 18.5,
@@ -627,7 +627,7 @@ async def test_the_stdio_context_proposes_drafts(
         fixture = await build_fixture(db)
         await give_the_recipe_its_profile(fixture)
         settings = SettingsService(SettingsRepository(db))
-        ctx = stdio_tool_context(db, settings, scope=ToolScope.for_thread(fixture.set_id))
+        ctx = stdio_tool_context(db, settings, scope=ToolScope.for_thread(fixture.recipe_id))
 
         drafted = await registry.dispatch(
             ctx,
@@ -643,7 +643,7 @@ async def test_the_stdio_context_proposes_drafts(
         assert (
             await registry.dispatch(
                 ctx,
-                "propose_set_version",
+                "propose_recipe_version",
                 {
                     "reason": "More.",
                     "dose_g": 19,

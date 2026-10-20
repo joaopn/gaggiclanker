@@ -545,7 +545,7 @@ async def _order(
     fixture: Fixture, *, sort: str = REVIEW_SORT, descending: bool = True, limit: int = 100
 ) -> list[int]:
     page = await ShotsRepository(fixture.db).list_shots(
-        limit=limit, sort=sort, descending=descending, set_id=fixture.set_id
+        limit=limit, sort=sort, descending=descending, recipe_id=fixture.recipe_id
     )
     return [row.id for row in page.items]
 
@@ -581,7 +581,7 @@ async def test_each_key_is_total_and_stable_across_pages_and_ascending_is_its_re
         repo = ShotsRepository(fixture.db)
         for offset in range(0, len(everything), size):
             page = await repo.list_shots(
-                limit=size, offset=offset, sort=sort, set_id=fixture.set_id
+                limit=size, offset=offset, sort=sort, recipe_id=fixture.recipe_id
             )
             paged += [row.id for row in page.items]
         assert paged == everything, (sort, size)
@@ -627,7 +627,7 @@ async def test_no_review_moves_the_curve_check_or_its_sort(fixture: Fixture) -> 
     repo = ShotsRepository(fixture.db)
 
     async def curve_check() -> tuple[list[int], dict[int, Any]]:
-        page = await repo.list_shots(limit=100, sort=CHECK_SORT, set_id=fixture.set_id)
+        page = await repo.list_shots(limit=100, sort=CHECK_SORT, recipe_id=fixture.recipe_id)
         return (
             [row.id for row in page.items],
             {row.id: row.checks.model_dump() for row in page.items},
@@ -677,7 +677,7 @@ async def test_a_failed_free_text_answer_is_a_review_fault_until_rejected(
     repo = ShotReviewsRepository(fixture.db)
     shots = ShotsRepository(fixture.db)
 
-    page = await shots.list_shots(limit=100, sort=REVIEW_SORT, set_id=fixture.set_id)
+    page = await shots.list_shots(limit=100, sort=REVIEW_SORT, recipe_id=fixture.recipe_id)
     first = page.items[0]
     assert first.id == clean
     assert first.review.badge == "Pressurise: unstable"
@@ -687,7 +687,7 @@ async def test_a_failed_free_text_answer_is_a_review_fault_until_rejected(
 
     (claim,) = (await repo.get(review)).claims  # type: ignore[union-attr]
     await repo.answer(review, claim.id, keep=False)
-    page = await shots.list_shots(limit=100, sort=REVIEW_SORT, set_id=fixture.set_id)
+    page = await shots.list_shots(limit=100, sort=REVIEW_SORT, recipe_id=fixture.recipe_id)
     row = next(item for item in page.items if item.id == clean)
     assert (row.review.badge, row.review.verdict) == ("As intended", "as_intended")
     assert row.review.entries == []

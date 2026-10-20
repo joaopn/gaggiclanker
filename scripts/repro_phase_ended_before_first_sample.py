@@ -113,7 +113,7 @@ def main() -> int:
     subject = CheckSubject(
         shot_id=1,
         profile_version_id=None,
-        set_version_id=None,
+        recipe_version_id=None,
         warnings=warnings,
         phases=phases,
         duration_s=duration_s,

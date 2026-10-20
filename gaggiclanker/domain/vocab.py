@@ -58,13 +58,13 @@ __all__ = [
     "OutcomeState",
     "PredictionStance",
     "Process",
+    "RecipeVersionOrigin",
     "ReviewClaimKind",
     "ReviewClaimStatus",
     "ReviewStatus",
     "RoastLevel",
     "RuleCategory",
     "RuleConfidence",
-    "SetVersionOrigin",
     "ShotStyle",
     "SpreadMeasure",
     "StepUnit",
@@ -124,7 +124,7 @@ type FlavorPickKind = Literal["taste", "aroma"]
 #: *first* version, which is what makes "how good is the cold start" answerable.
 #: `analysis` is history: an accepted suggestion of the retired per-shot
 #: analysis wrote it, and the versions it made keep it; nothing writes it now.
-type SetVersionOrigin = Literal["manual", "analysis", "chat", "starting_point"]
+type RecipeVersionOrigin = Literal["manual", "analysis", "chat", "starting_point"]
 
 #: A person's grade of a version's prediction, recorded after the shots are in.
 #: Four values rather than a yes/no because the honest answer to "did what you
@@ -229,7 +229,7 @@ STEP_UNITS: tuple[str, ...] = get_args(StepUnit.__value__)
 BALANCES: tuple[str, ...] = get_args(Balance.__value__)
 DECISIONS: tuple[str, ...] = get_args(Decision.__value__)
 FLAVOR_PICK_KINDS: tuple[str, ...] = get_args(FlavorPickKind.__value__)
-RECIPE_VERSION_ORIGINS: tuple[str, ...] = get_args(SetVersionOrigin.__value__)
+RECIPE_VERSION_ORIGINS: tuple[str, ...] = get_args(RecipeVersionOrigin.__value__)
 VERSION_OUTCOMES: tuple[str, ...] = get_args(VersionOutcome.__value__)
 OUTCOME_STATES: tuple[str, ...] = get_args(OutcomeState.__value__)
 #: Typed as the literal rather than as plain strings, unlike its neighbours:
@@ -495,7 +495,7 @@ class MeasureTerm(BaseModel):
     """One measure the spread is worked out over: its slug, its words, its unit.
 
     A :class:`Term` with a unit, rather than a label that already contains one:
-    the Set page writes "Shot time ±1.8 s" and the evidence table writes
+    the Recipe page writes "Shot time ±1.8 s" and the evidence table writes
     "held against 2.4 s", and a label of "Shot time (s)" would put the unit in
     the wrong half of both sentences.
     """

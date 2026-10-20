@@ -79,7 +79,9 @@ class NotEnoughRecipes(Exception):
     """Fewer than two Recipes have a confirmed insight, so there is nothing to find a pattern in."""
 
     def __init__(self, found: int) -> None:
-        super().__init__(f"{found} Set(s) have confirmed insights; a pattern needs {MIN_RECIPES}")
+        super().__init__(
+            f"{found} Recipe(s) have confirmed insights; a pattern needs {MIN_RECIPES}"
+        )
         self.found = found
 
 
@@ -132,7 +134,7 @@ class PatternsService:
         running = await self.runs.latest_running()
         if running is not None:
             return running, False
-        found = await self.runs.sets_with_insights()
+        found = await self.runs.recipes_with_insights()
         if found < MIN_RECIPES:
             raise NotEnoughRecipes(found)
         pending = self._in_flight()  # another request may have got in while we read
@@ -190,7 +192,7 @@ class PatternsService:
                 prompt_version=version,
                 input=given.model_dump(mode="json"),
                 insights_read=given.insight_count,
-                sets_read=given.lesson_recipe_count,
+                recipes_read=given.lesson_recipe_count,
             )
         )
         self._publish("patterns.started", run_id, status="running")
@@ -213,7 +215,7 @@ class PatternsService:
                     model=prepared.model,
                     purpose="patterns",
                     label="find patterns",
-                    subject=f"{prepared.row.sets_read} Sets",
+                    subject=f"{prepared.row.recipes_read} Recipes",
                     prompt_name=PATTERNS_PROMPT,
                     prompt_version=prepared.version,
                     retry_delay_s=self.retry_delay_s,

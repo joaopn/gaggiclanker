@@ -150,7 +150,7 @@ async def test_a_failing_tool_is_shown_to_the_model_rather_than_ending_the_run(
     assert result.ok is False
     # A Recipe conversation refuses a shot that is not its own in the same words
     # whether or not it exists, which is what the model is shown here.
-    assert "not a shot of this Set" in result.content
+    assert "not a shot of this Recipe" in result.content
 
 
 # -- the extended glossary rides with an extended read ----------------------
@@ -615,7 +615,7 @@ async def test_the_round_budget_ends_the_loop_with_an_answer(
     """A model that keeps calling tools still has to produce something to read."""
     await runner.llm.settings.store("chatMaxToolRounds", 2)
     looping = ChatTurn(
-        tool_calls=[ChatToolCall(id="c", name="list_sets", arguments={})], stop_reason="tool_use"
+        tool_calls=[ChatToolCall(id="c", name="list_recipes", arguments={})], stop_reason="tool_use"
     )
     chat_provider.chat_script = [looping, looping, ChatTurn(text="I ran out of budget.")]
 
@@ -637,7 +637,8 @@ async def test_the_call_budget_caps_the_tools_actually_run(
     chat_provider.chat_script = [
         ChatTurn(
             tool_calls=[
-                ChatToolCall(id=f"c{index}", name="list_sets", arguments={}) for index in range(5)
+                ChatToolCall(id=f"c{index}", name="list_recipes", arguments={})
+                for index in range(5)
             ],
             stop_reason="tool_use",
         ),
@@ -667,7 +668,7 @@ async def test_an_exhausted_call_budget_leaves_a_history_a_provider_will_accept(
     await runner.llm.settings.store("chatMaxToolCalls", 2)
     await runner.llm.settings.store("chatMaxToolRounds", 5)
     asking = ChatTurn(
-        tool_calls=[ChatToolCall(id="c", name="list_sets", arguments={})], stop_reason="tool_use"
+        tool_calls=[ChatToolCall(id="c", name="list_recipes", arguments={})], stop_reason="tool_use"
     )
     # Two rounds spend the budget; the three rounds left are the ones that used
     # to be written down empty.
@@ -707,7 +708,7 @@ async def test_the_budget_nudge_is_appended_once(
     """Repeating it every round would crowd the question out of the history."""
     await runner.llm.settings.store("chatMaxToolCalls", 2)
     asking = ChatTurn(
-        tool_calls=[ChatToolCall(id="c", name="list_sets", arguments={})], stop_reason="tool_use"
+        tool_calls=[ChatToolCall(id="c", name="list_recipes", arguments={})], stop_reason="tool_use"
     )
     chat_provider.chat_script = [asking, asking, ChatTurn(text="Done.")]
 
@@ -882,8 +883,8 @@ async def test_the_system_prompt_carries_the_recipe_scope(
     await send(runner, tasks, thread)
 
     system = chat_provider.chat_calls[0].system
-    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in system
-    assert f"Set {archive.set_id}" in system
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE" in system
+    assert f"Recipe {archive.recipe_id}" in system
     # Not only the Recipe: the experiment, which is what a grade is made against.
     assert "THE EXPERIMENT SO FAR" in system
 
@@ -1093,7 +1094,7 @@ async def test_a_recipe_being_designed_is_given_the_design_tools_and_a_dispatche
             tool_calls=[
                 ChatToolCall(
                     id="c1",
-                    name="propose_set_version",
+                    name="propose_recipe_version",
                     arguments={"reason": "Finer.", "grind_setting": "18"},
                 )
             ],
@@ -1102,7 +1103,7 @@ async def test_a_recipe_being_designed_is_given_the_design_tools_and_a_dispatche
         ChatTurn(text="Let us talk about what you want first."),
     ]
 
-    await send(runner, tasks, opened.thread.id, "Help me design this Set")
+    await send(runner, tasks, opened.thread.id, "Help me design this Recipe")
 
     names = {schema["function"]["name"] for schema in chat_provider.chat_calls[0].tools}
     assert names == DESIGN_TOOLS
@@ -1134,7 +1135,7 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
     thread_id = opened.thread.id
     chat_provider.chat_script = [ChatTurn(text="What basket?"), ChatTurn(text="Grade it.")]
 
-    first = await send(runner, tasks, thread_id, "Help me design this Set")
+    first = await send(runner, tasks, thread_id, "Help me design this Recipe")
 
     from tests.profile_rows import free_profile_version
 
@@ -1162,12 +1163,12 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
     second = await send(runner, tasks, thread_id, "It came out fast.")
 
     design_turn, recipe_turn = chat_provider.chat_calls
-    assert "THIS CONVERSATION IS DESIGNING A NEW SET" in design_turn.system
+    assert "THIS CONVERSATION IS DESIGNING A NEW RECIPE" in design_turn.system
     assert "GRADE FIRST" not in design_turn.system
     # A design reads no shots, so it is not told what their fields mean.
     assert "SHOT FIELDS" not in design_turn.system
     assert {schema["function"]["name"] for schema in design_turn.tools} == DESIGN_TOOLS
-    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in recipe_turn.system
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE" in recipe_turn.system
     assert "GRADE FIRST" in recipe_turn.system
     assert "SHOT FIELDS" in recipe_turn.system
     # The card it came from is told as the recipe it set, not as an empty change.
@@ -1184,11 +1185,11 @@ async def test_a_hand_made_recipe_that_names_no_profile_is_an_ordinary_recipe_ch
     chat_provider: FakeProvider,
 ) -> None:
     """Its version 1 looks like an empty design, and nothing about it changes."""
-    from gaggiclanker.db.repos.recipes import SetVersionWrite
+    from gaggiclanker.db.repos.recipes import RecipeVersionWrite
 
     any_profile = await RecipesRepository(archive.db).create(
         RecipeWrite(name="Any profile", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
-        SetVersionWrite(),
+        RecipeVersionWrite(),
     )
     opened = await ChatRepository(archive.db).open_thread(any_profile.id)
     assert opened.thread is not None
@@ -1201,7 +1202,7 @@ async def test_a_hand_made_recipe_that_names_no_profile_is_an_ordinary_recipe_ch
         "Those facts are the record, not the whole archive: use the tools for anything else, "
         "and for anything you are about to quote a number from."
     )
-    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in request.system
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE" in request.system
     assert "DESIGNING" not in request.system
     assert {schema["function"]["name"] for schema in request.tools} == RECIPE_TOOLS
 
@@ -1260,15 +1261,15 @@ async def test_the_scope_is_on_the_request_so_the_cli_can_carry_it(
     """The other providers get the scope through the tool context; the CLI cannot.
 
     `claude_code` runs the tool loop itself against our MCP server, so the only
-    way a scoped thread's `get_set` with no argument answers there is if the
+    way a scoped thread's `get_recipe` with no argument answers there is if the
     scope is on the request and ends up in the generated --mcp-config.
     """
     chat_provider.chat_script = [ChatTurn(text="ok")]
 
     await send(runner, tasks, thread)
 
-    assert chat_provider.chat_calls[0].set_id == archive.set_id
-    assert chat_provider.chat_calls[0].set_version_id == archive.version_id
+    assert chat_provider.chat_calls[0].recipe_id == archive.recipe_id
+    assert chat_provider.chat_calls[0].recipe_version_id == archive.version_id
 
 
 async def test_an_unscoped_thread_sends_no_scope(
@@ -1283,7 +1284,7 @@ async def test_an_unscoped_thread_sends_no_scope(
 
     await send(runner, tasks, plain.id, "what is a 1:2 ratio?")
 
-    assert chat_provider.chat_calls[0].set_id is None
+    assert chat_provider.chat_calls[0].recipe_id is None
 
 
 async def test_a_run_tells_the_conversation_what_the_person_did_with_its_own_insights(
@@ -1304,8 +1305,8 @@ async def test_a_run_tells_the_conversation_what_the_person_did_with_its_own_ins
         InsightWrite(
             text="This bag is sweetest one number finer.",
             source="chat",
-            set_id=archive.set_id,
-            set_version_id=archive.version_id,
+            recipe_id=archive.recipe_id,
+            recipe_version_id=archive.version_id,
             thread_id=thread,
         )
     )
@@ -1314,14 +1315,14 @@ async def test_a_run_tells_the_conversation_what_the_person_did_with_its_own_ins
         InsightWrite(
             text="Longer pre-infusion helps every bag.",
             source="chat",
-            set_id=archive.set_id,
-            set_version_id=archive.version_id,
+            recipe_id=archive.recipe_id,
+            recipe_version_id=archive.version_id,
             thread_id=thread,
         )
     )
     await insights.dismiss(dismissed)
     other = await ChatRepository(archive.db).create_thread(
-        ChatThreadWrite(title="", set_id=archive.set_id, set_version_id=archive.version_id)
+        ChatThreadWrite(title="", recipe_id=archive.recipe_id, recipe_version_id=archive.version_id)
     )
     assert other.thread is not None
     chat_provider.chat_script = [ChatTurn(text="Noted.")]

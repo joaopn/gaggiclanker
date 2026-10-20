@@ -23,17 +23,17 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipeRow,
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetRow,
-    SetVersionWrite,
 )
 from tests.recipes.conftest import make_profile_version, make_shot
 from tests.recipes.test_design_api import data, error
 
 
-async def _designed(app: FastAPI) -> SetRow:
+async def _designed(app: FastAPI) -> RecipeRow:
     db = app.state.db
     bean = await BeansRepository(db).create(BeanWrite(name="Kenya AA"))
     grinder = await GrindersRepository(db).create(GrinderWrite(name="Niche Zero"))
@@ -42,7 +42,7 @@ async def _designed(app: FastAPI) -> SetRow:
     )
 
 
-async def _card(app: FastAPI, row: SetRow, *, new: bool = True, name: str = "Soft Bloom") -> Any:
+async def _card(app: FastAPI, row: RecipeRow, *, new: bool = True, name: str = "Soft Bloom") -> Any:
     """A first-recipe card whose profile is a draft (a new profile unless ``new`` is false)."""
     db = app.state.db
     base = await make_profile_version(db, "Library profile", owned=False)
@@ -80,12 +80,12 @@ async def _document_of(db: Any, version_id: int) -> dict[str, Any]:
 
 
 async def _accept(
-    client: httpx.AsyncClient, row: SetRow, proposal: Any, **body: Any
+    client: httpx.AsyncClient, row: RecipeRow, proposal: Any, **body: Any
 ) -> httpx.Response:
-    return await client.post(f"/api/sets/{row.id}/proposals/{proposal.id}/accept", json=body)
+    return await client.post(f"/api/recipes/{row.id}/proposals/{proposal.id}/accept", json=body)
 
 
-async def _untouched(app: FastAPI, row: SetRow, draft: Any, proposal: Any) -> None:
+async def _untouched(app: FastAPI, row: RecipeRow, draft: Any, proposal: Any) -> None:
     """The draft, the list and the Recipe are exactly as before the accept."""
     db = app.state.db
     after = await ProfileDraftsRepository(db).get(draft.id)
@@ -128,7 +128,7 @@ async def test_accepting_with_a_name_records_version_1_and_puts_the_profile_unde
         return next(c["after"] for c in changes if c["field"] == "profile_version_id")
 
     assert profile_line(body["proposal"]["changes"]) == "Gentle Bloom"
-    listed = data(await client.get(f"/api/sets/{row.id}/proposals"))["items"]
+    listed = data(await client.get(f"/api/recipes/{row.id}/proposals"))["items"]
     assert profile_line(next(i for i in listed if i["id"] == proposal.id)["changes"]) == (
         "Gentle Bloom"
     )
@@ -363,7 +363,7 @@ async def test_a_name_for_an_ordinary_change_is_refused(
     db = app.state.db
     bean = await BeansRepository(db).create(BeanWrite(name="Kenya AA"))
     row = await RecipesRepository(db).create(
-        RecipeWrite(name="Plain", bean_id=bean.id), SetVersionWrite(dose_g=18, target_yield_g=36)
+        RecipeWrite(name="Plain", bean_id=bean.id), RecipeVersionWrite(dose_g=18, target_yield_g=36)
     )
     created = await RecipeProposalsRepository(db).create(
         row.id,

@@ -299,9 +299,9 @@ function BeanCard({
         ) : null}
         {bean.notes ? <p className="text-sm">{bean.notes}</p> : null}
         <p className="text-muted-foreground text-xs">
-          {bean.set_count === 0
+          {bean.recipe_count === 0
             ? "No Sets use this coffee yet."
-            : `${bean.set_count} Set${bean.set_count === 1 ? "" : "s"}`}
+            : `${bean.recipe_count} Set${bean.recipe_count === 1 ? "" : "s"}`}
           {bean.archived ? " · archived" : ""}
         </p>
         {confirming ? (
@@ -406,7 +406,7 @@ function DeleteConfirm({
   onArchive: () => void;
   onCancel: () => void;
 }) {
-  const inUse = bean.set_count > 0;
+  const inUse = bean.recipe_count > 0;
   return (
     <section
       aria-label={`Delete ${bean.name}?`}
@@ -415,8 +415,8 @@ function DeleteConfirm({
     >
       {inUse ? (
         <p className="text-sm">
-          {bean.set_count === 1 ? "A Set uses" : `${bean.set_count} Sets use`} this coffee, so it
-          cannot be deleted.{" "}
+          {bean.recipe_count === 1 ? "A Set uses" : `${bean.recipe_count} Sets use`} this coffee, so
+          it cannot be deleted.{" "}
           {bean.archived ? "It is already archived." : "Archive it to take it out of the pickers."}
         </p>
       ) : (

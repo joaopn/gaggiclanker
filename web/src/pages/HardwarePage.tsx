@@ -109,9 +109,9 @@ export function HardwarePage() {
                 <div className="flex flex-wrap gap-1">
                   <Badge variant="outline">{grinder.burr_type} burrs</Badge>
                   <Badge variant="outline">steps in {grinder.step_unit}</Badge>
-                  {grinder.set_count > 0 ? (
+                  {grinder.recipe_count > 0 ? (
                     <Badge variant="ghost" className="text-muted-foreground">
-                      {grinder.set_count} Set{grinder.set_count === 1 ? "" : "s"}
+                      {grinder.recipe_count} Set{grinder.recipe_count === 1 ? "" : "s"}
                     </Badge>
                   ) : null}
                 </div>

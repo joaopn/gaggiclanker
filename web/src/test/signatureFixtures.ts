@@ -37,8 +37,8 @@ export const signatureCarried: SignatureData = raw.carried;
 export const overrideInForce: SignatureOverride = raw.overrideInForce;
 export const overrideRejected: SignatureOverride = raw.overrideRejected;
 export const SIGNATURE_THREAD_ID = raw.threadId;
-export const SIGNATURE_SET_ID = raw.setId;
-export const SIGNATURE_SET_VERSION_ID = raw.setVersionId;
+export const SIGNATURE_RECIPE_ID = raw.setId;
+export const SIGNATURE_RECIPE_VERSION_ID = raw.setVersionId;
 export const SIGNATURE_PROFILE_VERSION_ID = raw.profileVersionId;
 
 /** One expectation of a served document, by its phase and kind. */
@@ -52,4 +52,4 @@ export function expectationOf(
   return found;
 }
 
-export const setsUsing = (data: SignatureData): SignatureSetUsing[] => data.sets;
+export const setsUsing = (data: SignatureData): SignatureSetUsing[] => data.recipes;

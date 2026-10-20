@@ -24,8 +24,8 @@ from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, Insight
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
     RecipesRepository,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
@@ -52,16 +52,16 @@ class Copied:
 
 async def _make(db: Database) -> Copied:
     fixture = await build_fixture(db)
-    await db.execute("UPDATE recipes SET name = ? WHERE id = ?", (SOURCE_NAME, fixture.set_id))
+    await db.execute("UPDATE recipes SET name = ? WHERE id = ?", (SOURCE_NAME, fixture.recipe_id))
     recipes = RecipesRepository(db)
     async with db.transaction():
         new_id = await recipes.create_in_transaction(
             RecipeWrite(name=COPY_NAME, bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
-            SetVersionWrite(dose_g=18, target_yield_g=36),
+            RecipeVersionWrite(dose_g=18, target_yield_g=36),
             copied_from_version_id=fixture.version_id,
         )
         await InsightsRepository(db).insert(
-            InsightWrite(text=COPIED_TEXT, source="chat", confirmed=True, set_id=new_id)
+            InsightWrite(text=COPIED_TEXT, source="chat", confirmed=True, recipe_id=new_id)
         )
     current = await recipes.current_version(new_id)
     assert current is not None
@@ -90,7 +90,7 @@ async def test_the_note_is_served_to_the_person_so_the_test_proves_something(
 ) -> None:
     row = await RecipesRepository(copied.db).get(copied.new_recipe_id)
     assert row is not None and row.copied_from is not None
-    assert row.copied_from.set_name == SOURCE_NAME
+    assert row.copied_from.recipe_name == SOURCE_NAME
     assert "copied_from" in row.model_dump(mode="json")
 
 
@@ -132,18 +132,18 @@ async def test_every_tool_output_that_describes_a_recipe_leaves_the_note_out(
     )
     outputs: dict[str, Any] = {}
     for name, arguments in (
-        ("get_set", {"set_id": copied.new_recipe_id}),
-        ("list_sets", {"include_archived": True}),
+        ("get_recipe", {"recipe_id": copied.new_recipe_id}),
+        ("list_recipes", {"include_archived": True}),
     ):
         outcome = await registry.dispatch(ctx, name, arguments)
         assert outcome.ok, outcome.data
         outputs[name] = json.dumps(outcome.data)
 
-    _clean(outputs["get_set"])
+    _clean(outputs["get_recipe"])
     # The list names every Recipe, the source included, so only the note itself is absent.
-    assert "copied from" not in outputs["list_sets"].lower()
-    assert "copied_from" not in outputs["list_sets"] and COPY_NAME in outputs["list_sets"]
-    assert COPIED_TEXT in outputs["get_set"]
+    assert "copied from" not in outputs["list_recipes"].lower()
+    assert "copied_from" not in outputs["list_recipes"] and COPY_NAME in outputs["list_recipes"]
+    assert COPIED_TEXT in outputs["get_recipe"]
 
 
 async def test_the_mcp_recipe_resource_leaves_the_note_out(tmp_path: Path) -> None:
@@ -157,7 +157,7 @@ async def test_the_mcp_recipe_resource_leaves_the_note_out(tmp_path: Path) -> No
 
     async with AsyncExitStack() as stack:
         session = await session_for(stack, data_dir)
-        resource = await session.read_resource(f"{SERVER_NAME}://sets/{made.new_recipe_id}")
+        resource = await session.read_resource(f"{SERVER_NAME}://recipes/{made.new_recipe_id}")
 
     text = "".join(str(getattr(part, "text", "")) for part in resource.contents)
     assert COPY_NAME in text

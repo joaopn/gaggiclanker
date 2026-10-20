@@ -87,7 +87,7 @@ function detail(overrides: Partial<SetDetailData> = {}): SetDetailData {
     ...extra,
   });
   return setDetail({
-    set: setRow({
+    recipe: setRow({
       current_version_id: 23,
       current_version_label: "v1.3",
       version_count: 3,
@@ -174,7 +174,7 @@ describe("the buttons", () => {
   });
 
   it("offers it on an archived Set, since a finished bag is the usual starting point", async () => {
-    getSet.mockResolvedValue(detail({ set: setRow({ archived: true }), pins: [] }));
+    getSet.mockResolvedValue(detail({ recipe: setRow({ archived: true }), pins: [] }));
     renderPage();
     await screen.findByTestId("version-timeline");
 
@@ -182,7 +182,7 @@ describe("the buttons", () => {
   });
 
   it("offers it on no version of a Set that is still being designed", async () => {
-    getSet.mockResolvedValue(detail({ set: setRow({ designing: true }), pins: [] }));
+    getSet.mockResolvedValue(detail({ recipe: setRow({ designing: true }), pins: [] }));
     renderPage();
     await screen.findByTestId("version-timeline");
 
@@ -283,7 +283,7 @@ describe("?duplicate=", () => {
   });
 
   it("shows the server's sentence when the Set cannot be duplicated", async () => {
-    getSet.mockResolvedValue(detail({ set: setRow({ designing: true }), pins: [] }));
+    getSet.mockResolvedValue(detail({ recipe: setRow({ designing: true }), pins: [] }));
     getDuplicatePreview.mockRejectedValue(
       Object.assign(new Error("designing"), { sentence: "Still being designed." }),
     );
@@ -305,10 +305,10 @@ describe("the page keeps its state when the route moves to another Set", () => {
     routeSetId = "4";
     getSet.mockResolvedValue(
       detail({
-        set: setRow({ id: 4, name: "Kenya" }),
+        recipe: setRow({ id: 4, name: "Kenya" }),
         versions: [
           {
-            version: version({ id: 41, set_id: 4, version_major: 1, is_current: true }),
+            version: version({ id: 41, recipe_id: 4, version_major: 1, is_current: true }),
             changes: [],
             shots: [],
             dead_end: false,
@@ -347,11 +347,11 @@ describe("the new Set's header", () => {
   it("says where the Set was copied from, links to that Set, and gives the date", async () => {
     getSet.mockResolvedValue(
       detail({
-        set: setRow({
+        recipe: setRow({
           created_at: "2026-10-10T09:00:00Z",
           copied_from: {
-            set_id: 2,
-            set_name: "Ethiopia Guji · Blooming",
+            recipe_id: 2,
+            recipe_name: "Ethiopia Guji · Blooming",
             version_id: 18,
             version_label: "v1.2",
           },
@@ -370,7 +370,7 @@ describe("the new Set's header", () => {
   });
 
   it("has no line at all when the Set was not copied or its source is gone", async () => {
-    getSet.mockResolvedValue(detail({ set: setRow({ copied_from: null }) }));
+    getSet.mockResolvedValue(detail({ recipe: setRow({ copied_from: null }) }));
     renderPage();
     await screen.findByTestId("version-timeline");
 

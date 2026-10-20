@@ -265,7 +265,7 @@ describe("BeansPage", () => {
     });
     URL.revokeObjectURL = vi.fn();
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    getBeans.mockResolvedValue({ items: [bean({ acidity: 4, archived: true, set_count: 3 })] });
+    getBeans.mockResolvedValue({ items: [bean({ acidity: 4, archived: true, recipe_count: 3 })] });
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
@@ -295,7 +295,7 @@ describe("BeansPage", () => {
   it("names the file after the coffee, falling back to the id", () => {
     expect(beanFileName(bean({ name: "Café São Paulo #2" }))).toBe("cafe-sao-paulo-2.json");
     expect(beanFileName(bean({ id: 7, name: "☕" }))).toBe("bean-7.json");
-    expect(Object.keys(beanExport(bean()))).not.toContain("set_count");
+    expect(Object.keys(beanExport(bean()))).not.toContain("recipe_count");
   });
 
   it("imports a JSON file as read and says whether it added or updated", async () => {
@@ -385,7 +385,7 @@ describe("BeansPage", () => {
   });
 
   it("deletes a coffee nobody used, after asking", async () => {
-    getBeans.mockResolvedValue({ items: [bean({ set_count: 0 })] });
+    getBeans.mockResolvedValue({ items: [bean({ recipe_count: 0 })] });
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
@@ -404,7 +404,7 @@ describe("BeansPage", () => {
   });
 
   it("does not delete when the question is cancelled", async () => {
-    getBeans.mockResolvedValue({ items: [bean({ set_count: 0 })] });
+    getBeans.mockResolvedValue({ items: [bean({ recipe_count: 0 })] });
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
@@ -418,7 +418,7 @@ describe("BeansPage", () => {
   });
 
   it("says why a coffee a Set uses cannot be deleted, and offers archiving", async () => {
-    getBeans.mockResolvedValue({ items: [bean({ set_count: 2 })] });
+    getBeans.mockResolvedValue({ items: [bean({ recipe_count: 2 })] });
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
@@ -435,7 +435,7 @@ describe("BeansPage", () => {
   });
 
   it("closes the form when the coffee it is editing is deleted", async () => {
-    getBeans.mockResolvedValue({ items: [bean({ set_count: 0 })] });
+    getBeans.mockResolvedValue({ items: [bean({ recipe_count: 0 })] });
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 

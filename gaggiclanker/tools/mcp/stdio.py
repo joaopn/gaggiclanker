@@ -5,7 +5,7 @@ at this entry point through a generated ``--mcp-config``; the CLI spawns it as a
 child process for the length of one chat turn.
 
 **The conversation's scope arrives in the environment**, because the CLI runs
-the tool loop itself: `GAGGICLANKER_MCP_SET_ID` (and the version beside it)
+the tool loop itself: `GAGGICLANKER_MCP_RECIPE_ID` (and the version beside it)
 makes this server a Recipe conversation, offering the Recipe's tools and refusing any
 other Recipe, and its absence makes it a general one. Whether that Recipe is being
 designed is not in the environment: the server opens the archive anyway, and
@@ -79,23 +79,23 @@ def add_mcp_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParse
         help="Where the archive lives. Defaults to $DATA_DIR, then ./data.",
     )
     parser.add_argument(
-        "--set-id",
+        "--recipe-id",
         type=int,
         default=None,
         help=(
-            "The Set this conversation is about. It is a limit, not a default: with it "
-            "the server offers the Set conversation's tools and refuses any other Set. "
+            "The Recipe this conversation is about. It is a limit, not a default: with it "
+            "the server offers the Recipe conversation's tools and refuses any other Recipe. "
             "Without it the server is a general conversation — the whole archive, "
-            "read-only. Defaults to $GAGGICLANKER_MCP_SET_ID."
+            "read-only. Defaults to $GAGGICLANKER_MCP_RECIPE_ID."
         ),
     )
     parser.add_argument(
-        "--set-version-id",
+        "--recipe-version-id",
         type=int,
         default=None,
         help=(
-            "Which version of that Set is being argued. Defaults to "
-            "$GAGGICLANKER_MCP_SET_VERSION_ID. Ignored without --set-id."
+            "Which version of that Recipe is being argued. Defaults to "
+            "$GAGGICLANKER_MCP_RECIPE_VERSION_ID. Ignored without --recipe-id."
         ),
     )
     parser.add_argument(
@@ -182,16 +182,16 @@ def scope_from(args: argparse.Namespace) -> ToolScope:
     :func:`_identifier`. A version without a Recipe is one of those — it names a
     row this server could not check against anything.
     """
-    set_id = _identifier(getattr(args, "set_id", None), "GAGGICLANKER_MCP_SET_ID")
+    recipe_id = _identifier(getattr(args, "recipe_id", None), "GAGGICLANKER_MCP_RECIPE_ID")
     version_id = _identifier(
-        getattr(args, "set_version_id", None), "GAGGICLANKER_MCP_SET_VERSION_ID"
+        getattr(args, "recipe_version_id", None), "GAGGICLANKER_MCP_RECIPE_VERSION_ID"
     )
-    if set_id is None and version_id is not None:
+    if recipe_id is None and version_id is not None:
         raise SystemExit(
-            "GAGGICLANKER_MCP_SET_VERSION_ID is set without GAGGICLANKER_MCP_SET_ID: "
-            "a version belongs to a Set, and without it there is nothing to check it against."
+            "GAGGICLANKER_MCP_RECIPE_VERSION_ID is set without GAGGICLANKER_MCP_RECIPE_ID: "
+            "a version belongs to a Recipe, and without it there is nothing to check it against."
         )
-    return ToolScope.for_thread(set_id, version_id)
+    return ToolScope.for_thread(recipe_id, version_id)
 
 
 def thread_from(args: argparse.Namespace) -> int | None:
@@ -270,7 +270,7 @@ async def serve_stdio(
         # the CLI's own tool loop sees the surface the dispatcher would allow.
         # This process lives for one turn, so reading it once is reading it
         # every turn.
-        conversation = await ToolScope.resolve(db, requested.set_id, requested.set_version_id)
+        conversation = await ToolScope.resolve(db, requested.recipe_id, requested.recipe_version_id)
 
         # One holder for the process: it lives for one run, so what it records
         # (the extended glossary having been sent) is per run, as the runner's
@@ -310,29 +310,30 @@ async def _check_scope_exists(db: Database, scope: ToolScope, thread_id: int | N
     nothing at all — the same answer the scope variables get, rather than
     starting and refusing every proposal later.
     """
-    if scope.kind != "set" or scope.set_id is None:
+    if scope.kind != "recipe" or scope.recipe_id is None:
         if thread_id is not None:
             raise SystemExit(
-                "GAGGICLANKER_MCP_THREAD_ID is set without GAGGICLANKER_MCP_SET_ID: a "
-                "conversation about the whole archive changes no Set, so there is nothing "
+                "GAGGICLANKER_MCP_THREAD_ID is set without GAGGICLANKER_MCP_RECIPE_ID: a "
+                "conversation about the whole archive changes no Recipe, so there is nothing "
                 "for it to be the room of."
             )
         return
     recipes = RecipesRepository(db)
-    if await recipes.get(scope.set_id) is None:
-        raise SystemExit(f"No Set {scope.set_id} in this archive.")
-    if scope.set_version_id is not None:
-        if await recipes.version_of_recipe(scope.set_id, scope.set_version_id) is None:
+    if await recipes.get(scope.recipe_id) is None:
+        raise SystemExit(f"No Recipe {scope.recipe_id} in this archive.")
+    if scope.recipe_version_id is not None:
+        if await recipes.version_of_recipe(scope.recipe_id, scope.recipe_version_id) is None:
             raise SystemExit(
-                f"Version {scope.set_version_id} is not a version of Set {scope.set_id}."
+                f"Version {scope.recipe_version_id} is not a version of Recipe {scope.recipe_id}."
             )
     if thread_id is not None:
         found = await db.fetch_value(
-            "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?", (thread_id, scope.set_id)
+            "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?",
+            (thread_id, scope.recipe_id),
         )
         if found is None:
             raise SystemExit(
-                f"Conversation {thread_id} is not a conversation of Set {scope.set_id}."
+                f"Conversation {thread_id} is not a conversation of Recipe {scope.recipe_id}."
             )
 
 

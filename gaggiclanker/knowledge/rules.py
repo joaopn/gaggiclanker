@@ -94,7 +94,7 @@ class _SeedFile(BaseModel):
 class RecipeContext:
     """The Recipe attributes rule selection filters on.
 
-    A flat record rather than the `SetRow`/`BeanRow` pair, because selection is
+    A flat record rather than the `RecipeRow`/`BeanRow` pair, because selection is
     also run by the tests and by a future chat turn that has the attributes but
     not the rows, and because every field here is allowed to be unknown: a Recipe
     with no grinder, a bag whose roaster printed no process, a shot with no Recipe

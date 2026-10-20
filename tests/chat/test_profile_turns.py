@@ -65,14 +65,14 @@ async def test_the_recipe_prompt_understands_the_turns_of_a_profile_card(
 ) -> None:
     system = await _system(prompts, RECIPE_CHAT_PROMPT)
 
-    assert f'"{TURNS["approved_for_set"]}"' in system
+    assert f'"{TURNS["approved_for_recipe"]}"' in system
     assert '(you proposed it as <old name>)."' in system
     assert '"Declined: <note>"' in system and '"Declined: no reason given."' in system
     # The Recipe follows its profile the moment the proposal is approved: it has recorded the
     # version already, and the profile reaches the machine with the next sync.
-    approved = system[system.index(TURNS["approved_for_set"]) :]
-    assert "The Set has recorded that version already" in approved
-    assert "`get_set` shows it" in approved
+    approved = system[system.index(TURNS["approved_for_recipe"]) :]
+    assert "The Recipe has recorded that version already" in approved
+    assert "`get_recipe` shows it" in approved
     assert "start a new conversation" in approved
     # The rule for a grind, dose or yield change stays true.
     assert "There is nothing to push, make active, stage or log, and no queue" in system
@@ -115,6 +115,6 @@ async def test_the_recipe_prompt_reads_a_first_recipe_accepted_under_another_nam
     assert f"{clause} (you proposed it as <old name>)" in system
     assert "and from then on you use the new name" in system
     assert renamed_first_recipe() == (
-        "Accepted: your first recipe is now <version label> of this Set, "
+        "Accepted: your first version is now <version label> of this Recipe, "
         "with its profile named <name> (you proposed it as <old name>)."
     )

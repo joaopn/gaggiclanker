@@ -57,7 +57,7 @@ function card() {
 describe("the button and the sentence under it", () => {
   it("is disabled with a sentence while fewer than two Sets have a confirmed insight", async () => {
     getPatterns.mockResolvedValue(
-      patternsData({ run: null, proposals: [], sets_with_insights: 1, new_since_last_run: 1 }),
+      patternsData({ run: null, proposals: [], recipes_with_insights: 1, new_since_last_run: 1 }),
     );
     renderWithQueryClient(<PatternsSection />);
 
@@ -180,7 +180,7 @@ describe("what the newest run did", () => {
         run: patternRun({
           proposals_kept: 0,
           proposals_dropped: 3,
-          dropped: { one_set: 2, invented_source: 1 },
+          dropped: { one_recipe: 2, invented_source: 1 },
         }),
         proposals: [],
       }),
@@ -296,9 +296,9 @@ describe("a proposal's card", () => {
 
   it("groups sources by Set in the order the Sets first appear", () => {
     const groups = groupBySet([
-      { insight_id: 1, set_id: 9, set_name: "B", text: "x" },
-      { insight_id: 2, set_id: 4, set_name: "A", text: "y" },
-      { insight_id: 3, set_id: 9, set_name: "B", text: "z" },
+      { insight_id: 1, recipe_id: 9, recipe_name: "B", text: "x" },
+      { insight_id: 2, recipe_id: 4, recipe_name: "A", text: "y" },
+      { insight_id: 3, recipe_id: 9, recipe_name: "B", text: "z" },
     ]);
     expect(groups.map((g) => [g.setId, g.items.length])).toEqual([
       [9, 2],
@@ -363,8 +363,8 @@ describe("answering a proposal", () => {
     approvePatternProposal.mockResolvedValue({
       proposal: patternProposal({ status: "approved", insight_id: 30 }),
       skipped: [
-        { insight_id: 22, set_id: 4, text: "It gushes under 9.", reason: "not_confirmed" },
-        { insight_id: null, set_id: null, text: "Old: below 10.", reason: "replaced_gone" },
+        { insight_id: 22, recipe_id: 4, text: "It gushes under 9.", reason: "not_confirmed" },
+        { insight_id: null, recipe_id: null, text: "Old: below 10.", reason: "replaced_gone" },
       ],
       deleted_insight_ids: [21],
     });
@@ -402,7 +402,7 @@ describe("answering a proposal", () => {
   it("says in words why an approval failed, naming no input", async () => {
     const user = setupUser();
     approvePatternProposal.mockRejectedValue(
-      new ApiClientError("Fewer", { status: 409, code: "PATTERN_TOO_FEW_SETS" }),
+      new ApiClientError("Fewer", { status: 409, code: "PATTERN_TOO_FEW_RECIPES" }),
     );
     renderWithQueryClient(<PatternsSection />);
 

@@ -1,15 +1,15 @@
-THIS CONVERSATION IS DESIGNING A NEW SET
+THIS CONVERSATION IS DESIGNING A NEW RECIPE
 
-Set 8: Kenya AA, more body. Bean: Kenya AA, light roast, washed process, from Kenya. Grinder: Niche Zero (conical burrs), adjusted in numbers.
-Nothing has been brewed on it. Its version 1 has no recipe yet: no profile, no grind, no dose, no yield. What you propose, once the person accepts it, becomes that version 1.
+Recipe 8: Kenya AA, more body. Bean: Kenya AA, light roast, washed process, from Kenya. Grinder: Niche Zero (conical burrs), adjusted in numbers.
+Nothing has been brewed on it. Its version 1 is empty: no profile, no grind, no dose, no yield. What you propose, once the person accepts it, becomes that version 1.
 
 WHAT THEY ASKED FOR
-Goal: "More body than the Niche Set, and keep the blackcurrant."
+Goal: "More body than the Niche Recipe, and keep the blackcurrant."
 Their usual espresso setting on this grinder: 21 (numbers).
-Recipe numbers they chose: dose 18 g, target yield 40 g. Propose exactly these in the recipe and design the profile around them (a yield they chose is where the last phase stops); work out only what they left open. Change one of them only if they ask you to in this conversation.
+Numbers they chose: dose 18 g, target yield 40 g. Propose exactly these in version 1 and design the profile around them (a yield they chose is where the last phase stops); work out only what they left open. Change one of them only if they ask you to in this conversation.
 
 THE PROFILE TO FORK: [profile_version 2] Library 18g
-The new profile is derived from this one and gets a name of its own; this one, and the Set that brews it, stays as it is.
+The new profile is derived from this one and gets a name of its own; this one, and the Recipe that brews it, stays as it is.
 ```json
 {
   "description": "",
@@ -96,18 +96,18 @@ The new profile is derived from this one and gets a name of its own; this one, a
 This profile version has no signature in force, so its shots are read without one. When the conversation turns to how its shots behave, propose one with propose_signature (profile version 2): what the profile is built to do, in a few expectations, never what one shot did. What you propose is in force at once, every shot on the profile is checked against it, and the person can reject any expectation.
 
 A RECIPE IS WAITING FOR THE PERSON
-Recipe: grind 20, 18 g in, 40 g out, 94 °C from its profile, profile Kenya AA body [AI] (profile draft #1). Reason: "A longer bloom and a lower peak for body."
+Version 1: grind 20, 18 g in, 40 g out, 94 °C from its profile, profile Kenya AA body [AI] (profile draft #1). Reason: "A longer bloom and a lower peak for body."
 It has created nothing yet. Talk about this one; a newer propose_initial_recipe replaces it.
 
-THIS BEAN'S OTHER SETS (newest first)
-- Set 6: Kenya AA on the Mazzer — on Mazzer Philos, 0 shots.
+THIS BEAN'S OTHER RECIPES (newest first)
+- Recipe 6: Kenya AA on the Mazzer — on Mazzer Philos, 0 shots.
   - v1.1: grind 6.5, 20 g in, 44 g out, 93 °C from its profile, profile Library 18g · 0 shots · no rating · outcome open · trying: A touch finer.
   - v1: grind 7, 20 g in, 44 g out, 93 °C from its profile, profile Library 18g · 0 shots · no rating · outcome no prediction · trying: Same bag, flat burrs.
-- Set 1: Kenya AA on the niche — on Niche Zero, 5 shots.
+- Recipe 1: Kenya AA on the niche — on Niche Zero, 5 shots.
   - v1: grind 21, 18 g in, 45 g out, 93 °C from its profile, profile Medium 18g 1:2 · 5 shots (0 Keep, 0 Improve, 0 Discard, 5 unlabelled) · mean rating 4.4 · outcome no prediction · trying: Baseline for this bag.
 
-SIMILAR SETS ON THIS GRINDER (other beans)
-[set_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji
+SIMILAR RECIPES ON THIS GRINDER (other beans)
+[recipe_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji
   why it is similar: same roast level, different process, different origin
   bean: light, natural, Ethiopia
   grind: 23
@@ -118,7 +118,7 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 3 shots, rating 3/5, ratio 1:2.22, 28 s
 
-[set_version 3] Brazil Cerrado on the niche v1 — Brazil Cerrado
+[recipe_version 3] Brazil Cerrado on the niche v1 — Brazil Cerrado
   why it is similar: different roast level, same process, different origin
   bean: medium-dark, washed, Brazil
   grind: 26
@@ -133,7 +133,7 @@ THE RULES THAT MATCH (planned style: bloom — the profile to fork (Library 18g)
 dial_in_order:
   [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
   [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency).
-  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Set version is to be able to say what a single change did.
+  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Recipe version is to be able to say what a single change did.
   [taste_is_ground_truth] The user's tasting notes outrank the telemetry. Sour, weak or fast means under-extracted; bitter, harsh or slow means over-extracted — whatever the curve looked like. Never contradict a recorded taste with a number.
 
 increments:
@@ -175,4 +175,4 @@ safety_bounds:
   [pressure] Never suggest a pressure outside 0-12 bar; the firmware itself refuses more.
   [temperature] Never suggest a brew temperature outside 25-100 °C.
 
-That is a snapshot, assembled when this turn began. The other Sets above are evidence to design from; no tool here reads them further.
+That is a snapshot, assembled when this turn began. The other Recipes above are evidence to design from; no tool here reads them further.

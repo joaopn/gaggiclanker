@@ -9,7 +9,7 @@ phase 2 · Ramp: type brew; start 17.2 s; duration 5.0 s; ended by Unknown; pres
 phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; ended by Unknown; pressure 7.5 bar; peak pressure 8.2 bar; pressure at end 7.0 bar; temperature 91.8 °C; lowest temperature 90.5 °C; target temperature 93.0 °C; puck volume (estimated) 42.2 ml; puck flow 1.71 ml/s; peak puck flow 3.30 ml/s; cup flow 1.27 g/s; peak cup flow 1.96 g/s; cup at end 31.6 g, 87.8 % of target; cup gained 31.6 g; first drip 24.0 s; pressure adherence 1.45 bar; resistance 1.36, from the machine; resistance slope -0.12 /s; machine puck resistance (s·√bar/mL) avg 1.07 (start 0.19, end 0.88, min 0.19, max 1.84); liquid resistance (bar·s/mL) avg 2.99 (start 0.29, end 2.33, min 0.29, max 5.20)
 [Identity and status]
 Date and time: 2026-04-03 12:06
-Set version: v1 of Set 1
+Recipe version: v1 of Recipe 1
 Label: Keep
 Counted: counted
 Profile: Amigo Alturas Bloom [AI]

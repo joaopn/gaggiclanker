@@ -22,7 +22,7 @@ __all__ = [
     "ListedVersion",
     "ProfileVersionsView",
     "ProposedVersion",
-    "SetBrewing",
+    "RecipeBrewing",
     "short_hash",
 ]
 
@@ -32,13 +32,13 @@ def short_hash(content_hash: str) -> str:
     return content_hash[:8]
 
 
-class SetBrewing(BaseModel):
-    """The Set a profile has, so a page can warn before the profile is changed: the Set follows
-    it with a version of its own."""
+class RecipeBrewing(BaseModel):
+    """The Recipe a profile has, so a page can warn before the profile is changed: the Recipe
+    follows it with a version of its own."""
 
     model_config = ConfigDict(extra="forbid")
 
-    set_id: int
+    recipe_id: int
     name: str
     #: The Recipe's current version's name, "v1.2".
     version_label: str
@@ -89,7 +89,7 @@ class ListedVersion(BaseModel):
     did_not_verify: bool = False
     shots_brewed: int = 0
     #: The profile's Recipe, when its current version is this very version.
-    set: SetBrewing | None = None
+    recipe: RecipeBrewing | None = None
     #: The profile document, for the version's own information and for a diff.
     profile: JsonObject
     #: The version before this one **in this list**, which the page diffs this one against. The

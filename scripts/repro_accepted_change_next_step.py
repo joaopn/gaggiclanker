@@ -27,7 +27,7 @@ The check has three parts, and all of them have to pass:
   unchanged, and the "Accepted:" turn names the change;
 - the Recipe prompt tells the agent that an accepted non-profile change puts
   nothing on the machine (pytest);
-- ``propose_set_version`` refuses a profile version the machine does not have,
+- ``propose_recipe_version`` refuses a profile version the machine does not have,
   since nothing in the app can put an existing version there (pytest).
 
 A run in which a check does not exist counts as the bug.
@@ -46,7 +46,7 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
-WEB_TEST = "src/components/sets/ProposalCard.test.tsx"
+WEB_TEST = "src/components/recipes/ProposalCard.test.tsx"
 WEB_BLOCK = "the next step after an accept"
 PY_TESTS = ["tests/chat/test_prompts.py", "tests/tools/test_builtin.py"]
 PY_SELECT = "accepted_change_needs_nothing_on_the_machine or profile_not_on_the_machine_is_refused"

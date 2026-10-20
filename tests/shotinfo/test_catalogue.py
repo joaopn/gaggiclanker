@@ -45,7 +45,7 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Phases", 32),
     ("Curve", 13),
     ("Your judgement", 8),
-    ("The version's recipe", 5),
+    ("The version's numbers", 5),
     ("The note typed on the machine", 6),
     ("Review", 3),
 )
@@ -57,7 +57,7 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "checks_more",
     "shot_id",
     "started_at",
-    "set_version",
+    "recipe_version",
     "label",
     "counted",
     "profile_as_brewed",
@@ -178,7 +178,7 @@ EXPECTED_BASE: frozenset[str] = frozenset(
         *PHASE_LINE_ITEMS,
         "shot_id",
         "started_at",
-        "set_version",
+        "recipe_version",
         "label",
         "counted",
         "profile_as_brewed",
@@ -285,7 +285,7 @@ def test_the_firmware_analyzer_s_values_are_extended_never_base() -> None:
 def test_the_locked_items_are_the_three_the_agent_cannot_work_without_and_are_base() -> None:
     locked = {item.key for item in CATALOGUE if item.locked}
 
-    assert locked == {"shot_id", "set_version", "counted"}
+    assert locked == {"shot_id", "recipe_version", "counted"}
     assert all(ITEMS[key].default_tier == "base" for key in locked)
 
 
@@ -394,7 +394,7 @@ ORIGIN_DEV_BASE = frozenset(
     {
         "shot_id",
         "started_at",
-        "set_version",
+        "recipe_version",
         "label",
         "counted",
         "profile_as_brewed",

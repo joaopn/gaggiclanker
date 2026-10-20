@@ -135,7 +135,7 @@ beforeEach(() => {
   getSet.mockResolvedValue(setDetail());
   getSetTrends.mockResolvedValue(trends());
   addSetVersion.mockResolvedValue(setDetail().versions[0].version);
-  archiveSet.mockResolvedValue({ ...setDetail().set, archived: true, automatch: false });
+  archiveSet.mockResolvedValue({ ...setDetail().recipe, archived: true, automatch: false });
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   rollbackSet.mockResolvedValue(setDetail().versions[0].version);
@@ -283,7 +283,9 @@ describe("SetDetailPage", () => {
 
   it("asks a Set with no profile for one, from the profiles no Set has, and sends it", async () => {
     getSet.mockResolvedValue(
-      setDetail({ set: setRow({ board_id: null, profile_version_id: null, profile_label: null }) }),
+      setDetail({
+        recipe: setRow({ board_id: null, profile_version_id: null, profile_label: null }),
+      }),
     );
     getProfileChoices.mockResolvedValue({
       items: [{ profile_version_id: 50, label: "Free" }],
@@ -568,7 +570,7 @@ describe("SetDetailPage", () => {
   });
 
   it("says so when a Set has collected nothing yet", async () => {
-    getSetTrends.mockResolvedValue({ set_id: 3, versions: [], shots: [] });
+    getSetTrends.mockResolvedValue({ recipe_id: 3, versions: [], shots: [] });
     renderWithQueryClient(<SetDetailPage />);
 
     expect(
@@ -628,7 +630,7 @@ describe("SetDetailPage — what this archive has learned", () => {
     expect(card).toHaveTextContent("Naturals on this grinder");
     // The server does the scope matching, through the same call the chat
     // makes — so the page cannot show a different answer from the prompt.
-    expect(getKnowledgeInsights).toHaveBeenCalledWith({ set_id: 3 });
+    expect(getKnowledgeInsights).toHaveBeenCalledWith({ recipe_id: 3 });
   });
 
   it("lists what was learned in this Set under its version, waiting ones with their buttons", async () => {
@@ -637,9 +639,9 @@ describe("SetDetailPage — what this archive has learned", () => {
         knowledgeInsight({
           id: 5,
           text: "Finer helps this bag.",
-          set_id: 3,
-          set_version_id: 22,
-          set_version_label: "v2",
+          recipe_id: 3,
+          recipe_version_id: 22,
+          recipe_version_label: "v2",
           general: false,
           scope: {},
           confirmed: false,
@@ -673,8 +675,8 @@ describe("SetDetailPage, a Set being designed", () => {
   beforeEach(() => {
     setId = "6";
     getSet.mockResolvedValue(designingDetail());
-    getSetTrends.mockResolvedValue(trends({ set_id: 6, versions: [], shots: [] }));
-    discardDesign.mockResolvedValue({ set_id: 6, discarded: true });
+    getSetTrends.mockResolvedValue(trends({ recipe_id: 6, versions: [], shots: [] }));
+    discardDesign.mockResolvedValue({ recipe_id: 6, discarded: true });
   });
 
   it("carries the badge, and Continue designing where Discuss was", async () => {
@@ -840,7 +842,7 @@ describe("SetDetailPage, a Set being designed", () => {
   it("shows only the parts of the brief that were given", async () => {
     getSet.mockResolvedValue(
       designingDetail({
-        set: designingSet({
+        recipe: designingSet({
           design_brief: {
             fork_profile_version_id: null,
             usual_grind: "",
@@ -862,7 +864,7 @@ describe("SetDetailPage, a Set being designed", () => {
   it("names the recipe numbers the agent was told to keep, and only those given", async () => {
     getSet.mockResolvedValue(
       designingDetail({
-        set: designingSet({
+        recipe: designingSet({
           design_brief: {
             fork_profile_version_id: null,
             usual_grind: "",
@@ -885,7 +887,7 @@ describe("SetDetailPage, a Set being designed", () => {
   it("shows no brief at all when nothing was asked for", async () => {
     getSet.mockResolvedValue(
       designingDetail({
-        set: designingSet({
+        recipe: designingSet({
           design_brief: {
             fork_profile_version_id: null,
             usual_grind: "",
@@ -999,8 +1001,8 @@ describe("SetDetailPage signature", () => {
   });
 
   it("shows an override on the version it belongs to and on no other", async () => {
-    getSignatureOverrides.mockImplementation(async (_set: number, versionId: number) => ({
-      items: versionId === 22 ? [{ ...overrideInForce, set_version_id: 22 }] : [],
+    getSignatureOverrides.mockImplementation(async (_recipe: number, versionId: number) => ({
+      items: versionId === 22 ? [{ ...overrideInForce, recipe_version_id: 22 }] : [],
     }));
     renderWithQueryClient(<SetDetailPage />);
 

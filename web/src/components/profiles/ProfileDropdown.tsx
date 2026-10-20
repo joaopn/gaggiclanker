@@ -117,7 +117,7 @@ function VersionItem({
   const makeActive = useSetActiveVersion();
   const [confirming, setConfirming] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const set = entry.set ?? null;
+  const set = entry.recipe ?? null;
   const first = version.previous_version_id == null;
   // Only ever the version before this one in this list, never another.
   const previous = first
@@ -173,12 +173,12 @@ function VersionItem({
         ) : (
           "No shots yet"
         )}
-        {version.set ? (
+        {version.recipe ? (
           <>
             {" "}
             · brewed by{" "}
-            <Link className="underline underline-offset-2" to={`/sets/${version.set.set_id}`}>
-              {version.set.name}
+            <Link className="underline underline-offset-2" to={`/sets/${version.recipe.recipe_id}`}>
+              {version.recipe.name}
             </Link>
           </>
         ) : null}

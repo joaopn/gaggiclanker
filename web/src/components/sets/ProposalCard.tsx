@@ -236,7 +236,7 @@ function DecidedDesign({
         <p className="text-sm">
           Accepted:{" "}
           <Link
-            to={`/sets/${proposal.set_id}`}
+            to={`/sets/${proposal.recipe_id}`}
             className="font-medium underline underline-offset-2"
           >
             version 1
@@ -287,7 +287,7 @@ function Decided({ proposal }: { proposal: SetProposal }) {
         <p>
           Accepted as{" "}
           <Link
-            to={`/sets/${proposal.set_id}`}
+            to={`/sets/${proposal.recipe_id}`}
             className="font-medium underline underline-offset-2"
           >
             {version}

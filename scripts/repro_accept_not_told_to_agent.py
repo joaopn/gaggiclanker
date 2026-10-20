@@ -83,11 +83,11 @@ async def main() -> int:
                 )
                 created = data(
                     await client.post(
-                        "/api/sets/design",
+                        "/api/recipes/design",
                         json={"bean_id": bean["id"], "grinder_id": grinder["id"]},
                     )
                 )
-                set_id = created["set"]["id"]
+                recipe_id = created["recipe"]["id"]
 
                 # The card, as `propose_initial_recipe` stores it: a draft of a
                 # new profile, and the recipe naming that draft's version.
@@ -108,7 +108,7 @@ async def main() -> int:
                     )
                 )
                 stored = await RecipeProposalsRepository(db).create(
-                    set_id,
+                    recipe_id,
                     ProposalWrite(
                         kind="design",
                         draft_id=draft.id,
@@ -130,12 +130,13 @@ async def main() -> int:
 
                 async def discuss() -> int:
                     opened = await client.post(
-                        "/api/chat/threads/open", json={"set_id": set_id, "set_version_id": v1}
+                        "/api/chat/threads/open",
+                        json={"recipe_id": recipe_id, "recipe_version_id": v1},
                     )
                     return int(data(opened)["id"])
 
                 before = await discuss()
-                data(await client.post(f"/api/sets/{set_id}/proposals/{proposal_id}/accept"))
+                data(await client.post(f"/api/recipes/{recipe_id}/proposals/{proposal_id}/accept"))
                 after = await discuss()
 
     print(f"design conversation: {design_room}")
@@ -146,10 +147,10 @@ async def main() -> int:
         bugs.append("Discuss on version 1 reopens the design conversation after the accept")
 
     design, change = prose("chat-design"), prose("chat-recipe")
-    if "becomes the Set's ordinary one" in design:
-        bugs.append("the design prompt says the design conversation becomes the Set's own")
+    if "becomes the Recipe's ordinary one" in design:
+        bugs.append("the design prompt says the design conversation becomes the Recipe's own")
     if '"Accepted:"' not in change or "they must start a new conversation" not in change:
-        bugs.append("the Set prompt says nothing about an accepted card or a new conversation")
+        bugs.append("the Recipe prompt says nothing about an accepted card or a new conversation")
 
     for bug in bugs:
         print(f"BUG: {bug}")

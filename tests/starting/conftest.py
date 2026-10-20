@@ -40,7 +40,7 @@ from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionWrite, RecipeWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
@@ -86,7 +86,7 @@ GOOD_OUTPUT: dict[str, Any] = {
             "rationale": "Classic espresso ratio while the bag is still degassing.",
             "rules_used": ["classic"],
             "excerpts_used": [],
-            "similar_set_version_ids": [],
+            "similar_recipe_version_ids": [],
         },
         {
             "option": "recommended",
@@ -103,7 +103,7 @@ GOOD_OUTPUT: dict[str, Any] = {
             "rationale": "Light roasts run 93-96 °C and 1:2 to 1:3.",
             "rules_used": ["light"],
             "excerpts_used": [],
-            "similar_set_version_ids": [],
+            "similar_recipe_version_ids": [],
         },
         {
             "option": "adventurous",
@@ -120,7 +120,7 @@ GOOD_OUTPUT: dict[str, Any] = {
             "rationale": "A long ratio is where a Kenyan of this roast usually opens up.",
             "rules_used": [],
             "excerpts_used": [],
-            "similar_set_version_ids": [],
+            "similar_recipe_version_ids": [],
         },
     ],
 }
@@ -235,7 +235,7 @@ class Fixture:
     #: The bag nobody has opened: light, washed, Kenya.
     new_bean_id: int
     profile_version_id: int
-    #: `{label: set_version_id}` for every Recipe built below.
+    #: `{label: recipe_version_id}` for every Recipe built below.
     versions: dict[str, int] = field(default_factory=dict)
     recipes: dict[str, int] = field(default_factory=dict)
 
@@ -422,7 +422,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                 bean_id=bean.id,
                 grinder_id=grinder_ids[str(entry["grinder"])],
             ),
-            SetVersionWrite(
+            RecipeVersionWrite(
                 profile_version_id=None,
                 grind_setting=str(entry["grind"]),
                 grind_value=float(entry["grind"]),

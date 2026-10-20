@@ -835,18 +835,18 @@ async def test_a_recipe_version_is_recorded_when_the_draft_is_put_and_the_pull_a
 ) -> None:
     app, client, _ = adopted
     base = row_for(await get_board(client), BASE_LABEL)
-    set_id = await make_recipe_on(client, "Board set", base["row"]["current_version_id"])
-    await grind_change(client, set_id)
+    recipe_id = await make_recipe_on(client, "Board set", base["row"]["current_version_id"])
+    await grind_change(client, recipe_id)
     draft = await same_name_draft(app, client, provider, BASE_LABEL, 8)
-    before = await recipe_version_ids(app, set_id)
+    before = await recipe_version_ids(app, recipe_id)
     row = await put(client, draft, major=True)
     # The Recipe brews the person's own profile, and the draft keeps its name: a new version of it.
     assert row["id"] == base["row"]["id"]
-    after_put = await recipe_version_ids(app, set_id)
-    assert len(after_put) == len(before) + 1, "the Set follows its profile when it is put"
+    after_put = await recipe_version_ids(app, recipe_id)
+    assert len(after_put) == len(before) + 1, "the Recipe follows its profile when it is put"
     majors = await app.state.db.fetch_all(
         "SELECT version_major FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id",
-        (set_id,),
+        (recipe_id,),
     )
     assert majors[-1]["version_major"] > majors[-2]["version_major"], "the 'major' answer was kept"
 
@@ -854,7 +854,7 @@ async def test_a_recipe_version_is_recorded_when_the_draft_is_put_and_the_pull_a
 
     assert run.status == "ok", run.error
     assert len(summary_of(run)["pushed"]) == 1
-    assert await recipe_version_ids(app, set_id) == after_put, "the sync records nothing"
+    assert await recipe_version_ids(app, recipe_id) == after_put, "the sync records nothing"
     assert summary_of(run)["left"] == []
     assert row_for(await get_board(client), BASE_LABEL)["row"]["id"] == base["row"]["id"]
 
@@ -939,7 +939,7 @@ async def test_a_copy_another_recipe_brews_is_replaced_all_the_same(
     await app_row(app, client, fake, provider, 8)
     mine = row_for(await get_board(client), APP_LABEL)
     old_id = mine["machine"]["device_id"]
-    set_id = await make_recipe_on(client, "Stays", mine["row"]["current_version_id"])
+    recipe_id = await make_recipe_on(client, "Stays", mine["row"]["current_version_id"])
     await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
     plan = row_for(await get_board(client), APP_LABEL)["planned"]
     assert [(a["kind"], a["device_id"]) for a in plan] == [("push", old_id)]
@@ -951,7 +951,7 @@ async def test_a_copy_another_recipe_brews_is_replaced_all_the_same(
     assert summary_of(run)["removed"] == [] and summary_of(run)["left"] == []
     assert [str(p["id"]) for p in fake.profiles if p["label"] == APP_LABEL] == [old_id]
     # The Recipe followed its profile when the draft was put.
-    assert len(await recipe_version_ids(app, set_id)) == 2
+    assert len(await recipe_version_ids(app, recipe_id)) == 2
     assert (await get_board(client))["actions"] == []
 
 
@@ -962,7 +962,7 @@ async def test_the_recipe_that_followed_its_profile_is_on_the_same_file_with_the
     await app_row(app, client, fake, provider, 8)
     mine = row_for(await get_board(client), APP_LABEL)
     old_id = mine["machine"]["device_id"]
-    set_id = await make_recipe_on(client, "Moves", mine["row"]["current_version_id"])
+    recipe_id = await make_recipe_on(client, "Moves", mine["row"]["current_version_id"])
     await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
 
     run = await pull(app)
@@ -970,7 +970,7 @@ async def test_the_recipe_that_followed_its_profile_is_on_the_same_file_with_the
     assert run.status == "ok", run.error
     assert summary_of(run)["removed"] == [] and summary_of(run)["left"] == []
     assert [str(p["id"]) for p in fake.profiles if p["label"] == APP_LABEL] == [old_id]
-    assert len(await recipe_version_ids(app, set_id)) == 2
+    assert len(await recipe_version_ids(app, recipe_id)) == 2
 
 
 @pytest.mark.parametrize(

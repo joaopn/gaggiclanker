@@ -52,7 +52,7 @@ EXPORTED = "2026-09-29T10:00:00Z"
 
 #: A shot rendering as a tool result: long, several lines, easy to spot.
 SHOT_BODY = "SHOT-BODY-MARKER\n" + "\n".join(f"pressure {n} bar at {n}s" for n in range(200))
-REFUSAL = "That shot is not in this Set. Ask about one of the Set's own shots."
+REFUSAL = "That shot is not in this Recipe. Ask about one of the Recipe's own shots."
 KNOWLEDGE = "KNOWLEDGE-MARKER: Sour and fast usually means grind finer."
 T = "2026-09-29T02:{minute:02d}:{second:02d}.658Z"
 
@@ -61,14 +61,16 @@ def at(minute: int, second: int = 36) -> str:
     return T.format(minute=minute, second=second)
 
 
-def _thread(title: str = "Dialling in", set_name: str | None = "Kenya", label: str = "v1.1") -> Any:
+def _thread(
+    title: str = "Dialling in", recipe_name: str | None = "Kenya", label: str = "v1.1"
+) -> Any:
     return ChatThreadRow(
         id=7,
         title=title,
-        set_id=1 if set_name else None,
-        set_name=set_name,
-        set_version_id=2 if set_name else None,
-        set_version_label=label if set_name else None,
+        recipe_id=1 if recipe_name else None,
+        recipe_name=recipe_name,
+        recipe_version_id=2 if recipe_name else None,
+        recipe_version_label=label if recipe_name else None,
         created_at=at(30, 1),
     )
 
@@ -181,7 +183,7 @@ async def test_the_transcript_carries_none_of_the_injected_context_or_the_system
         ),
         ChatTurn(text="Looks fine."),
     ]
-    created = await client.post("/api/chat/threads", json={"set_id": fixture.set_id})
+    created = await client.post("/api/chat/threads", json={"recipe_id": fixture.recipe_id})
     thread_id = created.json()["data"]["id"]
     sent = await client.post(f"/api/chat/threads/{thread_id}/messages", json={"message": "how?"})
     task = app.state.tasks.get(run_task_name(sent.json()["data"]["run"]["id"]))
@@ -189,7 +191,9 @@ async def test_the_transcript_carries_none_of_the_injected_context_or_the_system
     await asyncio.wait([task], timeout=10)
 
     system = provider.chat_calls[0].system
-    context = await opening_context(fixture.db, await ToolScope.resolve(fixture.db, fixture.set_id))
+    context = await opening_context(
+        fixture.db, await ToolScope.resolve(fixture.db, fixture.recipe_id)
+    )
     # Guard the test itself: the context really has content, and the system
     # prompt really contains it, so "absent from the transcript" means something.
     interesting = [line.strip() for line in context.splitlines() if len(line.strip()) > 25]
@@ -260,6 +264,39 @@ def test_a_success_that_names_no_registered_tool_is_left_out_like_a_shot(name: s
     assert "SHOT-BODY-MARKER" not in json.dumps(_built(messages))
     assert _results(messages)[0]["content"] is None
     assert _results(messages)[0]["characters"] == len(SHOT_BODY)
+
+
+def test_a_result_under_a_tool_s_old_name_reads_as_the_tool_it_became() -> None:
+    """History keeps the old names: an old recipe read is kept whole, an old shot search is not."""
+    from gaggiclanker.tools.legacy import LEGACY_TOOL_NAMES
+
+    assert LEGACY_TOOL_NAMES == {
+        "get_set": "get_recipe",
+        "list_sets": "list_recipes",
+        "list_set_shots": "list_recipe_shots",
+        "propose_set_version": "propose_recipe_version",
+    }
+    assert all(new in registry for new in LEGACY_TOOL_NAMES.values())
+    assert not any(old in registry for old in LEGACY_TOOL_NAMES)
+
+    messages = _messages_with_results(
+        [
+            {"id": "c1", "name": "get_set", "content": KNOWLEDGE, "ok": True},
+            {"id": "c2", "name": "list_set_shots", "content": SHOT_BODY, "ok": True},
+            {"id": "c3", "name": "list_sets", "content": KNOWLEDGE, "ok": True},
+            {"id": "c4", "name": "propose_set_version", "content": KNOWLEDGE, "ok": True},
+        ]
+    )
+
+    got = _results(messages)
+    assert [(r["name"], r["content"]) for r in got] == [
+        ("get_set", KNOWLEDGE),
+        ("list_set_shots", None),
+        ("list_sets", KNOWLEDGE),
+        ("propose_set_version", KNOWLEDGE),
+    ]
+    assert got[1]["characters"] == len(SHOT_BODY)
+    assert "SHOT-BODY-MARKER" not in json.dumps(_built(messages))
 
 
 def test_a_failed_result_with_no_registered_name_is_still_kept() -> None:
@@ -382,10 +419,10 @@ def test_the_detector_finds_the_tools_known_to_render_shots() -> None:
         "get_shot_extended",
         "get_shot_full",
         "compare_shots",
-        "list_set_shots",
+        "list_recipe_shots",
     } <= found
     assert "search_knowledge" not in found
-    assert "list_sets" not in found
+    assert "list_recipes" not in found
 
 
 def test_every_registered_tool_that_renders_shots_is_in_the_hidden_set() -> None:
@@ -464,7 +501,7 @@ def test_the_json_is_pretty_printed_and_keeps_non_ascii_text() -> None:
 
 def test_a_general_conversation_says_so() -> None:
     transcript = build_transcript(
-        _thread(set_name=None), _messages(), _runs(), exported_at=EXPORTED
+        _thread(recipe_name=None), _messages(), _runs(), exported_at=EXPORTED
     )
 
     assert json.loads(render_transcript(transcript))["about"] == "General"
@@ -498,7 +535,7 @@ async def app_client(env: EnvSettings) -> AsyncIterator[tuple[FastAPI, httpx.Asy
         fixture = await build_fixture(app.state.db)
         repo = ChatRepository(app.state.db)
         created = await repo.create_thread(
-            ChatThreadWrite(title="Café notes", set_id=fixture.set_id)
+            ChatThreadWrite(title="Café notes", recipe_id=fixture.recipe_id)
         )
         assert created.thread is not None
         run = await repo.start_run(created.thread.id, provider="p", model="m")

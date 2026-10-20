@@ -163,7 +163,7 @@ function DuplicateForm({
   const beans = useBeans(true);
   const grinders = useGrinders();
   const ids = { set: useId(), profile: useId(), bean: useId(), grinder: useId() };
-  const [setName, setSetName] = useState(preview.set_name);
+  const [setName, setSetName] = useState(preview.recipe_name);
   const [profileName, setProfileName] = useState("");
   const [beanId, setBeanId] = useState(String(preview.bean_id));
   const [grinderId, setGrinderId] = useState(
@@ -217,7 +217,7 @@ function DuplicateForm({
           setId,
           versionId: version.id,
           body: {
-            set_name: setName.trim(),
+            recipe_name: setName.trim(),
             profile_name: preview.has_profile ? profileName.trim() : null,
             bean_id: Number(beanId),
             grinder_id: grinderId === "" ? null : Number(grinderId),
@@ -225,7 +225,7 @@ function DuplicateForm({
           },
         },
         {
-          onSuccess: ({ set }) => {
+          onSuccess: ({ recipe: set }) => {
             // Arrived from the Profiles page: take `?duplicate=` out of this history entry first,
             // so Back from the new Set lands on this Set's page and not on this dialog.
             if (params.has("duplicate")) {
@@ -347,7 +347,7 @@ function DuplicateForm({
 
       <p className="text-sm" data-testid="duplicate-recipe">
         <span className="text-muted-foreground text-xs">Recipe </span>
-        {recipeLine(preview.recipe)}{" "}
+        {recipeLine(preview.version_fields)}{" "}
         <span className="text-muted-foreground text-xs">
           ({version.version_label}'s; change it later)
         </span>

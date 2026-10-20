@@ -104,8 +104,8 @@ async def test_before_any_run_the_page_has_nothing_but_the_numbers(
         "proposals": [],
         "new_since_last_run": 4,
         "counted_from": None,
-        "sets_with_insights": 3,
-        "min_sets": 2,
+        "recipes_with_insights": 3,
+        "min_recipes": 2,
     }
 
 
@@ -124,9 +124,9 @@ async def test_a_press_runs_and_the_page_then_shows_the_proposal_and_a_reset_cou
     assert data["new_since_last_run"] == 0
     (proposal,) = data["proposals"]
     assert proposal["status"] == "proposed" and proposal["run_id"] == run["id"]
-    assert [source["set_name"] for source in proposal["sources"]] == ["Guji daily", "Yirg daily"]
+    assert [source["recipe_name"] for source in proposal["sources"]] == ["Guji daily", "Yirg daily"]
     detail = (await client.get(f"{BASE}/runs/{run['id']}")).json()["data"]
-    assert [item["id"] for item in detail["input"]["sets"]] == [
+    assert [item["id"] for item in detail["input"]["recipes"]] == [
         talking.world.a,
         talking.world.b,
         talking.world.c,
@@ -155,13 +155,13 @@ async def test_fewer_than_two_recipes_is_a_409_with_its_own_code_and_nothing_ech
 ) -> None:
     app, client, provider = api
     world = await build_pattern_world(app.state.db)
-    await world.own(world.a, "Only one Set has said anything.")
+    await world.own(world.a, "Only one Recipe has said anything.")
 
     response = await client.post(f"{BASE}/runs", json={"model": "secret-model-name"})
 
     assert response.status_code == 409
     error = response.json()["error"]
-    assert error["code"] == "PATTERNS_NOT_ENOUGH_SETS"
+    assert error["code"] == "PATTERNS_NOT_ENOUGH_RECIPES"
     assert "secret-model-name" not in response.text
     assert provider.calls == []
 
@@ -274,7 +274,7 @@ class TestApproving:
         response = await client.post(f"{BASE}/proposals/{proposal['id']}/approve")
 
         assert response.status_code == 409
-        assert response.json()["error"]["code"] == "PATTERN_TOO_FEW_SETS"
+        assert response.json()["error"]["code"] == "PATTERN_TOO_FEW_RECIPES"
         assert (await client.get(f"/api/knowledge/insights/{talking.b_grinder}")).status_code == 200
         general = (await client.get("/api/knowledge/insights")).json()["data"]["items"]
         assert [item for item in general if item["pattern_run_id"] is not None] == []
@@ -362,20 +362,22 @@ class TestWhatTheSourceRecipesAreToldAfterApproval:
     that was no source is byte-identical.
     """
 
-    async def _context(self, app: FastAPI, world: PatternWorld, set_id: int) -> str:
-        row = await world.sets.get(set_id)
+    async def _context(self, app: FastAPI, world: PatternWorld, recipe_id: int) -> str:
+        row = await world.recipes.get(recipe_id)
         assert row is not None and row.current_version_id is not None
         return await opening_context(
-            app.state.db, ToolScope.for_thread(set_id, row.current_version_id)
+            app.state.db, ToolScope.for_thread(recipe_id, row.current_version_id)
         )
 
-    async def _tool(self, app: FastAPI, world: PatternWorld, set_id: int) -> list[dict[str, Any]]:
-        row = await world.sets.get(set_id)
+    async def _tool(
+        self, app: FastAPI, world: PatternWorld, recipe_id: int
+    ) -> list[dict[str, Any]]:
+        row = await world.recipes.get(recipe_id)
         assert row is not None and row.current_version_id is not None
         ctx = ToolContext(
             db=app.state.db,
             settings=SettingsService(app.state.settings_service.repo),
-            scope=ToolScope.for_thread(set_id, row.current_version_id),
+            scope=ToolScope.for_thread(recipe_id, row.current_version_id),
             caller="test",
             permissions=CHAT_PERMISSIONS,
         )
@@ -403,20 +405,20 @@ class TestWhatTheSourceRecipesAreToldAfterApproval:
             "The Niche channels below 9 clicks with light roasts."
         )
         gone = {world.a: talking.a_grinder, world.b: talking.b_grinder}
-        for set_id, insight_id in gone.items():
-            lines = before[set_id].split("\n")
+        for recipe_id, insight_id in gone.items():
+            lines = before[recipe_id].split("\n")
             kept = [text for text in lines if not text.startswith(f"- #{insight_id} [")]
             assert len(kept) == len(lines) - 1
             header = kept.index("CONFIRMED INSIGHTS THAT APPLY HERE")
             # Newest first, and the general insight is the newest row in the archive.
             expected = "\n".join([*kept[: header + 1], line, *kept[header + 1 :]])
-            assert await self._context(app, world, set_id) == expected
-            assert (await self._context(app, world, set_id)).count(line) == 1
+            assert await self._context(app, world, recipe_id) == expected
+            assert (await self._context(app, world, recipe_id)).count(line) == 1
 
-            after_tool = await self._tool(app, world, set_id)
+            after_tool = await self._tool(app, world, recipe_id)
             assert [item for item in after_tool if item["id"] == written] != []
             rest = [item for item in after_tool if item["id"] != written]
-            assert rest == [item for item in tools_before[set_id] if item["id"] != insight_id]
+            assert rest == [item for item in tools_before[recipe_id] if item["id"] != insight_id]
             assert len([item for item in after_tool if item["id"] == written]) == 1
         # C was no source and is light-roast-free: not one byte moves.
         assert await self._context(app, world, world.c) == before[world.c]

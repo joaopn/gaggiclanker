@@ -31,9 +31,9 @@ function own(id: number, label: string | null, over: Parameters<typeof knowledge
   return knowledgeInsight({
     id,
     text: `Lesson ${id}.`,
-    set_id: 3,
-    set_version_id: label ? 20 + id : null,
-    set_version_label: label,
+    recipe_id: 3,
+    recipe_version_id: label ? 20 + id : null,
+    recipe_version_label: label,
     general: false,
     scope: {},
     source: "chat",
@@ -60,7 +60,7 @@ function renderSection() {
 describe("SetInsights", () => {
   it("asks for this Set's list and renders nothing when there is nothing", async () => {
     renderSection();
-    await vi.waitFor(() => expect(getKnowledgeInsights).toHaveBeenCalledWith({ set_id: 3 }));
+    await vi.waitFor(() => expect(getKnowledgeInsights).toHaveBeenCalledWith({ recipe_id: 3 }));
     expect(screen.queryByTestId("set-insights")).not.toBeInTheDocument();
   });
 
@@ -290,14 +290,14 @@ describe("SetInsights", () => {
         own(1, "v2", {
           rests_on: [
             {
-              set_version_id: 21,
+              recipe_version_id: 21,
               label: "v1",
               outcome_then: "held",
               outcome_now: "failed",
               changed: true,
             },
             {
-              set_version_id: 22,
+              recipe_version_id: 22,
               label: "v2",
               outcome_then: "held",
               outcome_now: "held",
@@ -342,7 +342,7 @@ describe("SetInsights", () => {
       waiting_deletions: [
         {
           id: 9,
-          set_id: 3,
+          recipe_id: 3,
           thread_id: 14,
           insight_id: 2,
           insight_text: "Lesson 2.",

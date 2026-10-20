@@ -99,7 +99,7 @@ export function useAcceptStartingPoint(): UseMutationResult<
   return useMutation({
     mutationFn: ({ runId, option }) => acceptStartingPoint(runId, option),
     onSuccess: (accepted) => {
-      toast.success(`Started "${accepted.set.name}"`);
+      toast.success(`Started "${accepted.recipe.name}"`);
       queryClient.setQueryData(
         queryKeys.startingPoints.detail(String(accepted.run.id)),
         accepted.run,

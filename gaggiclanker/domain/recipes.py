@@ -24,7 +24,7 @@ __all__ = [
     "grind_value",
     "next_version_name",
     "parse_version_label",
-    "set_name",
+    "recipe_name",
     "version_label",
 ]
 
@@ -80,7 +80,7 @@ def parse_version_label(text: str) -> tuple[int, int] | None:
 _GRIND_VALUE_MAX = 10000
 
 
-def set_name(bean_name: str | None, grinder_name: str | None) -> str:
+def recipe_name(bean_name: str | None, grinder_name: str | None) -> str:
     """ "Ethiopia Guji (Niche Zero)" — the bean and the grinder.
 
     The bean alone would collide the day somebody runs the same bean on a second

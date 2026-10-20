@@ -43,9 +43,9 @@ beforeEach(() => {
   deleteKnowledgeInsight.mockResolvedValue({ deleted: true });
   acceptInsightDeletion.mockResolvedValue({ proposal: insightDeletion({ status: "deleted" }) });
   keepInsightDeletion.mockResolvedValue({ proposal: insightDeletion({ status: "kept" }) });
-  patchKnowledgeInsight.mockResolvedValue(knowledgeInsight({ set_id: 3, general: false }));
+  patchKnowledgeInsight.mockResolvedValue(knowledgeInsight({ recipe_id: 3, general: false }));
   dismissKnowledgeInsight.mockResolvedValue(
-    knowledgeInsight({ set_id: 3, general: false, dismissed: true }),
+    knowledgeInsight({ recipe_id: 3, general: false, dismissed: true }),
   );
 });
 

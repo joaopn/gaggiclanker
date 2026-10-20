@@ -27,6 +27,7 @@ import type {
   ChatToolList,
 } from "@/api/types";
 import { useSse } from "@/hooks/useSse";
+import { recipeIdOf } from "@/lib/legacyTools";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -94,7 +95,7 @@ export function proposedSetId(content: string | undefined): number | null {
     if (!parsed || typeof parsed !== "object") return null;
     const output = parsed as Record<string, unknown>;
     if (output.proposal_id === undefined) return null;
-    const setId = Number(output.set_id);
+    const setId = Number(recipeIdOf(output));
     return Number.isFinite(setId) ? setId : null;
   } catch {
     return null;
@@ -157,21 +158,21 @@ export function useChatThread(id: number | null): UseQueryResult<ChatThreadDetai
  * the key rather than something the page filters afterwards.
  */
 export function useChatTools(
-  kind: "general" | "set" | null,
+  kind: "general" | "recipe" | null,
   designing = false,
 ): UseQueryResult<ChatToolList, Error> {
   // A Set still being designed is a third surface: the design tools, and none
   // that change a recipe it does not have yet. Only a Set conversation can be
   // one, and it stops being one when its first recipe is accepted — the page
   // reads the flag off the Sets list, and the key follows it.
-  const design = kind === "set" && designing;
+  const design = kind === "recipe" && designing;
   return useQuery({
     // `null` is "the page does not know yet" — a conversation is selected and
     // its row has not arrived. Asking for a kind then would mean guessing, and
     // the guess is visible: the general list would flash beside a Set's chat.
     queryKey: queryKeys.chat.tools(design ? "set-designing" : (kind ?? "unknown")),
     queryFn: () =>
-      design ? getChatTools("set", { designing: true }) : getChatTools(kind ?? "general"),
+      design ? getChatTools("recipe", { designing: true }) : getChatTools(kind ?? "general"),
     enabled: kind !== null,
     staleTime: Number.POSITIVE_INFINITY,
   });
@@ -185,7 +186,7 @@ export function useCreateChatThread(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ title, setId }) =>
-      createChatThread({ title: title ?? "", set_id: setId ?? null }),
+      createChatThread({ title: title ?? "", recipe_id: setId ?? null }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.chat.all }),
     onError: (error) => toast.error(error.message),
   });

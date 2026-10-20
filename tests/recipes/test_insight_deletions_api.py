@@ -41,44 +41,48 @@ async def _recipe_with_thread(
 ) -> tuple[int, int, int]:
     """A Recipe, its version and a conversation about it, with one shot filed."""
     created = await _make_recipe(client, bean, name=name)
-    set_id = int(created["id"])
+    recipe_id = int(created["id"])
     version_id = int(created["current_version_id"])
-    shot = await make_shot(app.state.db, f"{set_id}00001")
+    shot = await make_shot(app.state.db, f"{recipe_id}00001")
     assert await RecipesRepository(app.state.db).assign_shot(shot, version_id)
-    made = await ChatRepository(app.state.db).create_thread(ChatThreadWrite(set_id=set_id))
+    made = await ChatRepository(app.state.db).create_thread(ChatThreadWrite(recipe_id=recipe_id))
     assert made.thread is not None
-    return set_id, version_id, made.thread.id
+    return recipe_id, version_id, made.thread.id
 
 
-async def _added(app: FastAPI, set_id: int, version_id: int, text: str = SECRET) -> int:
+async def _added(app: FastAPI, recipe_id: int, version_id: int, text: str = SECRET) -> int:
     return await InsightsRepository(app.state.db).insert(
         InsightWrite(
-            text=text, source="chat", confirmed=True, set_id=set_id, set_version_id=version_id
+            text=text,
+            source="chat",
+            confirmed=True,
+            recipe_id=recipe_id,
+            recipe_version_id=version_id,
         )
     )
 
 
-async def _propose_deletion(app: FastAPI, set_id: int, thread: int, insight: int) -> int:
+async def _propose_deletion(app: FastAPI, recipe_id: int, thread: int, insight: int) -> int:
     result = await InsightDeletionsRepository(app.state.db).propose(
-        set_id, InsightDeletionWrite(thread_id=thread, insight_id=insight, reason=REASON)
+        recipe_id, InsightDeletionWrite(thread_id=thread, insight_id=insight, reason=REASON)
     )
     assert result.proposal is not None
     return result.proposal.id
 
 
-def _url(set_id: int, proposal_id: int, verb: str) -> str:
-    return f"/api/sets/{set_id}/insight-deletions/{proposal_id}/{verb}"
+def _url(recipe_id: int, proposal_id: int, verb: str) -> str:
+    return f"/api/recipes/{recipe_id}/insight-deletions/{proposal_id}/{verb}"
 
 
 class TestAnswering:
     async def test_delete_removes_the_insight_and_answers_with_the_card(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        insight = await _added(app, set_id, version_id)
-        proposal = await _propose_deletion(app, set_id, thread, insight)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        insight = await _added(app, recipe_id, version_id)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
 
-        response = await client.post(_url(set_id, proposal, "accept"))
+        response = await client.post(_url(recipe_id, proposal, "accept"))
 
         card = data(response)["proposal"]
         assert (card["status"], card["insight_id"], card["insight_text"]) == (
@@ -87,18 +91,18 @@ class TestAnswering:
             SECRET,
         )
         assert (await client.get(f"/api/knowledge/insights/{insight}")).status_code == 404
-        listed = data(await client.get(f"/api/sets/{set_id}/insight-deletions"))["items"]
+        listed = data(await client.get(f"/api/recipes/{recipe_id}/insight-deletions"))["items"]
         assert [(row["id"], row["status"]) for row in listed] == [(proposal, "deleted")]
 
     async def test_keep_changes_nothing_but_the_card(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        insight = await _added(app, set_id, version_id)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        insight = await _added(app, recipe_id, version_id)
         before = data(await client.get(f"/api/knowledge/insights/{insight}"))
-        proposal = await _propose_deletion(app, set_id, thread, insight)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
 
-        response = await client.post(_url(set_id, proposal, "keep"))
+        response = await client.post(_url(recipe_id, proposal, "keep"))
 
         assert data(response)["proposal"]["status"] == "kept"
         assert data(await client.get(f"/api/knowledge/insights/{insight}")) == before
@@ -106,13 +110,13 @@ class TestAnswering:
     async def test_a_second_press_is_a_conflict_that_echoes_nothing(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        insight = await _added(app, set_id, version_id)
-        proposal = await _propose_deletion(app, set_id, thread, insight)
-        await client.post(_url(set_id, proposal, "keep"))
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        insight = await _added(app, recipe_id, version_id)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
+        await client.post(_url(recipe_id, proposal, "keep"))
 
         for verb in ("accept", "keep"):
-            response = await client.post(_url(set_id, proposal, verb))
+            response = await client.post(_url(recipe_id, proposal, verb))
             assert response.status_code == 409
             problem = error(response)
             assert problem["code"] == "INSIGHT_DELETION_DECIDED"
@@ -121,16 +125,16 @@ class TestAnswering:
     async def test_an_insight_taken_back_since_says_so(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        insight = await _added(app, set_id, version_id)
-        proposal = await _propose_deletion(app, set_id, thread, insight)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        insight = await _added(app, recipe_id, version_id)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
         # The repository stales the proposal when the insight is taken back; this is the
         # guard for a write that did not.
         await app.state.db.execute(
             "UPDATE knowledge_insights SET confirmed = 0 WHERE id = ?", (insight,)
         )
 
-        response = await client.post(_url(set_id, proposal, "accept"))
+        response = await client.post(_url(recipe_id, proposal, "accept"))
 
         assert response.status_code == 409
         assert error(response)["code"] == "INSIGHT_NOT_ADDED"
@@ -139,14 +143,14 @@ class TestAnswering:
     async def test_an_unknown_or_another_recipes_proposal_is_not_found(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
         other, _, _ = await _recipe_with_thread(client, app, bean_id, name="Other")
-        insight = await _added(app, set_id, version_id)
-        proposal = await _propose_deletion(app, set_id, thread, insight)
+        insight = await _added(app, recipe_id, version_id)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
 
-        for url in (_url(set_id, 9999, "accept"), _url(other, proposal, "accept")):
+        for url in (_url(recipe_id, 9999, "accept"), _url(other, proposal, "accept")):
             assert (await client.post(url)).status_code == 404
-        assert (await client.get("/api/sets/9999/insight-deletions")).status_code == 404
+        assert (await client.get("/api/recipes/9999/insight-deletions")).status_code == 404
         assert (await client.get(f"/api/knowledge/insights/{insight}")).status_code == 200
 
 
@@ -154,15 +158,15 @@ class TestTakingAnInsightBack:
     async def test_it_stales_the_waiting_proposal_so_the_page_stops_showing_it(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        insight = await _added(app, set_id, version_id)
-        proposal = await _propose_deletion(app, set_id, thread, insight)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        insight = await _added(app, recipe_id, version_id)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
 
         await client.patch(f"/api/knowledge/insights/{insight}", json={"confirmed": False})
 
-        body = data(await client.get(f"/api/knowledge/insights?set_id={set_id}"))
+        body = data(await client.get(f"/api/knowledge/insights?recipe_id={recipe_id}"))
         assert body["waiting_deletions"] == []
-        response = await client.post(_url(set_id, proposal, "accept"))
+        response = await client.post(_url(recipe_id, proposal, "accept"))
         assert response.status_code == 409
         assert error(response)["code"] == "INSIGHT_DELETION_DECIDED"
 
@@ -171,32 +175,32 @@ class TestWhatThePageReads:
     async def test_a_waiting_deletion_is_listed_with_the_recipes_insights(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        insight = await _added(app, set_id, version_id)
-        proposal = await _propose_deletion(app, set_id, thread, insight)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        insight = await _added(app, recipe_id, version_id)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
 
-        body = data(await client.get(f"/api/knowledge/insights?set_id={set_id}"))
+        body = data(await client.get(f"/api/knowledge/insights?recipe_id={recipe_id}"))
         assert [
             (row["id"], row["insight_id"], row["thread_id"]) for row in body["waiting_deletions"]
         ] == [(proposal, insight, thread)]
         # The Knowledge page's own list carries none.
         assert data(await client.get("/api/knowledge/insights"))["waiting_deletions"] == []
 
-        await client.post(_url(set_id, proposal, "keep"))
-        body = data(await client.get(f"/api/knowledge/insights?set_id={set_id}"))
+        await client.post(_url(recipe_id, proposal, "keep"))
+        body = data(await client.get(f"/api/knowledge/insights?recipe_id={recipe_id}"))
         assert body["waiting_deletions"] == []
 
     async def test_an_insight_payload_carries_what_it_rests_on_and_replaces(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        old = await _added(app, set_id, version_id, "Old claim.")
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        old = await _added(app, recipe_id, version_id, "Old claim.")
         new = await InsightsRepository(app.state.db).insert(
             InsightWrite(
                 text="New claim.",
                 source="chat",
-                set_id=set_id,
-                set_version_id=version_id,
+                recipe_id=recipe_id,
+                recipe_version_id=version_id,
                 thread_id=thread,
                 replaces_id=old,
                 replaces_text="Old claim.",
@@ -215,14 +219,14 @@ class TestWhatThePageReads:
     async def test_adding_a_replacement_answers_with_how_it_ended(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        old = await _added(app, set_id, version_id, "Old claim.")
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        old = await _added(app, recipe_id, version_id, "Old claim.")
         new = await InsightsRepository(app.state.db).insert(
             InsightWrite(
                 text="New claim.",
                 source="chat",
-                set_id=set_id,
-                set_version_id=version_id,
+                recipe_id=recipe_id,
+                recipe_version_id=version_id,
                 thread_id=thread,
                 replaces_id=old,
                 replaces_text="Old claim.",
@@ -238,57 +242,57 @@ class TestWhatThePageReads:
 class TestRemovedMeansRemoved:
     """The Recipe's payloads after a removal are byte-identical to before the insight existed."""
 
-    async def _payloads(self, client: httpx.AsyncClient, set_id: int) -> list[str]:
+    async def _payloads(self, client: httpx.AsyncClient, recipe_id: int) -> list[str]:
         """The response data of each, serialised: the request id in `meta` differs by design."""
         return [
             json.dumps(data(await client.get(url)), sort_keys=True)
             for url in (
-                f"/api/knowledge/insights?set_id={set_id}",
-                f"/api/sets/{set_id}",
-                f"/api/sets/{set_id}/insight-deletions",
+                f"/api/knowledge/insights?recipe_id={recipe_id}",
+                f"/api/recipes/{recipe_id}",
+                f"/api/recipes/{recipe_id}/insight-deletions",
             )
         ]
 
     async def test_after_the_persons_delete(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        before = await self._payloads(client, set_id)
-        insight = await _added(app, set_id, version_id)
-        proposal = await _propose_deletion(app, set_id, thread, insight)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        before = await self._payloads(client, recipe_id)
+        insight = await _added(app, recipe_id, version_id)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
 
         assert (await client.delete(f"/api/knowledge/insights/{insight}")).status_code == 200
 
-        stored = data(await client.get(f"/api/sets/{set_id}/insight-deletions"))["items"]
+        stored = data(await client.get(f"/api/recipes/{recipe_id}/insight-deletions"))["items"]
         assert [(row["id"], row["status"]) for row in stored] == [(proposal, "stale")]
-        after = await self._payloads(client, set_id)
+        after = await self._payloads(client, recipe_id)
         # Only the conversation's own record of the proposal differs: the list of its cards.
         assert after[:2] == before[:2]
 
     async def test_after_an_accepted_deletion(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        before = await self._payloads(client, set_id)
-        insight = await _added(app, set_id, version_id)
-        proposal = await _propose_deletion(app, set_id, thread, insight)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        before = await self._payloads(client, recipe_id)
+        insight = await _added(app, recipe_id, version_id)
+        proposal = await _propose_deletion(app, recipe_id, thread, insight)
 
-        await client.post(_url(set_id, proposal, "accept"))
+        await client.post(_url(recipe_id, proposal, "accept"))
 
-        assert (await self._payloads(client, set_id))[:2] == before[:2]
+        assert (await self._payloads(client, recipe_id))[:2] == before[:2]
 
     async def test_after_a_replacements_add_only_the_replacement_remains(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        control = data(await client.get(f"/api/knowledge/insights?set_id={set_id}"))
-        old = await _added(app, set_id, version_id, "Old claim.")
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        control = data(await client.get(f"/api/knowledge/insights?recipe_id={recipe_id}"))
+        old = await _added(app, recipe_id, version_id, "Old claim.")
         new = await InsightsRepository(app.state.db).insert(
             InsightWrite(
                 text="New claim.",
                 source="chat",
-                set_id=set_id,
-                set_version_id=version_id,
+                recipe_id=recipe_id,
+                recipe_version_id=version_id,
                 thread_id=thread,
                 replaces_id=old,
                 replaces_text="Old claim.",
@@ -297,24 +301,25 @@ class TestRemovedMeansRemoved:
 
         await client.patch(f"/api/knowledge/insights/{new}", json={"confirmed": True})
 
-        listed = data(await client.get(f"/api/knowledge/insights?set_id={set_id}"))
+        listed = data(await client.get(f"/api/knowledge/insights?recipe_id={recipe_id}"))
         assert control["items"] == []
         assert [item["id"] for item in listed["items"]] == [new]
         assert (
-            "Old claim." not in (await client.get(f"/api/knowledge/insights?set_id={set_id}")).text
+            "Old claim."
+            not in (await client.get(f"/api/knowledge/insights?recipe_id={recipe_id}")).text
         )
 
     async def test_deleting_a_conversation_removes_its_dismissed_insights_only(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
         repo = InsightsRepository(app.state.db)
         dismissed = await repo.insert(
             InsightWrite(
                 text="Turned down.",
                 source="chat",
-                set_id=set_id,
-                set_version_id=version_id,
+                recipe_id=recipe_id,
+                recipe_version_id=version_id,
                 thread_id=thread,
             )
         )
@@ -323,8 +328,8 @@ class TestRemovedMeansRemoved:
             InsightWrite(
                 text="Waiting.",
                 source="chat",
-                set_id=set_id,
-                set_version_id=version_id,
+                recipe_id=recipe_id,
+                recipe_version_id=version_id,
                 thread_id=thread,
             )
         )
@@ -339,20 +344,20 @@ class TestACardFindsItsProposalHoweverOld:
     async def test_the_thread_list_is_not_capped(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
-        insight = await _added(app, set_id, version_id)
-        oldest = await _propose_deletion(app, set_id, thread, insight)
-        await client.post(_url(set_id, oldest, "keep"))
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        insight = await _added(app, recipe_id, version_id)
+        oldest = await _propose_deletion(app, recipe_id, thread, insight)
+        await client.post(_url(recipe_id, oldest, "keep"))
         for number in range(120):
             await app.state.db.execute(
                 "INSERT INTO recipe_insight_deletions "
                 "(recipe_id, thread_id, insight_text, reason, status) VALUES (?, ?, ?, ?, 'kept')",
-                (set_id, thread, f"older {number}", REASON),
+                (recipe_id, thread, f"older {number}", REASON),
             )
 
-        capped = data(await client.get(f"/api/sets/{set_id}/insight-deletions"))["items"]
+        capped = data(await client.get(f"/api/recipes/{recipe_id}/insight-deletions"))["items"]
         by_thread = data(
-            await client.get(f"/api/sets/{set_id}/insight-deletions?thread_id={thread}")
+            await client.get(f"/api/recipes/{recipe_id}/insight-deletions?thread_id={thread}")
         )["items"]
 
         assert oldest not in {row["id"] for row in capped}
@@ -361,11 +366,11 @@ class TestACardFindsItsProposalHoweverOld:
     async def test_another_threads_proposals_are_not_listed_under_this_recipe(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        set_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
+        recipe_id, version_id, thread = await _recipe_with_thread(client, app, bean_id)
         other, _, other_thread = await _recipe_with_thread(client, app, bean_id, name="Other")
-        insight = await _added(app, set_id, version_id)
-        await _propose_deletion(app, set_id, thread, insight)
+        insight = await _added(app, recipe_id, version_id)
+        await _propose_deletion(app, recipe_id, thread, insight)
 
-        body = data(await client.get(f"/api/sets/{other}/insight-deletions?thread_id={thread}"))
+        body = data(await client.get(f"/api/recipes/{other}/insight-deletions?thread_id={thread}"))
         assert body["items"] == []
         assert other_thread != thread

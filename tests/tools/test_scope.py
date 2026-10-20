@@ -36,15 +36,15 @@ def test_a_recipe_conversation_has_exactly_these_tools() -> None:
             "get_knowledge_chunk",
             "get_profile",
             "get_rules",
-            "get_set",
+            "get_recipe",
             "get_shot",
             "get_shot_extended",
             "get_shot_full",
             "list_profiles",
-            "list_set_shots",
+            "list_recipe_shots",
             "propose_insight_deletion",
             "propose_outcome",
-            "propose_set_version",
+            "propose_recipe_version",
             "propose_signature",
             "propose_signature_override",
             "record_insight",
@@ -63,14 +63,14 @@ def test_a_general_conversation_has_exactly_these_tools() -> None:
             "get_knowledge_chunk",
             "get_profile",
             "get_rules",
-            "get_set",
+            "get_recipe",
             "get_shot",
             "get_shot_extended",
             "get_shot_full",
             "list_beans",
             "list_grinders",
             "list_profiles",
-            "list_sets",
+            "list_recipes",
             "query_shots",
             "search_knowledge",
         }
@@ -84,7 +84,7 @@ def test_a_conversation_designing_a_recipe_has_exactly_these_tools() -> None:
             "get_knowledge_chunk",
             "get_profile",
             "get_rules",
-            "get_set",
+            "get_recipe",
             "list_profiles",
             "propose_initial_recipe",
             "propose_signature",
@@ -118,7 +118,7 @@ async def test_the_scope_is_resolved_from_the_recipe_s_own_flag(archive: Fixture
     )
 
     assert (await ToolScope.resolve(archive.db, designed.id)).tools == DESIGN_TOOLS
-    assert (await ToolScope.resolve(archive.db, archive.set_id)).tools == RECIPE_TOOLS
+    assert (await ToolScope.resolve(archive.db, archive.recipe_id)).tools == RECIPE_TOOLS
     assert await ToolScope.resolve(archive.db, None) == ToolScope()
 
 
@@ -126,14 +126,14 @@ def test_a_recipe_conversation_cannot_reach_the_archive() -> None:
     """The four that would be a way around the scope in one call."""
     scope = ToolScope.for_thread(3)
 
-    for name in ("query_shots", "describe_schema", "list_sets", "list_beans"):
+    for name in ("query_shots", "describe_schema", "list_recipes", "list_beans"):
         assert not scope.allows(name), name
 
 
 def test_a_general_conversation_cannot_change_a_recipe() -> None:
     scope = ToolScope()
 
-    for name in ("propose_set_version", "record_insight"):
+    for name in ("propose_recipe_version", "record_insight"):
         assert not scope.allows(name), name
 
 
@@ -152,16 +152,16 @@ def test_no_conversation_can_ask_for_a_starting_point(name: str) -> None:
 
 def test_the_kind_follows_the_thread_s_two_columns() -> None:
     assert ToolScope.for_thread(None, None).kind == "general"
-    assert ToolScope.for_thread(3, 9) == ToolScope(kind="set", set_id=3, set_version_id=9)
+    assert ToolScope.for_thread(3, 9) == ToolScope(kind="recipe", recipe_id=3, recipe_version_id=9)
 
 
 def test_a_refusal_names_the_tools_that_are_here_and_no_other_recipe() -> None:
     message = ToolScope.for_thread(3).refusal("query_shots")
 
-    assert "list_set_shots" in message
-    assert "Set" in message
+    assert "list_recipe_shots" in message
+    assert "Recipe" in message
     # Nothing about which other Recipes exist, because that is what it is refusing.
-    assert "list_sets" not in message
+    assert "list_recipes" not in message
 
 
 # -- the dispatcher, the schemas and the refusals --------------------------
@@ -171,14 +171,14 @@ async def test_the_dispatcher_refuses_a_tool_outside_the_scope(recipe_ctx: ToolC
     outcome = await registry.dispatch(recipe_ctx, "query_shots", {"sql": "SELECT 1"})
 
     assert outcome.status == "refused"
-    assert "one Set" in outcome.error
+    assert "one Recipe" in outcome.error
 
 
 async def test_an_out_of_scope_tool_is_refused_before_its_arguments_are_read(
     recipe_ctx: ToolContext,
 ) -> None:
     """The refusal must not depend on the call being well formed."""
-    outcome = await registry.dispatch(recipe_ctx, "list_sets", {"nonsense": True})
+    outcome = await registry.dispatch(recipe_ctx, "list_recipes", {"nonsense": True})
 
     assert outcome.status == "refused"
 
@@ -189,7 +189,7 @@ async def test_an_unknown_tool_is_offered_this_conversation_s_list(
     outcome = await registry.dispatch(recipe_ctx, "delete_everything", {})
 
     assert outcome.status == "refused"
-    assert "list_set_shots" in outcome.error
+    assert "list_recipe_shots" in outcome.error
     assert "query_shots" not in outcome.error
 
 
@@ -206,11 +206,13 @@ async def test_the_schemas_sent_to_a_provider_are_the_scope_s(recipe_ctx: ToolCo
 async def test_get_recipe_refuses_another_recipe_without_saying_whether_it_exists(
     recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    outcome = await registry.dispatch(recipe_ctx, "get_set", {"set_id": archive.set_id + 1})
+    outcome = await registry.dispatch(
+        recipe_ctx, "get_recipe", {"recipe_id": archive.recipe_id + 1}
+    )
 
     assert not outcome.ok
     assert "can see no other" in outcome.data["detail"]
-    assert "No Set" not in outcome.data["detail"]
+    assert "No Recipe" not in outcome.data["detail"]
 
 
 async def test_propose_recipe_version_refuses_another_recipe(
@@ -218,8 +220,8 @@ async def test_propose_recipe_version_refuses_another_recipe(
 ) -> None:
     outcome = await registry.dispatch(
         recipe_ctx,
-        "propose_set_version",
-        {"set_id": archive.set_id + 1, "reason": "finer", "grind_setting": "18"},
+        "propose_recipe_version",
+        {"recipe_id": archive.recipe_id + 1, "reason": "finer", "grind_setting": "18"},
     )
 
     assert not outcome.ok
@@ -253,7 +255,7 @@ async def test_compare_shots_refuses_the_moment_one_is_not_this_recipe_s(
     )
 
     assert not elsewhere.ok
-    assert "not a shot of this Set" in elsewhere.data["detail"]
+    assert "not a shot of this Recipe" in elsewhere.data["detail"]
     assert elsewhere.data["detail"].replace(str(other_recipe_shot), "N") == missing.data[
         "detail"
     ].replace("999999", "N")
@@ -293,7 +295,7 @@ async def test_get_insights_in_a_recipe_chat_answers_only_this_recipe_s_confirme
     data = (await registry.dispatch(recipe_ctx, "get_insights", {})).data
 
     texts = {insight["text"] for insight in data["insights"]}
-    assert "This Set's bean likes it finer." in texts
+    assert "This Recipe's bean likes it finer." in texts
     # Another bean's, another grinder's, and anything nobody has confirmed.
     assert "Another bean entirely." not in texts
     assert "Another grinder entirely." not in texts
@@ -329,7 +331,7 @@ async def test_get_insights_hands_back_no_shot_id_of_another_recipe(
     every_id = {shot for insight in data["insights"] for shot in insight["evidence_shot_ids"]}
     assert other_recipe_shot not in every_id
     assert every_id <= set(archive.shots)
-    assert every_id, "the evidence of this Set's own shots still comes through"
+    assert every_id, "the evidence of this Recipe's own shots still comes through"
 
 
 async def test_a_general_chat_still_sees_every_insight(
@@ -351,7 +353,7 @@ async def test_record_insight_refuses_another_recipe_s_shot_as_evidence(
     )
 
     assert not outcome.ok
-    assert "not a shot of this Set" in outcome.data["detail"]
+    assert "not a shot of this Recipe" in outcome.data["detail"]
 
 
 @pytest.mark.parametrize(
@@ -378,9 +380,9 @@ async def test_record_insight_refuses_any_attribute_scope(
     )
 
     assert not outcome.ok
-    assert "belongs to this Set" in outcome.data["detail"]
-    assert "reaches this Set's later conversations only" in outcome.data["detail"]
-    assert await InsightsRepository(archive.db).own(archive.set_id, include_dismissed=True) == []
+    assert "belongs to this Recipe" in outcome.data["detail"]
+    assert "reaches this Recipe's later conversations only" in outcome.data["detail"]
+    assert await InsightsRepository(archive.db).own(archive.recipe_id, include_dismissed=True) == []
 
 
 async def test_record_insight_names_no_scope_in_the_schema_the_model_is_shown() -> None:
@@ -423,12 +425,12 @@ async def test_the_refusal_names_what_the_tool_is_rather_than_the_wrong_rule(
     ctx: ToolContext, recipe_ctx: ToolContext
 ) -> None:
     """A tool absent for its own reason says that reason, not the kind's rule."""
-    shots = await registry.dispatch(ctx, "list_set_shots", {})
+    shots = await registry.dispatch(ctx, "list_recipe_shots", {})
     in_a_recipe = await registry.dispatch(recipe_ctx, "query_shots", {"sql": "SELECT 1"})
 
-    assert "one Set a conversation is about" in shots.error
-    assert "Changing a Set" not in shots.error
-    assert "can see this Set only" in in_a_recipe.error
+    assert "one Recipe a conversation is about" in shots.error
+    assert "Changing a Recipe" not in shots.error
+    assert "can see this Recipe only" in in_a_recipe.error
 
 
 # -- a Recipe being designed --------------------------------------------------
@@ -458,12 +460,12 @@ async def design_ctx(archive: Fixture, settings: object) -> ToolContext:
 @pytest.mark.parametrize(
     ("name", "arguments"),
     [
-        ("propose_set_version", {"reason": "Finer.", "grind_setting": "18"}),
+        ("propose_recipe_version", {"reason": "Finer.", "grind_setting": "18"}),
         (
             "draft_profile",
             {"base_version_id": 1, "patch": {"temperature": 92}, "reason": "Cooler."},
         ),
-        ("list_set_shots", {}),
+        ("list_recipe_shots", {}),
         ("get_shot", {"shot_id": 1}),
         ("get_shot_extended", {"shot_id": 1}),
         ("get_shot_full", {"shot_id": 1}),
@@ -485,7 +487,7 @@ async def test_a_design_conversation_refuses_what_needs_a_recipe_and_points_the_
 @pytest.mark.parametrize(
     ("name", "arguments"),
     [
-        ("propose_set_version", {"reason": "Finer.", "grind_setting": "18"}),
+        ("propose_recipe_version", {"reason": "Finer.", "grind_setting": "18"}),
         (
             "draft_profile",
             {"base_version_id": 1, "patch": {"temperature": 92}, "reason": "Cooler."},
@@ -499,7 +501,7 @@ async def test_the_two_change_tools_refuse_a_design_even_when_called_directly(
     spec = registry.get(name)
     assert spec is not None
 
-    with pytest.raises(ValueError, match="propose_initial_recipe is how the recipe is proposed"):
+    with pytest.raises(ValueError, match="propose_initial_recipe is how version 1 is proposed"):
         await spec.fn(design_ctx, spec.input_model.model_validate(arguments))
 
 
@@ -538,14 +540,14 @@ async def other_recipe_insights(archive: Fixture, other_recipe_shot: int) -> dic
     from gaggiclanker.db.repos.recipes import RecipesRepository
 
     repo = InsightsRepository(archive.db)
-    row = await RecipesRepository(archive.db).get(archive.set_id)
+    row = await RecipesRepository(archive.db).get(archive.recipe_id)
     assert row is not None
     other_bean = await BeansRepository(archive.db).create(BeanWrite(name="Somebody else's bag"))
     other_grinder = await GrindersRepository(archive.db).create(GrinderWrite(name="A second one"))
     written = {
         "mine": InsightWrite(
             scope=InsightScope(bean_id=row.bean_id),
-            text="This Set's bean likes it finer.",
+            text="This Recipe's bean likes it finer.",
             # One id from this Recipe and one from another: a bean-scoped insight
             # legitimately rests on both, and only one of them may come back.
             evidence_shot_ids=[archive.shots[0], other_recipe_shot],
@@ -578,12 +580,12 @@ async def other_recipe_insights(archive: Fixture, other_recipe_shot: int) -> dic
 @pytest.fixture
 async def other_recipe_shot(archive: Fixture) -> int:
     """A shot filed under a different Recipe, which this conversation may not see."""
-    from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeWrite, SetVersionWrite
+    from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionWrite, RecipeWrite
 
     recipes = RecipesRepository(archive.db)
     other = await recipes.create(
         RecipeWrite(name="Another bag", bean_id=archive.bean_id),
-        SetVersionWrite(grind_setting="20"),
+        RecipeVersionWrite(grind_setting="20"),
         automatch=False,
     )
     version = await recipes.current_version(other.id)
@@ -600,7 +602,7 @@ def test_the_mcp_client_is_told_what_a_design_connection_has() -> None:
     told = instructions_for(ToolScope.for_thread(3, designing=True))
 
     assert "propose_initial_recipe" in told
-    assert "list_set_shots" not in told
+    assert "list_recipe_shots" not in told
     assert instructions_for(ToolScope.for_thread(3)) != told
 
 
@@ -608,7 +610,7 @@ def test_the_shot_reading_tools_say_the_opening_context_shots_are_already_there(
     """The claude_code provider reads the tool list over MCP, so the descriptions carry it too."""
     from gaggiclanker.tools.mcp.server import RECIPE_INSTRUCTIONS
 
-    for name in ("get_shot", "get_shot_full", "list_set_shots"):
+    for name in ("get_shot", "get_shot_full", "list_recipe_shots"):
         spec = registry.get(name)
         assert spec is not None
         assert "opening context" in spec.description, name
@@ -618,6 +620,6 @@ def test_the_shot_reading_tools_say_the_opening_context_shots_are_already_there(
     assert shot is not None and full is not None
     assert "ask for one of those with get_shot_extended" in shot.description
     assert "get_shot_extended adds only what is missing" in full.description
-    assert "outside it" in registry.get("list_set_shots").description  # type: ignore[union-attr]
+    assert "outside it" in registry.get("list_recipe_shots").description  # type: ignore[union-attr]
     assert "get_shot_extended" in RECIPE_INSTRUCTIONS
     assert "already holds" in RECIPE_INSTRUCTIONS

@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.recipes import RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipeVersionWrite, RecipeWrite
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.starting.similar import similar_recipes
 from tests.profile_rows import own_version
@@ -101,8 +101,8 @@ async def test_every_query_reads_the_temperature_the_way_python_does(
 
     await own_version(wired.db, profile_version_id)
     row = await wired.recipes.create(
-        RecipeWrite(name=f"Set {name}", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        SetVersionWrite(profile_version_id=profile_version_id, dose_g=18.0, target_yield_g=36.0),
+        RecipeWrite(name=f"Recipe {name}", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
+        RecipeVersionWrite(profile_version_id=profile_version_id, dose_g=18.0, target_yield_g=36.0),
     )
     version_id = row.current_version_id
     assert version_id is not None
@@ -134,8 +134,8 @@ async def test_every_query_reads_the_temperature_the_way_python_does(
         grinder_id=wired.grinder_id,
         limit=20,
     )
-    anchor = next(entry for entry in similar if entry.set_version_id == version_id)
-    assert anchor.profile_temperature_c == expected, "the similar-Sets query drifted"
+    anchor = next(entry for entry in similar if entry.recipe_version_id == version_id)
+    assert anchor.profile_temperature_c == expected, "the similar-Recipes query drifted"
 
 
 async def test_a_profile_that_states_no_temperature_is_not_a_zero_degree_shot(
@@ -151,7 +151,7 @@ async def test_a_profile_that_states_no_temperature_is_not_a_zero_degree_shot(
     await own_version(wired.db, profile_version_id)
     row = await wired.recipes.create(
         RecipeWrite(name="Says nothing", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        SetVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),
+        RecipeVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),
     )
     version_id = row.current_version_id
     assert version_id is not None
@@ -181,7 +181,7 @@ async def test_a_profile_that_states_no_temperature_is_not_a_zero_degree_shot(
         grinder_id=wired.grinder_id,
         limit=20,
     )
-    anchor = next(entry for entry in similar if entry.set_version_id == version_id)
+    anchor = next(entry for entry in similar if entry.recipe_version_id == version_id)
     assert anchor.profile_temperature_c is None
 
 

@@ -82,7 +82,7 @@ export function boardRowView(
     starred: base.on_home_screen,
     in_conflict: false,
     conflict: null,
-    set: null,
+    recipe: null,
     proposed_versions: 0,
     active_version: {
       version_id: base.current_version_id,
@@ -131,7 +131,7 @@ export function listedVersion(overrides: Partial<ListedVersion> = {}): ListedVer
     is_on_machine: false,
     did_not_verify: false,
     shots_brewed: 0,
-    set: null,
+    recipe: null,
     profile: profileDocument(),
     previous_version_id: null,
     ...overrides,
@@ -195,7 +195,7 @@ export function landing(overrides: Partial<DraftLanding> = {}, rowId: number | n
     draft_id: 1,
     already_on_board_label: null,
     plain: { row_id: rowId, row_label: "9 Bar Espresso" },
-    for_set: null,
+    for_recipe: null,
     ...overrides,
   } as DraftLanding;
 }

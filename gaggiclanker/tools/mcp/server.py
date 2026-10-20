@@ -71,7 +71,7 @@ SERVER_NAME = "gaggiclanker"
 #: chat prompt, not a second copy of them here.
 MCP_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. It holds every shot "
-    "the machine has pulled with full telemetry, the user's verdict on each cup, the Sets "
+    "the machine has pulled with full telemetry, the user's verdict on each cup, the Recipes "
     "they are dialling in, and a knowledge base of espresso heuristics.\n\n"
     "Start with describe_schema, then query_shots for anything about many shots at once; "
     "get_shot reads one shot's base information, get_shot_extended the rest of it and "
@@ -86,11 +86,11 @@ MCP_INSTRUCTIONS = (
 #: call that comes back refused.
 RECIPE_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. This connection is "
-    "about one Set — one coffee being dialled in — and it can see that Set only: its "
+    "about one Recipe — one coffee being dialled in — and it can see that Recipe only: its "
     "versions with their predictions and outcomes, its shots, and the knowledge base.\n\n"
     "The opening context already holds this version's newest shots in base information, so "
     "read one of those in more detail with get_shot_extended rather than fetching it again. "
-    "get_set gives the experiment so far, and list_set_shots searches the shots "
+    "get_recipe gives the experiment so far, and list_recipe_shots searches the shots "
     "outside that context on their base information; get_shot_full reads one shot in full. "
     "Cite shots by id and knowledge passages by their heading_path. Tools whose names begin "
     "with propose_, draft_ or record_ create something the user answers: most wait for "
@@ -104,18 +104,18 @@ RECIPE_INSTRUCTIONS = (
 #: proposes the whole first recipe.
 DESIGN_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. This connection is "
-    "about one Set that is being designed: it has a bean and a grinder, and no recipe yet. "
+    "about one Recipe that is being designed: it has a bean and a grinder, and no version yet. "
     "There are no shots to read.\n\n"
-    "Start with get_set for the Set and what the person asked for, list_profiles and "
-    "get_profile for the profiles a recipe can start from, and get_rules and search_knowledge "
-    "for the knowledge base. propose_initial_recipe proposes the whole first recipe for the "
+    "Start with get_recipe for the Recipe and what the person asked for, list_profiles and "
+    "get_profile for the profiles a Recipe can start from, and get_rules and search_knowledge "
+    "for the knowledge base. propose_initial_recipe proposes the whole first version for the "
     "person to accept; nothing here writes to the espresso machine."
 )
 
 
 def instructions_for(scope: ToolScope | None) -> str:
     """What the client is told this connection is, from the same scope."""
-    if scope is None or scope.kind != "set":
+    if scope is None or scope.kind != "recipe":
         return MCP_INSTRUCTIONS
     return DESIGN_INSTRUCTIONS if scope.designing else RECIPE_INSTRUCTIONS
 
@@ -286,32 +286,32 @@ def _add_resources(
         return row.body
 
     @server.resource(
-        f"{SERVER_NAME}://sets/{{set_id}}",
-        name="Set summary",
-        description="One Set: what it is, and every version with its intent.",
+        f"{SERVER_NAME}://recipes/{{recipe_id}}",
+        name="Recipe summary",
+        description="One Recipe: what it is, and every version with its intent.",
         mime_type="application/json",
     )
-    async def one_set(set_id: str) -> str:
+    async def one_recipe(recipe_id: str) -> str:
         try:
-            identifier = int(set_id)
+            identifier = int(recipe_id)
         except ValueError:
-            raise ResourceError(f"{set_id!r} is not a Set id") from None
+            raise ResourceError(f"{recipe_id!r} is not a Recipe id") from None
         # The scope is a limit here as well as on the tools. A resource is
         # fetched by URI rather than called, so a client that can read any Recipe
         # by address would be the one way around a Recipe conversation's whole
         # point — and the refusal says nothing about the Recipe it refuses.
-        if scope is not None and scope.kind == "set" and identifier != scope.set_id:
+        if scope is not None and scope.kind == "recipe" and identifier != scope.recipe_id:
             raise ResourceError(
-                f"This conversation is about Set {scope.set_id} and can see no other"
+                f"This conversation is about Recipe {scope.recipe_id} and can see no other"
             )
         repo = RecipesRepository(await _db())
         row = await repo.get(identifier)
         if row is None:
-            raise ResourceError(f"No Set {identifier}")
+            raise ResourceError(f"No Recipe {identifier}")
         versions = await repo.versions(identifier)
         return json.dumps(
             {
-                "set": named_dump(row),
+                "recipe": named_dump(row),
                 "versions": [named_dump(version) for version in versions],
             },
             indent=2,

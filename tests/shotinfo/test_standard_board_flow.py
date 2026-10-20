@@ -108,7 +108,7 @@ async def test_a_shot_flagged_with_no_pressure_sensor_has_no_first_drip_though_i
     # The lever shot's log carries a real puck flow from its fast part on. Flagged as a
     # board with no pressure sensor, that flow is not read: no drip, stored, rendered, served
     # or summed into a Recipe's trends.
-    shot, set_id, _ = await file_lever(app, device_id="000907", has_pressure=False, scale=False)
+    shot, recipe_id, _ = await file_lever(app, device_id="000907", has_pressure=False, scale=False)
     db = app.state.db
     row = await ShotsRepository(db).get(shot)
     assert row is not None and row.phases
@@ -117,7 +117,7 @@ async def test_a_shot_flagged_with_no_pressure_sensor_has_no_first_drip_though_i
     layout = {item.key: "base" for item in CATALOGUE}
     assert shot_lines(facts, frozenset({"first_drip", "phase_first_drip", "brew_flow"})) == []
     assert "first drip" not in render_shot(facts, "full", layout, curve_points=20).lower()  # type: ignore[arg-type]
-    counted = await RecipesRepository(db).counted_shots(set_id)
+    counted = await RecipesRepository(db).counted_shots(recipe_id)
     assert [c.first_drip_s for c in counted] == [None]
     assert [c.brew_flow_ml_s for c in counted] == [None]
 
@@ -140,13 +140,13 @@ async def test_a_standard_board_with_a_scale_has_the_cups_first_drip_and_no_puck
 ) -> None:
     # No pressure sensor means no puck flow, so the estimate is absent; the scale still saw
     # the cup fill, so the first drip and the cup flow exist there for the first time.
-    shot, set_id, _ = await file_lever(app, device_id="000911", has_pressure=False)
+    shot, recipe_id, _ = await file_lever(app, device_id="000911", has_pressure=False)
     db = app.state.db
     [facts] = await load_shots(db, [shot], samples=True)
     assert facts.has_scale
     keys = frozenset({"cup_first_drip", "brew_cup_flow", "first_drip", "brew_flow"})
     assert {line.key for line in shot_lines(facts, keys)} == {"cup_first_drip", "brew_cup_flow"}
-    [counted] = await RecipesRepository(db).counted_shots(set_id)
+    [counted] = await RecipesRepository(db).counted_shots(recipe_id)
     assert counted.cup_first_drip_s is not None
     assert counted.cup_flow_g_s is not None
     assert counted.first_drip_s is None

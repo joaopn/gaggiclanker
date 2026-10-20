@@ -1,23 +1,23 @@
 name: patterns-user
 description: |
-  The user turn of Find patterns across Sets: the facts, in the order they are read.
+  The user turn of Find patterns across Recipes: the facts, in the order they are read.
 
   Every variable is a block of text rendered by
   `gaggiclanker/patterns/context.py::PatternsInput.render`, which is also what is snapshotted
   onto the run row, so what an old run says it was told is exactly what it was told.
 
-  The Set insights first, because they are the evidence; the general insights next, because
+  The Recipe insights first, because they are the evidence; the general insights next, because
   they decide what is already known; the declined proposals last, because they only narrow
   what to propose.
 variables:
   - name: recipe_insights
-    description: Every Set with a confirmed insight, with the attributes a scope may name, and each confirmed insight under it with its id, where it was learned and what it rests on.
+    description: Every Recipe with a confirmed insight, with the attributes a scope may name, and each confirmed insight under it with its id, where it was learned and what it rests on.
   - name: general_insights
     description: The confirmed general insights that already exist, with their ids and scopes.
   - name: declined
-    description: Proposals the person declined, with the Set insights each was derived from.
+    description: Proposals the person declined, with the Recipe insights each was derived from.
 user: |
-  THE SETS AND WHAT EACH HAS LEARNED (confirmed insights only)
+  THE RECIPES AND WHAT EACH HAS LEARNED (confirmed insights only)
 
   {{recipe_insights}}
 

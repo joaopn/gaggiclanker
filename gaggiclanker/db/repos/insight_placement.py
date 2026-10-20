@@ -95,13 +95,13 @@ class InsightPlacementBuilder(Repository):
             return found
         evidence = {int(shot) for shot in insight.evidence_shot_ids or [] if _is_id(shot)}
         listed = bool(insight.evidence_shot_ids)
-        for set_id in await self._candidate_recipes():
-            attributes = await self.insights.attributes_of(set_id)
+        for recipe_id in await self._candidate_recipes():
+            attributes = await self.insights.attributes_of(recipe_id)
             if attributes is None or not scope_matches(insight.scope.stated(), attributes):
                 continue
-            if listed and not (evidence & await self.recipes.shot_ids(set_id)):
+            if listed and not (evidence & await self.recipes.shot_ids(recipe_id)):
                 continue
-            found.append(set_id)
+            found.append(recipe_id)
         return found
 
     async def _candidate_recipes(self) -> list[int]:
@@ -127,13 +127,13 @@ class InsightPlacementBuilder(Repository):
                 ambiguous += 1
             if len(fitting) != 1:
                 continue
-            set_id = fitting[0]
-            version_id = await self._version_learned_at(insight, set_id)
+            recipe_id = fitting[0]
+            version_id = await self._version_learned_at(insight, recipe_id)
             # `updated_at` is left alone: the insight keeps its dates, and moving
             # it is not an edit anybody made.
             await self.db.execute(
                 "UPDATE knowledge_insights SET recipe_id = ?, recipe_version_id = ? WHERE id = ?",
-                (set_id, version_id, insight.id),
+                (recipe_id, version_id, insight.id),
             )
             moved += 1
         return {
@@ -143,7 +143,7 @@ class InsightPlacementBuilder(Repository):
             "left_general": considered - moved,
         }
 
-    async def _version_learned_at(self, insight: InsightRow, set_id: int) -> int | None:
+    async def _version_learned_at(self, insight: InsightRow, recipe_id: int) -> int | None:
         """Which version of the Recipe the insight was learned at, or ``None``.
 
         The newest evidence shot filed in the Recipe decides; with no evidence, the
@@ -161,7 +161,7 @@ class InsightPlacementBuilder(Repository):
                  ORDER BY COALESCE(sh.started_at, '') DESC, sh.id DESC
                  LIMIT 1
                 """,  # noqa: S608 - the placeholders are literal question marks
-                (set_id, *evidence),
+                (recipe_id, *evidence),
             )
             if found is not None:
                 return int(found)
@@ -171,7 +171,7 @@ class InsightPlacementBuilder(Repository):
              WHERE recipe_id = ? AND created_at <= ?
              ORDER BY created_at DESC, id DESC LIMIT 1
             """,
-            (set_id, insight.created_at),
+            (recipe_id, insight.created_at),
         )
         return None if found is None else int(found)
 

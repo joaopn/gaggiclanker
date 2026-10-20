@@ -35,7 +35,7 @@ METHODS: Mapping[str, str] = MappingProxyType(
         "checks_more": "checks.signature_more@1",
         "shot_id": "archive.shot_id@1",
         "started_at": "header.start_epoch@1",
-        "set_version": "archive.set_version@1",
+        "recipe_version": "archive.recipe_version@1",
         "label": "judgement.decision@1",
         "counted": "archive.counted@1",
         "profile_as_brewed": "archive.profile_label@2",

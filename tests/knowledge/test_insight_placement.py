@@ -36,8 +36,8 @@ from gaggiclanker.db.repos.recipes import (
     DesignBrief,
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.schema import create_schema
 from tests.recipes.conftest import make_shot
@@ -78,7 +78,7 @@ async def _recipe(
 ) -> tuple[int, int]:
     row = await recipes.create(
         RecipeWrite(name=name, bean_id=bean, grinder_id=grinder),
-        SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     assert row.current_version_id is not None
     return row.id, row.current_version_id
@@ -317,7 +317,7 @@ class TestWhereEachOneLands:
         counts = await InsightPlacementBuilder(kitchen.db).build()
 
         after = await _rows(kitchen.db)
-        placed = {name: after[i]["set_id"] for name, i in ids.items()}
+        placed = {name: after[i]["recipe_id"] for name, i in ids.items()}
         assert placed == {
             "a_only": kitchen.a,
             "a_and_b": None,
@@ -335,7 +335,7 @@ class TestWhereEachOneLands:
 
         # The version it was learned at: the newest evidence shot in that Recipe,
         # else the version current when it was written, else none.
-        versions = {name: after[i]["set_version_id"] for name, i in ids.items()}
+        versions = {name: after[i]["recipe_version_id"] for name, i in ids.items()}
         assert versions["a_only"] == kitchen.a_v2, "the newest evidence shot is in v1.1"
         assert versions["huila_scope"] == kitchen.d_v1, "no evidence: current at created_at"
         assert versions["empty_scope_evidence"] == kitchen.d_v1
@@ -406,7 +406,7 @@ class TestWhereEachOneLands:
         moved = 0
         for insight_id, row in before.items():
             fits = await _oracle(kitchen.db, row)
-            placed = after[insight_id]["set_id"]
+            placed = after[insight_id]["recipe_id"]
             if row["source"] == "user":
                 assert placed is None, "hand-written insights never move"
             elif placed is not None:
@@ -440,11 +440,11 @@ class TestWhereEachOneLands:
         await InsightPlacementBuilder(kitchen.db).build()
 
         for row in (await _rows(kitchen.db)).values():
-            if row["set_id"] is None:
+            if row["recipe_id"] is None:
                 continue
             bean = await kitchen.db.fetch_value(
                 "SELECT b.name FROM recipes s JOIN beans b ON b.id = s.bean_id WHERE s.id = ?",
-                (row["set_id"],),
+                (row["recipe_id"],),
             )
             assert str(row["text"]).startswith(str(bean)), row["text"]
 
@@ -469,7 +469,7 @@ class TestWhereEachOneLands:
         )
         await InsightPlacementBuilder(kitchen.db).build()
         row = (await _rows(kitchen.db))[insight_id]
-        assert row["set_id"] == kitchen.d and row["set_version_id"] is None
+        assert row["recipe_id"] == kitchen.d and row["recipe_version_id"] is None
 
     async def test_the_version_follows_the_newest_evidence_shot_not_the_newest_id(
         self, kitchen: Kitchen
@@ -483,7 +483,7 @@ class TestWhereEachOneLands:
             evidence=[s["a3"], s["a2"], s["a1"]],
         )
         await InsightPlacementBuilder(kitchen.db).build()
-        assert (await _rows(kitchen.db))[insight_id]["set_version_id"] == kitchen.a_v2
+        assert (await _rows(kitchen.db))[insight_id]["recipe_version_id"] == kitchen.a_v2
 
 
 class TestOnlyInsightsAboutTheCoffeeMove:
@@ -503,7 +503,7 @@ class TestOnlyInsightsAboutTheCoffeeMove:
             )
         ).id
         recipes = RecipesRepository(db)
-        set_id, version_id = await _recipe(recipes, "The only Set", bean, grinder)
+        recipe_id, version_id = await _recipe(recipes, "The only Recipe", bean, grinder)
         shot_id = await make_shot(db, "000001")
         assert await recipes.assign_shot(shot_id, version_id)
         kitchen = Kitchen(
@@ -511,7 +511,7 @@ class TestOnlyInsightsAboutTheCoffeeMove:
             guji=bean,
             huila=0,
             grinder=grinder,
-            a=set_id,
+            a=recipe_id,
             a_v1=version_id,
             a_v2=0,
             b=0,
@@ -542,15 +542,15 @@ class TestOnlyInsightsAboutTheCoffeeMove:
         await InsightPlacementBuilder(db).build()
 
         rows = await _rows(db)
-        assert {name: rows[i]["set_id"] for name, i in ids.items()} == {
+        assert {name: rows[i]["recipe_id"] for name, i in ids.items()} == {
             "grinder_no_evidence": None,
             "grinder_with_evidence": None,
             "roast": None,
             "process": None,
             "origin": None,
             "empty_no_evidence": None,
-            "bean": set_id,
-            "legacy_empty_with_evidence": set_id,
+            "bean": recipe_id,
+            "legacy_empty_with_evidence": recipe_id,
         }
 
 
@@ -576,8 +576,8 @@ class TestOnce:
 
         assert await builder.build() is None
         rows = await _rows(kitchen.db)
-        assert rows[moved]["dismissed"] == 1 and rows[moved]["set_id"] == kitchen.a
-        assert rows[later]["set_id"] is None
+        assert rows[moved]["dismissed"] == 1 and rows[moved]["recipe_id"] == kitchen.a
+        assert rows[later]["recipe_id"] is None
 
     async def test_an_empty_archive_still_records_that_it_ran(self, db: Database) -> None:
         builder = InsightPlacementBuilder(db)

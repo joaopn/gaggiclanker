@@ -83,8 +83,8 @@ async def test_a_good_file_is_staged_and_described(
     assert data["size_bytes"] == path.stat().st_size
     assert data["manifest"]["keys_included"] is True
     assert data["manifest"]["format_version"] == 1
-    assert data["in_file"] == {"shots": 0, "sets": 0, "beans": 1}
-    assert data["now"] == {"shots": 0, "sets": 0, "beans": 2}
+    assert data["in_file"] == {"shots": 0, "recipes": 0, "beans": 1}
+    assert data["now"] == {"shots": 0, "recipes": 0, "beans": 2}
     assert data["keys_in_file"] is False
     assert data["keys_here"] is True
     # Staged under DATA_DIR (the final rename is atomic on one filesystem).

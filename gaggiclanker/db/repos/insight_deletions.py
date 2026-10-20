@@ -93,7 +93,7 @@ class InsightDeletionRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_id: int
+    recipe_id: int
     thread_id: int
     #: ``None`` once the insight is gone, whichever way it went.
     insight_id: int | None = None
@@ -129,16 +129,16 @@ class InsightDeletionsRepository(Repository):
 
     # ── reading ──────────────────────────────────────────────────────
 
-    async def get(self, set_id: int, proposal_id: int) -> InsightDeletionRow | None:
+    async def get(self, recipe_id: int, proposal_id: int) -> InsightDeletionRow | None:
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE d.id = ? AND d.recipe_id = ?", (proposal_id, set_id)
+            f"{_SELECT} WHERE d.id = ? AND d.recipe_id = ?", (proposal_id, recipe_id)
         )
         return self.to_model(InsightDeletionRow, row)
 
-    async def for_recipe(self, set_id: int, *, limit: int = 100) -> list[InsightDeletionRow]:
+    async def for_recipe(self, recipe_id: int, *, limit: int = 100) -> list[InsightDeletionRow]:
         """Every deletion proposed on this Recipe, newest first."""
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE d.recipe_id = ? ORDER BY d.id DESC LIMIT ?", (set_id, limit)
+            f"{_SELECT} WHERE d.recipe_id = ? ORDER BY d.id DESC LIMIT ?", (recipe_id, limit)
         )
         return self.to_models(InsightDeletionRow, rows)
 
@@ -153,10 +153,10 @@ class InsightDeletionsRepository(Repository):
         )
         return self.to_models(InsightDeletionRow, rows)
 
-    async def waiting_for_recipe(self, set_id: int) -> list[InsightDeletionRow]:
+    async def waiting_for_recipe(self, recipe_id: int) -> list[InsightDeletionRow]:
         """The ones still waiting, for the Recipe page's line on an insight."""
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE d.recipe_id = ? AND d.status = 'proposed' ORDER BY d.id", (set_id,)
+            f"{_SELECT} WHERE d.recipe_id = ? AND d.status = 'proposed' ORDER BY d.id", (recipe_id,)
         )
         return self.to_models(InsightDeletionRow, rows)
 
@@ -175,7 +175,7 @@ class InsightDeletionsRepository(Repository):
 
     # ── writing ──────────────────────────────────────────────────────
 
-    async def propose(self, set_id: int, spec: InsightDeletionWrite) -> DeletionResult:
+    async def propose(self, recipe_id: int, spec: InsightDeletionWrite) -> DeletionResult:
         """Write down a deletion the person has not agreed to yet.
 
         The insight is read inside the transaction that writes, so one deleted a
@@ -187,7 +187,7 @@ class InsightDeletionsRepository(Repository):
         async with self.db.transaction():
             thread = await self.db.fetch_value(
                 "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id = ?",
-                (spec.thread_id, set_id),
+                (spec.thread_id, recipe_id),
             )
             if thread is None:
                 return DeletionResult(refused="bad_thread")
@@ -195,9 +195,11 @@ class InsightDeletionsRepository(Repository):
                 "SELECT recipe_id, text, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
                 (spec.insight_id,),
             )
-            if insight is None or (insight["set_id"] is not None and insight["set_id"] != set_id):
+            if insight is None or (
+                insight["recipe_id"] is not None and insight["recipe_id"] != recipe_id
+            ):
                 return DeletionResult(refused="bad_insight", subject=spec.insight_id)
-            if insight["set_id"] is None:
+            if insight["recipe_id"] is None:
                 return DeletionResult(refused="general", subject=spec.insight_id)
             if not insight["confirmed"] or insight["dismissed"]:
                 return DeletionResult(refused="not_added", subject=spec.insight_id)
@@ -208,10 +210,10 @@ class InsightDeletionsRepository(Repository):
                 """
                 INSERT INTO recipe_insight_deletions
                     (recipe_id, thread_id, insight_id, insight_text, reason, status, created_at)
-                VALUES (:set_id, :thread_id, :insight_id, :text, :reason, 'proposed', :now)
+                VALUES (:recipe_id, :thread_id, :insight_id, :text, :reason, 'proposed', :now)
                 """,
                 {
-                    "set_id": set_id,
+                    "recipe_id": recipe_id,
                     "thread_id": spec.thread_id,
                     "insight_id": spec.insight_id,
                     "text": insight["text"],
@@ -220,13 +222,13 @@ class InsightDeletionsRepository(Repository):
                 },
             )
             proposal_id = int(cursor.lastrowid or 0)
-        return DeletionResult(proposal=await self.get(set_id, proposal_id), replaced=waiting)
+        return DeletionResult(proposal=await self.get(recipe_id, proposal_id), replaced=waiting)
 
-    async def accept(self, set_id: int, proposal_id: int) -> DeletionResult:
+    async def accept(self, recipe_id: int, proposal_id: int) -> DeletionResult:
         """Delete the insight. A person's press, and the only way a proposal removes anything."""
         now = utc_now()
         async with self.db.transaction():
-            proposal = await self.get(set_id, proposal_id)
+            proposal = await self.get(recipe_id, proposal_id)
             if proposal is None:
                 return DeletionResult(refused="no_proposal")
             if proposal.status != "proposed":
@@ -244,14 +246,14 @@ class InsightDeletionsRepository(Repository):
                 # the same transaction; said as a refusal rather than assumed.
                 await self._decide(proposal_id, "stale", now)
                 return DeletionResult(
-                    refused="not_waiting", proposal=await self.get(set_id, proposal_id)
+                    refused="not_waiting", proposal=await self.get(recipe_id, proposal_id)
                 )
             if not insight["confirmed"] or insight["dismissed"]:
                 # Taken back since: it is no longer an added insight, so there is
                 # nothing the agent's reason applies to. Nothing is deleted.
                 await self._decide(proposal_id, "stale", now)
                 return DeletionResult(
-                    refused="insight_changed", proposal=await self.get(set_id, proposal_id)
+                    refused="insight_changed", proposal=await self.get(recipe_id, proposal_id)
                 )
             # Decide first: the delete marks every *waiting* proposal for the insight
             # stale, and this one must end `deleted`.
@@ -260,20 +262,20 @@ class InsightDeletionsRepository(Repository):
             await self.insights.delete_in_transaction(
                 proposal.insight_id, deciding_proposal_id=proposal_id
             )
-        log.info("insight_deletion_accepted", proposal_id=proposal_id, set_id=set_id)
-        return DeletionResult(proposal=await self.get(set_id, proposal_id))
+        log.info("insight_deletion_accepted", proposal_id=proposal_id, recipe_id=recipe_id)
+        return DeletionResult(proposal=await self.get(recipe_id, proposal_id))
 
-    async def keep(self, set_id: int, proposal_id: int) -> DeletionResult:
+    async def keep(self, recipe_id: int, proposal_id: int) -> DeletionResult:
         """Leave the insight where it is. A person's press; nothing else is written."""
         now = utc_now()
         async with self.db.transaction():
-            proposal = await self.get(set_id, proposal_id)
+            proposal = await self.get(recipe_id, proposal_id)
             if proposal is None:
                 return DeletionResult(refused="no_proposal")
             if proposal.status != "proposed":
                 return DeletionResult(refused="not_waiting", proposal=proposal)
             await self._decide(proposal_id, "kept", now)
-        return DeletionResult(proposal=await self.get(set_id, proposal_id))
+        return DeletionResult(proposal=await self.get(recipe_id, proposal_id))
 
     async def _waiting_for_insight(self, insight_id: int) -> InsightDeletionRow | None:
         row = await self.db.fetch_one(

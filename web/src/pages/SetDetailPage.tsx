@@ -117,7 +117,7 @@ export function SetDetailPage() {
     );
   }
 
-  const row = detail.data.set;
+  const row = detail.data.recipe;
   const current = currentVersion(detail.data.versions)?.version;
   const duplicating =
     duplicate.versionId === null
@@ -189,11 +189,11 @@ export function SetDetailPage() {
         <p className="break-words text-muted-foreground text-sm" data-testid="copied-from">
           Copied from{" "}
           <Link
-            to={`/sets/${row.copied_from.set_id}`}
+            to={`/sets/${row.copied_from.recipe_id}`}
             className="underline underline-offset-2"
             data-testid="copied-from-link"
           >
-            {row.copied_from.set_name} {row.copied_from.version_label} ↗
+            {row.copied_from.recipe_name} {row.copied_from.version_label} ↗
           </Link>{" "}
           on {formatDate(row.created_at)}
         </p>

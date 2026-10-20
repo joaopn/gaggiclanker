@@ -34,7 +34,7 @@ from gaggiclanker.api.deps import (
 )
 from gaggiclanker.db.repos.judgements import JudgementWrite, ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
-from gaggiclanker.db.repos.recipes import ProfileMatchSummary, SetVersionRow
+from gaggiclanker.db.repos.recipes import ProfileMatchSummary, RecipeVersionRow
 from gaggiclanker.db.repos.reviews import ShotReviewRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListItem, ShotSampleRow
 from gaggiclanker.domain.metric_language import Expression, Result
@@ -92,8 +92,8 @@ class ShotDetailData(BaseModel):
     shot: ShotDetailRow
     notes: DeviceShotNotesRow | None = None
     judgement: ShotJudgementRow | None = None
-    #: The Recipe version this shot is attached to, resolved. NULL is `needs_set`.
-    set_version: SetVersionRow | None = None
+    #: The Recipe version this shot is attached to, resolved. NULL is `needs_recipe`.
+    recipe_version: RecipeVersionRow | None = None
     #: Every review of this shot, newest first, each with its claims. Sent with the shot
     #: rather than fetched separately because the Review box is on this page and a second
     #: request for a list that is almost always empty or one row long is a round trip for
@@ -134,9 +134,9 @@ async def list_shots(
     from_: Annotated[str | None, Query(alias="from")] = None,
     to: Annotated[str | None, Query()] = None,
     profile_version_id: Annotated[int | None, Query()] = None,
-    set_id: Annotated[int | None, Query()] = None,
-    set_version_id: Annotated[int | None, Query()] = None,
-    needs_set: Annotated[bool | None, Query()] = None,
+    recipe_id: Annotated[int | None, Query()] = None,
+    recipe_version_id: Annotated[int | None, Query()] = None,
+    needs_recipe: Annotated[bool | None, Query()] = None,
     quarantined: Annotated[bool | None, Query()] = None,
     include_deleted: Annotated[bool, Query()] = True,
     include_discarded: Annotated[bool, Query()] = True,
@@ -157,12 +157,12 @@ async def list_shots(
     from a machine whose clock never synced has none and is excluded by any date
     filter, which is the honest answer.
 
-    ``set_id`` and ``set_version_id`` narrow to one Set or one of its versions;
-    ``needs_set=1`` is the inbox — shots the archive could not attach to a Set
+    ``recipe_id`` and ``recipe_version_id`` narrow to one Recipe or one of its versions;
+    ``needs_recipe=1`` is the inbox — shots the archive could not attach to a Recipe
     on its own and is waiting for an answer on. Quarantined shots are excluded
     from it: their bytes never parsed, so there is nothing to judge and the
     count would never reach zero. So are shots labelled Discard: the person
-    already said the shot went wrong, and it counts towards no Set.
+    already said the shot went wrong, and it counts towards no Recipe.
     ``include_discarded=false`` leaves shots labelled Discard out of any list,
     which is the Shots page's default view.
 
@@ -184,9 +184,9 @@ async def list_shots(
             start_from=from_,
             start_to=to,
             profile_version_id=profile_version_id,
-            set_id=set_id,
-            set_version_id=set_version_id,
-            needs_set=needs_set,
+            recipe_id=recipe_id,
+            recipe_version_id=recipe_version_id,
+            needs_recipe=needs_recipe,
             quarantined=quarantined,
             include_deleted_on_device=include_deleted,
             include_discarded=include_discarded,
@@ -227,7 +227,9 @@ async def get_shot(
     if shot is None:
         raise NotFound(f"No shot {shot_id}")
     version = (
-        None if shot.set_version_id is None else await recipes.get_version(shot.set_version_id)
+        None
+        if shot.recipe_version_id is None
+        else await recipes.get_version(shot.recipe_version_id)
     )
     served = (await shots.served([shot_id]))[shot_id]
     return envelope_response(
@@ -235,7 +237,7 @@ async def get_shot(
             shot=shot,
             notes=await notes.get(shot_id),
             judgement=await judgements.get(shot_id),
-            set_version=version,
+            recipe_version=version,
             reviews=await reviews.for_shot(shot_id),
             checks=served.checks_block,
             review=served.review,
@@ -429,17 +431,17 @@ async def get_shot_raw(shot_id: int, shots: ShotsRepoDep) -> Response:
 # ---------------------------------------------------------------------------
 
 
-class SetVersionAssignment(BaseModel):
-    """`PUT /api/shots/{id}/set-version`: which Set version this shot belongs to.
+class RecipeVersionAssignment(BaseModel):
+    """`PUT /api/shots/{id}/recipe-version`: which Recipe version this shot belongs to.
 
     A body with an explicit `null` rather than a DELETE, because "this shot was
-    not part of any Set" is a statement the user makes, and it lands in the same
+    not part of any Recipe" is a statement the user makes, and it lands in the same
     place a correction does.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    set_version_id: int | None = None
+    recipe_version_id: int | None = None
 
 
 @router.put(
@@ -486,25 +488,25 @@ async def delete_judgement(shot_id: int, judgements: JudgementsRepoDep) -> JSONR
 
 
 @router.put(
-    "/{shot_id}/set-version",
+    "/{shot_id}/recipe-version",
     response_model=ApiResponse[ShotDetailRow],
-    summary="Assign this shot to a Set version, or detach it",
+    summary="Assign this shot to a Recipe version, or detach it",
 )
-async def put_set_version(
-    shot_id: int, body: SetVersionAssignment, shots: ShotsRepoDep, recipes: RecipesRepoDep
+async def put_recipe_version(
+    shot_id: int, body: RecipeVersionAssignment, shots: ShotsRepoDep, recipes: RecipesRepoDep
 ) -> JSONResponse:
     """The correction path, so unlike auto-assignment it overwrites.
 
-    Auto-assignment only ever fills a NULL (`db/repos/sets.py`), which is what
+    Auto-assignment only ever fills a NULL (`db/repos/recipes.py`), which is what
     keeps a hand correction from being undone by the next sync pass. This is the
     hand.
     """
     if await shots.get(shot_id) is None:
         raise NotFound(f"No shot {shot_id}")
-    if not await recipes.assign_shot(shot_id, body.set_version_id):
+    if not await recipes.assign_shot(shot_id, body.recipe_version_id):
         raise Unprocessable(
-            f"No Set version {body.set_version_id}",
-            details={"field": "set_version_id", "message": "that Set version does not exist"},
+            f"No Recipe version {body.recipe_version_id}",
+            details={"field": "recipe_version_id", "message": "that Recipe version does not exist"},
         )
     row = await shots.get(shot_id)
     if row is None:  # pragma: no cover - checked above, inside the same request
@@ -515,7 +517,7 @@ async def put_set_version(
 class ProfileMatchRequest(BaseModel):
     """`POST /api/shots/profile-match`: which shots to offer the profile match.
 
-    No `shot_ids` means every shot that needs a Set (the Shots page's button),
+    No `shot_ids` means every shot that needs a Recipe (the Shots page's button),
     which leaves out a shot labelled Discard; a list is the one-shot button on a
     shot's own page, which files the shot it names whatever its label.
     """
@@ -528,7 +530,7 @@ class ProfileMatchRequest(BaseModel):
 @router.post(
     "/profile-match",
     response_model=ApiResponse[ProfileMatchSummary],
-    summary="File shots that need a Set under the one Set that brews their profile",
+    summary="File shots that need a Recipe under the one Recipe that brews their profile",
 )
 async def post_profile_match(
     body: ProfileMatchRequest, shots: ShotsRepoDep, recipes: RecipesRepoDep

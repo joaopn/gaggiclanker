@@ -109,14 +109,14 @@ export function approvedProfileMessage(approval: {
   proposedAs?: string | null;
 }): string {
   const template = approval.forSet
-    ? turns.approved_for_set
+    ? turns.approved_for_recipe
     : approval.newVersion
       ? turns.approved_new_version
       : turns.approved_new_profile;
   const turn = fill(template, {
     "<name>": approval.name,
     "<version label>": approval.forSet?.versionLabel ?? "",
-    "<Set name>": approval.forSet?.setName ?? "",
+    "<Recipe name>": approval.forSet?.setName ?? "",
   });
   return approval.proposedAs ? renamedEnding(turn, approval.proposedAs) : turn;
 }

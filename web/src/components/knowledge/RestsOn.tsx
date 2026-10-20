@@ -21,7 +21,7 @@ export function RestsOn({ rests }: { rests: InsightRestsOn[] }) {
       <span>rests on</span>
       {rests.map((item) => (
         <span
-          key={item.set_version_id}
+          key={item.recipe_version_id}
           className="inline-flex items-center gap-1"
           data-testid="rests-on-version"
           data-version={item.label}

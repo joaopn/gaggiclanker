@@ -71,7 +71,7 @@ rules:
     value:
       text: >-
         Change one variable at a time. Two changes in one shot make the next cup
-        uninterpretable, and the whole point of a Set version is to be able to
+        uninterpretable, and the whole point of a Recipe version is to be able to
         say what a single change did.
     unit: none
     confidence: expert
@@ -873,7 +873,7 @@ rules:
     key: temperature_over
     applies: { signal: ["temp:hot"] }
     value:
-      text: "More than 2 °C above target through the shot is a PID problem, not a recipe one."
+      text: "More than 2 °C above target through the shot is a PID problem, not a problem with the numbers."
       threshold_c: 2
     unit: c
     confidence: expert
@@ -1113,7 +1113,7 @@ rules:
     unit: c
     confidence: expert
     source: gaggiclanker
-    source_ref: "gaggiclanker/db/repos/sets.py — SetVersionPatch bounds"
+    source_ref: "gaggiclanker/db/repos/recipes.py — RecipeVersionPatch bounds"
 
   - category: safety_bounds
     key: pressure

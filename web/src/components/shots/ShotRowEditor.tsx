@@ -74,12 +74,12 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
   const [rating, setRating] = useState<number | null>(loaded.rating);
   const [notes, setNotes] = useState(loaded.notes);
   const [setVersion, setSetVersion] = useState(
-    shot.set_version_id ? String(shot.set_version_id) : "",
+    shot.recipe_version_id ? String(shot.recipe_version_id) : "",
   );
 
   const rows = sets.data?.items ?? [];
   const chosen = setVersion === "" ? null : Number(setVersion);
-  const setMoved = chosen !== (shot.set_version_id ?? null);
+  const setMoved = chosen !== (shot.recipe_version_id ?? null);
   const saving = patch.isPending || assign.isPending;
 
   // Saving a panel where only the Set moved must not write a verdict. The
@@ -172,9 +172,10 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
           {/* A shot filed under an older version: the list above offers each
               Set's current version only, so without this the select would
               silently show the wrong thing. */}
-          {shot.set_badge && !rows.some((row) => row.current_version_id === shot.set_version_id) ? (
-            <option value={String(shot.set_version_id)}>
-              {shot.set_badge.set_name} — {shot.set_badge.version_label} (where it is now)
+          {shot.recipe_badge &&
+          !rows.some((row) => row.current_version_id === shot.recipe_version_id) ? (
+            <option value={String(shot.recipe_version_id)}>
+              {shot.recipe_badge.recipe_name} — {shot.recipe_badge.version_label} (where it is now)
             </option>
           ) : null}
         </select>

@@ -34,7 +34,7 @@ async def test_refiling_a_shot_into_a_version_with_another_target_changes_what_i
     assert [w.badge for w in facts.warnings] == ["Shot: under target"]
 
     other = await recipes.add_version(
-        archive.set_id, RecipeVersionPatch(target_yield_g=30.0, intent="a shorter shot")
+        archive.recipe_id, RecipeVersionPatch(target_yield_g=30.0, intent="a shorter shot")
     )
     assert other is not None
     assert await recipes.assign_shot(archive.shot, other.id)
@@ -44,7 +44,7 @@ async def test_refiling_a_shot_into_a_version_with_another_target_changes_what_i
     assert refiled.warnings == []
 
     longer = await recipes.add_version(
-        archive.set_id, RecipeVersionPatch(target_yield_g=25.0, intent="a much shorter shot")
+        archive.recipe_id, RecipeVersionPatch(target_yield_g=25.0, intent="a much shorter shot")
     )
     assert longer is not None
     assert await recipes.assign_shot(archive.shot, longer.id)

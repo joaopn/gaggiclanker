@@ -43,7 +43,7 @@ class PinRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    set_version_id: int
+    recipe_version_id: int
     board_id: int
     profile_version_id: int
     pinned_at: str
@@ -59,7 +59,7 @@ class PinWrite(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    set_version_id: int
+    recipe_version_id: int
     board_id: int
     profile_version_id: int
 
@@ -67,9 +67,9 @@ class PinWrite(BaseModel):
 class PinDetail(PinRow):
     """A pin with the names a page says it in, and the shots brewed on its copy."""
 
-    set_id: int
-    set_name: str
-    set_archived: bool = False
+    recipe_id: int
+    recipe_name: str
+    recipe_archived: bool = False
     #: The pinned version's name, "v1.2".
     version_label: str
     #: The profile the pinned version brews (the original, the one that judges the pin's shots).
@@ -83,7 +83,7 @@ class PinDetail(PinRow):
 
 
 _DETAIL_SELECT = f"""
-    SELECT p.*, v.recipe_id AS set_id, s.name AS set_name, s.archived AS set_archived,
+    SELECT p.*, v.recipe_id AS recipe_id, s.name AS recipe_name, s.archived AS recipe_archived,
            {label_sql("v")} AS version_label,
            v.profile_version_id AS original_version_id,
            {version_name_sql("opv")} AS original_label,
@@ -110,11 +110,11 @@ class PinsRepository(Repository):
         row = await self.db.fetch_one(f"{_DETAIL_SELECT} WHERE p.id = ?", (pin_id,))
         return self.to_model(PinDetail, row)
 
-    async def live_for_version(self, set_version_id: int) -> PinRow | None:
+    async def live_for_version(self, recipe_version_id: int) -> PinRow | None:
         """The version's live pin, if it has one (the unique index allows at most one)."""
         row = await self.db.fetch_one(
             "SELECT * FROM recipe_version_pins WHERE recipe_version_id = ? AND unpinned_at IS NULL",
-            (set_version_id,),
+            (recipe_version_id,),
         )
         return self.to_model(PinRow, row)
 
@@ -156,12 +156,12 @@ class PinsRepository(Repository):
         )
         return {pin.board_id: pin for pin in self.to_models(PinDetail, rows)}
 
-    async def live_for_recipe(self, set_id: int) -> list[PinDetail]:
+    async def live_for_recipe(self, recipe_id: int) -> list[PinDetail]:
         """A Recipe's live pins, newest first."""
         rows = await self.db.fetch_all(
             f"{_DETAIL_SELECT} WHERE v.recipe_id = ? AND p.unpinned_at IS NULL "
             "ORDER BY p.pinned_at DESC, p.id DESC",
-            (set_id,),
+            (recipe_id,),
         )
         return self.to_models(PinDetail, rows)
 
@@ -169,7 +169,7 @@ class PinsRepository(Repository):
         cursor = await self.db.execute(
             "INSERT INTO recipe_version_pins "
             "(recipe_version_id, board_id, profile_version_id, pinned_at) VALUES (?, ?, ?, ?)",
-            (write.set_version_id, write.board_id, write.profile_version_id, utc_now()),
+            (write.recipe_version_id, write.board_id, write.profile_version_id, utc_now()),
         )
         pin = await self.get(int(cursor.lastrowid or 0))
         if pin is None:  # pragma: no cover - the insert above guarantees it
@@ -213,10 +213,10 @@ class PinsRepository(Repository):
             )
         return True
 
-    async def unpin_recipe(self, set_id: int) -> list[int]:
+    async def unpin_recipe(self, recipe_id: int) -> list[int]:
         """Unpin every live pin of a Recipe (an archived Recipe receives no shots). The ids."""
         unpinned = []
-        for pin in await self.live_for_recipe(set_id):
+        for pin in await self.live_for_recipe(recipe_id):
             if await self.unpin(pin.id):
                 unpinned.append(pin.id)
         return unpinned
@@ -228,7 +228,7 @@ class PinsRepository(Repository):
         )
 
     async def move_to_recipe_version(
-        self, pin_id: int, set_version_id: int | None, profile_version_id: int
+        self, pin_id: int, recipe_version_id: int | None, profile_version_id: int
     ) -> None:
         """The machine's side of the pin's file was kept: the pin's record names the machine's
         version (the copy row's active version now) and, when the Recipe followed, the Recipe
@@ -236,7 +236,7 @@ class PinsRepository(Repository):
         await self.db.execute(
             "UPDATE recipe_version_pins SET profile_version_id = ?, "
             "recipe_version_id = COALESCE(?, recipe_version_id) WHERE id = ?",
-            (profile_version_id, set_version_id, pin_id),
+            (profile_version_id, recipe_version_id, pin_id),
         )
 
     async def is_copy(self, profile_version_id: int) -> bool:
@@ -249,14 +249,14 @@ class PinsRepository(Repository):
         ``name``, if any (the first). A profile a Recipe version brews can never become a pin's
         copy."""
         row = await self.db.fetch_one(
-            f"SELECT s.name AS set_name, {label_sql('v')} AS version_label "  # noqa: S608
+            f"SELECT s.name AS recipe_name, {label_sql('v')} AS version_label "  # noqa: S608
             "FROM recipe_versions v JOIN recipes s ON s.id = v.recipe_id "
             "JOIN profile_versions pv ON pv.id = v.profile_version_id "
             f"WHERE pv.content_hash = ? AND {version_name_sql('pv')} = ? "
             "ORDER BY v.id LIMIT 1",
             (content_hash, name),
         )
-        return None if row is None else (str(row["set_name"]), str(row["version_label"]))
+        return None if row is None else (str(row["recipe_name"]), str(row["version_label"]))
 
 
 async def judged_profile_versions(

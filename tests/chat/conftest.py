@@ -94,7 +94,7 @@ def runner(
 async def thread(archive: Fixture) -> int:
     """A conversation about the fixture Recipe, on its current version."""
     result = await ChatRepository(archive.db).create_thread(
-        ChatThreadWrite(title="", set_id=archive.set_id)
+        ChatThreadWrite(title="", recipe_id=archive.recipe_id)
     )
     assert result.thread is not None, result.refused
     return result.thread.id

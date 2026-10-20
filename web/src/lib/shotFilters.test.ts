@@ -118,8 +118,8 @@ describe("the query string", () => {
     expect(state.set).toBe("3");
     expect(state.version).toBe("22");
     const params = toParams(state, 50);
-    expect(params.set_id).toBe(3);
-    expect(params.set_version_id).toBe(22);
+    expect(params.recipe_id).toBe(3);
+    expect(params.recipe_version_id).toBe(22);
   });
 
   it("ignores a version with no Set beside it", () => {
@@ -128,7 +128,7 @@ describe("the query string", () => {
     const state = fromSearchParams(new URLSearchParams("version=22"));
 
     expect(state.version).toBe("");
-    expect(toParams(state, 50).set_version_id).toBeUndefined();
+    expect(toParams(state, 50).recipe_version_id).toBeUndefined();
     expect(toSearchParams(state).toString()).toBe("");
   });
 
@@ -136,13 +136,13 @@ describe("the query string", () => {
     const state = fromSearchParams(new URLSearchParams("set=needs&version=22"));
 
     expect(state.version).toBe("");
-    expect(toParams(state, 50).set_version_id).toBeUndefined();
+    expect(toParams(state, 50).recipe_version_id).toBeUndefined();
   });
 
   it("never sends a version on its own, even from state built by hand", () => {
     // `toParams` is called with state the filter bar did not build, so the
     // rule lives there as well as in the parser.
-    expect(toParams({ ...DEFAULT_FILTERS, version: "22" }, 50).set_version_id).toBeUndefined();
+    expect(toParams({ ...DEFAULT_FILTERS, version: "22" }, 50).recipe_version_id).toBeUndefined();
   });
 
   it("counts the version as a reason there are few rows", () => {

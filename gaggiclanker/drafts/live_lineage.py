@@ -47,4 +47,4 @@ class LiveLineage:
         pin = await self.pins.live_for_board(profile.id)
         if pin is None:
             return None
-        return pinned_sentence(profile.label, pin.set_name, pin.version_label)
+        return pinned_sentence(profile.label, pin.recipe_name, pin.version_label)

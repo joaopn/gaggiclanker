@@ -7,10 +7,10 @@
     "not_in_force": 0,
     "rejected": 0,
     "expectations": [],
-    "sets": [
+    "recipes": [
       {
-        "set_id": 1,
-        "set_name": "Constructed lever",
+        "recipe_id": 1,
+        "recipe_name": "Constructed lever",
         "archived": false,
         "version_id": 1,
         "version_label": "v1",
@@ -204,10 +204,10 @@
         "answered_at": null
       }
     ],
-    "sets": [
+    "recipes": [
       {
-        "set_id": 1,
-        "set_name": "Constructed lever",
+        "recipe_id": 1,
+        "recipe_name": "Constructed lever",
         "archived": false,
         "version_id": 1,
         "version_label": "v1",
@@ -402,10 +402,10 @@
         "answered_at": null
       }
     ],
-    "sets": [
+    "recipes": [
       {
-        "set_id": 1,
-        "set_name": "Constructed lever",
+        "recipe_id": 1,
+        "recipe_name": "Constructed lever",
         "archived": false,
         "version_id": 1,
         "version_label": "v1",
@@ -599,11 +599,11 @@
         "answered_at": null
       }
     ],
-    "sets": []
+    "recipes": []
   },
   "overrideInForce": {
     "id": 1,
-    "set_version_id": 1,
+    "recipe_version_id": 1,
     "expectation_id": 2,
     "status": "confirmed",
     "reason": "a coarser bean",
@@ -630,7 +630,7 @@
   },
   "overrideRejected": {
     "id": 1,
-    "set_version_id": 1,
+    "recipe_version_id": 1,
     "expectation_id": 2,
     "status": "rejected",
     "reason": "a coarser bean",

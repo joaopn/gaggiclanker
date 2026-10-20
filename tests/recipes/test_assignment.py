@@ -2,7 +2,7 @@
 
 The chunk's first acceptance criterion: *creating a Recipe and pulling a shot with
 the matching profile assigns it automatically; a shot with another profile lands
-in `needs_set`.* Both halves are asserted here through the real sync engine, on
+in `needs_recipe`.* Both halves are asserted here through the real sync engine, on
 a real database, against the fake device serving the repository's own `.slog`
 fixtures — because the interesting part is the join between three tables that
 are filled by three different passes.
@@ -19,7 +19,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.judgements import JudgementWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.recipes import RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipeVersionWrite, RecipeWrite
 from gaggiclanker.device.fake import FakeDevice, default_notes
 from gaggiclanker.domain.models import SHOT_FLAG_HAS_NOTES, Profile
 from gaggiclanker.domain.slog import parse_slog
@@ -96,7 +96,7 @@ async def _recipe_naming(archive: Archive, version_id: int) -> int:
     await own_version(archive.db, version_id)
     row = await archive.engine.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=bean.id),
-        SetVersionWrite(profile_version_id=version_id, dose_g=18.0, target_yield_g=36.0),
+        RecipeVersionWrite(profile_version_id=version_id, dose_g=18.0, target_yield_g=36.0),
     )
     return row.id
 
@@ -114,7 +114,7 @@ class TestSyncMatching:
                 await archive.engine.sync_identity()
                 wanted = await _mirror(archive, matching, "Adaptive v2")
                 await _mirror(archive, other, "9 Bar Espresso")
-                set_id = await _recipe_naming(archive, wanted)
+                recipe_id = await _recipe_naming(archive, wanted)
 
                 await archive.engine.sync_shots()
 
@@ -122,14 +122,14 @@ class TestSyncMatching:
                 unassigned = await archive.engine.shots.get_by_device_id("000301")
                 assert assigned is not None and unassigned is not None
 
-                version = await archive.engine.recipes.current_version(set_id)
+                version = await archive.engine.recipes.current_version(recipe_id)
                 assert version is not None
-                assert assigned.set_version_id == version.id
-                assert assigned.set_badge is not None
-                assert assigned.set_badge.version_label == "v1"
+                assert assigned.recipe_version_id == version.id
+                assert assigned.recipe_badge is not None
+                assert assigned.recipe_badge.version_label == "v1"
                 # The other profile is not this Recipe's, so the archive says so
                 # rather than guessing.
-                assert unassigned.set_version_id is None
+                assert unassigned.recipe_version_id is None
         finally:
             await device.stop()
 
@@ -139,7 +139,7 @@ class TestSyncMatching:
         try:
             async with archive_for(device, tmp_path) as archive:
                 await archive.engine.sync_shots()
-                page = await archive.engine.shots.list_shots(needs_set=True)
+                page = await archive.engine.shots.list_shots(needs_recipe=True)
                 assert page.total == 2
         finally:
             await device.stop()
@@ -192,7 +192,7 @@ class TestImporterMatching:
         await own_version(wired.db, version_id)
         created = await wired.recipes.create(
             RecipeWrite(name="Imported archive", bean_id=wired.bean_id),
-            SetVersionWrite(profile_version_id=version_id),
+            RecipeVersionWrite(profile_version_id=version_id),
         )
 
         service = ImportService(wired.db)
@@ -206,7 +206,7 @@ class TestImporterMatching:
         shot = await wired.shots.get(result.shot_id)
         current = await wired.recipes.current_version(created.id)
         assert shot is not None and current is not None
-        assert shot.set_version_id == current.id
+        assert shot.recipe_version_id == current.id
         # The export carries a notes card with a yield in it, so the judgement
         # comes across too.
         judgement = await wired.judgements.get(result.shot_id)
@@ -222,7 +222,7 @@ class TestImporterMatching:
         )
         assert result.shot_id is not None
         shot = await wired.shots.get(result.shot_id)
-        assert shot is not None and shot.set_version_id is None
+        assert shot is not None and shot.recipe_version_id is None
 
 
 #: The four shapes a real machine will serve that our own bounds refuse.

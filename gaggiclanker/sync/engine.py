@@ -859,13 +859,13 @@ class SyncEngine:
         # The user's half of the shot: which Recipe was this, and what did they
         # think of it. Both are best-effort and neither can fail an ingest —
         # the archive's job is to hold the bytes, and a Recipe that does not match
-        # leaves the shot in the `needs_set` inbox rather than losing it.
+        # leaves the shot in the `needs_recipe` inbox rather than losing it.
         match = await self.recipes.profile_match(
             shot_id,
             profile_version_id=shot.profile_version_id,
             device_profile_id=shot.profile_id_on_device,
         )
-        set_version_id = match.set_version_id
+        recipe_version_id = match.recipe_version_id
         update.shots_inserted += 1
         await self.runs.add_event(
             "shot_ingested",
@@ -875,7 +875,7 @@ class SyncEngine:
             message=f"{len(samples)} samples",
             data={
                 "samples": len(samples),
-                "set_version_id": set_version_id,
+                "recipe_version_id": recipe_version_id,
             },
         )
         self._publish(
@@ -888,7 +888,7 @@ class SyncEngine:
             device_id=shot.device_id,
             samples=len(samples),
             quarantined=False,
-            set_version_id=set_version_id,
+            recipe_version_id=recipe_version_id,
         )
 
     async def _store_quarantined(

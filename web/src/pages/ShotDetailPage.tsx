@@ -127,11 +127,11 @@ export function ShotDetailPage() {
                 so the chat starts on the change this shot is evidence for
                 rather than asking what it was an attempt at. */}
             <DiscussButton
-              setId={row.set_badge?.set_id ?? null}
-              versionId={row.set_version_id ?? null}
+              setId={row.recipe_badge?.recipe_id ?? null}
+              versionId={row.recipe_version_id ?? null}
               question={`What do you make of shot ${row.id}?`}
             />
-            <ProfileAutomatch shotId={row.id} filed={row.set_version_id != null} />
+            <ProfileAutomatch shotId={row.id} filed={row.recipe_version_id != null} />
           </div>
         }
       />
@@ -182,7 +182,7 @@ export function ShotDetailPage() {
       <section id={ASSIGN_ANCHOR} className="scroll-mt-20">
         <AssignToSet
           shotId={row.id}
-          setVersion={shot.data.set_version}
+          setVersion={shot.data.recipe_version}
           judgement={shot.data.judgement}
         />
       </section>

@@ -200,14 +200,16 @@ async def test_a_newer_override_replaces_the_one_in_force_without_being_a_reject
 
     one = await repo.add_override(
         OverrideWrite(
-            set_version_id=first_version, expectation_id=row.id, compare=Compare(op="<=", value=0.2)
+            recipe_version_id=first_version,
+            expectation_id=row.id,
+            compare=Compare(op="<=", value=0.2),
         )
     )
     # In force at once, with no answer from anyone.
     assert one.status == "confirmed" and one.answered_at is None
     two = await repo.add_override(
         OverrideWrite(
-            set_version_id=first_version,
+            recipe_version_id=first_version,
             expectation_id=row.id,
             compare=Compare(op="<=", value=0.25),
         )
@@ -226,12 +228,14 @@ async def test_an_override_is_rejected_and_restored_by_the_person(db: Database) 
     from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_recipe_versions(db, version)
+    (recipe_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
     first = await repo.add_override(
         OverrideWrite(
-            set_version_id=set_version, expectation_id=row.id, compare=Compare(op="<=", value=0.2)
+            recipe_version_id=recipe_version,
+            expectation_id=row.id,
+            compare=Compare(op="<=", value=0.2),
         )
     )
 
@@ -239,12 +243,12 @@ async def test_an_override_is_rejected_and_restored_by_the_person(db: Database) 
     rejected = await repo.reject_override(first.id, reason="too loose")
     assert rejected.row is not None
     assert (rejected.row.status, rejected.row.reject_reason) == ("rejected", "too loose")
-    assert await repo.confirmed_overrides([set_version]) == {}
+    assert await repo.confirmed_overrides([recipe_version]) == {}
     assert (await repo.reject_override(first.id)).refused == "already_rejected"
 
     restored = await repo.restore_override(first.id)
     assert restored.row is not None and restored.row.status == "confirmed"
-    assert list(await repo.confirmed_overrides([set_version])) == [set_version]
+    assert list(await repo.confirmed_overrides([recipe_version])) == [recipe_version]
 
 
 async def test_a_rejected_override_is_not_restored_over_another_in_force_or_without_its_expectation(
@@ -253,18 +257,22 @@ async def test_a_rejected_override_is_not_restored_over_another_in_force_or_with
     from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_recipe_versions(db, version)
+    (recipe_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
     first = await repo.add_override(
         OverrideWrite(
-            set_version_id=set_version, expectation_id=row.id, compare=Compare(op="<=", value=0.2)
+            recipe_version_id=recipe_version,
+            expectation_id=row.id,
+            compare=Compare(op="<=", value=0.2),
         )
     )
     await repo.reject_override(first.id)
     second = await repo.add_override(
         OverrideWrite(
-            set_version_id=set_version, expectation_id=row.id, compare=Compare(op="<=", value=0.3)
+            recipe_version_id=recipe_version,
+            expectation_id=row.id,
+            compare=Compare(op="<=", value=0.3),
         )
     )
     assert (await repo.restore_override(first.id)).refused == "another_in_force"
@@ -288,12 +296,14 @@ async def test_rejecting_an_expectation_withdraws_its_override_and_restoring_lea
     from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_recipe_versions(db, version)
+    (recipe_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (row,) = await repo.add(version, [_measure()])
     override = await repo.add_override(
         OverrideWrite(
-            set_version_id=set_version, expectation_id=row.id, compare=Compare(op="<=", value=0.2)
+            recipe_version_id=recipe_version,
+            expectation_id=row.id,
+            compare=Compare(op="<=", value=0.2),
         )
     )
 
@@ -303,11 +313,11 @@ async def test_rejecting_an_expectation_withdraws_its_override_and_restoring_lea
     assert withdrawn is not None
     # Out of force with the expectation, and not the person's rejection of the override.
     assert (withdrawn.status, withdrawn.reject_reason) == ("withdrawn", "")
-    assert await repo.confirmed_overrides([set_version]) == {}
+    assert await repo.confirmed_overrides([recipe_version]) == {}
 
     await repo.restore(row.id)
     assert (await repo.get_override(override.id)).status == "withdrawn"  # type: ignore[union-attr]
-    assert await repo.confirmed_overrides([set_version]) == {}
+    assert await repo.confirmed_overrides([recipe_version]) == {}
 
 
 async def test_an_override_for_another_expectation_is_refused_inside_the_transaction(
@@ -317,13 +327,13 @@ async def test_an_override_for_another_expectation_is_refused_inside_the_transac
     from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_recipe_versions(db, version)
+    (recipe_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     first, second = await repo.add(version, [_measure(), _measure(phase="soak")])
 
     def write(expectation: int, value: float) -> OverrideWrite:
         return OverrideWrite(
-            set_version_id=set_version,
+            recipe_version_id=recipe_version,
             expectation_id=expectation,
             compare=Compare(op="<=", value=value),
         )
@@ -335,7 +345,7 @@ async def test_an_override_for_another_expectation_is_refused_inside_the_transac
         return_exceptions=True,
     )
     assert sorted(type(r).__name__ for r in results) == ["AnotherOverrideInForce", "OverrideRow"]
-    live = await repo.overrides_for_recipe_version(set_version, statuses=["confirmed"])
+    live = await repo.overrides_for_recipe_version(recipe_version, statuses=["confirmed"])
     assert len(live) == 1
     with pytest.raises(AnotherOverrideInForce):
         await repo.add_override(
@@ -349,7 +359,7 @@ async def test_a_row_proposed_before_in_force_signatures_is_no_check_and_can_be_
     from tests.signatures.helpers import make_recipe_versions
 
     version = await make_profile_version(db, "Lever")
-    (set_version, _) = await make_recipe_versions(db, version)
+    (recipe_version, _) = await make_recipe_versions(db, version)
     repo = SignatureRepository(db)
     (old,) = await repo.add(version, [_reached(status="proposed")])
     assert old.needs_phase is False and old.status == "proposed"
@@ -360,9 +370,9 @@ async def test_a_row_proposed_before_in_force_signatures_is_no_check_and_can_be_
     await db.execute(
         "INSERT INTO recipe_version_signature_overrides (recipe_version_id, expectation_id, "
         'compare_json, status) VALUES (?, ?, \'{"op": "<=", "value": 0.2}\', \'proposed\')',
-        (set_version, measure.id),
+        (recipe_version, measure.id),
     )
-    assert await repo.confirmed_overrides([set_version]) == {}
+    assert await repo.confirmed_overrides([recipe_version]) == {}
 
     assert (await repo.restore(old.id)).refused == "not_rejected"
     assert (await repo.set_tier(old.id, "context")).refused == "not_in_force"

@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.api.deps import StartingPointServiceDep
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
-from gaggiclanker.db.repos.recipes import SetRow, SetVersionRow
+from gaggiclanker.db.repos.recipes import RecipeRow, RecipeVersionRow
 from gaggiclanker.db.repos.starting import StartingPointRunRow
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import NotFound
@@ -87,8 +87,8 @@ class StartingPointAccepted(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     run: StartingPointRunRow
-    set: SetRow
-    version: SetVersionRow
+    recipe: RecipeRow
+    version: RecipeVersionRow
     draft: ProfileDraftRow | None = None
 
 
@@ -146,28 +146,28 @@ async def get_starting_point(run_id: int, starting: StartingPointServiceDep) -> 
     "/{run_id}/accept",
     response_model=ApiResponse[StartingPointAccepted],
     status_code=201,
-    summary="Take one option: create the Set, its first version and any draft",
+    summary="Take one option: create the Recipe, its first version and any draft",
 )
 async def accept_starting_point(
     run_id: int, body: StartingPointAcceptRequest, starting: StartingPointServiceDep
 ) -> JSONResponse:
-    """Create the Set this option describes.
+    """Create the Recipe this option describes.
 
     Refused with a 409 for a run that is still running, that failed, or that
     somebody has already accepted — the last one carries the ids of what the
     first accept made, so the UI can take the person there rather than showing
-    them an error about a Set that exists.
+    them an error about a Recipe that exists.
 
     Refused with a 422 when the option's profile document is one the safety
     policy will not allow, carrying every violation at once. Nothing is created
-    in that case: a Set pointing at a profile that was rejected is worse than no
-    Set.
+    in that case: a Recipe pointing at a profile that was rejected is worse than no
+    Recipe.
     """
     accepted = await starting.accept(run_id, body.option)
     return envelope_response(
         StartingPointAccepted(
             run=accepted.run,
-            set=accepted.recipe_row,
+            recipe=accepted.recipe_row,
             version=accepted.version,
             draft=accepted.draft,
         ).model_dump(mode="json"),

@@ -1,4 +1,4 @@
-"""`list_set_shots`, the shot search: every filter, the order, the cap, the scope.
+"""`list_recipe_shots`, the shot search: every filter, the order, the cap, the scope.
 
 Over the review tests' fixture Recipe (six shots, summary-level diagnostics, five of
 them judged), whose numbers are written out in `tests/review/conftest.py`:
@@ -28,8 +28,8 @@ from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrit
 from gaggiclanker.db.repos.recipes import (
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -40,14 +40,14 @@ from tests.review.conftest import Fixture
 
 
 async def search(ctx: ToolContext, **arguments: Any) -> dict[str, Any]:
-    outcome = await registry.dispatch(ctx, "list_set_shots", arguments)
+    outcome = await registry.dispatch(ctx, "list_recipe_shots", arguments)
     assert outcome.ok, outcome.data
     return outcome.data
 
 
 async def dispatch_search(ctx: ToolContext, **arguments: Any) -> Any:
     """The raw outcome, for the searches that are meant to be refused."""
-    return await registry.dispatch(ctx, "list_set_shots", arguments)
+    return await registry.dispatch(ctx, "list_recipe_shots", arguments)
 
 
 def ids(data: dict[str, Any]) -> list[int]:
@@ -203,7 +203,7 @@ async def test_at_most_ten_come_back(recipe_ctx: ToolContext, archive: Fixture) 
 
     assert data["count"] == 10
     assert data["truncated"] is True
-    refused = await registry.dispatch(recipe_ctx, "list_set_shots", {"limit": 11})
+    refused = await registry.dispatch(recipe_ctx, "list_recipe_shots", {"limit": 11})
     assert refused.status == "error"
 
 
@@ -213,7 +213,7 @@ async def test_it_never_returns_a_shot_of_another_recipe(
     recipes = RecipesRepository(archive.db)
     other = await recipes.create(
         RecipeWrite(name="Another bag", bean_id=archive.bean_id),
-        SetVersionWrite(grind_setting="20"),
+        RecipeVersionWrite(grind_setting="20"),
         automatch=False,
     )
     version = await recipes.current_version(other.id)
@@ -232,7 +232,7 @@ async def test_a_version_filter_finds_the_shots_of_that_version(
     recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
     recipes = RecipesRepository(archive.db)
-    newer = await recipes.add_version(archive.set_id, RecipeVersionPatch(grind_setting="21"))
+    newer = await recipes.add_version(archive.recipe_id, RecipeVersionPatch(grind_setting="21"))
     assert newer is not None
     assert await recipes.assign_shot(archive.shots[0], newer.id)
 
@@ -241,12 +241,12 @@ async def test_a_version_filter_finds_the_shots_of_that_version(
     for name in ("v1.1", "1.1", "V1.1", 1.1):
         data = await search(recipe_ctx, version=name)
         assert ids(data) == [archive.shots[0]], name
-        assert f"Set version: v1.1 of Set {archive.set_id}" in data["shots"][0]["text"]
+        assert f"Recipe version: v1.1 of Recipe {archive.recipe_id}" in data["shots"][0]["text"]
     # "2" is v2, which this Recipe does not have — never the second version.
     outcome = await dispatch_search(recipe_ctx, version="2")
     assert not outcome.ok
     assert outcome.data["detail"] == (
-        "This Set has no version called '2'. Its versions are v1, v1.1; name one of them as "
+        "This Recipe has no version called '2'. Its versions are v1, v1.1; name one of them as "
         "'v1.1', '1.1' or '2', or leave version out."
     )
 
@@ -259,18 +259,18 @@ async def test_a_version_name_is_only_ever_this_recipe_s(
     recipes = RecipesRepository(archive.db)
     other = await recipes.create(
         RecipeWrite(name="Another bag", bean_id=archive.bean_id),
-        SetVersionWrite(grind_setting="20"),
+        RecipeVersionWrite(grind_setting="20"),
         automatch=False,
     )
     second = await recipes.add_version(other.id, RecipeVersionPatch(grind_setting="19"), major=True)
     assert second is not None
     assert second.version_label == "v2"
-    assert other.id > archive.set_id
+    assert other.id > archive.recipe_id
 
     outcome = await dispatch_search(recipe_ctx, version="v2")
 
     assert not outcome.ok
-    assert outcome.data["detail"].startswith("This Set has no version called 'v2'. ")
+    assert outcome.data["detail"].startswith("This Recipe has no version called 'v2'. ")
     assert "Its versions are v1;" in outcome.data["detail"]
 
 
@@ -281,7 +281,7 @@ async def test_a_version_the_recipe_does_not_have_is_refused_in_words(
     outcome = await dispatch_search(recipe_ctx, version=name)
 
     assert not outcome.ok
-    assert outcome.data["detail"].startswith(f"This Set has no version called {name!r}.")
+    assert outcome.data["detail"].startswith(f"This Recipe has no version called {name!r}.")
     assert "Its versions are v1;" in outcome.data["detail"]
 
 
@@ -299,7 +299,7 @@ async def test_a_shot_that_does_not_count_is_found_and_says_so(
 
 
 async def test_a_general_conversation_is_not_offered_the_search(ctx: ToolContext) -> None:
-    outcome = await registry.dispatch(ctx, "list_set_shots", {})
+    outcome = await registry.dispatch(ctx, "list_recipe_shots", {})
 
     assert outcome.status == "refused"
 
@@ -355,7 +355,7 @@ async def test_the_search_refuses_to_filter_or_sort_on_an_excluded_item(
     """Filtering on an item the person withheld would hand back what they withheld."""
     _tiers_with(monkeypatch, **{key: "excluded"})
 
-    outcome = await registry.dispatch(recipe_ctx, "list_set_shots", arguments)
+    outcome = await registry.dispatch(recipe_ctx, "list_recipe_shots", arguments)
 
     assert not outcome.ok, case
     assert outcome.data["detail"] == (
@@ -375,7 +375,7 @@ async def test_the_search_still_filters_and_sorts_on_an_extended_item(
     """An extended item is one `get_shot_extended` hands over anyway."""
     _tiers_with(monkeypatch, **{key: "extended"})
 
-    outcome = await registry.dispatch(recipe_ctx, "list_set_shots", arguments)
+    outcome = await registry.dispatch(recipe_ctx, "list_recipe_shots", arguments)
 
     assert outcome.ok, (case, outcome.data)
 

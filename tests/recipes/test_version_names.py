@@ -20,9 +20,9 @@ from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposal
 from gaggiclanker.db.repos.recipes import (
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
     RollbackWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.repos.version_names import label_sql, next_names
 from gaggiclanker.domain.recipes import version_label
@@ -34,16 +34,16 @@ PREDICTION = "Two seconds longer and a touch sweeter than the version before it.
 async def _recipe(wired: Fixtures, profile: int | None = None) -> int:
     row = await wired.recipes.create(
         RecipeWrite(name="Guji on the Niche", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
-        SetVersionWrite(profile_version_id=profile, grind_setting="22", dose_g=18),
+        RecipeVersionWrite(profile_version_id=profile, grind_setting="22", dose_g=18),
     )
     return row.id
 
 
 async def _add(
-    recipes: RecipesRepository, set_id: int, major: bool | None = None, **fields: object
+    recipes: RecipesRepository, recipe_id: int, major: bool | None = None, **fields: object
 ) -> str:
     version = await recipes.add_version(
-        set_id, RecipeVersionPatch.model_validate(fields), major=major
+        recipe_id, RecipeVersionPatch.model_validate(fields), major=major
     )
     assert version is not None
     return version.version_label
@@ -53,21 +53,21 @@ async def _add(
 
 
 async def test_minor_and_major_versions_number_as_the_person_reads_them(wired: Fixtures) -> None:
-    set_id = await _recipe(wired)
-    first = await wired.recipes.current_version(set_id)
+    recipe_id = await _recipe(wired)
+    first = await wired.recipes.current_version(recipe_id)
     assert first is not None
     assert (first.version_major, first.version_minor) == (1, 0)
     assert first.version_label == "v1"
 
     labels = [
-        await _add(wired.recipes, set_id, major=False, grind_setting="21"),
-        await _add(wired.recipes, set_id, major=False, grind_setting="20"),
-        await _add(wired.recipes, set_id, major=True, dose_g=19),
-        await _add(wired.recipes, set_id, major=False, grind_setting="19"),
+        await _add(wired.recipes, recipe_id, major=False, grind_setting="21"),
+        await _add(wired.recipes, recipe_id, major=False, grind_setting="20"),
+        await _add(wired.recipes, recipe_id, major=True, dose_g=19),
+        await _add(wired.recipes, recipe_id, major=False, grind_setting="19"),
     ]
 
     assert labels == ["v1.1", "v1.2", "v2", "v2.1"]
-    versions = await wired.recipes.versions(set_id)
+    versions = await wired.recipes.versions(recipe_id)
     # Newest made first, and the Recipe is on the last one made.
     assert [(v.version_major, v.version_minor) for v in versions] == [
         (2, 1),
@@ -76,7 +76,7 @@ async def test_minor_and_major_versions_number_as_the_person_reads_them(wired: F
         (1, 1),
         (1, 0),
     ]
-    row = await wired.recipes.get(set_id)
+    row = await wired.recipes.get(recipe_id)
     assert row is not None
     assert row.current_version_label == "v2.1"
 
@@ -85,28 +85,28 @@ async def test_the_minor_counts_within_the_current_major_not_across_the_recipe(
     wired: Fixtures,
 ) -> None:
     """v1.1, v1.2, then v2: the next minor is v2.1, not v2.3."""
-    set_id = await _recipe(wired)
-    await _add(wired.recipes, set_id, major=False, grind_setting="21")
-    await _add(wired.recipes, set_id, major=False, grind_setting="20")
-    await _add(wired.recipes, set_id, major=True, dose_g=19)
+    recipe_id = await _recipe(wired)
+    await _add(wired.recipes, recipe_id, major=False, grind_setting="21")
+    await _add(wired.recipes, recipe_id, major=False, grind_setting="20")
+    await _add(wired.recipes, recipe_id, major=True, dose_g=19)
 
-    assert await _add(wired.recipes, set_id, major=False, dose_g=18.5) == "v2.1"
+    assert await _add(wired.recipes, recipe_id, major=False, dose_g=18.5) == "v2.1"
 
 
 async def test_the_next_names_are_the_names_the_insert_then_writes(wired: Fixtures) -> None:
-    set_id = await _recipe(wired)
-    await _add(wired.recipes, set_id, major=False, grind_setting="21")
+    recipe_id = await _recipe(wired)
+    await _add(wired.recipes, recipe_id, major=False, grind_setting="21")
 
-    names = await next_names(wired.db, set_id)
+    names = await next_names(wired.db, recipe_id)
     assert (names.minor, names.major) == ("v1.2", "v2")
     # The Recipe row serves the same two names from its own query.
-    row = await wired.recipes.get(set_id)
+    row = await wired.recipes.get(recipe_id)
     assert row is not None
     assert (row.next_minor_label, row.next_major_label) == (names.minor, names.major)
-    assert await _add(wired.recipes, set_id, major=True, dose_g=19) == names.major
-    names = await next_names(wired.db, set_id)
+    assert await _add(wired.recipes, recipe_id, major=True, dose_g=19) == names.major
+    names = await next_names(wired.db, recipe_id)
     assert (names.minor, names.major) == ("v2.1", "v3")
-    assert await _add(wired.recipes, set_id, major=False, dose_g=18) == names.minor
+    assert await _add(wired.recipes, recipe_id, major=False, dose_g=18) == names.minor
 
 
 async def test_a_design_filled_in_place_stays_v1(wired: Fixtures) -> None:
@@ -133,14 +133,14 @@ async def test_a_design_filled_in_place_stays_v1(wired: Fixtures) -> None:
 
 
 async def test_the_unique_index_refuses_a_second_copy_of_a_name(wired: Fixtures) -> None:
-    set_id = await _recipe(wired)
-    await _add(wired.recipes, set_id, major=False, grind_setting="21")
+    recipe_id = await _recipe(wired)
+    await _add(wired.recipes, recipe_id, major=False, grind_setting="21")
 
     with pytest.raises(sqlite3.IntegrityError):
         await wired.db.execute(
             "INSERT INTO recipe_versions (recipe_id, version_major, version_minor, "
             "created_at) VALUES (?, 1, 1, 'x')",
-            (set_id,),
+            (recipe_id,),
         )
     # Another Recipe may of course have its own v1.1.
     other = await _recipe(wired)
@@ -152,27 +152,27 @@ async def test_the_unique_index_refuses_a_second_copy_of_a_name(wired: Fixtures)
 
 async def test_the_form_defaults_a_grind_dose_or_yield_change_to_minor(wired: Fixtures) -> None:
     profile = await make_profile_version(wired.db, "House")
-    set_id = await _recipe(wired, profile)
+    recipe_id = await _recipe(wired, profile)
 
-    assert await _add(wired.recipes, set_id, grind_setting="21") == "v1.1"
-    assert await _add(wired.recipes, set_id, dose_g=18.5) == "v1.2"
-    assert await _add(wired.recipes, set_id, target_yield_g=40) == "v1.3"
+    assert await _add(wired.recipes, recipe_id, grind_setting="21") == "v1.1"
+    assert await _add(wired.recipes, recipe_id, dose_g=18.5) == "v1.2"
+    assert await _add(wired.recipes, recipe_id, target_yield_g=40) == "v1.3"
 
 
 async def test_an_explicit_answer_wins_in_both_directions(wired: Fixtures) -> None:
     house = await make_profile_version(wired.db, "House")
-    set_id = await _recipe(wired, house)
+    recipe_id = await _recipe(wired, house)
 
-    assert await _add(wired.recipes, set_id, major=True, grind_setting="21") == "v2"
-    assert await _add(wired.recipes, set_id, major=False, grind_setting="22") == "v2.1"
+    assert await _add(wired.recipes, recipe_id, major=True, grind_setting="21") == "v2"
+    assert await _add(wired.recipes, recipe_id, major=False, grind_setting="22") == "v2.1"
 
 
 async def _proposal(
-    wired: Fixtures, set_id: int, **patch: object
+    wired: Fixtures, recipe_id: int, **patch: object
 ) -> tuple[RecipeProposalsRepository, int]:
     proposals = RecipeProposalsRepository(wired.db)
     result = await proposals.create(
-        set_id,
+        recipe_id,
         ProposalWrite(
             patch=RecipeVersionPatch.model_validate(patch),
             reason="Walking the rule.",
@@ -191,10 +191,10 @@ async def test_an_accepted_proposal_is_a_minor_unless_the_person_says(
     wired: Fixtures, major: bool | None, label: str
 ) -> None:
     house = await make_profile_version(wired.db, "House")
-    set_id = await _recipe(wired, house)
-    proposals, proposal_id = await _proposal(wired, set_id, grind_setting="21")
+    recipe_id = await _recipe(wired, house)
+    proposals, proposal_id = await _proposal(wired, recipe_id, grind_setting="21")
 
-    accepted = await proposals.accept(set_id, proposal_id, major=major)
+    accepted = await proposals.accept(recipe_id, proposal_id, major=major)
 
     assert accepted.version is not None
     assert accepted.version.version_label == label
@@ -204,25 +204,25 @@ async def test_an_accepted_proposal_is_a_minor_unless_the_person_says(
 
 async def test_the_agent_s_suggestion_is_not_the_default(wired: Fixtures) -> None:
     """The agent suggests; only the person's answer makes a grind change major."""
-    set_id = await _recipe(wired)
+    recipe_id = await _recipe(wired)
     proposals = RecipeProposalsRepository(wired.db)
     result = await proposals.create(
-        set_id,
+        recipe_id,
         ProposalWrite(
             patch=RecipeVersionPatch(grind_setting="21"),
             reason="Walking the rule.",
             prediction=PREDICTION,
             suggest_major=True,
-            major_reason="The agent thinks this grind is a new direction for the Set.",
+            major_reason="The agent thinks this grind is a new direction for the Recipe.",
         ),
     )
     assert result.proposal is not None
     assert (result.proposal.suggest_major, result.proposal.major_reason) == (
         True,
-        "The agent thinks this grind is a new direction for the Set.",
+        "The agent thinks this grind is a new direction for the Recipe.",
     )
 
-    accepted = await proposals.accept(set_id, result.proposal.id)
+    accepted = await proposals.accept(recipe_id, result.proposal.id)
 
     assert accepted.version is not None
     assert accepted.version.version_label == "v1.1"
@@ -235,27 +235,27 @@ async def test_a_revert_continues_the_line_it_went_back_to(wired: Fixtures) -> N
     real database: a revert writes no row, the next minor is the next free minor of the
     major the Recipe is on, and the next major is the highest major + 1.
     """
-    set_id = await _recipe(wired)
+    recipe_id = await _recipe(wired)
     ids: dict[str, int] = {}
 
     async def current_label() -> str:
-        row = await wired.recipes.get(set_id)
+        row = await wired.recipes.get(recipe_id)
         assert row is not None
         return row.current_version_label
 
     async def add(expected: str, *, major: bool, **fields: object) -> None:
         version = await wired.recipes.add_version(
-            set_id, RecipeVersionPatch.model_validate(fields), major=major
+            recipe_id, RecipeVersionPatch.model_validate(fields), major=major
         )
         assert version is not None and version.version_label == expected
         ids[expected] = version.id
 
     async def revert(label: str) -> None:
-        result = await wired.recipes.rollback(set_id, RollbackWrite(to_version_id=ids[label]))
+        result = await wired.recipes.rollback(recipe_id, RollbackWrite(to_version_id=ids[label]))
         assert result.refused is None
         assert await current_label() == label
 
-    first = await wired.recipes.current_version(set_id)
+    first = await wired.recipes.current_version(recipe_id)
     assert first is not None
     ids["v1"] = first.id
     await add("v1.1", major=False, grind_setting="21")
@@ -266,7 +266,7 @@ async def test_a_revert_continues_the_line_it_went_back_to(wired: Fixtures) -> N
 
     await revert("v1.2")
     assert await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions") == rows
-    row = await wired.recipes.get(set_id)
+    row = await wired.recipes.get(recipe_id)
     assert row is not None and (row.next_minor_label, row.next_major_label) == ("v1.3", "v3")
     await add("v1.3", major=False, grind_setting="18")
     await revert("v2.1")
@@ -278,7 +278,7 @@ async def test_a_revert_continues_the_line_it_went_back_to(wired: Fixtures) -> N
 
     # Row count: one per write that made a version, nothing for the three reverts.
     assert await wired.db.fetch_value("SELECT COUNT(*) FROM recipe_versions") == 9
-    assert len(await wired.recipes.reverts(set_id)) == 3
+    assert len(await wired.recipes.reverts(recipe_id)) == 3
     # Ancestry is the fork history: v1.3 and v1.4 both came off v1.2.
     for label in ("v1.3", "v1.4"):
         version = await wired.recipes.get_version(ids[label])

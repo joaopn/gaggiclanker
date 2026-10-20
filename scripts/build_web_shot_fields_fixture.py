@@ -69,8 +69,8 @@ from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite  # n
 from gaggiclanker.db.repos.profiles import ProfilesRepository  # noqa: E402
 from gaggiclanker.db.repos.recipes import (  # noqa: E402
     RecipesRepository,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
 )
 from gaggiclanker.db.repos.shots import ShotsRepository  # noqa: E402
 from gaggiclanker.db.repos.signatures import SignatureRepository  # noqa: E402
@@ -171,8 +171,8 @@ class Scene:
         self.signatures = SignatureRepository(db)
         self.service = SignatureService(db)
         self.version_id = 0
-        self.set_id = 0
-        self.set_version_id = 0
+        self.recipe_id = 0
+        self.recipe_version_id = 0
 
     async def version(self, document: dict[str, Any]) -> int:
         version, _ = await self.profiles.ensure_version(
@@ -189,7 +189,7 @@ class Scene:
         )
         row = await self.recipes.create(
             RecipeWrite(name=name, bean_id=bean.id, grinder_id=grinder.id),
-            SetVersionWrite(
+            RecipeVersionWrite(
                 profile_version_id=version_id,
                 grind_setting="14",
                 dose_g=18.0,
@@ -197,7 +197,7 @@ class Scene:
             ),
         )
         assert row.current_version_id is not None
-        self.set_id, self.set_version_id = row.id, row.current_version_id
+        self.recipe_id, self.recipe_version_id = row.id, row.current_version_id
         return row.current_version_id
 
     async def add_shot(
@@ -206,7 +206,7 @@ class Scene:
         *,
         profile: dict[str, Any] | None,
         version_id: int | None,
-        set_version_id: int | None,
+        recipe_version_id: int | None,
         has_pressure: bool | None = None,
     ) -> int:
         derived = derive_shot(
@@ -222,8 +222,8 @@ class Scene:
             await self.db.execute(
                 "UPDATE shots SET profile_version_id = ? WHERE id = ?", (version_id, shot)
             )
-        if set_version_id is not None:
-            assert await self.recipes.assign_shot(shot, set_version_id)
+        if recipe_version_id is not None:
+            assert await self.recipes.assign_shot(shot, recipe_version_id)
         return shot
 
     async def fields(self, shot: int) -> dict[str, Any]:
@@ -253,12 +253,12 @@ async def _lever(
     scene: Scene, slog: Slog, *, signed: bool, has_pressure: bool | None = None
 ) -> Any:
     version = await scene.version(LEVER_PROFILE)
-    set_version = await scene.make_recipe(version, "Constructed lever", TARGET_YIELD_G)
+    recipe_version = await scene.make_recipe(version, "Constructed lever", TARGET_YIELD_G)
     shot = await scene.add_shot(
         slog,
         profile=LEVER_PROFILE,
         version_id=version,
-        set_version_id=set_version,
+        recipe_version_id=recipe_version,
         has_pressure=has_pressure,
     )
     if signed:
@@ -269,9 +269,9 @@ async def _lever(
 async def _turbo(scene: Scene) -> Any:
     profile = turbo_profile()
     version = await scene.version(profile)
-    set_version = await scene.make_recipe(version, "Constructed turbo", 42.0)
+    recipe_version = await scene.make_recipe(version, "Constructed turbo", 42.0)
     shot = await scene.add_shot(
-        turbo_shot(), profile=profile, version_id=version, set_version_id=set_version
+        turbo_shot(), profile=profile, version_id=version, recipe_version_id=recipe_version
     )
     await scene.service.propose(
         version,
@@ -288,7 +288,7 @@ async def _turbo(scene: Scene) -> Any:
 async def _fill_ended(scene: Scene, *, signed: bool) -> Any:
     slog, _, profile = fill_ended_shot()
     version = await scene.version(profile)
-    shot = await scene.add_shot(slog, profile=profile, version_id=version, set_version_id=None)
+    shot = await scene.add_shot(slog, profile=profile, version_id=version, recipe_version_id=None)
     if signed:
         await scene.service.propose(
             version,
@@ -311,18 +311,18 @@ async def _fill_ended(scene: Scene, *, signed: bool) -> Any:
 
 
 async def _real(scene: Scene, export: Slog) -> Any:
-    shot = await scene.add_shot(export, profile=None, version_id=None, set_version_id=None)
+    shot = await scene.add_shot(export, profile=None, version_id=None, recipe_version_id=None)
     return await scene.fields(shot)
 
 
 async def _signatures(scene: Scene) -> dict[str, Any]:
     """The signature routes' documents, in every state the card draws."""
     version = await scene.version(LEVER_PROFILE)
-    set_version = await scene.make_recipe(version, "Constructed lever", TARGET_YIELD_G)
+    recipe_version = await scene.make_recipe(version, "Constructed lever", TARGET_YIELD_G)
     documents: dict[str, Any] = {"none": await scene.signature(version)}
 
     thread = await ChatRepository(scene.db).create_thread(
-        ChatThreadWrite(title="Signature for the lever", set_id=scene.set_id)
+        ChatThreadWrite(title="Signature for the lever", recipe_id=scene.recipe_id)
     )
     assert thread.thread is not None
     await scene.service.propose(
@@ -351,7 +351,7 @@ async def _signatures(scene: Scene) -> dict[str, Any]:
         if r.phase == "ramp" and r.kind == "measure"
     )
     in_force = await scene.service.propose_override(
-        set_version_id=set_version,
+        recipe_version_id=recipe_version,
         profile_version_id=version,
         expectation_id=ramp.id,
         compare={"op": "<=", "value": 0.2},
@@ -367,8 +367,8 @@ async def _signatures(scene: Scene) -> dict[str, Any]:
     documents["overrideRejected"] = _plain(
         (await _override_out(rejected, scene.signatures)).model_dump(mode="json")
     )
-    documents["setId"] = scene.set_id
-    documents["setVersionId"] = set_version
+    documents["setId"] = scene.recipe_id
+    documents["setVersionId"] = recipe_version
     documents["profileVersionId"] = version
     return documents
 

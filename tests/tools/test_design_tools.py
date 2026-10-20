@@ -28,10 +28,10 @@ from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL, ProfilesReposit
 from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
     DesignBrief,
+    RecipeRow,
     RecipesRepository,
     RecipeVersionPatch,
     RecipeWrite,
-    SetRow,
 )
 from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
@@ -93,14 +93,14 @@ def _context(db: Database, scope: ToolScope, thread_id: int | None = None) -> To
     )
 
 
-async def _designed(db: Database, bean_id: int, grinder_id: int, **brief: Any) -> SetRow:
+async def _designed(db: Database, bean_id: int, grinder_id: int, **brief: Any) -> RecipeRow:
     return await RecipesRepository(db).create_design(
         RecipeWrite(name="Kenya, designed", bean_id=bean_id, grinder_id=grinder_id),
         DesignBrief.model_validate(brief),
     )
 
 
-async def _design_ctx(db: Database, row: SetRow, *, with_thread: bool = False) -> ToolContext:
+async def _design_ctx(db: Database, row: RecipeRow, *, with_thread: bool = False) -> ToolContext:
     thread_id = None
     if with_thread:
         opened = await ChatRepository(db).open_thread(row.id)
@@ -168,7 +168,7 @@ async def test_get_profile_returns_the_whole_document_and_what_it_states(
 async def test_get_profile_in_a_recipe_s_conversation_keeps_the_archive_s_count_out(
     archive: Fixture, designing: bool
 ) -> None:
-    scope = ToolScope.for_thread(archive.set_id, designing=designing)
+    scope = ToolScope.for_thread(archive.recipe_id, designing=designing)
     ctx = _context(archive.db, scope)
 
     outcome = await registry.dispatch(
@@ -201,7 +201,7 @@ async def test_the_initial_recipe_is_one_waiting_card_with_a_draft_of_its_own(
 
     assert outcome.ok, outcome.data
     data = outcome.data
-    assert (data["set_id"], data["kind"], data["status"]) == (row.id, "design", "proposed")
+    assert (data["recipe_id"], data["kind"], data["status"]) == (row.id, "design", "proposed")
     proposal = await RecipeProposalsRepository(archive.db).get(row.id, data["proposal_id"])
     assert proposal is not None
     assert (proposal.kind, proposal.draft_id, proposal.thread_id) == (
@@ -213,7 +213,7 @@ async def test_the_initial_recipe_is_one_waiting_card_with_a_draft_of_its_own(
     assert draft is not None
     # A design's draft belongs to no Recipe and predicts nothing: pushing it for
     # the Recipe must not append a v2 repeating version 1.
-    assert (draft.set_id, draft.prediction, draft.status) == (None, "", "draft")
+    assert (draft.recipe_id, draft.prediction, draft.status) == (None, "", "draft")
     assert draft.change_summary == RECIPE["reason"]
     assert "Kenya, designed" in draft.notes
     assert data["recipe"]["profile_version_id"] == draft.draft_version_id
@@ -479,16 +479,16 @@ async def test_a_policy_refusal_is_a_tool_error_and_leaves_nothing(archive: Fixt
 async def test_outside_a_design_the_tool_is_refused_by_the_dispatcher_and_by_itself(
     archive: Fixture,
 ) -> None:
-    recipe_ctx = _context(archive.db, ToolScope.for_thread(archive.set_id))
+    recipe_ctx = _context(archive.db, ToolScope.for_thread(archive.recipe_id))
 
     dispatched = await _propose(recipe_ctx)
     spec = registry.get("propose_initial_recipe")
     assert spec is not None
-    with pytest.raises(ValueError, match="already has a recipe"):
+    with pytest.raises(ValueError, match="already has a first version"):
         await spec.fn(recipe_ctx, spec.input_model.model_validate(RECIPE))
 
     assert dispatched.status == "refused"
-    assert await RecipeProposalsRepository(archive.db).for_recipe(archive.set_id) == []
+    assert await RecipeProposalsRepository(archive.db).for_recipe(archive.recipe_id) == []
 
 
 async def test_a_design_accepted_since_the_turn_began_is_refused(archive: Fixture) -> None:
@@ -500,7 +500,7 @@ async def test_a_design_accepted_since_the_turn_began_is_refused(archive: Fixtur
     outcome = await _propose(ctx)
 
     assert not outcome.ok
-    assert "already has a recipe" in outcome.data["detail"]
+    assert "already has a first version" in outcome.data["detail"]
 
 
 async def test_a_card_the_repository_refuses_takes_its_draft_with_it(archive: Fixture) -> None:
@@ -508,7 +508,7 @@ async def test_a_card_the_repository_refuses_takes_its_draft_with_it(archive: Fi
     row = await _designed(archive.db, archive.bean_id, archive.grinder_id)
     # A conversation of another Recipe: the repository refuses to record a card as
     # argued there, and it only finds out once the draft has been made.
-    elsewhere = await ChatRepository(archive.db).open_thread(archive.set_id)
+    elsewhere = await ChatRepository(archive.db).open_thread(archive.recipe_id)
     assert elsewhere.thread is not None
     ctx = _context(archive.db, await ToolScope.resolve(archive.db, row.id), elsewhere.thread.id)
     before = {draft.id for draft in await ProfileDraftsRepository(archive.db).list_drafts()}
@@ -516,7 +516,7 @@ async def test_a_card_the_repository_refuses_takes_its_draft_with_it(archive: Fi
     outcome = await _propose(ctx)
 
     assert not outcome.ok
-    assert "not one of this Set's" in outcome.data["detail"]
+    assert "not one of this Recipe's" in outcome.data["detail"]
     assert await RecipeProposalsRepository(archive.db).for_recipe(row.id) == []
     made = [
         draft

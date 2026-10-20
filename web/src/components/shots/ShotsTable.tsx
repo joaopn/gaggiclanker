@@ -722,8 +722,8 @@ function Cell({
       // header.
       return (
         <div data-testid="set-badge-slot">
-          {shot.set_badge ? (
-            <SetBadge badge={shot.set_badge} className={cn(INTERACTIVE, "max-w-full")} />
+          {shot.recipe_badge ? (
+            <SetBadge badge={shot.recipe_badge} className={cn(INTERACTIVE, "max-w-full")} />
           ) : (
             <NeedsSetMenu shot={shot} className={INTERACTIVE} />
           )}

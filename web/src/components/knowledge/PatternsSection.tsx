@@ -47,7 +47,7 @@ export function PatternsSection() {
   const run = data.run ?? null;
   const proposals = data.proposals ?? [];
   const running = run?.status === "running" || start.isPending;
-  const enough = data.sets_with_insights >= data.min_sets;
+  const enough = data.recipes_with_insights >= data.min_recipes;
 
   return (
     <SectionCard
@@ -71,8 +71,8 @@ export function PatternsSection() {
         <p className="text-muted-foreground text-sm" data-testid="patterns-since">
           {sinceSentence(
             data.new_since_last_run,
-            data.sets_with_insights,
-            data.min_sets,
+            data.recipes_with_insights,
+            data.min_recipes,
             run,
             data.counted_from ?? null,
           )}
@@ -120,8 +120,8 @@ function RunState({ run, proposals }: { run: PatternRun | null; proposals: Patte
   if (run.status === "running") {
     return (
       <p className="text-sm" role="status" data-testid="patterns-running">
-        Reading {run.insights_read} Set insights from {run.sets_read} Sets. This takes a minute or
-        so; the proposals appear here when it is done.
+        Reading {run.insights_read} Set insights from {run.recipes_read} Sets. This takes a minute
+        or so; the proposals appear here when it is done.
       </p>
     );
   }
@@ -146,7 +146,7 @@ function RunState({ run, proposals }: { run: PatternRun | null; proposals: Patte
     <div className="space-y-1">
       {proposals.length === 0 ? (
         <p className="text-sm" data-testid="patterns-none">
-          The last run read {run.insights_read} Set insights from {run.sets_read} Sets and found
+          The last run read {run.insights_read} Set insights from {run.recipes_read} Sets and found
           nothing worth proposing.
         </p>
       ) : null}
@@ -162,7 +162,7 @@ function RunState({ run, proposals }: { run: PatternRun | null; proposals: Patte
 const DROP_WORDS: Record<string, string> = {
   invented_source: "named an insight it was not given",
   invented_replaces: "replaced an insight it was not given",
-  one_set: "rested on one Set",
+  one_recipe: "rested on one Set",
   profile_style: "was scoped by profile style",
   scope_not_shared: "had a scope its sources do not all share",
 };
@@ -230,7 +230,7 @@ export function scopeWords(scope: PatternProposal["scope"], names?: ScopeNames):
 /** A failed press, said in words the person can act on. */
 export function patternFailure(error: Error): string {
   if (error instanceof ApiClientError) {
-    if (error.code === "PATTERN_TOO_FEW_SETS") {
+    if (error.code === "PATTERN_TOO_FEW_RECIPES") {
       return "The Set insights this was derived from have changed since it was proposed, and fewer than two Sets' are left, so nothing was written. Dismiss it.";
     }
     if (error.code === "PATTERNS_RUNNING") {
@@ -254,10 +254,14 @@ const SKIP_WORDS: Record<PatternSkipped["reason"], string> = {
 export function groupBySet(sources: PatternSource[]) {
   const groups = new Map<number, { setId: number; name: string; items: PatternSource[] }>();
   for (const source of sources) {
-    const group = groups.get(source.set_id);
+    const group = groups.get(source.recipe_id);
     if (group) group.items.push(source);
     else
-      groups.set(source.set_id, { setId: source.set_id, name: source.set_name, items: [source] });
+      groups.set(source.recipe_id, {
+        setId: source.recipe_id,
+        name: source.recipe_name,
+        items: [source],
+      });
   }
   return [...groups.values()];
 }
@@ -286,7 +290,7 @@ function PatternCard({ proposal, runGoing }: { proposal: PatternProposal; runGoi
   const sources = shown.sources ?? [];
   const failure = answer.variables?.id === proposal.id && answer.error ? answer.error : null;
   const skippedIds = new Set(
-    skipped.filter((item) => item.set_id !== null).map((item) => item.insight_id),
+    skipped.filter((item) => item.recipe_id !== null).map((item) => item.insight_id),
   );
   const deleted = sources.filter((source) => !skippedIds.has(source.insight_id));
   const groups = groupBySet(sources);

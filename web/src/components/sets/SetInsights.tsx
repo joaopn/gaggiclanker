@@ -45,7 +45,7 @@ export function SetInsights({
   /** This Set's version names, newest first: the order the groups are shown in. */
   versionLabels: string[];
 }) {
-  const insights = useKnowledgeInsights({ set_id: setId });
+  const insights = useKnowledgeInsights({ recipe_id: setId });
   const items = insights.data?.items ?? [];
   if (items.length === 0) return null;
 
@@ -61,7 +61,7 @@ export function SetInsights({
     // A copy is told apart by its flag, not by having no version: it is another Set's lesson, kept
     // here as this Set's own, and it is the one group that never holds evidence learned here.
     const key =
-      item.copied_from_insight_id != null ? COPIED : (item.set_version_label ?? UNVERSIONED);
+      item.copied_from_insight_id != null ? COPIED : (item.recipe_version_label ?? UNVERSIONED);
     groups.set(key, [...(groups.get(key) ?? []), item]);
   }
   const order = [

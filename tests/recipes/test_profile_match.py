@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.judgements import JudgementWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeVersionWrite, RecipeWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.imports.service import ImportService
 from tests.profile_rows import another_version, own_version
@@ -42,14 +42,14 @@ async def _recipe_on(
         await own_version(wired.db, profile_version_id)
     row = await wired.recipes.create(
         RecipeWrite(name=name, bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),
+        RecipeVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),
         automatch=automatch,
     )
     return row.id
 
 
-async def _current(wired: Fixtures, set_id: int) -> int:
-    version = await wired.recipes.current_version(set_id)
+async def _current(wired: Fixtures, recipe_id: int) -> int:
+    version = await wired.recipes.current_version(recipe_id)
     assert version is not None
     return version.id
 
@@ -57,7 +57,7 @@ async def _current(wired: Fixtures, set_id: int) -> int:
 async def _filed(wired: Fixtures, shot_id: int) -> int | None:
     shot = await wired.shots.get(shot_id)
     assert shot is not None
-    return shot.set_version_id
+    return shot.recipe_version_id
 
 
 class TestProfileMatch:
@@ -73,8 +73,8 @@ class TestProfileMatch:
         )
 
         assert match.outcome == "matched"
-        assert match.set_version_id == await _current(wired, mine)
-        assert await _filed(wired, shot_id) == match.set_version_id
+        assert match.recipe_version_id == await _current(wired, mine)
+        assert await _filed(wired, shot_id) == match.recipe_version_id
 
     async def test_an_archived_recipe_does_not_match(self, wired: Fixtures) -> None:
         profile = await make_profile_version(wired.db, "Adaptive v2")
@@ -84,7 +84,7 @@ class TestProfileMatch:
         match = await wired.recipes.profile_match(
             shot_id, profile_version_id=profile, device_profile_id=""
         )
-        assert match.set_version_id == await _current(wired, bag)
+        assert match.recipe_version_id == await _current(wired, bag)
 
         await wired.recipes.archive(bag)
         second = await make_shot(wired.db, "000503", profile_version_id=profile)
@@ -113,7 +113,7 @@ class TestProfileMatch:
         after = await wired.recipes.profile_match(
             second, profile_version_id=profile, device_profile_id=""
         )
-        assert after.set_version_id == await _current(wired, resting)
+        assert after.recipe_version_id == await _current(wired, resting)
 
     async def test_a_recipe_that_names_no_profile_is_not_configured_for_this_one(
         self, wired: Fixtures
@@ -130,7 +130,7 @@ class TestProfileMatch:
         match = await wired.recipes.profile_match(
             shot_id, profile_version_id=profile, device_profile_id=""
         )
-        assert match.set_version_id == await _current(wired, mine)
+        assert match.recipe_version_id == await _current(wired, mine)
 
     async def test_only_the_current_version_counts(self, wired: Fixtures) -> None:
         """A Recipe that moved on to a newer version of its profile no longer brews the older
@@ -151,7 +151,7 @@ class TestProfileMatch:
         current = await make_shot(wired.db, "000506", profile_version_id=new)
         assert (
             await wired.recipes.profile_match(current, profile_version_id=new, device_profile_id="")
-        ).set_version_id == await _current(wired, moved)
+        ).recipe_version_id == await _current(wired, moved)
 
     async def test_the_device_profile_id_stands_in_until_the_mirror_catches_up(
         self, wired: Fixtures
@@ -165,7 +165,7 @@ class TestProfileMatch:
         match = await wired.recipes.profile_match(
             shot_id, profile_version_id=None, device_profile_id="abc123"
         )
-        assert match.set_version_id == await _current(wired, mine)
+        assert match.recipe_version_id == await _current(wired, mine)
 
     async def test_a_tombstoned_device_profile_id_says_nothing(self, wired: Fixtures) -> None:
         profile = await make_profile_version(wired.db, "Adaptive v2")
@@ -319,7 +319,7 @@ class TestSync:
                 await own_version(archive.db, second)
                 on_other = await recipes.create(
                     RecipeWrite(name="Kenya", bean_id=bean.id),
-                    SetVersionWrite(profile_version_id=second),
+                    RecipeVersionWrite(profile_version_id=second),
                 )
                 on_wanted = await _recipe_naming(archive, wanted)
 
@@ -331,8 +331,8 @@ class TestSync:
                 wanted_version = await recipes.current_version(on_wanted)
                 other_version = await recipes.current_version(on_other.id)
                 assert wanted_version is not None and other_version is not None
-                assert first.set_version_id == wanted_version.id
-                assert later.set_version_id == other_version.id
+                assert first.recipe_version_id == wanted_version.id
+                assert later.recipe_version_id == other_version.id
         finally:
             await device.stop()
 
@@ -346,7 +346,7 @@ class TestApi:
         bean = await client.post("/api/beans", json={"name": "Ethiopia Guji"})
         bean_id = bean.json()["data"]["id"]
         created = await client.post(
-            "/api/sets",
+            "/api/recipes",
             json={
                 "name": "Guji",
                 "bean_id": bean_id,
@@ -362,7 +362,7 @@ class TestApi:
         assert response.status_code == 200, response.text
         assert response.json()["data"] == {"matched": 1, "unmatched": 1}
         detail = (await client.get(f"/api/shots/{shot_id}")).json()["data"]
-        assert detail["shot"]["set_version_id"] is not None
+        assert detail["shot"]["recipe_version_id"] is not None
 
     async def test_one_shot_and_an_unknown_one(self, client: httpx.AsyncClient) -> None:
         response = await client.post("/api/shots/profile-match", json={"shot_ids": [99999]})

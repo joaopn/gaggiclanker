@@ -174,17 +174,17 @@ async def test_the_agents_change_for_a_recipe_to_a_profile_the_app_did_not_make_
 ) -> None:
     app, client, _ = adopted
     row = row_for(await get_board(client), BASE_LABEL)["row"]
-    set_id = await make_recipe_on(client, "Firmware set", row["current_version_id"])
+    recipe_id = await make_recipe_on(client, "Firmware set", row["current_version_id"])
     draft = await same_name_draft(app, client, provider, BASE_LABEL, 7)
     await app.state.db.execute(
-        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (recipe_id, draft["id"])
     )
 
     board = await get_board(client)
     [proposal] = [p for p in board["proposals"] if p["draft"]["id"] == draft["id"]]
 
     assert proposal["landing"]["plain"]["row_id"] == row["id"]
-    assert proposal["landing"]["plain"]["set"]["id"] == set_id
+    assert proposal["landing"]["plain"]["recipe"]["id"] == recipe_id
     assert (await put(client, draft))["id"] == row["id"]
 
 
@@ -406,7 +406,7 @@ async def test_a_renamed_recipe_draft_is_a_profile_of_its_own_and_the_firmware_p
     and the next sync leaves the firmware profile where it is."""
     app, client, fake = adopted
     row = row_for(await get_board(client), BASE_LABEL)["row"]
-    set_id = await make_recipe_on(client, "Warm set", row["current_version_id"])
+    recipe_id = await make_recipe_on(client, "Warm set", row["current_version_id"])
     version = await ProfilesRepository(app.state.db).get_version(row["current_version_id"])
     assert version is not None and version.profile is not None
     document = copy.deepcopy(dict(version.profile))
@@ -425,7 +425,7 @@ async def test_a_renamed_recipe_draft_is_a_profile_of_its_own_and_the_firmware_p
         )
     )
     await app.state.db.execute(
-        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (set_id, draft["id"])
+        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (recipe_id, draft["id"])
     )
 
     board = await get_board(client)
@@ -433,7 +433,7 @@ async def test_a_renamed_recipe_draft_is_a_profile_of_its_own_and_the_firmware_p
     assert draft["draft_label"] == "9 Bar Warm"
     # A profile of its own, which no Recipe follows.
     assert proposal["landing"]["plain"]["row_id"] is None
-    assert proposal["landing"]["plain"]["set"] is None
+    assert proposal["landing"]["plain"]["recipe"] is None
 
     made = await put(client, draft)
 
@@ -535,7 +535,7 @@ async def test_with_two_profiles_of_one_name_a_draft_goes_to_the_profile_its_bas
         )
     )
     # The twin has its own version of that brew; the Recipe brews the twin's.
-    set_id = await make_recipe_on(client, "Twin set", twin.current_version_id)
+    recipe_id = await make_recipe_on(client, "Twin set", twin.current_version_id)
     plain = await same_name_draft(app, client, provider, BASE_LABEL, 7)
     document = dict(
         data(await client.get(f"/api/profile-versions/{twin.current_version_id}"))["profile"]
@@ -544,7 +544,7 @@ async def test_with_two_profiles_of_one_name_a_draft_goes_to_the_profile_its_bas
     for_recipe = await app.state.draft_proposals.create_manual(
         base_version_id=twin.current_version_id,
         document=document,
-        set_id=set_id,
+        recipe_id=recipe_id,
         prediction="Compared to v1: a rounder cup.",
     )
 

@@ -96,7 +96,7 @@ def version_source_for_draft(draft: dict[str, Any]) -> VersionSource:
     agent = any(
         draft.get(key) not in (None, "", 0)
         for key in (
-            "set_id",
+            "recipe_id",
             "source_analysis_id",
             "source_suggestion_id",
             "parent_draft_id",
@@ -298,7 +298,7 @@ class ProfileListBuilder(Repository):
             landed = groups.owner_of(version)
             if landed is None:
                 landed = await lineage_owner(
-                    lookup, set_id=draft["set_id"], version_label=versions[version]["label"]
+                    lookup, recipe_id=draft["recipe_id"], version_label=versions[version]["label"]
                 )
             if landed is None:
                 landed = groups.new()
@@ -307,8 +307,8 @@ class ProfileListBuilder(Repository):
             replaced = draft["replaced_version_id"]
             if replaced is not None and groups.owner_of(int(replaced)) is not None:
                 groups.add(landed, int(replaced))
-            if draft["set_id"] is not None:
-                lookup.last_for_recipe[int(draft["set_id"])] = version
+            if draft["recipe_id"] is not None:
+                lookup.last_for_recipe[int(draft["recipe_id"])] = version
 
         # 3. What no draft made (imports, versions the machine held before the board): the
         # profile with exactly that label, else a profile of its own. The suffix is never
@@ -544,8 +544,8 @@ class _ReplayLookup:
     def label_of(self, profile: int) -> str:
         return self.groups.name_of(profile)
 
-    async def by_recipe(self, set_id: int) -> int | None:
-        version = self.last_for_recipe.get(set_id)
+    async def by_recipe(self, recipe_id: int) -> int | None:
+        version = self.last_for_recipe.get(recipe_id)
         return None if version is None else self.groups.owner_of(version)
 
     async def by_label(self, label: str) -> int | None:

@@ -152,7 +152,7 @@ async def archive(tmp_path: Path) -> AsyncIterator[Fixture]:
         await db.close()
 
 
-async def one_turn(archive: Fixture, provider: Any, *, set_id: int | None) -> None:
+async def one_turn(archive: Fixture, provider: Any, *, recipe_id: int | None) -> None:
     """Run one turn on a thread of that kind. What was sent is on the recorder."""
     settings = SettingsService(SettingsRepository(archive.db))
     tasks = TaskRegistry()
@@ -169,7 +169,7 @@ async def one_turn(archive: Fixture, provider: Any, *, set_id: int | None) -> No
         knowledge=KnowledgeService(archive.db),
         tasks=tasks,
     )
-    created = await ChatRepository(archive.db).create_thread(ChatThreadWrite(set_id=set_id))
+    created = await ChatRepository(archive.db).create_thread(ChatThreadWrite(recipe_id=recipe_id))
     assert created.thread is not None
     run, _message = await runner.send(created.thread.id, "how is it going?")
     task = tasks.get(f"chat:{run.id}")
@@ -187,12 +187,12 @@ async def test_the_anthropic_body_carries_exactly_this_conversation_s_tools(
     await one_turn(
         archive,
         AnthropicProvider(api_key="sk-ant-test", http_client=scoped.client()),
-        set_id=archive.set_id,
+        recipe_id=archive.recipe_id,
     )
     await one_turn(
         archive,
         AnthropicProvider(api_key="sk-ant-test", http_client=general.client()),
-        set_id=None,
+        recipe_id=None,
     )
 
     assert {tool["name"] for tool in scoped.body_json["tools"]} == RECIPE_TOOLS
@@ -209,12 +209,12 @@ async def test_the_openai_body_carries_exactly_this_conversation_s_tools(
     await one_turn(
         archive,
         OpenAiCompatibleProvider(preset="openai", api_key="sk-test", http_client=scoped.client()),
-        set_id=archive.set_id,
+        recipe_id=archive.recipe_id,
     )
     await one_turn(
         archive,
         OpenAiCompatibleProvider(preset="openai", api_key="sk-test", http_client=general.client()),
-        set_id=None,
+        recipe_id=None,
     )
 
     assert {tool["function"]["name"] for tool in scoped.body_json["tools"]} == RECIPE_TOOLS

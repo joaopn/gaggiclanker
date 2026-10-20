@@ -18,8 +18,8 @@ from gaggiclanker.db.repos.recipes import (
     DesignBrief,
     RecipesRepository,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetVersionWrite,
     VersionRefused,
     version_changes,
 )
@@ -39,7 +39,7 @@ async def profile(fx: Fixtures, label: str) -> tuple[int, int]:
 
 async def new_recipe(fx: Fixtures, name: str, version: int | None):  # type: ignore[no-untyped-def]
     return await fx.recipes.create(
-        RecipeWrite(name=name, bean_id=fx.bean_id), SetVersionWrite(profile_version_id=version)
+        RecipeWrite(name=name, bean_id=fx.bean_id), RecipeVersionWrite(profile_version_id=version)
     )
 
 
@@ -59,11 +59,11 @@ async def test_a_profile_that_has_a_recipe_is_refused_with_the_way_forward(wired
     with pytest.raises(VersionRefused) as refused:
         await new_recipe(wired, "Kenya", version)
 
-    assert refused.value.refused == "profile_has_a_set"
+    assert refused.value.refused == "profile_has_a_recipe"
     assert refused.value.message == (
         "Bloom belongs to Guji. Duplicate Guji to start a new one on a copy."
     )
-    assert len(await wired.recipes.list_sets()) == 1, "nothing was written"
+    assert len(await wired.recipes.list_recipes()) == 1, "nothing was written"
     assert board
 
 
@@ -107,14 +107,14 @@ async def test_only_the_starting_point_starts_a_recipe_on_a_loose_version(wired:
 
     made = await wired.recipes.create(
         RecipeWrite(name="From a draft", bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=loose, dose_g=18.0),
+        RecipeVersionWrite(profile_version_id=loose, dose_g=18.0),
         from_a_draft=True,
     )
     assert made.board_id is None
     with pytest.raises(VersionRefused):
         await wired.recipes.create(
             RecipeWrite(name="Second", bean_id=wired.bean_id),
-            SetVersionWrite(profile_version_id=loose, dose_g=18.0),
+            RecipeVersionWrite(profile_version_id=loose, dose_g=18.0),
             from_a_draft=True,
         )
 
@@ -165,7 +165,10 @@ async def test_that_profile_is_the_one_a_new_recipe_may_take(wired: Fixtures) ->
     )
     bare = await new_recipe(wired, "Bare", None)
 
-    for refused_version, why in ((taken, "profile_has_a_set"), (older, "not_the_active_version")):
+    for refused_version, why in (
+        (taken, "profile_has_a_recipe"),
+        (older, "not_the_active_version"),
+    ):
         with pytest.raises(VersionRefused) as refused:
             await wired.recipes.profile_to_start_on(refused_version)
         assert refused.value.refused == why
@@ -180,7 +183,7 @@ async def test_a_recipe_on_a_loose_version_is_given_a_profile_that_takes_the_ver
     loose = await make_profile_version(wired.db, "Imported", owned=False)
     older = await wired.recipes.create(
         RecipeWrite(name="Old", bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=loose),
+        RecipeVersionWrite(profile_version_id=loose),
         from_a_draft=True,
     )
 
@@ -195,7 +198,7 @@ async def test_a_recipe_on_a_loose_version_is_given_a_profile_that_takes_the_ver
         await ProfilesRepository(wired.db).owner_of(v.profile_version_id or 0)
         for v in await wired.recipes.versions(older.id)
     }
-    assert owners == {board}, "every version of the Set is that profile's now"
+    assert owners == {board}, "every version of the Recipe is that profile's now"
 
 
 async def test_a_recipe_on_two_loose_versions_is_given_a_profile_that_takes_both(
@@ -206,7 +209,7 @@ async def test_a_recipe_on_two_loose_versions_is_given_a_profile_that_takes_both
     second = await make_profile_version(wired.db, "Second file", owned=False)
     made = await wired.recipes.create(
         RecipeWrite(name="Old", bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=first),
+        RecipeVersionWrite(profile_version_id=first),
         from_a_draft=True,
     )
     await wired.recipes.add_version(made.id, RecipeVersionPatch(profile_version_id=second))
@@ -303,8 +306,8 @@ async def test_following_a_profile_is_the_function_that_adds_its_recipes_version
     nobody = await wired.recipes.follow_profile(await profile_without_recipe(wired), newer)
 
     assert followed is not None and followed.profile_version_id == newer
-    assert followed.version_label == "v1.1" and followed.set_id == made.id
-    assert again is None and nobody is None, "already there, and a profile with no Set"
+    assert followed.version_label == "v1.1" and followed.recipe_id == made.id
+    assert again is None and nobody is None, "already there, and a profile with no Recipe"
 
 
 async def profile_without_recipe(fx: Fixtures) -> int:
@@ -341,7 +344,7 @@ async def test_a_design_cannot_take_a_profile_that_has_a_recipe(wired: Fixtures)
             designing.id, RecipeVersionPatch(profile_version_id=version)
         )
 
-    assert refused.value.refused == "profile_has_a_set"
+    assert refused.value.refused == "profile_has_a_recipe"
     after = await wired.recipes.get(designing.id)
     assert after is not None and after.designing is True and after.board_id is None
 
@@ -366,13 +369,13 @@ async def test_the_route_refuses_a_profile_that_has_a_recipe_in_the_spec_s_words
             "version": {"profile_version_id": row.current_version_id},
         }
 
-    first = await client.post("/api/sets", json=body("Guji natural"))
-    second = await client.post("/api/sets", json=body("Kenya AA"))
+    first = await client.post("/api/recipes", json=body("Guji natural"))
+    second = await client.post("/api/recipes", json=body("Kenya AA"))
 
     assert first.status_code == 201 and first.json()["data"]["board_id"] == row.id
     assert second.status_code == 409
     error = second.json()["error"]
-    assert error["code"] == "PROFILE_HAS_A_SET"
+    assert error["code"] == "PROFILE_HAS_A_RECIPE"
     assert error["message"] == (
         "Bloom 6 bar belongs to Guji natural. Duplicate Guji natural to start a new one on a copy."
     )
@@ -389,7 +392,7 @@ async def test_a_new_version_has_no_profile_to_choose(
     bean = (await client.post("/api/beans", json={"name": "Guji"})).json()["data"]["id"]
     made = (
         await client.post(
-            "/api/sets",
+            "/api/recipes",
             json={
                 "name": "S",
                 "bean_id": bean,
@@ -399,7 +402,7 @@ async def test_a_new_version_has_no_profile_to_choose(
     ).json()["data"]
 
     response = await client.post(
-        f"/api/sets/{made['id']}/versions", json={"profile_version_id": version, "dose_g": 19}
+        f"/api/recipes/{made['id']}/versions", json={"profile_version_id": version, "dose_g": 19}
     )
 
     assert response.status_code == 422
@@ -437,7 +440,7 @@ async def test_a_profile_that_takes_over_a_loose_version_takes_its_recipe_with_i
     loose = await make_profile_version(wired.db, "Drafted", owned=False)
     made = await wired.recipes.create(
         RecipeWrite(name="From a draft", bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=loose, dose_g=18.0),
+        RecipeVersionWrite(profile_version_id=loose, dose_g=18.0),
         from_a_draft=True,
     )
     board = ProfileBoardRepository(wired.db)
@@ -456,7 +459,7 @@ async def test_a_profile_with_a_recipe_gets_its_own_copy_and_the_loose_version_s
     loose = await make_profile_version(wired.db, "Drafted", owned=False)
     made = await wired.recipes.create(
         RecipeWrite(name="From a draft", bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=loose, dose_g=18.0),
+        RecipeVersionWrite(profile_version_id=loose, dose_g=18.0),
         from_a_draft=True,
     )
     holder, _version = await profile(wired, "Taken")
@@ -492,17 +495,18 @@ async def test_the_add_a_version_route_gives_a_design_its_profile_under_new_reci
     ).json()["data"]["id"]
     held = (
         await client.post(
-            "/api/sets",
+            "/api/recipes",
             json={"name": "Holder", "bean_id": bean, "version": {"profile_version_id": taken}},
         )
     ).json()["data"]
     design = (
-        await client.post("/api/sets/design", json={"bean_id": bean, "grinder_id": grinder})
-    ).json()["data"]["set"]
+        await client.post("/api/recipes/design", json={"bean_id": bean, "grinder_id": grinder})
+    ).json()["data"]["recipe"]
 
     async def add(version: int) -> httpx.Response:
         return await client.post(
-            f"/api/sets/{design['id']}/versions", json={"profile_version_id": version, "dose_g": 18}
+            f"/api/recipes/{design['id']}/versions",
+            json={"profile_version_id": version, "dose_g": 18},
         )
 
     assert (await add(older)).status_code == 409
@@ -513,7 +517,7 @@ async def test_the_add_a_version_route_gives_a_design_its_profile_under_new_reci
     )
     done = await add(free)
     assert done.status_code == 201
-    page = (await client.get(f"/api/sets/{design['id']}")).json()["data"]["set"]
+    page = (await client.get(f"/api/recipes/{design['id']}")).json()["data"]["recipe"]
     assert page["designing"] is False and page["profile_label"] == "Free"
 
 
@@ -527,11 +531,11 @@ async def test_the_choices_route_lists_free_profiles_and_the_files_nobody_stands
     await ProfilesRepository(db).upsert_device_profile(device_id="f1", version_id=file_version)
     bean = (await client.post("/api/beans", json={"name": "Guji"})).json()["data"]["id"]
     await client.post(
-        "/api/sets",
+        "/api/recipes",
         json={"name": "Holder", "bean_id": bean, "version": {"profile_version_id": held}},
     )
 
-    response = await client.get("/api/sets/profile-choices")
+    response = await client.get("/api/recipes/profile-choices")
 
     assert response.status_code == 200, response.text
     assert response.json()["data"]["items"] == [
@@ -551,16 +555,16 @@ async def test_a_recipe_on_a_loose_version_is_given_a_profile_through_the_route(
     recipes = RecipesRepository(db)
     old = await recipes.create(
         RecipeWrite(name="Old", bean_id=bean),
-        SetVersionWrite(profile_version_id=loose),
+        RecipeVersionWrite(profile_version_id=loose),
         from_a_draft=True,
     )
 
     response = await client.post(
-        f"/api/sets/{old.id}/versions", json={"profile_version_id": free, "dose_g": 18}
+        f"/api/recipes/{old.id}/versions", json={"profile_version_id": free, "dose_g": 18}
     )
 
     assert response.status_code == 201, response.text
-    page = (await client.get(f"/api/sets/{old.id}")).json()["data"]["set"]
+    page = (await client.get(f"/api/recipes/{old.id}")).json()["data"]["recipe"]
     assert page["profile_label"] == "Free"
 
 
@@ -597,7 +601,7 @@ async def test_a_recipe_on_two_unadopted_files_is_taken_through_its_current_one(
     else:
         await adopt("File A", first, "a")
         stored = await wired.recipes.get(made.id)
-        assert stored is not None and stored.board_id is None, "an older version takes no Set"
+        assert stored is not None and stored.board_id is None, "an older version takes no Recipe"
         row_b = await adopt("File B", second, "b")
 
     stored = await wired.recipes.get(made.id)
@@ -650,7 +654,7 @@ async def test_a_second_recipe_on_a_shared_loose_version_leaves_the_profile_its_
     assert moved is not None
     other = await wired.recipes.create(
         RecipeWrite(name="B", bean_id=wired.bean_id),
-        SetVersionWrite(profile_version_id=None),
+        RecipeVersionWrite(profile_version_id=None),
     )
     await wired.db.execute(
         "UPDATE recipe_versions SET profile_version_id = ? WHERE recipe_id = ?", (shared, other.id)
@@ -665,7 +669,7 @@ async def test_a_second_recipe_on_a_shared_loose_version_leaves_the_profile_its_
     for version in await wired.recipes.versions(a.id):
         assert await profiles.owner_of(version.profile_version_id or 0) == row.id
     b_version = (await wired.recipes.versions(other.id))[0]
-    assert b_version.profile_version_id == shared, "the other Set keeps what it named"
+    assert b_version.profile_version_id == shared, "the other Recipe keeps what it named"
 
 
 async def test_the_choices_are_exactly_what_a_new_recipe_accepts(wired: Fixtures) -> None:
@@ -711,7 +715,7 @@ async def test_the_choices_are_exactly_what_a_new_recipe_accepts(wired: Fixtures
         if accepted:
             # Every accepted version is a live profile's active one or a mirrored file's.
             continue
-        assert version not in offered, f"offered {version} but New Set refuses it"
+        assert version not in offered, f"offered {version} but New Recipe refuses it"
     assert {free, file_version, utility} <= offered
     with pytest.raises(VersionRefused) as refused:
         await wired.recipes.profile_to_start_on(deleted)
@@ -733,13 +737,13 @@ async def test_a_recipe_with_no_profile_now_is_given_one_though_an_older_version
     recipes = RecipesRepository(db)
     old = await recipes.create(
         RecipeWrite(name="OnLoose", bean_id=bean),
-        SetVersionWrite(profile_version_id=loose),
+        RecipeVersionWrite(profile_version_id=loose),
         from_a_draft=True,
     )
     assert await recipes.add_version(old.id, RecipeVersionPatch(profile_version_id=None))
 
     response = await client.post(
-        f"/api/sets/{old.id}/versions", json={"profile_version_id": free, "dose_g": 18.5}
+        f"/api/recipes/{old.id}/versions", json={"profile_version_id": free, "dose_g": 18.5}
     )
 
     assert response.status_code == 201, response.text

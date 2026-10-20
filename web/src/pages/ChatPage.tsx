@@ -181,25 +181,25 @@ export function ChatPage() {
   // NULL while a selected conversation is still loading. Falling back to
   // "general" there would be a guess, and the guess is on screen: the archive's
   // tool list would flash beside a Set's chat and then be replaced.
-  const kind: "general" | "set" | null =
+  const kind: "general" | "recipe" | null =
     selected === null
       ? scope === null
         ? "general"
-        : "set"
+        : "recipe"
       : thread.data === undefined
         ? null
-        : thread.data.thread.set_id === null
+        : thread.data.thread.recipe_id === null
           ? "general"
-          : "set";
+          : "recipe";
   // Whether that Set is still being designed, which is a third tool list: the
   // design tools, and none that change a recipe it does not have yet. Read off
   // the Sets list the folders already need rather than off the thread, so an
   // accepted first recipe — which invalidates that list — switches the tools
   // on the next render. NULL until the list has arrived, for the same reason
   // as the kind: the ordinary Set list flashing beside a design would be a guess.
-  const conversationSet = selected === null ? scope : (thread.data?.thread.set_id ?? null);
+  const conversationSet = selected === null ? scope : (thread.data?.thread.recipe_id ?? null);
   const designing: boolean | null =
-    kind !== "set"
+    kind !== "recipe"
       ? false
       : sets.isPending
         ? null
@@ -395,8 +395,8 @@ export function ChatPage() {
           }
           description={
             selected !== null
-              ? thread.data?.thread.set_name
-                ? `About ${[thread.data.thread.set_name, thread.data.thread.set_version_label].filter(Boolean).join(" ")}` +
+              ? thread.data?.thread.recipe_name
+                ? `About ${[thread.data.thread.recipe_name, thread.data.thread.recipe_version_label].filter(Boolean).join(" ")}` +
                   (thread.data.thread.dead_end ? " — a dead end the Set went back past" : "")
                 : "General"
               : // Nothing selected: the first question creates the conversation,
@@ -495,7 +495,7 @@ function ToolsHere({
   designing,
 }: {
   tools: string[];
-  kind: "general" | "set" | null;
+  kind: "general" | "recipe" | null;
   designing: boolean;
 }) {
   // Nothing at all until the kind is known: a list that says the wrong thing
@@ -503,7 +503,7 @@ function ToolsHere({
   if (kind === null || tools.length === 0) return null;
   return (
     <p className="mt-2 text-muted-foreground text-xs" data-testid="chat-tools">
-      {kind === "set"
+      {kind === "recipe"
         ? designing
           ? "It is designing this Set's first recipe with you and can propose it as one card. Tools here: "
           : "It can see this Set only. Tools here: "

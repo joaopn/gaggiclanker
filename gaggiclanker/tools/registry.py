@@ -155,7 +155,7 @@ class ToolContext:
     tasks: TaskSpawner | None = None
     #: What this conversation is: the whole archive read-only, or one Recipe. It
     #: decides which tools exist (the schemas, the dispatcher and the MCP
-    #: server all read it) and it is what tools taking a ``set_id`` resolve
+    #: server all read it) and it is what tools taking a ``recipe_id`` resolve
     #: against — so "how is it going?" has an answer, and "how is Recipe 7 going?"
     #: asked inside Recipe 3's conversation has a refusal.
     scope: ToolScope = field(default_factory=ToolScope)
@@ -176,14 +176,14 @@ class ToolContext:
     notes: RunNotes = field(default_factory=RunNotes)
 
     @property
-    def set_id(self) -> int | None:
+    def recipe_id(self) -> int | None:
         """The Recipe this conversation is about, if it is about one.
 
         A property over the scope rather than a field beside it: two places to
         read the Recipe from is two answers the day one of them is set and the
         other is not.
         """
-        return self.scope.set_id
+        return self.scope.recipe_id
 
 
 @dataclass(frozen=True, slots=True)

@@ -179,7 +179,7 @@ type LandingRef = { current: { id: number; tier: SignatureTier } | null };
 
 /** No expectation at all: what that means for a shot, and where to ask for one. */
 function NoSignature({ data }: { data: SignatureData }) {
-  const sets = data.sets.filter((set) => !set.archived);
+  const sets = data.recipes.filter((set) => !set.archived);
   const ask = `Propose a signature for ${data.profile_label}: what is this profile version for?`;
   return (
     <div className="space-y-1 text-sm" data-testid="signature-none">
@@ -191,18 +191,18 @@ function NoSignature({ data }: { data: SignatureData }) {
         <p className="text-muted-foreground text-xs">
           Ask the agent to propose one in the chat of{" "}
           {sets.map((set, index) => (
-            <span key={set.set_id}>
+            <span key={set.recipe_id}>
               {index > 0 ? ", " : ""}
               <Link
                 className="underline underline-offset-2"
                 data-testid="signature-set-chat"
                 to={`/chat?${new URLSearchParams({
-                  set: String(set.set_id),
+                  set: String(set.recipe_id),
                   version: String(set.version_id),
                   ask,
                 }).toString()}`}
               >
-                {set.set_name}
+                {set.recipe_name}
               </Link>
             </span>
           ))}

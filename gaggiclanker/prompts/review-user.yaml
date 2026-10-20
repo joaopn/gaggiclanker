@@ -9,7 +9,7 @@ description: |
   exactly what it was told.
 
   The shot first, because that is the subject, its checks leading; what the
-  signature asks the review to answer and what the Set version predicted next,
+  signature asks the review to answer and what the Recipe version predicted next,
   because those are the questions; the phases and the language the evidence is
   written in, because they bound what may be said; the profile it brewed,
   because it says what the machine was commanded to do; the detected style,
@@ -22,7 +22,7 @@ variables:
   - name: signature
     description: The free-text expectations of the profile's signature in force, each with its id, or why there are none.
   - name: prediction
-    description: The prediction the Set version was filed with and what it is measured against, or why there is none.
+    description: The prediction the Recipe version was filed with and what it is measured against, or why there is none.
   - name: phases
     description: The phase names this shot logged, the only ones a window may name.
   - name: metric_language
@@ -44,7 +44,7 @@ user: |
 
   {{signature}}
 
-  THE PREDICTION OF THE SET VERSION THE SHOT IS FILED UNDER
+  THE PREDICTION OF THE RECIPE VERSION THE SHOT IS FILED UNDER
 
   {{prediction}}
 

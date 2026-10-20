@@ -26,7 +26,7 @@ from gaggiclanker.db.repos.patterns import (
     PatternProposalWrite,
     PatternRunsRepository,
 )
-from gaggiclanker.db.repos.recipes import RecipeWrite, SetVersionWrite
+from gaggiclanker.db.repos.recipes import RecipeVersionWrite, RecipeWrite
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
@@ -50,18 +50,18 @@ class Duplicated:
 
 async def _duplicate(world: PatternWorld, *, copied_from: int | None = None) -> Duplicated:
     original = await world.own(world.a, "Light roasts channel below 9 clicks.")
-    dup = await world.sets.create(
+    dup = await world.recipes.create(
         RecipeWrite(name="Guji milk", bean_id=world.bean_a, grinder_id=world.grinder_id),
-        SetVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
+        RecipeVersionWrite(dose_g=18, target_yield_g=36, grind_setting="22"),
     )
     copy = await world.insights.insert(
         InsightWrite(
             text="Light roasts channel below 9 clicks.",
             source="chat",
             confirmed=True,
-            set_id=dup.id,
+            recipe_id=dup.id,
             copied_from_insight_id=original if copied_from is None else copied_from,
-            copied_from_set_id=world.a,
+            copied_from_recipe_id=world.a,
         )
     )
     return Duplicated(world, dup.id, original, copy)
@@ -86,18 +86,18 @@ def test_a_lessons_home_is_the_recipe_it_was_first_learned_in() -> None:
 
 async def _second_duplicate(world: PatternWorld, original: int, name: str) -> tuple[int, int]:
     """Another duplicate of A, with its copy of A's insight: (the Recipe's id, the copy's id)."""
-    other = await world.sets.create(
+    other = await world.recipes.create(
         RecipeWrite(name=name, bean_id=world.bean_a, grinder_id=world.grinder_id),
-        SetVersionWrite(dose_g=18),
+        RecipeVersionWrite(dose_g=18),
     )
     copy = await world.insights.insert(
         InsightWrite(
             text="Light roasts channel below 9 clicks.",
             source="chat",
             confirmed=True,
-            set_id=other.id,
+            recipe_id=other.id,
             copied_from_insight_id=original,
-            copied_from_set_id=world.a,
+            copied_from_recipe_id=world.a,
         )
     )
     return other.id, copy
@@ -110,18 +110,18 @@ class TestCopiesOfOneOriginal:
         dup = await _duplicate(world)
         _, second = await _second_duplicate(world, dup.original, "Guji second copy")
         runs = PatternRunsRepository(world.db)
-        assert await runs.sets_with_insights() == 1  # A, D and E: one lesson
+        assert await runs.recipes_with_insights() == 1  # A, D and E: one lesson
 
         await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
 
         # Still one Recipe: D and E copy the same #N, listed or not.
-        assert await runs.sets_with_insights() == 1
+        assert await runs.recipes_with_insights() == 1
         given = await build_patterns_input(world.db)
         outcome = filter_proposals(_cite(dup.copy, second), given)
-        assert outcome.kept == [] and outcome.dropped == {"one_set": 1}
+        assert outcome.kept == [] and outcome.dropped == {"one_recipe": 1}
         assert given.lesson_recipe_count == 1
         await world.own(world.c, "Its own.")
-        assert await runs.sets_with_insights() == 2
+        assert await runs.recipes_with_insights() == 2
 
     async def test_a_proposal_citing_only_the_copies_is_one_recipe_while_the_original_is_read(
         self, world: PatternWorld
@@ -132,7 +132,7 @@ class TestCopiesOfOneOriginal:
 
         outcome = filter_proposals(_cite(dup.copy, second), given)
 
-        assert outcome.dropped == {"one_set": 1}
+        assert outcome.dropped == {"one_recipe": 1}
 
     async def test_the_runs_recipe_count_is_the_folded_one(self, world: PatternWorld) -> None:
         dup = await _duplicate(world)
@@ -140,9 +140,9 @@ class TestCopiesOfOneOriginal:
         given = await build_patterns_input(world.db)
 
         # Three Recipes hold insights, one lesson: what the run card and the Knowledge page say.
-        assert len(given.sets) == 3
+        assert len(given.recipes) == 3
         assert given.lesson_recipe_count == 1
-        assert await PatternRunsRepository(world.db).sets_with_insights() == 1
+        assert await PatternRunsRepository(world.db).recipes_with_insights() == 1
 
 
 class TestWhicheverDuplicateCameFirst:
@@ -170,8 +170,8 @@ class TestWhicheverDuplicateCameFirst:
         # E's copy of X counts for A, D's own lesson Y for D: two lessons from two Recipes.
         assert filter_proposals(_cite(e_copy, d_own), given).kept
         # D's copy of X and E's copy of X are one lesson.
-        assert filter_proposals(_cite(d_copy, e_copy), given).dropped == {"one_set": 1}
-        assert await PatternRunsRepository(world.db).sets_with_insights() == 2
+        assert filter_proposals(_cite(d_copy, e_copy), given).dropped == {"one_recipe": 1}
+        assert await PatternRunsRepository(world.db).recipes_with_insights() == 2
 
     @pytest.mark.parametrize("d_first", [True, False])
     async def test_approval_gives_the_same_verdict(
@@ -212,7 +212,7 @@ class TestTheRunCard:
         row = await service.run()
 
         # Four Recipes hold insights, but A, D and E are one lesson: "from 2 Recipes".
-        assert (row.insights_read, row.sets_read) == (4, 2)
+        assert (row.insights_read, row.recipes_read) == (4, 2)
 
 
 class TestApproval:
@@ -302,7 +302,7 @@ class TestTheGate:
         with pytest.raises(NotEnoughRecipes) as refused:
             await service.start(tasks=TaskRegistry())
 
-        assert "1 Set(s)" in str(refused.value)
+        assert "1 Recipe(s)" in str(refused.value)
         assert provider.calls == []
 
     async def test_with_a_third_recipes_own_insight_it_does(
@@ -325,10 +325,10 @@ class TestTheKnowledgePagesCount:
     async def test_a_recipe_holding_only_copies_does_not_count(self, world: PatternWorld) -> None:
         runs = PatternRunsRepository(world.db)
         await _duplicate(world)
-        assert await runs.sets_with_insights() == 1
+        assert await runs.recipes_with_insights() == 1
 
         await world.own(world.c, "Its own.")
-        assert await runs.sets_with_insights() == 2
+        assert await runs.recipes_with_insights() == 2
 
     async def test_a_copy_stays_its_originals_lesson_when_the_original_is_gone(
         self, world: PatternWorld
@@ -339,9 +339,9 @@ class TestTheKnowledgePagesCount:
         await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
 
         # D's copy still counts for A, where the lesson was learned: one Recipe, not two.
-        assert await runs.sets_with_insights() == 1
+        assert await runs.recipes_with_insights() == 1
         await world.own(world.c, "Its own.")
-        assert await runs.sets_with_insights() == 2
+        assert await runs.recipes_with_insights() == 2
 
     async def test_a_dismissed_original_still_homes_its_copies_in_a(
         self, world: PatternWorld
@@ -351,13 +351,13 @@ class TestTheKnowledgePagesCount:
             "UPDATE knowledge_insights SET dismissed = 1 WHERE id = ?", (dup.original,)
         )
         runs = PatternRunsRepository(world.db)
-        assert await runs.sets_with_insights() == 1  # the copy alone, homed in A
+        assert await runs.recipes_with_insights() == 1  # the copy alone, homed in A
 
-        await world.own(world.b, "Another Set.")
+        await world.own(world.b, "Another Recipe.")
 
-        assert await runs.sets_with_insights() == 2  # A (through the copy) and B
+        assert await runs.recipes_with_insights() == 2  # A (through the copy) and B
         given = await build_patterns_input(world.db)
-        assert filter_proposals(_cite(dup.copy), given).dropped == {"one_set": 1}
+        assert filter_proposals(_cite(dup.copy), given).dropped == {"one_recipe": 1}
 
     async def test_a_recipe_holding_a_copy_and_a_lesson_of_its_own_stands_for_two_recipes(
         self, world: PatternWorld
@@ -366,19 +366,19 @@ class TestTheKnowledgePagesCount:
         await world.own(dup.d, "D's own lesson.")
         runs = PatternRunsRepository(world.db)
 
-        assert await runs.sets_with_insights() == 2  # A (the copy's home) and D
+        assert await runs.recipes_with_insights() == 2  # A (the copy's home) and D
 
         await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
 
-        assert await runs.sets_with_insights() == 2
+        assert await runs.recipes_with_insights() == 2
 
     async def test_a_copy_of_a_copy_folds_into_the_first_originals_recipe(
         self, world: PatternWorld
     ) -> None:
         dup = await _duplicate(world)
-        second = await world.sets.create(
+        second = await world.recipes.create(
             RecipeWrite(name="Guji again", bean_id=world.bean_a, grinder_id=world.grinder_id),
-            SetVersionWrite(dose_g=18),
+            RecipeVersionWrite(dose_g=18),
         )
         # Written as a duplicate of D writes it: the first original's id, not the copy's.
         await world.insights.insert(
@@ -386,13 +386,13 @@ class TestTheKnowledgePagesCount:
                 text="Again.",
                 source="chat",
                 confirmed=True,
-                set_id=second.id,
+                recipe_id=second.id,
                 copied_from_insight_id=dup.original,
-                copied_from_set_id=world.a,
+                copied_from_recipe_id=world.a,
             )
         )
 
-        assert await PatternRunsRepository(world.db).sets_with_insights() == 1
+        assert await PatternRunsRepository(world.db).recipes_with_insights() == 1
 
 
 class TestTheNewSinceTheLastRunCount:
@@ -423,7 +423,7 @@ class TestTheProposalFilter:
 
         outcome = filter_proposals(_cite(dup.original, dup.copy), given)
 
-        assert outcome.kept == [] and outcome.dropped == {"one_set": 1}
+        assert outcome.kept == [] and outcome.dropped == {"one_recipe": 1}
 
     async def test_with_a_third_recipes_insight_it_is_two_recipes(
         self, world: PatternWorld
@@ -495,4 +495,4 @@ async def test_the_prompt_says_a_copy_is_never_a_second_recipes_evidence() -> No
     text = (
         Path(__file__).resolve().parents[2] / "gaggiclanker" / "prompts" / "patterns.yaml"
     ).read_text()
-    assert "`copy of #N`" in text and "never a second Set's evidence" in text
+    assert "`copy of #N`" in text and "never a second Recipe's evidence" in text

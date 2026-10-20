@@ -59,7 +59,7 @@ export function useDuplicateSet(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ setId, versionId, body }) => duplicateVersion(setId, versionId, body),
-    onSuccess: ({ set }) => toast.success(`Started "${set.name}"`),
+    onSuccess: ({ recipe: set }) => toast.success(`Started "${set.name}"`),
     onSettled: () => {
       void invalidateSets(queryClient);
       void invalidateBoardWrites(queryClient);

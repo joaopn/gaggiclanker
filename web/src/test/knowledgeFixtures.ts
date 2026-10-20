@@ -81,9 +81,9 @@ export function knowledgeInsight(overrides: Partial<KnowledgeInsight> = {}): Kno
     created_at: "2026-03-03T09:00:00.000Z",
     updated_at: "2026-03-03T09:00:00.000Z",
     confirmed_at: null,
-    set_id: null,
-    set_version_id: null,
-    set_version_label: null,
+    recipe_id: null,
+    recipe_version_id: null,
+    recipe_version_label: null,
     dismissed: false,
     rests_on: [],
     replaces_id: null,
@@ -98,7 +98,7 @@ export function knowledgeInsight(overrides: Partial<KnowledgeInsight> = {}): Kno
 export function insightDeletion(overrides: Partial<InsightDeletion> = {}): InsightDeletion {
   return {
     id: 9,
-    set_id: 3,
+    recipe_id: 3,
     thread_id: 14,
     insight_id: 7,
     insight_text: "Two clicks finer on the Niche.",
@@ -121,7 +121,7 @@ export function patternRun(overrides: Partial<PatternRun> = {}): PatternRun {
     prompt_name: "patterns",
     prompt_version: "1+1",
     insights_read: 4,
-    sets_read: 3,
+    recipes_read: 3,
     proposals_kept: 1,
     proposals_dropped: 0,
     dropped: {},
@@ -141,8 +141,13 @@ export function patternProposal(overrides: Partial<PatternProposal> = {}): Patte
     text: "The Niche channels below 9 clicks with light roasts.",
     scope: { roast_level: "light", grinder_id: 1 },
     sources: [
-      { insight_id: 21, set_id: 3, set_name: "Guji daily", text: "Below 9 clicks it channels." },
-      { insight_id: 22, set_id: 4, set_name: "Yirg daily", text: "It gushes under 9." },
+      {
+        insight_id: 21,
+        recipe_id: 3,
+        recipe_name: "Guji daily",
+        text: "Below 9 clicks it channels.",
+      },
+      { insight_id: 22, recipe_id: 4, recipe_name: "Yirg daily", text: "It gushes under 9." },
     ],
     replaces_id: null,
     replaces_text: "",
@@ -162,8 +167,8 @@ export function patternsData(overrides: Partial<PatternsData> = {}): PatternsDat
     proposals: [patternProposal()],
     new_since_last_run: 2,
     counted_from: "2026-10-03T09:00:00.000Z",
-    sets_with_insights: 3,
-    min_sets: 2,
+    recipes_with_insights: 3,
+    min_recipes: 2,
     ...overrides,
   };
 }

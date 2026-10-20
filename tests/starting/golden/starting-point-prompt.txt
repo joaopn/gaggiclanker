@@ -301,7 +301,7 @@ Declining pressure profile mimicking manual lever machines like the La Pavoni or
 dial_in_order:
   [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
   [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency).
-  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Set version is to be able to say what a single change did.
+  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Recipe version is to be able to say what a single change did.
   [taste_is_ground_truth] The user's tasting notes outrank the telemetry. Sour, weak or fast means under-extracted; bitter, harsh or slow means over-extracted — whatever the curve looked like. Never contradict a recorded taste with a number.
 
 increments:
@@ -344,14 +344,14 @@ safety_bounds:
   [temperature] Never suggest a brew temperature outside 25-100 °C.
 
 === planned_style ===
-bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medium 18g 1:2)
+bloom — the profile of the closest similar Recipe (Kenya AA on the niche v1, Medium 18g 1:2)
 
 === profile_library ===
 [profile_version 2] Library 18g — 5 phases, 93 °C, used by 0 shots
   shape: Pre-infusion 3s pressure 5; Bloom 7s pump 0%; Pressurise 10s pressure 9 → volumetric gte 20; Ramp down 8s pressure 5 → volumetric gte 36; Hammer 1s pump 100%
 
 === similar_recipes ===
-[set_version 1] Kenya AA on the niche v1 — Kenya AA
+[recipe_version 1] Kenya AA on the niche v1 — Kenya AA
   why it is similar: same roast level, same process, same origin
   bean: light, washed, Kenya
   grind: 21
@@ -362,7 +362,7 @@ bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medi
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 5 shots, rating 4.4/5, ratio 1:2.5, 28 s
 
-[set_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji
+[recipe_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji
   why it is similar: same roast level, different process, different origin
   bean: light, natural, Ethiopia
   grind: 23
@@ -373,7 +373,7 @@ bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medi
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 3 shots, rating 3/5, ratio 1:2.22, 28 s
 
-[set_version 3] Brazil Cerrado on the niche v1 — Brazil Cerrado
+[recipe_version 3] Brazil Cerrado on the niche v1 — Brazil Cerrado
   why it is similar: different roast level, same process, different origin
   bean: medium-dark, washed, Brazil
   grind: 26

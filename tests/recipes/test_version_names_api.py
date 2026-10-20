@@ -24,11 +24,11 @@ PREDICTION = "Compared to v1: two to four seconds longer and less sour."
 
 
 @pytest.fixture
-async def set_id(client: httpx.AsyncClient) -> int:
+async def recipe_id(client: httpx.AsyncClient) -> int:
     bean = data(await client.post("/api/beans", json={"name": "Ethiopia Guji"}))
     created = data(
         await client.post(
-            "/api/sets",
+            "/api/recipes",
             json=await with_a_profile(
                 client,
                 {
@@ -42,23 +42,23 @@ async def set_id(client: httpx.AsyncClient) -> int:
     return int(created["id"])
 
 
-async def _propose(app: FastAPI, set_id: int, **over: Any) -> int:
+async def _propose(app: FastAPI, recipe_id: int, **over: Any) -> int:
     spec: dict[str, Any] = {
         "patch": RecipeVersionPatch(grind_setting="21"),
         "reason": "one click finer, chasing the sourness out",
         "prediction": PREDICTION,
     }
     spec.update(over)
-    result = await RecipeProposalsRepository(app.state.db).create(set_id, ProposalWrite(**spec))
+    result = await RecipeProposalsRepository(app.state.db).create(recipe_id, ProposalWrite(**spec))
     assert result.proposal is not None, result.refused
     return result.proposal.id
 
 
 class TestTheForm:
     async def test_it_answers_with_the_name_it_gave(
-        self, client: httpx.AsyncClient, set_id: int
+        self, client: httpx.AsyncClient, recipe_id: int
     ) -> None:
-        url = f"/api/sets/{set_id}/versions"
+        url = f"/api/recipes/{recipe_id}/versions"
         minor = await client.post(url, json={"grind_setting": "21"})
         assert minor.status_code == 201
         assert data(minor)["version_label"] == "v1.1"
@@ -68,46 +68,48 @@ class TestTheForm:
         assert unmarked["version_label"] == "v2.1"
 
     async def test_major_is_not_stored_as_part_of_the_recipe(
-        self, client: httpx.AsyncClient, set_id: int
+        self, client: httpx.AsyncClient, recipe_id: int
     ) -> None:
         """Sending only `major` changes nothing in the recipe: every field is inherited."""
-        version = data(await client.post(f"/api/sets/{set_id}/versions", json={"major": True}))
+        version = data(
+            await client.post(f"/api/recipes/{recipe_id}/versions", json={"major": True})
+        )
         assert (version["grind_setting"], version["dose_g"]) == ("22", 18.0)
         assert "major" not in version
 
     @pytest.mark.parametrize("value", ["yes", 2, [True], {"major": True}])
     async def test_anything_but_a_boolean_is_refused(
-        self, client: httpx.AsyncClient, set_id: int, value: object
+        self, client: httpx.AsyncClient, recipe_id: int, value: object
     ) -> None:
         response = await client.post(
-            f"/api/sets/{set_id}/versions", json={"grind_setting": "21", "major": value}
+            f"/api/recipes/{recipe_id}/versions", json={"grind_setting": "21", "major": value}
         )
         assert response.status_code == 400
         assert error(response)["code"] == "INVALID_REQUEST"
-        detail = data(await client.get(f"/api/sets/{set_id}"))
+        detail = data(await client.get(f"/api/recipes/{recipe_id}"))
         assert len(detail["versions"]) == 1
 
 
 class TestTheRecipePage:
     async def test_it_serves_both_names_the_next_version_could_take(
-        self, client: httpx.AsyncClient, set_id: int
+        self, client: httpx.AsyncClient, recipe_id: int
     ) -> None:
-        detail = data(await client.get(f"/api/sets/{set_id}"))["set"]
+        detail = data(await client.get(f"/api/recipes/{recipe_id}"))["recipe"]
         assert (detail["next_minor_label"], detail["next_major_label"]) == ("v1.1", "v2")
         assert detail["current_version_label"] == "v1"
-        await client.post(f"/api/sets/{set_id}/versions", json={"grind_setting": "21"})
-        body = data(await client.get(f"/api/sets/{set_id}"))
-        assert (body["set"]["next_minor_label"], body["set"]["next_major_label"]) == (
+        await client.post(f"/api/recipes/{recipe_id}/versions", json={"grind_setting": "21"})
+        body = data(await client.get(f"/api/recipes/{recipe_id}"))
+        assert (body["recipe"]["next_minor_label"], body["recipe"]["next_major_label"]) == (
             "v1.2",
             "v2",
         )
-        assert body["set"]["current_version_label"] == "v1.1"
+        assert body["recipe"]["current_version_label"] == "v1.1"
         assert body["versions"][0]["version"]["version_label"] == "v1.1"
         # The list serves the same names, from the same query.
-        listed = data(await client.get("/api/sets"))["items"][0]
+        listed = data(await client.get("/api/recipes"))["items"][0]
         assert (listed["next_minor_label"], listed["next_major_label"]) == ("v1.2", "v2")
-        await client.post(f"/api/sets/{set_id}/versions", json={"dose_g": 19, "major": True})
-        listed = data(await client.get("/api/sets"))["items"][0]
+        await client.post(f"/api/recipes/{recipe_id}/versions", json={"dose_g": 19, "major": True})
+        listed = data(await client.get("/api/recipes"))["items"][0]
         assert listed["current_version_label"] == "v2"
         assert (listed["next_minor_label"], listed["next_major_label"]) == ("v2.1", "v3")
 
@@ -123,37 +125,37 @@ class TestTheRecipePage:
         )
         designed = data(
             await client.post(
-                "/api/sets/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
+                "/api/recipes/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
             )
         )
-        assert (designed["set"]["next_minor_label"], designed["set"]["next_major_label"]) == (
+        assert (designed["recipe"]["next_minor_label"], designed["recipe"]["next_major_label"]) == (
             "v1",
             "v1",
         )
-        detail = data(await client.get(f"/api/sets/{designed['set']['id']}"))["set"]
+        detail = data(await client.get(f"/api/recipes/{designed['recipe']['id']}"))["recipe"]
         assert (detail["next_minor_label"], detail["next_major_label"]) == ("v1", "v1")
 
 
 class TestTheCard:
     async def test_the_card_serves_the_suggestion_the_rule_and_both_names(
-        self, client: httpx.AsyncClient, app: FastAPI, set_id: int
+        self, client: httpx.AsyncClient, app: FastAPI, recipe_id: int
     ) -> None:
         await _propose(
             app,
-            set_id,
+            recipe_id,
             suggest_major=True,
-            major_reason="A finer grind this far changes what the Set is aiming at.",
+            major_reason="A finer grind this far changes what the Recipe is aiming at.",
         )
-        proposal = data(await client.get(f"/api/sets/{set_id}"))["proposal"]
+        proposal = data(await client.get(f"/api/recipes/{recipe_id}"))["proposal"]
         assert proposal["suggest_major"] is True
         assert proposal["major_reason"] == (
-            "A finer grind this far changes what the Set is aiming at."
+            "A finer grind this far changes what the Recipe is aiming at."
         )
         # A grind change is a minor unless the person says, whatever the agent suggests.
         assert (proposal["next_minor_label"], proposal["next_major_label"]) == ("v1.1", "v2")
         assert proposal["base_version_label"] == "v1"
         assert proposal["compares_to_version_label"] == "v1"
-        listed = data(await client.get(f"/api/sets/{set_id}/proposals"))["items"][0]
+        listed = data(await client.get(f"/api/recipes/{recipe_id}/proposals"))["items"][0]
         assert listed["next_major_label"] == "v2"
 
     @pytest.mark.parametrize(
@@ -169,33 +171,35 @@ class TestTheCard:
         self,
         client: httpx.AsyncClient,
         app: FastAPI,
-        set_id: int,
+        recipe_id: int,
         body: dict[str, Any],
         label: str,
     ) -> None:
-        proposal_id = await _propose(app, set_id)
+        proposal_id = await _propose(app, recipe_id)
         answer = data(
-            await client.post(f"/api/sets/{set_id}/proposals/{proposal_id}/accept", json=body)
+            await client.post(f"/api/recipes/{recipe_id}/proposals/{proposal_id}/accept", json=body)
         )
         assert answer["version"]["version_label"] == label
         assert answer["proposal"]["resulting_version_label"] == label
 
     async def test_accept_without_a_body_follows_the_rule(
-        self, client: httpx.AsyncClient, app: FastAPI, set_id: int
+        self, client: httpx.AsyncClient, app: FastAPI, recipe_id: int
     ) -> None:
-        proposal_id = await _propose(app, set_id)
-        answer = data(await client.post(f"/api/sets/{set_id}/proposals/{proposal_id}/accept"))
+        proposal_id = await _propose(app, recipe_id)
+        answer = data(await client.post(f"/api/recipes/{recipe_id}/proposals/{proposal_id}/accept"))
         assert answer["version"]["version_label"] == "v1.1"
 
     @pytest.mark.parametrize("body", [{"major": "yes"}, {"major": 1.5}, {"other": True}])
     async def test_accept_refuses_a_body_it_does_not_understand(
-        self, client: httpx.AsyncClient, app: FastAPI, set_id: int, body: dict[str, Any]
+        self, client: httpx.AsyncClient, app: FastAPI, recipe_id: int, body: dict[str, Any]
     ) -> None:
-        proposal_id = await _propose(app, set_id)
+        proposal_id = await _propose(app, recipe_id)
         response = await client.post(
-            f"/api/sets/{set_id}/proposals/{proposal_id}/accept", json=body
+            f"/api/recipes/{recipe_id}/proposals/{proposal_id}/accept", json=body
         )
         assert response.status_code == 400
         assert error(response)["code"] == "INVALID_REQUEST"
         # Nothing was accepted.
-        assert data(await client.get(f"/api/sets/{set_id}"))["proposal"]["status"] == "proposed"
+        assert (
+            data(await client.get(f"/api/recipes/{recipe_id}"))["proposal"]["status"] == "proposed"
+        )

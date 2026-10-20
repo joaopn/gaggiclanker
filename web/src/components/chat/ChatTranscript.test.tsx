@@ -38,9 +38,9 @@ beforeEach(() => {
     knowledgeInsight({
       id: 7,
       text: "Two clicks finer on the Niche.",
-      set_id: 3,
-      set_version_id: 22,
-      set_version_label: "v2",
+      recipe_id: 3,
+      recipe_version_id: 22,
+      recipe_version_label: "v2",
       general: false,
       scope: {},
       evidence_shot_ids: [4],
@@ -57,7 +57,7 @@ beforeEach(() => {
 const PERMISSIONS = {
   get_shot: "read",
   query_shots: "read",
-  propose_set_version: "propose",
+  propose_recipe_version: "propose",
   propose_initial_recipe: "propose",
   propose_outcome: "propose",
   record_insight: "propose",
@@ -148,7 +148,7 @@ describe("toTurns, as the runner stores a turn that has text beside its tool cal
             ok: true,
             content: JSON.stringify({
               proposal_id: 11,
-              set_id: 3,
+              recipe_id: 3,
               version: "v2",
               outcome: "partly_held",
               counted_shots: 3,
@@ -231,7 +231,7 @@ describe("ChatTranscript", () => {
       message({
         id: 2,
         role: "assistant",
-        tool_calls: [{ id: "c1", name: "propose_set_version", arguments: { reason: "finer" } }],
+        tool_calls: [{ id: "c1", name: "propose_recipe_version", arguments: { reason: "finer" } }],
       }),
       message({
         id: 3,
@@ -239,11 +239,11 @@ describe("ChatTranscript", () => {
         tool_results: [
           {
             id: "c1",
-            name: "propose_set_version",
+            name: "propose_recipe_version",
             ok: true,
             content: JSON.stringify({
               proposal_id: 5,
-              set_id: 3,
+              recipe_id: 3,
               status: "proposed",
               changed: ["the dose"],
               change_summary: "Dose 18 g → 18.5 g",
@@ -262,7 +262,7 @@ describe("ChatTranscript", () => {
 
     expect(screen.getByTestId("tool-trace")).toHaveTextContent("proposal");
     // Before the row is read back, the transcript's own summary is the card.
-    const card = screen.getByTestId("propose-card-set_version");
+    const card = screen.getByTestId("propose-card-recipe_version");
     expect(card).toHaveTextContent("A change to this Set: the dose");
     expect(card).toHaveTextContent("Dose 18 g → 18.5 g");
   });
@@ -315,7 +315,7 @@ describe("ChatTranscript", () => {
             ok: true,
             content: JSON.stringify({
               proposal_id: 8,
-              set_id: 6,
+              recipe_id: 6,
               draft_id: 14,
               kind: "design",
               status: "proposed",
@@ -393,7 +393,7 @@ describe("ChatTranscript", () => {
               ok: true,
               content: JSON.stringify({
                 proposal_id: 11,
-                set_id: 3,
+                recipe_id: 3,
                 version: "v2",
                 outcome: "partly_held",
                 counted_shots: 3,
@@ -461,7 +461,7 @@ describe("ChatTranscript", () => {
               ok: true,
               content: JSON.stringify({
                 proposal_id: 9,
-                set_id: 3,
+                recipe_id: 3,
                 insight_id: 7,
                 insight_text: "Two clicks finer on the Niche.",
                 status: "proposed",

@@ -92,7 +92,7 @@ class ProfileDraftWrite(BaseModel):
     #: conversation. It is what makes the prediction below mean something: a
     #: prediction is about one experiment, and pushing this draft for any other
     #: Recipe records none.
-    set_id: int | None = None
+    recipe_id: int | None = None
     #: What this profile change is expected to do differently. Empty for a draft
     #: nobody predicted anything about — one typed by hand, or proposed in a
     #: conversation that is about no Recipe.
@@ -129,10 +129,10 @@ class ProfileDraftRow(BaseModel):
     #: The Recipe this was proposed for, the prediction it carries, and the version
     #: that prediction is against. All three are empty on a draft nobody
     #: predicted anything about, which is most of them.
-    set_id: int | None = None
+    recipe_id: int | None = None
     #: Joined, so a card can say which experiment this belongs to without a
     #: second request. NULL when the Recipe has since been removed.
-    set_name: str | None = None
+    recipe_name: str | None = None
     prediction: str = ""
     compares_to_version_id: int | None = None
     #: The compared-to version's name, joined in: a reader thinks in "v1.1".
@@ -151,13 +151,13 @@ class ProfileDraftRow(BaseModel):
     #: ("v2"): the push button names one of them, whichever the person ticks.
     #: NULL without a Recipe. Filled by the repository from the same query the
     #: insert numbers with, so the button and the record cannot disagree.
-    set_next_minor_label: str | None = None
-    set_next_major_label: str | None = None
+    recipe_next_minor_label: str | None = None
+    recipe_next_major_label: str | None = None
     #: The version of this draft's Recipe that making it active recorded, prediction and all, by
     #: name ("v1.3"), and that Recipe's name. NULL for a draft whose profile has no Recipe, and for
     #: one not made active yet. Read through `recorded_version_id`, which the put stores.
     recorded_version_label: str | None = None
-    recorded_set_name: str | None = None
+    recorded_recipe_name: str | None = None
     #: Whether the machine still holds the profile this was drafted from.
     #:
     #: Computed in SQL rather than stored, because it is a fact about *now*: a
@@ -229,12 +229,12 @@ class ProfileDraftRow(BaseModel):
 _SELECT = f"""
     SELECT d.*,
            CASE WHEN d.is_new THEN NULL ELSE {version_name_sql("base")} END AS base_label,
-           s.name AS set_name,
+           s.name AS recipe_name,
            {label_sql("cmp")} AS compares_to_version_label,
            (SELECT {label_sql("rv")} FROM recipe_versions rv
              WHERE rv.id = d.recorded_version_id) AS recorded_version_label,
            (SELECT rs.name FROM recipe_versions rv2 JOIN recipes rs ON rs.id = rv2.recipe_id
-             WHERE rv2.id = d.recorded_version_id) AS recorded_set_name,
+             WHERE rv2.id = d.recorded_version_id) AS recorded_recipe_name,
            CASE
                WHEN d.is_new THEN 1
                WHEN d.base_device_profile_id IS NULL THEN 1
@@ -288,7 +288,7 @@ class ProfileDraftsRepository(Repository):
                 write.source_suggestion_id,
                 write.parent_draft_id,
                 write.base_device_profile_id,
-                write.set_id,
+                write.recipe_id,
                 write.prediction,
                 write.compares_to_version_id,
                 int(write.suggest_major),
@@ -323,16 +323,16 @@ class ProfileDraftsRepository(Repository):
         names: dict[int, tuple[str, str]] = {}
         filled: list[ProfileDraftRow] = []
         for draft in drafts:
-            if draft.set_id is None or draft.set_name is None:
+            if draft.recipe_id is None or draft.recipe_name is None:
                 filled.append(draft)
                 continue
-            if draft.set_id not in names:
-                found = await next_names(self.db, draft.set_id)
-                names[draft.set_id] = (found.minor, found.major)
-            minor, major = names[draft.set_id]
+            if draft.recipe_id not in names:
+                found = await next_names(self.db, draft.recipe_id)
+                names[draft.recipe_id] = (found.minor, found.major)
+            minor, major = names[draft.recipe_id]
             filled.append(
                 draft.model_copy(
-                    update={"set_next_minor_label": minor, "set_next_major_label": major}
+                    update={"recipe_next_minor_label": minor, "recipe_next_major_label": major}
                 )
             )
         return filled

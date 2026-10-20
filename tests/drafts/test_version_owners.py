@@ -428,20 +428,20 @@ async def test_a_file_that_joins_as_a_profile_holds_that_profiles_version_and_is
 async def test_a_pin_and_a_duplicate_leave_every_version_with_its_owner(adopted: Adopted) -> None:
     app, client, _ = adopted
     base = await base_version_id(app, BASE_LABEL)
-    set_id = await make_recipe_on(client, "Guji", base)
-    detail = data(await client.get(f"/api/sets/{set_id}"))
+    recipe_id = await make_recipe_on(client, "Guji", base)
+    detail = data(await client.get(f"/api/recipes/{recipe_id}"))
     version = detail["versions"][0]["version"]["id"]
-    pinned = data(await client.post(f"/api/sets/{set_id}/versions/{version}/pin", json={}))
+    pinned = data(await client.post(f"/api/recipes/{recipe_id}/versions/{version}/pin", json={}))
     await assert_versions_owned(app.state.db)
     data(await client.post(f"/api/pins/{pinned['pin']['id']}/unpin"))
-    data(await client.post(f"/api/sets/{set_id}/versions/{version}/pin", json={}))
+    data(await client.post(f"/api/recipes/{recipe_id}/versions/{version}/pin", json={}))
     made = await client.post(
-        f"/api/sets/{set_id}/versions/{version}/duplicate",
+        f"/api/recipes/{recipe_id}/versions/{version}/duplicate",
         json={
-            "set_name": "Copy",
+            "recipe_name": "Copy",
             "profile_name": "Blooming milk",
             "insight_ids": [],
-            "bean_id": detail["set"]["bean_id"],
+            "bean_id": detail["recipe"]["bean_id"],
         },
     )
     assert made.status_code < 300, made.text
@@ -503,7 +503,7 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
                 "display_file",
                 "twin_drafts",
                 "recipe_on_a_profile",
-                "set_version",
+                "recipe_version",
                 "recipe_revert",
             ]
         )
@@ -565,26 +565,26 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
                 files=[("files", ("p.json", json.dumps(document).encode(), "application/json"))],
             )
         elif operation == "pin" and row is not None:
-            set_id = await _recipe_on(client, f"S{counter}", row["row"]["current_version_id"])
-            if set_id is None:
+            recipe_id = await _recipe_on(client, f"S{counter}", row["row"]["current_version_id"])
+            if recipe_id is None:
                 continue
-            detail = data(await client.get(f"/api/sets/{set_id}"))
+            detail = data(await client.get(f"/api/recipes/{recipe_id}"))
             await client.post(
-                f"/api/sets/{set_id}/versions/{detail['versions'][0]['version']['id']}/pin",
+                f"/api/recipes/{recipe_id}/versions/{detail['versions'][0]['version']['id']}/pin",
                 json={},
             )
         elif operation == "duplicate" and row is not None:
-            set_id = await _recipe_on(client, f"D{counter}", row["row"]["current_version_id"])
-            if set_id is None:
+            recipe_id = await _recipe_on(client, f"D{counter}", row["row"]["current_version_id"])
+            if recipe_id is None:
                 continue
-            detail = data(await client.get(f"/api/sets/{set_id}"))
+            detail = data(await client.get(f"/api/recipes/{recipe_id}"))
             await client.post(
-                f"/api/sets/{set_id}/versions/{detail['versions'][0]['version']['id']}/duplicate",
+                f"/api/recipes/{recipe_id}/versions/{detail['versions'][0]['version']['id']}/duplicate",
                 json={
-                    "set_name": f"Copy {counter}",
+                    "recipe_name": f"Copy {counter}",
                     "profile_name": f"Dup {counter}",
                     "insight_ids": [],
-                    "bean_id": detail["set"]["bean_id"],
+                    "bean_id": detail["recipe"]["bean_id"],
                 },
             )
         elif operation == "twin_drafts":
@@ -592,22 +592,22 @@ async def test_a_random_walk_over_the_board_keeps_every_version_with_its_owner(
         elif operation == "recipe_on_a_profile" and row is not None:
             # A profile that has a Recipe is refused (a 409), and one that has none gets one.
             await _recipe_on(client, f"W{counter}", row["row"]["current_version_id"])
-        elif operation in ("set_version", "recipe_revert"):
+        elif operation in ("recipe_version", "recipe_revert"):
             recipes = await db_recipes(app)
             if recipes:
                 chosen = rng.choice(recipes)
-                if operation == "set_version":
+                if operation == "recipe_version":
                     await client.post(
-                        f"/api/sets/{chosen}/versions",
+                        f"/api/recipes/{chosen}/versions",
                         json={"grind_setting": str(counter), "intent": "walk"},
                     )
                 else:
                     versions = [
                         v["version"]
-                        for v in data(await client.get(f"/api/sets/{chosen}"))["versions"]
+                        for v in data(await client.get(f"/api/recipes/{chosen}"))["versions"]
                     ]
                     await client.post(
-                        f"/api/sets/{chosen}/rollback",
+                        f"/api/recipes/{chosen}/rollback",
                         json={"to_version_id": rng.choice(versions)["id"], "note": "walk"},
                     )
         elif operation == "display_file":
@@ -639,7 +639,7 @@ async def _recipe_on(client: httpx.AsyncClient, name: str, version_id: int) -> i
     """A Recipe on a profile version, or ``None`` when the app refuses it (a pin's frozen copy)."""
     bean = data(await client.post("/api/beans", json={"name": name, "roaster": "nobody"}))
     response = await client.post(
-        "/api/sets",
+        "/api/recipes",
         json={
             "name": name,
             "bean_id": bean["id"],

@@ -18,10 +18,10 @@ from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.recipes import (
+    RecipeRow,
     RecipeVersionPatch,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetRow,
-    SetVersionWrite,
     version_changes,
 )
 from tests.profile_rows import another_version
@@ -30,10 +30,10 @@ from tests.recipes.conftest import Fixtures, make_profile_version, make_shot
 
 async def _new_recipe(
     wired: Fixtures, name: str = "Guji on the Niche", **version: object
-) -> SetRow:
+) -> RecipeRow:
     return await wired.recipes.create(
         RecipeWrite(name=name, bean_id=wired.bean_id),
-        SetVersionWrite(**version),  # type: ignore[arg-type]
+        RecipeVersionWrite(**version),  # type: ignore[arg-type]
     )
 
 
@@ -82,7 +82,7 @@ class TestBeans:
     async def test_recipe_count_is_what_the_archive_button_reads(self, wired: Fixtures) -> None:
         await _new_recipe(wired)
         bean = await BeansRepository(wired.db).get(wired.bean_id)
-        assert bean is not None and bean.set_count == 1
+        assert bean is not None and bean.recipe_count == 1
 
 
 class TestGrinders:
@@ -175,7 +175,7 @@ class TestRecipes:
         silent = await another_version(wired.db, hot, temperature=0)
 
         with pytest.raises(ValidationError):
-            SetVersionWrite.model_validate({"target_temperature_c": 93})
+            RecipeVersionWrite.model_validate({"target_temperature_c": 93})
 
         row = await _new_recipe(wired, profile_version_id=hot, dose_g=18.0)
         first = await wired.recipes.current_version(row.id)
@@ -279,8 +279,8 @@ class TestRecipes:
         archived = await wired.recipes.archive(row.id)
         assert archived is not None
         assert (archived.archived, archived.automatch) == (True, False)
-        assert await wired.recipes.list_sets() == []
-        assert len(await wired.recipes.list_sets(include_archived=True)) == 1
+        assert await wired.recipes.list_recipes() == []
+        assert len(await wired.recipes.list_recipes(include_archived=True)) == 1
 
     async def test_shot_counts_roll_up_from_the_versions(self, wired: Fixtures) -> None:
         row = await _new_recipe(wired)
@@ -300,7 +300,7 @@ class TestRecipes:
         # The column carries no foreign key, so this check is the only thing
         # standing between a typo and a dangling reference.
         shot = await wired.shots.get(shot_id)
-        assert shot is not None and shot.set_version_id is None
+        assert shot is not None and shot.recipe_version_id is None
 
     async def test_unassigning_is_assigning_to_nothing(self, wired: Fixtures) -> None:
         row = await _new_recipe(wired)
@@ -309,7 +309,7 @@ class TestRecipes:
         await wired.recipes.assign_shot(shot_id, version.id)
         assert await wired.recipes.assign_shot(shot_id, None)
         shot = await wired.shots.get(shot_id)
-        assert shot is not None and shot.set_version_id is None
+        assert shot is not None and shot.recipe_version_id is None
 
     async def test_the_profile_label_comes_along(self, wired: Fixtures) -> None:
         version_id = await make_profile_version(wired.db, "Adaptive v2")

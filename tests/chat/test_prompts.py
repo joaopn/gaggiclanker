@@ -157,7 +157,7 @@ async def test_the_design_prompt_says_what_designing_is_and_is_not(
     assert "THE PROFILE IS NEW, SO NAME IT" in system
     # And it is the design and nothing else: version 1's shots are analysed in
     # a new conversation, and the person is told so before they accept.
-    assert "becomes the Set's ordinary one" not in system
+    assert "becomes the Recipe's ordinary one" not in system
     assert "one conversation is one version's work" in system
     assert "this design conversation is done" in system
     # A decline arrives as a turn of its own, and is answered, not re-sent.
@@ -194,7 +194,7 @@ async def test_the_recipe_prompt_says_what_a_grade_and_a_proposal_have_to_be(
     # It never decides the experiment is over.
     assert "never tell them to stop or to carry on" in system
     # And it knows it can see one Recipe.
-    assert "this Set and nothing else" in system
+    assert "this Recipe and nothing else" in system
 
 
 async def test_the_recipe_prompt_sends_an_accepted_version_to_a_new_conversation(
@@ -214,8 +214,8 @@ async def test_the_recipe_prompt_sends_an_accepted_version_to_a_new_conversation
     assert "WHEN THEY ACCEPT, THIS CONVERSATION IS DONE" in system
     assert '"Accepted:"' in system
     assert "they must start a new conversation" in system
-    assert "Discuss in chat on the Set page" in system
-    assert "first recipe was designed" in system
+    assert "Discuss in chat on the Recipe page" in system
+    assert "version 1 was designed" in system
 
 
 async def test_the_recipe_prompt_says_an_accepted_change_needs_nothing_on_the_machine(
@@ -258,12 +258,12 @@ async def test_the_general_prompt_sends_a_recipe_change_to_that_recipe_s_badge(
 ) -> None:
     system = (await prompts.load(GENERAL_CHAT_PROMPT, {"shot_fields": ""})).system
 
-    assert "YOU CANNOT CHANGE A SET HERE" in system
+    assert "YOU CANNOT CHANGE A RECIPE HERE" in system
     # The Chat page picks a Recipe with a badge above the conversation; the agent
     # names what is on the screen, not the folders the page used to have.
-    assert "say which Set's badge to open" in " ".join(system.split())
+    assert "say which Recipe's badge to open" in " ".join(system.split())
     assert "folder" not in system
-    assert "propose_set_version" not in system
+    assert "propose_recipe_version" not in system
     assert "query_shots" in system
 
 
@@ -330,7 +330,7 @@ async def test_the_recipe_prompt_names_the_three_shot_tools_and_the_search(
 ) -> None:
     system = (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system
 
-    for tool_name in ("get_shot", "get_shot_extended", "get_shot_full", "list_set_shots"):
+    for tool_name in ("get_shot", "get_shot_extended", "get_shot_full", "list_recipe_shots"):
         assert f"`{tool_name}`" in system, tool_name
     assert "shots of both compared versions" not in system
 
@@ -345,7 +345,7 @@ async def test_the_recipe_prompt_sends_the_agent_to_the_extended_call_for_shots_
     ).system
     flat = " ".join(rendered.split())
     assert "each already in its base information" in flat
-    assert "`get_shot` and `list_set_shots` only repeat what is in front of you" in flat
+    assert "`get_shot` and `list_recipe_shots` only repeat what is in front of you" in flat
     assert "`get_shot_full` repeats it along with the extended lines" in flat
     assert "so `get_shot_extended` is the call that adds something" in flat
 

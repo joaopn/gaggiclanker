@@ -32,13 +32,13 @@ async def _pinned(wired: Fixtures, *, automatch: bool = True) -> tuple[int, int,
     """A Recipe on "Blooming" whose v1 is pinned and which has moved on to v1.1:
     (recipe id, v1, v1.1, the pin, the copy's profile version)."""
     original = await make_profile_version(wired.db, "Blooming")
-    set_id = await _recipe_on(wired, "Guji", original, automatch=automatch)
-    v1 = await wired.recipes.current_version(set_id)
+    recipe_id = await _recipe_on(wired, "Guji", original, automatch=automatch)
+    v1 = await wired.recipes.current_version(recipe_id)
     assert v1 is not None
-    second = await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19.0))
+    second = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19.0))
     assert second is not None
     pin, copy, _row = await make_pin(wired.db, v1.id, "Blooming v1")
-    return set_id, v1.id, second.id, pin, copy
+    return recipe_id, v1.id, second.id, pin, copy
 
 
 class TestProfileMatch:
@@ -52,7 +52,7 @@ class TestProfileMatch:
             shot, profile_version_id=copy, device_profile_id=""
         )
 
-        assert (match.outcome, match.set_version_id) == ("matched", pinned_version)
+        assert (match.outcome, match.recipe_version_id) == ("matched", pinned_version)
         assert await _filed(wired, shot) == pinned_version != current
 
     async def test_the_copy_files_by_its_device_id_when_the_shot_has_no_link_yet(
@@ -68,7 +68,7 @@ class TestProfileMatch:
             shot, profile_version_id=None, device_profile_id="pin001"
         )
 
-        assert match.set_version_id == pinned_version
+        assert match.recipe_version_id == pinned_version
 
     async def test_a_filed_shot_is_never_moved_by_a_pin(self, wired: Fixtures) -> None:
         _recipe, _pinned_version, current, _pin, copy = await _pinned(wired)
@@ -91,12 +91,12 @@ class TestProfileMatch:
             shot, profile_version_id=copy, device_profile_id=""
         )
 
-        assert match.set_version_id == pinned_version
+        assert match.recipe_version_id == pinned_version
 
     async def test_with_the_recipes_flag_off_the_shot_waits_and_the_button_files_it_later(
         self, wired: Fixtures
     ) -> None:
-        set_id, pinned_version, _current, _pin, copy = await _pinned(wired, automatch=False)
+        recipe_id, pinned_version, _current, _pin, copy = await _pinned(wired, automatch=False)
         shot = await make_shot(wired.db, "000905", profile_version_id=copy)
 
         match = await wired.recipes.profile_match(
@@ -106,15 +106,15 @@ class TestProfileMatch:
         waiting = await wired.recipes.match_unfiled()
         assert waiting.model_dump() == {"matched": 0, "unmatched": 1}
 
-        await wired.recipes.set_automatch(set_id, True)
+        await wired.recipes.set_automatch(recipe_id, True)
         summary = await wired.recipes.match_unfiled()
 
         assert summary.matched == 1 and await _filed(wired, shot) == pinned_version
 
     async def test_an_archived_recipe_files_nothing_on_its_pins(self, wired: Fixtures) -> None:
-        set_id, _pinned_version, _current, _pin, copy = await _pinned(wired)
+        recipe_id, _pinned_version, _current, _pin, copy = await _pinned(wired)
         # Archived with the flag still on (archiving clears it; the rule must not lean on that).
-        await wired.db.execute("UPDATE recipes SET archived = 1 WHERE id = ?", (set_id,))
+        await wired.db.execute("UPDATE recipes SET archived = 1 WHERE id = ?", (recipe_id,))
         shot = await make_shot(wired.db, "000906", profile_version_id=copy)
 
         match = await wired.recipes.profile_match(
@@ -126,8 +126,8 @@ class TestProfileMatch:
     async def test_a_pin_does_not_change_where_the_originals_shots_go(
         self, wired: Fixtures
     ) -> None:
-        set_id, _pinned_version, current, _pin, _copy = await _pinned(wired)
-        version = await wired.recipes.current_version(set_id)
+        recipe_id, _pinned_version, current, _pin, _copy = await _pinned(wired)
+        version = await wired.recipes.current_version(recipe_id)
         assert version is not None and version.profile_version_id is not None
         original = version.profile_version_id
         shot = await make_shot(wired.db, "000907", profile_version_id=original)
@@ -136,7 +136,7 @@ class TestProfileMatch:
             shot, profile_version_id=original, device_profile_id=""
         )
 
-        assert (match.outcome, match.set_version_id) == ("matched", current)
+        assert (match.outcome, match.recipe_version_id) == ("matched", current)
 
 
 class TestIngest:
@@ -144,10 +144,10 @@ class TestIngest:
         self, wired: Fixtures
     ) -> None:
         original = await make_profile_version(wired.db, "Gratus 16:32 trad")
-        set_id = await _recipe_on(wired, "Imported archive", original)
-        v1 = await wired.recipes.current_version(set_id)
+        recipe_id = await _recipe_on(wired, "Imported archive", original)
+        v1 = await wired.recipes.current_version(recipe_id)
         assert v1 is not None
-        await wired.recipes.add_version(set_id, RecipeVersionPatch(dose_g=19.5))
+        await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19.5))
         _pin, copy, _row = await make_pin(wired.db, v1.id, "Gratus pinned")
         # shot-129's header names this profile id; the mirror maps it to the pin's copy.
         await ProfilesRepository(wired.db).upsert_device_profile(
@@ -174,11 +174,11 @@ class TestSync:
                 await archive.engine.sync_identity()
                 original = await _mirror(archive, matching, "Adaptive v2")
                 await _mirror(archive, other, "9 Bar Espresso")
-                set_id = await _recipe_naming(archive, original)
+                recipe_id = await _recipe_naming(archive, original)
                 recipes = archive.engine.recipes
-                v1 = await recipes.current_version(set_id)
+                v1 = await recipes.current_version(recipe_id)
                 assert v1 is not None
-                await recipes.add_version(set_id, RecipeVersionPatch(dose_g=19.0))
+                await recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19.0))
                 # The machine brews this shot on the pin's copy.
                 _pin, copy, _row = await make_pin(archive.db, v1.id, "Adaptive v2 v1")
                 await ProfilesRepository(archive.db).upsert_device_profile(
@@ -188,7 +188,7 @@ class TestSync:
                 await archive.engine.sync_shots()
 
                 first = await archive.engine.shots.get_by_device_id("000300")
-                assert first is not None and first.set_version_id == v1.id
+                assert first is not None and first.recipe_version_id == v1.id
         finally:
             await device.stop()
 
@@ -201,7 +201,7 @@ class TestButton:
         original = await make_profile_version(db, "Blooming")
         bean = await client.post("/api/beans", json={"name": "Ethiopia Guji"})
         created = await client.post(
-            "/api/sets",
+            "/api/recipes",
             json={
                 "name": "Guji",
                 "bean_id": bean.json()["data"]["id"],
@@ -210,19 +210,21 @@ class TestButton:
             },
         )
         assert created.status_code == 201, created.text
-        set_id = created.json()["data"]["id"]
+        recipe_id = created.json()["data"]["id"]
         version_id = int(
-            (await client.get(f"/api/sets/{set_id}")).json()["data"]["versions"][0]["version"]["id"]
+            (await client.get(f"/api/recipes/{recipe_id}")).json()["data"]["versions"][0][
+                "version"
+            ]["id"]
         )
         _pin, copy, _row = await make_pin(db, version_id, "Blooming v1")
         shot = await make_shot(db, "001100", profile_version_id=copy)
 
         waiting = await client.post("/api/shots/profile-match", json={})
         assert waiting.json()["data"] == {"matched": 0, "unmatched": 1}
-        flagged = await client.put(f"/api/sets/{set_id}/automatch", json={"automatch": True})
+        flagged = await client.put(f"/api/recipes/{recipe_id}/automatch", json={"automatch": True})
         assert flagged.status_code == 200, flagged.text
         filed = await client.post("/api/shots/profile-match", json={"shot_ids": [shot]})
 
         assert filed.json()["data"] == {"matched": 1, "unmatched": 0}
         detail = (await client.get(f"/api/shots/{shot}")).json()["data"]
-        assert detail["shot"]["set_version_id"] == version_id
+        assert detail["shot"]["recipe_version_id"] == version_id

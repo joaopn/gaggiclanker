@@ -127,7 +127,7 @@ def names_from_state(
     )
 
 
-async def _state(db: Database, set_id: int) -> tuple[int, int, int]:
+async def _state(db: Database, recipe_id: int) -> tuple[int, int, int]:
     """(current major, highest minor in it, highest major), zeros for none.
 
     Off the Recipe's pointer, so a Recipe that went back to v1.2 numbers from v1.2.
@@ -139,7 +139,7 @@ async def _state(db: Database, set_id: int) -> tuple[int, int, int]:
           JOIN recipe_versions cur ON cur.id = s.current_version_id
          WHERE s.id = ?
         """,  # noqa: S608 - the interpolation is the module's own SQL text, the id is bound
-        (set_id,),
+        (recipe_id,),
     )
     if row is None:
         return 0, 0, 0
@@ -150,14 +150,14 @@ async def _state(db: Database, set_id: int) -> tuple[int, int, int]:
     )
 
 
-async def next_numbers(db: Database, set_id: int, *, major: bool) -> NextNumbers:
+async def next_numbers(db: Database, recipe_id: int, *, major: bool) -> NextNumbers:
     """The name of the version about to be inserted.
 
     Read inside the inserting transaction by the caller, so nothing can land
     between this read and the insert; the unique index on the name is the
     backstop if something ever did.
     """
-    current_major, minor_max, major_max = await _state(db, set_id)
+    current_major, minor_max, major_max = await _state(db, recipe_id)
     name = next_version_name(
         current_major=current_major,
         current_major_minor_max=minor_max,
@@ -167,10 +167,10 @@ async def next_numbers(db: Database, set_id: int, *, major: bool) -> NextNumbers
     return NextNumbers(major=name[0], minor=name[1])
 
 
-async def next_names(db: Database, set_id: int) -> NextNames:
+async def next_names(db: Database, recipe_id: int) -> NextNames:
     """What the next version of one Recipe would be called as a minor and as a major."""
-    designing = await db.fetch_value("SELECT designing FROM recipes WHERE id = ?", (set_id,))
-    current_major, minor_max, major_max = await _state(db, set_id)
+    designing = await db.fetch_value("SELECT designing FROM recipes WHERE id = ?", (recipe_id,))
+    current_major, minor_max, major_max = await _state(db, recipe_id)
     return names_from_state(
         designing=bool(designing),
         current_major=current_major,

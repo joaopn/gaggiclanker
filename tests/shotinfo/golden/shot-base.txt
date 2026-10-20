@@ -9,7 +9,7 @@ phase 2 · Ramp: duration 5.0 s; ended by Unknown; cup at end 0.0 g, 0.0 % of ta
 phase 3 · Extraction: duration 24.8 s; ended by Unknown; cup at end 31.6 g, 87.8 % of target
 [Identity and status]
 Date and time: 2026-04-03 12:06
-Set version: v1 of Set 1
+Recipe version: v1 of Recipe 1
 Label: Keep
 Counted: counted
 Profile: Amigo Alturas Bloom [AI]

@@ -57,7 +57,7 @@ class PatternInsight(BaseModel):
     copy_of: int | None = None
     #: The Recipe that original was learned in: the Recipe this lesson counts for. Not shown to the
     #: model.
-    copied_from_set: int | None = None
+    copied_from_recipe: int | None = None
 
 
 class PatternRecipe(BaseModel):
@@ -104,13 +104,13 @@ class PatternsInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sets: list[PatternRecipe] = Field(default_factory=list)
+    recipes: list[PatternRecipe] = Field(default_factory=list)
     general: list[PatternGeneral] = Field(default_factory=list)
     declined: list[PatternDeclined] = Field(default_factory=list)
 
     @property
     def insight_count(self) -> int:
-        return sum(len(item.insights) for item in self.sets)
+        return sum(len(item.insights) for item in self.recipes)
 
     @property
     def lesson_recipe_count(self) -> int:
@@ -118,8 +118,8 @@ class PatternsInput(BaseModel):
         return len(
             set(
                 home_recipes(
-                    (row.id, item.id, row.copied_from_set)
-                    for item in self.sets
+                    (row.id, item.id, row.copied_from_recipe)
+                    for item in self.recipes
                     for row in item.insights
                 ).values()
             )
@@ -128,7 +128,7 @@ class PatternsInput(BaseModel):
     def render(self) -> dict[str, str]:
         """The prompt's variables: one rendered block per section."""
         return {
-            "recipe_insights": _render_recipes(self.sets),
+            "recipe_insights": _render_recipes(self.recipes),
             "general_insights": _render_general(self.general),
             "declined": _render_declined(self.declined),
         }
@@ -137,7 +137,7 @@ class PatternsInput(BaseModel):
 async def build_patterns_input(db: Database) -> PatternsInput:
     """Assemble what one run is told. A pure function of the database it is handed."""
     insights = InsightsRepository(db)
-    sets: list[PatternRecipe] = []
+    recipes: list[PatternRecipe] = []
     recipe_facts = await PatternRunsRepository(db).recipes_with_confirmed_insights()
     confirmed_by_recipe: dict[int, list[InsightRow]] = {
         facts.id: [item for item in await insights.own(facts.id) if item.confirmed]
@@ -146,7 +146,7 @@ async def build_patterns_input(db: Database) -> PatternsInput:
     for facts in recipe_facts:
         attributes = await insights.attributes_of(facts.id) or {}
         confirmed = confirmed_by_recipe[facts.id]
-        sets.append(
+        recipes.append(
             PatternRecipe(
                 id=facts.id,
                 name=facts.name,
@@ -163,10 +163,10 @@ async def build_patterns_input(db: Database) -> PatternsInput:
                     PatternInsight(
                         id=item.id,
                         text=item.text,
-                        learned_at=item.set_version_label,
+                        learned_at=item.recipe_version_label,
                         rests_on=[rest.render() for rest in item.rests_on],
                         copy_of=item.copied_from_insight_id,
-                        copied_from_set=item.copied_from_set_id,
+                        copied_from_recipe=item.copied_from_recipe_id,
                     )
                     for item in sorted(confirmed, key=lambda row: row.id)
                 ],
@@ -182,28 +182,29 @@ async def build_patterns_input(db: Database) -> PatternsInput:
             text=item.text,
             scope=item.scope.stated(),
             sources=[
-                f'{source.set_name} #{source.insight_id} "{source.text}"' for source in item.sources
+                f'{source.recipe_name} #{source.insight_id} "{source.text}"'
+                for source in item.sources
             ],
         )
         for item in await PatternProposalsRepository(db).declined()
     ]
-    return PatternsInput(sets=sets, general=general, declined=declined)
+    return PatternsInput(recipes=recipes, general=general, declined=declined)
 
 
 def _scope_words(scope: dict[str, Any]) -> str:
-    return InsightScope.model_validate(scope).label() if scope else "any Set"
+    return InsightScope.model_validate(scope).label() if scope else "any Recipe"
 
 
-def _render_recipes(sets: list[PatternRecipe]) -> str:
+def _render_recipes(recipes: list[PatternRecipe]) -> str:
     blocks: list[str] = []
-    for item in sets:
+    for item in recipes:
         names = [f'bean "{item.bean}"' if item.bean else "no bean"]
         if item.roaster:
             names[0] += f" by {item.roaster}"
         names.append(f'grinder "{item.grinder}"' if item.grinder else "no grinder")
         attributes = ", ".join(f"{key}={value}" for key, value in item.attributes.items())
         lines = [
-            f'SET {item.id} "{item.name}"{" (archived)" if item.archived else ""}: '
+            f'RECIPE {item.id} "{item.name}"{" (archived)" if item.archived else ""}: '
             f"{'; '.join(names)}",
             f"  scope attributes: {attributes or 'none stated'}",
         ]

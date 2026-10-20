@@ -70,7 +70,7 @@ export function folderKey(setId: number | null): string {
 
 /** A thread's Set, with "absent" and "null" read as the one thing they mean. */
 function setOf(thread: ChatThread): number | null {
-  return thread.set_id ?? null;
+  return thread.recipe_id ?? null;
 }
 
 /**
@@ -118,7 +118,7 @@ export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolde
     if (folder === undefined) {
       folder = {
         key: `archived-${setId}`,
-        label: thread.set_name || `Set ${setId}`,
+        label: thread.recipe_name || `Set ${setId}`,
         versionLabel: null,
         setId,
         // No New: a Set you have finished with is not one to start asking about.
@@ -375,9 +375,9 @@ function FolderList({
                       per change, and "v1.2" is what tells two of them apart.
                       Not truncated with the title, because it is the half that
                       never gets long. */}
-                  {thread.set_version_label ? (
+                  {thread.recipe_version_label ? (
                     <span className="shrink-0 font-medium tabular-nums">
-                      {thread.set_version_label}
+                      {thread.recipe_version_label}
                     </span>
                   ) : null}
                   <span

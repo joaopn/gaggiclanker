@@ -106,7 +106,7 @@ async def make_recipe(client: httpx.AsyncClient, name: str = "Replace test") -> 
     bean = data(await client.post("/api/beans", json={"name": name, "roaster": "nobody"}))
     stored = data(
         await client.post(
-            "/api/sets",
+            "/api/recipes",
             json={
                 "name": name,
                 "bean_id": bean["id"],
@@ -144,10 +144,10 @@ async def manual_draft(
     return dict(data(response))
 
 
-async def recipe_version_ids(app: FastAPI, set_id: int) -> list[int]:
+async def recipe_version_ids(app: FastAPI, recipe_id: int) -> list[int]:
     """The ids of a Recipe's versions, oldest first."""
     rows = await app.state.db.fetch_all(
-        "SELECT id FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id", (set_id,)
+        "SELECT id FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at, id", (recipe_id,)
     )
     return [int(row["id"]) for row in rows]
 
@@ -176,7 +176,7 @@ async def make_recipe_on(client: httpx.AsyncClient, name: str, profile_version_i
     """A Recipe whose first version names a stored profile, as one made from the library does."""
     bean = data(await client.post("/api/beans", json={"name": name, "roaster": "nobody"}))
     response = await client.post(
-        "/api/sets",
+        "/api/recipes",
         json={
             "name": name,
             "bean_id": bean["id"],
@@ -201,13 +201,13 @@ async def make_recipe_on_a_free_profile(app: FastAPI, client: httpx.AsyncClient,
         "AND NOT EXISTS (SELECT 1 FROM recipe_version_pins p WHERE p.board_id = b.id) "
         "ORDER BY b.id"
     )
-    assert row is not None, "every live profile has a Set"
+    assert row is not None, "every live profile has a Recipe"
     return await make_recipe_on(client, name, int(row["version"]))
 
 
-async def grind_change(client: httpx.AsyncClient, set_id: int) -> None:
+async def grind_change(client: httpx.AsyncClient, recipe_id: int) -> None:
     """A version that changes only the grind: it pushes nothing and names no device id."""
-    response = await client.post(f"/api/sets/{set_id}/versions", json={"grind_value": 21.0})
+    response = await client.post(f"/api/recipes/{recipe_id}/versions", json={"grind_value": 21.0})
     assert response.status_code < 300, response.text
 
 
@@ -305,16 +305,16 @@ async def assert_recipes_follow_their_profiles(db: Any) -> None:
         "v.profile_version_id "
         "WHERE pv.board_id IS NOT s.board_id"
     )
-    assert [dict(r) for r in foreign] == [], "a Set version brews another profile's version"
+    assert [dict(r) for r in foreign] == [], "a Recipe version brews another profile's version"
     shared = await db.fetch_all(
         "SELECT board_id, COUNT(*) AS n FROM recipes WHERE board_id IS NOT NULL "
         "GROUP BY board_id HAVING n > 1"
     )
-    assert [dict(r) for r in shared] == [], "a profile has two Sets"
+    assert [dict(r) for r in shared] == [], "a profile has two Recipes"
     behind = await db.fetch_all(
-        "SELECT s.id AS set_id, cur.profile_version_id AS brews, b.current_version_id AS active "
+        "SELECT s.id AS recipe_id, cur.profile_version_id AS brews, b.current_version_id AS active "
         "FROM recipes s JOIN profile_board b ON b.id = s.board_id "
         "JOIN recipe_versions cur ON cur.id = s.current_version_id "
         "WHERE s.designing = 0 AND cur.profile_version_id IS NOT b.current_version_id"
     )
-    assert [dict(r) for r in behind] == [], "a Set does not brew its profile's active version"
+    assert [dict(r) for r in behind] == [], "a Recipe does not brew its profile's active version"

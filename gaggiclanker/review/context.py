@@ -463,12 +463,12 @@ def _render_expectations(review: ReviewInput) -> str:
 def _render_prediction(review: ReviewInput) -> str:
     if not review.version:
         return (
-            "The shot is not filed under a Set version, so there is no prediction to compare it "
+            "The shot is not filed under a Recipe version, so there is no prediction to compare it "
             "with: the output has no `prediction` key."
         )
     if not review.prediction:
         return (
-            f"The Set version the shot is filed under ({review.version}) was filed with no "
+            f"The Recipe version the shot is filed under ({review.version}) was filed with no "
             "prediction: the output has no `prediction` key."
         )
     against = (

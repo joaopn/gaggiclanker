@@ -70,10 +70,10 @@ async def test_a_thread_can_be_created_listed_renamed_and_deleted(
     _app, client, _provider, fixture = chat_app
 
     created = data(
-        await client.post("/api/chat/threads", json={"title": "", "set_id": fixture.set_id})
+        await client.post("/api/chat/threads", json={"title": "", "recipe_id": fixture.recipe_id})
     )
-    assert created["set_id"] == fixture.set_id
-    assert created["set_name"]
+    assert created["recipe_id"] == fixture.recipe_id
+    assert created["recipe_name"]
 
     assert [row["id"] for row in data(await client.get("/api/chat/threads"))] == [created["id"]]
 
@@ -262,11 +262,13 @@ async def test_the_tool_list_is_the_scope_s_list_for_the_kind_asked_about(
     _app, client, _provider, _fixture = chat_app
 
     general = {tool["name"] for tool in data(await client.get("/api/chat/tools"))["tools"]}
-    scoped = {tool["name"] for tool in data(await client.get("/api/chat/tools?kind=set"))["tools"]}
+    scoped = {
+        tool["name"] for tool in data(await client.get("/api/chat/tools?kind=recipe"))["tools"]
+    }
 
     designing = {
         tool["name"]
-        for tool in data(await client.get("/api/chat/tools?kind=set&designing=true"))["tools"]
+        for tool in data(await client.get("/api/chat/tools?kind=recipe&designing=true"))["tools"]
     }
     # The flag only means something for a Recipe's conversation.
     general_anyway = {
@@ -279,7 +281,7 @@ async def test_the_tool_list_is_the_scope_s_list_for_the_kind_asked_about(
     assert designing == DESIGN_TOOLS
     assert general_anyway == GENERAL_TOOLS
     assert "query_shots" not in scoped
-    assert "propose_set_version" not in general
+    assert "propose_recipe_version" not in general
 
 
 async def test_unknown_threads_and_runs_are_404s(

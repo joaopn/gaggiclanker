@@ -48,13 +48,13 @@ async def owner_of(app: Any, version_id: int) -> str | None:
 async def shot_filed_under(app: Any, client: Any, device_id: str = "000129") -> str | None:
     shots = data(await client.get("/api/shots?limit=200"))["items"]
     found = next(s for s in shots if s["device_id"] == device_id)
-    if not found.get("set_version_id"):
+    if not found.get("recipe_version_id"):
         return None
     return str(
         await app.state.db.fetch_value(
             "SELECT st.name FROM recipe_versions v JOIN recipes st ON st.id = v.recipe_id WHERE "
             "v.id = ?",
-            (found["set_version_id"],),
+            (found["recipe_version_id"],),
         )
     )
 
@@ -177,10 +177,10 @@ async def test_a_pin_of_a_recipe_version_on_a_machine_files_loose_version(
     nine["id"] = SHOT_FILE
     await pull(app)
     loose = await base_version_id(app, BASE_LABEL)
-    set_id = await make_recipe_on(client, "Nine set", loose)
-    v1 = data(await client.get(f"/api/sets/{set_id}"))["versions"][0]["version"]["id"]
+    recipe_id = await make_recipe_on(client, "Nine set", loose)
+    v1 = data(await client.get(f"/api/recipes/{recipe_id}"))["versions"][0]["version"]["id"]
 
-    made = await client.post(f"/api/sets/{set_id}/versions/{v1}/pin", json={"label": "Pin A"})
+    made = await client.post(f"/api/recipes/{recipe_id}/versions/{v1}/pin", json={"label": "Pin A"})
 
     assert made.status_code < 300, made.text
     pins = await app.state.db.fetch_all(
@@ -189,8 +189,8 @@ async def test_a_pin_of_a_recipe_version_on_a_machine_files_loose_version(
     )
     assert [(r["copy"] != r["original"]) for r in pins] == [True]
     assert await owner_of(app, loose) is None
-    assert (await client.get(f"/api/sets/{set_id}")).status_code == 200
-    added = await client.post(f"/api/sets/{set_id}/versions", json={"grind_value": 12.0})
+    assert (await client.get(f"/api/recipes/{recipe_id}")).status_code == 200
+    added = await client.post(f"/api/recipes/{recipe_id}/versions", json={"grind_value": 12.0})
     assert added.status_code == 201, added.text
     await app.state.connection.engine.sync_shots(kind="backfill", trigger="test")
     assert await shot_filed_under(app, client) == "Nine set"
@@ -204,17 +204,17 @@ async def test_a_duplicate_of_a_recipe_on_a_machine_files_loose_version(
     nine["id"] = SHOT_FILE
     await pull(app)
     loose = await base_version_id(app, BASE_LABEL)
-    set_id = await make_recipe_on(client, "Nine set", loose)
-    detail = data(await client.get(f"/api/sets/{set_id}"))
+    recipe_id = await make_recipe_on(client, "Nine set", loose)
+    detail = data(await client.get(f"/api/recipes/{recipe_id}"))
     v1 = detail["versions"][0]["version"]["id"]
 
     made = await client.post(
-        f"/api/sets/{set_id}/versions/{v1}/duplicate",
+        f"/api/recipes/{recipe_id}/versions/{v1}/duplicate",
         json={
-            "set_name": "Copy",
+            "recipe_name": "Copy",
             "profile_name": "Blooming milk",
             "insight_ids": [],
-            "bean_id": detail["set"]["bean_id"],
+            "bean_id": detail["recipe"]["bean_id"],
         },
     )
 
@@ -230,5 +230,5 @@ async def test_a_duplicate_of_a_recipe_on_a_machine_files_loose_version(
     assert await owner_of(app, loose) is None
     await app.state.connection.engine.sync_shots(kind="backfill", trigger="test")
     assert await shot_filed_under(app, client) == "Nine set"
-    added = await client.post(f"/api/sets/{set_id}/versions", json={"grind_value": 12.0})
+    added = await client.post(f"/api/recipes/{recipe_id}/versions", json={"grind_value": 12.0})
     assert added.status_code == 201

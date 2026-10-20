@@ -104,7 +104,7 @@ export function ShotBoxes({
         // Where the doses start when the person has recorded none: the Set version's dose (when
         // the shot is filed) and the scale's yield (when it has a scale).
         prefill={{
-          doseIn: detail.set_version?.dose_g ?? null,
+          doseIn: detail.recipe_version?.dose_g ?? null,
           doseOut: row.has_scale ? (row.volume_g ?? null) : null,
         }}
         open={judgementOpen}
@@ -114,7 +114,7 @@ export function ShotBoxes({
       <VersionPrediction
         key={row.id}
         shotId={row.id}
-        version={detail.set_version}
+        version={detail.recipe_version}
         decision={detail.judgement?.decision ?? null}
       />
       {row.quarantined ? (

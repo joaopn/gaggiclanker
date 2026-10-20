@@ -137,10 +137,10 @@ async def test_two_tool_calls_are_kept_apart_by_index() -> None:
             chunk(
                 tool_calls=[
                     {"index": 0, "id": "a", "function": {"name": "get_shot", "arguments": "{"}},
-                    {"index": 1, "id": "b", "function": {"name": "get_set", "arguments": "{"}},
+                    {"index": 1, "id": "b", "function": {"name": "get_recipe", "arguments": "{"}},
                 ]
             ),
-            chunk(tool_calls=[{"index": 1, "function": {"arguments": '"set_id": 2}'}}]),
+            chunk(tool_calls=[{"index": 1, "function": {"arguments": '"recipe_id": 2}'}}]),
             chunk(tool_calls=[{"index": 0, "function": {"arguments": '"shot_id": 1}'}}]),
             final("tool_calls"),
         )
@@ -150,7 +150,7 @@ async def test_two_tool_calls_are_kept_apart_by_index() -> None:
 
     assert [(call.name, call.arguments) for call in turn.tool_calls] == [
         ("get_shot", {"shot_id": 1}),
-        ("get_set", {"set_id": 2}),
+        ("get_recipe", {"recipe_id": 2}),
     ]
 
 
@@ -201,7 +201,7 @@ async def test_a_tool_result_is_one_message_per_call_id() -> None:
             role="tool",
             tool_results=[
                 ChatToolResult(id="a", name="get_shot", content="{}"),
-                ChatToolResult(id="b", name="get_set", content="{}"),
+                ChatToolResult(id="b", name="get_recipe", content="{}"),
             ],
         ),
     ]

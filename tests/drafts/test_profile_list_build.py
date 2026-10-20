@@ -47,14 +47,14 @@ async def _draft(
     status: str,
     pushed: str | None = None,
     replaced: int | None = None,
-    set_id: int | None = None,
+    recipe_id: int | None = None,
     is_new: bool = False,
 ) -> None:
     await db.execute(
         "INSERT INTO profile_drafts (id, base_version_id, draft_version_id, status, "
         "pushed_device_profile_id, replaced_version_id, recipe_id, is_new) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (did, base, version, status, pushed, replaced, set_id, int(is_new)),
+        (did, base, version, status, pushed, replaced, recipe_id, int(is_new)),
     )
 
 
@@ -244,7 +244,7 @@ def test_the_suffix_is_not_part_of_a_profiles_name() -> None:
 
 def test_a_draft_with_nothing_an_agent_adds_is_a_persons_edit() -> None:
     assert version_source_for_draft({"change_summary": "manual"}) == "edit"
-    assert version_source_for_draft({"set_id": 3}) == "agent"
+    assert version_source_for_draft({"recipe_id": 3}) == "agent"
     assert version_source_for_draft({"prediction": "more body"}) == "agent"
     assert version_source_for_draft({"change_summary": "Raised the pressure."}) == "agent"
 
@@ -271,9 +271,9 @@ async def test_agent_work_stays_with_the_profile_a_put_would_have_put_it_in(db: 
         (12, "Mine [AI]", "draft"),
     ):
         await _version(db, vid, label, source=source)
-    await _draft(db, 1, base=1, version=2, status="superseded", set_id=1)
-    await _draft(db, 2, base=2, version=3, status="failed", set_id=1)
-    await _draft(db, 3, base=2, version=4, status="pushed", pushed="pt", replaced=2, set_id=1)
+    await _draft(db, 1, base=1, version=2, status="superseded", recipe_id=1)
+    await _draft(db, 2, base=2, version=3, status="failed", recipe_id=1)
+    await _draft(db, 3, base=2, version=4, status="pushed", pushed="pt", replaced=2, recipe_id=1)
     await _draft(db, 4, base=5, version=6, status="superseded")
     await _draft(db, 5, base=6, version=7, status="discarded")
     await _draft(db, 6, base=7, version=8, status="pushed", pushed="pb", replaced=7)
@@ -317,7 +317,7 @@ async def test_separate_drafts_of_one_default_make_one_profile_not_several(db: D
     await _draft(db, 2, base=2, version=3, status="pushed", pushed="a2", replaced=2)
     await _draft(db, 3, base=1, version=4, status="discarded")
     await _draft(db, 4, base=1, version=5, status="pushed", pushed="a3")
-    await _draft(db, 5, base=6, version=7, status="pushed", pushed="l1", set_id=9)
+    await _draft(db, 5, base=6, version=7, status="pushed", pushed="l1", recipe_id=9)
     await _draft(db, 6, base=6, version=8, status="pushed", pushed="l2")
     await _row(db, 1, "Classic", 1, device="d1", device_version=1, origin="adopted")
     await _row(db, 2, "Lever", 6, device="d2", device_version=6, origin="adopted")
@@ -384,10 +384,10 @@ async def test_a_recipe_chain_renamed_onto_a_held_name_joins_the_profile_that_ha
         (9, "Old name [AI]", "draft"),
     ):
         await _version(db, vid, label, source=source)
-    await _draft(db, 1, base=1, version=3, status="superseded", set_id=7)
-    await _draft(db, 2, base=3, version=4, status="pushed", pushed="s2", replaced=3, set_id=7)
+    await _draft(db, 1, base=1, version=3, status="superseded", recipe_id=7)
+    await _draft(db, 2, base=3, version=4, status="pushed", pushed="s2", replaced=3, recipe_id=7)
     await _draft(db, 4, base=1, version=7, status="superseded")
-    await _draft(db, 5, base=7, version=8, status="pushed", pushed="o2", replaced=7, set_id=8)
+    await _draft(db, 5, base=7, version=8, status="pushed", pushed="o2", replaced=7, recipe_id=8)
     await _draft(db, 6, base=1, version=9, status="discarded")
     await _row(db, 1, "Classic", 1, device="d1", device_version=1, origin="adopted")
     await _row(db, 2, "Chosen [AI]", 2, device="c1", device_version=2)
@@ -450,8 +450,8 @@ async def test_a_recipes_chain_alone_links_a_renamed_version_to_its_profile(db: 
     await _version(db, 1, "Base", source="device")
     await _version(db, 2, "First [AI]", source="draft")
     await _version(db, 3, "Second [AI]", source="draft")
-    await _draft(db, 1, base=1, version=2, status="superseded", set_id=5)
-    await _draft(db, 2, base=2, version=3, status="discarded", set_id=5)
+    await _draft(db, 1, base=1, version=2, status="superseded", recipe_id=5)
+    await _draft(db, 2, base=2, version=3, status="discarded", recipe_id=5)
 
     await ProfileListBuilder(db).build()
 

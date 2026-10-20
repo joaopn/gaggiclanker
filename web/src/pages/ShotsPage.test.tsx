@@ -114,8 +114,8 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     rating: 4,
     has_notes: true,
     has_judgement: false,
-    set_version_id: null,
-    set_badge: null,
+    recipe_version_id: null,
+    recipe_badge: null,
     source: "device",
     synced_at: "2026-03-04T08:15:30.000Z",
     checks: { entries: [], state: "unchecked" },
@@ -134,7 +134,7 @@ const EMPTY_COUNTS = {
   deleted_on_device: 0,
   incomplete: 0,
   samples: 0,
-  needs_set: 0,
+  needs_recipe: 0,
 };
 
 function statusData(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
@@ -150,7 +150,7 @@ function statusData(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
       deleted_on_device: 0,
       incomplete: 0,
       samples: 236,
-      needs_set: 0,
+      needs_recipe: 0,
     },
     recent_events: [],
     ...overrides,
@@ -1130,12 +1130,12 @@ describe("ShotsPage column widths", () => {
     getShots.mockResolvedValue(
       listData([
         shot({
-          set_badge: {
-            set_id: 3,
-            set_name: "A long Set name for a Guji on the Niche",
+          recipe_badge: {
+            recipe_id: 3,
+            recipe_name: "A long Set name for a Guji on the Niche",
             version_label: "v2",
           },
-          set_version_id: 22,
+          recipe_version_id: 22,
         }),
       ]),
     );
@@ -2208,7 +2208,7 @@ describe("ShotsPage filters", () => {
     // The request carries the version, not just the Set.
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ set_id: 3, set_version_id: 22 }),
+        expect.objectContaining({ recipe_id: 3, recipe_version_id: 22 }),
       ),
     );
 
@@ -2229,7 +2229,7 @@ describe("ShotsPage filters", () => {
 
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ set_id: 3, set_version_id: undefined }),
+        expect.objectContaining({ recipe_id: 3, recipe_version_id: undefined }),
       ),
     );
     expect(screen.queryByTestId("version-filter")).not.toBeInTheDocument();
@@ -2248,7 +2248,7 @@ describe("ShotsPage filters", () => {
 
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
-        expect.objectContaining({ needs_set: true, set_version_id: undefined }),
+        expect.objectContaining({ needs_recipe: true, recipe_version_id: undefined }),
       ),
     );
   });
@@ -2600,14 +2600,14 @@ describe("ShotsPage and Sets", () => {
       listData([
         shot({
           id: 1,
-          set_version_id: 22,
-          set_badge: {
-            set_id: 3,
-            set_name: "Guji on the Niche",
+          recipe_version_id: 22,
+          recipe_badge: {
+            recipe_id: 3,
+            recipe_name: "Guji on the Niche",
             version_label: "v2",
           },
         }),
-        shot({ id: 2, device_id: "000102", set_version_id: null, set_badge: null }),
+        shot({ id: 2, device_id: "000102", recipe_version_id: null, recipe_badge: null }),
       ]),
     );
 
@@ -2631,12 +2631,12 @@ describe("ShotsPage and Sets", () => {
 
     await user.selectOptions(screen.getByLabelText("Set"), "needs");
     await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ needs_set: true })),
+      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ needs_recipe: true })),
     );
 
     await user.selectOptions(screen.getByLabelText("Set"), "3");
     await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ set_id: 3 })),
+      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ recipe_id: 3 })),
     );
   });
 
@@ -2651,7 +2651,7 @@ describe("ShotsPage and Sets", () => {
           deleted_on_device: 0,
           incomplete: 0,
           samples: 900,
-          needs_set: 4,
+          needs_recipe: 4,
         },
       }),
     );
@@ -2663,7 +2663,7 @@ describe("ShotsPage and Sets", () => {
 
     await user.click(button);
     await waitFor(() =>
-      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ needs_set: true })),
+      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ needs_recipe: true })),
     );
     // Clicking it is how you get into the inbox, so it goes away once you are
     // in it rather than sitting there as a no-op.
@@ -2673,7 +2673,7 @@ describe("ShotsPage and Sets", () => {
 
 describe("ShotsPage needs-a-Set menu", () => {
   /**
-   * Five Sets in the order `GET /api/sets` returns them: the ones collecting
+   * Five Sets in the order `GET /api/recipes` returns them: the ones collecting
    * shots first, then newest first. Each at a different latest version, so a menu that
    * showed a version number it did not get from `current_version_label` shows up.
    */
@@ -2792,14 +2792,14 @@ describe("ShotsPage needs-a-Set menu", () => {
       getShots.mockResolvedValue(
         listData([
           shot({
-            set_version_id: 41,
-            set_badge: { set_id: 4, set_name: "Kenya AA", version_label: "v2" },
+            recipe_version_id: 41,
+            recipe_badge: { recipe_id: 4, recipe_name: "Kenya AA", version_label: "v2" },
           }),
         ]),
       );
       return shot({
-        set_version_id: 41,
-        set_badge: { set_id: 4, set_name: "Kenya AA", version_label: "v2" },
+        recipe_version_id: 41,
+        recipe_badge: { recipe_id: 4, recipe_name: "Kenya AA", version_label: "v2" },
       });
     });
 
@@ -2826,12 +2826,12 @@ describe("ShotsPage needs-a-Set menu", () => {
     const counts = statusData().counts;
     getShots.mockResolvedValue(listData([shot()]));
     getSets.mockResolvedValue({ items: fiveSets });
-    getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_set: 4 } }));
+    getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_recipe: 4 } }));
     putShotSetVersion.mockImplementation(async () => {
-      getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_set: 3 } }));
+      getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_recipe: 3 } }));
       return shot({
-        set_version_id: 41,
-        set_badge: { set_id: 4, set_name: "Kenya AA", version_label: "v2" },
+        recipe_version_id: 41,
+        recipe_badge: { recipe_id: 4, recipe_name: "Kenya AA", version_label: "v2" },
       });
     });
 
@@ -2967,10 +2967,10 @@ describe("ShotsPage needs-a-Set menu", () => {
     getShots.mockResolvedValue(
       listData([
         shot({
-          set_version_id: 22,
-          set_badge: {
-            set_id: 3,
-            set_name: "Guji on the Niche",
+          recipe_version_id: 22,
+          recipe_badge: {
+            recipe_id: 3,
+            recipe_name: "Guji on the Niche",
             version_label: "v2",
           },
         }),
@@ -3200,7 +3200,7 @@ describe("ShotsPage row editing", () => {
           judgement_rating: null,
           judgement_notes: null,
           has_judgement: false,
-          set_version_id: null,
+          recipe_version_id: null,
         }),
       ]),
     );
@@ -3258,7 +3258,7 @@ describe("ShotsPage row editing", () => {
     // time would put a "Filed under…" toast on screen for somebody who only
     // fixed a typo.
     const user = setupUser();
-    getShots.mockResolvedValue(listData([shot({ set_version_id: 22 })]));
+    getShots.mockResolvedValue(listData([shot({ recipe_version_id: 22 })]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();

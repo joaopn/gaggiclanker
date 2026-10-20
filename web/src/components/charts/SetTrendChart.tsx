@@ -38,9 +38,9 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
     const marks: Array<{ at: number; version: string; intent: string }> = [];
     trends.shots.forEach((point, index) => {
       const previous = trends.shots[index - 1];
-      if (previous && previous.set_version_id !== point.set_version_id) {
+      if (previous && previous.recipe_version_id !== point.recipe_version_id) {
         const summary = trends.versions.find(
-          (version) => version.set_version_id === point.set_version_id,
+          (version) => version.recipe_version_id === point.recipe_version_id,
         );
         marks.push({
           at: index,

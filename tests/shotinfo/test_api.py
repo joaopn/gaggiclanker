@@ -275,7 +275,7 @@ async def test_an_unknown_item_is_a_404_that_does_not_echo_the_key(
     assert "no_such_item_xyz" not in response.text
 
 
-@pytest.mark.parametrize("key", ["shot_id", "set_version", "counted"])
+@pytest.mark.parametrize("key", ["shot_id", "recipe_version", "counted"])
 async def test_a_locked_item_is_refused_with_a_code_of_its_own(
     client: httpx.AsyncClient, key: str
 ) -> None:

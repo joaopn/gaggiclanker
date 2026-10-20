@@ -60,9 +60,9 @@ describe("the turns a profile card sends", () => {
   });
 
   it("tells a first recipe's accept, and the new name of its profile when it was renamed", () => {
-    expect(acceptedMessage(design)).toBe("Accepted: your first recipe is now v1 of this Set.");
+    expect(acceptedMessage(design)).toBe("Accepted: your first version is now v1 of this Recipe.");
     expect(acceptedMessage(design, { name: "Gentle Bloom", proposedAs: "Soft Bloom" })).toBe(
-      "Accepted: your first recipe is now v1 of this Set, with its profile named Gentle Bloom (you proposed it as Soft Bloom).",
+      "Accepted: your first version is now v1 of this Recipe, with its profile named Gentle Bloom (you proposed it as Soft Bloom).",
     );
   });
 });

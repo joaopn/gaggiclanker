@@ -132,7 +132,7 @@ describe("the dialog's default state", () => {
 
     await waitFor(() => expect(duplicateVersion).toHaveBeenCalledTimes(1));
     expect(duplicateVersion).toHaveBeenCalledWith(3, 22, {
-      set_name: "Guji milk",
+      recipe_name: "Guji milk",
       profile_name: "Blooming milk",
       bean_id: 1,
       grinder_id: 1,
@@ -188,7 +188,7 @@ describe("a version with no profile", () => {
     getDuplicatePreview.mockResolvedValue(
       duplicatePreview({
         has_profile: false,
-        recipe: { ...duplicatePreview().recipe, profile_label: null },
+        version_fields: { ...duplicatePreview().version_fields, profile_label: null },
       }),
     );
     const user = setupUser();
@@ -448,7 +448,7 @@ describe("an insight that went while the dialog was open", () => {
       new ApiClientError("A Set needs a name", {
         status: 422,
         code: "UNPROCESSABLE_ENTITY",
-        details: { field: "set_name" },
+        details: { field: "recipe_name" },
       }),
     );
     const user = setupUser();

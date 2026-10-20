@@ -40,11 +40,11 @@ from gaggiclanker.db.repos.lineage import person_taken_sentence
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.recipes import (
+    RecipeRow,
     RecipesRepository,
+    RecipeVersionRow,
+    RecipeVersionWrite,
     RecipeWrite,
-    SetRow,
-    SetVersionRow,
-    SetVersionWrite,
 )
 from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.copies import (
@@ -61,10 +61,10 @@ __all__ = [
     "DuplicateAnswer",
     "DuplicateInsight",
     "DuplicatePreview",
-    "DuplicateRecipe",
     "DuplicateRefused",
     "DuplicateRequest",
     "DuplicateService",
+    "DuplicateVersionFields",
     "ProfileDuplicateRequest",
 ]
 
@@ -86,8 +86,8 @@ class DuplicateRefused(Conflict):
         super().__init__(message, code=code, details=details)
 
 
-class DuplicateRecipe(BaseModel):
-    """The source version's recipe, as the dialog's read-only line says it."""
+class DuplicateVersionFields(BaseModel):
+    """The source version's numbers, as the dialog's read-only line says it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -102,7 +102,7 @@ class DuplicateRecipe(BaseModel):
 
 
 class DuplicateInsight(BaseModel):
-    """One of the source Set's own confirmed insights, offered for copying."""
+    """One of the source Recipe's own confirmed insights, offered for copying."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -117,10 +117,10 @@ class DuplicatePreview(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     #: "<source Recipe's name> (copy)".
-    set_name: str
+    recipe_name: str
     bean_id: int
     grinder_id: int | None = None
-    recipe: DuplicateRecipe
+    version_fields: DuplicateVersionFields
     #: Whether the version names a profile; when it does not, the duplicate has none either and
     #: asks for no profile name.
     has_profile: bool
@@ -134,7 +134,7 @@ class DuplicateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    set_name: str
+    recipe_name: str
     #: Required (and non-blank) when the version has a profile; must be left out when it has none.
     profile_name: str | None = None
     bean_id: int
@@ -154,12 +154,12 @@ class ProfileDuplicateRequest(BaseModel):
 
 
 class DuplicateAnswer(BaseModel):
-    """`POST .../duplicate`: the new Set, and the id of the profile-list row of its new profile
+    """`POST .../duplicate`: the new Recipe, and the id of the profile-list row of its new profile
     (``None`` for a duplicate of a version that names no profile)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    set: SetRow
+    recipe: RecipeRow
     board_id: int | None = None
 
 
@@ -167,8 +167,8 @@ class DuplicateAnswer(BaseModel):
 class _Source:
     """What one look at the source found."""
 
-    recipe_row: SetRow
-    version: SetVersionRow
+    recipe_row: RecipeRow
+    version: RecipeVersionRow
     insights: list[DuplicateInsight]
     sources: dict[int, str]
     #: Each offered insight's first original: its own id, or the one it is itself a copy of.
@@ -188,27 +188,29 @@ class DuplicateService:
         self.insights = InsightsRepository(db)
         self.copier = ProfileCopier(board)
 
-    async def inspect(self, set_id: int, version_id: int) -> _Source:
+    async def inspect(self, recipe_id: int, version_id: int) -> _Source:
         """The source version and what can be copied from it. Reads only.
 
         404 for a Recipe or version that is not there (or a version of another Recipe); 409
         ``DESIGNING`` for a Recipe whose first recipe is not written yet. An archived Recipe is
         fine: a finished bag is the usual starting point.
         """
-        recipe_row = await self.recipes.get(set_id)
+        recipe_row = await self.recipes.get(recipe_id)
         if recipe_row is None:
             raise NotFound(RECIPE_GONE)
-        version = await self.recipes.version_of_recipe(set_id, version_id)
+        version = await self.recipes.version_of_recipe(recipe_id, version_id)
         if version is None:
             raise NotFound(VERSION_NOT_OF_RECIPE)
         if recipe_row.designing:
             raise DuplicateRefused(
                 "DESIGNING",
-                "This Set is still being designed: there is no version to copy yet.",
+                "This Recipe is still being designed: there is no version to copy yet.",
             )
-        confirmed = [item for item in await self.insights.own(set_id) if item.confirmed]
+        confirmed = [item for item in await self.insights.own(recipe_id) if item.confirmed]
         # The order the Recipe page lists them in: by version, the newest version's group first.
-        own = grouped_by_version(confirmed, [row.id for row in await self.recipes.versions(set_id)])
+        own = grouped_by_version(
+            confirmed, [row.id for row in await self.recipes.versions(recipe_id)]
+        )
         return _Source(
             recipe_row=recipe_row,
             version=version,
@@ -216,19 +218,19 @@ class DuplicateService:
             sources={i.id: i.source for i in own},
             originals={i.id: i.copied_from_insight_id or i.id for i in own},
             home_recipes={
-                i.id: i.copied_from_set_id if i.copied_from_set_id is not None else set_id
+                i.id: i.copied_from_recipe_id if i.copied_from_recipe_id is not None else recipe_id
                 for i in own
             },
         )
 
-    async def preview(self, set_id: int, version_id: int) -> DuplicatePreview:
-        found = await self.inspect(set_id, version_id)
+    async def preview(self, recipe_id: int, version_id: int) -> DuplicatePreview:
+        found = await self.inspect(recipe_id, version_id)
         version = found.version
         return DuplicatePreview(
-            set_name=_suggested_name(found.recipe_row.name),
+            recipe_name=_suggested_name(found.recipe_row.name),
             bean_id=found.recipe_row.bean_id,
             grinder_id=found.recipe_row.grinder_id,
-            recipe=DuplicateRecipe(
+            version_fields=DuplicateVersionFields(
                 profile_label=version.profile_label,
                 grind_setting=version.grind_setting,
                 grind_value=version.grind_value,
@@ -241,21 +243,21 @@ class DuplicateService:
         )
 
     async def duplicate(
-        self, set_id: int, version_id: int, request: DuplicateRequest
+        self, recipe_id: int, version_id: int, request: DuplicateRequest
     ) -> DuplicateAnswer:
         """Make the new Recipe: the profile, the Recipe with its first version and the insights, in
         one transaction. Nothing is sent to the machine: the next sync with Writes on puts the new
         profile there."""
         async with self.db.transaction():
-            found = await self.inspect(set_id, version_id)
+            found = await self.inspect(recipe_id, version_id)
             version = found.version
-            set_name = request.set_name.strip()
-            if not set_name:
-                raise Unprocessable("A Set needs a name.", details={"field": "set_name"})
-            if len(set_name) > RECIPE_NAME_MAX:
+            recipe_name = request.recipe_name.strip()
+            if not recipe_name:
+                raise Unprocessable("A Recipe needs a name.", details={"field": "recipe_name"})
+            if len(recipe_name) > RECIPE_NAME_MAX:
                 raise Unprocessable(
-                    f"A Set name is at most {RECIPE_NAME_MAX} characters.",
-                    details={"field": "set_name"},
+                    f"A Recipe name is at most {RECIPE_NAME_MAX} characters.",
+                    details={"field": "recipe_name"},
                 )
             has_profile = version.profile_version_id is not None
             if has_profile and (request.profile_name is None or not request.profile_name.strip()):
@@ -268,7 +270,8 @@ class DuplicateService:
             wanted = list(dict.fromkeys(request.insight_ids))
             if any(i not in found.sources for i in wanted):
                 raise Unprocessable(
-                    "One of the chosen insights is no longer one of this Set's confirmed insights.",
+                    "One of the chosen insights is no longer one of this Recipe's confirmed "
+                    "insights.",
                     details={"field": "insight_ids"},
                 )
             if await BeansRepository(self.db).get(request.bean_id) is None:
@@ -295,8 +298,10 @@ class DuplicateService:
                 profile_version_id = row.current_version_id
 
             new_id = await self.recipes.create_in_transaction(
-                RecipeWrite(name=set_name, bean_id=request.bean_id, grinder_id=request.grinder_id),
-                SetVersionWrite(
+                RecipeWrite(
+                    name=recipe_name, bean_id=request.bean_id, grinder_id=request.grinder_id
+                ),
+                RecipeVersionWrite(
                     profile_version_id=profile_version_id,
                     grind_setting=version.grind_setting,
                     grind_value=version.grind_value,
@@ -316,14 +321,14 @@ class DuplicateService:
                             text=item.text,
                             source=cast(InsightSource, found.sources[item.id]),
                             confirmed=True,
-                            set_id=new_id,
+                            recipe_id=new_id,
                             copied_from_insight_id=found.originals[item.id],
-                            copied_from_set_id=found.home_recipes[item.id],
+                            copied_from_recipe_id=found.home_recipes[item.id],
                         )
                     )
         created = await self.recipes.get(new_id)
         assert created is not None
-        return DuplicateAnswer(set=created, board_id=board_id)
+        return DuplicateAnswer(recipe=created, board_id=board_id)
 
     async def duplicate_profile(
         self, version_id: int, request: ProfileDuplicateRequest
