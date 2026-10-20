@@ -773,3 +773,111 @@ async def test_an_edited_copy_keeps_its_flag(adopted: Adopted) -> None:
     assert data(edited)["text"] == "Grind finer than 2.4 runs sour"
     assert data(edited)["copied_from_insight_id"] == only
     assert await _copy_flags(app, b["id"]) == [only]
+
+
+# ── Duplicate Profile ────────────────────────────────────────────────
+
+
+def _profile_url(version_id: int) -> str:
+    return f"/api/profile-versions/{version_id}/duplicate"
+
+
+async def test_duplicate_profile_puts_a_new_profile_on_the_list_with_the_edited_document(
+    adopted: Adopted,
+) -> None:
+    app, client, _fake = adopted
+    base = await base_version_id(app, BASE_LABEL)
+    original = await ProfilesRepository(app.state.db).get_version(base)
+    assert original is not None and original.profile is not None
+    edited = {**original.profile, "label": "Ignored", "description": "Edited before saving"}
+
+    answered = await client.post(
+        _profile_url(base), json={"name": "  Blooming milk ", "profile": edited}
+    )
+
+    assert answered.status_code == 201
+    row = data(answered)
+    assert row["label"] == "Blooming milk" and row["on_machine"] is True
+    copy = await ProfilesRepository(app.state.db).get_version(row["current_version_id"])
+    assert copy is not None and copy.profile is not None and copy.id != base
+    assert copy.profile["label"] == "Blooming milk", "the name, not the document's label"
+    assert copy.profile["description"] == "Edited before saving"
+    board = await get_board(client)
+    assert "Blooming milk" in [r["row"]["label"] for r in board["rows"]]
+    drafts = data(await client.get("/api/profile-drafts", params={"status": "draft"}))
+    assert drafts["items"] == [], "never a proposal waiting on the Profiles page"
+    choices = data(await client.get("/api/sets/profile-choices"))
+    assert {"profile_version_id": copy.id, "label": "Blooming milk"} in choices["items"]
+
+
+async def test_duplicate_profile_without_a_document_copies_the_version(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    base = await base_version_id(app, BASE_LABEL)
+
+    row = data(await client.post(_profile_url(base), json={"name": "Plain copy"}))
+
+    profiles = ProfilesRepository(app.state.db)
+    original = await profiles.get_version(base)
+    copy = await profiles.get_version(row["current_version_id"])
+    assert original is not None and copy is not None and copy.profile and original.profile
+    assert {**copy.profile, "label": ""} == {**original.profile, "label": ""}
+
+
+async def test_duplicate_profile_refuses_the_originals_name_and_any_taken_one(
+    adopted: Adopted,
+) -> None:
+    app, client, _fake = adopted
+    base = await base_version_id(app, BASE_LABEL)
+    before = await _counts(app)
+
+    for typed in (BASE_LABEL, f" {BASE_LABEL.lower()} "):
+        refused = await client.post(_profile_url(base), json={"name": typed})
+        assert refused.status_code == 409 and error(refused)["code"] == "PROFILE_NAME_TAKEN"
+        assert error(refused)["message"] == (
+            f"There is already a profile called {BASE_LABEL}. Choose another name."
+        )
+    assert await _counts(app) == before
+
+
+async def test_duplicate_profile_refusals_write_nothing(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    base = await base_version_id(app, BASE_LABEL)
+    before = await _counts(app)
+
+    empty = await client.post(_profile_url(base), json={"name": "   "})
+    broken = await client.post(_profile_url(base), json={"name": "X", "profile": {"label": "X"}})
+    missing = await client.post(_profile_url(999_999), json={"name": "X"})
+
+    assert empty.status_code == 422
+    assert broken.status_code == 422 and error(broken)["details"]["schema_errors"]
+    assert missing.status_code == 404
+    await app.state.settings_service.apply({"profilePolicyPressureMaxBar": 7.5})
+    clamped = await client.post(_profile_url(base), json={"name": "Too hot"})
+    assert clamped.status_code == 409 and error(clamped)["code"] == "PROFILE_POLICY_REFUSED"
+    assert await _counts(app) == before
+
+
+async def test_duplicate_profile_refuses_a_pins_copy(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    pin = data(await client.post(_url(set_id, version_id, "pin"), json={}))["pin"]
+    before = await _counts(app)
+
+    refused = await client.post(_profile_url(pin["profile_version_id"]), json={"name": "Again"})
+
+    assert refused.status_code == 409 and error(refused)["code"] == "PROFILE_IS_A_PIN"
+    assert await _counts(app) == before
+
+
+async def test_profile_choices_list_the_taken_profiles_with_their_set(adopted: Adopted) -> None:
+    app, client, _fake = adopted
+    set_id, version_id = await _set_with_version(app, client)
+    data(await client.post(_url(set_id, version_id, "pin"), json={}))
+    base = await base_version_id(app, BASE_LABEL)
+
+    choices = data(await client.get("/api/sets/profile-choices"))
+
+    assert all(c["profile_version_id"] != base for c in choices["items"])
+    assert choices["taken"] == [
+        {"profile_version_id": base, "label": BASE_LABEL, "set_id": set_id, "set_name": "Guji"}
+    ], "the profile with its Set, and never the pin's copy"

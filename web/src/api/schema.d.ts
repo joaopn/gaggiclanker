@@ -1648,6 +1648,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile-versions/{version_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a new profile from this version, under a new name, on the profile list
+         * @description The new profile: the version's document (or the edited one in `profile`) under `name`, put
+         *     on the list switched on, in one transaction. Nothing is sent to the machine now. Refused,
+         *     nothing written: 404; 422 for an empty name or a document that is not a profile; 409
+         *     `PROFILE_IS_A_PIN`, `PROFILE_NAME_TAKEN` (the original's name included) and
+         *     `PROFILE_POLICY_REFUSED`.
+         */
+        post: operations["duplicate_profile_api_profile_versions__version_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-versions/{version_id}/signature": {
         parameters: {
             query?: never;
@@ -2504,6 +2528,9 @@ export interface paths {
          *     profile stands on and no Set names (with Writes off the list has no profiles, so the files
          *     are what there is). Exactly what New Set and a Set with no profile accept: one function
          *     decides both.
+         *
+         *     `taken` lists the profiles that have a Set, with that Set, which New Set offers to duplicate
+         *     (Duplicate Profile) and never accepts as they are.
          */
         get: operations["profile_choices_api_sets_profile_choices_get"];
         put?: never;
@@ -6937,6 +6964,11 @@ export interface components {
         ProfileChoiceListData: {
             /** Items */
             items: components["schemas"]["ProfileChoice"][];
+            /**
+             * Taken
+             * @default []
+             */
+            taken: components["schemas"]["TakenProfileChoice"][];
         };
         /**
          * ProfileDetailData
@@ -7083,6 +7115,18 @@ export interface components {
             /** Updated At */
             updated_at: string;
             verification?: components["schemas"]["JsonObject"];
+        };
+        /**
+         * ProfileDuplicateRequest
+         * @description `POST /api/profile-versions/{id}/duplicate`: what the Duplicate Profile dialog sends.
+         */
+        ProfileDuplicateRequest: {
+            /** Name */
+            name: string;
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * ProfileListData
@@ -9593,6 +9637,20 @@ export interface components {
              * @default false
              */
             running: boolean;
+        };
+        /**
+         * TakenProfileChoice
+         * @description A profile a new Set cannot start on because it has a Set: New Set lists it to duplicate.
+         */
+        TakenProfileChoice: {
+            /** Label */
+            label: string;
+            /** Profile Version Id */
+            profile_version_id: number;
+            /** Set Id */
+            set_id: number;
+            /** Set Name */
+            set_name: string;
         };
         /**
          * TargetSpec
@@ -12693,6 +12751,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ProfileVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_profile_api_profile_versions__version_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileDuplicateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
                 };
             };
             /** @description Validation Error */

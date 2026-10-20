@@ -241,10 +241,24 @@ class ProfileChoice(BaseModel):
     label: str
 
 
+class TakenProfileChoice(BaseModel):
+    """A profile a new Set cannot start on because it has a Set: New Set lists it to duplicate."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The profile's active version, the one Duplicate Profile opens on.
+    profile_version_id: int
+    label: str
+    set_id: int
+    set_name: str
+
+
 class ProfileChoiceListData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ProfileChoice]
+    #: Profiles that have a Set, for New Set to offer as duplicates; never accepted as a start.
+    taken: list[TakenProfileChoice] = []
 
 
 class VersionPinned(BaseModel):
@@ -789,13 +803,22 @@ async def profile_choices(sets: SetsRepoDep) -> JSONResponse:
     """The active version of each profile that has no Set, then each mirrored machine file no
     profile stands on and no Set names (with Writes off the list has no profiles, so the files
     are what there is). Exactly what New Set and a Set with no profile accept: one function
-    decides both."""
+    decides both.
+
+    `taken` lists the profiles that have a Set, with that Set, which New Set offers to duplicate
+    (Duplicate Profile) and never accepts as they are."""
     return envelope_response(
         ProfileChoiceListData(
             items=[
                 ProfileChoice(profile_version_id=i, label=label)
                 for i, label in await sets.profile_choices()
-            ]
+            ],
+            taken=[
+                TakenProfileChoice(
+                    profile_version_id=i, label=label, set_id=set_id, set_name=set_name
+                )
+                for i, label, set_id, set_name in await sets.taken_profile_choices()
+            ],
         ).model_dump(mode="json")
     )
 

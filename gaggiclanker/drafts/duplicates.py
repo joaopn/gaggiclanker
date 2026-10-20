@@ -23,7 +23,7 @@ class: it is built over the board service, which only the routes receive.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -37,6 +37,8 @@ from gaggiclanker.db.repos.knowledge_insights import (
     grouped_by_version,
 )
 from gaggiclanker.db.repos.lineage import person_taken_sentence
+from gaggiclanker.db.repos.pins import PinsRepository
+from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.sets import (
     SetRow,
     SetsRepository,
@@ -63,6 +65,7 @@ __all__ = [
     "DuplicateRefused",
     "DuplicateRequest",
     "DuplicateService",
+    "ProfileDuplicateRequest",
 ]
 
 
@@ -137,6 +140,17 @@ class DuplicateRequest(BaseModel):
     bean_id: int
     grinder_id: int | None = None
     insight_ids: list[int] = []
+
+
+class ProfileDuplicateRequest(BaseModel):
+    """`POST /api/profile-versions/{id}/duplicate`: what the Duplicate Profile dialog sends."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The new profile's name. Required: the dialog offers no default.
+    name: str
+    #: The document as the person edited it; left out, the copy brews exactly the version.
+    profile: dict[str, Any] | None = None
 
 
 class DuplicateAnswer(BaseModel):
@@ -311,14 +325,40 @@ class DuplicateService:
         assert created is not None
         return DuplicateAnswer(set=created, board_id=board_id)
 
-    async def _prepared(self, base_version_id: int, name: str) -> PreparedCopy:
+    async def duplicate_profile(
+        self, version_id: int, request: ProfileDuplicateRequest
+    ) -> BoardRow:
+        """Duplicate Profile: a new profile from one version, under the name the person typed, with
+        the document as they edited it, put on the list switched on. One transaction, and nothing
+        is sent to the machine: the next sync with Writes on puts it there.
+
+        Always a new profile: the original's own name is refused like any other taken name, so a
+        duplicate is never read as a new version of the profile it came from. Refused, nothing
+        written: 404 for a version that is not there; 422 for an empty name or a document that is
+        not a profile; 409 ``PROFILE_IS_A_PIN``, ``PROFILE_NAME_TAKEN`` and
+        ``PROFILE_POLICY_REFUSED``.
+        """
+        async with self.db.transaction():
+            if await self.board.profiles.get_version(version_id) is None:
+                raise NotFound(f"No profile version {version_id}")
+            if await PinsRepository(self.db).is_copy(version_id):
+                raise DuplicateRefused(
+                    "PROFILE_IS_A_PIN",
+                    "That version is the copy of a pin: duplicate the profile it was pinned from.",
+                )
+            copy = await self._prepared(version_id, request.name, document=request.profile)
+            return await self.copier.put(copy, carry_signature=True)
+
+    async def _prepared(
+        self, base_version_id: int, name: str, *, document: dict[str, Any] | None = None
+    ) -> PreparedCopy:
         """The copy's document, or the one refusal that says why there is none.
 
         A name that is the copy of a pin (live or since unpinned) is refused by the copy function
         itself, with the sentence the pin screens use.
         """
         try:
-            copy = await self.copier.prepare(base_version_id, name)
+            copy = await self.copier.prepare(base_version_id, name, document=document)
         except TakenName as taken:
             raise _name_taken(person_taken_sentence(taken.existing), taken.label) from None
         except PinnedCopyName as named:

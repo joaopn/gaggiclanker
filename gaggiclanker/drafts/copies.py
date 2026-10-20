@@ -20,12 +20,15 @@ judged by the original's.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+
+from pydantic import ValidationError
 
 from gaggiclanker.db.repos.profile_board import BoardRow
-from gaggiclanker.domain.models import brew_hash
+from gaggiclanker.domain.models import Profile, brew_hash
 from gaggiclanker.domain.profile_policy import PolicyChange, outside_bounds_sentence
 from gaggiclanker.drafts.board import BoardService
-from gaggiclanker.drafts.proposals import PreparedDraft
+from gaggiclanker.drafts.proposals import PreparedDraft, schema_errors
 from gaggiclanker.infra.errors import Conflict, Unprocessable
 
 __all__ = [
@@ -71,18 +74,37 @@ class ProfileCopier:
         self.proposals = board.proposals
 
     async def prepare(
-        self, base_version_id: int, label: str, *, for_pin: bool = False
+        self,
+        base_version_id: int,
+        label: str,
+        *,
+        for_pin: bool = False,
+        document: dict[str, Any] | None = None,
     ) -> PreparedCopy:
         """The copy's document, or the reason there is none. Reads only; stores nothing.
 
-        Refused, each with its own error: an empty name (422), a name a live profile has (the
-        constructor's :class:`TakenName`, 409), and a profile the safety policy would change
+        ``document`` is the copy a person edited before saving it (Duplicate Profile's editor);
+        without one the copy is the version's own profile. Either way it is stored under
+        ``label``, whatever label the document carries.
+
+        Refused, each with its own error: an empty name (422), a document that is not a profile
+        (422, with the schema's errors), a name a live profile has (the constructor's
+        :class:`TakenName`, 409), and a profile the safety policy would change
         (:class:`CopyBeyondPolicy`, 409, carrying the clamp's list or the check's violations).
         """
         base = await self.proposals.base_profile(base_version_id)
         name = label.strip()
         if not name:
             raise Unprocessable("A profile needs a name")
+        source = base
+        if document is not None:
+            try:
+                source = Profile.model_validate(document)
+            except ValidationError as exc:
+                raise Unprocessable(
+                    "That document is not a valid GaggiMate profile",
+                    details={"schema_errors": schema_errors(exc)},
+                ) from None
         # A copy is a profile of its own whatever its name: it is asked for as a new profile, so
         # a copy named like its original is refused as a taken name, never read as a new version
         # of the original.
@@ -90,7 +112,7 @@ class ProfileCopier:
             prepared = await self.proposals.prepare(
                 base_version_id,
                 base,
-                base.model_copy(update={"label": name}),
+                source.model_copy(update={"label": name}),
                 new_profile_name=name,
                 is_new=True,
                 for_pin=for_pin,

@@ -1312,6 +1312,22 @@ class SetsRepository(Repository):
             chosen.append((version_id, str(entry["label"])))
         return chosen
 
+    async def taken_profile_choices(self) -> list[tuple[int, str, int, str]]:
+        """The profiles New Set cannot start on because each has a Set already, as ``(active
+        version id, profile name, Set id, Set name)``: every live profile with a Set, archived Sets
+        included (a profile keeps its Set when the Set is archived). Picking one in New Set opens
+        Duplicate Profile on its active version. A pin's copy is never offered, since it has no Set
+        of its own and is not to be copied."""
+        rows = await self.db.fetch_all(
+            "SELECT b.current_version_id AS id, b.label AS label, s.id AS set_id, "
+            "s.name AS set_name FROM profile_board b JOIN sets s ON s.board_id = b.id "
+            "WHERE b.deleted_at IS NULL "
+            "AND NOT EXISTS (SELECT 1 FROM set_version_pins p "
+            "WHERE p.profile_version_id = b.current_version_id) "
+            "ORDER BY b.label COLLATE NOCASE, b.id"
+        )
+        return [(int(r["id"]), str(r["label"]), int(r["set_id"]), str(r["set_name"])) for r in rows]
+
     async def create_design(self, spec: SetWrite, brief: DesignBrief) -> SetRow:
         """Create a Set to be designed in its conversation, atomically.
 
