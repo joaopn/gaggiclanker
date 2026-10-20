@@ -132,6 +132,26 @@
   --status-bad: var(--destructive);
   --status-info: #3a6786;
 
+  /* A Recipe version's drink as a badge: one background, one text and one outline per drink.
+     Espresso dark brown, Americano slate blue, Cappuccino caramel, Latte cream with an
+     outline, Other neutral grey. The word is always printed, so colour is never the only
+     signal; each text is at least 4.5:1 on its own background (DrinkBadge.test.tsx reads these). */
+  --drink-espresso-bg: #4a2f1d;
+  --drink-espresso-fg: #fffdf9;
+  --drink-espresso-border: #4a2f1d;
+  --drink-americano-bg: #3f5a78;
+  --drink-americano-fg: #ffffff;
+  --drink-americano-border: #3f5a78;
+  --drink-cappuccino-bg: #d49a58;
+  --drink-cappuccino-fg: #2a1a0a;
+  --drink-cappuccino-border: #b37a35;
+  --drink-latte-bg: #fbf1dc;
+  --drink-latte-fg: #4a3a28;
+  --drink-latte-border: #857048;
+  --drink-other-bg: #d9d6d1;
+  --drink-other-fg: #2f2c28;
+  --drink-other-border: #a8a39b;
+
   --status-good-text: color-mix(in oklab, var(--status-good) 60%, var(--foreground));
   --status-warn-text: color-mix(in oklab, var(--status-warn) 60%, var(--foreground));
   --status-bad-text: color-mix(in oklab, var(--status-bad) 60%, var(--foreground));
@@ -182,6 +202,22 @@
   --status-warn: #d8b566;
   --status-bad: var(--destructive);
   --status-info: #8fb4d0;
+
+  --drink-espresso-bg: #5a3a24;
+  --drink-espresso-fg: #f4e9dc;
+  --drink-espresso-border: #8a6446;
+  --drink-americano-bg: #3d5a78;
+  --drink-americano-fg: #eaf1f8;
+  --drink-americano-border: #6d8db0;
+  --drink-cappuccino-bg: #c58a45;
+  --drink-cappuccino-fg: #1f1408;
+  --drink-cappuccino-border: #e0a860;
+  --drink-latte-bg: #efe0c0;
+  --drink-latte-fg: #2b2216;
+  --drink-latte-border: #f7ecd4;
+  --drink-other-bg: #4a463f;
+  --drink-other-fg: #ece5db;
+  --drink-other-border: #7a746a;
 
   color-scheme: dark;
 }
