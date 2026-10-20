@@ -135,6 +135,15 @@ one that never named a profile), which takes a profile no Recipe has. That is al
 next shots landing in the Recipe, because a shot joins the one Recipe that brews the profile it was
 pulled with. To try a bean on a copy of a Recipe's profile, use **Duplicate Recipe**, or pick that profile in New Recipe, which duplicates it.
 
+**A version also says what it is for: its drink and drink notes.** The drink is what is
+added to the shot after it leaves the portafilter (Espresso, Americano, Cappuccino, Latte or
+Other) and the notes say how the drink is made around it, in your words. They are inherited
+like the numbers, so each new version keeps them until it changes them (empty notes take them
+away; a drink once stated is never unstated). They are not among the five numbers and play no
+part in what counts as a repeat. A version made before drinks were recorded states no drink,
+which is not Espresso. Changing the drink suggests a major version, and the agent reads the
+drink's knowledge entry whenever it is asked about the Recipe.
+
 **The brew temperature is not one of the five**, and there is nowhere to type
 one: the machine heats to what the profile says, so a number written on a Recipe
 would have been a claim about a document it does not control. Both forms

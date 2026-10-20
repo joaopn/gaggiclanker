@@ -13,6 +13,49 @@ database.
 
 ## [Unreleased]
 
+### A drink and drink notes on every Recipe version
+
+- **New: a Recipe version says what it is for.** The **drink** is what is added to the shot after
+  it leaves the portafilter: Espresso, Americano, Cappuccino, Latte or Other. The **drink notes**
+  say how the drink is made around the shot, in your words ("oat milk, about 150 ml; one pump of
+  vanilla"). Both belong to the version, and the next version keeps them until someone changes
+  them. A new Recipe needs a drink, and so does a suggestion or a design the agent is asked for;
+  Duplicate Recipe copies both. Changing the drink is a change like any other, and suggests a
+  major version ("the drink changes"); you still pick. The screens do not offer the choice yet:
+  until they do, a Recipe made from the New Recipe dialog is an Espresso one.
+- **New: the agent knows the drink.** A Recipe conversation, a design, a starting point and a
+  review are told the drink, and are handed the knowledge base's entry for it whole (so an entry
+  you edited is the one read). It is kept apart from the retrieved excerpts, which never repeat it.
+  `propose_recipe_version` can change the drink and the notes; `propose_initial_recipe` does not,
+  since you chose the drink in the dialog. A drink nobody stated is never mentioned.
+- **New: four knowledge entries**, Espresso, Americano, Cappuccino and Latte (Other has none), each
+  saying what the type covers, what the shot has to do in that cup, what that tends to mean for the
+  recipe, what tastes wrong and what it points to, and how the notes matter. The drink text that
+  was in the milk document ("Espresso Drinks": the format recommendations and the drink
+  specifications) moved into the Cappuccino and Latte entries, and the line telling the reader
+  never to adjust the shot for milk is gone, because the entries say the opposite. The seed
+  refreshes entries you have not edited and never deletes: **if you edited the milk document, your
+  copy still has the "Espresso Drinks" section; delete it by hand.** If you edited the review or
+  the starting-point user prompt, it does not have the new `{{drink}}` variable until you add it
+  (or reset the prompt); until then the drink's entry is not handed over, and reaches the model
+  only if the usual search for reference passages happens to pick it.
+- **Changed: the rule for ratios of milk drinks and ristretto** (`ristretto_and_milk`) now applies
+  to Cappuccino and Latte recipes only, through a new `drink:` signal that a review and the chat's
+  `get_rules` carry. Its text is unchanged.
+- **API:** `POST /api/recipes` needs `version.drink`; `POST /api/recipes/design` and
+  `POST /api/starting-points` need `drink`. Versions, the Recipes list, the shots list and detail
+  (`recipe_drink`), the proposal's change lines, `GET /api/vocab` (`drinks`) and the query views
+  (`v_recipe_versions`, `v_shots`) serve them. The shot information gains the items "Recipe drink"
+  and "Recipe drink notes", left out of the chat by default like the other Recipe items.
+- **What changes in the database:** the versions table gains two trailing columns, `drink` (empty,
+  or one of the five) and `drink_notes` (empty by default), and the two views that show a version
+  are made again to carry them.
+- **Carried forward:** every row, with "no drink stated", which is true of every version made
+  before. No drink stated is not Espresso, and nothing is filled in for you.
+- **What you do:** nothing at start. The upgrade runs at the first start, after the automatic
+  backup, all or nothing. If you want your existing versions marked Espresso, that is a one-off
+  command the maintainer gives separately; the app does not ship one.
+
 ### Sets are now Recipes
 
 - **Changed: what the app called a Set is now a Recipe**, everywhere you read or type it: the page, the list, the buttons, the chat, the prompts, the shots table's column and the address bar (`/recipes`, `?recipe=`). A Recipe is still one bean on one grinder with one profile, versioned. The word recipe no longer also names a version's grind, dose and yield; where the docs mean those they say the numbers.

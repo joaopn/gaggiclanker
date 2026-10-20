@@ -116,6 +116,14 @@ temperature among them: the machine heats to what the profile states, so it is
 read from the version's profile document wherever it is shown, and changing it
 means drafting or editing the profile.
 
+**A version also carries a drink and drink notes, which are not among those five.** They are
+inherited like the numbers (`RECIPE_FIELDS`), but they say what the shot is for, not how it was
+made: they play no part in the repeat grouping, and a different drink suggests a major version.
+`domain/drinks.py` is the one list of drinks: the `CHECK` on `recipe_versions.drink`, the API's
+enum and `/api/vocab` are written against it and a test reads each back. `NULL` is no drink stated
+(every version made before drinks were recorded), never Espresso. The knowledge entry for a drink
+is handed to a conversation or a call whole, outside the excerpt budget (`knowledge/drinks.py`).
+
 **`domain/profile_recipe.py` is the rule for reading it** — the profile's own
 `temperature` when it is a number above 0, because the firmware writes 0 for
 "not set" — and Python reads it there and nowhere else. SQL cannot call Python,
