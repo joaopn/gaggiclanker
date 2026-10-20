@@ -183,24 +183,24 @@ describe("InsightsTab", () => {
     expect(await screen.findByText("Nothing general yet")).toBeInTheDocument();
   });
 
-  it("says it holds general knowledge only, and where a Set's insights live", async () => {
+  it("says it holds general knowledge only, and where a Recipe's insights live", async () => {
     renderWithQueryClient(<InsightsTab />);
 
     expect(await screen.findByTestId("insights-general-only")).toHaveTextContent(
       "general knowledge only",
     );
-    expect(screen.getByTestId("insights-general-only")).toHaveTextContent("that Set's page");
+    expect(screen.getByTestId("insights-general-only")).toHaveTextContent("that Recipe's page");
   });
 
-  it("asks only for the general list: no Set filter, so no Set's insight is on this page", async () => {
+  it("asks only for the general list: no Recipe filter, so no Recipe's insight is on this page", async () => {
     renderWithQueryClient(<InsightsTab />);
     await screen.findByTestId("proposed-insights");
     expect(getKnowledgeInsights).toHaveBeenCalledWith({});
   });
 
-  it("explains that what is waiting here is what could not be placed on one Set", async () => {
+  it("explains that what is waiting here is what could not be placed on one Recipe", async () => {
     renderWithQueryClient(<InsightsTab />);
-    expect(await screen.findByText(/could not place on a single Set/)).toBeInTheDocument();
+    expect(await screen.findByText(/could not place on a single Recipe/)).toBeInTheDocument();
   });
 });
 

@@ -1,98 +1,108 @@
 import { describe, expect, it } from "vitest";
-import type { ChatThread, SetRow } from "@/api/types";
+import type { ChatThread, RecipeRow } from "@/api/types";
 import {
   buildFolders,
   defaultFolderKey,
   GENERAL,
-  latestSetId,
+  latestRecipeId,
 } from "@/components/chat/ConversationPicker";
 
-function set(id: number, created_at: string, over: Partial<SetRow> = {}): SetRow {
-  return { id, name: `Set ${id}`, created_at, current_version_label: "v1", ...over } as SetRow;
+function recipeRow(id: number, created_at: string, over: Partial<RecipeRow> = {}): RecipeRow {
+  return {
+    id,
+    name: `Recipe ${id}`,
+    created_at,
+    current_version_label: "v1",
+    ...over,
+  } as RecipeRow;
 }
 
 function thread(id: number, recipe_id: number | null): ChatThread {
   return { id, recipe_id, title: `t${id}`, updated_at: "2026-03-01T10:00:00.000Z" } as ChatThread;
 }
 
-describe("latestSetId", () => {
-  it("is the Set made last, whatever order the list serves them in", () => {
-    const sets = [
-      set(1, "2026-01-01T00:00:00Z"),
-      set(2, "2026-03-01T00:00:00Z"),
-      set(3, "2026-02-01T00:00:00Z"),
+describe("latestRecipeId", () => {
+  it("is the Recipe made last, whatever order the list serves them in", () => {
+    const recipes = [
+      recipeRow(1, "2026-01-01T00:00:00Z"),
+      recipeRow(2, "2026-03-01T00:00:00Z"),
+      recipeRow(3, "2026-02-01T00:00:00Z"),
     ];
-    expect(latestSetId(sets)).toBe(2);
+    expect(latestRecipeId(recipes)).toBe(2);
   });
 
   it("breaks a tie on the time by the higher id, the later insert", () => {
-    expect(latestSetId([set(7, "2026-01-01T00:00:00Z"), set(5, "2026-01-01T00:00:00Z")])).toBe(7);
-    expect(latestSetId([set(5, "2026-01-01T00:00:00Z"), set(7, "2026-01-01T00:00:00Z")])).toBe(7);
+    expect(
+      latestRecipeId([recipeRow(7, "2026-01-01T00:00:00Z"), recipeRow(5, "2026-01-01T00:00:00Z")]),
+    ).toBe(7);
+    expect(
+      latestRecipeId([recipeRow(5, "2026-01-01T00:00:00Z"), recipeRow(7, "2026-01-01T00:00:00Z")]),
+    ).toBe(7);
   });
 
-  it("is null with no Sets", () => {
-    expect(latestSetId([])).toBeNull();
+  it("is null with no Recipes", () => {
+    expect(latestRecipeId([])).toBeNull();
   });
 });
 
 describe("defaultFolderKey", () => {
-  const sets = [set(1, "2026-01-01T00:00:00Z"), set(2, "2026-03-01T00:00:00Z")];
+  const recipes = [recipeRow(1, "2026-01-01T00:00:00Z"), recipeRow(2, "2026-03-01T00:00:00Z")];
 
-  it("opens the selected conversation's badge first, then a link's, then the newest Set", () => {
-    const folders = buildFolders([thread(10, 1), thread(11, 99)], sets);
-    const pick = (selectedId: number | null, linkedSetId: number | null) =>
-      defaultFolderKey({ folders, sets, selectedId, linkedSetId });
+  it("opens the selected conversation's badge first, then a link's, then the newest Recipe", () => {
+    const folders = buildFolders([thread(10, 1), thread(11, 99)], recipes);
+    const pick = (selectedId: number | null, linkedRecipeId: number | null) =>
+      defaultFolderKey({ folders, recipes, selectedId, linkedRecipeId });
 
-    expect(pick(10, 2)).toBe("set-1");
-    // A conversation whose Set is archived opens that Set's own badge.
+    expect(pick(10, 2)).toBe("recipe-1");
+    // A conversation whose Recipe is archived opens that Recipe's own badge.
     expect(pick(11, null)).toBe("archived-99");
-    expect(pick(null, 1)).toBe("set-1");
-    expect(pick(null, null)).toBe("set-2");
-    // A link naming a Set with no badge falls through to the newest.
-    expect(pick(null, 42)).toBe("set-2");
+    expect(pick(null, 1)).toBe("recipe-1");
+    expect(pick(null, null)).toBe("recipe-2");
+    // A link naming a Recipe with no badge falls through to the newest.
+    expect(pick(null, 42)).toBe("recipe-2");
     // A selected id not in any list yet (just created) falls through too.
-    expect(pick(77, null)).toBe("set-2");
+    expect(pick(77, null)).toBe("recipe-2");
   });
 
-  it("is General when there are no Sets", () => {
+  it("is General when there are no Recipes", () => {
     expect(
       defaultFolderKey({
         folders: buildFolders([], []),
-        sets: [],
+        recipes: [],
         selectedId: null,
-        linkedSetId: null,
+        linkedRecipeId: null,
       }),
     ).toBe(GENERAL);
   });
 });
 
 describe("buildFolders", () => {
-  it("puts the current version on a Set's badge, and none on a Set being designed", () => {
+  it("puts the current version on a Recipe's badge, and none on a Recipe being designed", () => {
     const folders = buildFolders(
       [],
       [
-        set(1, "2026-01-01T00:00:00Z", { current_version_label: "v1.2" }),
-        set(2, "2026-02-01T00:00:00Z", { designing: true }),
+        recipeRow(1, "2026-01-01T00:00:00Z", { current_version_label: "v1.2" }),
+        recipeRow(2, "2026-02-01T00:00:00Z", { designing: true }),
       ],
     );
     expect(folders.map((folder) => folder.versionLabel)).toEqual([null, "v1.2", null]);
   });
 });
 
-describe("buildFolders, archived Sets", () => {
-  it("gives each archived Set its own folder, named from its conversations, after the live ones", () => {
+describe("buildFolders, archived Recipes", () => {
+  it("gives each archived Recipe its own folder, named from its conversations, after the live ones", () => {
     const threads = [
       { ...thread(1, 98), recipe_name: "Old decaf" },
       { ...thread(2, 99), recipe_name: "Finished Ethiopia" },
       { ...thread(3, 98), recipe_name: "Old decaf" },
       thread(4, 1),
     ] as ChatThread[];
-    const folders = buildFolders(threads, [set(1, "2026-01-01T00:00:00Z")]);
+    const folders = buildFolders(threads, [recipeRow(1, "2026-01-01T00:00:00Z")]);
     expect(
       folders.map((folder) => [folder.key, folder.label, folder.archived, folder.canCreate]),
     ).toEqual([
       ["general", "General", false, true],
-      ["set-1", "Set 1", false, true],
+      ["recipe-1", "Recipe 1", false, true],
       ["archived-98", "Old decaf", true, false],
       ["archived-99", "Finished Ethiopia", true, false],
     ]);

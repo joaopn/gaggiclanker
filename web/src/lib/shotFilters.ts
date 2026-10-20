@@ -18,20 +18,20 @@ export type ShotFilterState = {
   to: string;
   profileVersionId: string;
   /**
-   * "" any Set, "needs" the inbox, otherwise a Set id.
+   * "" any Recipe, "needs" the inbox, otherwise a Recipe id.
    *
    * One control for two different server parameters (`needs_recipe` and `recipe_id`)
-   * because to a reader they are one question — "which Set?" — and "not in one
+   * because to a reader they are one question — "which Recipe?" — and "not in one
    * yet" is one of its answers.
    */
-  set: string;
+  recipe: string;
   /**
-   * One version of the Set in `set`, by id, or "" for all of them.
+   * One version of the Recipe in `set`, by id, or "" for all of them.
    *
-   * Only ever meaningful beside a Set: a version id on its own would narrow
-   * the list to a Set the filter bar is not showing, which reads as an empty
+   * Only ever meaningful beside a Recipe: a version id on its own would narrow
+   * the list to a Recipe the filter bar is not showing, which reads as an empty
    * archive with no visible reason. `fromSearchParams` drops it when `set` is
-   * not a Set id, so nothing downstream has to remember the rule.
+   * not a Recipe id, so nothing downstream has to remember the rule.
    */
   version: string;
   minRating: string;
@@ -46,7 +46,7 @@ export const DEFAULT_FILTERS: ShotFilterState = {
   from: "",
   to: "",
   profileVersionId: "",
-  set: "",
+  recipe: "",
   version: "",
   minRating: "",
   source: "",
@@ -70,7 +70,7 @@ const FILTER_KEYS: Array<keyof ShotFilterState> = [
   "from",
   "to",
   "profileVersionId",
-  "set",
+  "recipe",
   // Counted: it narrows the list, and a reader looking at four rows wants the
   // badge to account for every reason there are only four.
   "version",
@@ -123,14 +123,14 @@ export function fromSearchParams(params: URLSearchParams): ShotFilterState {
   const quarantined = params.get("quarantined") ?? "";
   const sort = params.get("sort") ?? "";
   const order = params.get("order") ?? "";
-  const set = params.get("set") ?? "";
+  const recipe = params.get("recipe") ?? "";
   return {
     from: params.get("from") ?? "",
     to: params.get("to") ?? "",
     profileVersionId: params.get("profile_version_id") ?? "",
-    set,
-    // "needs" is the inbox rather than a Set, so it has no versions either.
-    version: set && set !== "needs" ? (params.get("version") ?? "") : "",
+    recipe,
+    // "needs" is the inbox rather than a Recipe, so it has no versions either.
+    version: recipe && recipe !== "needs" ? (params.get("version") ?? "") : "",
     minRating: /^[1-5]$/.test(params.get("min_rating") ?? "")
       ? (params.get("min_rating") as string)
       : "",
@@ -148,8 +148,9 @@ export function toSearchParams(state: ShotFilterState): URLSearchParams {
   if (state.from) params.set("from", state.from);
   if (state.to) params.set("to", state.to);
   if (state.profileVersionId) params.set("profile_version_id", state.profileVersionId);
-  if (state.set) params.set("set", state.set);
-  if (state.set && state.set !== "needs" && state.version) params.set("version", state.version);
+  if (state.recipe) params.set("recipe", state.recipe);
+  if (state.recipe && state.recipe !== "needs" && state.version)
+    params.set("version", state.version);
   if (state.minRating) params.set("min_rating", state.minRating);
   if (state.source) params.set("source", state.source);
   if (state.quarantined) params.set("quarantined", state.quarantined);
@@ -161,20 +162,20 @@ export function toSearchParams(state: ShotFilterState): URLSearchParams {
 export function toParams(state: ShotFilterState, limit: number): ShotListParams {
   const rating = Number.parseInt(state.minRating, 10);
   const profileVersionId = Number.parseInt(state.profileVersionId, 10);
-  const setId = Number.parseInt(state.set, 10);
+  const recipeId = Number.parseInt(state.recipe, 10);
   const versionId = Number.parseInt(state.version, 10);
-  const inSet = Number.isFinite(setId);
+  const inRecipe = Number.isFinite(recipeId);
   return {
     limit,
     from: dayStart(state.from),
     to: dayEnd(state.to),
     profile_version_id: Number.isFinite(profileVersionId) ? profileVersionId : undefined,
-    // "needs" is not a Set id, so the two never travel together.
-    needs_recipe: state.set === "needs" ? true : undefined,
-    recipe_id: inSet ? setId : undefined,
+    // "needs" is not a Recipe id, so the two never travel together.
+    needs_recipe: state.recipe === "needs" ? true : undefined,
+    recipe_id: inRecipe ? recipeId : undefined,
     // Never on its own: the same rule `fromSearchParams` applies, repeated here
     // because `toParams` is also called with state built by hand.
-    recipe_version_id: inSet && Number.isFinite(versionId) ? versionId : undefined,
+    recipe_version_id: inRecipe && Number.isFinite(versionId) ? versionId : undefined,
     min_rating: Number.isFinite(rating) ? rating : undefined,
     source: state.source || undefined,
     quarantined: state.quarantined === "" ? undefined : state.quarantined === "yes",

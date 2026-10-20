@@ -82,21 +82,21 @@ export type ChatStreamEvent = {
 
 /** One tool call and whatever came back, paired for the trace. */
 /**
- * The Set a tool result proposed a change to, or `null`.
+ * The Recipe a tool result proposed a change to, or `null`.
  *
  * Read from the tool's own output rather than guessed from the thread: the
  * output is what the card is built from, and a result that proposed nothing
  * must not invalidate anything.
  */
-export function proposedSetId(content: string | undefined): number | null {
+export function proposedRecipeId(content: string | undefined): number | null {
   if (!content) return null;
   try {
     const parsed: unknown = JSON.parse(content);
     if (!parsed || typeof parsed !== "object") return null;
     const output = parsed as Record<string, unknown>;
     if (output.proposal_id === undefined) return null;
-    const setId = Number(recipeIdOf(output));
-    return Number.isFinite(setId) ? setId : null;
+    const recipeId = Number(recipeIdOf(output));
+    return Number.isFinite(recipeId) ? recipeId : null;
   } catch {
     return null;
   }
@@ -161,16 +161,16 @@ export function useChatTools(
   kind: "general" | "recipe" | null,
   designing = false,
 ): UseQueryResult<ChatToolList, Error> {
-  // A Set still being designed is a third surface: the design tools, and none
-  // that change a recipe it does not have yet. Only a Set conversation can be
+  // A Recipe still being designed is a third surface: the design tools, and none
+  // that change a recipe it does not have yet. Only a Recipe conversation can be
   // one, and it stops being one when its first recipe is accepted — the page
-  // reads the flag off the Sets list, and the key follows it.
+  // reads the flag off the Recipes list, and the key follows it.
   const design = kind === "recipe" && designing;
   return useQuery({
     // `null` is "the page does not know yet" — a conversation is selected and
     // its row has not arrived. Asking for a kind then would mean guessing, and
-    // the guess is visible: the general list would flash beside a Set's chat.
-    queryKey: queryKeys.chat.tools(design ? "set-designing" : (kind ?? "unknown")),
+    // the guess is visible: the general list would flash beside a Recipe's chat.
+    queryKey: queryKeys.chat.tools(design ? "recipe-designing" : (kind ?? "unknown")),
     queryFn: () =>
       design ? getChatTools("recipe", { designing: true }) : getChatTools(kind ?? "general"),
     enabled: kind !== null,
@@ -181,19 +181,19 @@ export function useChatTools(
 export function useCreateChatThread(): UseMutationResult<
   ChatThread,
   Error,
-  { title?: string; setId?: number | null }
+  { title?: string; recipeId?: number | null }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ title, setId }) =>
-      createChatThread({ title: title ?? "", recipe_id: setId ?? null }),
+    mutationFn: ({ title, recipeId }) =>
+      createChatThread({ title: title ?? "", recipe_id: recipeId ?? null }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.chat.all }),
     onError: (error) => toast.error(error.message),
   });
 }
 
 /**
- * Open or continue the conversation about one version of a Set.
+ * Open or continue the conversation about one version of a Recipe.
  *
  * Unlike `useCreateChatThread` this is idempotent: the room already exists most
  * of the time, and Discuss means "take me to it" rather than "make another".
@@ -201,11 +201,11 @@ export function useCreateChatThread(): UseMutationResult<
 export function useOpenChatThread(): UseMutationResult<
   ChatThread,
   Error,
-  { setId: number; setVersionId?: number | null }
+  { recipeId: number; recipeVersionId?: number | null }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ setId, setVersionId }) => openChatThread(setId, setVersionId),
+    mutationFn: ({ recipeId, recipeVersionId }) => openChatThread(recipeId, recipeVersionId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.chat.all }),
     onError: (error) => toast.error(error.message),
   });
@@ -321,10 +321,10 @@ export function useChatRun(runId: number | null, threadId: number | null): LiveR
           // to finish would leave the person looking at a card with no buttons
           // while the model writes three more paragraphs.
           if (event.ok !== false) {
-            const setId = proposedSetId(event.content);
-            if (setId !== null) {
+            const recipeId = proposedRecipeId(event.content);
+            if (recipeId !== null) {
               void queryClient.invalidateQueries({
-                queryKey: queryKeys.sets.proposals(String(setId)),
+                queryKey: queryKeys.recipes.proposals(String(recipeId)),
               });
             }
             // A proposed profile version appears the same way: its card reads where it
@@ -351,12 +351,12 @@ export function useChatRun(runId: number | null, threadId: number | null): LiveR
               queryKey: queryKeys.chat.thread(String(threadId)),
             });
           }
-          // A run may have created a Set version, a draft or an insight, and
+          // A run may have created a Recipe version, a draft or an insight, and
           // each of those is somebody else's page.
-          void queryClient.invalidateQueries({ queryKey: queryKeys.sets.all });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
           void queryClient.invalidateQueries({ queryKey: queryKeys.knowledge.all });
           void queryClient.invalidateQueries({ queryKey: queryKeys.drafts.all });
-          // ...or proposed a signature, which is in force at once: the Profiles card, the Set
+          // ...or proposed a signature, which is in force at once: the Profiles card, the Recipe
           // line and every shot's checks (the shot page and the list's badge) change with it.
           void queryClient.invalidateQueries({ queryKey: queryKeys.signatures.all });
           void queryClient.invalidateQueries({ queryKey: queryKeys.shots.all });

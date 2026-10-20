@@ -6,13 +6,13 @@ import { REVIEW_EXPLAINED, ReviewBox } from "@/components/shots/ReviewBox";
 import { type ClaimSpanControls, useClaimSpan } from "@/lib/claimSpan";
 import { queryKeys } from "@/lib/queryKeys";
 import { claim, evidence, reviewBlock } from "@/test/claimFixtures";
+import { vocabulary } from "@/test/recipesFixtures";
 import {
   createTestQueryClient,
   renderWithQueryClient,
   setupUser,
 } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
-import { vocabulary } from "@/test/setsFixtures";
 import { leverSignedFields } from "@/test/shotFieldsFixture";
 
 vi.mock("sonner", () => ({

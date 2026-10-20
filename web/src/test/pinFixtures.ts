@@ -1,4 +1,4 @@
-import type { BoardRowPin, PinDetail, PinPreview, SetPin } from "@/api/types";
+import type { BoardRowPin, PinDetail, PinPreview, RecipePin } from "@/api/types";
 
 /** A live pin as the pin routes answer it. */
 export function pinDetail(overrides: Partial<PinDetail> = {}): PinDetail {
@@ -21,8 +21,8 @@ export function pinDetail(overrides: Partial<PinDetail> = {}): PinDetail {
   };
 }
 
-/** One line of the Set page's "Pinned on the machine" card. */
-export function setPin(overrides: Partial<SetPin> = {}): SetPin {
+/** One line of the Recipe page's "Pinned on the machine" card. */
+export function recipePin(overrides: Partial<RecipePin> = {}): RecipePin {
   return {
     pin_id: 5,
     recipe_version_id: 22,

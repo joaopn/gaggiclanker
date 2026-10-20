@@ -9,19 +9,19 @@ import {
   useState,
 } from "react";
 import type { ShotListRow, ShotSort } from "@/api/types";
-import { SetBadge } from "@/components/sets/SetBadge";
+import { RecipeBadge } from "@/components/recipes/RecipeBadge";
 import { CheckCell } from "@/components/shots/CheckBadge";
 import { CurveChooser } from "@/components/shots/CurveChooser";
 import { DecisionCell } from "@/components/shots/DecisionCell";
-import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
+import { NeedsRecipeMenu } from "@/components/shots/NeedsRecipeMenu";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ReviewBadge } from "@/components/shots/ReviewBadge";
 import { ShotRowEditor } from "@/components/shots/ShotRowEditor";
 import { ShotRowPanel } from "@/components/shots/ShotRowPanel";
 import { ShotSparkline } from "@/components/shots/ShotSparkline";
 import { Badge } from "@/components/ui/badge";
+import { usePatchJudgement } from "@/hooks/useRecipes";
 import { useRunReview } from "@/hooks/useReview";
-import { usePatchJudgement } from "@/hooks/useSets";
 import { useVirtualRows } from "@/hooks/useVirtualRows";
 import { attempt } from "@/lib/mutations";
 import { setBox } from "@/lib/shotBoxes";
@@ -574,7 +574,7 @@ function ShotRow({
   // Escape anywhere in the row or its panel closes the panel and puts focus
   // back on the row, which is where a keyboard user opened it from — unless
   // the key belongs to something else. A popover inside the row (the
-  // needs-a-Set menu, the row editor) closes itself and must not take the panel
+  // needs-a-Recipe menu, the row editor) closes itself and must not take the panel
   // with it. A text field owns Escape too: it is the key that dismisses an
   // autocomplete list, and an IME composition cancelled with it still delivers
   // the keydown — closing the panel then would unmount the judgement form and
@@ -630,7 +630,7 @@ function ShotRow({
           aria-label={`Compare shot ${shot.device_id}`}
         />
         <div className={cn(GRID, "shrink-0 py-1")}>
-          {/* Cells are divs, not spans: the Set cell can hold an anchored
+          {/* Cells are divs, not spans: the Recipe cell can hold an anchored
               panel, which is block content. */}
           {columns.map((column) => (
             <div
@@ -714,18 +714,18 @@ function Cell({
       return <ReviewCell shot={shot} onOpen={() => onOpenReview(shot.id)} />;
     case "rating":
       return <RatingCell shot={shot} />;
-    case "set":
+    case "recipe":
       // The badge itself is lifted above the row's stretched toggle, not the
       // cell: the empty rest of the cell still toggles the row, and no
       // ancestor of the menu gets a z-index — one would trap the menu's own
       // `z-50` inside this row, under the next row's controls and the sticky
       // header.
       return (
-        <div data-testid="set-badge-slot">
+        <div data-testid="recipe-badge-slot">
           {shot.recipe_badge ? (
-            <SetBadge badge={shot.recipe_badge} className={cn(INTERACTIVE, "max-w-full")} />
+            <RecipeBadge badge={shot.recipe_badge} className={cn(INTERACTIVE, "max-w-full")} />
           ) : (
-            <NeedsSetMenu shot={shot} className={INTERACTIVE} />
+            <NeedsRecipeMenu shot={shot} className={INTERACTIVE} />
           )}
         </div>
       );

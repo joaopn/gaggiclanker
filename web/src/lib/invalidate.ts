@@ -34,58 +34,64 @@ export function invalidateShotSamples(queryClient: QueryClient, shotId: string):
 }
 
 /**
- * A Set, its versions, its shots and its chart.
+ * A Recipe, its versions, its shots and its chart.
  *
- * Deliberately coarse. Saving a judgement changes the shot row, the Set
+ * Deliberately coarse. Saving a judgement changes the shot row, the Recipe
  * detail's own copy of that row and the trend chart's averages; three named
  * invalidations that a call site has to remember all three of is how one of
- * them gets forgotten. Everything under `sets` is at most a handful of
+ * them gets forgotten. Everything under `recipes` is at most a handful of
  * queries.
  */
-export function invalidateSets(queryClient: QueryClient): Promise<void> {
-  return queryClient.invalidateQueries({ queryKey: queryKeys.sets.all }).then(() => undefined);
+export function invalidateRecipes(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all }).then(() => undefined);
 }
 
 /**
- * One Set's page: its detail, and nothing else under the `sets` prefix.
+ * One Recipe's page: its detail, and nothing else under the `recipes` prefix.
  *
- * For the writes that change what one Set page renders and nothing a list or a
- * chart shows — recording a prediction, grading one. The Sets list carries a
+ * For the writes that change what one Recipe page renders and nothing a list or a
+ * chart shows — recording a prediction, grading one. The Recipes list carries a
  * name, a recipe and a version count; the trend chart carries ratings,
  * ratio and duration. Neither shows a prediction or an outcome, so sweeping the whole
  * prefix would refetch two queries to redraw a badge.
  */
-export function invalidateSetDetail(queryClient: QueryClient, setId: string): Promise<void> {
+export function invalidateRecipeDetail(queryClient: QueryClient, recipeId: string): Promise<void> {
   return queryClient
-    .invalidateQueries({ queryKey: queryKeys.sets.detail(setId) })
+    .invalidateQueries({ queryKey: queryKeys.recipes.detail(recipeId) })
     .then(() => undefined);
 }
 
 /**
- * The Sets list, both with and without the archived ones, and nothing else.
+ * The Recipes list, both with and without the archived ones, and nothing else.
  *
- * For the writes that change what a Set's card says without touching its
- * versions' shots or its chart: a Set that starts or stops being designed
+ * For the writes that change what a Recipe's card says without touching its
+ * versions' shots or its chart: a Recipe that starts or stops being designed
  * gains or loses its badge here, and the Chat page reads the same list to know
  * which tools a design conversation has.
  */
-export function invalidateSetList(queryClient: QueryClient): Promise<void> {
+export function invalidateRecipeList(queryClient: QueryClient): Promise<void> {
   return queryClient
-    .invalidateQueries({ queryKey: [...queryKeys.sets.all, "list"] })
+    .invalidateQueries({ queryKey: [...queryKeys.recipes.all, "list"] })
     .then(() => undefined);
 }
 
-/** Every change an agent has proposed for one Set, waiting and answered. */
-export function invalidateSetProposals(queryClient: QueryClient, setId: string): Promise<void> {
+/** Every change an agent has proposed for one Recipe, waiting and answered. */
+export function invalidateRecipeProposals(
+  queryClient: QueryClient,
+  recipeId: string,
+): Promise<void> {
   return queryClient
-    .invalidateQueries({ queryKey: queryKeys.sets.proposals(setId) })
+    .invalidateQueries({ queryKey: queryKeys.recipes.proposals(recipeId) })
     .then(() => undefined);
 }
 
-/** Every grade an agent has proposed for one Set's versions, waiting and answered. */
-export function invalidateOutcomeProposals(queryClient: QueryClient, setId: string): Promise<void> {
+/** Every grade an agent has proposed for one Recipe's versions, waiting and answered. */
+export function invalidateOutcomeProposals(
+  queryClient: QueryClient,
+  recipeId: string,
+): Promise<void> {
   return queryClient
-    .invalidateQueries({ queryKey: queryKeys.sets.outcomeProposals(setId) })
+    .invalidateQueries({ queryKey: queryKeys.recipes.outcomeProposals(recipeId) })
     .then(() => undefined);
 }
 
@@ -99,7 +105,7 @@ export function invalidateChatThreads(queryClient: QueryClient): Promise<void> {
 /**
  * Every open conversation's transcript, and not the list: what the Chat page's
  * heading reads (a version's label, whether it is a dead end) is on the thread
- * detail, which a Set-side change to the current version can move.
+ * detail, which a Recipe-side change to the current version can move.
  */
 export function invalidateChatTranscripts(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: ["chat", "thread"] }).then(() => undefined);
@@ -116,7 +122,7 @@ export function invalidateChatThread(queryClient: QueryClient, threadId: string)
  * Every open shot detail, and no other shots query.
  *
  * A version's prediction reaches a shot through that shot's own detail
- * (`recipe_version`), and it is the only thing about a shot that a Set-side write
+ * (`recipe_version`), and it is the only thing about a shot that a Recipe-side write
  * can change. The shots *list* has no prediction column and the sync counts
  * have nothing to do with it, so `invalidateShots` — which sweeps `["shots"]`
  * and therefore every open list and its filters — would be a page-wide refetch
@@ -133,7 +139,7 @@ export function invalidateShotDetails(queryClient: QueryClient): Promise<void> {
  *
  * A signature is read at read time, so one answer moves what every shot of the profile says:
  * the shot page's checks (`shots` detail and its fields), every list row's badge and warnings
- * (`shots` lists), and the Set pages that brew the profile (their versions carry shots with
+ * (`shots` lists), and the Recipe pages that brew the profile (their versions carry shots with
  * badges, and the page's own signature state and overrides). The signature itself is the card
  * that was pressed. Refetching all of it is the point: a stale red badge after a confirm is
  * the bug this exists to prevent. Runs on success and on failure alike: a 409 means another tab
@@ -143,20 +149,20 @@ export async function invalidateSignatureAnswers(queryClient: QueryClient): Prom
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.signatures.all }),
     queryClient.invalidateQueries({ queryKey: queryKeys.shots.all }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.sets.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all }),
   ]);
 }
 
 /**
  * Everything a reading's start, finish, failure or answer changes: the shots list (the badge, its
  * state and the Review sort), each shot's detail (its readings and claims) and fields (the checks
- * the reading's free-text results join), and the Set pages that list the shot with its badge.
+ * the reading's free-text results join), and the Recipe pages that list the shot with its badge.
  * Runs on success and on failure alike: a 409 means another tab answered or re-read first.
  */
 export async function invalidateReadings(queryClient: QueryClient): Promise<void> {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.shots.all }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.sets.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all }),
   ]);
 }
 
@@ -236,36 +242,36 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   // these per shot, and a prefix that reached the curves would re-fetch every
   // sparkline on screen fifty times over — TanStack refetches active queries
   // on invalidation whatever their staleTime says.
-  // `sets` is in here because an ingested shot is auto-assigned to the active
-  // Set: its page gains a row and its chart gains a point, with nothing on the
+  // `recipes` is in here because an ingested shot is auto-assigned to the active
+  // Recipe: its page gains a row and its chart gains a point, with nothing on the
   // client having asked for either.
-  "shot.ingested": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.sets.all],
-  "shot.updated": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.sets.all],
+  "shot.ingested": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.recipes.all],
+  "shot.updated": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.recipes.all],
   // A shot we could not parse is still a shot: it appears in the list with a
   // flag, so the same queries are stale.
   "shot.quarantined": [queryKeys.shots.all, queryKeys.sync.all],
   "sync.progress": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.device.all],
   "settings.changed": [queryKeys.settings.all],
   // A sync's write phase (`{"board": true}`) changes the board's machine state, marks the
-  // drafts it pushed, records the Set versions they were put on the board for, and appends to
+  // drafts it pushed, records the Recipe versions they were put on the board for, and appends to
   // the write audit: every reader of those is stale, not only the mirror.
   "profile.updated": [
     queryKeys.profiles.all,
     queryKeys.sync.all,
     queryKeys.board.all,
     queryKeys.drafts.all,
-    queryKeys.sets.all,
+    queryKeys.recipes.all,
     queryKeys.device.all,
   ],
   // A shot's reading, carried on the LLM stream. The badge says its state in the shots list, on
-  // the Set pages and in the compare tray, and the shot's detail and fields carry its claims and
+  // the Recipe pages and in the compare tray, and the shot's detail and fields carry its claims and
   // the checks they answer, so all three prefixes are re-read; `answered` is another tab's
   // Confirm or Reject.
-  "review.started": [queryKeys.shots.all, queryKeys.sets.all],
-  "review.finished": [queryKeys.shots.all, queryKeys.sets.all],
-  "review.failed": [queryKeys.shots.all, queryKeys.sets.all],
-  "review.answered": [queryKeys.shots.all, queryKeys.sets.all],
-  // Find patterns across Sets, carried on the same stream: the Knowledge page's section
+  "review.started": [queryKeys.shots.all, queryKeys.recipes.all],
+  "review.finished": [queryKeys.shots.all, queryKeys.recipes.all],
+  "review.failed": [queryKeys.shots.all, queryKeys.recipes.all],
+  "review.answered": [queryKeys.shots.all, queryKeys.recipes.all],
+  // Find patterns across Recipes, carried on the same stream: the Knowledge page's section
   // follows the run row and its proposals, and nothing else shows either.
   "patterns.started": [queryKeys.knowledge.patterns()],
   "patterns.finished": [queryKeys.knowledge.patterns()],

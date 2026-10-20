@@ -3,8 +3,8 @@ import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import { BeansPage, beanExport, beanFileName, readText } from "@/pages/BeansPage";
+import { bean, grinder, vocabulary } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { bean, grinder, vocabulary } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -21,7 +21,7 @@ const {
   getGrinders,
   getMachines,
   getProfileVersions,
-  getSimilarSets,
+  getSimilarRecipes,
   importBean,
 } = vi.hoisted(() => ({
   getBeans: vi.fn(),
@@ -33,7 +33,7 @@ const {
   getGrinders: vi.fn(),
   getMachines: vi.fn(),
   getProfileVersions: vi.fn(),
-  getSimilarSets: vi.fn(),
+  getSimilarRecipes: vi.fn(),
   importBean: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -47,7 +47,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getGrinders,
   getMachines,
   getProfileVersions,
-  getSimilarSets,
+  getSimilarRecipes,
   importBean,
 }));
 
@@ -59,11 +59,11 @@ beforeEach(() => {
   updateBean.mockResolvedValue(bean({ name: "Kenya Kiambu" }));
   setBeanArchived.mockResolvedValue(bean({ archived: true }));
   deleteBean.mockResolvedValue({ deleted: true });
-  // The "Start a Set" shortcut mounts the New Set dialog, which asks for these.
+  // The "Start a Recipe" shortcut mounts the New Recipe dialog, which asks for these.
   getGrinders.mockResolvedValue({ items: [grinder()] });
   getMachines.mockResolvedValue({ items: [] });
   getProfileVersions.mockResolvedValue({ items: [], total: 0, limit: 200, offset: 0 });
-  getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: null, items: [] });
+  getSimilarRecipes.mockResolvedValue({ bean_id: 1, grinder_id: null, items: [] });
 });
 
 describe("BeansPage", () => {
@@ -417,7 +417,7 @@ describe("BeansPage", () => {
     expect(deleteBean).not.toHaveBeenCalled();
   });
 
-  it("says why a coffee a Set uses cannot be deleted, and offers archiving", async () => {
+  it("says why a coffee a Recipe uses cannot be deleted, and offers archiving", async () => {
     getBeans.mockResolvedValue({ items: [bean({ recipe_count: 2 })] });
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
@@ -425,7 +425,7 @@ describe("BeansPage", () => {
     await user.click(await screen.findByRole("button", { name: "Delete Ethiopia Guji" }));
     const confirm = screen.getByTestId("bean-delete-confirm");
 
-    expect(confirm).toHaveTextContent("2 Sets use this coffee, so it cannot be deleted.");
+    expect(confirm).toHaveTextContent("2 Recipes use this coffee, so it cannot be deleted.");
     expect(within(confirm).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     await user.click(within(confirm).getByRole("button", { name: "Archive" }));
 
@@ -450,16 +450,18 @@ describe("BeansPage", () => {
     await waitFor(() => expect(screen.queryByTestId("bean-form")).not.toBeInTheDocument());
   });
 
-  it("opens the New Set dialog on the coffee you pressed it from", async () => {
+  it("opens the New Recipe dialog on the coffee you pressed it from", async () => {
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
-    await user.click(await screen.findByRole("button", { name: "Start a Set from Ethiopia Guji" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Start a Recipe from Ethiopia Guji" }),
+    );
 
     // Pre-selected, because the whole point of the shortcut is not having to
     // find the coffee you are looking at in a picker.
-    const dialog = await screen.findByTestId("new-set-dialog");
-    expect(dialog).toHaveTextContent("Start the Set");
+    const dialog = await screen.findByTestId("new-recipe-dialog");
+    expect(dialog).toHaveTextContent("Start the Recipe");
     await waitFor(() => expect(screen.getByLabelText("Bean")).toHaveValue("1"));
   });
 
@@ -467,7 +469,9 @@ describe("BeansPage", () => {
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
-    await user.click(await screen.findByRole("button", { name: "Start a Set from Ethiopia Guji" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Start a Recipe from Ethiopia Guji" }),
+    );
     await waitFor(() => expect(screen.getByLabelText("Bean")).toHaveValue("1"));
     await user.click(screen.getByTestId("design-with-agent"));
 
@@ -486,7 +490,7 @@ describe("BeansPage", () => {
 
     await screen.findByTestId("bean-list");
     expect(
-      screen.queryByRole("button", { name: "Start a Set from Ethiopia Guji" }),
+      screen.queryByRole("button", { name: "Start a Recipe from Ethiopia Guji" }),
     ).not.toBeInTheDocument();
   });
 

@@ -92,9 +92,9 @@ function Overview({ document }: { document: ShotInformation }) {
     >
       <ul className="space-y-1 text-sm" aria-label="The tiers">
         <li>
-          <span className="font-medium">base</span>: shown without asking — a Set conversation opens
-          with the last {estimates.recent_shots} shots of its version in base, and the shot search
-          answers in it.
+          <span className="font-medium">base</span>: shown without asking — a Recipe conversation
+          opens with the last {estimates.recent_shots} shots of its version in base, and the shot
+          search answers in it.
         </li>
         <li>
           <span className="font-medium">extended</span>: added when the agent asks for a shot in
@@ -169,7 +169,7 @@ function Overview({ document }: { document: ShotInformation }) {
       </dl>
       <p className="text-muted-foreground text-xs">
         Approximate: characters ÷ 3.5, measured on the example shot at the tiers below. The autoload
-        is spent on every turn of a Set conversation.
+        is spent on every turn of a Recipe conversation.
       </p>
 
       <div className="space-y-2">

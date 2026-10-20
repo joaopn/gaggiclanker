@@ -16,7 +16,7 @@ import type { BeanRow, BeanWrite } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { NewSetDialog } from "@/components/sets/NewSetDialog";
+import { NewRecipeDialog } from "@/components/recipes/NewRecipeDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
@@ -32,7 +32,7 @@ import {
 } from "@/hooks/useCatalog";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { attempt } from "@/lib/mutations";
-import { BEAN_SCALES, beanFieldSuggestions, beanScaleLabels } from "@/lib/sets";
+import { BEAN_SCALES, beanFieldSuggestions, beanScaleLabels } from "@/lib/recipes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -53,7 +53,7 @@ import { cn } from "@/lib/utils";
  * is left out of every prompt rather than sent as "not stated".
  *
  * Archive is how a coffee with history is retired; delete is for a bean nobody
- * used (a typo, a duplicate), and the server refuses it while a Set points at
+ * used (a typo, a duplicate), and the server refuses it while a Recipe points at
  * the bean.
  *
  * Each coffee exports as one JSON file, and Import JSON reads one back: the
@@ -85,7 +85,7 @@ export function BeansPage() {
   const [showArchived, setShowArchived] = useState(false);
   const beans = useBeans(showArchived);
   const [editing, setEditing] = useState<BeanRow | "new" | null>(null);
-  // Which coffee the New Set dialog was opened for, or undefined when it is closed.
+  // Which coffee the New Recipe dialog was opened for, or undefined when it is closed.
   // The bean id rather than a boolean, because the shortcut's whole point is
   // that the person does not have to find it again in a picker.
   const [startingFrom, setStartingFrom] = useState<number | undefined>(undefined);
@@ -162,14 +162,14 @@ export function BeansPage() {
 
       {/* Keyed on the bean, so re-opening it for a different coffee remounts
           the dialog rather than showing the previous one's suggestions. */}
-      <NewSetDialog
+      <NewRecipeDialog
         key={startingFrom ?? "none"}
         open={startingFrom !== undefined}
         initialBeanId={startingFrom}
         onOpenChange={(next) => {
           if (!next) setStartingFrom(undefined);
         }}
-        onCreated={(setId) => navigate(`/sets/${setId}`)}
+        onCreated={(recipeId) => navigate(`/recipes/${recipeId}`)}
         onDraftCreated={() => navigate("/profiles#staged")}
       />
 
@@ -179,7 +179,7 @@ export function BeansPage() {
         <EmptyState
           icon={Bean}
           title="No beans recorded"
-          description="A Set needs a coffee. Record the roast level and the process — those two are what the chat uses to reason about temperature and pressure."
+          description="A Recipe needs a coffee. Record the roast level and the process — those two are what the chat uses to reason about temperature and pressure."
           action={
             <Button size="sm" onClick={() => setEditing("new")}>
               Add a coffee
@@ -193,7 +193,7 @@ export function BeansPage() {
               key={bean.id}
               bean={bean}
               onEdit={() => setEditing(bean)}
-              onStartSet={() => setStartingFrom(bean.id)}
+              onStartRecipe={() => setStartingFrom(bean.id)}
               onDeleted={() =>
                 // A form still editing a bean that no longer exists could only
                 // fail to save.
@@ -212,12 +212,12 @@ export function BeansPage() {
 function BeanCard({
   bean,
   onEdit,
-  onStartSet,
+  onStartRecipe,
   onDeleted,
 }: {
   bean: BeanRow;
   onEdit: () => void;
-  onStartSet: () => void;
+  onStartRecipe: () => void;
   onDeleted: () => void;
 }) {
   const archive = useArchiveBean();
@@ -244,8 +244,8 @@ function BeanCard({
             <Button
               variant="ghost"
               size="sm"
-              onClick={onStartSet}
-              aria-label={`Start a Set from ${bean.name}`}
+              onClick={onStartRecipe}
+              aria-label={`Start a Recipe from ${bean.name}`}
             >
               <Sparkles className="size-3.5" aria-hidden="true" />
             </Button>
@@ -300,8 +300,8 @@ function BeanCard({
         {bean.notes ? <p className="text-sm">{bean.notes}</p> : null}
         <p className="text-muted-foreground text-xs">
           {bean.recipe_count === 0
-            ? "No Sets use this coffee yet."
-            : `${bean.recipe_count} Set${bean.recipe_count === 1 ? "" : "s"}`}
+            ? "No Recipes use this coffee yet."
+            : `${bean.recipe_count} Recipe${bean.recipe_count === 1 ? "" : "s"}`}
           {bean.archived ? " · archived" : ""}
         </p>
         {confirming ? (
@@ -329,7 +329,7 @@ function BeanCard({
 /**
  * What a bean's JSON file holds: its id and every field the form edits, in the
  * form's order. Nothing that belongs to this archive rather than the coffee
- * (archived, the Set count, when it was typed), so the file imports back as
+ * (archived, the Recipe count, when it was typed), so the file imports back as
  * exactly the coffee it was exported from.
  */
 export function beanExport(bean: BeanRow): { id: number } & BeanWrite {
@@ -389,7 +389,7 @@ function downloadBean(bean: BeanRow) {
  * for a test to drive it. Focus stays on the trash button, so a stray Enter
  * toggles the question rather than answering it.
  *
- * A bean a Set uses gets the reason instead of a Delete button, and the way out
+ * A bean a Recipe uses gets the reason instead of a Delete button, and the way out
  * that does work: archiving. The server would refuse the delete anyway; asking
  * first and then showing a 409 would be asking a question with one answer.
  */
@@ -415,8 +415,8 @@ function DeleteConfirm({
     >
       {inUse ? (
         <p className="text-sm">
-          {bean.recipe_count === 1 ? "A Set uses" : `${bean.recipe_count} Sets use`} this coffee, so
-          it cannot be deleted.{" "}
+          {bean.recipe_count === 1 ? "A Recipe uses" : `${bean.recipe_count} Recipes use`} this
+          coffee, so it cannot be deleted.{" "}
           {bean.archived ? "It is already archived." : "Archive it to take it out of the pickers."}
         </p>
       ) : (

@@ -655,7 +655,7 @@
     "sentence": "cup weight at the end of the ramp, as a share of the target yield, at most 0.15",
     "expectation_status": "confirmed"
   },
-  "setId": 1,
-  "setVersionId": 1,
+  "recipeId": 1,
+  "recipeVersionId": 1,
   "profileVersionId": 1
 }

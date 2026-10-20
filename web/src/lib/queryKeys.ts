@@ -62,70 +62,71 @@ export const queryKeys = {
     all: ["sync"] as const,
     status: () => ["sync", "status"] as const,
   },
-  sets: {
-    all: ["sets"] as const,
-    list: (includeArchived?: boolean) => ["sets", "list", includeArchived ?? false] as const,
-    detail: (id: string) => ["sets", "detail", id] as const,
-    /** What a Set may start on. Under `sets`, so every write that makes or moves a Set refreshes it. */
-    profileChoices: () => ["sets", "profile-choices"] as const,
+  recipes: {
+    all: ["recipes"] as const,
+    list: (includeArchived?: boolean) => ["recipes", "list", includeArchived ?? false] as const,
+    detail: (id: string) => ["recipes", "detail", id] as const,
+    /** What a Recipe may start on. Under `recipes`, so every write that makes or moves a Recipe refreshes it. */
+    profileChoices: () => ["recipes", "profile-choices"] as const,
     /**
-     * Under the `sets` prefix on purpose, unlike `samples` under `shots`.
+     * Under the `recipes` prefix on purpose, unlike `samples` under `shots`.
      *
-     * A Set's trends change whenever one of its shots does — a judgement
+     * A Recipe's trends change whenever one of its shots does — a judgement
      * saved, a shot reassigned — and both of those already invalidate
-     * `sets.all`. There is exactly one chart on screen at a time, so the
+     * `recipes.all`. There is exactly one chart on screen at a time, so the
      * over-fetch the shots list could not afford costs one request here.
      */
-    trends: (id: string) => ["sets", "trends", id] as const,
+    trends: (id: string) => ["recipes", "trends", id] as const,
     /**
-     * Every change an agent has proposed for a Set, waiting and answered.
+     * Every change an agent has proposed for a Recipe, waiting and answered.
      *
      * Its own key rather than a slice of the detail, because the chat reads
-     * it without the Set page being open: a proposal card in a conversation
+     * it without the Recipe page being open: a proposal card in a conversation
      * has to know whether the person has answered it yet, and loading the
-     * whole Set page's payload for that would fetch five hundred shots.
+     * whole Recipe page's payload for that would fetch five hundred shots.
      */
-    proposals: (id: string) => ["sets", "proposals", id] as const,
+    proposals: (id: string) => ["recipes", "proposals", id] as const,
     /**
-     * Every grade an agent has proposed for a Set's versions, waiting and
+     * Every grade an agent has proposed for a Recipe's versions, waiting and
      * answered. Its own key for the reason `proposals` is: the chat's outcome
-     * card reads it without the Set page being open. Under `sets`, so a
+     * card reads it without the Recipe page being open. Under `recipes`, so a
      * version accept that records a grade reaches it with the rest.
      */
-    outcomeProposals: (id: string) => ["sets", "outcome-proposals", id] as const,
+    outcomeProposals: (id: string) => ["recipes", "outcome-proposals", id] as const,
   },
   /**
-   * What pinning one version would do. Outside `sets` on purpose: it lives only while the pin
+   * What pinning one version would do. Outside `recipes` on purpose: it lives only while the pin
    * dialog is open and is asked afresh at every opening (no cache, no stale time), and a
-   * refetch in the middle of a pin, caused by the pin's own invalidation of the Set, would
+   * refetch in the middle of a pin, caused by the pin's own invalidation of the Recipe, would
    * answer "already pinned" under the dialog that has just succeeded.
    */
   pins: {
-    preview: (setId: string, versionId: string) => ["pins", "preview", setId, versionId] as const,
+    preview: (recipeId: string, versionId: string) =>
+      ["pins", "preview", recipeId, versionId] as const,
   },
   /**
-   * What duplicating one version starts from. Outside `sets` for the reason the pin's preview is:
+   * What duplicating one version starts from. Outside `recipes` for the reason the pin's preview is:
    * it lives only while the dialog is open and is asked afresh at every opening, and a refetch
-   * caused by the duplicate's own invalidation of the Sets would answer under the dialog that
+   * caused by the duplicate's own invalidation of the Recipes would answer under the dialog that
    * has just succeeded.
    */
   duplicates: {
-    preview: (setId: string, versionId: string) =>
-      ["duplicates", "preview", setId, versionId] as const,
+    preview: (recipeId: string, versionId: string) =>
+      ["duplicates", "preview", recipeId, versionId] as const,
   },
   beans: {
     all: ["beans"] as const,
     list: (includeArchived?: boolean) => ["beans", "list", includeArchived ?? false] as const,
     /**
-     * The similar-Set cards for a bag, on one grinder.
+     * The similar-Recipe cards for a bag, on one grinder.
      *
      * Under the `beans` prefix rather than under `startingPoints`, because it
      * is a fact about the bean and it is read whether or not anybody ever asks
      * the model anything. The grinder is in the key because changing it changes
      * the answer completely — the query filters on it.
      */
-    similarSets: (id: string, grinderId?: number | null) =>
-      ["beans", "similar-sets", id, grinderId ?? null] as const,
+    similarRecipes: (id: string, grinderId?: number | null) =>
+      ["beans", "similar-recipes", id, grinderId ?? null] as const,
   },
   /** The grinders and the machine: one page, one prefix, so one invalidation. */
   hardware: {
@@ -157,16 +158,16 @@ export const queryKeys = {
   },
   /**
    * What a profile version is for. Its own prefix: a signature answer changes every shot's
-   * checks and the Set that brews the profile, and `invalidateSignatureAnswers` names those.
-   * The overrides sit under `sets`, because they belong to a Set version and the Set page's
+   * checks and the Recipe that brews the profile, and `invalidateSignatureAnswers` names those.
+   * The overrides sit under `recipes`, because they belong to a Recipe version and the Recipe page's
    * own invalidation reaches them.
    */
   signatures: {
     all: ["signatures"] as const,
     version: (id: number) => ["signatures", "version", id] as const,
   },
-  setOverrides: (setId: number, versionId: number) =>
-    ["sets", "signature-overrides", setId, versionId] as const,
+  recipeOverrides: (recipeId: number, versionId: number) =>
+    ["recipes", "signature-overrides", recipeId, versionId] as const,
   /** The wizard's runs. One entry per run id; there is no list the UI renders. */
   startingPoints: {
     all: ["starting-points"] as const,
@@ -196,18 +197,18 @@ export const queryKeys = {
     /** One insight in whatever state it is: what a card in the chat reads. */
     insight: (id: string) => ["knowledge", "insight", id] as const,
     /**
-     * Every deletion an agent proposed for one Set's insights, waiting and
-     * answered. Under `knowledge`, though the route is the Set's: a deletion is
+     * Every deletion an agent proposed for one Recipe's insights, waiting and
+     * answered. Under `knowledge`, though the route is the Recipe's: a deletion is
      * answered by removing (or keeping) an insight, so everything that touches an
-     * insight (an Add that replaces one, the Set page's Delete) has to refresh
+     * insight (an Add that replaces one, the Recipe page's Delete) has to refresh
      * these cards too, and the one prefix does that.
      */
-    insightDeletions: (setId: string, threadId?: number | null) =>
-      ["knowledge", "insight-deletions", setId, threadId ?? "all"] as const,
+    insightDeletions: (recipeId: string, threadId?: number | null) =>
+      ["knowledge", "insight-deletions", recipeId, threadId ?? "all"] as const,
     /**
      * The Find patterns section: the newest run, its proposals and the count of new
      * insights. Under `knowledge` because approving one writes a general insight and
-     * deletes Set insights, so every reader of an insight refreshes it too.
+     * deletes Recipe insights, so every reader of an insight refreshes it too.
      */
     patterns: () => ["knowledge", "patterns"] as const,
   },

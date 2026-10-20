@@ -367,8 +367,8 @@ async def _signatures(scene: Scene) -> dict[str, Any]:
     documents["overrideRejected"] = _plain(
         (await _override_out(rejected, scene.signatures)).model_dump(mode="json")
     )
-    documents["setId"] = scene.recipe_id
-    documents["setVersionId"] = recipe_version
+    documents["recipeId"] = scene.recipe_id
+    documents["recipeVersionId"] = recipe_version
     documents["profileVersionId"] = version
     return documents
 

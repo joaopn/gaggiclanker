@@ -73,7 +73,7 @@ describe("loadShotColumns", () => {
     // the generation it is, and upgraded whole.
     window.localStorage.setItem(
       SHOT_COLUMNS_KEY,
-      JSON.stringify(["set", "time", "duration", "yield", "score", "rating", "analyze"]),
+      JSON.stringify(["recipe", "time", "duration", "yield", "score", "rating", "analyze"]),
     );
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
   });
@@ -94,7 +94,7 @@ describe("loadShotColumns", () => {
     window.localStorage.setItem(
       SHOT_COLUMNS_KEY,
       JSON.stringify([
-        "set",
+        "recipe",
         "time",
         "profile",
         "duration",
@@ -166,6 +166,27 @@ describe("loadShotColumns", () => {
     },
   );
 
+  it("shows the Recipe column where a stored layout had the Set column", () => {
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify(["time", "set", "rating", "flags"]),
+    );
+    expect(loadShotColumns()).toEqual(["time", "recipe", "rating", "flags"]);
+    // Off stays off: a layout that never had the column does not gain one.
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["time", "rating", "flags"]));
+    expect(loadShotColumns()).toEqual(["time", "rating", "flags"]);
+  });
+
+  it.each(PREVIOUS_DEFAULT_SHOT_COLUMNS.map((generation, index) => [index, generation]))(
+    "reads a copy of default generation %i stored with set as the current default",
+    (_index, generation) => {
+      const old = generation.map((id) => (id === "recipe" ? "set" : id));
+      expect(old).toContain("set");
+      window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(old));
+      expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+    },
+  );
+
   it("does not read a generation as the default once it is the default again", () => {
     // The current default is not in the list of previous ones, so a reader who
     // ticks their way back to exactly today's columns has made a choice and it
@@ -174,10 +195,10 @@ describe("loadShotColumns", () => {
   });
 
   it.each([
-    ["one column fewer", ["time", "duration", "rating", "set", "flags"]],
-    ["one column more", ["time", "duration", "yield", "rating", "set", "notes", "flags"]],
-    ["Flags without the Set", ["time", "duration", "yield", "rating", "flags"]],
-    ["the default with a duplicate", ["time", "duration", "yield", "rating", "set", "set"]],
+    ["one column fewer", ["time", "duration", "rating", "recipe", "flags"]],
+    ["one column more", ["time", "duration", "yield", "rating", "recipe", "notes", "flags"]],
+    ["Flags without the Recipe", ["time", "duration", "yield", "rating", "flags"]],
+    ["the default with a duplicate", ["time", "duration", "yield", "rating", "recipe", "recipe"]],
   ])("keeps any other stored choice as it was made: %s", (_why, stored) => {
     window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(stored));
     expect(loadShotColumns()).toEqual(stored);
@@ -212,10 +233,10 @@ describe("loadShotColumns", () => {
 });
 
 describe("SHOT_COLUMNS", () => {
-  it("puts the Set first, in the chooser and in the default table", () => {
-    // A session is read Set by Set, so the Set is the column scanned first.
-    expect(SHOT_COLUMNS[0].id).toBe("set");
-    expect(visibleColumns(DEFAULT_SHOT_COLUMNS)[0].id).toBe("set");
+  it("puts the Recipe first, in the chooser and in the default table", () => {
+    // A session is read Recipe by Recipe, so the Recipe is the column scanned first.
+    expect(SHOT_COLUMNS[0].id).toBe("recipe");
+    expect(visibleColumns(DEFAULT_SHOT_COLUMNS)[0].id).toBe("recipe");
   });
 });
 
@@ -253,10 +274,12 @@ describe("gridTemplates", () => {
     expect(wide).not.toContain("fr");
   });
 
-  it("makes the Set a column that can be dragged narrower than it was", () => {
-    const set = SHOT_COLUMNS.find((column) => column.id === "set");
-    expect(set?.size).toEqual({ rem: 8, min: 4, max: 20 });
-    expect(gridTemplates(visibleColumns(["set", "time"]), { set: 2 }).wide).toBe("4rem 7.5rem");
+  it("makes the Recipe a column that can be dragged narrower than it was", () => {
+    const recipe = SHOT_COLUMNS.find((column) => column.id === "recipe");
+    expect(recipe?.size).toEqual({ rem: 8, min: 4, max: 20 });
+    expect(gridTemplates(visibleColumns(["recipe", "time"]), { recipe: 2 }).wide).toBe(
+      "4rem 7.5rem",
+    );
   });
 
   it("sizes Decision for its three words and no wider", () => {
@@ -301,7 +324,7 @@ describe("column sizes", () => {
     // the column being sorted by.
     const widths = Object.fromEntries(SHOT_COLUMNS.map((column) => [column.id, column.size.rem]));
     expect(widths).toEqual({
-      set: 8,
+      recipe: 8,
       time: 7.5,
       profile: 9,
       curve: 6,
@@ -340,6 +363,17 @@ describe("column widths", () => {
     // Review's own width wins once it has been dragged.
     window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 5.5, review: 12 }));
     expect(loadShotWidths()).toEqual({ review: 12 });
+  });
+
+  it("reads a width dragged on the old Set column as the Recipe column's", () => {
+    window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ set: 12, time: 8 }));
+    expect(loadShotWidths()).toEqual({ recipe: 12, time: 8 });
+    // Clamped to the column's bounds like any other width.
+    window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ set: 99 }));
+    expect(loadShotWidths()).toEqual({ recipe: 20 });
+    // The Recipe column's own width wins once it has been dragged.
+    window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ set: 12, recipe: 6 }));
+    expect(loadShotWidths()).toEqual({ recipe: 6 });
   });
 
   it("keeps each good width and drops each bad one on its own", () => {

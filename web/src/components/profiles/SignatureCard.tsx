@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
  * One carried to this version from an earlier one says which. One whose phase this version no
  * longer has says "needs a new phase": it is shown and can be rejected, but it is never in force
  * and cannot be restored into force; it is never matched to another phase by guess. A version
- * nobody proposed anything for says so, and links to the Set chats that brew it, where the agent
+ * nobody proposed anything for says so, and links to the Recipe chats that brew it, where the agent
  * is asked for a signature.
  *
  * It is open when something needs a new phase, or when a link names the version
@@ -179,7 +179,7 @@ type LandingRef = { current: { id: number; tier: SignatureTier } | null };
 
 /** No expectation at all: what that means for a shot, and where to ask for one. */
 function NoSignature({ data }: { data: SignatureData }) {
-  const sets = data.recipes.filter((set) => !set.archived);
+  const recipes = data.recipes.filter((recipe) => !recipe.archived);
   const ask = `Propose a signature for ${data.profile_label}: what is this profile version for?`;
   return (
     <div className="space-y-1 text-sm" data-testid="signature-none">
@@ -187,22 +187,22 @@ function NoSignature({ data }: { data: SignatureData }) {
         No signature yet. Shots brewed with this version are read without one, so only the universal
         warnings apply.
       </p>
-      {sets.length > 0 ? (
+      {recipes.length > 0 ? (
         <p className="text-muted-foreground text-xs">
           Ask the agent to propose one in the chat of{" "}
-          {sets.map((set, index) => (
-            <span key={set.recipe_id}>
+          {recipes.map((recipe, index) => (
+            <span key={recipe.recipe_id}>
               {index > 0 ? ", " : ""}
               <Link
                 className="underline underline-offset-2"
-                data-testid="signature-set-chat"
+                data-testid="signature-recipe-chat"
                 to={`/chat?${new URLSearchParams({
-                  set: String(set.recipe_id),
-                  version: String(set.version_id),
+                  recipe: String(recipe.recipe_id),
+                  version: String(recipe.version_id),
                   ask,
                 }).toString()}`}
               >
-                {set.recipe_name}
+                {recipe.recipe_name}
               </Link>
             </span>
           ))}
@@ -210,7 +210,7 @@ function NoSignature({ data }: { data: SignatureData }) {
         </p>
       ) : (
         <p className="text-muted-foreground text-xs">
-          No Set brews this version yet.{" "}
+          No Recipe brews this version yet.{" "}
           <Link
             className="underline underline-offset-2"
             data-testid="signature-general-chat"

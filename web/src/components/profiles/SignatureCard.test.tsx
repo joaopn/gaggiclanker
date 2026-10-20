@@ -260,26 +260,26 @@ describe("what the card shows", () => {
     );
   });
 
-  it("has no signature to show for a version nobody proposed anything for, and links the Set chats", async () => {
+  it("has no signature to show for a version nobody proposed anything for, and links the Recipe chats", async () => {
     const user = setupUser();
     renderCard(signatureNone);
     await openCard(user);
 
     expect(await screen.findByTestId("signature-none")).toHaveTextContent("No signature yet");
-    const link = screen.getByTestId("signature-set-chat");
+    const link = screen.getByTestId("signature-recipe-chat");
     expect(link).toHaveTextContent("Constructed lever");
     const href = link.getAttribute("href") ?? "";
-    expect(href).toContain(`set=${signatureNone.recipes[0].recipe_id}`);
+    expect(href).toContain(`recipe=${signatureNone.recipes[0].recipe_id}`);
     expect(href).toContain(`version=${signatureNone.recipes[0].version_id}`);
   });
 
-  it("offers the general chat when no Set brews the version", async () => {
+  it("offers the general chat when no Recipe brews the version", async () => {
     const user = setupUser();
     renderCard({ ...signatureNone, recipes: [] });
     await openCard(user);
 
     expect(await screen.findByTestId("signature-general-chat")).toBeInTheDocument();
-    expect(screen.queryByTestId("signature-set-chat")).toBeNull();
+    expect(screen.queryByTestId("signature-recipe-chat")).toBeNull();
   });
 
   it("cuts a long phase name inside its row instead of widening the card", async () => {

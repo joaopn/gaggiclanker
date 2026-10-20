@@ -7,9 +7,9 @@ import { BOXES_KEY, forgetBoxes } from "@/lib/shotBoxes";
 import { ShotDetailPage } from "@/pages/ShotDetailPage";
 import { openAllBoxes } from "@/test/boxFixtures";
 import { claim, reviewBlock } from "@/test/claimFixtures";
+import { judgement, version, vocabulary } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
-import { judgement, version, vocabulary } from "@/test/setsFixtures";
 import { leverFields, leverSignedFields, realFields } from "@/test/shotFieldsFixture";
 import {
   SHOT_129_SAMPLE_COUNT,
@@ -372,7 +372,7 @@ describe("ShotDetailPage chart", () => {
 describe("ShotDetailPage by phase", () => {
   beforeEach(openAllBoxes);
 
-  it("reads in the decided order: facts, judgement, curves, review, curve check, phases, the shot, Set, context", async () => {
+  it("reads in the decided order: facts, judgement, curves, review, curve check, phases, the shot, Recipe, context", async () => {
     getShotFields.mockResolvedValue(leverFields);
     renderShot();
 
@@ -386,7 +386,7 @@ describe("ShotDetailPage by phase", () => {
       ["check", screen.getByTestId("shot-checks")],
       ["phases", screen.getAllByTestId("phase-row")[0]],
       ["shot", screen.getByTestId("shot-field-yield")],
-      ["set", document.getElementById("set") as HTMLElement],
+      ["recipe", document.getElementById("recipe") as HTMLElement],
       ["context", screen.getByTestId("shot-context")],
     ];
     const order = [...landmarks]
@@ -402,7 +402,7 @@ describe("ShotDetailPage by phase", () => {
       "check",
       "phases",
       "shot",
-      "set",
+      "recipe",
       "context",
     ]);
   });
@@ -971,7 +971,7 @@ describe("ShotDetailPage judgement prefills", () => {
     screen.getByLabelText("Dose out (g)") as HTMLInputElement,
   ];
 
-  it("starts dose out at the scale's yield and dose in at the Set version's dose", async () => {
+  it("starts dose out at the scale's yield and dose in at the Recipe version's dose", async () => {
     getShot.mockResolvedValue({
       ...shot129,
       shot: { ...shot129.shot, scale_connected: true, volume_g: 36.4 },
@@ -1036,10 +1036,32 @@ describe("ShotDetailPage judgement prefills", () => {
   });
 });
 
-describe("ShotDetailPage Set panel", () => {
+describe("ShotDetailPage Recipe panel", () => {
   it("scrolls to the Assign panel when the link asks for it", async () => {
-    // The shots list's needs-a-Set menu offers only three Sets and sends the
-    // rest here with `#set`; the panel is far down the page.
+    // The shots list's needs-a-Recipe menu offers only three Recipes and sends the
+    // rest here with `#recipe`; the panel is far down the page.
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
+      this: Element,
+    ) {
+      scrolled.push(this.id);
+    });
+
+    renderWithQueryClient(
+      <Routes>
+        <Route path="/shots/:shotId" element={<ShotDetailPage />} />
+      </Routes>,
+      { initialEntries: [`/shots/${shot129.shot.id}#recipe`] },
+    );
+
+    expect(await screen.findByTestId("assign-to-recipe")).toBeInTheDocument();
+    await waitFor(() => expect(scrolled).toContain("recipe"));
+    expect(document.getElementById("recipe")).toContainElement(
+      screen.getByTestId("assign-to-recipe"),
+    );
+  });
+
+  it("takes an old #set fragment for the Assign panel too", async () => {
     const scrolled: string[] = [];
     vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
       this: Element,
@@ -1054,9 +1076,8 @@ describe("ShotDetailPage Set panel", () => {
       { initialEntries: [`/shots/${shot129.shot.id}#set`] },
     );
 
-    expect(await screen.findByTestId("assign-to-set")).toBeInTheDocument();
-    await waitFor(() => expect(scrolled).toContain("set"));
-    expect(document.getElementById("set")).toContainElement(screen.getByTestId("assign-to-set"));
+    expect(await screen.findByTestId("assign-to-recipe")).toBeInTheDocument();
+    await waitFor(() => expect(scrolled).toContain("recipe"));
   });
 
   it("stays at the top without the fragment", async () => {
@@ -1064,7 +1085,7 @@ describe("ShotDetailPage Set panel", () => {
 
     renderShot();
 
-    expect(await screen.findByTestId("assign-to-set")).toBeInTheDocument();
+    expect(await screen.findByTestId("assign-to-recipe")).toBeInTheDocument();
     expect(scroll).not.toHaveBeenCalled();
   });
 });

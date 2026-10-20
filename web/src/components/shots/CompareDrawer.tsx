@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 /**
  * Two or three shots, overlaid.
  *
- * The foundation for the Set trajectory views, and useful on its own:
+ * The foundation for the Recipe trajectory views, and useful on its own:
  * "what changed between yesterday's and today's" is the question the archive
  * exists to answer, and it is not answerable from two tabs.
  *

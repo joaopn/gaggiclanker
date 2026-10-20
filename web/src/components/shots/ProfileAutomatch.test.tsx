@@ -32,12 +32,12 @@ describe("ProfileAutomatch", () => {
     await waitFor(() => expect(matchShotsByProfile).toHaveBeenCalledWith(undefined));
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith(
-        "Filed 3 shots · 1 left: no Set brews the profile",
+        "Filed 3 shots · 1 left: no Recipe brews the profile",
       ),
     );
   });
 
-  it("matches only this shot on a shot's page, and is gone once it has a Set", async () => {
+  it("matches only this shot on a shot's page, and is gone once it has a Recipe", async () => {
     const user = setupUser();
     matchShotsByProfile.mockResolvedValue({ matched: 0, unmatched: 1 });
     const { rerender } = renderWithQueryClient(<ProfileAutomatch shotId={42} />);
@@ -45,7 +45,9 @@ describe("ProfileAutomatch", () => {
     await user.click(screen.getByRole("button", { name: "Match by profile" }));
     await waitFor(() => expect(matchShotsByProfile).toHaveBeenCalledWith([42]));
     await waitFor(() =>
-      expect(toast.info).toHaveBeenCalledWith("Nothing filed · 1 left: no Set brews the profile"),
+      expect(toast.info).toHaveBeenCalledWith(
+        "Nothing filed · 1 left: no Recipe brews the profile",
+      ),
     );
 
     rerender(<ProfileAutomatch shotId={42} filed />);

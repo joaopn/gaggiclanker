@@ -123,7 +123,7 @@ describe("the insight deletion requests", () => {
     __resetApiClientAuthForTests(null);
   });
 
-  it("reads a conversation's proposals by thread, and a Set's without one", async () => {
+  it("reads a conversation's proposals by thread, and a Recipe's without one", async () => {
     const spy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async () => jsonResponse(200, success({ items: [] })));

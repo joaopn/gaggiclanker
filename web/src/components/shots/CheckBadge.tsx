@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 /**
- * What the Curve check column, the Set history and the compare tray say about a shot: only the
+ * What the Curve check column, the Recipe history and the compare tray say about a shot: only the
  * deterministic checks and warnings, never anything a model wrote.
  *
  * The text is the server's (`checks.badge`, built by code from the entries): the first entry,
@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  * a critical expectation failed, amber an important one failed or a warning nothing marks as
  * expected, grey a warning the signature expects. A shot with nothing to say draws nothing: a
  * missing warning is not a verdict. (The shots table's Curve check cell, `CheckCell`, is the one
- * place that also says "Pass" and "Unchecked"; the Set history and the compare tray keep this
+ * place that also says "Pass" and "Unchecked"; the Recipe history and the compare tray keep this
  * badge alone.)
  *
  * It is never a control. The full list is the hover (`title` on the wrapper, which is not the

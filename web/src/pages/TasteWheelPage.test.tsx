@@ -3,8 +3,8 @@ import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FlavorPicks } from "@/api/types";
 import { TasteWheelPage } from "@/pages/TasteWheelPage";
+import { flavorPicks, vocabulary } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { flavorPicks, vocabulary } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },

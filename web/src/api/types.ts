@@ -32,7 +32,7 @@ export type SignatureData = components["schemas"]["SignatureData"];
 export type SignatureExpectation = components["schemas"]["ExpectationOut"];
 export type SignatureAnswer = components["schemas"]["SignatureAnswer"];
 export type SignatureTier = SignatureExpectation["tier"];
-export type SignatureSetUsing = components["schemas"]["RecipeUsingOut"];
+export type SignatureRecipeUsing = components["schemas"]["RecipeUsingOut"];
 export type SignatureOverride = components["schemas"]["OverrideOut"];
 export type SignatureOverrideList = components["schemas"]["OverrideListData"];
 export type SignatureOverrideAnswer = components["schemas"]["OverrideAnswer"];
@@ -59,7 +59,7 @@ export type MachineData = components["schemas"]["MachineData"];
 export type MachineRow = components["schemas"]["MachineRow"];
 export type MachinePatch = components["schemas"]["MachinePatch"];
 
-// Sets, beans, grinders and the judgement. Every one of these is a real
+// Recipes, beans, grinders and the judgement. Every one of these is a real
 // pydantic model on the server, so none of them is retyped here.
 export type Vocabulary = components["schemas"]["Vocabulary"];
 export type FlavorNode = components["schemas"]["FlavorNode"];
@@ -75,24 +75,24 @@ export type BeanWrite = components["schemas"]["BeanWrite"];
 export type BeanImportData = components["schemas"]["BeanImportData"];
 export type GrinderRow = components["schemas"]["GrinderRow"];
 export type GrinderWrite = components["schemas"]["GrinderWrite"];
-export type SetRow = components["schemas"]["RecipeRow"];
-export type SetCreate = components["schemas"]["RecipeCreate"];
-export type SetDesignCreate = components["schemas"]["RecipeDesignCreate"];
-export type SetDesignCreated = components["schemas"]["RecipeDesignCreated"];
-export type SetDesignDiscarded = components["schemas"]["RecipeDesignDiscarded"];
-export type SetListData = components["schemas"]["RecipeListData"];
+export type RecipeRow = components["schemas"]["RecipeRow"];
+export type RecipeCreate = components["schemas"]["RecipeCreate"];
+export type RecipeDesignCreate = components["schemas"]["RecipeDesignCreate"];
+export type RecipeDesignCreated = components["schemas"]["RecipeDesignCreated"];
+export type RecipeDesignDiscarded = components["schemas"]["RecipeDesignDiscarded"];
+export type RecipeListData = components["schemas"]["RecipeListData"];
 export type ProfileChoice = components["schemas"]["ProfileChoice"];
 export type ProfileChoiceListData = components["schemas"]["ProfileChoiceListData"];
 export type TakenProfileChoice = components["schemas"]["TakenProfileChoice"];
 export type ProfileDuplicateRequest = components["schemas"]["ProfileDuplicateRequest"];
-export type SetDetailData = components["schemas"]["RecipeDetailData"];
-export type SetRevertRow = components["schemas"]["RecipeRevertRow"];
-export type SetVersionRow = components["schemas"]["RecipeVersionRow"];
+export type RecipeDetailData = components["schemas"]["RecipeDetailData"];
+export type RecipeRevertRow = components["schemas"]["RecipeRevertRow"];
+export type RecipeVersionRow = components["schemas"]["RecipeVersionRow"];
 export type ProfileMatchSummary = components["schemas"]["ProfileMatchSummary"];
-export type SetVersionDetail = components["schemas"]["RecipeVersionDetail"];
-export type SetProposal = components["schemas"]["RecipeProposalDetail"];
-export type SetProposalListData = components["schemas"]["RecipeProposalListData"];
-export type SetProposalDecision = components["schemas"]["RecipeProposalDecision"];
+export type RecipeVersionDetail = components["schemas"]["RecipeVersionDetail"];
+export type RecipeProposal = components["schemas"]["RecipeProposalDetail"];
+export type RecipeProposalListData = components["schemas"]["RecipeProposalListData"];
+export type RecipeProposalDecision = components["schemas"]["RecipeProposalDecision"];
 export type ProposalDecline = components["schemas"]["ProposalDecline"];
 export type OutcomeProposal = components["schemas"]["OutcomeProposalRow"];
 export type OutcomeProposalListData = components["schemas"]["OutcomeProposalListData"];
@@ -111,7 +111,7 @@ export type SpreadMeasure = MeasureSpread["measure"];
 export type VersionEvidence = components["schemas"]["VersionEvidence"];
 export type MeasureEvidence = components["schemas"]["MeasureEvidence"];
 export type EvidenceCounts = components["schemas"]["EvidenceCounts"];
-export type SetVersionAdd = components["schemas"]["RecipeVersionAdd"];
+export type RecipeVersionAdd = components["schemas"]["RecipeVersionAdd"];
 export type VersionPredictionWrite = components["schemas"]["VersionPredictionWrite"];
 export type VersionOutcomeWrite = components["schemas"]["VersionOutcomeWrite"];
 export type RollbackWrite = components["schemas"]["RollbackWrite"];
@@ -123,28 +123,28 @@ export type DuplicatePreview = components["schemas"]["DuplicatePreview"];
 export type DuplicateRecipe = components["schemas"]["DuplicateVersionFields"];
 export type DuplicateRequest = components["schemas"]["DuplicateRequest"];
 export type CopiedFrom = components["schemas"]["CopiedFrom"];
-export type SetPin = components["schemas"]["RecipePin"];
+export type RecipePin = components["schemas"]["RecipePin"];
 export type BoardRowPin = components["schemas"]["BoardRowPin"];
-export type VersionOutcome = NonNullable<SetVersionRow["outcome"]>;
-export type SetVersionWrite = components["schemas"]["RecipeVersionWrite"];
+export type VersionOutcome = NonNullable<RecipeVersionRow["outcome"]>;
+export type RecipeVersionWrite = components["schemas"]["RecipeVersionWrite"];
 export type FieldChange = components["schemas"]["FieldChange"];
-export type SetTrends = components["schemas"]["RecipeTrends"];
-export type SetTrendPoint = components["schemas"]["RecipeTrendPoint"];
-export type SetTrendVersion = components["schemas"]["RecipeTrendVersion"];
+export type RecipeTrends = components["schemas"]["RecipeTrends"];
+export type RecipeTrendPoint = components["schemas"]["RecipeTrendPoint"];
+export type RecipeTrendVersion = components["schemas"]["RecipeTrendVersion"];
 export type ShotJudgement = components["schemas"]["ShotJudgementRow"];
 export type JudgementWrite = components["schemas"]["JudgementWrite"];
-export type ShotSetBadge = components["schemas"]["ShotRecipeBadge"];
+export type ShotRecipeBadge = components["schemas"]["ShotRecipeBadge"];
 export type SettingValue = components["schemas"]["SettingValue"];
 
 // The starting-point wizard. The run row, the request body and the
-// similar-Set cards are all real pydantic models, so none of them is retyped
+// similar-Recipe cards are all real pydantic models, so none of them is retyped
 // here; only `StartingPointOutput` below is, because the server declares it
 // as a JSON column.
 export type StartingPointRun = components["schemas"]["StartingPointRunRow"];
 export type StartingPointRequest = components["schemas"]["StartingPointRequest"];
 export type StartingPointAccepted = components["schemas"]["StartingPointAccepted"];
-export type SimilarSet = components["schemas"]["SimilarRecipe"];
-export type SimilarSetsData = components["schemas"]["SimilarRecipesData"];
+export type SimilarRecipe = components["schemas"]["SimilarRecipe"];
+export type SimilarRecipesData = components["schemas"]["SimilarRecipesData"];
 
 // A shot's review and the knowledge tier. All real pydantic models on the
 // server, so none of them is retyped here either.
@@ -326,7 +326,7 @@ export type ShotListParams = {
   include_discarded?: boolean;
   recipe_id?: number;
   recipe_version_id?: number;
-  /** The inbox: shots the archive could not attach to a Set on its own. */
+  /** The inbox: shots the archive could not attach to a Recipe on its own. */
   needs_recipe?: boolean;
   source?: "device" | "import";
   min_rating?: number;
@@ -416,7 +416,7 @@ export type BoardAction = components["schemas"]["BoardAction"];
 export type BoardProposal = components["schemas"]["BoardProposal"];
 export type ResumePreview = components["schemas"]["ResumePreview"];
 export type ActiveVersion = components["schemas"]["ActiveVersion"];
-export type SetBrewing = components["schemas"]["RecipeBrewing"];
+export type RecipeBrewing = components["schemas"]["RecipeBrewing"];
 export type ConflictSummary = components["schemas"]["ConflictSummary"];
 export type ConflictView = components["schemas"]["ConflictView"];
 export type ListedVersion = components["schemas"]["ListedVersion"];

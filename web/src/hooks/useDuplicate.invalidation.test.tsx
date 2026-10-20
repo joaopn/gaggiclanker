@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
-import { useDuplicateSet } from "@/hooks/useDuplicate";
+import { useDuplicateRecipe } from "@/hooks/useDuplicate";
 import { queryKeys } from "@/lib/queryKeys";
 import { duplicateAnswer } from "@/test/duplicateFixtures";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
@@ -34,12 +34,12 @@ function spyOn(queryClient: QueryClient): unknown[][] {
 }
 
 /**
- * Every prefix a duplicate writes under: the Sets (the list, and the new Set's page, one prefix),
+ * Every prefix a duplicate writes under: the Recipes (the list, and the new Recipe's page, one prefix),
  * the board and what the board's writes reach, which includes the profile mirror and so every
  * profile-versions query, and the insights. No shot is filed or moved by it.
  */
 const TOUCHED = [
-  queryKeys.sets.all,
+  queryKeys.recipes.all,
   queryKeys.board.all,
   queryKeys.drafts.all,
   queryKeys.profiles.all,
@@ -54,7 +54,7 @@ async function expectTouched(keys: unknown[][]) {
 }
 
 const VARIABLES = {
-  setId: 3,
+  recipeId: 3,
   versionId: 22,
   body: {
     recipe_name: "Guji milk",
@@ -67,7 +67,7 @@ const VARIABLES = {
 
 describe("duplicating refreshes everything it writes", () => {
   it("on success", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useDuplicateSet());
+    const { result, queryClient } = renderHookWithQueryClient(() => useDuplicateRecipe());
     const keys = spyOn(queryClient);
 
     await result.current.mutateAsync(VARIABLES);
@@ -78,7 +78,7 @@ describe("duplicating refreshes everything it writes", () => {
 
   it("when the server refused it, since the server is the authority on what exists", async () => {
     duplicateVersion.mockRejectedValue(new ApiClientError("Taken.", { status: 409 }));
-    const { result, queryClient } = renderHookWithQueryClient(() => useDuplicateSet());
+    const { result, queryClient } = renderHookWithQueryClient(() => useDuplicateRecipe());
     const keys = spyOn(queryClient);
 
     await expect(result.current.mutateAsync(VARIABLES)).rejects.toThrow();
@@ -86,9 +86,9 @@ describe("duplicating refreshes everything it writes", () => {
     await expectTouched(keys);
   });
 
-  it("when no answer came back, since the Set may exist anyway", async () => {
+  it("when no answer came back, since the Recipe may exist anyway", async () => {
     duplicateVersion.mockRejectedValue(new TypeError("Failed to fetch"));
-    const { result, queryClient } = renderHookWithQueryClient(() => useDuplicateSet());
+    const { result, queryClient } = renderHookWithQueryClient(() => useDuplicateRecipe());
     const keys = spyOn(queryClient);
 
     await expect(result.current.mutateAsync(VARIABLES)).rejects.toThrow();

@@ -9,7 +9,7 @@ import { ProfileDiff } from "@/components/drafts/ProfileDiff";
 import { ProfileSummary } from "@/components/drafts/ProfileSummary";
 import { ProfileCurve } from "@/components/profiles/ProfileCurve";
 import { ProposalNameField, useProposalName } from "@/components/profiles/ProposalName";
-import { MajorChoice } from "@/components/sets/MajorChoice";
+import { MajorChoice } from "@/components/recipes/MajorChoice";
 import { useSyncOwner } from "@/components/sync/SyncOwner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 type Json = Record<string, unknown>;
 
 /**
- * Buttons whose labels run to a sentence ("Approve as v1.2 of <Set> and sync"). The base button
+ * Buttons whose labels run to a sentence ("Approve as v1.2 of <Recipe> and sync"). The base button
  * is `shrink-0 whitespace-nowrap`, which in a flex row makes the card wider than a phone: these
  * shrink, wrap and stay inside it.
  */
@@ -40,7 +40,7 @@ export const syncKeyOf = (draftId: number) => `draft-${draftId}`;
 
 /**
  * Whether approving this waiting proposal would make a profile of its own, whose name is then the
- * person's to choose. The put's own landing says so (the Set's when the proposal is for one).
+ * person's to choose. The put's own landing says so (the Recipe's when the proposal is for one).
  */
 export function landsOnNewProfile(standing: DraftStanding): boolean {
   return (standing.landing?.plain.row_id ?? null) === null;
@@ -54,8 +54,8 @@ export function landsOnNewProfile(standing: DraftStanding): boolean {
  * and nothing else: every sentence about the machine is the server's `reason`, and the web
  * composes none. A person answers it here with one click:
  *
- * - **Approve** (Writes off) makes this version the profile's active one (and the Set's next
- *   version, in a Set chat) and switches the profile on. Same request as ever, `POST
+ * - **Approve** (Writes off) makes this version the profile's active one (and the Recipe's next
+ *   version, in a Recipe chat) and switches the profile on. Same request as ever, `POST
  *   /api/profile-board`; nothing reaches the machine.
  * - **Approve and sync** (Writes on) is that and then the same sync the top bar's button starts,
  *   through the app's one sync owner. The sync does not select the profile on the machine.
@@ -204,15 +204,15 @@ function Waiting({
   const proposedName = draft.draft_label ?? "";
   const stopChanges = stopConditionChangesOf(draft);
   const clamps = clampChangesOf(draft);
-  // The Set of the profile this lands on follows it with a version of its own.
-  const landingSet = landing?.plain.recipe ?? null;
-  const forSet =
-    landingSet !== null
+  // The Recipe of the profile this lands on follows it with a version of its own.
+  const landingRecipe = landing?.plain.recipe ?? null;
+  const forRecipe =
+    landingRecipe !== null
       ? {
-          id: landingSet.id,
-          name: landingSet.name,
-          minorLabel: landingSet.next_minor_label,
-          majorLabel: landingSet.next_major_label,
+          id: landingRecipe.id,
+          name: landingRecipe.name,
+          minorLabel: landingRecipe.next_minor_label,
+          majorLabel: landingRecipe.next_major_label,
         }
       : null;
   // A proposal that would be a profile of its own: its name is the person's to choose.
@@ -250,11 +250,11 @@ function Waiting({
   const noSyncWhy = writes ? syncUnavailableWhy(configured, connected) : null;
   const sync = syncs ? " and sync" : "";
 
-  const setLabel =
-    forSet !== null ? ((major ? forSet.majorLabel : forSet.minorLabel) ?? null) : null;
+  const recipeLabel =
+    forRecipe !== null ? ((major ? forRecipe.majorLabel : forRecipe.minorLabel) ?? null) : null;
   const approveWords =
-    forSet !== null
-      ? `Approve as ${setLabel ?? "a new version"} of ${forSet.name}${sync}`
+    forRecipe !== null
+      ? `Approve as ${recipeLabel ?? "a new version"} of ${forRecipe.name}${sync}`
       : isNew && trimmed && nameProblem === null
         ? `Approve${sync} — add “${trimmed}”`
         : `Approve${sync}`;
@@ -274,7 +274,7 @@ function Waiting({
       const row = await attempt(() =>
         put.mutateAsync({
           draftId: draft.id,
-          ...(forSet !== null ? { major } : {}),
+          ...(forRecipe !== null ? { major } : {}),
           ...(isNew ? { label: trimmed } : {}),
           // The card says it is syncing, and the sync's own notification follows; a refusal is
           // shown by the card, under the name or under the buttons.
@@ -298,9 +298,9 @@ function Waiting({
       tellAgent?.(
         approvedProfileMessage({
           name: isNew ? trimmed : proposedName,
-          forSet:
-            forSet !== null && setLabel !== null
-              ? { versionLabel: setLabel, setName: forSet.name }
+          forRecipe:
+            forRecipe !== null && recipeLabel !== null
+              ? { versionLabel: recipeLabel, recipeName: forRecipe.name }
               : null,
           newVersion: !isNew,
           proposedAs: renamed,
@@ -357,7 +357,7 @@ function Waiting({
           data-testid="proposal-prediction"
         >
           <p className="text-muted-foreground text-xs">
-            Prediction for {draft.recipe_name ?? "its Set"}
+            Prediction for {draft.recipe_name ?? "its Recipe"}
             {draft.compares_to_version_label
               ? ` · compared to ${draft.compares_to_version_label}`
               : ""}
@@ -414,12 +414,12 @@ function Waiting({
 
       {!fresh && stopChanges.length > 0 ? <StopConditionWarning changes={stopChanges} /> : null}
 
-      {forSet !== null && forSet.minorLabel !== null && forSet.majorLabel !== null ? (
+      {forRecipe !== null && forRecipe.minorLabel !== null && forRecipe.majorLabel !== null ? (
         <MajorChoice
           checked={major}
           onChange={setMajorChoice}
-          minorLabel={forSet.minorLabel}
-          majorLabel={forSet.majorLabel}
+          minorLabel={forRecipe.minorLabel}
+          majorLabel={forRecipe.majorLabel}
           reason={draft.suggest_major ? draft.major_reason : ""}
           disabled={answering}
         />

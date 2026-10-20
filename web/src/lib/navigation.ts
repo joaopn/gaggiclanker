@@ -54,10 +54,10 @@ export function isNavGroup(item: NavItem): item is NavGroup {
  * here plus one `<Route>` in App.tsx.
  *
  * Six rows rather than a dozen. What you open every day — the archive, the
- * chat, the Sets you are dialling in and the profiles the machine brews with —
- * is a row of its own. Sets is a row rather than a page under Brew setup
+ * chat, the Recipes you are dialling in and the profiles the machine brews with —
+ * is a row of its own. Recipes is a row rather than a page under Brew setup
  * because it is the one idea the app adds: a bean dialled in on its own
- * profile, version by version, and the place every shot is filed. What a Set
+ * profile, version by version, and the place every shot is filed. What a Recipe
  * names (the bean and the hardware) and the notes it is tasted with are under
  * Brew setup; what is set up once and then mostly left alone is under
  * Settings. A page inside a group keeps its own chord, so `g b` is still one
@@ -89,10 +89,10 @@ const KNOWLEDGE: NavPage = {
 export const NAV_LINKS: NavItem[] = [
   { to: "/shots", label: "Shots", icon: Coffee, shortcut: "g s", shortcutLabel: "g s" },
   // Its own entry rather than a panel on a page: a conversation is a place you
-  // go back to, and the "Discuss in chat" buttons on a shot and a Set both land
+  // go back to, and the "Discuss in chat" buttons on a shot and a Recipe both land
   // here with a thread already scoped.
   { to: "/chat", label: "Chat", icon: MessageSquare, shortcut: "g c", shortcutLabel: "g c" },
-  { to: "/sets", label: "Sets", icon: Layers, shortcut: "g e", shortcutLabel: "g e" },
+  { to: "/recipes", label: "Recipes", icon: Layers, shortcut: "g e", shortcutLabel: "g e" },
   // Profiles owns the staging queue as well as the mirror: a draft is the step
   // between a profile version and the machine, so it lives with the versions it
   // is made from rather than on a page of its own.
@@ -181,7 +181,7 @@ export function isGroupActive(group: NavGroup, pathname: string): boolean {
  * How wide the page under the shell is allowed to get.
  *
  * Two answers, because the application holds two kinds of page. Most of them
- * are things to read — a Set's log, a shot's review, a settings form — and a
+ * are things to read — a Recipe's log, a shot's review, a settings form — and a
  * line of prose that runs the width of a wide monitor is a line nobody
  * finishes; `max-w-5xl` is the reading column those are laid out in.
  *

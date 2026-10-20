@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { SetProposalDecision } from "@/api/types";
+import type { RecipeProposalDecision } from "@/api/types";
 import turns from "@/lib/profileTurns.json";
 
 /**
@@ -11,7 +11,7 @@ import turns from "@/lib/profileTurns.json";
  * never hear that the new version is argued in a new conversation. So the
  * Chat page provides this for the conversation on screen, and the card sends
  * a message through it after an accept or a decline succeeds. Outside the chat
- * — the same card on the Set page — there is no provider and nothing is sent.
+ * — the same card on the Recipe page — there is no provider and nothing is sent.
  */
 export type TellAgent = (message: string) => void;
 
@@ -52,7 +52,7 @@ function renamedEnding(turn: string, oldName: string): string {
 /**
  * The message an accept sends, or `null` when there is nothing to tell.
  *
- * It starts with "Accepted:" because that is what the Set prompt tells the
+ * It starts with "Accepted:" because that is what the Recipe prompt tells the
  * agent to recognise: the turn is the button's, and the answer to it is to say
  * that the new version is brewed and analysed in a new conversation. A change
  * names what it recorded, in the card's own before → after words, so the
@@ -63,7 +63,7 @@ function renamedEnding(turn: string, oldName: string): string {
  * person changed that name, the message says what it is now and what the agent proposed.
  */
 export function acceptedMessage(
-  decision: SetProposalDecision,
+  decision: RecipeProposalDecision,
   renamed?: { name: string; proposedAs: string },
 ): string | null {
   // Only an accept records a version; a decline answers with none.
@@ -79,8 +79,8 @@ export function acceptedMessage(
     .map((change) => `${change.label} ${change.before ?? "not set"} → ${change.after ?? "cleared"}`)
     .join("; ");
   return changes
-    ? `Accepted: your proposed change (${changes}) is now ${version.version_label} of this Set.`
-    : `Accepted: your proposed change is now ${version.version_label} of this Set.`;
+    ? `Accepted: your proposed change (${changes}) is now ${version.version_label} of this Recipe.`
+    : `Accepted: your proposed change is now ${version.version_label} of this Recipe.`;
 }
 
 /**
@@ -96,27 +96,27 @@ export function declinedMessage(reason: string): string {
 }
 
 /**
- * The message an approved profile proposal sends: which profile, and for a Set which of its
+ * The message an approved profile proposal sends: which profile, and for a Recipe which of its
  * versions, as the server's standing read names them. `proposedAs` is the name the agent gave
  * it, only when the person typed another.
  */
 export function approvedProfileMessage(approval: {
   name: string;
-  /** The Set version this approval is recorded as, with its Set: a profile proposed for a Set. */
-  forSet?: { versionLabel: string; setName: string } | null;
+  /** The Recipe version this approval is recorded as, with its Recipe: a profile proposed for a Recipe. */
+  forRecipe?: { versionLabel: string; recipeName: string } | null;
   /** A change to a profile that exists, not a profile of its own. */
   newVersion: boolean;
   proposedAs?: string | null;
 }): string {
-  const template = approval.forSet
+  const template = approval.forRecipe
     ? turns.approved_for_recipe
     : approval.newVersion
       ? turns.approved_new_version
       : turns.approved_new_profile;
   const turn = fill(template, {
     "<name>": approval.name,
-    "<version label>": approval.forSet?.versionLabel ?? "",
-    "<Recipe name>": approval.forSet?.setName ?? "",
+    "<version label>": approval.forRecipe?.versionLabel ?? "",
+    "<Recipe name>": approval.forRecipe?.recipeName ?? "",
   });
   return approval.proposedAs ? renamedEnding(turn, approval.proposedAs) : turn;
 }

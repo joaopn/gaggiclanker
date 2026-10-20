@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import { OutcomeCard, outcomeFailure } from "@/components/chat/OutcomeCard";
 import { TellAgentContext } from "@/components/chat/tellAgent";
+import { outcomeProposal, version, vocabulary } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { outcomeProposal, version, vocabulary } from "@/test/setsFixtures";
 
 const {
   getOutcomeProposals,
@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 function renderCard() {
-  return renderWithQueryClient(<OutcomeCard setId={3} proposalId={11} fallback={FALLBACK} />);
+  return renderWithQueryClient(<OutcomeCard recipeId={3} proposalId={11} fallback={FALLBACK} />);
 }
 
 /**
@@ -146,7 +146,7 @@ describe("OutcomeCard", () => {
       });
       renderWithQueryClient(
         <TellAgentContext.Provider value={tell}>
-          <OutcomeCard setId={3} proposalId={11} fallback={FALLBACK} />
+          <OutcomeCard recipeId={3} proposalId={11} fallback={FALLBACK} />
         </TellAgentContext.Provider>,
       );
 
@@ -302,7 +302,7 @@ describe("OutcomeCard", () => {
       await user.click(await screen.findByRole("button", { name: /Accept/ }));
 
       expect(await screen.findByTestId("outcome-card-error")).toHaveTextContent(
-        "This grade was already answered, here in another tab or on the Set page.",
+        "This grade was already answered, here in another tab or on the Recipe page.",
       );
       // Still a card with buttons: the failure is not a state it was left in.
       expect(screen.getByRole("button", { name: /Accept/ })).toBeEnabled();

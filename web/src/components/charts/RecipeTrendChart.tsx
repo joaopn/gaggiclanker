@@ -1,0 +1,183 @@
+import type { ChartOptions } from "chart.js";
+import { useMemo } from "react";
+import { Line } from "react-chartjs-2";
+import type { RecipeTrends } from "@/api/types";
+import { chartPalette, crosshairPlugin } from "@/components/charts/chartSetup";
+import { useTheme } from "@/lib/theme";
+
+/**
+ * The Recipe's trajectory: one point per shot, in the order they were pulled, with
+ * a marked boundary wherever the version changes from one point to the next,
+ * labelled with the version of the run that follows. After a revert the same
+ * version can begin twice, so a boundary is keyed by where it falls.
+ *
+ * Shot index rather than time on the x axis. A Recipe is pulled in bursts — six
+ * shots on Saturday morning, nothing until Thursday — and a time axis spends
+ * most of its width on the gaps, which is exactly the part with no information
+ * in it. The version boundaries are annotations rather than a second series
+ * because "what changed here" is the question the chart is answering.
+ *
+ * Three series on three axes, which is more axes than it looks like it
+ * needs. The rating is a small integer and gets the left. Duration is tens of
+ * seconds and gets the right. The **ratio gets its own**: it lives around 2 while duration
+ * lives around 28, so sharing an axis with duration squashes it onto the
+ * baseline and the one series that answers "did the numbers change" is drawn as
+ * a flat line at zero. A hidden third axis costs nothing and is the difference
+ * between a series and a decoration.
+ */
+export function RecipeTrendChart({
+  trends,
+  height = 220,
+}: {
+  trends: RecipeTrends;
+  height?: number;
+}) {
+  const { isDark } = useTheme();
+
+  const { data, options, boundaries } = useMemo(() => {
+    const palette = chartPalette(isDark);
+    const labels = trends.shots.map((_, index) => String(index + 1));
+
+    // The x position where each version after the first begins. Computed from
+    // the ordered points rather than from timestamps, because the points are
+    // what the axis is indexed by.
+    const marks: Array<{ at: number; version: string; intent: string }> = [];
+    trends.shots.forEach((point, index) => {
+      const previous = trends.shots[index - 1];
+      if (previous && previous.recipe_version_id !== point.recipe_version_id) {
+        const summary = trends.versions.find(
+          (version) => version.recipe_version_id === point.recipe_version_id,
+        );
+        marks.push({
+          at: index,
+          version: point.version_label,
+          intent: summary?.intent ?? "",
+        });
+      }
+    });
+
+    const series = [
+      {
+        label: "Your rating",
+        data: trends.shots.map((point) => point.rating),
+        borderColor: palette.series[2],
+        yAxisID: "y",
+        borderDash: [4, 3],
+      },
+      {
+        label: "Duration (s)",
+        data: trends.shots.map((point) => point.duration_s),
+        borderColor: palette.series[1],
+        yAxisID: "y2",
+      },
+      {
+        label: "Ratio",
+        data: trends.shots.map((point) => point.ratio),
+        borderColor: palette.series[3],
+        yAxisID: "y3",
+        borderDash: [2, 2],
+      },
+    ].map((dataset) => ({
+      ...dataset,
+      borderWidth: 1.75,
+      pointRadius: 2,
+      tension: 0,
+      // A shot with no rating is a gap in the line, not a zero: most shots are
+      // never rated and a zero would draw the taste of every one of them at the
+      // bottom of the chart.
+      spanGaps: true,
+    }));
+
+    return {
+      boundaries: marks,
+      data: { labels, datasets: series },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false as const,
+        interaction: { mode: "index" as const, intersect: false },
+        plugins: {
+          legend: { display: true, labels: { color: palette.text, boxWidth: 10 } },
+          annotation: {
+            annotations: Object.fromEntries(
+              marks.map((mark) => [
+                // By position: a version can begin twice once the Recipe goes back
+                // to it, and a label key would draw only one of the two.
+                String(mark.at),
+                {
+                  type: "line" as const,
+                  xMin: mark.at - 0.5,
+                  xMax: mark.at - 0.5,
+                  borderColor: palette.text,
+                  borderWidth: 1,
+                  borderDash: [3, 3],
+                  label: {
+                    display: true,
+                    content: mark.version,
+                    position: "start" as const,
+                    color: palette.text,
+                    backgroundColor: "transparent",
+                    font: { size: 10 },
+                  },
+                },
+              ]),
+            ),
+          },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: "shots, oldest first", color: palette.text },
+            ticks: { color: palette.text },
+            grid: { color: palette.grid },
+          },
+          y: {
+            beginAtZero: true,
+            suggestedMax: 5,
+            title: { display: true, text: "rating", color: palette.text },
+            ticks: { color: palette.text },
+            grid: { color: palette.grid },
+          },
+          y2: {
+            position: "right" as const,
+            beginAtZero: true,
+            title: { display: true, text: "seconds", color: palette.text },
+            ticks: { color: palette.text },
+            grid: { display: false },
+          },
+          // Not drawn: a third set of tick labels on a chart this size is more
+          // clutter than information, and the ratio is read off the tooltip and
+          // the shape of the line. `beginAtZero` is deliberately off — a ratio
+          // never approaches zero, and anchoring there would flatten it again.
+          y3: {
+            display: false,
+            position: "right" as const,
+            grid: { display: false },
+          },
+        },
+      } satisfies ChartOptions<"line">,
+    };
+  }, [trends, isDark]);
+
+  return (
+    <div style={{ height }} data-testid="recipe-trend-chart">
+      <Line
+        data={data}
+        options={options}
+        plugins={[crosshairPlugin]}
+        aria-label="How this Recipe's shots have gone, version by version"
+      />
+      {/* A canvas is invisible to a screen reader and to a test, so each chart
+          renders what it drew in text. This is what the page tests assert on. */}
+      <ul className="sr-only" data-testid="recipe-trend-summary">
+        {data.datasets.map((dataset) => (
+          <li key={dataset.label}>
+            {`${dataset.label}: ${dataset.data.filter((value) => value != null).length} points`}
+          </li>
+        ))}
+        {boundaries.map((mark) => (
+          <li key={mark.at}>{`${mark.version} begins at shot ${mark.at + 1}`}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}

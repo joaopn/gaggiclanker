@@ -24,7 +24,7 @@ export function InsightCard({
   compact = false,
 }: {
   insight: KnowledgeInsight;
-  /** On the shot panel and the Set page: no editor, no delete. */
+  /** On the shot panel and the Recipe page: no editor, no delete. */
   compact?: boolean;
 }) {
   const patch = usePatchKnowledgeInsight();
@@ -104,7 +104,7 @@ export function InsightCard({
   );
 }
 
-/** The edit and delete buttons of an insight: the same on the Knowledge page and a Set's. */
+/** The edit and delete buttons of an insight: the same on the Knowledge page and a Recipe's. */
 export function InsightEditButtons({
   insight,
   onEdit,

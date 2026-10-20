@@ -1,30 +1,30 @@
 import { Archive, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { useId } from "react";
-import type { ChatThread, SetRow } from "@/api/types";
-import { DesigningBadge } from "@/components/sets/Designing";
+import type { ChatThread, RecipeRow } from "@/api/types";
+import { DesigningBadge } from "@/components/recipes/Designing";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * The conversations, picked by Set: a row of badges above the chat, one per
- * Set, and under it the open badge's conversations, one per line.
+ * The conversations, picked by Recipe: a row of badges above the chat, one per
+ * Recipe, and under it the open badge's conversations, one per line.
  *
- * A conversation's Set is not decoration: it decides which archive the answers
- * are about, and two threads with the same question under different Sets get
- * different answers. So the Set is the first thing you pick, and the list you
- * then read is that Set's alone. It replaced a sidebar of folders, which took a
+ * A conversation's Recipe is not decoration: it decides which archive the answers
+ * are about, and two threads with the same question under different Recipes get
+ * different answers. So the Recipe is the first thing you pick, and the list you
+ * then read is that Recipe's alone. It replaced a sidebar of folders, which took a
  * 260px column from the conversation for a tree you only ever had one branch of
  * open in; badges wrap above the chat and leave it the page's whole width.
  *
- * Every Set that is not archived gets a badge, including the ones nobody has
+ * Every Recipe that is not archived gets a badge, including the ones nobody has
  * asked about yet — an empty list with a New button in it is the invitation,
- * and a Set that only appeared once it had a conversation would be a Set nobody
- * ever starts one on. They come in the order the Sets list serves them, so the
- * Set the machine is set up for is first.
+ * and a Recipe that only appeared once it had a conversation would be a Recipe nobody
+ * ever starts one on. They come in the order the Recipes list serves them, so the
+ * Recipe the machine is set up for is first.
  *
- * An archived Set with conversations gets a badge of its own too, behind the
- * Archived Sets toggle at the end of the row: off by default, because a
- * finished bag is not what the page is for, and a badge per Set rather than one
+ * An archived Recipe with conversations gets a badge of its own too, behind the
+ * Archived Recipes toggle at the end of the row: off by default, because a
+ * finished bag is not what the page is for, and a badge per Recipe rather than one
  * list of every archived conversation, because a question about last winter's
  * decaf is still a question about that decaf.
  *
@@ -34,100 +34,100 @@ import { cn } from "@/lib/utils";
  * a reader can reach.
  *
  * A row is one conversation about one version, labelled with it. A version a
- * Set went back past is muted and says "dead end" in words: what was
+ * Recipe went back past is muted and says "dead end" in words: what was
  * argued there is still readable and is no longer the line being brewed. The
- * server decides that — it is a fact about a Set's whole line — and the page
+ * server decides that — it is a fact about a Recipe's whole line — and the page
  * renders what it is told.
  *
- * A Set still being designed carries the same Designing badge as on the Sets
+ * A Recipe still being designed carries the same Designing badge as on the Recipes
  * list: its list holds the conversation the first recipe is being worked out
- * in, and a design left half-way is how a Set with no recipe behind it comes
+ * in, and a design left half-way is how a Recipe with no recipe behind it comes
  * about.
  */
 
-/** Where a conversation with no Set lives, and where a first question goes. */
+/** Where a conversation with no Recipe lives, and where a first question goes. */
 export const GENERAL = "general";
 
 export type ThreadFolder = {
-  /** Stable across renders: `general`, `set-<id>`, or `archived-<id>`. */
+  /** Stable across renders: `general`, `recipe-<id>`, or `archived-<id>`. */
   key: string;
   label: string;
-  /** The Set's current version, shown on its badge; NULL for General, an archived Set and a Set being designed. */
+  /** The Recipe's current version, shown on its badge; NULL for General, an archived Recipe and a Recipe being designed. */
   versionLabel: string | null;
   /** What a new conversation is created with. NULL for General; folders with no New omit it. */
-  setId: number | null;
+  recipeId: number | null;
   canCreate: boolean;
-  /** The folder's Set is still being designed. */
+  /** The folder's Recipe is still being designed. */
   designing: boolean;
-  /** The folder's Set is archived: shown only behind the Archived Sets toggle. */
+  /** The folder's Recipe is archived: shown only behind the Archived Recipes toggle. */
   archived: boolean;
   threads: ChatThread[];
 };
 
-export function folderKey(setId: number | null): string {
-  return setId === null ? GENERAL : `set-${setId}`;
+export function folderKey(recipeId: number | null): string {
+  return recipeId === null ? GENERAL : `recipe-${recipeId}`;
 }
 
-/** A thread's Set, with "absent" and "null" read as the one thing they mean. */
-function setOf(thread: ChatThread): number | null {
+/** A thread's Recipe, with "absent" and "null" read as the one thing they mean. */
+function recipeOf(thread: ChatThread): number | null {
   return thread.recipe_id ?? null;
 }
 
 /**
  * The folders, in the order their badges are drawn.
  *
- * General, then the Sets in the order they were served, then one per archived
- * Set that has conversations, newest conversation first. The Sets list the page
- * reads leaves archived Sets out, and deleting a Set deletes its conversations,
- * so a conversation whose Set is not listed is an archived Set's; its badge is
- * named from the conversation. An archived Set's conversations are still
+ * General, then the Recipes in the order they were served, then one per archived
+ * Recipe that has conversations, newest conversation first. The Recipes list the page
+ * reads leaves archived Recipes out, and deleting a Recipe deletes its conversations,
+ * so a conversation whose Recipe is not listed is an archived Recipe's; its badge is
+ * named from the conversation. An archived Recipe's conversations are still
  * readable: the bag is finished, the questions about it are not wrong.
  */
-export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolder[] {
+export function buildFolders(threads: ChatThread[], recipes: RecipeRow[]): ThreadFolder[] {
   const newestFirst = [...threads].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-  const live = new Set(sets.map((row) => row.id));
+  const live = new Set(recipes.map((row) => row.id));
   const folders: ThreadFolder[] = [
     {
       key: GENERAL,
       label: "General",
       versionLabel: null,
-      setId: null,
+      recipeId: null,
       canCreate: true,
       designing: false,
       archived: false,
-      threads: newestFirst.filter((thread) => setOf(thread) === null),
+      threads: newestFirst.filter((thread) => recipeOf(thread) === null),
     },
-    ...sets.map((row) => ({
+    ...recipes.map((row) => ({
       key: folderKey(row.id),
       label: row.name,
-      // A Set being designed has a version 1 with no recipe yet: its badge
+      // A Recipe being designed has a version 1 with no recipe yet: its badge
       // says Designing instead of naming a version nobody can brew.
       versionLabel: row.designing ? null : (row.current_version_label ?? null),
-      setId: row.id,
+      recipeId: row.id,
       canCreate: true,
       designing: row.designing ?? false,
       archived: false,
-      threads: newestFirst.filter((thread) => setOf(thread) === row.id),
+      threads: newestFirst.filter((thread) => recipeOf(thread) === row.id),
     })),
   ];
   const archived = new Map<number, ThreadFolder>();
   for (const thread of newestFirst) {
-    const setId = setOf(thread);
-    if (setId === null || live.has(setId)) continue;
-    let folder = archived.get(setId);
+    const recipeId = recipeOf(thread);
+    if (recipeId === null || live.has(recipeId)) continue;
+    let folder = archived.get(recipeId);
     if (folder === undefined) {
       folder = {
-        key: `archived-${setId}`,
-        label: thread.recipe_name || `Set ${setId}`,
+        key: `archived-${recipeId}`,
+        label: thread.recipe_name || `Recipe ${recipeId}`,
         versionLabel: null,
-        setId,
-        // No New: a Set you have finished with is not one to start asking about.
+        recipeId,
+        // No New: a Recipe you have finished with is not one to start asking about.
         canCreate: false,
         designing: false,
         archived: true,
         threads: [],
       };
-      archived.set(setId, folder);
+      archived.set(recipeId, folder);
     }
     folder.threads.push(thread);
   }
@@ -135,16 +135,16 @@ export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolde
 }
 
 /**
- * The newest Set: the one made last, which is the bag being brewed now.
+ * The newest Recipe: the one made last, which is the bag being brewed now.
  *
- * By when the Set was made, not by the Sets list's order (that puts the Sets
+ * By when the Recipe was made, not by the Recipes list's order (that puts the Recipes
  * the machine matches automatically first) and not by the newest conversation
  * (a question asked about last month's bag would then decide what today's
- * Chat page opens on). NULL when there are no Sets.
+ * Chat page opens on). NULL when there are no Recipes.
  */
-export function latestSetId(sets: SetRow[]): number | null {
-  let latest: SetRow | null = null;
-  for (const row of sets) {
+export function latestRecipeId(recipes: RecipeRow[]): number | null {
+  let latest: RecipeRow | null = null;
+  for (const row of recipes) {
     if (
       latest === null ||
       row.created_at > latest.created_at ||
@@ -160,21 +160,21 @@ export function latestSetId(sets: SetRow[]): number | null {
  * Which badge is open when the person has not picked one.
  *
  * The conversation on screen wins — its list is where you came from. Then the
- * Set a `?set=` link named, then the newest Set, and General only when there
- * are no Sets at all. A key that names no folder (a `?set=` for an archived
- * Set) is passed over rather than leaving nothing open. `folders` is what is
- * on screen: an archived Set's badge counts only while the toggle shows it.
+ * Recipe a `?recipe=` link named, then the newest Recipe, and General only when there
+ * are no Recipes at all. A key that names no folder (a `?recipe=` for an archived
+ * Recipe) is passed over rather than leaving nothing open. `folders` is what is
+ * on screen: an archived Recipe's badge counts only while the toggle shows it.
  */
 export function defaultFolderKey({
   folders,
-  sets,
+  recipes,
   selectedId,
-  linkedSetId,
+  linkedRecipeId,
 }: {
   folders: ThreadFolder[];
-  sets: SetRow[];
+  recipes: RecipeRow[];
   selectedId: number | null;
-  linkedSetId: number | null;
+  linkedRecipeId: number | null;
 }): string {
   const exists = (key: string) => folders.some((folder) => folder.key === key);
   if (selectedId !== null) {
@@ -183,8 +183,9 @@ export function defaultFolderKey({
     );
     if (holding) return holding.key;
   }
-  if (linkedSetId !== null && exists(folderKey(linkedSetId))) return folderKey(linkedSetId);
-  const latest = latestSetId(sets);
+  if (linkedRecipeId !== null && exists(folderKey(linkedRecipeId)))
+    return folderKey(linkedRecipeId);
+  const latest = latestRecipeId(recipes);
   if (latest !== null && exists(folderKey(latest))) return folderKey(latest);
   return GENERAL;
 }
@@ -208,7 +209,7 @@ export function ConversationPicker({
   selectedId: number | null;
   onOpen: (key: string) => void;
   onSelect: (id: number) => void;
-  onNew: (setId: number | null) => void;
+  onNew: (recipeId: number | null) => void;
   onDelete: (id: number) => void;
   showArchived: boolean;
   onToggleArchived: () => void;
@@ -228,8 +229,8 @@ export function ConversationPicker({
         aria-pressed={open}
         aria-controls={listId(folder.key)}
         onClick={() => onOpen(folder.key)}
-        data-testid="chat-set-badge"
-        // The Button base is `shrink-0` and nowrap: a long Set name would
+        data-testid="chat-recipe-badge"
+        // The Button base is `shrink-0` and nowrap: a long Recipe name would
         // push the page wider than a phone. It may shrink and truncate.
         className={cn(
           "h-auto min-h-8 min-w-0 max-w-full shrink py-1",
@@ -258,13 +259,13 @@ export function ConversationPicker({
   return (
     <div className="min-w-0 space-y-3">
       <nav
-        aria-label="Conversations by Set"
-        data-testid="chat-set-badges"
+        aria-label="Conversations by Recipe"
+        data-testid="chat-recipe-badges"
         className="flex min-w-0 flex-wrap items-center gap-2"
       >
         {shown.filter((folder) => !folder.archived).map(badge)}
-        {/* A switch for the archived Sets' badges, not a list of their
-            conversations: it says how many Sets it would show. */}
+        {/* A switch for the archived Recipes' badges, not a list of their
+            conversations: it says how many Recipes it would show. */}
         {archivedCount > 0 ? (
           <Button
             type="button"
@@ -276,7 +277,7 @@ export function ConversationPicker({
             className="h-auto min-h-8 py-1 text-muted-foreground"
           >
             <Archive className="size-3.5" aria-hidden="true" />
-            {showArchived ? "Hide archived Sets" : `Show archived Sets (${archivedCount})`}
+            {showArchived ? "Hide archived Recipes" : `Show archived Recipes (${archivedCount})`}
           </Button>
         ) : null}
         {shown.filter((folder) => folder.archived).map(badge)}
@@ -290,7 +291,7 @@ export function ConversationPicker({
           open={folder.key === openKey}
           selectedId={selectedId}
           onSelect={onSelect}
-          onNew={() => onNew(folder.setId)}
+          onNew={() => onNew(folder.recipeId)}
           onDelete={onDelete}
           busy={busy}
         />
@@ -340,7 +341,7 @@ function FolderList({
       ) : null}
 
       {/* A list with nothing in it shows its New button and no prose. Capped
-          in height so a Set with many versions does not push the conversation
+          in height so a Recipe with many versions does not push the conversation
           below the fold; the list scrolls instead. */}
       {folder.threads.length > 0 ? (
         <ul
@@ -371,7 +372,7 @@ function FolderList({
                     className="size-3.5 shrink-0 text-muted-foreground"
                     aria-hidden="true"
                   />
-                  {/* The version leads the row: a Set holds one conversation
+                  {/* The version leads the row: a Recipe holds one conversation
                       per change, and "v1.2" is what tells two of them apart.
                       Not truncated with the title, because it is the half that
                       never gets long. */}
@@ -389,7 +390,7 @@ function FolderList({
                     {thread.title || "New conversation"}
                   </span>
                   <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
-                    {/* In words, not only in grey: the Set went back
+                    {/* In words, not only in grey: the Recipe went back
                         past this version, so what was argued here is not the
                         line being brewed any more. */}
                     {thread.dead_end ? <span>dead end · </span> : null}

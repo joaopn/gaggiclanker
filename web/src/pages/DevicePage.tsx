@@ -91,7 +91,7 @@ export function DevicePage() {
         <EmptyState
           icon={Cpu}
           title="No machine configured"
-          description="Set `gaggimateHost` in Settings. The archive works without one — imported shots are shots like any other — but there is nothing to sync with."
+          description="Recipe `gaggimateHost` in Settings. The archive works without one — imported shots are shots like any other — but there is nothing to sync with."
         />
       </>
     );

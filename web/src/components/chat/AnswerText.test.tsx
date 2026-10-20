@@ -21,7 +21,7 @@ describe("AnswerText renders markdown", () => {
   });
 
   it("renders inline code as a code element", () => {
-    const { container } = renderAnswer("Set `grind 12` today.");
+    const { container } = renderAnswer("Recipe `grind 12` today.");
     expect(container.querySelector("code")?.textContent).toBe("grind 12");
     expect(container.textContent).not.toContain("`");
   });
@@ -113,9 +113,9 @@ describe("citations inside markdown", () => {
 
 describe("links", () => {
   it("renders an in-app path as a router link", () => {
-    const { container } = renderAnswer("[the set](/sets/3)");
+    const { container } = renderAnswer("[the Recipe](/recipes/3)");
     const link = container.querySelector("a");
-    expect(link?.getAttribute("href")).toBe("/sets/3");
+    expect(link?.getAttribute("href")).toBe("/recipes/3");
     expect(link?.hasAttribute("target")).toBe(false);
   });
 

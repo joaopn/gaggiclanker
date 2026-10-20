@@ -32,10 +32,10 @@ const {
   deleteChatThread,
   sendChatMessage,
   cancelChatRun,
-  getSets,
-  getSetProposals,
-  acceptSetProposal,
-  declineSetProposal,
+  getRecipes,
+  getRecipeProposals,
+  acceptRecipeProposal,
+  declineRecipeProposal,
   downloadFile,
 } = vi.hoisted(() => ({
   getChatThreads: vi.fn(),
@@ -46,10 +46,10 @@ const {
   deleteChatThread: vi.fn(),
   sendChatMessage: vi.fn(),
   cancelChatRun: vi.fn(),
-  getSets: vi.fn(),
-  getSetProposals: vi.fn(),
-  acceptSetProposal: vi.fn(),
-  declineSetProposal: vi.fn(),
+  getRecipes: vi.fn(),
+  getRecipeProposals: vi.fn(),
+  acceptRecipeProposal: vi.fn(),
+  declineRecipeProposal: vi.fn(),
   downloadFile: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -62,10 +62,10 @@ vi.mock("@/api/client", async (importOriginal) => ({
   deleteChatThread,
   sendChatMessage,
   cancelChatRun,
-  getSets,
-  getSetProposals,
-  acceptSetProposal,
-  declineSetProposal,
+  getRecipes,
+  getRecipeProposals,
+  acceptRecipeProposal,
+  declineRecipeProposal,
   downloadFile,
 }));
 
@@ -88,13 +88,13 @@ function thread(over: Partial<typeof THREAD> & { id: number }) {
 }
 
 /**
- * The two Sets the Sets list serves, in the order the API sorts them.
+ * The two Recipes the Recipes list serves, in the order the API sorts them.
  *
- * Kenya is the newer Set and is served second (Guji is matched automatically,
- * which the API sorts first), so "the newest Set" and "the first badge" are
+ * Kenya is the newer Recipe and is served second (Guji is matched automatically,
+ * which the API sorts first), so "the newest Recipe" and "the first badge" are
  * two different answers and a test can tell which one the page used.
  */
-const SETS = [
+const RECIPES = [
   {
     id: 3,
     name: "Guji on the Niche",
@@ -112,7 +112,7 @@ const SETS = [
 ];
 
 /**
- * A Set's badge above the chat, by the name it shows.
+ * A Recipe's badge above the chat, by the name it shows.
  *
  * Matched as a prefix: the badge's accessible name carries the current version
  * and the conversation count after the label.
@@ -205,8 +205,8 @@ beforeEach(() => {
     message: DETAIL.messages[0],
   });
   cancelChatRun.mockResolvedValue({ ...DETAIL.runs[0], id: 9, status: "cancelled" });
-  getSets.mockResolvedValue({ items: SETS });
-  getSetProposals.mockResolvedValue({ items: [] });
+  getRecipes.mockResolvedValue({ items: RECIPES });
+  getRecipeProposals.mockResolvedValue({ items: [] });
 });
 
 describe("ChatPage folders", () => {
@@ -215,7 +215,7 @@ describe("ChatPage folders", () => {
       thread({ id: 1, title: "the live one", recipe_version_label: "v4" }),
       thread({ id: 2, title: "the abandoned one", recipe_version_label: "v2", dead_end: true }),
     ]);
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
     const rows = within(region("Guji on the Niche")).getAllByTestId("thread-row");
@@ -230,7 +230,7 @@ describe("ChatPage folders", () => {
   });
 
   it("names a minor version by its name, never by its ordinal", async () => {
-    // The Set's third version is v1.2: two dial-in changes after v1.
+    // The Recipe's third version is v1.2: two dial-in changes after v1.
     getChatThreads.mockResolvedValue([
       thread({ id: 1, title: "the live one", recipe_version_label: "v1.2" }),
     ]);
@@ -252,14 +252,14 @@ describe("ChatPage folders", () => {
     expect(screen.queryByText(/Guji on the Niche v3/)).not.toBeInTheDocument();
   });
 
-  it("draws General and a badge per Set, including a Set nobody has asked about", async () => {
+  it("draws General and a badge per Recipe, including a Recipe nobody has asked about", async () => {
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
-    // Every non-archived Set, in the order the Sets list served them, so the
-    // Set the machine is set up for comes first; each with its current version
+    // Every non-archived Recipe, in the order the Recipes list served them, so the
+    // Recipe the machine is set up for comes first; each with its current version
     // and how many conversations it holds, as the Shots page's bar names them.
-    const badges = within(screen.getByRole("navigation", { name: "Conversations by Set" }))
+    const badges = within(screen.getByRole("navigation", { name: "Conversations by Recipe" }))
       .getAllByRole("button")
       .map((button) => button.textContent);
     expect(badges).toEqual(["General0", "Guji on the Niche· v41", "Kenya AA on the Niche· v10"]);
@@ -268,13 +268,13 @@ describe("ChatPage folders", () => {
     expect(region("Kenya AA on the Niche")).toHaveTextContent("New");
   });
 
-  it("files a conversation under its Set's folder and not under General", async () => {
+  it("files a conversation under its Recipe's folder and not under General", async () => {
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
     expect(region("Guji on the Niche")).toHaveTextContent("Why is Guji sour?");
     expect(region("General")).not.toHaveTextContent("Why is Guji sour?");
-    // Nor under another Set's folder: a folder holds its own Set's questions only.
+    // Nor under another Recipe's folder: a folder holds its own Recipe's questions only.
     expect(region("Kenya AA on the Niche")).not.toHaveTextContent("Why is Guji sour?");
   });
 
@@ -283,7 +283,7 @@ describe("ChatPage folders", () => {
       thread({ id: 1, title: "the older one", updated_at: "2026-03-01T10:00:00.000Z" }),
       thread({ id: 2, title: "the newer one", updated_at: "2026-03-02T10:00:00.000Z" }),
     ]);
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
     const titles = within(region("Guji on the Niche"))
@@ -293,7 +293,7 @@ describe("ChatPage folders", () => {
     expect(titles[1]).toContain("the older one");
   });
 
-  it("keeps archived Sets behind a toggle, as a badge per Set and not one list", async () => {
+  it("keeps archived Recipes behind a toggle, as a badge per Recipe and not one list", async () => {
     const user = setupUser();
     getChatThreads.mockResolvedValue([
       thread({ id: 7, title: "the finished bag", recipe_id: 99, recipe_name: "Finished Ethiopia" }),
@@ -302,8 +302,8 @@ describe("ChatPage folders", () => {
     ]);
     renderWithQueryClient(<ChatPage />);
 
-    const toggle = await screen.findByRole("button", { name: "Show archived Sets (2)" });
-    // Off by default: no archived Set's badge, and none of their conversations.
+    const toggle = await screen.findByRole("button", { name: "Show archived Recipes (2)" });
+    // Off by default: no archived Recipe's badge, and none of their conversations.
     expect(toggle).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByRole("button", { name: /^Finished Ethiopia/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Old decaf/ })).toBeNull();
@@ -311,11 +311,11 @@ describe("ChatPage folders", () => {
 
     await user.click(toggle);
 
-    expect(screen.getByRole("button", { name: "Hide archived Sets" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Hide archived Recipes" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    // One badge per archived Set, each holding its own conversations only.
+    // One badge per archived Recipe, each holding its own conversations only.
     expect(folder("Old decaf")).toHaveTextContent("2");
     const decaf = await opened(user, "Old decaf");
     expect(decaf).toHaveTextContent("last winter");
@@ -329,13 +329,13 @@ describe("ChatPage folders", () => {
     expect(finished).toHaveTextContent("the finished bag");
     expect(finished).not.toHaveTextContent("last winter");
 
-    // Off again: the badges go, and the open list falls back to the newest Set.
-    await user.click(screen.getByRole("button", { name: "Hide archived Sets" }));
+    // Off again: the badges go, and the open list falls back to the newest Recipe.
+    await user.click(screen.getByRole("button", { name: "Hide archived Recipes" }));
     expect(screen.queryByRole("button", { name: /^Finished Ethiopia/ })).toBeNull();
     expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("shows an archived Set's badge when its conversation is the one opened", async () => {
+  it("shows an archived Recipe's badge when its conversation is the one opened", async () => {
     getChatThreads.mockResolvedValue([
       thread({ id: 7, title: "the finished bag", recipe_id: 99, recipe_name: "Finished Ethiopia" }),
     ]);
@@ -354,14 +354,14 @@ describe("ChatPage folders", () => {
       "aria-pressed",
       "true",
     );
-    expect(screen.getByRole("button", { name: "Hide archived Sets" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide archived Recipes" })).toBeInTheDocument();
   });
 
-  it("shows no archived toggle when no archived Set has a conversation", async () => {
+  it("shows no archived toggle when no archived Recipe has a conversation", async () => {
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
-    expect(screen.queryByRole("button", { name: /archived Sets/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /archived Recipes/ })).not.toBeInTheDocument();
   });
 
   it("has no flavour text under the title", async () => {
@@ -372,8 +372,8 @@ describe("ChatPage folders", () => {
     expect(screen.queryByText(/Ask about the archive/)).toBeNull();
   });
 
-  it("is just General when there are no Sets at all", async () => {
-    getSets.mockResolvedValue({ items: [] });
+  it("is just General when there are no Recipes at all", async () => {
+    getRecipes.mockResolvedValue({ items: [] });
     getChatThreads.mockResolvedValue([]);
     renderWithQueryClient(<ChatPage />);
 
@@ -396,7 +396,7 @@ describe("ChatPage folders", () => {
     await waitFor(() => expect(getChatThread).toHaveBeenCalledWith(2));
   });
 
-  it("creates with no Set from General", async () => {
+  it("creates with no Recipe from General", async () => {
     const user = setupUser();
     renderWithQueryClient(<ChatPage />);
 
@@ -411,7 +411,7 @@ describe("ChatPage folders", () => {
 
   it("shows one badge's list at a time: aria-pressed, a region that resolves, the rest hidden", async () => {
     const user = setupUser();
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     const guji = await screen.findByRole("button", { name: /^Guji on the Niche/ });
     const kenya = folder("Kenya AA on the Niche");
@@ -440,7 +440,7 @@ describe("ChatPage folders", () => {
       thread({ id: 2, title: "the one before", recipe_version_label: "v3", message_count: 2 }),
       { ...thread({ id: 3, title: "a general one" }), recipe_id: null, recipe_name: null },
     ]);
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
     const rows = within(region("Guji on the Niche")).getAllByTestId("thread-row");
@@ -451,13 +451,13 @@ describe("ChatPage folders", () => {
     expect(region("Guji on the Niche")).not.toHaveTextContent("a general one");
   });
 
-  it("opens the newest Set when nothing else says otherwise", async () => {
+  it("opens the newest Recipe when nothing else says otherwise", async () => {
     const user = setupUser();
     getChatThreads.mockResolvedValue([]);
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
-    // Kenya was made last; Guji is only first in the Sets list's order.
+    // Kenya was made last; Guji is only first in the Recipes list's order.
     expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
     expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "false");
     expect(folder("General")).toHaveAttribute("aria-pressed", "false");
@@ -470,8 +470,8 @@ describe("ChatPage folders", () => {
     await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", recipe_id: 4 }));
   });
 
-  it("opens General when there are no Sets", async () => {
-    getSets.mockResolvedValue({ items: [] });
+  it("opens General when there are no Recipes", async () => {
+    getRecipes.mockResolvedValue({ items: [] });
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
@@ -496,7 +496,7 @@ describe("ChatPage folders", () => {
     );
   });
 
-  it("opens the badge holding the selected conversation, over the newest Set", async () => {
+  it("opens the badge holding the selected conversation, over the newest Recipe", async () => {
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
@@ -505,15 +505,33 @@ describe("ChatPage folders", () => {
     expect(folder("General")).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("opens the badge a ?set= link names", async () => {
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+  it("opens the badge a ?recipe= link names", async () => {
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
     expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("opens the newest Set when a ?set= link names a Set that is not listed", async () => {
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=99"] });
+  it("opens the badge an old ?set= link names, and rewrites the address in place", async () => {
+    function Where() {
+      const location = useLocation();
+      return <output data-testid="where">{location.pathname + location.search}</output>;
+    }
+    renderWithQueryClient(
+      <>
+        <ChatPage />
+        <Where />
+      </>,
+      { initialEntries: ["/chat?set=3"] },
+    );
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/chat?recipe=3"));
+  });
+
+  it("opens the newest Recipe when a ?recipe= link names a Recipe that is not listed", async () => {
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=99"] });
 
     await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
     expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
@@ -522,7 +540,7 @@ describe("ChatPage folders", () => {
   it("has no sidebar any more: the badges sit above the conversation", async () => {
     renderWithQueryClient(<ChatPage />);
 
-    const badges = await screen.findByRole("navigation", { name: "Conversations by Set" });
+    const badges = await screen.findByRole("navigation", { name: "Conversations by Recipe" });
     const composer = screen.getByLabelText("Message");
     expect(
       badges.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -543,7 +561,7 @@ describe("ChatPage", () => {
   it("offers one download of the selected conversation, and nothing before one is open", async () => {
     const user = setupUser();
     downloadFile.mockResolvedValue("saved.json");
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await screen.findByText("Why is Guji sour?");
     expect(screen.queryByRole("button", { name: /Download log/ })).toBeNull();
@@ -562,7 +580,7 @@ describe("ChatPage", () => {
     const user = setupUser();
     let finish: (name: string) => void = () => {};
     downloadFile.mockReturnValue(new Promise<string>((resolve) => (finish = resolve)));
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await user.click(await screen.findByText("Why is Guji sour?"));
     await user.click(await screen.findByRole("button", { name: /Download log/ }));
@@ -577,7 +595,7 @@ describe("ChatPage", () => {
   it("says so when the log cannot be downloaded", async () => {
     const user = setupUser();
     downloadFile.mockRejectedValue(new Error("No chat thread 1"));
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await user.click(await screen.findByText("Why is Guji sour?"));
     await user.click(await screen.findByRole("button", { name: /Download log/ }));
@@ -587,7 +605,7 @@ describe("ChatPage", () => {
 
   it("opens a thread and shows its transcript and usage", async () => {
     const user = setupUser();
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await user.click(await screen.findByText("Why is Guji sour?"));
 
@@ -620,7 +638,7 @@ describe("ChatPage", () => {
     };
     getChatThread.mockResolvedValue(withUsage);
     const user = setupUser();
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
 
     await user.click(await screen.findByText("Why is Guji sour?"));
 
@@ -658,7 +676,7 @@ describe("ChatPage", () => {
   });
 
   it("follows a run that is already going when it loads", async () => {
-    // What the New Set dialog's design path relies on: it sends the first
+    // What the New Recipe dialog's design path relies on: it sends the first
     // message, then comes here, and the answer is already being written.
     getChatThread.mockResolvedValue({
       ...DETAIL,
@@ -691,27 +709,27 @@ describe("ChatPage", () => {
     const user = setupUser();
     getChatThreads.mockResolvedValue([]);
     renderWithQueryClient(<ChatPage />, {
-      initialEntries: ["/chat?set=3&ask=How%20is%20Guji%20going%3F"],
+      initialEntries: ["/chat?recipe=3&ask=How%20is%20Guji%20going%3F"],
     });
 
     expect(await screen.findByLabelText("Message")).toHaveValue("How is Guji going?");
     // The folder the question will land in is open, and the composer's card
-    // says so — with the version it would land on, which is the Set's current.
+    // says so — with the version it would land on, which is the Recipe's current.
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
     expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("A new conversation about Guji on the Niche v4")).toBeInTheDocument();
-    // A Set link on its own creates nothing until something is sent.
+    // A Recipe link on its own creates nothing until something is sent.
     expect(openChatThread).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: /send/i }));
 
-    // And the first question creates it in that Set, not as a general one.
+    // And the first question creates it in that Recipe, not as a general one.
     await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", recipe_id: 3 }));
   });
 
   it("says a first question with no scope is a general conversation", async () => {
     getChatThreads.mockResolvedValue([]);
-    getSets.mockResolvedValue({ items: [] });
+    getRecipes.mockResolvedValue({ items: [] });
     renderWithQueryClient(<ChatPage />);
 
     expect(await screen.findByText("General")).toBeInTheDocument();
@@ -720,7 +738,7 @@ describe("ChatPage", () => {
   it("opens or continues a version's conversation from a Discuss link", async () => {
     getChatThreads.mockResolvedValue([]);
     renderWithQueryClient(<ChatPage />, {
-      initialEntries: ["/chat?set=3&version=30&ask=What%20now%3F"],
+      initialEntries: ["/chat?recipe=3&version=30&ask=What%20now%3F"],
     });
 
     await waitFor(() => expect(openChatThread).toHaveBeenCalledWith(3, 30));
@@ -753,7 +771,7 @@ describe("ChatPage", () => {
   it("asks for the tool list of the kind of conversation it is showing", async () => {
     getChatTools.mockResolvedValue({
       tools: [
-        { name: "list_recipe_shots", permission: "read", description: "this Set's shots" },
+        { name: "list_recipe_shots", permission: "read", description: "this Recipe's shots" },
         { name: "propose_recipe_version", permission: "propose", description: "a version" },
       ],
     });
@@ -762,12 +780,12 @@ describe("ChatPage", () => {
     await screen.findByTestId("chat-transcript");
     await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe"));
     expect(screen.getByTestId("chat-tools")).toHaveTextContent("list_recipe_shots");
-    expect(screen.getByTestId("chat-tools")).toHaveTextContent("It can see this Set only");
+    expect(screen.getByTestId("chat-tools")).toHaveTextContent("It can see this Recipe only");
   });
 
   it("shows no tool list until it knows what kind of conversation it is", async () => {
     // The thread never arrives: the page is selecting one and does not yet
-    // know whether it is a Set's or a general one.
+    // know whether it is a Recipe's or a general one.
     getChatThread.mockReturnValue(new Promise(() => {}));
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
@@ -780,7 +798,7 @@ describe("ChatPage", () => {
 
   it("asks for the general tool list when nothing is selected and General is open", async () => {
     getChatThreads.mockResolvedValue([]);
-    getSets.mockResolvedValue({ items: [] });
+    getRecipes.mockResolvedValue({ items: [] });
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
@@ -797,9 +815,9 @@ describe("ChatPage", () => {
   });
 });
 
-describe("ChatPage, a Set being designed", () => {
+describe("ChatPage, a Recipe being designed", () => {
   const DESIGNING = [
-    ...SETS,
+    ...RECIPES,
     {
       id: 6,
       name: "Guji on the DF64",
@@ -810,27 +828,27 @@ describe("ChatPage, a Set being designed", () => {
   ];
   const DESIGN_THREAD = thread({
     id: 12,
-    title: "Help me design this Set.",
+    title: "Help me design this Recipe.",
     recipe_id: 6,
     recipe_name: "Guji on the DF64",
     recipe_version_id: 60,
     recipe_version_label: "v1",
   });
 
-  it("marks the badge of a Set being designed, and no other", async () => {
-    getSets.mockResolvedValue({ items: DESIGNING });
+  it("marks the badge of a Recipe being designed, and no other", async () => {
+    getRecipes.mockResolvedValue({ items: DESIGNING });
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^Guji on the DF64/ });
-    expect(within(folder("Guji on the DF64")).getByTestId("set-designing")).toHaveTextContent(
+    expect(within(folder("Guji on the DF64")).getByTestId("recipe-designing")).toHaveTextContent(
       "Designing",
     );
-    expect(within(folder("Guji on the Niche")).queryByTestId("set-designing")).toBeNull();
-    expect(within(folder("General")).queryByTestId("set-designing")).toBeNull();
+    expect(within(folder("Guji on the Niche")).queryByTestId("recipe-designing")).toBeNull();
+    expect(within(folder("General")).queryByTestId("recipe-designing")).toBeNull();
   });
 
-  it("asks for the design tools for a conversation on a Set being designed", async () => {
-    getSets.mockResolvedValue({ items: DESIGNING });
+  it("asks for the design tools for a conversation on a Recipe being designed", async () => {
+    getRecipes.mockResolvedValue({ items: DESIGNING });
     getChatThreads.mockResolvedValue([DESIGN_THREAD]);
     getChatThread.mockResolvedValue({ ...DETAIL, thread: DESIGN_THREAD });
     getChatTools.mockResolvedValue({
@@ -839,22 +857,22 @@ describe("ChatPage, a Set being designed", () => {
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=12"] });
 
     await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe", { designing: true }));
-    // Only that list: the ordinary Set list would be tools the agent does not have.
+    // Only that list: the ordinary Recipe list would be tools the agent does not have.
     expect(getChatTools).not.toHaveBeenCalledWith("recipe");
     expect(await screen.findByTestId("chat-tools")).toHaveTextContent("propose_initial_recipe");
-    expect(screen.getByTestId("chat-tools")).toHaveTextContent("designing this Set's first recipe");
+    expect(screen.getByTestId("chat-tools")).toHaveTextContent("designing this Recipe's version 1");
   });
 
-  it("asks without it for a Set that has its recipe", async () => {
-    getSets.mockResolvedValue({ items: DESIGNING });
+  it("asks without it for a Recipe that has its recipe", async () => {
+    getRecipes.mockResolvedValue({ items: DESIGNING });
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
     await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe"));
     expect(getChatTools).not.toHaveBeenCalledWith("recipe", { designing: true });
   });
 
-  it("switches to the Set tools once the Sets list says the design is over", async () => {
-    getSets.mockResolvedValue({ items: DESIGNING });
+  it("switches to the Recipe tools once the Recipes list says the design is over", async () => {
+    getRecipes.mockResolvedValue({ items: DESIGNING });
     getChatThreads.mockResolvedValue([DESIGN_THREAD]);
     getChatThread.mockResolvedValue({ ...DETAIL, thread: DESIGN_THREAD });
     const { queryClient } = renderWithQueryClient(<ChatPage />, {
@@ -863,20 +881,20 @@ describe("ChatPage, a Set being designed", () => {
     await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe", { designing: true }));
 
     // Accepting the first recipe clears the flag and invalidates the list.
-    getSets.mockResolvedValue({
+    getRecipes.mockResolvedValue({
       items: DESIGNING.map((row) => (row.id === 6 ? { ...row, designing: false } : row)),
     });
-    await queryClient.invalidateQueries({ queryKey: ["sets", "list"] });
+    await queryClient.invalidateQueries({ queryKey: ["recipes", "list"] });
 
     await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("recipe"));
   });
 
-  it("waits for the Sets before asking which tools a Set conversation has", async () => {
-    getSets.mockReturnValue(new Promise(() => {}));
+  it("waits for the Recipes before asking which tools a Recipe conversation has", async () => {
+    getRecipes.mockReturnValue(new Promise(() => {}));
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
-    // The conversation is on screen, so the page knows it is a Set's: only the
-    // Sets list, which says whether that Set is being designed, is missing.
+    // The conversation is on screen, so the page knows it is a Recipe's: only the
+    // Recipes list, which says whether that Recipe is being designed, is missing.
     expect(await screen.findByText("Grind two clicks finer.")).toBeInTheDocument();
     expect(getChatTools).not.toHaveBeenCalled();
     expect(screen.queryByTestId("chat-tools")).not.toBeInTheDocument();
@@ -961,8 +979,8 @@ describe("ChatPage, accepting a card in the conversation", () => {
 
   beforeEach(() => {
     getChatThread.mockResolvedValue(PROPOSED);
-    getSetProposals.mockResolvedValue({ items: [WAITING] });
-    acceptSetProposal.mockResolvedValue({
+    getRecipeProposals.mockResolvedValue({ items: [WAITING] });
+    acceptRecipeProposal.mockResolvedValue({
       proposal: {
         ...WAITING,
         status: "accepted",
@@ -979,11 +997,11 @@ describe("ChatPage, accepting a card in the conversation", () => {
     const card = await screen.findByTestId("proposal-card");
     await user.click(within(card).getByRole("button", { name: /Accept/ }));
 
-    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledWith(3, 5, { major: false }));
+    await waitFor(() => expect(acceptRecipeProposal).toHaveBeenCalledWith(3, 5, { major: false }));
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Recipe.",
       ),
     );
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
@@ -992,7 +1010,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
 
   it("tells the agent a decline, with the reason", async () => {
     const user = setupUser();
-    declineSetProposal.mockResolvedValue({
+    declineRecipeProposal.mockResolvedValue({
       proposal: { ...WAITING, status: "declined", decline_note: "too long already" },
       version: null,
     });
@@ -1003,7 +1021,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await user.type(within(card).getByLabelText(/Why not/), "too long already");
     await user.click(within(card).getByRole("button", { name: /Decline it/ }));
 
-    await waitFor(() => expect(declineSetProposal).toHaveBeenCalled());
+    await waitFor(() => expect(declineRecipeProposal).toHaveBeenCalled());
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(1, "Declined: too long already"),
     );
@@ -1024,7 +1042,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     const card = await screen.findByTestId("proposal-card");
     await screen.findByRole("button", { name: /stop/i });
     await user.click(within(card).getByRole("button", { name: /Accept/ }));
-    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalled());
+    await waitFor(() => expect(acceptRecipeProposal).toHaveBeenCalled());
     // Give the page every chance to send it early.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(sendChatMessage).not.toHaveBeenCalled();
@@ -1037,7 +1055,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Recipe.",
       ),
     );
 
@@ -1067,7 +1085,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     const card = await screen.findByTestId("proposal-card");
     await screen.findByRole("button", { name: /stop/i });
     await user.click(within(card).getByRole("button", { name: /Accept/ }));
-    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalled());
+    await waitFor(() => expect(acceptRecipeProposal).toHaveBeenCalled());
 
     // Somewhere else, nothing is running there, and the message is not its.
     await user.click(await screen.findByText("Conversation 2"));
@@ -1084,7 +1102,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Recipe.",
       ),
     );
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
@@ -1193,7 +1211,7 @@ describe("ChatPage, coming back to it", () => {
 
     // A "Chat about" link from somewhere else, in a fresh tab.
     cleanup();
-    app("/chat?set=4");
+    app("/chat?recipe=4");
 
     await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
     expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");

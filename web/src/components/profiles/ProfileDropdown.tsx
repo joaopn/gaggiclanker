@@ -117,7 +117,7 @@ function VersionItem({
   const makeActive = useSetActiveVersion();
   const [confirming, setConfirming] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const set = entry.recipe ?? null;
+  const recipe = entry.recipe ?? null;
   const first = version.previous_version_id == null;
   // Only ever the version before this one in this list, never another.
   const previous = first
@@ -152,7 +152,7 @@ function VersionItem({
             variant="outline"
             disabled={busy}
             data-testid="make-active"
-            onClick={() => (set !== null ? setConfirming(true) : choose())}
+            onClick={() => (recipe !== null ? setConfirming(true) : choose())}
           >
             Make active
           </Button>
@@ -177,7 +177,10 @@ function VersionItem({
           <>
             {" "}
             · brewed by{" "}
-            <Link className="underline underline-offset-2" to={`/sets/${version.recipe.recipe_id}`}>
+            <Link
+              className="underline underline-offset-2"
+              to={`/recipes/${version.recipe.recipe_id}`}
+            >
               {version.recipe.name}
             </Link>
           </>
@@ -200,9 +203,9 @@ function VersionItem({
             choose();
           }}
         >
-          {set?.name} brews this profile. Making this version active gives it a new version (
-          {set?.next_minor_label}) that brews this one, and the next sync puts this version on the
-          machine.
+          {recipe?.name} brews this profile. Making this version active gives it a new version (
+          {recipe?.next_minor_label}) that brews this one, and the next sync puts this version on
+          the machine.
         </ConfirmStrip>
       ) : null}
 

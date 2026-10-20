@@ -6,7 +6,7 @@ import type {
   ShotPhase,
   ShotSamplesData,
 } from "@/api/types";
-import { VersionPrediction } from "@/components/sets/VersionPrediction";
+import { VersionPrediction } from "@/components/recipes/VersionPrediction";
 import { JudgementForm } from "@/components/shots/JudgementForm";
 import { inForceClaims, ReviewBox } from "@/components/shots/ReviewBox";
 import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
@@ -101,7 +101,7 @@ export function ShotBoxes({
       <JudgementForm
         shotId={row.id}
         judgement={detail.judgement}
-        // Where the doses start when the person has recorded none: the Set version's dose (when
+        // Where the doses start when the person has recorded none: the Recipe version's dose (when
         // the shot is filed) and the scale's yield (when it has a scale).
         prefill={{
           doseIn: detail.recipe_version?.dose_g ?? null,

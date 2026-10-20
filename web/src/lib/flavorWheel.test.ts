@@ -9,7 +9,7 @@ import {
   textOn,
   toggleNote,
 } from "@/lib/flavorWheel";
-import { vocabulary } from "@/test/setsFixtures";
+import { vocabulary } from "@/test/recipesFixtures";
 
 const wheel = vocabulary.flavor_wheel;
 const flat = flattenWheel(wheel);

@@ -276,7 +276,7 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       id: "chat",
       title: "Chat",
       description:
-        "How far one chat answer may go, how much history it carries, how many shots a Set conversation opens with, and how many rows of a shot's curve the agent reads.",
+        "How far one chat answer may go, how much history it carries, how many shots a Recipe conversation opens with, and how many rows of a shot's curve the agent reads.",
       keys: [
         "chatMaxToolRounds",
         "chatMaxToolCalls",

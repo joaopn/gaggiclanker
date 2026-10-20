@@ -20,7 +20,7 @@ import {
   setBoardStarred,
 } from "@/api/client";
 import type { BoardRow, BoardView, ConflictView, ProfileVersionsView } from "@/api/types";
-import { invalidateBoardWrites, invalidateSets, invalidateShots } from "@/lib/invalidate";
+import { invalidateBoardWrites, invalidateRecipes, invalidateShots } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -30,8 +30,8 @@ import { queryKeys } from "@/lib/queryKeys";
  * sync writes it. What they share is what they change. Every one settles with
  * `invalidateBoardWrites`: the board (which includes each profile's versions and conflict),
  * the drafts, the profile mirror, the sync status (the last run's summary and the pause live
- * there) and the write audit. Anything that changes what a Set brews (making a proposal
- * active for a Set, another version active, a conflict resolved) also invalidates the Sets.
+ * there) and the write audit. Anything that changes what a Recipe brews (making a proposal
+ * active for a Recipe, another version active, a conflict resolved) also invalidates the Recipes.
  */
 
 /** What the next sync does with a profile, said truthfully for one that is switched off. */
@@ -84,9 +84,9 @@ export function usePutOnBoard(): UseMutationResult<
       if (!variables.quietError) toast.error(error.message);
     },
     onSettled: () => {
-      // The profile's Set follows it, so the Sets read changes with the board's.
+      // The profile's Recipe follows it, so the Recipes read changes with the board's.
       void invalidateBoardWrites(queryClient);
-      void invalidateSets(queryClient);
+      void invalidateRecipes(queryClient);
     },
   });
 }
@@ -119,7 +119,7 @@ export function useSetStarred(): UseMutationResult<
 
 /**
  * Make one of a profile's versions its active one. Nothing is sent to the machine; the next
- * sync puts that version there. The Sets are refreshed because what a Set brews is whatever
+ * sync puts that version there. The Recipes are refreshed because what a Recipe brews is whatever
  * its profile's active version is once the sync has run.
  */
 export function useSetActiveVersion(): UseMutationResult<
@@ -137,14 +137,14 @@ export function useSetActiveVersion(): UseMutationResult<
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateBoardWrites(queryClient);
-      void invalidateSets(queryClient);
+      void invalidateRecipes(queryClient);
     },
   });
 }
 
 /**
  * Rename a profile. Nothing is sent to the machine; the next sync with Writes on gives its file the
- * name. The name is the profile's, so every screen that shows it is stale: the board, the Sets that
+ * name. The name is the profile's, so every screen that shows it is stale: the board, the Recipes that
  * brew the profile and the shots filed under it (their lists and their pages). The refusal is
  * shown by the caller where it belongs (under the Name field), never as a toast.
  */
@@ -158,7 +158,7 @@ export function useRenameProfile(): UseMutationResult<
     mutationFn: ({ rowId, label }) => renameBoardProfile(rowId, label),
     onSettled: () => {
       void invalidateBoardWrites(queryClient);
-      void invalidateSets(queryClient);
+      void invalidateRecipes(queryClient);
       void invalidateShots(queryClient);
     },
   });
@@ -239,7 +239,7 @@ export function useResolveConflict(): UseMutationResult<
     },
     onSettled: () => {
       void invalidateBoardWrites(queryClient);
-      void invalidateSets(queryClient);
+      void invalidateRecipes(queryClient);
     },
   });
 }

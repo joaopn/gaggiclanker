@@ -1,5 +1,5 @@
 import { Coffee, GitCompare, Layers } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ShotListRow, ShotSort } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -8,15 +8,16 @@ import { ColumnChooser } from "@/components/shots/ColumnChooser";
 import { CompareDrawer, MAX_COMPARE } from "@/components/shots/CompareDrawer";
 import { ImportDropZone } from "@/components/shots/ImportDropZone";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
-import { SetChatBar } from "@/components/shots/SetChatBar";
+import { RecipeChatBar } from "@/components/shots/RecipeChatBar";
 import { ShotFilters } from "@/components/shots/ShotFilters";
 import { ShotsTable } from "@/components/shots/ShotsTable";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileVersions, useShotsInfinite, useSyncStatus } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { useSet, useSets } from "@/hooks/useSets";
+import { useRecipe, useRecipes } from "@/hooks/useRecipes";
 import { loadHideDiscarded, saveHideDiscarded } from "@/lib/hideDiscarded";
+import { withRecipeParam } from "@/lib/legacyLinks";
 import {
   loadShotColumns,
   loadShotWidths,
@@ -59,7 +60,13 @@ export function ShotsPage() {
   // The filters live in the query string, so a link can carry one and the back
   // button undoes one (`lib/shotFilters.ts`).
   const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(() => fromSearchParams(searchParams), [searchParams]);
+  // A link made before the rename names the Recipe `set=`: it is read as `recipe=` and the
+  // address is rewritten in place.
+  const moved = useMemo(() => withRecipeParam(searchParams), [searchParams]);
+  useEffect(() => {
+    if (moved) setSearchParams(moved, { replace: true });
+  }, [moved, setSearchParams]);
+  const filters = useMemo(() => fromSearchParams(moved ?? searchParams), [moved, searchParams]);
   const setFilters = (next: ShotFilterState) =>
     setSearchParams(toSearchParams(next), { replace: true });
   const [selected, setSelected] = useState<number[]>([]);
@@ -138,28 +145,29 @@ export function ShotsPage() {
   // Both sources, so an imported profile can be filtered on even though no
   // device profile points at it.
   const versions = useProfileVersions({ limit: 200 });
-  // The filter popover's Set picker, the header's "needs a Set" count, and
-  // the bar of Set conversations above the table.
-  const sets = useSets();
-  // Only while a version filter is on: the version *number* is not on the Set
-  // row, and the Set's own detail is where it already lives. One request, and
+  // The filter popover's Recipe picker, the header's "needs a Recipe" count, and
+  // the bar of Recipe conversations above the table.
+  const recipes = useRecipes();
+  // Only while a version filter is on: the version *number* is not on the Recipe
+  // row, and the Recipe's own detail is where it already lives. One request, and
   // only for the reader who arrived from a version's shot count.
-  const filteredSetId = Number.parseInt(filters.set, 10);
-  const scopedSet = useSet(
-    filters.version && Number.isFinite(filteredSetId) ? filteredSetId : undefined,
+  const filteredRecipeId = Number.parseInt(filters.recipe, 10);
+  const scopedRecipe = useRecipe(
+    filters.version && Number.isFinite(filteredRecipeId) ? filteredRecipeId : undefined,
   );
   const versionLabel = useMemo(() => {
     if (!filters.version) return null;
-    const entry = (scopedSet.data?.versions ?? []).find(
+    const entry = (scopedRecipe.data?.versions ?? []).find(
       (item) => String(item.version.id) === filters.version,
     );
     // The name alone while the detail is in flight, rather than a flash of the
-    // raw id: the Set is what the reader already knows they asked for.
+    // raw id: the Recipe is what the reader already knows they asked for.
     const name =
-      scopedSet.data?.recipe.name ?? sets.data?.items.find((row) => row.id === filteredSetId)?.name;
+      scopedRecipe.data?.recipe.name ??
+      recipes.data?.items.find((row) => row.id === filteredRecipeId)?.name;
     if (!name) return null;
     return entry ? `${name} ${entry.version.version_label}` : name;
-  }, [filters.version, filteredSetId, scopedSet.data, sets.data]);
+  }, [filters.version, filteredRecipeId, scopedRecipe.data, recipes.data]);
   useQueryErrorToast(shots.error, "Could not load shots");
 
   const rows: ShotListRow[] = useMemo(
@@ -190,10 +198,10 @@ export function ShotsPage() {
       (counts.quarantined ? ` · ${counts.quarantined} quarantined` : "") +
       ` · ${pulled}`
     : pulled;
-  // A shot with no Set is invisible to every trend and to the Set's
+  // A shot with no Recipe is invisible to every trend and to the Recipe's
   // conversations about what has been tried, so the count is a call to action in the header
   // rather than a number buried in the filter bar.
-  const needsSet = counts?.needs_recipe ?? 0;
+  const needsRecipe = counts?.needs_recipe ?? 0;
   // An empty unfiltered list over a non-empty archive: everything is hidden
   // by the tickbox, and "No shots archived yet" would be untrue.
   const onlyDiscarded = hideDiscarded && (counts?.total ?? 0) > 0;
@@ -212,7 +220,7 @@ export function ShotsPage() {
                 value={filters}
                 onChange={setFilters}
                 versions={versions.data?.items ?? []}
-                sets={sets.data?.items ?? []}
+                recipes={recipes.data?.items ?? []}
                 versionLabel={versionLabel}
               />
               <ColumnChooser
@@ -221,15 +229,15 @@ export function ShotsPage() {
                 widthsChanged={Object.keys(widths).length > 0}
                 onResetWidths={resetWidths}
               />
-              {needsSet > 0 && filters.set !== "needs" ? (
+              {needsRecipe > 0 && filters.recipe !== "needs" ? (
                 <Button
                   variant="outline"
                   size="sm"
-                  data-testid="needs-set-count"
-                  onClick={() => setFilters({ ...filters, set: "needs" })}
+                  data-testid="needs-recipe-count"
+                  onClick={() => setFilters({ ...filters, recipe: "needs" })}
                 >
                   <Layers className="size-3.5" aria-hidden="true" />
-                  {needsSet} need a Set
+                  {needsRecipe} need a Recipe
                 </Button>
               ) : null}
               <ProfileAutomatch />
@@ -270,9 +278,9 @@ export function ShotsPage() {
         // both sides rather than left as a gap on the right.
         <div className="mx-auto w-fit max-w-full space-y-3">
           {/* `w-0 min-w-full`: as wide as the table and no wider, so a long
-              row of Sets wraps instead of widening the box past the last
+              row of Recipes wraps instead of widening the box past the last
               column. */}
-          <SetChatBar sets={sets.data?.items ?? []} className="w-0 min-w-full" />
+          <RecipeChatBar recipes={recipes.data?.items ?? []} className="w-0 min-w-full" />
           {/* The scroll container is the window `useVirtualRows` measures, so
               it owns a height rather than growing with its content. */}
           <div

@@ -20,7 +20,7 @@ import { invalidateReadings } from "@/lib/invalidate";
  * error and no row — and the row is the one thing that explains what
  * happened. So `onSuccess` branches on `status`.
  *
- * Starting changes what the shots list, the shot's detail and fields, and the Set pages say
+ * Starting changes what the shots list, the shot's detail and fields, and the Recipe pages say
  * (the badge turns to Reviewing…), so it invalidates all of them, as an answer does.
  */
 export function useRunReview(): UseMutationResult<

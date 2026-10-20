@@ -58,14 +58,14 @@ describe("starting a run", () => {
     await waitFor(() => expect(keys.length).toBe(1));
     expect(keys).toContainEqual(queryKeys.knowledge.patterns());
     expect(keys).not.toContainEqual(queryKeys.knowledge.all);
-    expect(keys.flat()).not.toContain("sets");
+    expect(keys.flat()).not.toContain("recipes");
     expect(keys.flat()).not.toContain("shots");
   });
 });
 
 describe("answering a proposal", () => {
   it.each(["approve", "dismiss"] as const)(
-    "%s touches the whole knowledge prefix: the list, every Set's insights and the run",
+    "%s touches the whole knowledge prefix: the list, every Recipe's insights and the run",
     async (answer) => {
       const { result, queryClient } = renderHookWithQueryClient(() => useAnswerPatternProposal());
       const keys = spyOn(queryClient);
@@ -73,7 +73,7 @@ describe("answering a proposal", () => {
       await result.current.mutateAsync({ id: 11, answer });
 
       await waitFor(() => expect(keys.length).toBe(1));
-      // The Knowledge list, each source Set's insights (the Set pages read them under
+      // The Knowledge list, each source Recipe's insights (the Recipe pages read them under
       // `knowledge`), the chat's insight cards and the pattern run share one prefix.
       expect(keys).toContainEqual(queryKeys.knowledge.all);
       expect(queryKeys.knowledge.patterns().slice(0, 1)).toEqual(queryKeys.knowledge.all);

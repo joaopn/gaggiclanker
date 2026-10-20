@@ -90,24 +90,24 @@ import type {
   PromptData,
   PromptListData,
   ProposalDecline,
+  RecipeCreate,
+  RecipeDesignCreate,
+  RecipeDesignCreated,
+  RecipeDesignDiscarded,
+  RecipeDetailData,
+  RecipeListData,
+  RecipeProposalDecision,
+  RecipeProposalListData,
+  RecipeRow,
+  RecipeTrends,
+  RecipeVersionAdd,
+  RecipeVersionRow,
   ResetData,
   RestoreApplyData,
   RestoreCheckData,
   RollbackWrite,
-  SetCreate,
-  SetDesignCreate,
-  SetDesignCreated,
-  SetDesignDiscarded,
-  SetDetailData,
-  SetListData,
-  SetProposalDecision,
-  SetProposalListData,
-  SetRow,
-  SetTrends,
   SettingsMap,
   SettingsPatch,
-  SetVersionAdd,
-  SetVersionRow,
   ShotDetailData,
   ShotDetailRow,
   ShotFieldsData,
@@ -123,7 +123,7 @@ import type {
   SignatureOverrideAnswer,
   SignatureOverrideList,
   SignatureTier,
-  SimilarSetsData,
+  SimilarRecipesData,
   StartingPointAccepted,
   StartingPointRequest,
   StartingPointRun,
@@ -664,7 +664,7 @@ export async function getProfileBoard(live = false): Promise<BoardView> {
  */
 export async function putOnBoard(body: {
   draftId: number;
-  /** Whether the new version of the profile's Set (if it has one) is a major one. */
+  /** Whether the new version of the profile's Recipe (if it has one) is a major one. */
   major?: boolean;
   /** A new profile's name as the person typed it; absent keeps the proposed one. */
   label?: string;
@@ -737,33 +737,33 @@ export async function setExpectationTier(
   });
 }
 
-/** The overrides in force, rejected or replaced for one Set version's signature limits. */
+/** The overrides in force, rejected or replaced for one Recipe version's signature limits. */
 export async function getSignatureOverrides(
-  setId: number,
+  recipeId: number,
   versionId: number,
 ): Promise<SignatureOverrideList> {
   return fetchApi<SignatureOverrideList>(
-    `/recipes/${setId}/versions/${versionId}/signature-overrides`,
+    `/recipes/${recipeId}/versions/${versionId}/signature-overrides`,
   );
 }
 
 export async function rejectSignatureOverride(
-  setId: number,
+  recipeId: number,
   overrideId: number,
   reason: string,
 ): Promise<SignatureOverrideAnswer> {
   return fetchApi<SignatureOverrideAnswer>(
-    `/recipes/${setId}/signature-overrides/${overrideId}/reject`,
+    `/recipes/${recipeId}/signature-overrides/${overrideId}/reject`,
     { method: "POST", body: JSON.stringify({ reason }) },
   );
 }
 
 export async function restoreSignatureOverride(
-  setId: number,
+  recipeId: number,
   overrideId: number,
 ): Promise<SignatureOverrideAnswer> {
   return fetchApi<SignatureOverrideAnswer>(
-    `/recipes/${setId}/signature-overrides/${overrideId}/restore`,
+    `/recipes/${recipeId}/signature-overrides/${overrideId}/restore`,
     { method: "POST" },
   );
 }
@@ -958,7 +958,7 @@ export const MODEL_KEYS: Record<LlmPurpose, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Sets, beans, grinders and the judgement. The half of a shot the machine
+// Recipes, beans, grinders and the judgement. The half of a shot the machine
 // knows nothing about: what was in the hopper, what you were trying, and
 // whether it was any good.
 // ---------------------------------------------------------------------------
@@ -1030,14 +1030,14 @@ export async function importBean(file: unknown): Promise<BeanImportData> {
 }
 
 /**
- * Delete a bean nobody used. The server answers 409 while any Set points at it,
+ * Delete a bean nobody used. The server answers 409 while any Recipe points at it,
  * because archiving is how a coffee with history is retired.
  */
 export async function deleteBean(id: number): Promise<{ deleted: boolean }> {
   return fetchApi<{ deleted: boolean }>(`/beans/${id}`, { method: "DELETE" });
 }
 
-/** Hide a finished bag. Its Sets still point at it, so it stays resolvable. */
+/** Hide a finished bag. Its Recipes still point at it, so it stays resolvable. */
 export async function setBeanArchived(id: number, archived: boolean): Promise<BeanRow> {
   return fetchApi<BeanRow>(`/beans/${id}/${archived ? "archive" : "unarchive"}`, {
     method: "POST",
@@ -1069,45 +1069,45 @@ export async function patchMachine(body: MachinePatch): Promise<MachineRow> {
   });
 }
 
-export async function getSets(includeArchived = false): Promise<SetListData> {
-  return fetchApi<SetListData>(`/recipes${queryString({ include_archived: includeArchived })}`);
+export async function getRecipes(includeArchived = false): Promise<RecipeListData> {
+  return fetchApi<RecipeListData>(`/recipes${queryString({ include_archived: includeArchived })}`);
 }
 
-/** What a Set may start on: free profiles by their active version, and unadopted machine files. */
+/** What a Recipe may start on: free profiles by their active version, and unadopted machine files. */
 export async function getProfileChoices(): Promise<ProfileChoiceListData> {
   return fetchApi<ProfileChoiceListData>("/recipes/profile-choices");
 }
 
-export async function getSet(id: number): Promise<SetDetailData> {
-  return fetchApi<SetDetailData>(`/recipes/${id}`);
+export async function getRecipe(id: number): Promise<RecipeDetailData> {
+  return fetchApi<RecipeDetailData>(`/recipes/${id}`);
 }
 
-export async function createSet(body: SetCreate): Promise<SetRow> {
-  return fetchApi<SetRow>("/recipes", { method: "POST", body: JSON.stringify(body) });
+export async function createRecipe(body: RecipeCreate): Promise<RecipeRow> {
+  return fetchApi<RecipeRow>("/recipes", { method: "POST", body: JSON.stringify(body) });
 }
 
 /**
- * A Set with a bean and a grinder and no recipe yet, and version 1's chat.
+ * A Recipe with a bean and a grinder and no recipe yet, and version 1's chat.
  *
  * The recipe is worked out in that conversation: the answer carries the thread
  * the page goes to next. Nothing is proposed, drafted or sent anywhere by it.
  */
-export async function designSet(body: SetDesignCreate): Promise<SetDesignCreated> {
-  return fetchApi<SetDesignCreated>("/recipes/design", {
+export async function designRecipe(body: RecipeDesignCreate): Promise<RecipeDesignCreated> {
+  return fetchApi<RecipeDesignCreated>("/recipes/design", {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
 /**
- * Delete a Set that is still being designed, with its conversations.
+ * Delete a Recipe that is still being designed, with its conversations.
  *
  * Only while nothing is filed on it and it has no recipe: the server answers
- * 409 `DESIGN_HAS_SHOTS` or `NOT_DESIGNING` otherwise, and a Set with history
+ * 409 `DESIGN_HAS_SHOTS` or `NOT_DESIGNING` otherwise, and a Recipe with history
  * is archived instead.
  */
-export async function discardDesign(id: number): Promise<SetDesignDiscarded> {
-  return fetchApi<SetDesignDiscarded>(`/recipes/${id}/design`, { method: "DELETE" });
+export async function discardDesign(id: number): Promise<RecipeDesignDiscarded> {
+  return fetchApi<RecipeDesignDiscarded>(`/recipes/${id}/design`, { method: "DELETE" });
 }
 
 /**
@@ -1117,8 +1117,11 @@ export async function discardDesign(id: number): Promise<SetDesignDiscarded> {
  * sending `null` clears it, so building this body from a whole form would
  * record every field as changed.
  */
-export async function addSetVersion(id: number, patch: SetVersionAdd): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/recipes/${id}/versions`, {
+export async function addRecipeVersion(
+  id: number,
+  patch: RecipeVersionAdd,
+): Promise<RecipeVersionRow> {
+  return fetchApi<RecipeVersionRow>(`/recipes/${id}/versions`, {
     method: "POST",
     body: JSON.stringify(patch),
   });
@@ -1134,8 +1137,8 @@ export async function setVersionPrediction(
   id: number,
   versionId: number,
   body: VersionPredictionWrite,
-): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/recipes/${id}/versions/${versionId}/prediction`, {
+): Promise<RecipeVersionRow> {
+  return fetchApi<RecipeVersionRow>(`/recipes/${id}/versions/${versionId}/prediction`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
@@ -1145,25 +1148,28 @@ export async function setVersionOutcome(
   id: number,
   versionId: number,
   body: VersionOutcomeWrite,
-): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/recipes/${id}/versions/${versionId}/outcome`, {
+): Promise<RecipeVersionRow> {
+  return fetchApi<RecipeVersionRow>(`/recipes/${id}/versions/${versionId}/outcome`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
 }
 
-export async function clearVersionOutcome(id: number, versionId: number): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/recipes/${id}/versions/${versionId}/outcome`, {
+export async function clearVersionOutcome(
+  id: number,
+  versionId: number,
+): Promise<RecipeVersionRow> {
+  return fetchApi<RecipeVersionRow>(`/recipes/${id}/versions/${versionId}/outcome`, {
     method: "DELETE",
   });
 }
 
 /**
- * Put the Set back on an earlier version. Writes no version and nothing to the
- * machine; the answer is the version the Set is now on.
+ * Put the Recipe back on an earlier version. Writes no version and nothing to the
+ * machine; the answer is the version the Recipe is now on.
  */
-export async function rollbackSet(id: number, body: RollbackWrite): Promise<SetVersionRow> {
-  return fetchApi<SetVersionRow>(`/recipes/${id}/rollback`, {
+export async function rollbackRecipe(id: number, body: RollbackWrite): Promise<RecipeVersionRow> {
+  return fetchApi<RecipeVersionRow>(`/recipes/${id}/rollback`, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -1174,48 +1180,48 @@ export async function rollbackSet(id: number, body: RollbackWrite): Promise<SetV
  * taken, and the server's sentence for any refusal.
  */
 export async function getPinPreview(
-  setId: number,
+  recipeId: number,
   versionId: number,
   label?: string,
 ): Promise<PinPreview> {
   return fetchApi<PinPreview>(
-    `/recipes/${setId}/versions/${versionId}/pin-preview${queryString({ label })}`,
+    `/recipes/${recipeId}/versions/${versionId}/pin-preview${queryString({ label })}`,
   );
 }
 
 /**
- * Keep a Set version on the machine as a profile of its own. Nothing is sent to the machine:
+ * Keep a Recipe version on the machine as a profile of its own. Nothing is sent to the machine:
  * the next sync does. `label` is the person's name for the copy, left out for the default.
  */
 export async function pinVersion(
-  setId: number,
+  recipeId: number,
   versionId: number,
   label?: string,
 ): Promise<PinAnswer> {
-  return fetchApi<PinAnswer>(`/recipes/${setId}/versions/${versionId}/pin`, {
+  return fetchApi<PinAnswer>(`/recipes/${recipeId}/versions/${versionId}/pin`, {
     method: "POST",
     body: JSON.stringify(label === undefined ? {} : { label }),
   });
 }
 
 /**
- * What duplicating a version starts from: the suggested Set name, the bean, the grinder, the
- * recipe, whether the version names a profile and the source Set's own confirmed insights.
+ * What duplicating a version starts from: the suggested Recipe name, the bean, the grinder, the
+ * recipe, whether the version names a profile and the source Recipe's own confirmed insights.
  */
 export async function getDuplicatePreview(
-  setId: number,
+  recipeId: number,
   versionId: number,
 ): Promise<DuplicatePreview> {
-  return fetchApi<DuplicatePreview>(`/recipes/${setId}/versions/${versionId}/duplicate-preview`);
+  return fetchApi<DuplicatePreview>(`/recipes/${recipeId}/versions/${versionId}/duplicate-preview`);
 }
 
-/** Start a new Set from a version: its profile copied under a new name, no history. */
+/** Start a new Recipe from a version: its profile copied under a new name, no history. */
 export async function duplicateVersion(
-  setId: number,
+  recipeId: number,
   versionId: number,
   body: DuplicateRequest,
 ): Promise<DuplicateAnswer> {
-  return fetchApi<DuplicateAnswer>(`/recipes/${setId}/versions/${versionId}/duplicate`, {
+  return fetchApi<DuplicateAnswer>(`/recipes/${recipeId}/versions/${versionId}/duplicate`, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -1242,27 +1248,27 @@ export async function unpinPin(pinId: number): Promise<PinAnswer> {
 }
 
 /**
- * Every change an agent has proposed for a Set, newest first.
+ * Every change an agent has proposed for a Recipe, newest first.
  *
  * Waiting and answered alike: a declined proposal is the record of what the
  * person did not want, and the chat's card reads its own row back from here to
  * know whether it is still a question.
  */
-export async function getSetProposals(id: number): Promise<SetProposalListData> {
-  return fetchApi<SetProposalListData>(`/recipes/${id}/proposals`);
+export async function getRecipeProposals(id: number): Promise<RecipeProposalListData> {
+  return fetchApi<RecipeProposalListData>(`/recipes/${id}/proposals`);
 }
 
-/** Record a proposed change as the Set's next version. A person's press. */
+/** Record a proposed change as the Recipe's next version. A person's press. */
 /**
  * Accept a proposed change. `major` is the card's "Major change" box; left out,
  * it is a minor.
  */
-export async function acceptSetProposal(
+export async function acceptRecipeProposal(
   id: number,
   proposalId: number,
   options: { major?: boolean; profileLabel?: string } = {},
-): Promise<SetProposalDecision> {
-  return fetchApi<SetProposalDecision>(`/recipes/${id}/proposals/${proposalId}/accept`, {
+): Promise<RecipeProposalDecision> {
+  return fetchApi<RecipeProposalDecision>(`/recipes/${id}/proposals/${proposalId}/accept`, {
     method: "POST",
     body: JSON.stringify({
       ...(options.major === undefined ? {} : { major: options.major }),
@@ -1272,18 +1278,18 @@ export async function acceptSetProposal(
 }
 
 /** Turn one down, optionally saying why. Creates nothing. */
-export async function declineSetProposal(
+export async function declineRecipeProposal(
   id: number,
   proposalId: number,
   body: ProposalDecline = { note: "" },
-): Promise<SetProposalDecision> {
-  return fetchApi<SetProposalDecision>(`/recipes/${id}/proposals/${proposalId}/decline`, {
+): Promise<RecipeProposalDecision> {
+  return fetchApi<RecipeProposalDecision>(`/recipes/${id}/proposals/${proposalId}/decline`, {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-/** Every grade an agent has proposed for this Set's versions, newest first. */
+/** Every grade an agent has proposed for this Recipe's versions, newest first. */
 export async function getOutcomeProposals(id: number): Promise<OutcomeProposalListData> {
   return fetchApi<OutcomeProposalListData>(`/recipes/${id}/outcome-proposals`);
 }
@@ -1331,7 +1337,7 @@ export async function dismissOutcomeProposal(
   );
 }
 
-/** Every deletion an agent has proposed for this Set's insights, newest first. */
+/** Every deletion an agent has proposed for this Recipe's insights, newest first. */
 export async function getInsightDeletions(
   id: number,
   threadId?: number | null,
@@ -1363,19 +1369,19 @@ export async function keepInsightDeletion(
   });
 }
 
-export async function setAutomatch(id: number, automatch: boolean): Promise<SetRow> {
-  return fetchApi<SetRow>(`/recipes/${id}/automatch`, {
+export async function setAutomatch(id: number, automatch: boolean): Promise<RecipeRow> {
+  return fetchApi<RecipeRow>(`/recipes/${id}/automatch`, {
     method: "PUT",
     body: JSON.stringify({ automatch }),
   });
 }
 
-export async function archiveSet(id: number): Promise<SetRow> {
-  return fetchApi<SetRow>(`/recipes/${id}/archive`, { method: "POST" });
+export async function archiveRecipe(id: number): Promise<RecipeRow> {
+  return fetchApi<RecipeRow>(`/recipes/${id}/archive`, { method: "POST" });
 }
 
-export async function getSetTrends(id: number): Promise<SetTrends> {
-  return fetchApi<SetTrends>(`/recipes/${id}/trends`);
+export async function getRecipeTrends(id: number): Promise<RecipeTrends> {
+  return fetchApi<RecipeTrends>(`/recipes/${id}/trends`);
 }
 
 export async function putJudgement(shotId: number, body: JudgementWrite): Promise<ShotJudgement> {
@@ -1389,20 +1395,20 @@ export async function deleteJudgement(shotId: number): Promise<{ deleted: boolea
   return fetchApi<{ deleted: boolean }>(`/shots/${shotId}/judgement`, { method: "DELETE" });
 }
 
-/** Assign a shot to a Set version, or pass null to detach it. */
-export async function putShotSetVersion(
+/** Assign a shot to a Recipe version, or pass null to detach it. */
+export async function putShotRecipeVersion(
   shotId: number,
-  setVersionId: number | null,
+  recipeVersionId: number | null,
 ): Promise<ShotDetailRow> {
   return fetchApi<ShotDetailRow>(`/shots/${shotId}/recipe-version`, {
     method: "PUT",
-    body: JSON.stringify({ recipe_version_id: setVersionId }),
+    body: JSON.stringify({ recipe_version_id: recipeVersionId }),
   });
 }
 
 /**
- * File shots that need a Set under the one Set that brews their profile. No ids
- * means every shot waiting for a Set; a shot that already has one is never moved.
+ * File shots that need a Recipe under the one Recipe that brews their profile. No ids
+ * means every shot waiting for a Recipe; a shot that already has one is never moved.
  */
 export async function matchShotsByProfile(shotIds?: number[]): Promise<ProfileMatchSummary> {
   return fetchApi<ProfileMatchSummary>("/shots/profile-match", {
@@ -1456,7 +1462,7 @@ export async function getPatterns(): Promise<PatternsData> {
   return fetchApi<PatternsData>("/knowledge/patterns");
 }
 
-/** Find patterns across Sets: queues a run and answers with the running row. A person's press. */
+/** Find patterns across Recipes: queues a run and answers with the running row. A person's press. */
 export async function startPatternRun(options: { model?: string } = {}): Promise<PatternRun> {
   return fetchApi<PatternRun>("/knowledge/patterns/runs", {
     method: "POST",
@@ -1542,7 +1548,7 @@ export async function getKnowledgeInsight(id: number): Promise<KnowledgeInsight>
   return fetchApi<KnowledgeInsight>(`/knowledge/insights/${id}`);
 }
 
-/** Turn a Set's insight down. Kept for the conversation that proposed it. */
+/** Turn a Recipe's insight down. Kept for the conversation that proposed it. */
 export async function dismissKnowledgeInsight(id: number): Promise<KnowledgeInsight> {
   return fetchApi<KnowledgeInsight>(`/knowledge/insights/${id}/dismiss`, { method: "POST" });
 }
@@ -1586,19 +1592,19 @@ export async function createChatThread(body: ChatThreadWrite): Promise<ChatThrea
 }
 
 /**
- * The conversation about one version of a Set, started if there is none.
+ * The conversation about one version of a Recipe, started if there is none.
  *
  * What Discuss presses: a second press lands in the same room rather than
  * leaving a trail of empty conversations about one change. Omitting the version
- * means the Set's current one.
+ * means the Recipe's current one.
  */
 export async function openChatThread(
-  setId: number,
-  setVersionId?: number | null,
+  recipeId: number,
+  recipeVersionId?: number | null,
 ): Promise<ChatThread> {
   return fetchApi<ChatThread>("/chat/threads/open", {
     method: "POST",
-    body: JSON.stringify({ recipe_id: setId, recipe_version_id: setVersionId ?? null }),
+    body: JSON.stringify({ recipe_id: recipeId, recipe_version_id: recipeVersionId ?? null }),
   });
 }
 
@@ -1631,8 +1637,8 @@ export async function cancelChatRun(id: number): Promise<ChatRun> {
 /**
  * What the agent can do in a conversation of this kind.
  *
- * The kind is a parameter because the surfaces differ: a Set's chat cannot
- * query the archive, a general one cannot change a Set, and a Set still being
+ * The kind is a parameter because the surfaces differ: a Recipe's chat cannot
+ * query the archive, a general one cannot change a Recipe, and a Recipe still being
  * designed has the design tools and none that change a recipe. The page never
  * filters this itself — the scope is the server's, and a second copy of the
  * rule in the browser is a copy that can disagree.
@@ -1641,7 +1647,7 @@ export async function getChatTools(
   kind: "general" | "recipe" = "general",
   options: { designing?: boolean } = {},
 ): Promise<ChatToolList> {
-  // `designing` only when true: a Set chat on a Set with a recipe asks exactly
+  // `designing` only when true: a Recipe chat on a Recipe with a recipe asks exactly
   // what it always has.
   return fetchApi<ChatToolList>(
     `/chat/tools${queryString({ kind, designing: options.designing ? true : undefined })}`,
@@ -1669,11 +1675,11 @@ export function chatRunStreamUrl(runId: number, after = 0): string {
  * rather than a hint: a grind number from another grinder is not weaker
  * evidence, it is meaningless.
  */
-export async function getSimilarSets(
+export async function getSimilarRecipes(
   beanId: number,
   params: { grinderId?: number | null } = {},
-): Promise<SimilarSetsData> {
-  return fetchApi<SimilarSetsData>(
+): Promise<SimilarRecipesData> {
+  return fetchApi<SimilarRecipesData>(
     `/beans/${beanId}/similar-recipes${queryString({
       grinder_id: params.grinderId ?? undefined,
     })}`,
@@ -1701,7 +1707,7 @@ export async function getStartingPoint(runId: number): Promise<StartingPointRun>
   return fetchApi<StartingPointRun>(`/starting-points/${runId}`);
 }
 
-/** Take one option: the Set, its first version and — if it carried one — a draft. */
+/** Take one option: the Recipe, its first version and — if it carried one — a draft. */
 export async function acceptStartingPoint(
   runId: number,
   option: "conservative" | "recommended" | "adventurous",

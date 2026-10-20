@@ -14,31 +14,31 @@ import type {
   DuplicateRequest,
   ProfileDuplicateRequest,
 } from "@/api/types";
-import { invalidateBoardWrites, invalidateKnowledge, invalidateSets } from "@/lib/invalidate";
+import { invalidateBoardWrites, invalidateKnowledge, invalidateRecipes } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
- * Duplicating a Set from one of its versions.
+ * Duplicating a Recipe from one of its versions.
  *
- * The write makes a profile on the profile list, a Set with its first version, and insights. So
- * it touches the Sets (the list and the new Set's page, one prefix), the board and everything the
+ * The write makes a profile on the profile list, a Recipe with its first version, and insights. So
+ * it touches the Recipes (the list and the new Recipe's page, one prefix), the board and everything the
  * board's writes reach (drafts, the profile mirror and so every profile-versions query, the sync
- * status, the write audit), and the insights, which the new Set's page lists. No shot is filed or
+ * status, the write audit), and the insights, which the new Recipe's page lists. No shot is filed or
  * moved by it, so the shots queries are left alone. Nothing is sent to the machine: the next sync
  * does that.
  */
 
 /**
- * What the duplicate starts from. Never cached: the Set's insights may have changed since the
+ * What the duplicate starts from. Never cached: the Recipe's insights may have changed since the
  * last opening, and the dialog is the moment to ask.
  */
 export function useDuplicatePreview(
-  setId: number,
+  recipeId: number,
   versionId: number,
 ): UseQueryResult<DuplicatePreview, Error> {
   return useQuery({
-    queryKey: queryKeys.duplicates.preview(String(setId), String(versionId)),
-    queryFn: () => getDuplicatePreview(setId, versionId),
+    queryKey: queryKeys.duplicates.preview(String(recipeId), String(versionId)),
+    queryFn: () => getDuplicatePreview(recipeId, versionId),
     staleTime: 0,
     gcTime: 0,
     retry: 0,
@@ -48,20 +48,20 @@ export function useDuplicatePreview(
 
 /**
  * Duplicate a version. No toast on a refusal: the dialog that asked shows the server's sentence in
- * place. The Sets, the board and the insights are refreshed when the request settles, answered or
+ * place. The Recipes, the board and the insights are refreshed when the request settles, answered or
  * not, since a request that got no answer may have written anyway.
  */
-export function useDuplicateSet(): UseMutationResult<
+export function useDuplicateRecipe(): UseMutationResult<
   DuplicateAnswer,
   Error,
-  { setId: number; versionId: number; body: DuplicateRequest }
+  { recipeId: number; versionId: number; body: DuplicateRequest }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ setId, versionId, body }) => duplicateVersion(setId, versionId, body),
-    onSuccess: ({ recipe: set }) => toast.success(`Started "${set.name}"`),
+    mutationFn: ({ recipeId, versionId, body }) => duplicateVersion(recipeId, versionId, body),
+    onSuccess: ({ recipe }) => toast.success(`Started "${recipe.name}"`),
     onSettled: () => {
-      void invalidateSets(queryClient);
+      void invalidateRecipes(queryClient);
       void invalidateBoardWrites(queryClient);
       void invalidateKnowledge(queryClient);
     },
@@ -71,10 +71,10 @@ export function useDuplicateSet(): UseMutationResult<
 /**
  * Duplicate Profile. The write puts one new profile on the list, so it touches the board and
  * everything its writes reach (the profile mirror, so every profile-versions query) and the
- * profiles a new Set may start on. No toast on a refusal: the dialog shows the server's sentence
+ * profiles a new Recipe may start on. No toast on a refusal: the dialog shows the server's sentence
  * in place.
  *
- * The refresh is awaited before the call resolves, so whoever asked (New Set) can select the new
+ * The refresh is awaited before the call resolves, so whoever asked (New Recipe) can select the new
  * profile at once: the choices and the profile versions already list it.
  */
 export function useDuplicateProfile(): UseMutationResult<
@@ -86,7 +86,7 @@ export function useDuplicateProfile(): UseMutationResult<
   const refresh = () =>
     Promise.all([
       invalidateBoardWrites(queryClient),
-      queryClient.invalidateQueries({ queryKey: queryKeys.sets.profileChoices() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.recipes.profileChoices() }),
     ]).then(() => undefined);
   return useMutation({
     mutationFn: ({ versionId, body }) => duplicateProfile(versionId, body),

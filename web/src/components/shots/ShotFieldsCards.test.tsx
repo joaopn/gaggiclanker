@@ -162,7 +162,7 @@ describe("ShotPhasesCard", () => {
     errors.mockRestore();
   });
 
-  it("shows no share of a target for a shot in no Set, and no unreached rows when none", () => {
+  it("shows no share of a target for a shot in no Recipe, and no unreached rows when none", () => {
     render(<ShotPhasesCard fields={realFields} />);
 
     expect(screen.queryByTestId("phase-phase_cup_share")).not.toBeInTheDocument();

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { JudgementWrite, ShotListRow } from "@/api/types";
 import { useVocabulary } from "@/hooks/useCatalog";
-import { usePatchJudgement } from "@/hooks/useSets";
+import { usePatchJudgement } from "@/hooks/useRecipes";
 import { attempt } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
 

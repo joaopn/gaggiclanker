@@ -12,7 +12,7 @@ import type {
 /**
  * What the knowledge components are handed.
  *
- * Hand-written like the Set fixtures and for the same reason: nothing here is a
+ * Hand-written like the Recipe fixtures and for the same reason: nothing here is a
  * derived number, so a recording would prove nothing a literal does not. The
  * generated types are what keep them honest against the pydantic models.
  */
@@ -94,7 +94,7 @@ export function knowledgeInsight(overrides: Partial<KnowledgeInsight> = {}): Kno
   };
 }
 
-/** An agent's proposal to delete an added insight of Set 3, waiting for the person. */
+/** An agent's proposal to delete an added insight of Recipe 3, waiting for the person. */
 export function insightDeletion(overrides: Partial<InsightDeletion> = {}): InsightDeletion {
   return {
     id: 9,
@@ -110,7 +110,7 @@ export function insightDeletion(overrides: Partial<InsightDeletion> = {}): Insig
   };
 }
 
-/** A finished run of Find patterns across Sets that read four insights in three Sets. */
+/** A finished run of Find patterns across Recipes that read four insights in three Recipes. */
 export function patternRun(overrides: Partial<PatternRun> = {}): PatternRun {
   return {
     id: 5,
@@ -133,7 +133,7 @@ export function patternRun(overrides: Partial<PatternRun> = {}): PatternRun {
   };
 }
 
-/** A waiting proposal made from two Sets' insights about one grinder. */
+/** A waiting proposal made from two Recipes' insights about one grinder. */
 export function patternProposal(overrides: Partial<PatternProposal> = {}): PatternProposal {
   return {
     id: 11,

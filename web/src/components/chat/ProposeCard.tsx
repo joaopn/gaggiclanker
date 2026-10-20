@@ -5,16 +5,16 @@ import { ChatInsightCard } from "@/components/chat/ChatInsightCard";
 import { InsightDeletionCard } from "@/components/chat/InsightDeletionCard";
 import { OutcomeCard } from "@/components/chat/OutcomeCard";
 import { ProfileProposalCard } from "@/components/profiles/ProfileProposalCard";
-import { ProposalCard } from "@/components/sets/ProposalCard";
+import { ProposalCard } from "@/components/recipes/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
-import { useSetProposals } from "@/hooks/useSets";
+import { useRecipeProposals } from "@/hooks/useRecipes";
 import { currentToolName, recipeIdOf } from "@/lib/legacyTools";
 
 /**
  * What a `propose_` tool created, as a card that links to it.
  *
- * The propose tools each write a row somebody still has to decide about — a Set
- * version, a Set's whole first recipe, a version's grade, a profile draft, an
+ * The propose tools each write a row somebody still has to decide about — a Recipe
+ * version, a Recipe's whole first version, a version's grade, a profile draft, an
  * insight waiting to be added, an insight waiting to be deleted — and the
  * difference between "the chat suggested" and "the chat created" is exactly
  * what a reader has to be able to see. So the result is read out of the tool's
@@ -28,13 +28,13 @@ export type Proposal = {
   detail: string;
   href: string;
   icon: LucideIcon;
-  /** A proposed Set change or first recipe: which Set, and which row on it. */
-  setId?: number;
+  /** A proposed Recipe change or first recipe: which Recipe, and which row on it. */
+  recipeId?: number;
   proposalId?: number;
   /** A proposed insight: which, and what it says until the live row is read. */
   insightId?: number;
   insightText?: string;
-  /** A proposed deletion: which Set and insight, and its text until the live row is read. */
+  /** A proposed deletion: which Recipe and insight, and its text until the live row is read. */
   deletion?: { insightId: number; text: string };
   /** A proposed grade: what the tool said, shown until the live row is read. */
   grade?: { version: string; outcome: string; countedShots: number };
@@ -62,55 +62,55 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
 
   if (name === "propose_recipe_version") {
     const proposalId = output.proposal_id;
-    const setId = recipeIdOf(output);
-    if (proposalId === undefined || setId === undefined) return null;
+    const recipeId = recipeIdOf(output);
+    if (proposalId === undefined || recipeId === undefined) return null;
     const changed = Array.isArray(output.changed) ? (output.changed as string[]) : [];
     return {
       kind: "recipe_version",
       // "Proposed", not "created": the version does not exist until the person
       // presses Accept, and this card is where they press it.
-      label: `A change to this Set${changed.length > 0 ? `: ${changed.join(", ")}` : ""}`,
+      label: `A change to this Recipe${changed.length > 0 ? `: ${changed.join(", ")}` : ""}`,
       detail: String(output.change_summary ?? "waiting for you"),
-      href: `/sets/${String(setId)}`,
+      href: `/recipes/${String(recipeId)}`,
       icon: Layers,
-      setId: Number(setId),
+      recipeId: Number(recipeId),
       proposalId: Number(proposalId),
     };
   }
 
   if (name === "propose_initial_recipe") {
     const proposalId = output.proposal_id;
-    const setId = recipeIdOf(output);
-    if (proposalId === undefined || setId === undefined) return null;
-    const recipe =
+    const recipeId = recipeIdOf(output);
+    if (proposalId === undefined || recipeId === undefined) return null;
+    const versionFields =
       output.recipe && typeof output.recipe === "object"
         ? (output.recipe as Record<string, unknown>)
         : {};
     const figures = [
-      recipe.profile_label ? String(recipe.profile_label) : null,
-      recipe.grind_setting ? `grind ${String(recipe.grind_setting)}` : null,
-      recipe.dose_g ? `${String(recipe.dose_g)} g in` : null,
-      recipe.target_yield_g ? `${String(recipe.target_yield_g)} g out` : null,
+      versionFields.profile_label ? String(versionFields.profile_label) : null,
+      versionFields.grind_setting ? `grind ${String(versionFields.grind_setting)}` : null,
+      versionFields.dose_g ? `${String(versionFields.dose_g)} g in` : null,
+      versionFields.target_yield_g ? `${String(versionFields.target_yield_g)} g out` : null,
     ].filter(Boolean);
     return {
       kind: "initial_recipe",
-      // The same live card as a change, read back from the Set's proposals:
+      // The same live card as a change, read back from the Recipe's proposals:
       // this is only what shows until that read lands.
-      label: "The first recipe for this Set",
+      label: "Version 1 of this Recipe",
       detail: figures.length > 0 ? figures.join(" · ") : "waiting for you",
-      href: `/sets/${String(setId)}`,
+      href: `/recipes/${String(recipeId)}`,
       icon: Sparkles,
-      setId: Number(setId),
+      recipeId: Number(recipeId),
       proposalId: Number(proposalId),
       // The name the agent gave the profile, to say "proposed as" if the person renames it.
-      proposedAs: recipe.profile_label ? String(recipe.profile_label) : null,
+      proposedAs: versionFields.profile_label ? String(versionFields.profile_label) : null,
     };
   }
 
   if (name === "propose_outcome") {
     const proposalId = output.proposal_id;
-    const setId = recipeIdOf(output);
-    if (proposalId === undefined || setId === undefined) return null;
+    const recipeId = recipeIdOf(output);
+    if (proposalId === undefined || recipeId === undefined) return null;
     const version = String(output.version ?? "this version");
     const outcome = String(output.outcome ?? "");
     const countedShots = Number(output.counted_shots ?? 0);
@@ -120,9 +120,9 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
       // press Accept, and this card is where they press it.
       label: `A grade for ${version}`,
       detail: `${outcome.replace("_", " ")} — waiting for you`,
-      href: `/sets/${String(setId)}`,
+      href: `/recipes/${String(recipeId)}`,
       icon: Gauge,
-      setId: Number(setId),
+      recipeId: Number(recipeId),
       proposalId: Number(proposalId),
       grade: { version, outcome, countedShots },
     };
@@ -149,8 +149,8 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
 
   if (name === "propose_insight_deletion") {
     const proposalId = output.proposal_id;
-    const setId = recipeIdOf(output);
-    if (proposalId === undefined || setId === undefined) return null;
+    const recipeId = recipeIdOf(output);
+    if (proposalId === undefined || recipeId === undefined) return null;
     const text = String(output.insight_text ?? "");
     return {
       kind: "insight_deletion",
@@ -158,9 +158,9 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
       // Delete, and this card is where they press it.
       label: "Deleting an insight",
       detail: `${text} — waiting for you to delete or keep it`,
-      href: `/sets/${String(setId)}`,
+      href: `/recipes/${String(recipeId)}`,
       icon: Trash2,
-      setId: Number(setId),
+      recipeId: Number(recipeId),
       proposalId: Number(proposalId),
       deletion: { insightId: Number(output.insight_id ?? 0), text },
     };
@@ -177,8 +177,8 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
       detail: `${String(output.text ?? "")} — waiting for you to add or dismiss it`,
       // Its own live card is drawn from the insight itself; this is only the
       // link the fallback would carry, and the Knowledge page is no longer
-      // where a Set's insight lives.
-      href: "/sets",
+      // where a Recipe's insight lives.
+      href: "/recipes",
       icon: Lightbulb,
       insightId: Number(insightId),
       insightText: String(output.text ?? ""),
@@ -189,11 +189,11 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
 }
 
 /**
- * A proposed Set change or first recipe, read back live so the buttons tell the truth.
+ * A proposed Recipe change or first recipe, read back live so the buttons tell the truth.
  *
  * The tool's own output is a snapshot of the moment it was called, and this
  * card is read again every time the conversation is scrolled to — days later,
- * after the person has answered it on the Set page. So the row is fetched
+ * after the person has answered it on the Recipe page. So the row is fetched
  * rather than rendered from the transcript, and a proposal that has since been
  * accepted says so here instead of offering to accept it a second time.
  *
@@ -202,8 +202,8 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
  * text.
  */
 function ProposedChange({ proposal }: { proposal: Proposal }) {
-  const setId = proposal.setId as number;
-  const proposals = useSetProposals(setId);
+  const recipeId = proposal.recipeId as number;
+  const proposals = useRecipeProposals(recipeId);
   const row = proposals.data?.items.find((item) => item.id === proposal.proposalId);
   if (!row) {
     return (
@@ -217,7 +217,11 @@ function ProposedChange({ proposal }: { proposal: Proposal }) {
   }
   return (
     <div className="m-2 mt-0" data-testid={`propose-card-${proposal.kind}`}>
-      <ProposalCard setId={setId} proposal={row} proposedProfileAs={proposal.proposedAs ?? null} />
+      <ProposalCard
+        recipeId={recipeId}
+        proposal={row}
+        proposedProfileAs={proposal.proposedAs ?? null}
+      />
     </div>
   );
 }
@@ -241,22 +245,22 @@ export function ProposeCard({ proposal }: { proposal: Proposal }) {
   }
   if (
     proposal.kind === "insight_deletion" &&
-    proposal.setId &&
+    proposal.recipeId &&
     proposal.proposalId &&
     proposal.deletion
   ) {
     return (
       <InsightDeletionCard
-        setId={proposal.setId}
+        recipeId={proposal.recipeId}
         proposalId={proposal.proposalId}
         fallback={proposal.deletion}
       />
     );
   }
-  if (proposal.kind === "outcome" && proposal.setId && proposal.proposalId && proposal.grade) {
+  if (proposal.kind === "outcome" && proposal.recipeId && proposal.proposalId && proposal.grade) {
     return (
       <OutcomeCard
-        setId={proposal.setId}
+        recipeId={proposal.recipeId}
         proposalId={proposal.proposalId}
         fallback={proposal.grade}
       />
@@ -264,7 +268,7 @@ export function ProposeCard({ proposal }: { proposal: Proposal }) {
   }
   if (
     (proposal.kind === "recipe_version" || proposal.kind === "initial_recipe") &&
-    proposal.setId &&
+    proposal.recipeId &&
     proposal.proposalId
   ) {
     return <ProposedChange proposal={proposal} />;

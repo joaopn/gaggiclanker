@@ -58,7 +58,7 @@ export function SystemPage({ page }: { page: SettingsPageInfo }) {
         <div className="space-y-2">
           <h3 className="font-medium text-sm">Back up</h3>
           <p className="text-muted-foreground text-sm">
-            Everything in the app in one file: shots, Sets, beans, profiles, chats, knowledge and
+            Everything in the app in one file: shots, Recipes, beans, profiles, chats, knowledge and
             settings.
           </p>
           <label className="flex items-center gap-2 text-sm">

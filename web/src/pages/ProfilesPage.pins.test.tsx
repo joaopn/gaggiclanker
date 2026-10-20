@@ -75,7 +75,7 @@ beforeEach(() => {
 });
 
 describe("a pinned row on the Profiles page", () => {
-  it("has no On the machine switch, keeps Starred, and badges the Set it belongs to", async () => {
+  it("has no On the machine switch, keeps Starred, and badges the Recipe it belongs to", async () => {
     const user = setupUser();
     renderWithQueryClient(<ProfilesPage />);
     await screen.findByText("Blooming v1.2");
@@ -90,7 +90,7 @@ describe("a pinned row on the Profiles page", () => {
 
     const badge = within(pinnedRow).getByTestId("pinned-badge");
     expect(badge).toHaveTextContent("Pinned: Ethiopia Guji · Blooming v1.2");
-    expect(badge).toHaveAttribute("href", "/sets/3");
+    expect(badge).toHaveAttribute("href", "/recipes/3");
 
     // The star still works.
     await user.click(within(pinnedRow).getByRole("switch", { name: "Blooming v1.2 starred" }));
@@ -131,7 +131,7 @@ describe("a pinned row on the Profiles page", () => {
     expect(api.getBoardVersions).not.toHaveBeenCalled();
   });
 
-  it("offers Duplicate Set, which goes to the Set page with the pinned version's dialog to open", async () => {
+  it("offers Duplicate Recipe, which goes to the Recipe page with the pinned version's dialog to open", async () => {
     const user = setupUser();
     renderWithQueryClient(<ProfilesPage />);
     await screen.findByText("Blooming v1.2");
@@ -140,13 +140,13 @@ describe("a pinned row on the Profiles page", () => {
     const panel = await screen.findByTestId("pinned-panel");
     const link = within(panel).getByTestId("pinned-duplicate");
 
-    expect(link).toHaveTextContent("Duplicate Set");
-    expect(link).toHaveAccessibleName("Duplicate Set: v1.2 of Ethiopia Guji · Blooming");
-    expect(link).toHaveAttribute("href", "/sets/3?duplicate=22");
+    expect(link).toHaveTextContent("Duplicate Recipe");
+    expect(link).toHaveAccessibleName("Duplicate Recipe: v1.2 of Ethiopia Guji · Blooming");
+    expect(link).toHaveAttribute("href", "/recipes/3?duplicate=22");
     // Beside Unpin, in the panel's one row of actions.
     expect(
       Array.from(within(panel).getByTestId("pinned-actions").children).map((el) => el.textContent),
-    ).toEqual(["Duplicate Set", "Unpin"]);
+    ).toEqual(["Duplicate Recipe", "Unpin"]);
     // An ordinary row has no such button.
     expect(within(rowNamed("9 Bar Espresso")).queryByTestId("pinned-duplicate")).toBeNull();
   });
@@ -233,7 +233,7 @@ describe("a pinned row on the Profiles page", () => {
     expect(screen.getByRole("button", { name: "Unpin v1.2" })).toBeEnabled();
     expect(conflict).toHaveTextContent("Either way the machine's version is kept");
     expect(within(conflict).getByTestId("keep-machine-help")).toHaveTextContent(
-      "The Set gets a new version with the machine's brew, and the next sync puts it on the machine.",
+      "The Recipe gets a new version with the machine's brew, and the next sync puts it on the machine.",
     );
 
     await user.click(within(conflict).getByTestId("keep-app"));

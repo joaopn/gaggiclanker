@@ -22,7 +22,7 @@ export type ShotColumnId =
   | "check"
   | "review"
   | "rating"
-  | "set"
+  | "recipe"
   | "notes"
   | "decision"
   | "flags";
@@ -46,7 +46,7 @@ export type ColumnSize = { rem: number; min: number; max: number };
  * you thought) and a table whose columns move is a table nobody can read at a
  * glance.
  *
- * The Set leads. A session is read Set by Set — this bean on this grinder, then
+ * The Recipe leads. A session is read Recipe by Recipe — this bean on this grinder, then
  * the next — and an archive scanned for "which shots were the Guji" is scanned
  * down its first column; the time beside it then says where in that bag a shot
  * fell.
@@ -56,12 +56,12 @@ export type ColumnSize = { rem: number; min: number; max: number };
  * two columns whose edge could not be taken hold of, which is the one thing a
  * reader expects of a column of text. Nor is any track `auto` — every row is a
  * grid of its own (see `ShotsTable`), and an `auto` track is sized by the
- * content of *that* row, so a long Set name in one row pushed every later
+ * content of *that* row, so a long Recipe name in one row pushed every later
  * column of that row sideways, out of line with the header.
  *
  * **A default width is what fits that column, and nothing more.** For a column
  * with one shape of content it is a measurement: the sparkline's 96 px, five
- * 16 px stars, three words side by side. For a column of free text (the Set, a
+ * 16 px stars, three words side by side. For a column of free text (the Recipe, a
  * profile name, a note) there is no such width, so the default is the width
  * that shows a usual value and the rest truncates with the whole string on
  * hover. Either way the heading counts as content: a column narrower than its
@@ -78,9 +78,9 @@ export type ColumnSize = { rem: number; min: number; max: number };
  * column's edge, the table grows with it, and the width is kept.
  */
 export const SHOT_COLUMNS: ShotColumn[] = [
-  // A Set badge says a name and a version; both truncate, and the whole name
+  // A Recipe badge says a name and a version; both truncate, and the whole name
   // is on hover. 8rem holds a usual one ("Guji washed v2").
-  { id: "set", label: "Set", size: { rem: 8, min: 4, max: 20 }, narrowHidden: true },
+  { id: "recipe", label: "Recipe", size: { rem: 8, min: 4, max: 20 }, narrowHidden: true },
   // The list's own compact format (`formatListTime`), measured rather than
   // guessed: the widest current-year form of the locales checked is US English
   // ("Dec 24, 11:59 PM"), 7.7rem at text-sm in DejaVu Sans. The day-first
@@ -135,7 +135,7 @@ export const SHOT_COLUMNS: ShotColumn[] = [
 /**
  * What a first visit shows.
  *
- * Set, Time and Profile say what was brewed and when; Duration and Yield say
+ * Recipe, Time and Profile say what was brewed and when; Duration and Yield say
  * what the machine did; Rating and Decision say what you made of it.
  * That is the row a reader scans, and it is the row they get without touching
  * the chooser.
@@ -151,7 +151,7 @@ export const SHOT_COLUMNS: ShotColumn[] = [
  * Curve check sits just before it: what the deterministic checks say about the shot.
  */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
-  "set",
+  "recipe",
   "time",
   "profile",
   "duration",
@@ -180,11 +180,11 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
  */
 export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly ShotColumnId[])[] = [
   // Before the Curve check column was split from Review.
-  ["set", "time", "profile", "duration", "yield", "review", "rating", "decision"],
+  ["recipe", "time", "profile", "duration", "yield", "review", "rating", "decision"],
   // Before Profile joined the default row.
-  ["set", "time", "duration", "yield", "review", "rating", "decision"],
+  ["recipe", "time", "duration", "yield", "review", "rating", "decision"],
   // Before the column after Rating (Decision) replaced Flags.
-  ["time", "duration", "yield", "review", "rating", "set", "flags"],
+  ["time", "duration", "yield", "review", "rating", "recipe", "flags"],
 ];
 
 /**
@@ -219,7 +219,11 @@ export const SHOT_COLUMNS_CHECK_KEY = "shots.columns.check.v1";
  * place, so a layout that names `score` shows `review` at the same position,
  * on or off as it was.
  */
-const REPLACED: Record<string, ShotColumnId> = { analyze: "decision", score: "review" };
+const REPLACED: Record<string, ShotColumnId> = {
+  analyze: "decision",
+  score: "review",
+  set: "recipe",
+};
 
 const ALL_IDS = new Set<string>(SHOT_COLUMNS.map((column) => column.id));
 
@@ -344,10 +348,12 @@ export function loadShotWidths(storage: Storage | undefined = safeStorage()): Sh
     const widths: ShotWidths = {};
     const stored = parsed as Record<string, unknown>;
     for (const column of SHOT_COLUMNS) {
-      // A width dragged on the old Score column is the Review column's now,
-      // unless Review has been dragged itself.
+      // A width dragged on the old Score column is the Review column's now, and one dragged on
+      // the Set column is the Recipe column's, unless the new column has been dragged itself.
       const own = stored[column.id];
-      const value = own === undefined && column.id === "review" ? stored.score : own;
+      const old =
+        column.id === "review" ? stored.score : column.id === "recipe" ? stored.set : undefined;
+      const value = own === undefined ? old : own;
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       widths[column.id] = clampWidth(column.size, value);
     }

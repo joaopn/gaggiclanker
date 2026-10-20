@@ -11,7 +11,7 @@ import { formatTime } from "@/lib/shots";
 
 /**
  * What the profile list says about Writes, in one line: with them off, nothing here reaches the
- * machine yet. The Profiles page and the Set page's pinned card both show it.
+ * machine yet. The Profiles page and the Recipe page's pinned card both show it.
  */
 export function writesLine(enabled: boolean): string {
   return enabled

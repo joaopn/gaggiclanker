@@ -14,7 +14,7 @@ describe("contentMaxWidth", () => {
 
   it("keeps a reading column everywhere else, one shot included", () => {
     // A shot is a page of prose, charts and a form; only the list is a table.
-    for (const path of ["/shots/129", "/sets", "/chat", "/settings/llm", "/nope", "/"]) {
+    for (const path of ["/shots/129", "/recipes", "/chat", "/settings/llm", "/nope", "/"]) {
       expect(contentMaxWidth(path), path).toBe("max-w-5xl");
     }
   });

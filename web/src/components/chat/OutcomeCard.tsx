@@ -4,10 +4,14 @@ import { Link } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
 import type { OutcomeProposal, VersionOutcome } from "@/api/types";
 import { useChatThreadId } from "@/components/chat/tellAgent";
-import { humanisedOutcome, OutcomeBadge } from "@/components/sets/OutcomeBadge";
+import { humanisedOutcome, OutcomeBadge } from "@/components/recipes/OutcomeBadge";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
-import { type OutcomeAnswer, useAnswerOutcomeProposal, useOutcomeProposals } from "@/hooks/useSets";
+import {
+  type OutcomeAnswer,
+  useAnswerOutcomeProposal,
+  useOutcomeProposals,
+} from "@/hooks/useRecipes";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { attempt } from "@/lib/mutations";
 import { formatTime } from "@/lib/shots";
@@ -20,15 +24,15 @@ import { cn } from "@/lib/utils";
  * **outcome** is what the track record, every later conversation and the
  * "no new change while the last prediction is ungraded" rule read, and it is
  * recorded by a person only. So the grade is a card here, with the outcome as
- * the same badge the Set page uses, the per-claim lines under it and how many
+ * the same badge the Recipe page uses, the per-claim lines under it and how many
  * counted shots it rests on. **Accept** records it as written, **Record another
  * outcome** records the person's own choice of the four (inline, no overlay),
  * **Dismiss** records nothing and may say why.
  *
- * The card is read live from the Set's proposed grades rather than rendered from
+ * The card is read live from the Recipe's proposed grades rather than rendered from
  * the tool's output: the output is the moment it was called, and this card is
  * read again whenever the conversation is scrolled to, after the person may have
- * answered it here, on the Set page, or by accepting the next version. A grade
+ * answered it here, on the Recipe page, or by accepting the next version. A grade
  * that is no longer waiting says how it ended, so scrolling back is reading a
  * record and not a set of live buttons. An answer is **not** sent to the agent
  * as a message: the agent is told what the person did at the start of its next
@@ -36,7 +40,7 @@ import { cn } from "@/lib/utils";
  */
 
 export type OutcomeCardProps = {
-  setId: number;
+  recipeId: number;
   proposalId: number;
   /** What the tool said, shown until the live row has been read. */
   fallback: { version: string; outcome: string; countedShots: number };
@@ -48,7 +52,7 @@ const NOTE_MAX = 500;
 export function outcomeFailure(error: Error): string {
   if (error instanceof ApiClientError) {
     if (error.code === "OUTCOME_PROPOSAL_DECIDED") {
-      return "This grade was already answered, here in another tab or on the Set page. The card will show how once it refreshes.";
+      return "This grade was already answered, here in another tab or on the Recipe page. The card will show how once it refreshes.";
     }
     if (error.code === "NOTHING_TO_GRADE") {
       return "No shot of this version is labelled Keep or Improve any more, so there is nothing to grade. Label a shot again, or dismiss this grade.";
@@ -61,8 +65,8 @@ function shotsWords(count: number): string {
   return `${count} counted ${count === 1 ? "shot" : "shots"}`;
 }
 
-export function OutcomeCard({ setId, proposalId, fallback }: OutcomeCardProps) {
-  const proposals = useOutcomeProposals(setId);
+export function OutcomeCard({ recipeId, proposalId, fallback }: OutcomeCardProps) {
+  const proposals = useOutcomeProposals(recipeId);
   const row = proposals.data?.items.find((item) => item.id === proposalId);
   if (!row) {
     return (
@@ -78,12 +82,12 @@ export function OutcomeCard({ setId, proposalId, fallback }: OutcomeCardProps) {
   }
   return (
     <div className="m-2 mt-0" data-testid="propose-card-outcome">
-      <LiveOutcomeCard setId={setId} row={row} />
+      <LiveOutcomeCard recipeId={recipeId} row={row} />
     </div>
   );
 }
 
-function LiveOutcomeCard({ setId, row }: { setId: number; row: OutcomeProposal }) {
+function LiveOutcomeCard({ recipeId, row }: { recipeId: number; row: OutcomeProposal }) {
   const vocab = useVocabulary();
   const answer = useAnswerOutcomeProposal();
   const threadId = useChatThreadId();
@@ -111,7 +115,7 @@ function LiveOutcomeCard({ setId, row }: { setId: number; row: OutcomeProposal }
   function send(body: OutcomeAnswer) {
     singleFlight((release) => {
       void attempt(() =>
-        answer.mutateAsync({ setId, proposalId: row.id, answer: body, threadId }),
+        answer.mutateAsync({ recipeId, proposalId: row.id, answer: body, threadId }),
       ).finally(release);
     });
   }
@@ -270,7 +274,7 @@ function LiveOutcomeCard({ setId, row }: { setId: number; row: OutcomeProposal }
           </p>
         </>
       ) : (
-        <Decided row={shown} labelOf={labelOf} setId={setId} />
+        <Decided row={shown} labelOf={labelOf} recipeId={recipeId} />
       )}
 
       {failure ? (
@@ -285,16 +289,16 @@ function LiveOutcomeCard({ setId, row }: { setId: number; row: OutcomeProposal }
 function Decided({
   row,
   labelOf,
-  setId,
+  recipeId,
 }: {
   row: OutcomeProposal;
   labelOf: (value: string | null | undefined) => string;
-  setId: number;
+  recipeId: number;
 }) {
   const when = formatTime(row.decided_at ?? null);
   const page = (
-    <Link to={`/sets/${setId}`} className="underline underline-offset-2">
-      Set page
+    <Link to={`/recipes/${recipeId}`} className="underline underline-offset-2">
+      Recipe page
     </Link>
   );
   if (row.status === "accepted") {

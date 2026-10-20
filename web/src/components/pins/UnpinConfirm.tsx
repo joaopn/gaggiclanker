@@ -4,7 +4,7 @@ import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { selectedSuccessorSentence } from "@/lib/board";
 
 /**
- * The question under "Unpin", on the Set page's card and on the pinned row of the Profiles page.
+ * The question under "Unpin", on the Recipe page's card and on the pinned row of the Profiles page.
  *
  * One meaning: the next sync takes the copy off the machine, and the shots brewed on it stay
  * where they are filed. When the copy is the profile the machine has selected, the sync selects
@@ -23,7 +23,7 @@ export function UnpinConfirm({
   pinId: number;
   /** The copy's name on the machine. */
   name: string;
-  /** The Set version the shots stay filed under, "v1.2". */
+  /** The Recipe version the shots stay filed under, "v1.2". */
   versionLabel: string;
   shotCount: number;
   /** The row's `machine.selected`. */

@@ -79,7 +79,7 @@ describe("RestoreSection", () => {
     const row = (label: string) => screen.getByText(label).closest("tr") as HTMLElement;
     expect(row("Shots")).toHaveTextContent("412");
     expect(row("Shots")).toHaveTextContent("431");
-    expect(row("Sets")).toHaveTextContent("67");
+    expect(row("Recipes")).toHaveTextContent("67");
     expect(row("Beans")).toHaveTextContent("99");
     const bullets = screen.getAllByRole("listitem").map((item) => item.textContent);
     expect(bullets).toEqual([

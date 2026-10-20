@@ -6,7 +6,7 @@ import { DiscussButton } from "@/components/chat/DiscussButton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { AssignToSet } from "@/components/shots/AssignToSet";
+import { AssignToRecipe } from "@/components/shots/AssignToRecipe";
 import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotFields, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
+import { LEGACY_ASSIGN_ANCHOR } from "@/lib/legacyLinks";
 import { setBox } from "@/lib/shotBoxes";
 import { ASSIGN_ANCHOR, formatTime, profileName, REVIEW_ANCHOR } from "@/lib/shots";
 
@@ -26,7 +27,7 @@ import { ASSIGN_ANCHOR, formatTime, profileName, REVIEW_ANCHOR } from "@/lib/sho
  * Composed top to bottom in the order somebody works through a shot: what it was (the facts),
  * then the five boxes in their fixed order (`ShotBoxes`: what you thought, the curves, the
  * version's prediction, what a model's review of them claims, and what the numbers alone check),
- * then what each diagnostic says, which phase it happened in, which Set it belongs to, what the
+ * then what each diagnostic says, which phase it happened in, which Recipe it belongs to, what the
  * machine's own notes recorded, and finally the raw header for anybody checking the archive
  * against the device. Each box is open or folded as the person last left it.
  *
@@ -57,15 +58,17 @@ export function ShotDetailPage() {
   const fields = useShotFields(Number.isFinite(shotId) ? shotId : undefined);
   const { hash } = useLocation();
 
-  // The shots list's "needs a Set" menu offers only a few Sets and sends the
-  // rest here with `#set`, and a link to a shot's review comes here with
+  // The shots list's "needs a Recipe" menu offers only a few Recipes and sends the
+  // rest here with `#recipe`, and a link to a shot's review comes here with
   // `#review`. Both panels are far down a long page, and landing at the top of
   // it would leave the reader to find the thing the link promised. It waits
   // for the shot, because until then the panels do not exist. The Review box is
   // opened first: a link to its review (or to one claim of it) is a link to what is in it.
   const arrived = shot.isSuccess;
   useEffect(() => {
-    const anchor = hash.slice(1);
+    // `#set`, from a link made before the rename, is the Assign panel too.
+    const raw = hash.slice(1);
+    const anchor = raw === LEGACY_ASSIGN_ANCHOR ? ASSIGN_ANCHOR : raw;
     // A claim's own anchor (`#claim-12`) lands on that claim.
     const claim = /^claim-\d+$/.test(anchor);
     if (!arrived || (anchor !== ASSIGN_ANCHOR && anchor !== REVIEW_ANCHOR && !claim)) return;
@@ -127,7 +130,7 @@ export function ShotDetailPage() {
                 so the chat starts on the change this shot is evidence for
                 rather than asking what it was an attempt at. */}
             <DiscussButton
-              setId={row.recipe_badge?.recipe_id ?? null}
+              recipeId={row.recipe_badge?.recipe_id ?? null}
               versionId={row.recipe_version_id ?? null}
               question={`What do you make of shot ${row.id}?`}
             />
@@ -180,9 +183,9 @@ export function ShotDetailPage() {
       ) : null}
 
       <section id={ASSIGN_ANCHOR} className="scroll-mt-20">
-        <AssignToSet
+        <AssignToRecipe
           shotId={row.id}
-          setVersion={shot.data.recipe_version}
+          recipeVersion={shot.data.recipe_version}
           judgement={shot.data.judgement}
         />
       </section>

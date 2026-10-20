@@ -62,7 +62,7 @@ export function ResetSection() {
       {phase === "idle" && (
         <>
           <p className="text-muted-foreground text-sm">
-            Puts the app back to a fresh install: every shot, Set, bean, profile, chat, insight,
+            Puts the app back to a fresh install: every shot, Recipe, bean, profile, chat, insight,
             edited prompt and setting is deleted. Nothing on the machine changes.
           </p>
           <p className="text-muted-foreground text-sm">

@@ -63,7 +63,7 @@ function spyOn(queryClient: QueryClient): unknown[][] {
 
 /**
  * A signature is read when a shot is, so one answer moves every shot's checks (the shot page's
- * fields and every list row's badge), every Set that brews the profile, and the signature
+ * fields and every list row's badge), every Recipe that brews the profile, and the signature
  * itself. Each answer is pinned, because a missing key is a stale red badge on a shot whose
  * signature was just confirmed, and nothing else in a render test shows it.
  */
@@ -75,8 +75,8 @@ const ANSWERS = [
     () => useSetExpectationTier(),
     { expectationId: 3, tier: "context" },
   ],
-  ["rejecting an override", () => useRejectOverride(), { setId: 1, overrideId: 2, reason: "" }],
-  ["restoring an override", () => useRestoreOverride(), { setId: 1, overrideId: 2 }],
+  ["rejecting an override", () => useRejectOverride(), { recipeId: 1, overrideId: 2, reason: "" }],
+  ["restoring an override", () => useRestoreOverride(), { recipeId: 1, overrideId: 2 }],
 ] as const;
 
 describe("every answer about a signature invalidates what it touches", () => {
@@ -90,7 +90,7 @@ describe("every answer about a signature invalidates what it touches", () => {
     await waitFor(() => expect(keys.length).toBe(3));
     expect(keys).toContainEqual(queryKeys.signatures.all);
     expect(keys).toContainEqual(queryKeys.shots.all);
-    expect(keys).toContainEqual(queryKeys.sets.all);
+    expect(keys).toContainEqual(queryKeys.recipes.all);
   });
 
   it("also when the answer is refused, so the card shows the answer that won", async () => {
@@ -118,7 +118,7 @@ describe("every answer about a signature invalidates what it touches", () => {
     expect(setExpectationTier).toHaveBeenCalledWith(4, "important");
 
     const restoreOverride = renderHookWithQueryClient(() => useRestoreOverride());
-    await restoreOverride.result.current.mutateAsync({ setId: 1, overrideId: 2 });
+    await restoreOverride.result.current.mutateAsync({ recipeId: 1, overrideId: 2 });
     expect(restoreSignatureOverride).toHaveBeenCalledWith(1, 2);
   });
 });

@@ -19,8 +19,8 @@ type Json = Record<string, unknown>;
  * since is refused ("the machine changed again") and the panel re-reads and shows the new one.
  * Either choice keeps the machine's content as a version, so nothing is lost.
  *
- * A pinned row is a conflict like any other: keeping the machine's side gives the Set's profile
- * its own version of that brew, made active, and the pin then names the Set's new version.
+ * A pinned row is a conflict like any other: keeping the machine's side gives the Recipe's profile
+ * its own version of that brew, made active, and the pin then names the Recipe's new version.
  */
 export function ConflictPanel({ rowId, pinned = false }: { rowId: number; pinned?: boolean }) {
   const conflict = useBoardConflict(rowId, true);
@@ -119,7 +119,7 @@ export function ConflictPanel({ rowId, pinned = false }: { rowId: number; pinned
           </Button>
           <p className="text-muted-foreground text-xs" data-testid="keep-machine-help">
             {pinned
-              ? "The Set gets a new version with the machine's brew, and the next sync puts it on the machine."
+              ? "The Recipe gets a new version with the machine's brew, and the next sync puts it on the machine."
               : "The machine's version becomes the profile's active version. Nothing is sent to the machine."}
           </p>
         </div>

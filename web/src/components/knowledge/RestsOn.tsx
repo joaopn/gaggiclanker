@@ -1,9 +1,9 @@
 import { ArrowRight } from "lucide-react";
 import type { InsightRestsOn } from "@/api/types";
-import { OutcomeBadge } from "@/components/sets/OutcomeBadge";
+import { OutcomeBadge } from "@/components/recipes/OutcomeBadge";
 
 /**
- * The versions a Set insight rests on, each with its outcome as it stands now.
+ * The versions a Recipe insight rests on, each with its outcome as it stands now.
  *
  * An insight written when v3 "held" can outlive the day v3 was re-graded, so the
  * outcome shown is the version's **current** one, and when it moved since the

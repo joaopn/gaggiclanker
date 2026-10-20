@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
 import { useFlavorPicks } from "@/hooks/useFlavorPicks";
-import { useDeleteJudgement, useSaveJudgement } from "@/hooks/useSets";
+import { useDeleteJudgement, useSaveJudgement } from "@/hooks/useRecipes";
 import { flattenWheel } from "@/lib/flavorWheel";
 import { cn } from "@/lib/utils";
 
@@ -58,8 +58,8 @@ const EMPTY: FormState = {
 };
 
 /**
- * What the form starts the doses at when the person has not recorded one: the Set version's dose
- * when the shot is filed in a Set, the scale's yield when the shot has a scale. Values, not
+ * What the form starts the doses at when the person has not recorded one: the Recipe version's dose
+ * when the shot is filed in a Recipe, the scale's yield when the shot has a scale. Values, not
  * placeholders, so what is saved is what is seen, and nothing is saved until the person saves.
  */
 export type DosePrefill = { doseIn?: number | null; doseOut?: number | null };

@@ -1,5 +1,5 @@
 import type { DuplicateAnswer, DuplicatePreview } from "@/api/types";
-import { setRow } from "@/test/setsFixtures";
+import { recipeRow } from "@/test/recipesFixtures";
 
 /** What duplicating a version starts from: the default state, a profile and five insights. */
 export function duplicatePreview(overrides: Partial<DuplicatePreview> = {}): DuplicatePreview {
@@ -30,7 +30,7 @@ export function duplicatePreview(overrides: Partial<DuplicatePreview> = {}): Dup
 /** What a duplicate answers with. */
 export function duplicateAnswer(overrides: Partial<DuplicateAnswer> = {}): DuplicateAnswer {
   return {
-    recipe: setRow({ id: 9, name: "Guji milk", version_count: 1, shot_count: 0 }),
+    recipe: recipeRow({ id: 9, name: "Guji milk", version_count: 1, shot_count: 0 }),
     board_id: 31,
     ...overrides,
   };

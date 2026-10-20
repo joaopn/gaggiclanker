@@ -85,8 +85,8 @@ describe("every board mutation refreshes everything it changes", () => {
 
     await result.current.mutateAsync({ draftId: 1 });
 
-    // The profile's Set follows it, so the Sets are read again too.
-    for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
+    // The profile's Recipe follows it, so the Recipes are read again too.
+    for (const key of [...BOARD_WRITES, queryKeys.recipes.all]) {
       await waitFor(() => expect(keys).toContainEqual([...key]));
     }
   });
@@ -97,7 +97,7 @@ describe("every board mutation refreshes everything it changes", () => {
 
     await result.current.mutateAsync({ draftId: 1, major: true });
 
-    for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
+    for (const key of [...BOARD_WRITES, queryKeys.recipes.all]) {
       await waitFor(() => expect(keys).toContainEqual([...key]));
     }
   });
@@ -132,13 +132,13 @@ describe("every board mutation refreshes everything it changes", () => {
     expect(setBoardStarred).toHaveBeenCalledWith(4, false);
   });
 
-  it("making a version active also refreshes the Sets, which brew whatever is active", async () => {
+  it("making a version active also refreshes the Recipes, which brew whatever is active", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => useSetActiveVersion());
     const keys = spyOn(queryClient);
 
     await result.current.mutateAsync({ rowId: 4, versionId: 9 });
 
-    for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
+    for (const key of [...BOARD_WRITES, queryKeys.recipes.all]) {
       await waitFor(() => expect(keys).toContainEqual([...key]));
     }
     expect(setBoardActiveVersion).toHaveBeenCalledWith(4, 9);
@@ -149,7 +149,7 @@ describe("every board mutation refreshes everything it changes", () => {
     const keys = spyOn(queryClient);
 
     await result.current.mutateAsync({ rowId: 4, keep: "app", contentHash: "h1" });
-    for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
+    for (const key of [...BOARD_WRITES, queryKeys.recipes.all]) {
       await waitFor(() => expect(keys).toContainEqual([...key]));
     }
     expect(resolveBoardConflict).toHaveBeenCalledWith(4, "app", "h1");
@@ -163,13 +163,13 @@ describe("every board mutation refreshes everything it changes", () => {
     await waitFor(() => expect(keys).toContainEqual([...queryKeys.board.all]));
   });
 
-  it("renaming a profile refreshes everything that shows its name: the board, the Sets and the shots", async () => {
+  it("renaming a profile refreshes everything that shows its name: the board, the Recipes and the shots", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => useRenameProfile());
     const keys = spyOn(queryClient);
 
     await result.current.mutateAsync({ rowId: 4, label: "Blooming milk" });
 
-    for (const key of [...BOARD_WRITES, queryKeys.sets.all, queryKeys.shots.all]) {
+    for (const key of [...BOARD_WRITES, queryKeys.recipes.all, queryKeys.shots.all]) {
       await waitFor(() => expect(keys).toContainEqual([...key]));
     }
     expect(renameBoardProfile).toHaveBeenCalledWith(4, "Blooming milk");

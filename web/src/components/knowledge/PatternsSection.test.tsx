@@ -3,15 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import {
   droppedWords,
-  groupBySet,
+  groupByRecipe,
   PatternsSection,
   patternFailure,
   scopeWords,
   sinceSentence,
 } from "@/components/knowledge/PatternsSection";
 import { patternProposal, patternRun, patternsData } from "@/test/knowledgeFixtures";
+import { bean, grinder } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { bean, grinder } from "@/test/setsFixtures";
 
 const {
   getPatterns,
@@ -55,7 +55,7 @@ function card() {
 }
 
 describe("the button and the sentence under it", () => {
-  it("is disabled with a sentence while fewer than two Sets have a confirmed insight", async () => {
+  it("is disabled with a sentence while fewer than two Recipes have a confirmed insight", async () => {
     getPatterns.mockResolvedValue(
       patternsData({ run: null, proposals: [], recipes_with_insights: 1, new_since_last_run: 1 }),
     );
@@ -64,25 +64,25 @@ describe("the button and the sentence under it", () => {
     const button = await screen.findByTestId("find-patterns");
     expect(button).toBeDisabled();
     expect(screen.getByTestId("patterns-since")).toHaveTextContent(
-      "Needs confirmed insights in at least 2 Sets, and one Set has them.",
+      "Needs confirmed insights in at least 2 Recipes, and one Recipe has them.",
     );
   });
 
-  it("says how many confirmed Set insights arrived since the last run", async () => {
+  it("says how many confirmed Recipe insights arrived since the last run", async () => {
     renderWithQueryClient(<PatternsSection />);
 
     expect(await screen.findByTestId("find-patterns")).toBeEnabled();
     expect(screen.getByTestId("patterns-since")).toHaveTextContent(
-      "2 confirmed Set insights have arrived since the last run.",
+      "2 confirmed Recipe insights have arrived since the last run.",
     );
   });
 
   it("before any run it says what a first run would read", () => {
     expect(sinceSentence(4, 3, 2, null, null)).toBe(
-      "No run yet: 4 confirmed Set insights across 3 Sets to read.",
+      "No run yet: 4 confirmed Recipe insights across 3 Recipes to read.",
     );
     expect(sinceSentence(1, 3, 2, patternRun(), "2026-10-03T09:00:00.000Z")).toBe(
-      "1 confirmed Set insight has arrived since the last run.",
+      "1 confirmed Recipe insight has arrived since the last run.",
     );
     expect(sinceSentence(0, 0, 2, null, null)).toContain("none have");
     expect(sinceSentence(4, 3, 2, patternRun({ status: "running" }), null)).toContain(
@@ -112,7 +112,7 @@ describe("what the newest run did", () => {
     renderWithQueryClient(<PatternsSection />);
 
     expect(await screen.findByTestId("patterns-running")).toHaveTextContent(
-      "Reading 4 Set insights from 3 Sets",
+      "Reading 4 Recipe insights from 3 Recipes",
     );
     expect(screen.getByTestId("find-patterns")).toBeDisabled();
     expect(screen.getByTestId("find-patterns")).toHaveTextContent("Finding patterns");
@@ -169,7 +169,7 @@ describe("what the newest run did", () => {
 
     const since = await screen.findByTestId("patterns-since");
     expect(since).toHaveTextContent(
-      "3 confirmed Set insights have arrived since the last run that finished.",
+      "3 confirmed Recipe insights have arrived since the last run that finished.",
     );
     expect(since).not.toHaveTextContent("No run has finished yet");
   });
@@ -191,14 +191,14 @@ describe("what the newest run did", () => {
       "found nothing worth proposing",
     );
     expect(screen.getByTestId("patterns-dropped")).toHaveTextContent(
-      "3 proposals were dropped before you saw them: 2 rested on one Set; 1 named an insight it was not given.",
+      "3 proposals were dropped before you saw them: 2 rested on one Recipe; 1 named an insight it was not given.",
     );
     expect(droppedWords(patternRun())).toBeNull();
   });
 });
 
 describe("a proposal's card", () => {
-  it("shows the text, the scope in words and the sources grouped by Set, linked", async () => {
+  it("shows the text, the scope in words and the sources grouped by Recipe, linked", async () => {
     renderWithQueryClient(<PatternsSection />);
 
     const proposal = await card();
@@ -208,17 +208,17 @@ describe("a proposal's card", () => {
     // Named, not numbered: the grinder's name arrives with the catalogue.
     await waitFor(() =>
       expect(within(proposal).getByTestId("pattern-scope")).toHaveTextContent(
-        "Applies to Sets with roast level light, grinder Niche Zero.",
+        "Applies to Recipes with roast level light, grinder Niche Zero.",
       ),
     );
-    const sets = within(proposal).getAllByTestId("pattern-source-set");
-    expect(sets).toHaveLength(2);
+    const recipes = within(proposal).getAllByTestId("pattern-source-recipe");
+    expect(recipes).toHaveLength(2);
     expect(
-      within(sets[0] as HTMLElement).getByRole("link", { name: "Guji daily" }),
-    ).toHaveAttribute("href", "/sets/3");
-    expect(sets[1]).toHaveTextContent("It gushes under 9.");
+      within(recipes[0] as HTMLElement).getByRole("link", { name: "Guji daily" }),
+    ).toHaveAttribute("href", "/recipes/3");
+    expect(recipes[1]).toHaveTextContent("It gushes under 9.");
     expect(within(proposal).getByTestId("pattern-consequence")).toHaveTextContent(
-      "Approving deletes these 2 Set insights.",
+      "Approving deletes these 2 Recipe insights.",
     );
   });
 
@@ -247,7 +247,7 @@ describe("a proposal's card", () => {
     renderWithQueryClient(<PatternsSection />);
 
     const scope = await screen.findByTestId("pattern-scope");
-    expect(scope).toHaveTextContent("Applies to Sets with bean …, grinder ….");
+    expect(scope).toHaveTextContent("Applies to Recipes with bean …, grinder ….");
     expect(scope).not.toHaveTextContent("no longer there");
 
     // The beans arrive without bean 9 (the grinders are still pending).
@@ -271,36 +271,36 @@ describe("a proposal's card", () => {
     expect(scope).not.toHaveTextContent("no longer there");
   });
 
-  it("words an empty scope as every Set", () => {
-    expect(scopeWords({})).toBe("Applies to every Set.");
+  it("words an empty scope as every Recipe", () => {
+    expect(scopeWords({})).toBe("Applies to every Recipe.");
     const names = {
       beans: new Map([[3, "Kenya Kiambu"]]),
       grinders: new Map([[1, "Niche Zero"]]),
     };
     expect(scopeWords({ process: "washed", bean_id: 3, grinder_id: 1 }, names)).toBe(
-      "Applies to Sets with process washed, bean Kenya Kiambu, grinder Niche Zero.",
+      "Applies to Recipes with process washed, bean Kenya Kiambu, grinder Niche Zero.",
     );
     // While a catalogue loads the thing is unknown, not gone.
     expect(
       scopeWords({ bean_id: 9 }, { ...names, loaded: { beans: "loading", grinders: "loaded" } }),
-    ).toBe("Applies to Sets with bean ….");
+    ).toBe("Applies to Recipes with bean ….");
     // A catalogue that failed to load leaves the id and claims nothing.
     expect(
       scopeWords({ bean_id: 9 }, { ...names, loaded: { beans: "failed", grinders: "loaded" } }),
-    ).toBe("Applies to Sets with bean #9.");
+    ).toBe("Applies to Recipes with bean #9.");
     // An id is shown only when the thing is gone.
     expect(scopeWords({ bean_id: 9 }, names)).toBe(
-      "Applies to Sets with bean #9 (no longer there).",
+      "Applies to Recipes with bean #9 (no longer there).",
     );
   });
 
-  it("groups sources by Set in the order the Sets first appear", () => {
-    const groups = groupBySet([
+  it("groups sources by Recipe in the order the Recipes first appear", () => {
+    const groups = groupByRecipe([
       { insight_id: 1, recipe_id: 9, recipe_name: "B", text: "x" },
       { insight_id: 2, recipe_id: 4, recipe_name: "A", text: "y" },
       { insight_id: 3, recipe_id: 9, recipe_name: "B", text: "z" },
     ]);
-    expect(groups.map((g) => [g.setId, g.items.length])).toEqual([
+    expect(groups.map((g) => [g.recipeId, g.items.length])).toEqual([
       [9, 2],
       [4, 1],
     ]);
@@ -354,7 +354,7 @@ describe("answering a proposal", () => {
     expect(approvePatternProposal).toHaveBeenCalledWith(11);
     const decided = await screen.findByTestId("pattern-decided");
     expect(decided).toHaveTextContent("Approved: the general insight is on this page");
-    expect(decided).toHaveTextContent("2 Set insights were deleted");
+    expect(decided).toHaveTextContent("2 Recipe insights were deleted");
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   });
 
@@ -374,12 +374,12 @@ describe("answering a proposal", () => {
 
     const skipped = await screen.findByTestId("pattern-skipped");
     expect(skipped).toHaveTextContent(
-      'A Set insight, "It gushes under 9." was taken back since, so it stays.',
+      'A Recipe insight, "It gushes under 9." was taken back since, so it stays.',
     );
     expect(skipped).toHaveTextContent(
       'The general insight it was to replace "Old: below 10." was already gone.',
     );
-    expect(screen.getByTestId("pattern-decided")).toHaveTextContent("1 Set insight was deleted");
+    expect(screen.getByTestId("pattern-decided")).toHaveTextContent("1 Recipe insight was deleted");
   });
 
   it("dismiss sends the id and says the next run is told", async () => {
@@ -409,7 +409,7 @@ describe("answering a proposal", () => {
     await user.click(await screen.findByRole("button", { name: "Approve" }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("pattern-error")).toHaveTextContent("fewer than two Sets"),
+      expect(screen.getByTestId("pattern-error")).toHaveTextContent("fewer than two Recipes"),
     );
     // The card is still a question: nothing was written.
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();

@@ -5,7 +5,7 @@ import { NOTES_MAX } from "@/components/shots/JudgementForm";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useAssignShot, usePatchJudgement, useSets } from "@/hooks/useSets";
+import { useAssignShot, usePatchJudgement, useRecipes } from "@/hooks/useRecipes";
 import { attempt } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  * Fill in the cup without leaving the list.
  *
  * The three things somebody writes about a shot the evening they pulled it —
- * how it was, what it tasted like in a sentence, and which Set it belongs to —
+ * how it was, what it tasted like in a sentence, and which Recipe it belongs to —
  * are the three things that used to need a navigation each. Everything else
  * about a shot stays on its own page; this is deliberately not a second copy
  * of the judgement form.
@@ -55,13 +55,13 @@ export function ShotRowEditor({ shot, className }: { shot: ShotListRow; classNam
 
 /**
  * Split out so none of its queries run until the panel is open. Fifty mounted
- * rows must not be fifty subscriptions to the Set list.
+ * rows must not be fifty subscriptions to the Recipe list.
  */
 function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void }) {
-  const sets = useSets();
+  const recipes = useRecipes();
   const patch = usePatchJudgement(shot.id);
   const assign = useAssignShot();
-  const ids = { notes: useId(), set: useId() };
+  const ids = { notes: useId(), recipe: useId() };
 
   // What the verdict said when the panel opened — the verdict's own fields,
   // never the machine's notes-card rating the row falls back to. Prefilling
@@ -73,27 +73,27 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
   };
   const [rating, setRating] = useState<number | null>(loaded.rating);
   const [notes, setNotes] = useState(loaded.notes);
-  const [setVersion, setSetVersion] = useState(
+  const [recipeVersion, setRecipeVersion] = useState(
     shot.recipe_version_id ? String(shot.recipe_version_id) : "",
   );
 
-  const rows = sets.data?.items ?? [];
-  const chosen = setVersion === "" ? null : Number(setVersion);
+  const rows = recipes.data?.items ?? [];
+  const chosen = recipeVersion === "" ? null : Number(recipeVersion);
   const setMoved = chosen !== (shot.recipe_version_id ?? null);
   const saving = patch.isPending || assign.isPending;
 
-  // Saving a panel where only the Set moved must not write a verdict. The
+  // Saving a panel where only the Recipe moved must not write a verdict. The
   // server has no empty-judgement guard by design — "discard, I knocked the
   // portafilter" is a legitimate row with nothing else in it — so a PUT of
   // `{rating: null, notes: ""}` creates one, and that row then lights up
-  // `has_judgement`, puts a null point on the Set's trend, and dates itself
+  // `has_judgement`, puts a null point on the Recipe's trend, and dates itself
   // later than the machine's notes card, so the shot would read as judged
   // after the machine's own rating, which is not what anybody did.
   const verdictChanged = rating !== loaded.rating || notes !== loaded.notes;
   const deviceRating = shot.rating ?? shot.index_rating ?? null;
 
   async function save() {
-    // The verdict first, the Set second, and the panel closes only if both
+    // The verdict first, the Recipe second, and the panel closes only if both
     // went through: a panel that shut on a failed write would leave the toast
     // explaining a change the list is not showing.
     if (verdictChanged) {
@@ -104,7 +104,7 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
     }
     if (setMoved) {
       const assigned = await attempt(() =>
-        assign.mutateAsync({ shotId: shot.id, setVersionId: chosen }),
+        assign.mutateAsync({ shotId: shot.id, recipeVersionId: chosen }),
       );
       if (assigned === undefined) return;
     }
@@ -150,16 +150,16 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
       </div>
 
       <div>
-        <label htmlFor={ids.set} className="mb-1 block text-muted-foreground text-xs">
-          Set
+        <label htmlFor={ids.recipe} className="mb-1 block text-muted-foreground text-xs">
+          Recipe
         </label>
         <select
-          id={ids.set}
+          id={ids.recipe}
           className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          value={setVersion}
-          onChange={(event) => setSetVersion(event.target.value)}
+          value={recipeVersion}
+          onChange={(event) => setRecipeVersion(event.target.value)}
         >
-          <option value="">Not in a Set</option>
+          <option value="">Not in a Recipe</option>
           {rows.map((row) => (
             <option
               key={row.id}
@@ -170,7 +170,7 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
             </option>
           ))}
           {/* A shot filed under an older version: the list above offers each
-              Set's current version only, so without this the select would
+              Recipe's current version only, so without this the select would
               silently show the wrong thing. */}
           {shot.recipe_badge &&
           !rows.some((row) => row.current_version_id === shot.recipe_version_id) ? (

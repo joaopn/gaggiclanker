@@ -25,7 +25,7 @@ type Json = Record<string, unknown>;
  * sit beside it and wrap under it at phone width. **On the machine** is what a sync does: it
  * puts the profile there or removes it. **Starred** is the machine's home-screen carousel and
  * is kept while the profile is off, but applies only while it is on, so it is disabled with
- * the reason. Switching off a profile a Set brews, or the one the machine has selected, asks
+ * the reason. Switching off a profile a Recipe brews, or the one the machine has selected, asks
  * first. Nothing here writes to the machine: the next sync does.
  */
 export function ProfileRow({
@@ -49,7 +49,7 @@ export function ProfileRow({
   const [renaming, setRenaming] = useState(false);
   const state = rowStateOf(view, entry);
   const nameConflict = nameConflictOf(entry);
-  const set = entry.recipe ?? null;
+  const recipe = entry.recipe ?? null;
   const selected = entry.machine.selected === true;
   const pin = entry.pin ?? null;
   const waiting = proposals.length > 0 ? proposals.length : (entry.proposed_versions ?? 0);
@@ -60,7 +60,7 @@ export function ProfileRow({
   const send = (next: boolean) =>
     once((release) => onMachine.mutate({ rowId: row.id, on: next }, { onSettled: release }));
   const turn = (next: boolean) => {
-    if (!next && (set !== null || selected)) {
+    if (!next && (recipe !== null || selected)) {
       setConfirming(true);
       return;
     }
@@ -113,8 +113,8 @@ export function ProfileRow({
                 : ""}
             </span>
             {pin ? null : (
-              <span className="block text-muted-foreground text-xs" data-testid="row-set">
-                {set ? `Set: ${set.name} ${set.version_label}` : "No Set"}
+              <span className="block text-muted-foreground text-xs" data-testid="row-recipe">
+                {recipe ? `Recipe: ${recipe.name} ${recipe.version_label}` : "No Recipe"}
               </span>
             )}
             <StateLine state={state} />
@@ -124,15 +124,15 @@ export function ProfileRow({
         <div
           className={cn(
             "flex items-center",
-            // The badge carries a Set's name, which can be long: that group wraps and shrinks.
+            // The badge carries a Recipe's name, which can be long: that group wraps and shrinks.
             pin ? "min-w-0 max-w-full flex-wrap gap-x-4 gap-y-2" : "shrink-0 gap-4",
           )}
         >
           {/* A pinned copy is on the machine for as long as it is pinned and is taken off only by
-              unpinning, so it has no switch; the badge says whose it is and goes to that Set. */}
+              unpinning, so it has no switch; the badge says whose it is and goes to that Recipe. */}
           {pin ? (
             <Link
-              to={`/sets/${pin.recipe_id}`}
+              to={`/recipes/${pin.recipe_id}`}
               data-testid="pinned-badge"
               className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs underline-offset-2 hover:underline"
             >
@@ -204,10 +204,10 @@ export function ProfileRow({
               send(false);
             }}
           >
-            {set !== null ? (
-              <p data-testid="switch-off-sets">
-                {set.name} brews this profile. The next sync takes it off the machine, and it can no
-                longer brew it there.
+            {recipe !== null ? (
+              <p data-testid="switch-off-recipes">
+                {recipe.name} brews this profile. The next sync takes it off the machine, and it can
+                no longer brew it there.
               </p>
             ) : null}
             {selected ? (

@@ -34,7 +34,7 @@ beforeEach(() => {
 function renderCard() {
   return renderWithQueryClient(
     <ChatThreadContext.Provider value={14}>
-      <InsightDeletionCard setId={3} proposalId={9} fallback={FALLBACK} />
+      <InsightDeletionCard recipeId={3} proposalId={9} fallback={FALLBACK} />
     </ChatThreadContext.Provider>,
   );
 }
@@ -70,7 +70,7 @@ describe("InsightDeletionCard", () => {
     expect(within(card).getByRole("button", { name: "Delete" })).toBeEnabled();
     expect(within(card).getByRole("button", { name: "Keep" })).toBeEnabled();
     expect(card).toHaveTextContent("Nothing is deleted until you press Delete");
-    expect(card).toHaveTextContent("still told to this Set's conversations");
+    expect(card).toHaveTextContent("still told to this Recipe's conversations");
     expect(acceptInsightDeletion).not.toHaveBeenCalled();
   });
 
@@ -88,7 +88,7 @@ describe("InsightDeletionCard", () => {
 
     expect(acceptInsightDeletion).toHaveBeenCalledWith(3, 9);
     const decided = await screen.findByTestId("insight-deletion-decided");
-    expect(decided).toHaveTextContent("Deleted: the insight is gone from this Set.");
+    expect(decided).toHaveTextContent("Deleted: the insight is gone from this Recipe.");
     expect(decided).toHaveTextContent("Only this card remembers what it said.");
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByTestId("insight-deletion-card")).toHaveAttribute("data-status", "deleted");

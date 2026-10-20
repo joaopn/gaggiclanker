@@ -10,11 +10,11 @@ import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { attempt } from "@/lib/mutations";
 
 /**
- * Something the agent learned about this Set, and the two buttons that answer it.
+ * Something the agent learned about this Recipe, and the two buttons that answer it.
  *
- * An insight written in a Set's conversation is about **that Set**: it is stored
- * with the Set and the version the conversation is about, and if the person adds
- * it, only this Set's later conversations are told it — never another Set's, even
+ * An insight written in a Recipe's conversation is about **that Recipe**: it is stored
+ * with the Recipe and the version the conversation is about, and if the person adds
+ * it, only this Recipe's later conversations are told it — never another Recipe's, even
  * one on the same bean and grinder. Until they do it is not evidence, and the
  * card says so. **Add** is the confirmation (the only thing that makes it known),
  * **Dismiss** turns it down and keeps it for this conversation alone.
@@ -93,7 +93,7 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
         </p>
 
         <p className="mb-2 text-muted-foreground text-xs" data-testid="chat-insight-about">
-          About this Set only
+          About this Recipe only
           {row.recipe_version_label
             ? `, learned at ${row.recipe_version_label}`
             : ", version not recorded"}
@@ -142,8 +142,8 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
               className="mt-2 text-muted-foreground text-xs"
               data-testid="chat-insight-waiting-note"
             >
-              Not evidence until you add it. Added, it is told to this Set's later conversations and
-              no other Set's.
+              Not evidence until you add it. Added, it is told to this Recipe's later conversations
+              and no other Recipe's.
               {replacing ? " Adding it deletes the old insight above." : ""}
               {row.replaced === "old_changed"
                 ? " The insight it was meant to replace is already gone, so adding it deletes nothing."
@@ -156,15 +156,15 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
         ) : state === "added" ? (
           <div className="flex flex-wrap items-center gap-2" data-testid="chat-insight-decided">
             <p className="text-sm">
-              Added: this Set's later conversations will be told it.{" "}
+              Added: this Recipe's later conversations will be told it.{" "}
               {row.replaced === "deleted"
                 ? "It replaced and deleted the old insight. "
                 : row.replaced === "old_changed"
                   ? "The insight it was meant to replace had already changed, so nothing was deleted. "
                   : ""}
               It is on{" "}
-              <Link to={`/sets/${row.recipe_id}`} className="underline underline-offset-2">
-                the Set's page
+              <Link to={`/recipes/${row.recipe_id}`} className="underline underline-offset-2">
+                the Recipe's page
               </Link>
               .
             </p>

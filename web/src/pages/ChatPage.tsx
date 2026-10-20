@@ -28,39 +28,40 @@ import {
   useSendChatMessage,
 } from "@/hooks/useChat";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { useSets } from "@/hooks/useSets";
+import { useRecipes } from "@/hooks/useRecipes";
 import { loadChatPosition, saveChatPosition } from "@/lib/chatPosition";
 import { contextFooter, latestUsage } from "@/lib/chatUsage";
+import { withRecipeParam } from "@/lib/legacyLinks";
 import { attempt } from "@/lib/mutations";
 
 /**
  * The chat, as a page.
  *
  * Four query parameters, and each is a link somebody else's page makes:
- * `?thread=` selects a conversation, `?set=` scopes a *new* one, `?set=&version=`
+ * `?thread=` selects a conversation, `?recipe=` scopes a *new* one, `?recipe=&version=`
  * opens or continues the conversation about that version, and `?ask=` prefills
  * the composer. That is what the Discuss buttons produce — a conversation
  * already pointed at the right experiment with the question typed, because the
- * alternative is the person retyping "how is Set 3 going" into a box that has
- * no idea what Set 3 is.
+ * alternative is the person retyping "how is Recipe 3 going" into a box that has
+ * no idea what Recipe 3 is.
  *
  * With none of them — the sidebar's link, the `g c` chord — the page goes back
  * to where the person was in this browser: the conversation that was open and
  * the badge they picked (`lib/chatPosition.ts`). Without that, clicking away
- * and back always landed on the newest Set with nothing open.
+ * and back always landed on the newest Recipe with nothing open.
  *
- * `?set=` alone creates nothing: it says where a first question would land, and
- * a mis-click leaves no empty conversation behind. `?set=&version=` is the
+ * `?recipe=` alone creates nothing: it says where a first question would land, and
+ * a mis-click leaves no empty conversation behind. `?recipe=&version=` is the
  * other intent — "take me to the room where this change is being argued" — and
  * that room is a thing that exists, so it is opened through the server's own
  * open-or-continue route rather than made afresh.
  *
- * Which Set a conversation is about is the first thing picked: a badge per Set
+ * Which Recipe a conversation is about is the first thing picked: a badge per Recipe
  * above the chat, the open badge's conversations under it, one per line, and
- * New at the top of that list. The page opens on the newest Set's badge unless
- * a conversation or a `?set=` link says otherwise. `scope` is what a *first
+ * New at the top of that list. The page opens on the newest Recipe's badge unless
+ * a conversation or a `?recipe=` link says otherwise. `scope` is what a *first
  * question* would be filed under when no conversation is selected — the open
- * badge's Set — and the composer's card says so, because a question that
+ * badge's Recipe — and the composer's card says so, because a question that
  * quietly became a general one is a question answered without the bag in
  * front of it.
  *
@@ -70,14 +71,21 @@ import { attempt } from "@/lib/mutations";
  * replaces it when the run completes.
  */
 export function ChatPage() {
-  const [params, setParams] = useSearchParams();
+  const [rawParams, setParams] = useSearchParams();
+  // A link made before the rename names the Recipe `set=`: it is read as `recipe=` and the
+  // address is rewritten in place.
+  const moved = useMemo(() => withRecipeParam(rawParams), [rawParams]);
+  const params = moved ?? rawParams;
+  useEffect(() => {
+    if (moved) setParams(moved, { replace: true });
+  }, [moved, setParams]);
   const threadParam = params.get("thread");
-  const setParam = params.get("set");
+  const setParam = params.get("recipe");
   const versionParam = params.get("version");
   const askParam = params.get("ask");
 
   const threads = useChatThreads();
-  const sets = useSets();
+  const recipes = useRecipes();
   useQueryErrorToast(threads.error, "conversations");
 
   // Read once, at mount, and only when no link says where to go.
@@ -90,7 +98,7 @@ export function ChatPage() {
   const [draft, setDraft] = useState(askParam ?? "");
   const [runId, setRunId] = useState<number | null>(null);
   // The badge the person opened, over the page's own choice (`defaultFolderKey`).
-  // Seeded by a `?set=` link, which is somebody else's page picking for them.
+  // Seeded by a `?recipe=` link, which is somebody else's page picking for them.
   const [pickedFolder, setPickedFolder] = useState<string | null>(
     setParam ? folderKey(Number(setParam)) : (remembered?.folder ?? null),
   );
@@ -104,7 +112,7 @@ export function ChatPage() {
   const live = useChatRun(runId, selected);
 
   // A remembered conversation may have been deleted since (another tab, the
-  // Set page). Fetching it is the check, since the page fetches it anyway: a
+  // Recipe page). Fetching it is the check, since the page fetches it anyway: a
   // failure forgets it and opens as if nothing was remembered, and only once
   // it has loaded does the URL name it, so a reload never asks for a missing
   // one by link.
@@ -127,13 +135,13 @@ export function ChatPage() {
     saveChatPosition({ thread: selected, folder: pickedFolder });
   }, [selected, pickedFolder]);
 
-  const setRows = sets.data?.items;
+  const recipeRows = recipes.data?.items;
   const folders = useMemo(
-    () => buildFolders(threads.data ?? [], setRows ?? []),
-    [threads.data, setRows],
+    () => buildFolders(threads.data ?? [], recipeRows ?? []),
+    [threads.data, recipeRows],
   );
-  // Archived Sets' badges are behind a toggle, off by default. Opening a
-  // conversation about an archived Set (a link, a reload) turns it on once for
+  // Archived Recipes' badges are behind a toggle, off by default. Opening a
+  // conversation about an archived Recipe (a link, a reload) turns it on once for
   // that conversation, so its badge is on screen; turning it off again is the
   // person's call. Reset during render, keyed by the conversation (see the web
   // rules on state that follows a prop).
@@ -153,14 +161,14 @@ export function ChatPage() {
       ? pickedFolder
       : defaultFolderKey({
           folders: shownFolders,
-          sets: setRows ?? [],
+          recipes: recipeRows ?? [],
           selectedId: selected,
-          linkedSetId: setParam ? Number(setParam) : null,
+          linkedRecipeId: setParam ? Number(setParam) : null,
         });
-  // A first question lands in the open badge's Set. An archived Set has no
+  // A first question lands in the open badge's Recipe. An archived Recipe has no
   // New, so a first question there is a general one, and the card below says so.
   const openFolder = shownFolders.find((folder) => folder.key === openFolderKey) ?? null;
-  const scope = openFolder?.canCreate ? openFolder.setId : null;
+  const scope = openFolder?.canCreate ? openFolder.recipeId : null;
 
   const [downloading, setDownloading] = useState(false);
   async function saveTranscript(id: number) {
@@ -180,7 +188,7 @@ export function ChatPage() {
   //
   // NULL while a selected conversation is still loading. Falling back to
   // "general" there would be a guess, and the guess is on screen: the archive's
-  // tool list would flash beside a Set's chat and then be replaced.
+  // tool list would flash beside a Recipe's chat and then be replaced.
   const kind: "general" | "recipe" | null =
     selected === null
       ? scope === null
@@ -191,19 +199,21 @@ export function ChatPage() {
         : thread.data.thread.recipe_id === null
           ? "general"
           : "recipe";
-  // Whether that Set is still being designed, which is a third tool list: the
+  // Whether that Recipe is still being designed, which is a third tool list: the
   // design tools, and none that change a recipe it does not have yet. Read off
-  // the Sets list the folders already need rather than off the thread, so an
+  // the Recipes list the folders already need rather than off the thread, so an
   // accepted first recipe — which invalidates that list — switches the tools
   // on the next render. NULL until the list has arrived, for the same reason
-  // as the kind: the ordinary Set list flashing beside a design would be a guess.
-  const conversationSet = selected === null ? scope : (thread.data?.thread.recipe_id ?? null);
+  // as the kind: the ordinary Recipe list flashing beside a design would be a guess.
+  const conversationRecipe = selected === null ? scope : (thread.data?.thread.recipe_id ?? null);
   const designing: boolean | null =
     kind !== "recipe"
       ? false
-      : sets.isPending
+      : recipes.isPending
         ? null
-        : Boolean((sets.data?.items ?? []).find((row) => row.id === conversationSet)?.designing);
+        : Boolean(
+            (recipes.data?.items ?? []).find((row) => row.id === conversationRecipe)?.designing,
+          );
   const tools = useChatTools(designing === null ? null : kind, designing ?? false);
 
   const permissions = useMemo(() => {
@@ -212,7 +222,7 @@ export function ChatPage() {
     return map;
   }, [tools.data]);
 
-  // `?set=&version=` is Discuss: open or continue that version's conversation,
+  // `?recipe=&version=` is Discuss: open or continue that version's conversation,
   // once. The guard is a ref written inside the effect rather than state: two
   // passes of an effect that has already fired would be two rooms about one
   // change, and the answer is not a render's worth of state.
@@ -223,13 +233,13 @@ export function ChatPage() {
     if (openedFor.current === key) return;
     openedFor.current = key;
     void openThread
-      .mutateAsync({ setId: Number(setParam), setVersionId: Number(versionParam) })
+      .mutateAsync({ recipeId: Number(setParam), recipeVersionId: Number(versionParam) })
       .then((row) => {
         setSelected(row.id);
         setRunId(null);
         const next = new URLSearchParams(params);
         next.set("thread", String(row.id));
-        next.delete("set");
+        next.delete("recipe");
         next.delete("version");
         next.delete("ask");
         setParams(next, { replace: true });
@@ -274,23 +284,23 @@ export function ChatPage() {
     setRunId(null);
     const next = new URLSearchParams(params);
     next.set("thread", String(id));
-    next.delete("set");
+    next.delete("recipe");
     next.delete("ask");
     setParams(next, { replace: true });
   };
 
-  const startThread = async (setId: number | null) => {
+  const startThread = async (recipeId: number | null) => {
     // The badge decides the scope, and it decides it now rather than at the
-    // first question: pressing New under a Set is somebody saying what they are
+    // first question: pressing New under a Recipe is somebody saying what they are
     // about to ask about.
-    setPickedFolder(folderKey(setId));
-    const created = await createThread.mutateAsync({ setId });
+    setPickedFolder(folderKey(recipeId));
+    const created = await createThread.mutateAsync({ recipeId });
     select(created.id);
   };
 
-  //: The Set a first question would be filed under, for the composer to say so
-  //: — with the version it would land on, which is the Set's current one.
-  const scopeSet = (sets.data?.items ?? []).find((row) => row.id === scope) ?? null;
+  //: The Recipe a first question would be filed under, for the composer to say so
+  //: — with the version it would land on, which is the Recipe's current one.
+  const scopeRecipe = (recipes.data?.items ?? []).find((row) => row.id === scope) ?? null;
 
   const submit = async () => {
     const message = draft.trim();
@@ -299,7 +309,7 @@ export function ChatPage() {
     if (threadId === null) {
       // Asking without having pressed "New conversation" is the common case,
       // so the first question creates the thread rather than refusing.
-      const created = await createThread.mutateAsync({ setId: scope });
+      const created = await createThread.mutateAsync({ recipeId: scope });
       threadId = created.id;
       setSelected(created.id);
     }
@@ -348,10 +358,10 @@ export function ChatPage() {
     <div className="space-y-4">
       <PageHeader title="Chat" />
 
-      {/* One column: the Sets as badges, the open one's conversations under
+      {/* One column: the Recipes as badges, the open one's conversations under
           them, then the conversation itself at the page's full width. */}
       <div className="min-w-0 space-y-4">
-        {threads.isLoading || sets.isLoading ? (
+        {threads.isLoading || recipes.isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : (
           <ConversationPicker
@@ -360,7 +370,7 @@ export function ChatPage() {
             selectedId={selected}
             onOpen={setPickedFolder}
             onSelect={select}
-            onNew={(setId) => void startThread(setId)}
+            onNew={(recipeId) => void startThread(recipeId)}
             onDelete={(id) => {
               void deleteThread.mutateAsync(id).then(() => {
                 if (id === selected) setSelected(null);
@@ -397,20 +407,20 @@ export function ChatPage() {
             selected !== null
               ? thread.data?.thread.recipe_name
                 ? `About ${[thread.data.thread.recipe_name, thread.data.thread.recipe_version_label].filter(Boolean).join(" ")}` +
-                  (thread.data.thread.dead_end ? " — a dead end the Set went back past" : "")
+                  (thread.data.thread.dead_end ? " — a dead end the Recipe went back past" : "")
                 : "General"
               : // Nothing selected: the first question creates the conversation,
                 // and this is the only place that says where it will land.
-                scopeSet
-                ? `A new conversation about ${scopeSet.name} ${scopeSet.current_version_label}`
+                scopeRecipe
+                ? `A new conversation about ${scopeRecipe.name} ${scopeRecipe.current_version_label}`
                 : "General"
           }
         >
           <div className="max-h-[60vh] min-h-40 overflow-y-auto pr-1">
             {selected === null ? (
               <p className="text-muted-foreground text-sm">
-                Ask something below. "How is this Set going?", "did the grind change in v3 fix the
-                channeling?", "why does flow deviation matter more than pressure overshoot?"
+                Ask something below. "How is this Recipe going?", "did the grind change in v3 fix
+                the channeling?", "why does flow deviation matter more than pressure overshoot?"
               </p>
             ) : thread.isLoading ? (
               <Skeleton className="h-32 w-full" />
@@ -438,7 +448,7 @@ export function ChatPage() {
           >
             <Textarea
               aria-label="Message"
-              placeholder="Ask about a shot, a Set, or espresso in general…"
+              placeholder="Ask about a shot, a Recipe, or espresso in general…"
               value={draft}
               rows={2}
               onChange={(event) => setDraft(event.target.value)}
@@ -485,8 +495,8 @@ export function ChatPage() {
 /**
  * What the agent can do in this conversation, in its own words.
  *
- * The list comes from the server, per kind, and is not filtered here: a Set's
- * conversation cannot query the archive and a general one cannot change a Set,
+ * The list comes from the server, per kind, and is not filtered here: a Recipe's
+ * conversation cannot query the archive and a general one cannot change a Recipe,
  * and the page promising otherwise would be the page lying.
  */
 function ToolsHere({
@@ -505,9 +515,9 @@ function ToolsHere({
     <p className="mt-2 text-muted-foreground text-xs" data-testid="chat-tools">
       {kind === "recipe"
         ? designing
-          ? "It is designing this Set's first recipe with you and can propose it as one card. Tools here: "
-          : "It can see this Set only. Tools here: "
-        : "It can read the whole archive and change no Set. Tools here: "}
+          ? "It is designing this Recipe's version 1 with you and can propose it as one card. Tools here: "
+          : "It can see this Recipe only. Tools here: "
+        : "It can read the whole archive and change no Recipe. Tools here: "}
       {tools.join(", ")}
     </p>
   );

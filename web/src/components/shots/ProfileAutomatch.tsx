@@ -1,27 +1,27 @@
 import { Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useMatchShotsByProfile } from "@/hooks/useSets";
+import { useMatchShotsByProfile } from "@/hooks/useRecipes";
 import { attempt } from "@/lib/mutations";
 
 /**
- * "Match by profile": the Set a shot belongs to, worked out from its profile
- * when only one Set can be meant.
+ * "Match by profile": the Recipe a shot belongs to, worked out from its profile
+ * when only one Recipe can be meant.
  *
- * A shot matches when exactly one Set that is offered to the matcher brews its
- * profile on its current version. Two such Sets is a guess the archive does not
- * make, and neither is a Set that names no profile. Every new shot already goes
+ * A shot matches when exactly one Recipe that is offered to the matcher brews its
+ * profile on its current version. Two such Recipes is a guess the archive does not
+ * make, and neither is a Recipe that names no profile. Every new shot already goes
  * through that rule as it arrives, so this button is for the shots that were
- * waiting before a Set existed, or before somebody set one to collect them: it
- * runs the rule now, over every shot waiting for a Set, or over one shot when
+ * waiting before a Recipe existed, or before somebody set one to collect them: it
+ * runs the rule now, over every shot waiting for a Recipe, or over one shot when
  * `shotId` is given (a shot's own page, which leaves the button out once the
- * shot has a Set).
+ * shot has a Recipe).
  */
 export function ProfileAutomatch({
   shotId,
   filed = false,
 }: {
   shotId?: number;
-  /** A single shot that already has a Set: nothing for the button to do. */
+  /** A single shot that already has a Recipe: nothing for the button to do. */
   filed?: boolean;
 }) {
   const match = useMatchShotsByProfile();
@@ -36,7 +36,7 @@ export function ProfileAutomatch({
         variant="outline"
         size="sm"
         disabled={match.isPending}
-        title="File under the one Set that brews the shot's profile, when only one does"
+        title="File under the one Recipe that brews the shot's profile, when only one does"
         onClick={() =>
           void attempt(() => match.mutateAsync(shotId === undefined ? undefined : [shotId]))
         }

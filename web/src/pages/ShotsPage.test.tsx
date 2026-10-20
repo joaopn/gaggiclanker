@@ -10,7 +10,7 @@ import type {
   ShotSamplesData,
   SyncStatusData,
 } from "@/api/types";
-import { setChatQuestion } from "@/components/shots/SetChatBar";
+import { setChatQuestion } from "@/components/shots/RecipeChatBar";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { BOXES_KEY } from "@/lib/shotBoxes";
@@ -19,9 +19,15 @@ import { LEGACY_SHOT_CURVES_KEY, SHOT_CURVES_KEY } from "@/lib/shotCurves";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { openAllBoxes, openBoxes } from "@/test/boxFixtures";
 import { checksBlock, claim, reviewBlock } from "@/test/claimFixtures";
+import {
+  flavorPicks,
+  judgement,
+  recipeDetail,
+  recipeRow,
+  vocabulary,
+} from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
-import { flavorPicks, judgement, setDetail, setRow, vocabulary } from "@/test/setsFixtures";
 import { leverFields, leverSignedFields, realFields } from "@/test/shotFieldsFixture";
 import { shot129, shot129Samples, syntheticSamples } from "@/test/shotFixture";
 import { LEVER_BADGE, LEVER_WARNINGS } from "@/test/warningFixtures";
@@ -36,12 +42,12 @@ const {
   getSyncStatus,
   getProfileVersions,
   getShotSamples,
-  getSets,
-  getSet,
+  getRecipes,
+  getRecipe,
   getShot,
   getShotFields,
   putJudgement,
-  putShotSetVersion,
+  putShotRecipeVersion,
   getDeviceStatus,
   runSync,
   importFiles,
@@ -53,12 +59,12 @@ const {
   getSyncStatus: vi.fn(),
   getProfileVersions: vi.fn(),
   getShotSamples: vi.fn(),
-  getSets: vi.fn(),
-  getSet: vi.fn(),
+  getRecipes: vi.fn(),
+  getRecipe: vi.fn(),
   getShot: vi.fn(),
   getShotFields: vi.fn(),
   putJudgement: vi.fn(),
-  putShotSetVersion: vi.fn(),
+  putShotRecipeVersion: vi.fn(),
   getDeviceStatus: vi.fn(),
   runSync: vi.fn(),
   importFiles: vi.fn(),
@@ -72,12 +78,12 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSyncStatus,
   getProfileVersions,
   getShotSamples,
-  getSets,
-  getSet,
+  getRecipes,
+  getRecipe,
   getShot,
   getShotFields,
   putJudgement,
-  putShotSetVersion,
+  putShotRecipeVersion,
   getDeviceStatus,
   runSync,
   importFiles,
@@ -233,14 +239,14 @@ beforeEach(() => {
   getSyncStatus.mockResolvedValue(statusData());
   getProfileVersions.mockResolvedValue(versions);
   getShotSamples.mockResolvedValue(samplesData);
-  getSets.mockResolvedValue({ items: [setRow()] });
-  getSet.mockResolvedValue(setDetail());
+  getRecipes.mockResolvedValue({ items: [recipeRow()] });
+  getRecipe.mockResolvedValue(recipeDetail());
   getShot.mockResolvedValue({ ...shot129, judgement: judgement() });
   getShotFields.mockResolvedValue(leverSignedFields);
   getVocabulary.mockResolvedValue(vocabulary);
   getFlavorPicks.mockResolvedValue(flavorPicks());
   putJudgement.mockImplementation((_id: number, body: unknown) => Promise.resolve(body));
-  putShotSetVersion.mockResolvedValue(shot());
+  putShotRecipeVersion.mockResolvedValue(shot());
   getDeviceStatus.mockResolvedValue({
     configured: true,
     connected: true,
@@ -312,7 +318,7 @@ describe("ShotsPage", () => {
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
-      screen.getByRole("button", { name: /^needs a Set/ }),
+      screen.getByRole("button", { name: /^needs a Recipe/ }),
       ...screen.getAllByRole("button", { name: /^(Keep|Improve|Discard) shot 000101$/ }),
       ...screen.getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
     ]) {
@@ -320,14 +326,14 @@ describe("ShotsPage", () => {
     }
   });
 
-  it("leads with the Set and centres every heading and every cell", async () => {
+  it("leads with the Recipe and centres every heading and every cell", async () => {
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
     const headings = screen.getAllByTestId(/^header-/);
-    expect(headings[0]).toHaveAttribute("data-testid", "header-set");
+    expect(headings[0]).toHaveAttribute("data-testid", "header-recipe");
     for (const heading of headings) {
       expect(heading).toHaveClass("text-center");
       // A heading is a span, so what it holds is phrasing content too — the
@@ -341,7 +347,7 @@ describe("ShotsPage", () => {
 
     const row = screen.getByTestId("shot-row");
     const cells = row.querySelectorAll("[data-column]");
-    expect(cells[0]).toHaveAttribute("data-column", "set");
+    expect(cells[0]).toHaveAttribute("data-column", "recipe");
     for (const cell of Array.from(cells)) {
       expect(cell).toHaveClass("text-center");
       expect(cell).not.toHaveClass("text-right");
@@ -397,7 +403,7 @@ describe("ShotsPage", () => {
     expect(screen.queryByTestId("shot-sparkline")).not.toBeInTheDocument();
   });
 
-  it("shows the Set badge on every row, and no review state among the flags", async () => {
+  it("shows the Recipe badge on every row, and no review state among the flags", async () => {
     // The Review column is the one place a review shows in the table; the Flags column carries
     // none of it. A shot nobody can review has nothing in the column either.
     const user = setupUser();
@@ -409,7 +415,7 @@ describe("ShotsPage", () => {
     await listed();
     await showColumn(user, "Flags");
 
-    expect(await screen.findByTestId("set-badge-slot")).toBeInTheDocument();
+    expect(await screen.findByTestId("recipe-badge-slot")).toBeInTheDocument();
     expect(screen.queryByTestId("analysis-slot")).toBeNull();
     expect(within(screen.getByTestId("shot-rows")).queryByText(/analys|review/i)).toBeNull();
   });
@@ -1078,7 +1084,7 @@ describe("ShotsPage column widths", () => {
 
     const handle = await screen.findByRole("separator", { name: "Resize the Profile column" });
     expect(handle).toHaveAttribute("aria-valuenow", "9");
-    // Third track: Set, Time, Profile.
+    // Third track: Recipe, Time, Profile.
     expect(template().split(" ")[2]).toBe("9rem");
 
     pointer(handle, "pointerdown", 100);
@@ -1125,14 +1131,14 @@ describe("ShotsPage column widths", () => {
     expect(screen.getByTestId("header-time").closest("[style]")).toHaveClass("min-w-max");
   });
 
-  it("lets the Set column be narrowed, within its bounds, where it used to take the spare room", async () => {
+  it("lets the Recipe column be narrowed, within its bounds, where it used to take the spare room", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
         shot({
           recipe_badge: {
             recipe_id: 3,
-            recipe_name: "A long Set name for a Guji on the Niche",
+            recipe_name: "A long Recipe name for a Guji on the Niche",
             version_label: "v2",
           },
           recipe_version_id: 22,
@@ -1143,7 +1149,7 @@ describe("ShotsPage column widths", () => {
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    const handle = screen.getByRole("separator", { name: "Resize the Set column" });
+    const handle = screen.getByRole("separator", { name: "Resize the Recipe column" });
     expect(handle).toHaveAttribute("aria-valuenow", "8");
     expect(template().split(" ")[0]).toBe("8rem");
     handle.focus();
@@ -1153,9 +1159,9 @@ describe("ShotsPage column widths", () => {
     await user.keyboard("{End}{ArrowRight}");
     expect(handle).toHaveAttribute("aria-valuenow", "20");
     // The name gives way to the width rather than the badge overflowing it.
-    const badge = screen.getByTestId("set-badge");
+    const badge = screen.getByTestId("recipe-badge");
     expect(badge).toHaveClass("max-w-full");
-    expect(within(badge).getByText(/A long Set name/)).toHaveClass("min-w-0", "truncate");
+    expect(within(badge).getByText(/A long Recipe name/)).toHaveClass("min-w-0", "truncate");
   });
 });
 
@@ -1858,11 +1864,11 @@ describe("ShotsPage open rows", () => {
     await user.click(toggle());
     await screen.findByTestId("shot-panel");
 
-    await user.click(screen.getByRole("button", { name: /^needs a Set/ }));
-    await screen.findByTestId("needs-set-menu");
+    await user.click(screen.getByRole("button", { name: /^needs a Recipe/ }));
+    await screen.findByTestId("needs-recipe-menu");
     await user.keyboard("{Escape}");
 
-    await waitFor(() => expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId("needs-recipe-menu")).not.toBeInTheDocument());
     expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
   });
 
@@ -1945,7 +1951,7 @@ describe("ShotsPage open rows", () => {
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       ...within(row).getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
       ...within(row).getAllByRole("button", { name: /^(Keep|Improve|Discard) shot/ }),
-      screen.getByRole("button", { name: /^needs a Set/ }),
+      screen.getByRole("button", { name: /^needs a Recipe/ }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
     ]) {
       expect(control.closest(".z-\\[1\\]")).not.toBeNull();
@@ -1954,7 +1960,7 @@ describe("ShotsPage open rows", () => {
     await user.click(screen.getByRole("checkbox", { name: "Compare shot 000101" }));
     await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
     await user.click(screen.getByRole("button", { name: "Keep shot 000101" }));
-    await user.click(screen.getByRole("button", { name: /^needs a Set/ }));
+    await user.click(screen.getByRole("button", { name: /^needs a Recipe/ }));
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
     await user.keyboard("{Escape}");
@@ -2199,13 +2205,13 @@ describe("ShotsPage filters", () => {
     expect(screen.getByTestId("filters-count")).toHaveTextContent("2");
   });
 
-  it("narrows to one Set version from the log's link, and says which", async () => {
+  it("narrows to one Recipe version from the log's link, and says which", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?set=3&version=22"] });
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?recipe=3&version=22"] });
     await listed();
 
-    // The request carries the version, not just the Set.
+    // The request carries the version, not just the Recipe.
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
         expect.objectContaining({ recipe_id: 3, recipe_version_id: 22 }),
@@ -2213,14 +2219,49 @@ describe("ShotsPage filters", () => {
     );
 
     await openFilters(user);
-    // The Set's name and the version number, where the Set filter already is.
+    // The Recipe's name and the version number, where the Recipe filter already is.
     expect(await screen.findByTestId("version-filter")).toHaveTextContent("Guji on the Niche v2");
   });
 
-  it("drops the version when the filter is removed, and keeps the Set", async () => {
+  it("reads an old ?set= link as the Recipe filter and rewrites the address in place", async () => {
+    function Where() {
+      const location = useLocation();
+      return <output data-testid="where">{location.pathname + location.search}</output>;
+    }
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(
+      <>
+        <ShotsPage />
+        <Where />
+      </>,
+      { initialEntries: ["/shots?set=3&version=22"] },
+    );
+    await listed();
+
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ recipe_id: 3, recipe_version_id: 22 }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("/shots?version=22&recipe=3"),
+    );
+  });
+
+  it("reads an old ?set=needs link as the inbox", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?set=needs"] });
+    await listed();
+
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ needs_recipe: true })),
+    );
+  });
+
+  it("drops the version when the filter is removed, and keeps the Recipe", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?set=3&version=22"] });
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?recipe=3&version=22"] });
     await listed();
     await openFilters(user);
     await screen.findByTestId("version-filter");
@@ -2235,16 +2276,16 @@ describe("ShotsPage filters", () => {
     expect(screen.queryByTestId("version-filter")).not.toBeInTheDocument();
   });
 
-  it("drops the version when the Set itself changes", async () => {
+  it("drops the version when the Recipe itself changes", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?set=3&version=22"] });
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?recipe=3&version=22"] });
     await listed();
     await openFilters(user);
 
-    // A version belongs to one Set; carrying it onto the inbox would filter
+    // A version belongs to one Recipe; carrying it onto the inbox would filter
     // the list down to nothing for no visible reason.
-    await user.selectOptions(screen.getByLabelText("Set"), "needs");
+    await user.selectOptions(screen.getByLabelText("Recipe"), "needs");
 
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
@@ -2594,8 +2635,8 @@ describe("ShotsPage deep links", () => {
   });
 });
 
-describe("ShotsPage and Sets", () => {
-  it("badges a shot with the Set it belongs to, and says so when it has none", async () => {
+describe("ShotsPage and Recipes", () => {
+  it("badges a shot with the Recipe it belongs to, and says so when it has none", async () => {
     getShots.mockResolvedValue(
       listData([
         shot({
@@ -2613,15 +2654,15 @@ describe("ShotsPage and Sets", () => {
 
     renderWithQueryClient(<ShotsPage />);
 
-    const badges = await screen.findAllByTestId("set-badge");
+    const badges = await screen.findAllByTestId("recipe-badge");
     expect(badges[0]).toHaveTextContent("Guji on the Niche");
     expect(badges[0]).toHaveTextContent("v2");
-    // "No Set" is a state with a button behind it, not an absence.
-    expect(badges[1]).toHaveAttribute("data-state", "needs-set");
-    expect(badges[1]).toHaveTextContent("needs a Set");
+    // "No Recipe" is a state with a button behind it, not an absence.
+    expect(badges[1]).toHaveAttribute("data-state", "needs-recipe");
+    expect(badges[1]).toHaveTextContent("needs a Recipe");
   });
 
-  it("filters to the inbox, and to one Set", async () => {
+  it("filters to the inbox, and to one Recipe", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
@@ -2629,12 +2670,12 @@ describe("ShotsPage and Sets", () => {
     await listed();
     await openFilters(user);
 
-    await user.selectOptions(screen.getByLabelText("Set"), "needs");
+    await user.selectOptions(screen.getByLabelText("Recipe"), "needs");
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ needs_recipe: true })),
     );
 
-    await user.selectOptions(screen.getByLabelText("Set"), "3");
+    await user.selectOptions(screen.getByLabelText("Recipe"), "3");
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ recipe_id: 3 })),
     );
@@ -2658,8 +2699,8 @@ describe("ShotsPage and Sets", () => {
 
     renderWithQueryClient(<ShotsPage />);
 
-    const button = await screen.findByTestId("needs-set-count");
-    expect(button).toHaveTextContent("4 need a Set");
+    const button = await screen.findByTestId("needs-recipe-count");
+    expect(button).toHaveTextContent("4 need a Recipe");
 
     await user.click(button);
     await waitFor(() =>
@@ -2667,25 +2708,25 @@ describe("ShotsPage and Sets", () => {
     );
     // Clicking it is how you get into the inbox, so it goes away once you are
     // in it rather than sitting there as a no-op.
-    expect(screen.queryByTestId("needs-set-count")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("needs-recipe-count")).not.toBeInTheDocument();
   });
 });
 
-describe("ShotsPage needs-a-Set menu", () => {
+describe("ShotsPage needs-a-Recipe menu", () => {
   /**
-   * Five Sets in the order `GET /api/recipes` returns them: the ones collecting
+   * Five Recipes in the order `GET /api/recipes` returns them: the ones collecting
    * shots first, then newest first. Each at a different latest version, so a menu that
    * showed a version number it did not get from `current_version_label` shows up.
    */
-  const fiveSets = [
-    setRow({
+  const fiveRecipes = [
+    recipeRow({
       id: 5,
       name: "Guji on the Niche",
       automatch: true,
       current_version_id: 51,
       current_version_label: "v4",
     }),
-    setRow({
+    recipeRow({
       id: 4,
       name: "Kenya AA",
       automatch: false,
@@ -2693,21 +2734,21 @@ describe("ShotsPage needs-a-Set menu", () => {
       current_version_label: "v2",
       grinder_name: null,
     }),
-    setRow({
+    recipeRow({
       id: 3,
       name: "Colombia decaf",
       automatch: false,
       current_version_id: 31,
       current_version_label: "v7",
     }),
-    setRow({
+    recipeRow({
       id: 2,
       name: "House blend",
       automatch: false,
       current_version_id: 21,
       current_version_label: "v1",
     }),
-    setRow({
+    recipeRow({
       id: 1,
       name: "The first bag",
       automatch: false,
@@ -2722,35 +2763,35 @@ describe("ShotsPage needs-a-Set menu", () => {
       <Routes>
         <Route path="/" element={<ShotsPage />} />
         <Route path="/shots/:shotId" element={<p>the shot page</p>} />
-        <Route path="/sets/:setId" element={<p>the Set page</p>} />
+        <Route path="/recipes/:recipeId" element={<p>the Recipe page</p>} />
       </Routes>,
     );
   }
 
   function badgeButton(): HTMLElement {
-    return screen.getByRole("button", { name: /^needs a Set: choose one for shot 000101/ });
+    return screen.getByRole("button", { name: /^needs a Recipe: choose one for shot 000101/ });
   }
 
-  it("opens the Sets from the badge, three of five, collecting first, at their latest version", async () => {
+  it("opens the Recipes from the badge, three of five, collecting first, at their latest version", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: fiveSets });
+    getRecipes.mockResolvedValue({ items: fiveRecipes });
 
     renderList();
     await listed();
 
     const button = badgeButton();
-    expect(button).toHaveAttribute("data-state", "needs-set");
+    expect(button).toHaveAttribute("data-state", "needs-recipe");
     expect(button).toHaveAttribute("aria-haspopup", "dialog");
     expect(button).toHaveAttribute("aria-expanded", "false");
 
     await user.click(button);
 
-    const menu = await screen.findByRole("dialog", { name: "File shot 000101 under a Set" });
+    const menu = await screen.findByRole("dialog", { name: "File shot 000101 under a Recipe" });
     expect(button).toHaveAttribute("aria-expanded", "true");
-    const options = await within(menu).findAllByTestId("needs-set-option");
+    const options = await within(menu).findAllByTestId("needs-recipe-option");
     expect(options).toHaveLength(3);
-    expect(options.map((option) => option.getAttribute("data-set"))).toEqual(["5", "4", "3"]);
+    expect(options.map((option) => option.getAttribute("data-recipe"))).toEqual(["5", "4", "3"]);
     expect(options[0]).toHaveTextContent("Guji on the Niche");
     expect(options[0]).toHaveTextContent("v4");
     expect(options[0]).toHaveTextContent("automatch");
@@ -2758,26 +2799,26 @@ describe("ShotsPage needs-a-Set menu", () => {
     expect(options[1]).toHaveTextContent("v2");
     expect(options[1]).not.toHaveTextContent("automatch");
     expect(options[2]).toHaveTextContent("v7");
-    // The one-line summary comes from the list row; nothing is fetched per Set.
+    // The one-line summary comes from the list row; nothing is fetched per Recipe.
     expect(options[0]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso");
     expect(within(menu).queryByText("House blend")).not.toBeInTheDocument();
     // Opening the menu did not open the row.
     expect(screen.queryByText("the shot page")).not.toBeInTheDocument();
   });
 
-  it("files the shot under the chosen Set's latest version without navigating", async () => {
+  it("files the shot under the chosen Recipe's latest version without navigating", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: fiveSets });
+    getRecipes.mockResolvedValue({ items: fiveRecipes });
 
     renderList();
     await listed();
     await user.click(badgeButton());
-    const menu = await screen.findByTestId("needs-set-menu");
+    const menu = await screen.findByTestId("needs-recipe-menu");
     await user.click(await within(menu).findByRole("button", { name: /^Kenya AA/ }));
 
-    await waitFor(() => expect(putShotSetVersion).toHaveBeenCalledWith(1, 41));
-    await waitFor(() => expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument());
+    await waitFor(() => expect(putShotRecipeVersion).toHaveBeenCalledWith(1, 41));
+    await waitFor(() => expect(screen.queryByTestId("needs-recipe-menu")).not.toBeInTheDocument());
     expect(screen.queryByText("the shot page")).not.toBeInTheDocument();
     expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
   });
@@ -2787,8 +2828,8 @@ describe("ShotsPage needs-a-Set menu", () => {
     // it: the refetched row carries the badge, not a local patch of the old one.
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: fiveSets });
-    putShotSetVersion.mockImplementation(async () => {
+    getRecipes.mockResolvedValue({ items: fiveRecipes });
+    putShotRecipeVersion.mockImplementation(async () => {
       getShots.mockResolvedValue(
         listData([
           shot({
@@ -2809,25 +2850,25 @@ describe("ShotsPage needs-a-Set menu", () => {
     await user.click(await screen.findByRole("button", { name: /^Kenya AA/ }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("set-badge")).toHaveAttribute("data-state", "assigned"),
+      expect(screen.getByTestId("recipe-badge")).toHaveAttribute("data-state", "assigned"),
     );
-    expect(screen.getByTestId("set-badge")).toHaveTextContent("Kenya AA");
-    // Within the rows: the bar above the table links every active Set too.
+    expect(screen.getByTestId("recipe-badge")).toHaveTextContent("Kenya AA");
+    // Within the rows: the bar above the table links every active Recipe too.
     expect(
       within(screen.getByTestId("shot-rows")).getByRole("link", { name: /Kenya AA/ }),
-    ).toHaveAttribute("href", "/sets/4");
+    ).toHaveAttribute("href", "/recipes/4");
   });
 
-  it("refreshes the header's count of shots that need a Set once one is filed", async () => {
+  it("refreshes the header's count of shots that need a Recipe once one is filed", async () => {
     // The count comes from the sync status, not the list, and an assignment
     // publishes no event: without its own invalidation the header would keep
     // counting the shot that was just filed.
     const user = setupUser();
     const counts = statusData().counts;
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: fiveSets });
+    getRecipes.mockResolvedValue({ items: fiveRecipes });
     getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_recipe: 4 } }));
-    putShotSetVersion.mockImplementation(async () => {
+    putShotRecipeVersion.mockImplementation(async () => {
       getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_recipe: 3 } }));
       return shot({
         recipe_version_id: 41,
@@ -2837,15 +2878,15 @@ describe("ShotsPage needs-a-Set menu", () => {
 
     renderList();
     await listed();
-    expect(await screen.findByTestId("needs-set-count")).toHaveTextContent("4 need a Set");
+    expect(await screen.findByTestId("needs-recipe-count")).toHaveTextContent("4 need a Recipe");
     const statusCalls = getSyncStatus.mock.calls.length;
 
     await user.click(badgeButton());
     await user.click(await screen.findByRole("button", { name: /^Kenya AA/ }));
 
-    await waitFor(() => expect(putShotSetVersion).toHaveBeenCalledWith(1, 41));
+    await waitFor(() => expect(putShotRecipeVersion).toHaveBeenCalledWith(1, 41));
     await waitFor(() =>
-      expect(screen.getByTestId("needs-set-count")).toHaveTextContent("3 need a Set"),
+      expect(screen.getByTestId("needs-recipe-count")).toHaveTextContent("3 need a Recipe"),
     );
     expect(getSyncStatus.mock.calls.length).toBeGreaterThan(statusCalls);
   });
@@ -2853,8 +2894,8 @@ describe("ShotsPage needs-a-Set menu", () => {
   it("keeps the menu open and says so when the assignment fails", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: fiveSets });
-    putShotSetVersion.mockRejectedValue(new Error("version is archived"));
+    getRecipes.mockResolvedValue({ items: fiveRecipes });
+    putShotRecipeVersion.mockRejectedValue(new Error("version is archived"));
 
     renderList();
     await listed();
@@ -2864,72 +2905,72 @@ describe("ShotsPage needs-a-Set menu", () => {
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith("Could not assign: version is archived"),
     );
-    expect(screen.getByTestId("needs-set-menu")).toBeInTheDocument();
-    expect(screen.getAllByTestId("needs-set-option")).toHaveLength(3);
+    expect(screen.getByTestId("needs-recipe-menu")).toBeInTheDocument();
+    expect(screen.getAllByTestId("needs-recipe-option")).toHaveLength(3);
   });
 
-  it("points at the Sets page when there is no Set to offer", async () => {
+  it("points at the Recipes page when there is no Recipe to offer", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: [] });
+    getRecipes.mockResolvedValue({ items: [] });
 
     renderList();
     await listed();
     await user.click(badgeButton());
 
-    const menu = await screen.findByTestId("needs-set-menu");
-    expect(await within(menu).findByRole("link", { name: "Start a Set" })).toHaveAttribute(
+    const menu = await screen.findByTestId("needs-recipe-menu");
+    expect(await within(menu).findByRole("link", { name: "Start a Recipe" })).toHaveAttribute(
       "href",
-      "/sets",
+      "/recipes",
     );
-    expect(within(menu).queryByTestId("needs-set-option")).not.toBeInTheDocument();
+    expect(within(menu).queryByTestId("needs-recipe-option")).not.toBeInTheDocument();
   });
 
-  it("sends the fourth and later Sets to the shot page's Assign panel", async () => {
+  it("sends the fourth and later Recipes to the shot page's Assign panel", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: fiveSets });
+    getRecipes.mockResolvedValue({ items: fiveRecipes });
 
     renderList();
     await listed();
     await user.click(badgeButton());
 
-    const menu = await screen.findByTestId("needs-set-menu");
-    expect(await within(menu).findByRole("link", { name: "Another Set…" })).toHaveAttribute(
+    const menu = await screen.findByTestId("needs-recipe-menu");
+    expect(await within(menu).findByRole("link", { name: "Another Recipe…" })).toHaveAttribute(
       "href",
-      "/shots/1#set",
+      "/shots/1#recipe",
     );
   });
 
-  it("offers no way out to a longer list when three Sets are all there are", async () => {
+  it("offers no way out to a longer list when three Recipes are all there are", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: fiveSets.slice(0, 3) });
+    getRecipes.mockResolvedValue({ items: fiveRecipes.slice(0, 3) });
 
     renderList();
     await listed();
     await user.click(badgeButton());
 
-    const menu = await screen.findByTestId("needs-set-menu");
-    expect(await within(menu).findAllByTestId("needs-set-option")).toHaveLength(3);
-    expect(within(menu).queryByRole("link", { name: "Another Set…" })).not.toBeInTheDocument();
+    const menu = await screen.findByTestId("needs-recipe-menu");
+    expect(await within(menu).findAllByTestId("needs-recipe-option")).toHaveLength(3);
+    expect(within(menu).queryByRole("link", { name: "Another Recipe…" })).not.toBeInTheDocument();
   });
 
-  it("says so when the Sets cannot be loaded, rather than showing an empty menu", async () => {
+  it("says so when the Recipes cannot be loaded, rather than showing an empty menu", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockRejectedValue(new Error("database is locked"));
+    getRecipes.mockRejectedValue(new Error("database is locked"));
 
     renderList();
     await listed();
     await user.click(badgeButton());
 
-    expect(await screen.findByTestId("needs-set-state")).toHaveTextContent(
-      "Could not load the Sets: database is locked",
+    expect(await screen.findByTestId("needs-recipe-state")).toHaveTextContent(
+      "Could not load the Recipes: database is locked",
     );
   });
 
-  it("focuses the first Set once placed, and gives focus back to the badge on Escape", async () => {
+  it("focuses the first Recipe once placed, and gives focus back to the badge on Escape", async () => {
     // Focus must wait for the anchored panel to be positioned: jsdom focuses a
     // hidden element, browsers refuse. See the popover's own test.
     const user = setupUser();
@@ -2944,25 +2985,25 @@ describe("ShotsPage needs-a-Set menu", () => {
       real.call(this, options);
     });
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({ items: fiveSets });
+    getRecipes.mockResolvedValue({ items: fiveRecipes });
 
     renderList();
     await listed();
     await user.click(badgeButton());
 
-    // The options arrive after the Set query, so the panel itself takes focus
-    // first and hands it to the first Set when they land; never while hidden.
-    const options = await screen.findAllByTestId("needs-set-option");
+    // The options arrive after the Recipe query, so the panel itself takes focus
+    // first and hands it to the first Recipe when they land; never while hidden.
+    const options = await screen.findAllByTestId("needs-recipe-option");
     await waitFor(() => expect(options[0]).toHaveFocus());
     expect(visibilityWhenFocused).not.toHaveLength(0);
     expect(visibilityWhenFocused).not.toContain("hidden");
 
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId("needs-recipe-menu")).not.toBeInTheDocument());
     expect(badgeButton()).toHaveFocus();
   });
 
-  it("still links an assigned badge to its Set, above the row's own toggle", async () => {
+  it("still links an assigned badge to its Recipe, above the row's own toggle", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
@@ -2980,17 +3021,17 @@ describe("ShotsPage needs-a-Set menu", () => {
     renderList();
     await listed();
 
-    const setLink = within(screen.getByTestId("shot-rows")).getByRole("link", {
+    const recipeLink = within(screen.getByTestId("shot-rows")).getByRole("link", {
       name: /Guji on the Niche/,
     });
-    expect(setLink).toHaveAttribute("href", "/sets/3");
+    expect(recipeLink).toHaveAttribute("href", "/recipes/3");
     // Lifted like the other row controls: under the stretched row toggle, a
     // click on the badge would open the row instead.
-    expect(setLink).toHaveClass("z-[1]");
-    expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument();
+    expect(recipeLink).toHaveClass("z-[1]");
+    expect(screen.queryByTestId("needs-recipe-menu")).not.toBeInTheDocument();
 
-    await user.click(setLink);
-    expect(await screen.findByText("the Set page")).toBeInTheDocument();
+    await user.click(recipeLink);
+    expect(await screen.findByText("the Recipe page")).toBeInTheDocument();
   });
 });
 
@@ -3063,7 +3104,7 @@ describe("ShotsPage row editing", () => {
   it("writes nothing when there is no rating to clear", async () => {
     // The one click in the list that could create a verdict out of nothing:
     // an empty row lights up `has_judgement`, dates itself later than the
-    // machine's notes card, and puts a null point on the Set's trend.
+    // machine's notes card, and puts a null point on the Recipe's trend.
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([shot({ judgement_rating: null, rating: 3, has_judgement: false })]),
@@ -3106,7 +3147,7 @@ describe("ShotsPage row editing", () => {
     });
   });
 
-  it("edits notes and the Set from the row without navigating", async () => {
+  it("edits notes and the Recipe from the row without navigating", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ judgement_notes: "sharp at the end" })]));
 
@@ -3120,12 +3161,12 @@ describe("ShotsPage row editing", () => {
     expect(notes).toHaveValue("sharp at the end");
     await user.clear(notes);
     await user.type(notes, "better, still short");
-    await user.selectOptions(within(editor).getByLabelText("Set"), "22");
+    await user.selectOptions(within(editor).getByLabelText("Recipe"), "22");
     await user.click(within(editor).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalled());
     expect(putJudgement.mock.calls[0][1]).toMatchObject({ notes: "better, still short" });
-    await waitFor(() => expect(putShotSetVersion).toHaveBeenCalledWith(1, 22));
+    await waitFor(() => expect(putShotRecipeVersion).toHaveBeenCalledWith(1, 22));
 
     // It is a panel over the list, not a page: the row is still there.
     expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
@@ -3186,13 +3227,13 @@ describe("ShotsPage row editing", () => {
 
     await waitFor(() => expect(screen.queryByTestId("row-editor")).not.toBeInTheDocument());
     expect(putJudgement).not.toHaveBeenCalled();
-    expect(putShotSetVersion).not.toHaveBeenCalled();
+    expect(putShotRecipeVersion).not.toHaveBeenCalled();
   });
 
-  it("does not write a verdict when only the Set moved", async () => {
+  it("does not write a verdict when only the Recipe moved", async () => {
     // `PUT` creates a row for `{rating: null, notes: ""}` — the server has no
     // empty-judgement guard, by design — so filing an unjudged shot under a
-    // Set would claim somebody had an opinion about it.
+    // Recipe would claim somebody had an opinion about it.
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
@@ -3210,10 +3251,10 @@ describe("ShotsPage row editing", () => {
 
     await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
     const editor = await screen.findByTestId("row-editor");
-    await user.selectOptions(within(editor).getByLabelText("Set"), "22");
+    await user.selectOptions(within(editor).getByLabelText("Recipe"), "22");
     await user.click(within(editor).getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(putShotSetVersion).toHaveBeenCalledWith(1, 22));
+    await waitFor(() => expect(putShotRecipeVersion).toHaveBeenCalledWith(1, 22));
     expect(putJudgement).not.toHaveBeenCalled();
   });
 
@@ -3232,7 +3273,7 @@ describe("ShotsPage row editing", () => {
 
     await waitFor(() => expect(screen.queryByTestId("row-editor")).not.toBeInTheDocument());
     expect(putJudgement).not.toHaveBeenCalled();
-    expect(putShotSetVersion).not.toHaveBeenCalled();
+    expect(putShotRecipeVersion).not.toHaveBeenCalled();
   });
 
   it("says whose rating the row is showing when this box has no verdict", async () => {
@@ -3253,7 +3294,7 @@ describe("ShotsPage row editing", () => {
     );
   });
 
-  it("does not touch the Set when only the verdict changed", async () => {
+  it("does not touch the Recipe when only the verdict changed", async () => {
     // Assigning is a second write against a second endpoint; sending it every
     // time would put a "Filed under…" toast on screen for somebody who only
     // fixed a typo.
@@ -3269,7 +3310,7 @@ describe("ShotsPage row editing", () => {
     await user.click(within(editor).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalled());
-    expect(putShotSetVersion).not.toHaveBeenCalled();
+    expect(putShotRecipeVersion).not.toHaveBeenCalled();
   });
 });
 
@@ -3387,25 +3428,25 @@ describe("ShotsPage drop zone", () => {
   });
 });
 
-describe("ShotsPage bar of Set conversations", () => {
+describe("ShotsPage bar of Recipe conversations", () => {
   /** Where a bar button lands, read back from the router. */
   function ChatProbe() {
     const { pathname, search } = useLocation();
     return <p data-testid="chat-probe">{`${pathname}${search}`}</p>;
   }
 
-  it("sits above the table and takes a Set to its current version's conversation", async () => {
+  it("sits above the table and takes a Recipe to its current version's conversation", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSets.mockResolvedValue({
+    getRecipes.mockResolvedValue({
       items: [
-        setRow({
+        recipeRow({
           id: 5,
           name: "Guji on the Niche",
           current_version_id: 51,
           current_version_label: "v4",
         }),
-        setRow({ id: 4, name: "Kenya AA", archived: true }),
+        recipeRow({ id: 4, name: "Kenya AA", archived: true }),
       ],
     });
 
@@ -3417,7 +3458,7 @@ describe("ShotsPage bar of Set conversations", () => {
     );
     await listed();
 
-    const bar = await screen.findByRole("navigation", { name: "Chat about a Set" });
+    const bar = await screen.findByRole("navigation", { name: "Chat about a Recipe" });
     // Before the table in the same box, so it reads as the table's own bar.
     expect(
       bar.compareDocumentPosition(screen.getByTestId("shots-scroll")) &
@@ -3434,7 +3475,7 @@ describe("ShotsPage bar of Set conversations", () => {
     const landed = new URL(screen.getByTestId("chat-probe").textContent ?? "", "http://x");
     expect(landed.pathname).toBe("/chat");
     expect(Object.fromEntries(landed.searchParams)).toEqual({
-      set: "5",
+      recipe: "5",
       version: "51",
       ask: setChatQuestion("v4"),
     });

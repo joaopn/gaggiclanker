@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 /**
  * Duplicate Profile: a new profile made from one version, under a name the person types, with the
  * document edited by hand if they like. One dialog for the Profiles page (a version's Duplicate
- * Profile) and New Set (a profile that already has a Set).
+ * Profile) and New Recipe (a profile that already has a Recipe).
  *
  * **The name lives in the Name field alone.** It starts empty and must be filled; the original's
  * name is in the title, for reference. The JSON below has no `label`: the field is the one place

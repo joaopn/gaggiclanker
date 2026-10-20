@@ -13,10 +13,10 @@ import type { ShotListRow } from "@/api/types";
 
 /**
  * The fragment that lands the shot page on its Assign panel. Links to it are
- * made from the shots list, which offers only a few Sets and sends the rest
+ * made from the shots list, which offers only a few Recipes and sends the rest
  * there; the page reads it and scrolls. One constant, so the two cannot drift.
  */
-export const ASSIGN_ANCHOR = "set";
+export const ASSIGN_ANCHOR = "recipe";
 
 /**
  * The shot page's Review card, as a fragment, for a link that promises the

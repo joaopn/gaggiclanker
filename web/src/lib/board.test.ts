@@ -270,7 +270,7 @@ describe("the event a sync's write phase sends", () => {
       queryKeys.sync.all,
       queryKeys.board.all,
       queryKeys.drafts.all,
-      queryKeys.sets.all,
+      queryKeys.recipes.all,
       queryKeys.device.all,
     ]) {
       expect(keys).toContainEqual([...key]);
@@ -301,8 +301,8 @@ describe("summaryLine reads a reason by the section it is listed under", () => {
     [
       "left",
       "superseded",
-      "a Set is still brewing it",
-      "P: The old copy stays although a newer version replaced it. A Set is still brewing it.",
+      "a Recipe is still brewing it",
+      "P: The old copy stays although a newer version replaced it. A Recipe is still brewing it.",
     ],
     [
       "left",

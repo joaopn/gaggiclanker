@@ -194,7 +194,7 @@ function Preview({
             <td>{check.now.shots}</td>
           </tr>
           <tr>
-            <td className="pr-6">Sets</td>
+            <td className="pr-6">Recipes</td>
             <td className="pr-6">{check.in_file.recipes}</td>
             <td>{check.now.recipes}</td>
           </tr>

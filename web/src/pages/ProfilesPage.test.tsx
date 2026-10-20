@@ -132,12 +132,12 @@ describe("the list", () => {
     expect(within(profile).getByTestId("profile-state")).toHaveTextContent("On the machine");
   });
 
-  it("says which Set a profile has, or that it has none", async () => {
+  it("says which Recipe a profile has, or that it has none", async () => {
     api.getProfileBoard.mockResolvedValue(
       boardView({
         rows: [
           row({
-            row: { id: 1, label: "With a Set" },
+            row: { id: 1, label: "With a Recipe" },
             recipe: {
               recipe_id: 4,
               name: "Kenya AA",
@@ -152,8 +152,8 @@ describe("the list", () => {
     renderWithQueryClient(<ProfilesPage />);
 
     const rows = await screen.findAllByTestId("profile-row");
-    expect(within(rows[0]).getByTestId("row-set")).toHaveTextContent("Set: Kenya AA v1");
-    expect(within(rows[1]).getByTestId("row-set")).toHaveTextContent("No Set");
+    expect(within(rows[0]).getByTestId("row-recipe")).toHaveTextContent("Recipe: Kenya AA v1");
+    expect(within(rows[1]).getByTestId("row-recipe")).toHaveTextContent("No Recipe");
   });
 
   it.each([
@@ -400,7 +400,7 @@ describe("the two switches", () => {
     expect(star).toHaveAttribute("title", expect.stringContaining("only while the profile is on"));
   });
 
-  it("asks before switching off a profile a Set brews, naming the Set, and sends nothing until confirmed", async () => {
+  it("asks before switching off a profile a Recipe brews, naming the Recipe, and sends nothing until confirmed", async () => {
     const user = setupUser();
     api.getProfileBoard.mockResolvedValue(
       boardView({
@@ -421,7 +421,7 @@ describe("the two switches", () => {
     await user.click(await screen.findByRole("switch", { name: "9 Bar Espresso on the machine" }));
 
     const strip = await screen.findByTestId("switch-off-confirm");
-    expect(within(strip).getByTestId("switch-off-sets")).toHaveTextContent(
+    expect(within(strip).getByTestId("switch-off-recipes")).toHaveTextContent(
       "Ethiopia washed brews this profile",
     );
     expect(api.setBoardOnMachine).not.toHaveBeenCalled();
@@ -453,7 +453,7 @@ describe("the two switches", () => {
     expect(await screen.findByTestId("switch-off-selected")).toHaveTextContent(
       selectedSuccessorSentence(),
     );
-    expect(screen.queryByTestId("switch-off-sets")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("switch-off-recipes")).not.toBeInTheDocument();
   });
 });
 
@@ -776,7 +776,7 @@ describe("the dropdown", () => {
     await waitFor(() => expect(api.setBoardActiveVersion).toHaveBeenCalledWith(1, 8));
   });
 
-  it("asks first when a Set brews the profile, naming it", async () => {
+  it("asks first when a Recipe brews the profile, naming it", async () => {
     const user = setupUser();
     api.getProfileBoard.mockResolvedValue(
       boardView({
@@ -895,7 +895,7 @@ describe("proposed versions", () => {
     ).toBeTruthy();
   });
 
-  it("Approve puts it on the board, with no Set when it has none", async () => {
+  it("Approve puts it on the board, with no Recipe when it has none", async () => {
     const user = setupUser();
     withProposal();
     const panel = await open(user);
@@ -919,7 +919,7 @@ describe("proposed versions", () => {
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
   });
 
-  it("records the Set's next version through the primary button, with the major choice", async () => {
+  it("records the Recipe's next version through the primary button, with the major choice", async () => {
     const user = setupUser();
     withProposal(
       {
@@ -945,11 +945,11 @@ describe("proposed versions", () => {
     const panel = await open(user);
 
     expect(within(panel).getByTestId("proposal-prediction")).toHaveTextContent("Less bitter");
-    const forSet = within(panel).getByTestId("approve-proposal");
-    expect(forSet).toHaveTextContent("Approve as v1.2 of Ethiopia washed");
+    const forRecipe = within(panel).getByTestId("approve-proposal");
+    expect(forRecipe).toHaveTextContent("Approve as v1.2 of Ethiopia washed");
     await user.click(within(panel).getByRole("checkbox", { name: /major/i }));
-    expect(forSet).toHaveTextContent("Approve as v2 of Ethiopia washed");
-    await user.click(forSet);
+    expect(forRecipe).toHaveTextContent("Approve as v2 of Ethiopia washed");
+    await user.click(forRecipe);
 
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11, major: true }));
   });
@@ -1342,7 +1342,7 @@ describe("links into the page", () => {
     expect(await within(li).findByTestId("profile-dropdown")).toBeInTheDocument();
   });
 
-  it("#row-N opens that profile, which a Set's pin card links to", async () => {
+  it("#row-N opens that profile, which a Recipe's pin card links to", async () => {
     api.getProfileBoard.mockResolvedValue(
       boardView({
         rows: [row(), row({ row: { id: 7, label: "Blooming v1.2" } })],

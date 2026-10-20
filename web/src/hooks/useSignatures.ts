@@ -30,7 +30,7 @@ import { queryKeys } from "@/lib/queryKeys";
  * What a profile version is for (in force until a person rejects it), and the person's answers.
  *
  * Every mutation here settles with `invalidateSignatureAnswers`, on failure as well as on
- * success: an answer moves every shot's checks and the Set that brews the profile, and a
+ * success: an answer moves every shot's checks and the Recipe that brews the profile, and a
  * refused one (the expectation was answered in another tab) has to show the answer that won.
  */
 
@@ -47,13 +47,13 @@ export function useSignature(
 }
 
 export function useSignatureOverrides(
-  setId: number,
+  recipeId: number,
   versionId: number,
   options: { enabled?: boolean } = {},
 ): UseQueryResult<SignatureOverrideList, Error> {
   return useQuery({
-    queryKey: queryKeys.setOverrides(setId, versionId),
-    queryFn: () => getSignatureOverrides(setId, versionId),
+    queryKey: queryKeys.recipeOverrides(recipeId, versionId),
+    queryFn: () => getSignatureOverrides(recipeId, versionId),
     enabled: options.enabled ?? true,
   });
 }
@@ -101,11 +101,11 @@ export const useRestoreExpectation = answerMutation<{ expectationId: number }, S
 );
 
 export const useRejectOverride = answerMutation<
-  { setId: number; overrideId: number; reason: string },
+  { recipeId: number; overrideId: number; reason: string },
   SignatureOverrideAnswer
->(({ setId, overrideId, reason }) => rejectSignatureOverride(setId, overrideId, reason));
+>(({ recipeId, overrideId, reason }) => rejectSignatureOverride(recipeId, overrideId, reason));
 
 export const useRestoreOverride = answerMutation<
-  { setId: number; overrideId: number },
+  { recipeId: number; overrideId: number },
   SignatureOverrideAnswer
->(({ setId, overrideId }) => restoreSignatureOverride(setId, overrideId));
+>(({ recipeId, overrideId }) => restoreSignatureOverride(recipeId, overrideId));

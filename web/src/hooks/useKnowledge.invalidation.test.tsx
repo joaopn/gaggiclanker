@@ -59,9 +59,9 @@ function spyOn(queryClient: QueryClient): readonly unknown[][] {
   return keys;
 }
 
-describe("answering a Set's insight", () => {
+describe("answering a Recipe's insight", () => {
   it.each(["add", "dismiss", "take_back"] as const)(
-    "%s touches the knowledge prefix and the conversation, and no Set or shot",
+    "%s touches the knowledge prefix and the conversation, and no Recipe or shot",
     async (answer) => {
       const { result, queryClient } = renderHookWithQueryClient(() => useAnswerInsight());
       const keys = spyOn(queryClient);
@@ -69,12 +69,12 @@ describe("answering a Set's insight", () => {
       await result.current.mutateAsync({ id: 4, answer, threadId: 9 });
 
       await waitFor(() => expect(keys.length).toBe(2));
-      // The insight itself, the Set's list with the general ones beside it and
+      // The insight itself, the Recipe's list with the general ones beside it and
       // the Knowledge list are all under `knowledge`; the card is drawn from
       // the transcript of the conversation that proposed it.
       expect(keys).toContainEqual(queryKeys.knowledge.all);
       expect(keys).toContainEqual(queryKeys.chat.thread("9"));
-      expect(keys.flat()).not.toContain("sets");
+      expect(keys.flat()).not.toContain("recipes");
       expect(keys.flat()).not.toContain("shots");
     },
   );
@@ -102,8 +102,8 @@ describe("answering a Set's insight", () => {
   });
 });
 
-describe("editing or deleting a Set's insight", () => {
-  it("an edit reaches the knowledge prefix, which holds the Set's list and the Knowledge list", async () => {
+describe("editing or deleting a Recipe's insight", () => {
+  it("an edit reaches the knowledge prefix, which holds the Recipe's list and the Knowledge list", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => usePatchKnowledgeInsight());
     const keys = spyOn(queryClient);
 
@@ -113,7 +113,7 @@ describe("editing or deleting a Set's insight", () => {
     expect(keys).toEqual([queryKeys.knowledge.all]);
   });
 
-  it("a delete reaches the same, and no Set or shot", async () => {
+  it("a delete reaches the same, and no Recipe or shot", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => useDeleteKnowledgeInsight());
     const keys = spyOn(queryClient);
 
@@ -121,7 +121,7 @@ describe("editing or deleting a Set's insight", () => {
 
     await waitFor(() => expect(keys.length).toBe(1));
     expect(keys).toEqual([queryKeys.knowledge.all]);
-    expect(keys.flat()).not.toContain("sets");
+    expect(keys.flat()).not.toContain("recipes");
   });
 });
 
@@ -130,20 +130,20 @@ describe("answering an agent's proposed deletion", () => {
     ["delete", acceptInsightDeletion],
     ["keep", keepInsightDeletion],
   ] as const)(
-    "%s touches the knowledge prefix and the conversation, and no Set or shot",
+    "%s touches the knowledge prefix and the conversation, and no Recipe or shot",
     async (answer, call) => {
       const { result, queryClient } = renderHookWithQueryClient(() => useAnswerInsightDeletion());
       const keys = spyOn(queryClient);
 
-      await result.current.mutateAsync({ setId: 3, proposalId: 9, answer, threadId: 14 });
+      await result.current.mutateAsync({ recipeId: 3, proposalId: 9, answer, threadId: 14 });
 
       await waitFor(() => expect(keys.length).toBe(2));
-      // The insight, the Set's list (with its waiting deletions), the Knowledge list and
+      // The insight, the Recipe's list (with its waiting deletions), the Knowledge list and
       // the deletion cards are all under `knowledge`; the card is drawn from the
       // transcript of the conversation that proposed it.
       expect(keys).toContainEqual(queryKeys.knowledge.all);
       expect(keys).toContainEqual(queryKeys.chat.thread("14"));
-      expect(keys.flat()).not.toContain("sets");
+      expect(keys.flat()).not.toContain("recipes");
       expect(keys.flat()).not.toContain("shots");
       expect(call).toHaveBeenCalledWith(3, 9);
     },
@@ -152,7 +152,7 @@ describe("answering an agent's proposed deletion", () => {
   it("sends delete and keep to their own routes and never the other", async () => {
     const { result } = renderHookWithQueryClient(() => useAnswerInsightDeletion());
 
-    await result.current.mutateAsync({ setId: 3, proposalId: 9, answer: "keep" });
+    await result.current.mutateAsync({ recipeId: 3, proposalId: 9, answer: "keep" });
     expect(keepInsightDeletion).toHaveBeenCalledTimes(1);
     expect(acceptInsightDeletion).not.toHaveBeenCalled();
   });
@@ -167,7 +167,7 @@ describe("answering an agent's proposed deletion", () => {
   });
 });
 
-describe("a replacing Add and the Set page's Delete", () => {
+describe("a replacing Add and the Recipe page's Delete", () => {
   it("an Add that deletes the old insight reaches the insight lists and the deletion cards by the one prefix", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => useAnswerInsight());
     const keys = spyOn(queryClient);
@@ -181,7 +181,7 @@ describe("a replacing Add and the Set page's Delete", () => {
     expect(queryKeys.knowledge.insightDeletions("3").slice(0, 1)).toEqual(queryKeys.knowledge.all);
   });
 
-  it("the Set page's Delete touches the knowledge prefix", async () => {
+  it("the Recipe page's Delete touches the knowledge prefix", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => useDeleteKnowledgeInsight());
     const keys = spyOn(queryClient);
 

@@ -37,7 +37,7 @@ export function usePatterns(): UseQueryResult<PatternsData, Error> {
 }
 
 /**
- * Press Find patterns across Sets: the one way a run starts.
+ * Press Find patterns across Recipes: the one way a run starts.
  *
  * **The mutation resolves when the work is queued**, with the `running` row; the outcome
  * arrives on the event stream and the section follows the row. **A failed run resolves, it
@@ -62,9 +62,9 @@ export function useStartPatternRun(): UseMutationResult<PatternRun, Error, void>
 /**
  * Approve or dismiss a proposed general insight: the card's two buttons.
  *
- * Approving writes a general insight and deletes the Set insights it came from, so it touches
- * the whole `knowledge` prefix: the Knowledge list, every source Set's insights (which the
- * Set pages read), the insight cards in the chat and the run. Dismissing changes only the
+ * Approving writes a general insight and deletes the Recipe insights it came from, so it touches
+ * the whole `knowledge` prefix: the Knowledge list, every source Recipe's insights (which the
+ * Recipe pages read), the insight cards in the chat and the run. Dismissing changes only the
  * proposal, but the one breadth keeps the two from drifting apart.
  */
 export function useAnswerPatternProposal(): UseMutationResult<
@@ -80,8 +80,8 @@ export function useAnswerPatternProposal(): UseMutationResult<
       toast.success(
         variables.answer === "approve"
           ? (decision.skipped ?? []).length > 0
-            ? "Approved — some Set insights were left in place"
-            : "Approved — the general insight replaces the Set insights it came from"
+            ? "Approved — some Recipe insights were left in place"
+            : "Approved — the general insight replaces the Recipe insights it came from"
           : "Dismissed — the next run is told you declined it",
       ),
     onError: (error) => toast.error(error.message),

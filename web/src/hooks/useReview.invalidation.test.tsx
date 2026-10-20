@@ -53,7 +53,7 @@ function spyOn(queryClient: QueryClient): unknown[][] {
 
 /**
  * A reading is shown by the shots list (the badge and its state), each shot's detail (claims)
- * and fields (the checks a reading's free-text results join), and the Set pages that list the
+ * and fields (the checks a reading's free-text results join), and the Recipe pages that list the
  * shot with its badge. Every write and every event is pinned, because a missing key is a badge
  * that still says Reviewing… after the answer, and nothing else in a render test shows it.
  */
@@ -72,7 +72,7 @@ describe("every reading write invalidates what it touches", () => {
 
     await waitFor(() => expect(keys.length).toBe(2));
     expect(keys).toContainEqual(queryKeys.shots.all);
-    expect(keys).toContainEqual(queryKeys.sets.all);
+    expect(keys).toContainEqual(queryKeys.recipes.all);
   });
 
   it("also when an answer is refused, so the card shows the answer that won", async () => {
@@ -106,7 +106,7 @@ describe("every reading event invalidates what it touches", () => {
       act(() => handlers.current.onMessage?.({ event, data: { shot_id: 129, review_id: 1 } }));
 
       expect(keys).toContainEqual(queryKeys.shots.all);
-      expect(keys).toContainEqual(queryKeys.sets.all);
+      expect(keys).toContainEqual(queryKeys.recipes.all);
     },
   );
 });

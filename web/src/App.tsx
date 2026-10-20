@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEventInvalidation } from "@/hooks/useEventInvalidation";
 import { buildSignInPath, setAuthNavigator } from "@/lib/auth-navigation";
+import { LegacySetsRedirect } from "@/lib/legacyLinks";
 import { DEFAULT_ROUTE } from "@/lib/navigation";
 import { DEFAULT_SETTINGS_PAGE, settingsPath } from "@/lib/settingsPages";
 import { BeansPage } from "@/pages/BeansPage";
@@ -15,7 +16,7 @@ import { HardwarePage } from "@/pages/HardwarePage";
 import { KnowledgePage } from "@/pages/KnowledgePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ProfilesPage } from "@/pages/ProfilesPage";
-import { SetsPage } from "@/pages/SetsPage";
+import { RecipesPage } from "@/pages/RecipesPage";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { SignInPage } from "@/pages/SignInPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
@@ -32,8 +33,8 @@ const ShotDetailPage = lazy(() =>
 );
 
 /** The other route that draws a chart, split for the same reason. */
-const SetDetailPage = lazy(() =>
-  import("@/pages/SetDetailPage").then((module) => ({ default: module.SetDetailPage })),
+const RecipeDetailPage = lazy(() =>
+  import("@/pages/RecipeDetailPage").then((module) => ({ default: module.RecipeDetailPage })),
 );
 
 /**
@@ -84,12 +85,16 @@ export function App() {
           />
           <Route path="/device" element={<DevicePage />} />
           <Route path="/sync" element={<SyncRedirect />} />
-          <Route path="/sets" element={<SetsPage />} />
+          <Route path="/recipes" element={<RecipesPage />} />
+          {/* Links made before a Set was called a Recipe: the path tail, the query and the hash
+              are kept. */}
+          <Route path="/sets" element={<LegacySetsRedirect />} />
+          <Route path="/sets/*" element={<LegacySetsRedirect />} />
           <Route
-            path="/sets/:setId"
+            path="/recipes/:recipeId"
             element={
               <Suspense fallback={<Skeleton className="h-72 w-full" />}>
-                <SetDetailPage />
+                <RecipeDetailPage />
               </Suspense>
             }
           />

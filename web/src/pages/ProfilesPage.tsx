@@ -143,7 +143,7 @@ export function ProfilesPage() {
       if (!newest) return null;
       return newest.row_id != null ? `row-${newest.row_id}` : `new-${newest.draft.id}`;
     }
-    // A link to one profile (the Set page's pin card names its copy this way).
+    // A link to one profile (the Recipe page's pin card names its copy this way).
     const rowLinked = /^#row-(\d+)$/.exec(hash)?.[1];
     if (rowLinked !== undefined) return `row-${rowLinked}`;
     if (versionRow !== undefined) return `row-${versionRow}`;

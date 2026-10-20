@@ -167,7 +167,7 @@ describe("AppShell", () => {
     // of their own under it.
     const rows = Array.from(nav.querySelectorAll(":scope > a, :scope > div > button"));
     const labels = rows.map((row) => row.querySelector("span")?.textContent?.trim());
-    expect(labels).toEqual(["Shots", "Chat", "Sets", "Profiles", "Brew setup", "Settings"]);
+    expect(labels).toEqual(["Shots", "Chat", "Recipes", "Profiles", "Brew setup", "Settings"]);
   });
 
   describe("the groups", () => {
@@ -191,12 +191,12 @@ describe("AppShell", () => {
       expect(hrefs).toEqual(["/beans", "/hardware", "/taste-wheel"]);
     });
 
-    it("gives Sets a row of its own, lit on a Set's page with no group opened", () => {
-      renderApp("/sets/3");
+    it("gives Recipes a row of its own, lit on a Recipe's page with no group opened", () => {
+      renderApp("/recipes/3");
       const current = within(screen.getByTestId("sidebar")).getAllByRole("link", {
         current: "page",
       });
-      expect(current.map((link) => link.textContent)).toEqual(["Setsg e"]);
+      expect(current.map((link) => link.textContent)).toEqual(["Recipesg e"]);
       expect(groupList("Brew setup").button).toHaveAttribute("aria-expanded", "false");
     });
 
@@ -227,7 +227,7 @@ describe("AppShell", () => {
       const user = setupUser();
       renderApp("/shots");
       await user.keyboard("ge");
-      expect(await screen.findByRole("heading", { name: "Sets" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Recipes" })).toBeInTheDocument();
       await user.keyboard("gh");
       expect(await screen.findByRole("heading", { name: "Hardware" })).toBeInTheDocument();
     });
@@ -265,7 +265,7 @@ describe("AppShell", () => {
       const user = setupUser();
       renderApp();
       await user.keyboard("?");
-      expect(await screen.findByText("Go to Sets")).toBeInTheDocument();
+      expect(await screen.findByText("Go to Recipes")).toBeInTheDocument();
       expect(screen.getByText("Go to Settings")).toBeInTheDocument();
       expect(screen.queryByText("Go to Device")).not.toBeInTheDocument();
     });

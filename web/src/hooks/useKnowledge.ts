@@ -162,7 +162,7 @@ export function useResetKnowledgeDoc(): UseMutationResult<KnowledgeDocDetail, Er
 /**
  * Tier 3: the learned insights.
  *
- * Confirming is what puts one in front of the matching Set's conversations.
+ * Confirming is what puts one in front of the matching Recipe's conversations.
  */
 
 export function useKnowledgeInsights(
@@ -186,13 +186,13 @@ export function useKnowledgeInsight(
 }
 
 /**
- * Add, dismiss or take back a Set's insight: the card's buttons.
+ * Add, dismiss or take back a Recipe's insight: the card's buttons.
  *
- * One hook, one breadth, because the card, the Set page's list and the
+ * One hook, one breadth, because the card, the Recipe page's list and the
  * Knowledge page read the same rows: the whole `knowledge` prefix (the insight,
- * the Set's list with its general companions, the Knowledge list), plus the
+ * the Recipe's list with its general companions, the Knowledge list), plus the
  * conversation the insight was proposed in, whose card is drawn from the
- * transcript. Nothing under `sets`: an insight is on no Set payload.
+ * transcript. Nothing under `recipes`: an insight is on no Recipe payload.
  */
 export function useAnswerInsight(): UseMutationResult<
   KnowledgeInsight,
@@ -208,7 +208,7 @@ export function useAnswerInsight(): UseMutationResult<
     onSuccess: (_insight, variables) =>
       toast.success(
         variables.answer === "add"
-          ? "Added — this Set's later conversations will be told this"
+          ? "Added — this Recipe's later conversations will be told this"
           : variables.answer === "dismiss"
             ? "Dismissed — it will not be put in front of the model"
             : "Taken back — it will not be put in front of the model",
@@ -223,31 +223,31 @@ export function useAnswerInsight(): UseMutationResult<
   });
 }
 
-/** Every deletion an agent proposed for a Set's insights: what the chat's deletion card reads. */
+/** Every deletion an agent proposed for a Recipe's insights: what the chat's deletion card reads. */
 export function useInsightDeletions(
-  setId: number | undefined,
+  recipeId: number | undefined,
   threadId?: number | null,
 ): UseQueryResult<InsightDeletionListData, Error> {
   return useQuery({
-    queryKey: queryKeys.knowledge.insightDeletions(String(setId), threadId),
-    queryFn: () => getInsightDeletions(setId as number, threadId),
-    enabled: setId !== undefined && Number.isFinite(setId),
+    queryKey: queryKeys.knowledge.insightDeletions(String(recipeId), threadId),
+    queryFn: () => getInsightDeletions(recipeId as number, threadId),
+    enabled: recipeId !== undefined && Number.isFinite(recipeId),
   });
 }
 
 /**
  * Delete or keep the insight an agent proposed deleting: the deletion card's buttons.
  *
- * The `knowledge` prefix covers the insight itself, the Set's list (which carries
+ * The `knowledge` prefix covers the insight itself, the Recipe's list (which carries
  * the waiting deletions), the Knowledge list and these cards; the conversation is
  * invalidated too, because its card is drawn from the transcript. Nothing under
- * `sets`: an insight is on no Set payload.
+ * `recipes`: an insight is on no Recipe payload.
  */
 export function useAnswerInsightDeletion(): UseMutationResult<
   InsightDeletionDecision,
   Error,
   {
-    setId: number;
+    recipeId: number;
     proposalId: number;
     answer: "delete" | "keep";
     /** The conversation it was argued in, when there is one. */
@@ -256,10 +256,10 @@ export function useAnswerInsightDeletion(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ setId, proposalId, answer }) =>
+    mutationFn: ({ recipeId, proposalId, answer }) =>
       answer === "delete"
-        ? acceptInsightDeletion(setId, proposalId)
-        : keepInsightDeletion(setId, proposalId),
+        ? acceptInsightDeletion(recipeId, proposalId)
+        : keepInsightDeletion(recipeId, proposalId),
     onSuccess: (_result, variables) =>
       toast.success(
         variables.answer === "delete"
@@ -307,7 +307,7 @@ export function usePatchKnowledgeInsight(): UseMutationResult<
       }
       toast.success(
         insight.confirmed
-          ? "Confirmed — conversations about matching Sets will be told this"
+          ? "Confirmed — conversations about matching Recipes will be told this"
           : "Unconfirmed — it will not be put in front of the model",
       );
     },

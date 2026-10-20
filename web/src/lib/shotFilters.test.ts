@@ -16,7 +16,7 @@ describe("activeFilterCount", () => {
 
   it("counts one per narrowed field", () => {
     expect(
-      activeFilterCount({ ...DEFAULT_FILTERS, set: "needs", minRating: "4", source: "import" }),
+      activeFilterCount({ ...DEFAULT_FILTERS, recipe: "needs", minRating: "4", source: "import" }),
     ).toBe(3);
   });
 
@@ -89,7 +89,7 @@ describe("the query string", () => {
       from: "2026-03-01",
       to: "2026-03-04",
       profileVersionId: "7",
-      set: "3",
+      recipe: "3",
       version: "22",
       minRating: "3",
       source: "import",
@@ -111,19 +111,19 @@ describe("the query string", () => {
   });
 
   it("reads the link a version's shot count writes", () => {
-    // `/shots?set=3&version=22` is the Set page's log linking at *this*
+    // `/shots?recipe=3&version=22` is the Recipe page's log linking at *this*
     // version's shots, and the count beside the link is that version's.
-    const state = fromSearchParams(new URLSearchParams("set=3&version=22"));
+    const state = fromSearchParams(new URLSearchParams("recipe=3&version=22"));
 
-    expect(state.set).toBe("3");
+    expect(state.recipe).toBe("3");
     expect(state.version).toBe("22");
     const params = toParams(state, 50);
     expect(params.recipe_id).toBe(3);
     expect(params.recipe_version_id).toBe(22);
   });
 
-  it("ignores a version with no Set beside it", () => {
-    // A version id alone would narrow the list to a Set the filter bar is not
+  it("ignores a version with no Recipe beside it", () => {
+    // A version id alone would narrow the list to a Recipe the filter bar is not
     // showing: an empty archive with no visible reason.
     const state = fromSearchParams(new URLSearchParams("version=22"));
 
@@ -133,7 +133,7 @@ describe("the query string", () => {
   });
 
   it("ignores a version on the inbox, which has no versions", () => {
-    const state = fromSearchParams(new URLSearchParams("set=needs&version=22"));
+    const state = fromSearchParams(new URLSearchParams("recipe=needs&version=22"));
 
     expect(state.version).toBe("");
     expect(toParams(state, 50).recipe_version_id).toBeUndefined();
@@ -146,7 +146,7 @@ describe("the query string", () => {
   });
 
   it("counts the version as a reason there are few rows", () => {
-    expect(activeFilterCount({ ...DEFAULT_FILTERS, set: "3", version: "22" })).toBe(2);
+    expect(activeFilterCount({ ...DEFAULT_FILTERS, recipe: "3", version: "22" })).toBe(2);
   });
 
   it("falls back to the default for nonsense rather than failing", () => {

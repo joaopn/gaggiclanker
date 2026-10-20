@@ -3,7 +3,7 @@
  *
  * The open conversation lives in the URL (`?thread=`), and the sidebar's Chat
  * link is a bare `/chat`, so clicking away and back dropped it and landed on
- * the newest Set's badge with nothing open. The page saves the open
+ * the newest Recipe's badge with nothing open. The page saves the open
  * conversation and the badge the person picked here, and reads them back only
  * when `/chat` comes with no link of its own: a Discuss button or a copied URL
  * still says where to go. In `localStorage` like the Shots page's view
@@ -21,6 +21,11 @@ export type ChatPosition = {
 
 const NOWHERE: ChatPosition = { thread: null, folder: null };
 
+/** A badge remembered as `set-<id>`, from before the rename, is the same badge as `recipe-<id>`. */
+function currentFolderKey(folder: string): string {
+  return folder.replace(/^set-(?=\d+$)/, "recipe-");
+}
+
 export function loadChatPosition(storage: Storage | undefined = safeStorage()): ChatPosition {
   let stored: unknown;
   try {
@@ -33,7 +38,7 @@ export function loadChatPosition(storage: Storage | undefined = safeStorage()): 
   // Each field falls back on its own: a bad thread id still leaves the badge.
   return {
     thread: Number.isSafeInteger(thread) && (thread as number) > 0 ? (thread as number) : null,
-    folder: typeof folder === "string" && folder !== "" ? folder : null,
+    folder: typeof folder === "string" && folder !== "" ? currentFolderKey(folder) : null,
   };
 }
 

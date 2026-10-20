@@ -9,16 +9,16 @@ import { toast } from "sonner";
 import {
   acceptStartingPoint,
   createStartingPoint,
-  getSimilarSets,
+  getSimilarRecipes,
   getStartingPoint,
 } from "@/api/client";
 import type {
-  SimilarSetsData,
+  SimilarRecipesData,
   StartingPointAccepted,
   StartingPointRequest,
   StartingPointRun,
 } from "@/api/types";
-import { invalidateBeans, invalidateDrafts, invalidateSets } from "@/lib/invalidate";
+import { invalidateBeans, invalidateDrafts, invalidateRecipes } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -42,13 +42,13 @@ import { queryKeys } from "@/lib/queryKeys";
 /** How often the wizard re-reads a running row. */
 const POLL_MS = 1500;
 
-export function useSimilarSets(
+export function useSimilarRecipes(
   beanId: number | undefined,
   params: { grinderId?: number | null } = {},
-): UseQueryResult<SimilarSetsData, Error> {
+): UseQueryResult<SimilarRecipesData, Error> {
   return useQuery({
-    queryKey: queryKeys.beans.similarSets(String(beanId), params.grinderId),
-    queryFn: () => getSimilarSets(beanId as number, params),
+    queryKey: queryKeys.beans.similarRecipes(String(beanId), params.grinderId),
+    queryFn: () => getSimilarRecipes(beanId as number, params),
     enabled: beanId !== undefined && Number.isFinite(beanId),
   });
 }
@@ -105,10 +105,10 @@ export function useAcceptStartingPoint(): UseMutationResult<
         accepted.run,
       );
     },
-    onError: (error) => toast.error(`Could not start the Set: ${error.message}`),
+    onError: (error) => toast.error(`Could not start the Recipe: ${error.message}`),
     onSettled: () => {
-      void invalidateSets(queryClient);
-      // The bean's card shows how many Sets use it, and an option that carried
+      void invalidateRecipes(queryClient);
+      // The bean's card shows how many Recipes use it, and an option that carried
       // a profile has just put a draft in the queue.
       void invalidateBeans(queryClient);
       void invalidateDrafts(queryClient);

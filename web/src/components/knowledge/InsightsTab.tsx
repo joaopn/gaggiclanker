@@ -14,12 +14,12 @@ import { attempt } from "@/lib/mutations";
 /**
  * Tier 3: what this archive has learned about *this* kitchen, in general.
  *
- * **General knowledge only.** An insight learned in a Set's conversation belongs
- * to that Set and lives on its page; what is here is what you wrote by hand and
- * the agent-written insights the app could not place on a single Set. The
+ * **General knowledge only.** An insight learned in a Recipe's conversation belongs
+ * to that Recipe and lives on its page; what is here is what you wrote by hand and
+ * the agent-written insights the app could not place on a single Recipe. The
  * proposals come first and unconfirmed, because that is the decision waiting for
  * somebody: a claim about your setup that nothing will act on until you say so.
- * Confirming one puts it in front of every conversation about a Set its scope
+ * Confirming one puts it in front of every conversation about a Recipe its scope
  * matches — which is why the scope badge and the evidence links are on the card
  * rather than behind a disclosure.
  */
@@ -43,13 +43,13 @@ export function InsightsTab() {
   return (
     <div className="space-y-4">
       <p className="text-muted-foreground text-sm" data-testid="insights-general-only">
-        This page holds general knowledge only. An insight learned in a Set's conversation lives on
-        that Set's page and reaches that Set alone.
+        This page holds general knowledge only. An insight learned in a Recipe's conversation lives
+        on that Recipe's page and reaches that Recipe alone.
       </p>
       <PatternsSection />
       <SectionCard
         title="Write one yourself"
-        description="Scope it with any of the keys below; an insight applies to a Set when every key it names matches. An empty scope is a claim about every shot you pull, so it should be rare."
+        description="Scope it with any of the keys below; an insight applies to a Recipe when every key it names matches. An empty scope is a claim about every shot you pull, so it should be rare."
       >
         <form
           className="space-y-2"
@@ -106,14 +106,14 @@ export function InsightsTab() {
         <EmptyState
           icon={Lightbulb}
           title="Nothing general yet"
-          description="Write one above. Nothing is put in front of the model until it is confirmed, and what a Set's conversations learn is added or dismissed on that Set's page."
+          description="Write one above. Nothing is put in front of the model until it is confirmed, and what a Recipe's conversations learn is added or dismissed on that Recipe's page."
         />
       ) : (
         <>
           {proposed.length > 0 ? (
             <SectionCard
               title="Waiting for you"
-              description="Agent-written insights the app could not place on a single Set: they fit none or several. Open the shots they were drawn from before you confirm — a claim with unchecked evidence is an opinion."
+              description="Agent-written insights the app could not place on a single Recipe: they fit none or several. Open the shots they were drawn from before you confirm — a claim with unchecked evidence is an opinion."
             >
               <ul className="space-y-2" data-testid="proposed-insights">
                 {proposed.map((insight) => (
@@ -125,7 +125,7 @@ export function InsightsTab() {
 
           <SectionCard
             title="Confirmed"
-            description="These are put in front of every conversation about a Set the scope matches, above the general rules."
+            description="These are put in front of every conversation about a Recipe the scope matches, above the general rules."
           >
             {confirmed.length === 0 ? (
               <p className="text-muted-foreground text-sm">Nothing confirmed yet.</p>

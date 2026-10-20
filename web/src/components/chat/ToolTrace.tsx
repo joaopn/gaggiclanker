@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ProposeCard, proposalFrom } from "@/components/chat/ProposeCard";
 import { Badge } from "@/components/ui/badge";
 import type { TraceEntry } from "@/hooks/useChat";
+import { currentToolName } from "@/lib/legacyTools";
 
 /**
  * What the model actually did, between the question and the answer.
@@ -10,7 +11,7 @@ import type { TraceEntry } from "@/hooks/useChat";
  * Collapsed by default and expandable per call, because the trace is the thing
  * that makes an answer checkable and also the thing nobody wants to read every
  * time. What is *not* collapsed is the permission class: a call that created a
- * Set version is labelled "proposal" on the closed row, because a reader
+ * Recipe version is labelled "proposal" on the closed row, because a reader
  * skimming past must not miss that something was written.
  */
 
@@ -30,7 +31,7 @@ export function ToolTrace({ entries, permissions, live = false }: ToolTraceProps
         <ToolTraceRow
           key={entry.id}
           entry={entry}
-          permission={permissions[entry.name] ?? "read"}
+          permission={permissions[currentToolName(entry.name)] ?? "read"}
           live={live}
         />
       ))}

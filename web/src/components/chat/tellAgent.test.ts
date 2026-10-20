@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SetProposalDecision } from "@/api/types";
+import type { RecipeProposalDecision } from "@/api/types";
 import {
   acceptedMessage,
   approvedProfileMessage,
@@ -9,20 +9,20 @@ import {
 const design = {
   proposal: { kind: "design", changes: [] },
   version: { version_label: "v1" },
-} as unknown as SetProposalDecision;
+} as unknown as RecipeProposalDecision;
 
 describe("the turns a profile card sends", () => {
-  it("names the version of the Set for a profile proposed for it", () => {
+  it("names the version of the Recipe for a profile proposed for it", () => {
     expect(
       approvedProfileMessage({
         name: "Adaptive Bloom",
-        forSet: { versionLabel: "v1.2", setName: "Guji natural" },
+        forRecipe: { versionLabel: "v1.2", recipeName: "Guji natural" },
         newVersion: true,
       }),
     ).toBe("Approved: Adaptive Bloom as v1.2 of Guji natural.");
   });
 
-  it("says a new version of a profile, or a new profile, outside a Set", () => {
+  it("says a new version of a profile, or a new profile, outside a Recipe", () => {
     expect(approvedProfileMessage({ name: "Adaptive Bloom", newVersion: true })).toBe(
       "Approved: Adaptive Bloom, a new version of that profile.",
     );
@@ -38,7 +38,7 @@ describe("the turns a profile card sends", () => {
     expect(
       approvedProfileMessage({
         name: "Gentle Bloom",
-        forSet: { versionLabel: "v1.2", setName: "Guji" },
+        forRecipe: { versionLabel: "v1.2", recipeName: "Guji" },
         newVersion: false,
         proposedAs: "Soft Bloom",
       }),

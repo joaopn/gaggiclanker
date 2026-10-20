@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { JudgementForm } from "@/components/shots/JudgementForm";
+import { flavorPicks, judgement, vocabulary } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { flavorPicks, judgement, vocabulary } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -169,7 +169,7 @@ describe("JudgementForm", () => {
   });
 
   describe("the doses start where the shot says, and only a save records them", () => {
-    it("shows the scale's yield and the Set version's dose as values, not placeholders", async () => {
+    it("shows the scale's yield and the Recipe version's dose as values, not placeholders", async () => {
       renderWithQueryClient(
         <JudgementForm shotId={1} judgement={null} prefill={{ doseIn: 18, doseOut: 36.4 }} />,
       );
@@ -192,7 +192,7 @@ describe("JudgementForm", () => {
       expect(screen.getByLabelText("Dose out (g)")).toHaveValue("");
     });
 
-    it("fills each side on its own: a filed shot with no scale, a scale with no Set", async () => {
+    it("fills each side on its own: a filed shot with no scale, a scale with no Recipe", async () => {
       const { unmount } = renderWithQueryClient(
         <JudgementForm shotId={1} judgement={null} prefill={{ doseIn: 18, doseOut: null }} />,
       );

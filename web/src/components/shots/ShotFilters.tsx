@@ -1,6 +1,6 @@
 import { ListFilter, RotateCcw, X } from "lucide-react";
 import { useId, useState } from "react";
-import type { ProfileVersionSummary, SetRow } from "@/api/types";
+import type { ProfileVersionSummary, RecipeRow } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -37,18 +37,18 @@ export function ShotFilters({
   value,
   onChange,
   versions,
-  sets = [],
+  recipes = [],
   versionLabel = null,
 }: {
   value: ShotFilterState;
   onChange: (next: ShotFilterState) => void;
   versions: ProfileVersionSummary[];
-  sets?: SetRow[];
+  recipes?: RecipeRow[];
   /**
-   * How the Set-version filter reads, when one is on: "Guji on the Niche v5".
+   * How the Recipe-version filter reads, when one is on: "Guji on the Niche v5".
    *
    * Passed in rather than looked up here, because the version *number* is not
-   * on the Set row — the page that already holds the Set's detail is the cheap
+   * on the Recipe row — the page that already holds the Recipe's detail is the cheap
    * place to find it.
    */
   versionLabel?: string | null;
@@ -58,18 +58,18 @@ export function ShotFilters({
     from: useId(),
     to: useId(),
     profile: useId(),
-    set: useId(),
+    recipe: useId(),
     rating: useId(),
     source: useId(),
     quarantined: useId(),
   };
 
   function set<K extends keyof ShotFilterState>(key: K, next: ShotFilterState[K]) {
-    // Changing or clearing the Set takes its version with it: a version id
-    // belongs to one Set, and carrying it onto another would filter the list
+    // Changing or clearing the Recipe takes its version with it: a version id
+    // belongs to one Recipe, and carrying it onto another would filter the list
     // down to nothing for no visible reason.
-    const withSet = key === "set" ? { version: "" } : {};
-    onChange({ ...value, [key]: next, ...withSet });
+    const withRecipe = key === "recipe" ? { version: "" } : {};
+    onChange({ ...value, [key]: next, ...withRecipe });
   }
 
   const active = activeFilterCount(value);
@@ -123,24 +123,24 @@ export function ShotFilters({
             ))}
           </select>
         </Field>
-        <Field id={ids.set} label="Set">
+        <Field id={ids.recipe} label="Recipe">
           <select
-            id={ids.set}
+            id={ids.recipe}
             className={FIELD}
-            value={value.set}
-            onChange={(event) => set("set", event.target.value)}
+            value={value.recipe}
+            onChange={(event) => set("recipe", event.target.value)}
           >
-            <option value="">Any Set</option>
+            <option value="">Any Recipe</option>
             {/* The inbox, first: it is the only option anybody comes here to
-                click twice, and it is not a Set id. */}
-            <option value="needs">Needs a Set</option>
-            {sets.map((row) => (
+                click twice, and it is not a Recipe id. */}
+            <option value="needs">Needs a Recipe</option>
+            {recipes.map((row) => (
               <option key={row.id} value={String(row.id)}>
                 {row.name}
               </option>
             ))}
           </select>
-          {/* One version of that Set, arrived at from the Set page's log. There
+          {/* One version of that Recipe, arrived at from the Recipe page's log. There
               is no control to *pick* a version here — the log is where a
               version means something — so this is a removable statement of
               what is on rather than a second select nobody would use. */}

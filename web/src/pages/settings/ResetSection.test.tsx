@@ -17,7 +17,7 @@ import { ApiClientError } from "@/api/client";
 import { ResetSection, resetRefusalText } from "@/pages/settings/ResetSection";
 
 const IDLE =
-  "Puts the app back to a fresh install: every shot, Set, bean, profile, chat, insight, edited prompt and setting is deleted. Nothing on the machine changes.";
+  "Puts the app back to a fresh install: every shot, Recipe, bean, profile, chat, insight, edited prompt and setting is deleted. Nothing on the machine changes.";
 
 describe("ResetSection", () => {
   beforeEach(() => {

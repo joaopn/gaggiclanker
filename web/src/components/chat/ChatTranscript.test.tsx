@@ -4,17 +4,17 @@ import type { ChatMessage, ChatRun } from "@/api/types";
 import { ChatTranscript, toTurns } from "@/components/chat/ChatTranscript";
 import { draft, standing } from "@/test/draftFixtures";
 import { insightDeletion, knowledgeInsight } from "@/test/knowledgeFixtures";
+import { designProposal, outcomeProposal, proposal } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { designProposal, outcomeProposal, proposal } from "@/test/setsFixtures";
 
 const {
-  getSetProposals,
+  getRecipeProposals,
   getOutcomeProposals,
   getKnowledgeInsight,
   getInsightDeletions,
   getDraftStanding,
 } = vi.hoisted(() => ({
-  getSetProposals: vi.fn(),
+  getRecipeProposals: vi.fn(),
   getOutcomeProposals: vi.fn(),
   getKnowledgeInsight: vi.fn(),
   getInsightDeletions: vi.fn(),
@@ -22,7 +22,7 @@ const {
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
-  getSetProposals,
+  getRecipeProposals,
   getOutcomeProposals,
   getKnowledgeInsight,
   getInsightDeletions,
@@ -31,7 +31,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getSetProposals.mockResolvedValue({ items: [] });
+  getRecipeProposals.mockResolvedValue({ items: [] });
   getOutcomeProposals.mockResolvedValue({ items: [] });
   getInsightDeletions.mockResolvedValue({ items: [] });
   getKnowledgeInsight.mockResolvedValue(
@@ -263,26 +263,26 @@ describe("ChatTranscript", () => {
     expect(screen.getByTestId("tool-trace")).toHaveTextContent("proposal");
     // Before the row is read back, the transcript's own summary is the card.
     const card = screen.getByTestId("propose-card-recipe_version");
-    expect(card).toHaveTextContent("A change to this Set: the dose");
+    expect(card).toHaveTextContent("A change to this Recipe: the dose");
     expect(card).toHaveTextContent("Dose 18 g → 18.5 g");
   });
 
   it("offers the decision on the card once the proposal is read back", async () => {
-    getSetProposals.mockResolvedValue({ items: [proposal()] });
+    getRecipeProposals.mockResolvedValue({ items: [proposal()] });
 
     renderWithQueryClient(
       <ChatTranscript messages={proposed()} runs={[]} permissions={PERMISSIONS} />,
     );
 
     // Live rather than from the transcript: a conversation read a week later
-    // must not offer to accept something that was accepted on the Set page.
+    // must not offer to accept something that was accepted on the Recipe page.
     const card = await screen.findByTestId("proposal-card");
     expect(within(card).getByRole("button", { name: /Accept/ })).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: /Decline/ })).toBeInTheDocument();
   });
 
   it("says how a proposal was answered instead of offering it again", async () => {
-    getSetProposals.mockResolvedValue({
+    getRecipeProposals.mockResolvedValue({
       items: [proposal({ status: "declined", decline_note: "The dose is not the problem." })],
     });
 
@@ -297,7 +297,7 @@ describe("ChatTranscript", () => {
 
   function designed(): ChatMessage[] {
     return [
-      message({ id: 1, role: "user", content: "Help me design this Set." }),
+      message({ id: 1, role: "user", content: "Help me design this Recipe." }),
       message({
         id: 2,
         role: "assistant",
@@ -335,8 +335,8 @@ describe("ChatTranscript", () => {
     ];
   }
 
-  it("turns a proposed first recipe into the live card, read from the Set's proposals", async () => {
-    getSetProposals.mockResolvedValue({ items: [designProposal()] });
+  it("turns a proposed first recipe into the live card, read from the Recipe's proposals", async () => {
+    getRecipeProposals.mockResolvedValue({ items: [designProposal()] });
 
     renderWithQueryClient(
       <ChatTranscript messages={designed()} runs={[]} permissions={PERMISSIONS} />,
@@ -344,19 +344,19 @@ describe("ChatTranscript", () => {
 
     // Before the row is read back, the tool's own figures stand in for it.
     const holder = screen.getByTestId("propose-card-initial_recipe");
-    expect(holder).toHaveTextContent("The first recipe for this Set");
+    expect(holder).toHaveTextContent("Version 1 of this Recipe");
     expect(holder).toHaveTextContent("Guji Bloom · grind 20 · 18 g in · 40 g out");
 
     // Then the row itself, with the buttons that answer it: not a snapshot.
     const card = await within(holder).findByTestId("proposal-card");
-    expect(getSetProposals).toHaveBeenCalledWith(6);
+    expect(getRecipeProposals).toHaveBeenCalledWith(6);
     expect(card).toHaveAttribute("data-kind", "design");
     expect(within(card).getByTestId("proposal-recipe")).toHaveTextContent("Guji Bloom");
     expect(within(card).getByRole("button", { name: /Accept/ })).toBeInTheDocument();
   });
 
   it("says how a first recipe was answered when the conversation is read again", async () => {
-    getSetProposals.mockResolvedValue({
+    getRecipeProposals.mockResolvedValue({
       items: [designProposal({ status: "accepted", changes: [], resulting_version_label: "v1" })],
     });
 
@@ -406,7 +406,7 @@ describe("ChatTranscript", () => {
       ];
     }
 
-    it("marks the call as a proposal and draws the live card, read from the Set's grades", async () => {
+    it("marks the call as a proposal and draws the live card, read from the Recipe's grades", async () => {
       getOutcomeProposals.mockResolvedValue({ items: [outcomeProposal()] });
 
       renderWithQueryClient(

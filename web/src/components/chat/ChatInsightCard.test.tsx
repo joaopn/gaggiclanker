@@ -68,15 +68,15 @@ describe("ChatInsightCard", () => {
       "Two clicks finer on the Niche.",
     );
     expect(within(card).getByTestId("chat-insight-about")).toHaveTextContent(
-      "About this Set only, learned at v2.",
+      "About this Recipe only, learned at v2.",
     );
     expect(within(card).getByRole("link", { name: "shot 4" })).toHaveAttribute("href", "/shots/4");
     expect(within(card).getByRole("link", { name: "shot 6" })).toHaveAttribute("href", "/shots/6");
     expect(within(card).getByRole("button", { name: "Add" })).toBeEnabled();
     expect(within(card).getByRole("button", { name: "Dismiss" })).toBeEnabled();
-    // Says it is not evidence yet, and that it is this Set's alone.
+    // Says it is not evidence yet, and that it is this Recipe's alone.
     expect(card).toHaveTextContent("Not evidence until you add it");
-    expect(card).toHaveTextContent("no other Set's");
+    expect(card).toHaveTextContent("no other Recipe's");
   });
 
   it("says when no version is recorded", async () => {
@@ -107,8 +107,11 @@ describe("ChatInsightCard", () => {
 
     expect(patchKnowledgeInsight).toHaveBeenCalledWith(7, { confirmed: true });
     const decided = await screen.findByTestId("chat-insight-decided");
-    expect(decided).toHaveTextContent("Added: this Set's later conversations will be told it.");
-    expect(screen.getByRole("link", { name: "the Set's page" })).toHaveAttribute("href", "/sets/3");
+    expect(decided).toHaveTextContent("Added: this Recipe's later conversations will be told it.");
+    expect(screen.getByRole("link", { name: "the Recipe's page" })).toHaveAttribute(
+      "href",
+      "/recipes/3",
+    );
     expect(screen.queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-insight")).toHaveAttribute("data-state", "added");
   });

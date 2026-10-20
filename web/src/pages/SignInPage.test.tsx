@@ -26,7 +26,7 @@ describe("SignInPage", () => {
     login.mockResolvedValue({ token: "t", expires_in: 60, user: "barista" });
     const user = setupUser();
     const { getByLabelText, getByRole } = renderWithQueryClient(<SignInPage />, {
-      initialEntries: ["/sign-in?next=/sets/3"],
+      initialEntries: ["/sign-in?next=/recipes/3"],
     });
 
     await user.type(getByLabelText("Username"), "barista");
@@ -34,7 +34,7 @@ describe("SignInPage", () => {
     await user.click(getByRole("button", { name: "Sign in" }));
 
     await waitFor(() => expect(login).toHaveBeenCalledWith("barista", "secret"));
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/sets/3", { replace: true }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/recipes/3", { replace: true }));
   });
 
   it("falls back to the shots list when there is no next path", async () => {

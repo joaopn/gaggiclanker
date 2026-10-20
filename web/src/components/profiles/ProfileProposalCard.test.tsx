@@ -83,8 +83,8 @@ function brandNew(overrides: Record<string, unknown> = {}): DraftStanding {
   });
 }
 
-/** A change proposed for a Set: the next minor is v1.2, the next major v2. */
-function forSet(overrides: Record<string, unknown> = {}): DraftStanding {
+/** A change proposed for a Recipe: the next minor is v1.2, the next major v2. */
+function forRecipe(overrides: Record<string, unknown> = {}): DraftStanding {
   return standing({
     draft: draft({
       recipe_id: 3,
@@ -164,7 +164,7 @@ describe("a proposal waiting for a person", () => {
     expect(screen.getByText("What changes")).toBeInTheDocument();
     expect(screen.getByTestId("approve-proposal")).toHaveTextContent("Approve and sync");
     expect(screen.getByTestId("decline-proposal")).toBeInTheDocument();
-    // A change to a profile that exists has no Name field and no Set box.
+    // A change to a profile that exists has no Name field and no Recipe box.
     expect(screen.queryByTestId("proposal-name")).not.toBeInTheDocument();
     expect(screen.queryByTestId("major-choice")).not.toBeInTheDocument();
     expect(screen.queryByTestId("proposal-writes-off")).not.toBeInTheDocument();
@@ -278,10 +278,10 @@ describe("a proposal waiting for a person", () => {
   });
 });
 
-describe("a proposal for a Set", () => {
-  it("names the Set version the click records, and the Major box changes it", async () => {
+describe("a proposal for a Recipe", () => {
+  it("names the Recipe version the click records, and the Major box changes it", async () => {
     const user = setupUser();
-    getDraftStanding.mockResolvedValue(forSet());
+    getDraftStanding.mockResolvedValue(forRecipe());
     renderCard();
 
     const button = await screen.findByTestId("approve-proposal");
@@ -291,7 +291,7 @@ describe("a proposal for a Set", () => {
   });
 
   it("has one Approve, in the chat and on the Profiles page alike", async () => {
-    getDraftStanding.mockResolvedValue(forSet());
+    getDraftStanding.mockResolvedValue(forRecipe());
     const chat = renderCard({ place: "chat" });
     await screen.findByTestId("approve-proposal");
     expect(screen.queryByRole("button", { name: /without recording/ })).not.toBeInTheDocument();
@@ -304,7 +304,7 @@ describe("a proposal for a Set", () => {
 
   it("starts no sync with Writes off", async () => {
     const user = setupUser();
-    getDraftStanding.mockResolvedValue(forSet({ writes_enabled: false }));
+    getDraftStanding.mockResolvedValue(forRecipe({ writes_enabled: false }));
     renderCard({ place: "profiles" });
 
     const button = await screen.findByTestId("approve-proposal");
@@ -314,10 +314,10 @@ describe("a proposal for a Set", () => {
     expect(runSync).not.toHaveBeenCalled();
   });
 
-  it("records the version on the Set with the Major answer, then starts the sync, and tells the agent", async () => {
+  it("records the version on the Recipe with the Major answer, then starts the sync, and tells the agent", async () => {
     const user = setupUser();
     const tell = vi.fn();
-    getDraftStanding.mockResolvedValue(forSet());
+    getDraftStanding.mockResolvedValue(forRecipe());
     renderCard({}, tell);
 
     await user.click(await screen.findByRole("checkbox", { name: "Major change" }));
@@ -670,7 +670,7 @@ describe("Decline", () => {
 });
 
 describe("a proposal that has been answered", () => {
-  it("is approved, with the Set version it is recorded as and the server's sentence", async () => {
+  it("is approved, with the Recipe version it is recorded as and the server's sentence", async () => {
     getDraftStanding.mockResolvedValue(
       answered("approved", "Writes are off, so a sync will not send it.", {
         draft: draft({

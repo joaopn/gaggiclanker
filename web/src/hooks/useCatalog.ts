@@ -78,9 +78,9 @@ export function useSaveBean(): UseMutationResult<BeanRow, Error, { id?: number; 
     onError: (error) => toast.error(`Could not save the bean: ${error.message}`),
     onSettled: () => {
       void invalidateBeans(queryClient);
-      // A Set card shows its bean's name and roast date, so a rename is a
-      // stale Set card until this runs.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sets.all });
+      // A Recipe card shows its bean's name and roast date, so a rename is a
+      // stale Recipe card until this runs.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
     },
   });
 }
@@ -103,8 +103,8 @@ export function useImportBean(): UseMutationResult<
       toast.error(`Could not import ${fileName}: ${describeImportError(error)}`),
     onSettled: () => {
       void invalidateBeans(queryClient);
-      // As for an edit: a Set card shows its bean's name.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sets.all });
+      // As for an edit: a Recipe card shows its bean's name.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
     },
   });
 }
@@ -174,7 +174,7 @@ export function useSaveGrinder(): UseMutationResult<
     onError: (error) => toast.error(`Could not save the grinder: ${error.message}`),
     onSettled: () => {
       void invalidateHardware(queryClient);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sets.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
     },
   });
 }

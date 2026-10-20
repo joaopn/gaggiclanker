@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { proposalFrom } from "@/components/chat/ProposeCard";
-import { draftedId, proposedSetId } from "@/hooks/useChat";
+import { draftedId, proposedRecipeId } from "@/hooks/useChat";
 import { currentToolName, LEGACY_TOOL_NAMES } from "@/lib/legacyTools";
 
 /**
@@ -14,30 +14,30 @@ import { currentToolName, LEGACY_TOOL_NAMES } from "@/lib/legacyTools";
  * The narrowness is the point as much as the refresh: every other tool result
  * in the stream must invalidate nothing.
  */
-describe("proposedSetId", () => {
-  it("finds the Set a proposed change belongs to", () => {
+describe("proposedRecipeId", () => {
+  it("finds the Recipe a proposed change belongs to", () => {
     const content = JSON.stringify({
       proposal_id: 5,
       recipe_id: 3,
       status: "proposed",
       changed: ["the dose"],
     });
-    expect(proposedSetId(content)).toBe(3);
+    expect(proposedRecipeId(content)).toBe(3);
   });
 
   it("ignores a tool result that proposed nothing", () => {
-    expect(proposedSetId(JSON.stringify({ shot: { shot_id: 129 } }))).toBeNull();
-    expect(proposedSetId(JSON.stringify({ draft_id: 12 }))).toBeNull();
-    expect(proposedSetId(JSON.stringify({ insight_id: 7 }))).toBeNull();
+    expect(proposedRecipeId(JSON.stringify({ shot: { shot_id: 129 } }))).toBeNull();
+    expect(proposedRecipeId(JSON.stringify({ draft_id: 12 }))).toBeNull();
+    expect(proposedRecipeId(JSON.stringify({ insight_id: 7 }))).toBeNull();
   });
 
   it("ignores anything it cannot read, rather than guessing", () => {
-    expect(proposedSetId(undefined)).toBeNull();
-    expect(proposedSetId("")).toBeNull();
-    expect(proposedSetId("not json")).toBeNull();
-    expect(proposedSetId("[1, 2, 3]")).toBeNull();
-    expect(proposedSetId(JSON.stringify({ proposal_id: 5 }))).toBeNull();
-    expect(proposedSetId(JSON.stringify({ proposal_id: 5, recipe_id: "three" }))).toBeNull();
+    expect(proposedRecipeId(undefined)).toBeNull();
+    expect(proposedRecipeId("")).toBeNull();
+    expect(proposedRecipeId("not json")).toBeNull();
+    expect(proposedRecipeId("[1, 2, 3]")).toBeNull();
+    expect(proposedRecipeId(JSON.stringify({ proposal_id: 5 }))).toBeNull();
+    expect(proposedRecipeId(JSON.stringify({ proposal_id: 5, recipe_id: "three" }))).toBeNull();
   });
 });
 
@@ -90,7 +90,7 @@ describe("a conversation stored under the old names", () => {
   it("still shows the change card for an old propose_set_version call", () => {
     const card = proposalFrom(oldChange);
     expect(card?.kind).toBe("recipe_version");
-    expect(card?.setId).toBe(3);
+    expect(card?.recipeId).toBe(3);
     expect(card?.proposalId).toBe(5);
   });
 
@@ -100,11 +100,11 @@ describe("a conversation stored under the old names", () => {
       name: "propose_recipe_version",
       content: JSON.stringify({ proposal_id: 5, recipe_id: 3, changed: [] }),
     };
-    expect(proposalFrom(fresh)?.setId).toBe(3);
+    expect(proposalFrom(fresh)?.recipeId).toBe(3);
   });
 
   it("refreshes from an old result, which names the Recipe under set_id", () => {
-    expect(proposedSetId(oldChange.content)).toBe(3);
+    expect(proposedRecipeId(oldChange.content)).toBe(3);
   });
 
   it("reads an old initial recipe, outcome and deletion result the same way", () => {
@@ -118,7 +118,7 @@ describe("a conversation stored under the old names", () => {
         insight_text: "a lesson",
         recipe: {},
       });
-      expect(proposalFrom({ id: "c2", name, arguments: {}, ok: true, content })?.setId).toBe(4);
+      expect(proposalFrom({ id: "c2", name, arguments: {}, ok: true, content })?.recipeId).toBe(4);
     }
   });
 });

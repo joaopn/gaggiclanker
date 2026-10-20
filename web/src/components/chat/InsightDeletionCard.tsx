@@ -11,21 +11,21 @@ import { formatTime } from "@/lib/shots";
 /**
  * An insight the agent proposed deleting, and the two buttons that answer it.
  *
- * An added insight is told to every later conversation of its Set, so one the shots
+ * An added insight is told to every later conversation of its Recipe, so one the shots
  * no longer support is a standing mistake in the agent's prompt. The agent may say so
  * with its reason, but **removing is the person's**: this card changes nothing until
  * **Delete** is pressed, and then the insight is removed outright (nothing of it is
  * kept but the words on this card). **Keep** leaves it exactly as it is.
  *
- * Read live from the Set's deletion proposals rather than rendered from the tool's
+ * Read live from the Recipe's deletion proposals rather than rendered from the tool's
  * output: the output is the moment it was called, and the card is read again whenever
- * the conversation is scrolled to, after the insight may have been deleted on the Set
+ * the conversation is scrolled to, after the insight may have been deleted on the Recipe
  * page or the proposal replaced by a newer one. An answer is not sent to the agent as a
  * message; it is told at the start of its next turn, from the record.
  */
 
 export type InsightDeletionCardProps = {
-  setId: number;
+  recipeId: number;
   proposalId: number;
   /** What the tool said, shown until the live row has been read. */
   fallback: { insightId: number; text: string };
@@ -44,9 +44,9 @@ export function insightDeletionFailure(error: Error): string {
   return error.message;
 }
 
-export function InsightDeletionCard({ setId, proposalId, fallback }: InsightDeletionCardProps) {
+export function InsightDeletionCard({ recipeId, proposalId, fallback }: InsightDeletionCardProps) {
   // By conversation, uncapped: the card finds its proposal however old it is.
-  const deletions = useInsightDeletions(setId, useChatThreadId());
+  const deletions = useInsightDeletions(recipeId, useChatThreadId());
   const row = deletions.data?.items.find((item) => item.id === proposalId);
   if (!row) {
     return (
@@ -60,12 +60,12 @@ export function InsightDeletionCard({ setId, proposalId, fallback }: InsightDele
   }
   return (
     <div className="m-2 mt-0" data-testid="propose-card-insight_deletion">
-      <LiveInsightDeletionCard setId={setId} row={row} />
+      <LiveInsightDeletionCard recipeId={recipeId} row={row} />
     </div>
   );
 }
 
-function LiveInsightDeletionCard({ setId, row }: { setId: number; row: InsightDeletion }) {
+function LiveInsightDeletionCard({ recipeId, row }: { recipeId: number; row: InsightDeletion }) {
   const answer = useAnswerInsightDeletion();
   const threadId = useChatThreadId();
   const singleFlight = useSingleFlight();
@@ -81,7 +81,7 @@ function LiveInsightDeletionCard({ setId, row }: { setId: number; row: InsightDe
   function send(choice: "delete" | "keep") {
     singleFlight((release) => {
       void attempt(() =>
-        answer.mutateAsync({ setId, proposalId: row.id, answer: choice, threadId }),
+        answer.mutateAsync({ recipeId, proposalId: row.id, answer: choice, threadId }),
       ).finally(release);
     });
   }
@@ -133,7 +133,7 @@ function LiveInsightDeletionCard({ setId, row }: { setId: number; row: InsightDe
           </div>
           <p className="mt-2 text-muted-foreground text-xs">
             Nothing is deleted until you press Delete: until then the insight stays and is still
-            told to this Set's conversations.
+            told to this Recipe's conversations.
           </p>
         </>
       ) : (
@@ -157,7 +157,7 @@ function LiveInsightDeletionCard({ setId, row }: { setId: number; row: InsightDe
 
 function decidedWords(row: InsightDeletion): string {
   if (row.status === "deleted") {
-    return "Deleted: the insight is gone from this Set. Only this card remembers what it said.";
+    return "Deleted: the insight is gone from this Recipe. Only this card remembers what it said.";
   }
   if (row.status === "kept") {
     return "Kept: the insight stays as it was, and the agent is told you kept it.";

@@ -12,14 +12,14 @@ import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { attempt } from "@/lib/mutations";
 
 /**
- * Find patterns across Sets: one pressed call that proposes general insights.
+ * Find patterns across Recipes: one pressed call that proposes general insights.
  *
- * A Set's insight reaches that Set alone, so a lesson that is true across coffees is learned
- * again, Set by Set. This section is the person's way of asking for it to be generalised: the
- * button starts **one** call that reads every Set's confirmed insights, and what comes back are
- * proposals, each with the Set insights it was derived from. Nothing changes until a proposal
- * is **approved**, and approving **deletes** the Set insights it names (the general insight
- * replaces them, scoped so it reaches every one of those Sets) and, when it says so, the general
+ * A Recipe's insight reaches that Recipe alone, so a lesson that is true across coffees is learned
+ * again, Recipe by Recipe. This section is the person's way of asking for it to be generalised: the
+ * button starts **one** call that reads every Recipe's confirmed insights, and what comes back are
+ * proposals, each with the Recipe insights it was derived from. Nothing changes until a proposal
+ * is **approved**, and approving **deletes** the Recipe insights it names (the general insight
+ * replaces them, scoped so it reaches every one of those Recipes) and, when it says so, the general
  * insight it replaces. It never runs by itself: this button is the only way.
  */
 export function PatternsSection() {
@@ -30,7 +30,7 @@ export function PatternsSection() {
 
   if (patterns.isPending) {
     return (
-      <SectionCard title="Find patterns across Sets" description="Loading.">
+      <SectionCard title="Find patterns across Recipes" description="Loading.">
         <Skeleton className="h-16 w-full" />
       </SectionCard>
     );
@@ -38,7 +38,7 @@ export function PatternsSection() {
   const data = patterns.data;
   if (!data) {
     return (
-      <SectionCard title="Find patterns across Sets">
+      <SectionCard title="Find patterns across Recipes">
         <p className="text-muted-foreground text-sm">The pattern finder could not be loaded.</p>
       </SectionCard>
     );
@@ -51,8 +51,8 @@ export function PatternsSection() {
 
   return (
     <SectionCard
-      title="Find patterns across Sets"
-      description="Reads the confirmed insights of every Set and proposes general insights that several Sets say in different words. Nothing is written until you approve a proposal, and approving one deletes the Set insights it came from."
+      title="Find patterns across Recipes"
+      description="Reads the confirmed insights of every Recipe and proposes general insights that several Recipes say in different words. Nothing is written until you approve a proposal, and approving one deletes the Recipe insights it came from."
       actions={
         <Button
           size="sm"
@@ -93,25 +93,25 @@ export function PatternsSection() {
 /** The line under the heading: why the button is off, or how much is new. */
 export function sinceSentence(
   fresh: number,
-  sets: number,
+  recipes: number,
   minimum: number,
   run: PatternRun | null,
   countedFrom: string | null,
 ): string {
-  if (sets < minimum) {
-    return `Needs confirmed insights in at least ${minimum} Sets, and ${
-      sets === 0 ? "none have" : sets === 1 ? "one Set has" : `${sets} Sets have`
-    } them. A Set's insights are added in its conversations.`;
+  if (recipes < minimum) {
+    return `Needs confirmed insights in at least ${minimum} Recipes, and ${
+      recipes === 0 ? "none have" : recipes === 1 ? "one Recipe has" : `${recipes} Recipes have`
+    } them. A Recipe's insights are added in its conversations.`;
   }
   const noun = fresh === 1 ? "insight" : "insights";
   if (countedFrom === null) {
     const reference = run === null ? "No run yet" : "No run has finished yet";
-    return `${reference}: ${fresh} confirmed Set ${noun} across ${sets} Sets to read.`;
+    return `${reference}: ${fresh} confirmed Recipe ${noun} across ${recipes} Recipes to read.`;
   }
   // A failed or running run after a finished one does not move the line: the count is from the
   // run that finished, and the sentence says so rather than calling it the last run.
   const reference = run?.status === "done" ? "the last run" : "the last run that finished";
-  return `${fresh} confirmed Set ${noun} ${fresh === 1 ? "has" : "have"} arrived since ${reference}.`;
+  return `${fresh} confirmed Recipe ${noun} ${fresh === 1 ? "has" : "have"} arrived since ${reference}.`;
 }
 
 /** What the newest run is doing, or how it ended, in words. */
@@ -120,8 +120,8 @@ function RunState({ run, proposals }: { run: PatternRun | null; proposals: Patte
   if (run.status === "running") {
     return (
       <p className="text-sm" role="status" data-testid="patterns-running">
-        Reading {run.insights_read} Set insights from {run.recipes_read} Sets. This takes a minute
-        or so; the proposals appear here when it is done.
+        Reading {run.insights_read} Recipe insights from {run.recipes_read} Recipes. This takes a
+        minute or so; the proposals appear here when it is done.
       </p>
     );
   }
@@ -146,8 +146,8 @@ function RunState({ run, proposals }: { run: PatternRun | null; proposals: Patte
     <div className="space-y-1">
       {proposals.length === 0 ? (
         <p className="text-sm" data-testid="patterns-none">
-          The last run read {run.insights_read} Set insights from {run.recipes_read} Sets and found
-          nothing worth proposing.
+          The last run read {run.insights_read} Recipe insights from {run.recipes_read} Recipes and
+          found nothing worth proposing.
         </p>
       ) : null}
       {dropped ? (
@@ -162,7 +162,7 @@ function RunState({ run, proposals }: { run: PatternRun | null; proposals: Patte
 const DROP_WORDS: Record<string, string> = {
   invented_source: "named an insight it was not given",
   invented_replaces: "replaced an insight it was not given",
-  one_recipe: "rested on one Set",
+  one_recipe: "rested on one Recipe",
   profile_style: "was scoped by profile style",
   scope_not_shared: "had a scope its sources do not all share",
 };
@@ -200,7 +200,7 @@ const SCOPE_LABELS: Record<string, string> = {
 };
 
 /**
- * The scope in words: which Sets the general insight would reach.
+ * The scope in words: which Recipes the general insight would reach.
  *
  * A bean and a grinder are named ("grinder Niche Zero"); an id is shown only when the thing
  * is gone, which is the one case where there is no name to give.
@@ -209,7 +209,7 @@ export function scopeWords(scope: PatternProposal["scope"], names?: ScopeNames):
   const entries = Object.entries((scope ?? {}) as Record<string, unknown>).filter(
     ([, value]) => value !== null && value !== undefined,
   );
-  if (entries.length === 0) return "Applies to every Set.";
+  if (entries.length === 0) return "Applies to every Recipe.";
   const parts = entries.map(([key, value]) => {
     if (key === "bean_id" || key === "grinder_id") {
       const kind = key === "bean_id" ? "bean" : "grinder";
@@ -224,14 +224,14 @@ export function scopeWords(scope: PatternProposal["scope"], names?: ScopeNames):
     }
     return `${SCOPE_LABELS[key] ?? key.replaceAll("_", " ")} ${String(value)}`;
   });
-  return `Applies to Sets with ${parts.join(", ")}.`;
+  return `Applies to Recipes with ${parts.join(", ")}.`;
 }
 
 /** A failed press, said in words the person can act on. */
 export function patternFailure(error: Error): string {
   if (error instanceof ApiClientError) {
     if (error.code === "PATTERN_TOO_FEW_RECIPES") {
-      return "The Set insights this was derived from have changed since it was proposed, and fewer than two Sets' are left, so nothing was written. Dismiss it.";
+      return "The Recipe insights this was derived from have changed since it was proposed, and fewer than two Recipes' are left, so nothing was written. Dismiss it.";
     }
     if (error.code === "PATTERNS_RUNNING") {
       return "A run is going and replaces these proposals when it finishes. Answer them once it has.";
@@ -246,19 +246,19 @@ export function patternFailure(error: Error): string {
 const SKIP_WORDS: Record<PatternSkipped["reason"], string> = {
   gone: "was already gone",
   not_confirmed: "was taken back since, so it stays",
-  scope_changed: "belongs to a Set the scope no longer reaches, so it stays",
+  scope_changed: "belongs to a Recipe the scope no longer reaches, so it stays",
   replaced_gone: "was already gone",
 };
 
-/** The proposal's sources grouped by Set, in the order the Sets first appear. */
-export function groupBySet(sources: PatternSource[]) {
-  const groups = new Map<number, { setId: number; name: string; items: PatternSource[] }>();
+/** The proposal's sources grouped by Recipe, in the order the Recipes first appear. */
+export function groupByRecipe(sources: PatternSource[]) {
+  const groups = new Map<number, { recipeId: number; name: string; items: PatternSource[] }>();
   for (const source of sources) {
     const group = groups.get(source.recipe_id);
     if (group) group.items.push(source);
     else
       groups.set(source.recipe_id, {
-        setId: source.recipe_id,
+        recipeId: source.recipe_id,
         name: source.recipe_name,
         items: [source],
       });
@@ -293,7 +293,7 @@ function PatternCard({ proposal, runGoing }: { proposal: PatternProposal; runGoi
     skipped.filter((item) => item.recipe_id !== null).map((item) => item.insight_id),
   );
   const deleted = sources.filter((source) => !skippedIds.has(source.insight_id));
-  const groups = groupBySet(sources);
+  const groups = groupByRecipe(sources);
   const replacedGone = skipped.some((item) => item.reason === "replaced_gone");
 
   function send(choice: "approve" | "dismiss") {
@@ -319,8 +319,8 @@ function PatternCard({ proposal, runGoing }: { proposal: PatternProposal; runGoi
       <div className="mt-2 space-y-1.5" data-testid="pattern-sources">
         <p className="text-muted-foreground text-xs">Derived from</p>
         {groups.map((group) => (
-          <div key={group.setId} data-testid="pattern-source-set">
-            <Link to={`/sets/${group.setId}`} className="font-medium text-xs underline">
+          <div key={group.recipeId} data-testid="pattern-source-recipe">
+            <Link to={`/recipes/${group.recipeId}`} className="font-medium text-xs underline">
               {group.name}
             </Link>
             <ul className="ml-4 list-disc text-sm">
@@ -337,7 +337,7 @@ function PatternCard({ proposal, runGoing }: { proposal: PatternProposal; runGoi
       {waiting ? (
         <>
           <p className="mt-2 text-sm" data-testid="pattern-consequence">
-            Approving deletes these {sources.length} Set insights
+            Approving deletes these {sources.length} Recipe insights
             {shown.replaces_text ? ", and replaces this general insight (it is deleted too)" : ""}.
           </p>
           {shown.replaces_text ? (
@@ -376,7 +376,7 @@ function PatternCard({ proposal, runGoing }: { proposal: PatternProposal; runGoi
           {shown.status === "approved" ? (
             <>
               <p>
-                Approved: the general insight is on this page, and {deleted.length} Set insight
+                Approved: the general insight is on this page, and {deleted.length} Recipe insight
                 {deleted.length === 1 ? " was" : "s were"} deleted.
               </p>
               {skipped.length > 0 ? (
@@ -385,7 +385,7 @@ function PatternCard({ proposal, runGoing }: { proposal: PatternProposal; runGoi
                     <li key={`${item.reason}-${item.insight_id ?? "replaced"}`}>
                       {item.reason === "replaced_gone"
                         ? "The general insight it was to replace "
-                        : "A Set insight, "}
+                        : "A Recipe insight, "}
                       {item.text ? `"${item.text}" ` : ""}
                       {SKIP_WORDS[item.reason]}.
                     </li>

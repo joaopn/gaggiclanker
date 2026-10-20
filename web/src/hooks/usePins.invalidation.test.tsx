@@ -3,11 +3,11 @@ import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import { usePinVersion, useUnpin } from "@/hooks/usePins";
-import { useArchiveSet } from "@/hooks/useSets";
+import { useArchiveRecipe } from "@/hooks/useRecipes";
 import { queryKeys } from "@/lib/queryKeys";
 import { pinDetail } from "@/test/pinFixtures";
+import { recipeRow } from "@/test/recipesFixtures";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
-import { setRow } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: (...args: unknown[]) => toastError(...args), info: vi.fn() },
@@ -15,16 +15,16 @@ vi.mock("sonner", () => ({
 }));
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
-const { pinVersion, unpinPin, archiveSet } = vi.hoisted(() => ({
+const { pinVersion, unpinPin, archiveRecipe } = vi.hoisted(() => ({
   pinVersion: vi.fn(),
   unpinPin: vi.fn(),
-  archiveSet: vi.fn(),
+  archiveRecipe: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   pinVersion,
   unpinPin,
-  archiveSet,
+  archiveRecipe,
 }));
 
 beforeEach(() => {
@@ -34,7 +34,7 @@ beforeEach(() => {
     pin: pinDetail({ unpinned_at: "2026-10-10T10:00:00Z" }),
     board_id: 7,
   });
-  archiveSet.mockResolvedValue(setRow({ id: 3, archived: true }));
+  archiveRecipe.mockResolvedValue(recipeRow({ id: 3, archived: true }));
 });
 
 function spyOn(queryClient: QueryClient): unknown[][] {
@@ -48,12 +48,12 @@ function spyOn(queryClient: QueryClient): unknown[][] {
 }
 
 /**
- * Every prefix a pin's writes touch: the Set (its pins, its versions' pinned marker, the list),
+ * Every prefix a pin's writes touch: the Recipe (its pins, its versions' pinned marker, the list),
  * the board (a row appears or goes) and what the board's writes reach, which includes the
  * profile mirror and so every profile-versions query. No shot is refiled by any of the three.
  */
 const TOUCHED = [
-  queryKeys.sets.all,
+  queryKeys.recipes.all,
   queryKeys.board.all,
   queryKeys.drafts.all,
   queryKeys.profiles.all,
@@ -71,7 +71,7 @@ describe("pinning, unpinning and archiving refresh everything they write", () =>
     const { result, queryClient } = renderHookWithQueryClient(() => usePinVersion());
     const keys = spyOn(queryClient);
 
-    await result.current.mutateAsync({ setId: 3, versionId: 22 });
+    await result.current.mutateAsync({ recipeId: 3, versionId: 22 });
 
     await expectTouched(keys);
     expect(pinVersion).toHaveBeenCalledWith(3, 22, undefined);
@@ -82,7 +82,7 @@ describe("pinning, unpinning and archiving refresh everything they write", () =>
     const { result, queryClient } = renderHookWithQueryClient(() => usePinVersion());
     const keys = spyOn(queryClient);
 
-    await expect(result.current.mutateAsync({ setId: 3, versionId: 22 })).rejects.toThrow();
+    await expect(result.current.mutateAsync({ recipeId: 3, versionId: 22 })).rejects.toThrow();
 
     await expectTouched(keys);
   });
@@ -97,8 +97,8 @@ describe("pinning, unpinning and archiving refresh everything they write", () =>
     expect(unpinPin).toHaveBeenCalledWith(5);
   });
 
-  it("archiving a Set, which unpins its pins in the same write", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useArchiveSet());
+  it("archiving a Recipe, which unpins its pins in the same write", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useArchiveRecipe());
     const keys = spyOn(queryClient);
 
     await result.current.mutateAsync(3);
@@ -112,12 +112,12 @@ describe("a request that got no answer names no outcome", () => {
   const noAnswer = (where: string) =>
     `No answer came back from the app. Check ${where} before trying again.`;
 
-  it("pinning toasts nothing (the dialog says it once) and still refreshes the Set and the board", async () => {
+  it("pinning toasts nothing (the dialog says it once) and still refreshes the Recipe and the board", async () => {
     pinVersion.mockRejectedValue(offline());
     const { result, queryClient } = renderHookWithQueryClient(() => usePinVersion());
     const keys = spyOn(queryClient);
 
-    await expect(result.current.mutateAsync({ setId: 3, versionId: 22 })).rejects.toThrow();
+    await expect(result.current.mutateAsync({ recipeId: 3, versionId: 22 })).rejects.toThrow();
 
     // The pin may exist although its answer was lost: the card must be able to show it.
     await expectTouched(keys);
@@ -128,7 +128,7 @@ describe("a request that got no answer names no outcome", () => {
     pinVersion.mockRejectedValue(new ApiClientError("Already pinned.", { status: 409 }));
     const { result } = renderHookWithQueryClient(() => usePinVersion());
 
-    await expect(result.current.mutateAsync({ setId: 3, versionId: 22 })).rejects.toThrow();
+    await expect(result.current.mutateAsync({ recipeId: 3, versionId: 22 })).rejects.toThrow();
 
     expect(toastError).not.toHaveBeenCalled();
   });
@@ -145,8 +145,8 @@ describe("a request that got no answer names no outcome", () => {
   });
 
   it("archiving toasts that no answer came, not the browser's words, and refreshes", async () => {
-    archiveSet.mockRejectedValue(offline());
-    const { result, queryClient } = renderHookWithQueryClient(() => useArchiveSet());
+    archiveRecipe.mockRejectedValue(offline());
+    const { result, queryClient } = renderHookWithQueryClient(() => useArchiveRecipe());
     const keys = spyOn(queryClient);
 
     await expect(result.current.mutateAsync(3)).rejects.toThrow();

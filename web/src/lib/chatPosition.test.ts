@@ -19,8 +19,8 @@ describe("Where the person was on the Chat page", () => {
   it("is nowhere until something is saved, and reads back what was", () => {
     const storage = memory();
     expect(loadChatPosition(storage)).toEqual({ thread: null, folder: null });
-    saveChatPosition({ thread: 7, folder: "set-3" }, storage);
-    expect(loadChatPosition(storage)).toEqual({ thread: 7, folder: "set-3" });
+    saveChatPosition({ thread: 7, folder: "recipe-3" }, storage);
+    expect(loadChatPosition(storage)).toEqual({ thread: 7, folder: "recipe-3" });
     saveChatPosition({ thread: null, folder: "general" }, storage);
     expect(loadChatPosition(storage)).toEqual({ thread: null, folder: "general" });
   });
@@ -31,7 +31,7 @@ describe("Where the person was on the Chat page", () => {
       ["not json", { thread: null, folder: null }],
       ["42", { thread: null, folder: null }],
       ["null", { thread: null, folder: null }],
-      ['{"thread":"7","folder":"set-3"}', { thread: null, folder: "set-3" }],
+      ['{"thread":"7","folder":"recipe-3"}', { thread: null, folder: "recipe-3" }],
       ['{"thread":1.5,"folder":3}', { thread: null, folder: null }],
       ['{"thread":-2,"folder":""}', { thread: null, folder: null }],
       ['{"thread":9}', { thread: 9, folder: null }],
@@ -39,6 +39,17 @@ describe("Where the person was on the Chat page", () => {
       storage.setItem(CHAT_POSITION_KEY, raw);
       expect(loadChatPosition(storage), raw).toEqual(wanted);
     }
+  });
+
+  it("reads a badge remembered as set-<id> as recipe-<id>", () => {
+    const storage = memory();
+    storage.setItem(CHAT_POSITION_KEY, '{"thread":7,"folder":"set-3"}');
+    expect(loadChatPosition(storage)).toEqual({ thread: 7, folder: "recipe-3" });
+    // Only that form: the General badge and an unrelated name are left as they are.
+    storage.setItem(CHAT_POSITION_KEY, '{"thread":null,"folder":"general"}');
+    expect(loadChatPosition(storage).folder).toBe("general");
+    storage.setItem(CHAT_POSITION_KEY, '{"thread":null,"folder":"set-x"}');
+    expect(loadChatPosition(storage).folder).toBe("set-x");
   });
 
   it("opens as before when storage throws or is missing", () => {

@@ -111,7 +111,7 @@ export function HardwarePage() {
                   <Badge variant="outline">steps in {grinder.step_unit}</Badge>
                   {grinder.recipe_count > 0 ? (
                     <Badge variant="ghost" className="text-muted-foreground">
-                      {grinder.recipe_count} Set{grinder.recipe_count === 1 ? "" : "s"}
+                      {grinder.recipe_count} Recipe{grinder.recipe_count === 1 ? "" : "s"}
                     </Badge>
                   ) : null}
                 </div>
