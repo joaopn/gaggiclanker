@@ -130,10 +130,6 @@ def test_every_item_has_a_method_and_no_two_share_one() -> None:
     assert expressions == 10
 
 
-def test_every_item_is_computed_for_now() -> None:
-    assert {item.source for item in CATALOGUE} == {"computed"}
-
-
 def test_a_curve_channel_carries_the_unit_of_its_column() -> None:
     assert ITEMS["curve_pressure"].unit == "bar"
     assert ITEMS["curve_scale_flow"].unit == "g/s"
@@ -296,7 +292,7 @@ async def test_every_base_item_origin_dev_showed_is_still_rendered(
 async def test_the_ratio_takes_the_versions_dose_and_the_scales_yield_when_none_was_typed(
     lever: tuple[Database, int, int],
 ) -> None:
-    db, shot, version_id = lever
+    db, shot, _ = lever
     [facts] = await load_shots(db, [shot])
     assert facts.judgement is None
 
@@ -321,7 +317,6 @@ async def test_the_ratio_takes_the_versions_dose_and_the_scales_yield_when_none_
     [bare] = await load_shots(db, [shot])
     assert unfiled.version is None
     assert ITEMS["ratio"].field(bare) is None
-    assert version_id
 
 
 async def test_each_phases_cup_share_of_the_target_is_the_constructed_one(

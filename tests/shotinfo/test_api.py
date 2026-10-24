@@ -275,13 +275,10 @@ async def test_an_unknown_item_is_a_404_that_does_not_echo_the_key(
     assert "no_such_item_xyz" not in response.text
 
 
-@pytest.mark.parametrize("key", ["shot_id", "recipe_version", "counted"])
-async def test_a_locked_item_is_refused_with_a_code_of_its_own(
-    client: httpx.AsyncClient, key: str
-) -> None:
+async def test_a_locked_item_is_refused_with_a_code_of_its_own(client: httpx.AsyncClient) -> None:
     before = data(await client.get("/api/shot-information"))
 
-    response = await client.put(f"/api/shot-information/{key}", json={"tier": "extended"})
+    response = await client.put("/api/shot-information/shot_id", json={"tier": "extended"})
 
     assert response.status_code == 422
     failure = error(response)

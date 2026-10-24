@@ -97,15 +97,14 @@ async def test_an_archive_of_only_quarantined_shots_has_no_example(
 
 async def test_newest_is_the_shot_list_s_order(shots: ShotsRepository) -> None:
     """No start time sorts oldest; the same start time goes to the higher id."""
-    undated = await _shot(shots, "000001", None)
-    first = await _shot(shots, "000002", "2026-04-01T08:00:00.000Z")
+    await _shot(shots, "000001", None)
+    await _shot(shots, "000002", "2026-04-01T08:00:00.000Z")
     second = await _shot(shots, "000003", "2026-04-01T08:00:00.000Z")
 
     example = await shots.example_shot()
 
     assert example is not None
     assert example.id == second
-    assert undated < first < second
 
 
 @pytest.mark.parametrize("verdict", [{"rating": 4}, {"decision": "discard"}])

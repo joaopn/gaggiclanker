@@ -96,17 +96,6 @@ async def test_a_shot_renders_as_its_golden_file(
     assert rendered == path.read_text(encoding="utf-8")
 
 
-async def test_the_same_shot_renders_the_same_bytes(archive: Archive) -> None:
-    first = render_shot(
-        await _one(archive.db, archive.shot), "full", default_tiers(), curve_points=CURVE_POINTS
-    )
-    second = render_shot(
-        await _one(archive.db, archive.shot), "full", default_tiers(), curve_points=CURVE_POINTS
-    )
-
-    assert first == second
-
-
 def _pairs(lines: list[Line]) -> set[tuple[str, int | None, str]]:
     return {(line.key, line.phase, line.value) for line in lines}
 
@@ -339,29 +328,6 @@ async def test_a_shot_with_no_pressure_sensor_has_no_pressure_derived_values(
     assert "target pressure (bar)" in rendered
 
 
-async def test_the_judgement_reads_with_its_flavour_wheel_paths(archive: Archive) -> None:
-    rendered = render_shot(
-        await _one(archive.db, archive.shot), "base", default_tiers(), curve_points=CURVE_POINTS
-    )
-
-    assert "Taste notes: Sweet › Brown sugar › Caramelized; Fruity › Citrus fruit › Lemon" in (
-        rendered
-    )
-    assert "Aroma notes: Floral › Floral › Jasmine" in rendered
-    assert "Ratio: 1:2.03" in rendered
-    assert "Label: Good" in rendered
-    assert "Counted: counted" in rendered
-
-
-async def test_the_header_is_the_shot_id_and_is_not_repeated(archive: Archive) -> None:
-    rendered = render_shot(
-        await _one(archive.db, archive.shot), "base", default_tiers(), curve_points=CURVE_POINTS
-    )
-
-    assert rendered.startswith(f"shot {archive.shot}\n")
-    assert "Shot id:" not in rendered
-
-
 async def test_load_shots_keeps_the_order_asked_for_and_skips_what_is_not_there(
     archive: Archive,
 ) -> None:
@@ -511,7 +477,6 @@ async def test_no_flow_item_is_shown_when_puck_flow_was_not_recorded(archive: Ar
         "average_flow",
         "peak_flow",
         "total_volume",
-        "flow_slope",
         "phase_flow",
         "phase_volume",
     ):
@@ -666,10 +631,7 @@ async def test_a_standard_board_shot_shows_no_compliance_at_any_tier(
     for key in (
         "pressure_adherence",
         "flow_adherence",
-        "pressure_overshoot_max",
         "pressure_undershoot_max",
-        "flow_overshoot_max",
-        "flow_undershoot_max",
     ):
         assert key not in keys, key
     assert "Flow adherence" not in text

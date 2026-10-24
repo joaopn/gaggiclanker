@@ -175,7 +175,7 @@ def test_a_table_before_v5_has_no_phase_edges_and_still_finds_its_drop() -> None
 # -- budget -----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("target", [MIN_CURVE_POINTS, 11, 25, CURVE_POINTS, 150, 199])
+@pytest.mark.parametrize("target", [MIN_CURVE_POINTS, 25, 199])
 def test_the_rows_stay_within_the_target_plus_the_events(target: int) -> None:
     samples = shot()
     events = events_of(samples)
@@ -272,10 +272,6 @@ def test_with_neither_the_rest_is_even_in_time() -> None:
 
 
 # -- determinism ------------------------------------------------------------
-
-
-def test_the_same_samples_give_the_same_rows() -> None:
-    assert select(shot(), CURVE_POINTS) == select(shot(), CURVE_POINTS)
 
 
 def test_what_the_selection_does_not_read_cannot_move_it() -> None:

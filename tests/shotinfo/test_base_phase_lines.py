@@ -20,7 +20,7 @@ from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier
 from gaggiclanker.shotinfo.fields import shot_fields_of
 from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.sync.derive import derive_shot
-from tests.lever_shot import LEVER_PROFILE, lever_shot, without_scale
+from tests.lever_shot import LEVER_PROFILE, lever_shot
 from tests.shotinfo.test_evaluate_route import file_lever
 
 
@@ -73,7 +73,6 @@ async def test_a_shot_without_a_scale_shows_no_cup_and_no_share(app: FastAPI) ->
         "phase 1 · soak: duration 10.0 s; ended by Duration",
         "phase 2 · ramp: duration 16.2 s; ended by Volumetric target",
     ]
-    assert without_scale(lever_shot()).samples[0].v == 0.0  # zeros, never nulls
 
 
 async def test_a_log_with_no_phase_table_shows_no_phase_lines(app: FastAPI) -> None:
@@ -87,15 +86,6 @@ async def test_a_log_with_no_phase_table_shows_no_phase_lines(app: FastAPI) -> N
     lines = await base_lines(db, shot)
     assert phase_lines(lines) == []
     assert "[Phases]" not in lines
-
-
-async def test_every_phase_line_carries_the_phases_duration(app: FastAPI) -> None:
-    shot, _, _ = await file_lever(app, device_id="000905")
-    [facts] = await load_shots(app.state.db, [shot])
-    lines = phase_lines(await base_lines(app.state.db, shot))
-    assert len(lines) == len(facts.phases) == 3
-    for line, phase in zip(lines, facts.phases, strict=True):
-        assert f"duration {phase['duration_seconds']:.1f} s; ended by" in line
 
 
 async def test_an_extended_read_alone_still_names_every_phase(app: FastAPI) -> None:

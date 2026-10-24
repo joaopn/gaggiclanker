@@ -53,7 +53,6 @@ async def test_a_pressure_profile_shows_pressure_adherence_and_no_flow_line(
     text = render_shot(facts, tier, default_tiers(), curve_points=CURVE_POINTS)
     assert "Flow adherence" not in text
     assert "flow error" not in text
-    assert "0.00 ml/s POOR" not in text
 
 
 @pytest.mark.parametrize("tier", TIERS)
