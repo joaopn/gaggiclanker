@@ -292,28 +292,6 @@ def test_the_walk_finds_the_board_service_when_a_path_exists(
     assert machine_paths(Holder(registry), label="registry") == []
 
 
-async def test_nothing_the_chat_hands_a_tool_reaches_the_machine(
-    connected: tuple[FastAPI, httpx.AsyncClient, Fixture],
-) -> None:
-    app, _, fixture = connected
-
-    for label, scope in (
-        # Both kinds, because they are two contexts with two tool surfaces and
-        # "nothing reaches the machine" is a property of what is in the object,
-        # not of what may be called on it. Excluding either would leave the one
-        # that was excluded untested for exactly the mistake this file exists
-        # to catch.
-        ("chat/set", ToolScope.for_thread(fixture.recipe_id)),
-        ("chat/general", ToolScope()),
-    ):
-        ctx = app.state.chat.tool_context(scope=scope, run_id=None)
-
-        assert isinstance(ctx.drafts, DraftProposals)
-        assert machine_paths(ctx, label=label) == []
-    # The runner itself, too: it is what builds a context per run.
-    assert machine_paths(app.state.chat, label="runner") == []
-
-
 @pytest.fixture
 async def machine_busy(env: EnvSettings, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[FastAPI]:
     """The app with a pull actually in flight, and held there.
@@ -375,6 +353,7 @@ async def test_nothing_reaches_the_machine_while_a_pull_is_running(
         ("chat/set", ToolScope.for_thread(1)),
     ):
         ctx = app.state.chat.tool_context(scope=scope, run_id=None)
+        assert isinstance(ctx.drafts, DraftProposals)
         assert machine_paths(ctx, label=label) == []
     assert machine_paths(app.state.chat, label="runner") == []
     # The stdio server's contexts over the same live archive, both kinds, for
@@ -437,24 +416,6 @@ async def test_the_walk_finds_the_machine_through_the_connections_own_registry(
 
     paths = machine_paths(ctx, label="chat")
     assert any(path.endswith("SyncEngine") for path in paths), paths
-
-
-async def test_nothing_the_stdio_server_hands_a_tool_reaches_the_machine(
-    tmp_path: Path,
-) -> None:
-    db = Database(tmp_path / "gaggiclanker.db")
-    await db.connect()
-    try:
-        await create_schema(db)
-        settings = SettingsService(SettingsRepository(db))
-
-        for label, scope in (("general", ToolScope()), ("recipe", ToolScope.for_thread(1))):
-            ctx = stdio_tool_context(db, settings, scope=scope)
-
-            assert isinstance(ctx.drafts, DraftProposals)
-            assert machine_paths(ctx, label=f"stdio/{label}") == []
-    finally:
-        await db.close()
 
 
 #: Module prefixes that put a machine within reach of whatever loaded them: the
