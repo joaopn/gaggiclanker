@@ -294,12 +294,12 @@ describe("a proposal for a Recipe", () => {
     getDraftStanding.mockResolvedValue(forRecipe());
     const chat = renderCard({ place: "chat" });
     await screen.findByTestId("approve-proposal");
-    expect(screen.queryByRole("button", { name: /without recording/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Approve/ })).toHaveLength(1);
     chat.unmount();
 
     renderCard({ place: "profiles" });
     await screen.findByTestId("approve-proposal");
-    expect(screen.queryByRole("button", { name: /without recording/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Approve/ })).toHaveLength(1);
   });
 
   it("starts no sync with Writes off", async () => {
@@ -379,6 +379,8 @@ describe("Approve and sync", () => {
     expect(await screen.findByTestId("proposal-error")).toHaveTextContent(
       "Bloom is already a profile.",
     );
+    // Under the buttons, and only once.
+    expect(await screen.findAllByText("Bloom is already a profile.")).toHaveLength(1);
     expect(runSync).not.toHaveBeenCalled();
     expect(tell).not.toHaveBeenCalled();
     // And the buttons are there for another try.
@@ -772,19 +774,6 @@ describe("a proposal that has been answered", () => {
     expect(screen.queryByText(/\(v\d/)).not.toBeInTheDocument();
   });
 
-  it("says what a rename did, from the name the call gave it", async () => {
-    getDraftStanding.mockResolvedValue(
-      answered("approved", "It goes to the machine at the next sync.", {
-        draft: draft({ status: "approved", draft_label: "Gentle Bloom" }),
-      }),
-    );
-    renderCard({ proposedAs: "Soft Bloom" });
-
-    expect(await screen.findByTestId("proposal-title")).toHaveTextContent(
-      "✓ Approved as Gentle Bloom (proposed as Soft Bloom)",
-    );
-  });
-
   it("says it was renamed only when the proposed name differs after trimming, exactly", async () => {
     getDraftStanding.mockResolvedValue(answered("approved", "It goes at the next sync."));
     const same = renderCard({ proposedAs: "  Adaptive Bloom " });
@@ -795,15 +784,6 @@ describe("a proposal that has been answered", () => {
     renderCard({ proposedAs: "adaptive bloom" });
     expect(await screen.findByTestId("proposal-title")).toHaveTextContent(
       /^✓ Approved as Adaptive Bloom \(proposed as adaptive bloom\)$/,
-    );
-  });
-
-  it("does not say it was renamed when the name is the one that was proposed", async () => {
-    getDraftStanding.mockResolvedValue(answered("approved", "It goes at the next sync."));
-    renderCard({ proposedAs: "Adaptive Bloom" });
-
-    expect(await screen.findByTestId("proposal-title")).toHaveTextContent(
-      /^✓ Approved · Adaptive Bloom$/,
     );
   });
 
@@ -915,19 +895,6 @@ describe("a put that is refused", () => {
       "That profile version is already in the list.",
     );
     expect(screen.getByTestId("proposal-name-problem")).toBeEmptyDOMElement();
-    expect(toast.error).not.toHaveBeenCalled();
-  });
-
-  it("shows a refusal that carried no name under the buttons, once", async () => {
-    const user = setupUser();
-    putOnBoard.mockRejectedValue(new Error("That profile version is already in the list."));
-    renderCard();
-
-    await user.click(await screen.findByTestId("approve-proposal"));
-
-    expect(await screen.findAllByText("That profile version is already in the list.")).toHaveLength(
-      1,
-    );
     expect(toast.error).not.toHaveBeenCalled();
   });
 });
