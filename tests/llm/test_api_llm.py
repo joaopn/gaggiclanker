@@ -55,11 +55,14 @@ async def test_validate_uses_the_configured_provider(
 
 
 async def test_validate_accepts_a_named_provider(app: FastAPI, client: httpx.AsyncClient) -> None:
-    use_fake(app, FakeProvider(credentials=CredentialCheck(provider="anthropic", ok=False)))
+    seen = capture_configs(
+        app, FakeProvider(credentials=CredentialCheck(provider="anthropic", ok=False))
+    )
 
     data = await body(await client.post("/api/llm/validate", json={"provider": "anthropic"}))
 
     assert data["ok"] is False
+    assert seen[-1][1] == "anthropic"
 
 
 def capture_configs(app: FastAPI, provider: FakeProvider) -> list[tuple[LlmConfig, str]]:

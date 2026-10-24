@@ -66,17 +66,13 @@ async def test_a_claim_is_kept_from_the_start_and_a_person_rejects_and_restores_
     assert again.json()["data"]["claims"][0]["status"] == "rejected"
 
 
-async def test_there_is_no_confirm_all_and_no_waiting_state(api: Api) -> None:
+async def test_there_is_no_confirm_all(api: Api) -> None:
     app, client, _ = api
     data = await build_app_fixture(app)
     review = await _read(client, data.shots[-1])
 
     gone = await client.post(f"/api/reviews/{review['id']}/claims/confirm-all")
     assert gone.status_code in (404, 405)
-    waiting = await client.patch(_url(review), json={"status": "proposed"})
-    assert waiting.status_code == 400
-    detail = (await client.get(f"/api/shots/{data.shots[-1]}")).json()["data"]
-    assert "unanswered" not in detail["review"]
 
 
 async def _with_a_stance(

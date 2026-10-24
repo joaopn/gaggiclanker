@@ -135,23 +135,13 @@ async def test_a_failed_run_writes_one_row_and_no_claim(
     row = await reviewer.run_review(fixture.shots[-1])
 
     assert row.status == "failed"
-    assert row.claims == []
-    assert await _dump(fixture.db) == before
-    assert await fixture.db.fetch_value("SELECT COUNT(*) FROM review_claims") == 0
-
-
-async def test_a_provider_failure_is_a_stored_row(
-    reviewer: ReviewService, fixture: Fixture, provider: FakeProvider
-) -> None:
-    provider.script = [api_error(401, "bad key")]
-
-    row = await reviewer.run_review(fixture.shots[-1])
-
-    assert row.status == "failed"
     assert row.error is not None
     assert row.error.startswith("auth:")
     assert row.summary is None
     assert row.finished_at
+    assert row.claims == []
+    assert await _dump(fixture.db) == before
+    assert await fixture.db.fetch_value("SELECT COUNT(*) FROM review_claims") == 0
 
 
 async def test_an_unparseable_reply_is_a_failed_row(

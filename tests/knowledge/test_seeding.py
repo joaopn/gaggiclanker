@@ -122,10 +122,11 @@ async def test_the_fts_index_follows_a_rechunk(small: KnowledgeService) -> None:
     await small.set_doc_markdown(
         "CHANNELING", "# Channeling\n\n## Gone\n\n" + ("unrelated " * 300).strip() + "\n"
     )
-    hits = await small.search_chunks("resistance", k=5)
-    assert all(
-        "unrelated" not in hit.chunk.body or hit.chunk.doc_slug != "SOUR_SHOTS" for hit in hits
-    )
+    assert [
+        hit
+        for hit in await small.search_chunks("unrelated", k=5)
+        if hit.chunk.doc_slug == "CHANNELING"
+    ]
     assert not [
         hit for hit in await small.search_chunks("puck", k=5) if hit.chunk.doc_slug == "CHANNELING"
     ]

@@ -53,6 +53,8 @@ async def test_editing_a_doc_rechunks_it_and_resetting_puts_it_back(
     client: httpx.AsyncClient,
 ) -> None:
     before = await _data(await client.get("/api/knowledge/docs/BASKETS"))
+    first = await _data(await client.get("/api/knowledge/search", params={"q": "headroom"}))
+    assert any(hit["chunk"]["doc_slug"] == "BASKETS" for hit in first["items"])
 
     edited = await _data(
         await client.put(
