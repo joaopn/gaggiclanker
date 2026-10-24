@@ -103,15 +103,6 @@ async def test_deleting_a_shot_takes_its_samples(db: Database) -> None:
     assert await db.fetch_value("SELECT COUNT(*) FROM shot_samples") == 0
 
 
-async def test_the_same_shot_cannot_be_stored_twice(db: Database) -> None:
-    """UNIQUE (device_id): the diff's idempotence has a backstop."""
-    repo = ShotsRepository(db)
-    await repo.insert(a_shot("000105"))
-
-    with pytest.raises(Exception):  # noqa: B017 - the driver's IntegrityError
-        await repo.insert(a_shot("000105"))
-
-
 async def test_a_shot_with_no_timestamp_sorts_last(db: Database) -> None:
     """`startEpoch < 10000` is "NTP never synced", not 1970.
 

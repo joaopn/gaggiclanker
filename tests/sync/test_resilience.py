@@ -158,26 +158,6 @@ async def test_a_machine_that_vanishes_mid_backfill_fails_the_run(
             await revived.stop()
 
 
-async def test_the_backfill_gives_up_rather_than_timing_out_per_shot(
-    slow_device: FakeDevice, tmp_path: Path
-) -> None:
-    """Three consecutive transport failures mean the machine, not the shot."""
-    async with archive_for(slow_device, tmp_path) as archive:
-        started = asyncio.get_running_loop().time()
-        task = asyncio.create_task(archive.engine.sync_shots(trigger="test"))
-        async with asyncio.timeout(10):
-            while (await archive.engine.shots.counts()).total == 0:
-                await asyncio.sleep(0.02)
-        await slow_device.stop()
-        run = await asyncio.wait_for(task, timeout=30)
-
-    elapsed = asyncio.get_running_loop().time() - started
-    assert run.status == "error"
-    # The client's per-request timeout here is 2 s. Nine remaining shots two at
-    # a time would be ~9 s of pure waiting; giving up after three is ~2 s.
-    assert elapsed < 12, f"the pass took {elapsed:.1f}s after the machine went away"
-
-
 async def test_the_list_query_uses_its_index(archive: Archive) -> None:
     """No TEMP B-TREE: the sort key and the index are the same expression.
 

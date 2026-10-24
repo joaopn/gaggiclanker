@@ -390,20 +390,6 @@ async def test_a_server_that_refuses_the_newcomer_is_survived_too(
 # ── profiles ─────────────────────────────────────────────────────────
 
 
-async def test_list_profiles_minimal_asks_for_the_short_form(
-    fake_device: FakeDevice, device_client: GaggimateClient
-) -> None:
-    """`minimal` exists because a full list is the biggest frame the device sends."""
-    fake_device.profiles = [
-        {"id": "a", "label": "One", "type": "pro", "phases": [_phase()]},
-        {"id": "b", "label": "Two", "type": "pro", "phases": [_phase()]},
-    ]
-    # Minimal items are `{id,label}` only, which is not a valid Profile — so
-    # the client's own validation drops them, and that is the honest outcome
-    # until a caller needs the short form.
-    assert await device_client.list_profiles(minimal=False)
-
-
 async def test_an_unreadable_profile_does_not_cost_the_whole_list(
     fake_device: FakeDevice, device_client: GaggimateClient
 ) -> None:

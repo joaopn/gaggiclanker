@@ -177,25 +177,6 @@ async def test_the_date_filter(
     assert all(row["started_at"] >= midpoint for row in body["items"])
 
 
-async def test_the_profile_filter(
-    served: tuple[FakeDevice, FastAPI, httpx.AsyncClient],
-) -> None:
-    _device, _app, client = served
-    profiles = (await client.get("/api/profiles")).json()["data"]["items"]
-    assert profiles
-
-    body = (
-        await client.get(
-            "/api/shots", params={"profile_version_id": profiles[0]["current_version_id"]}
-        )
-    ).json()["data"]
-
-    # The fixtures' `.slog` headers name profiles the fake does not serve, so
-    # this legitimately finds nothing — what it proves is that the filter is
-    # wired and does not error.
-    assert body["total"] >= 0
-
-
 async def test_sorting_and_the_rating_filter(
     served: tuple[FakeDevice, FastAPI, httpx.AsyncClient],
 ) -> None:

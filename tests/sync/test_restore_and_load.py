@@ -20,7 +20,6 @@ import time
 from pathlib import Path
 
 import httpx
-import pytest
 
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app, seed_settings
@@ -116,9 +115,8 @@ async def test_a_backup_restores_into_a_fresh_data_dir(tmp_path: Path) -> None:
     assert raw.content[:4] == b"SHOT"
 
 
-@pytest.mark.parametrize("shots", [LOAD_SHOT_COUNT])
-async def test_the_api_stays_responsive_during_a_backfill(tmp_path: Path, shots: int) -> None:
-    device = build_archive_device(count=shots, header_only=False)
+async def test_the_api_stays_responsive_during_a_backfill(tmp_path: Path) -> None:
+    device = build_archive_device(count=LOAD_SHOT_COUNT, header_only=False)
     device.history_delay_s = FETCH_DELAY_S
     await device.start()
     data_dir = tmp_path / "data"
@@ -142,7 +140,7 @@ async def test_the_api_stays_responsive_during_a_backfill(tmp_path: Path, shots:
 
             status = (await client.get("/api/sync/status")).json()["data"]
             assert status["counts"]["total"] > 0, "the pull was under way, not finished"
-            assert status["counts"]["total"] < shots - 1, "…and not yet done"
+            assert status["counts"]["total"] < LOAD_SHOT_COUNT - 1, "…and not yet done"
 
         # …and the block exits with the pull still running, which exercises
         # the other half of "background work owned by the lifespan": shutdown

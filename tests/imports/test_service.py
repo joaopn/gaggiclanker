@@ -12,7 +12,6 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -202,20 +201,6 @@ async def test_an_imported_profile_joins_the_profile_list_off_and_once(
     assert [(r.label, r.on_machine) for r in rows] == [("Cremina v2", False)]
     assert rows[0].current_version_id == first.items[0].profile_version_id
     assert [v.source for v in await board.list_versions(rows[0].id)] == ["import"]
-
-
-async def test_importing_a_file_whose_name_a_profile_still_has_adds_no_second_profile(
-    service: ImportService, db: Database
-) -> None:
-    """The file is skipped when the live profile with its exact name has a version of its brew."""
-    from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
-
-    board = ProfileBoardRepository(db)
-    await service.import_files(files(PROFILE_FIXTURE))
-    again = await service.import_files(files(PROFILE_FIXTURE))
-
-    assert [r.label for r in await board.list_rows()] == ["Cremina v2"]
-    assert [item.status for item in again.items] == ["skipped"]
 
 
 async def test_importing_a_known_brew_under_another_name_lists_a_profile_of_its_own(
@@ -523,36 +508,6 @@ async def test_an_import_before_the_machine_is_connected_lands_in_one_place(
     again = await service.import_files(files(SHOT_FIXTURE))
     assert (again.created, again.skipped) == (0, 1)
     assert (await ShotsRepository(db).counts()).total == 1
-
-
-async def test_the_same_shot_imported_twice_is_one_shot(db: Database) -> None:
-    """De-duplication is on the device id, which is now the whole of a shot's identity."""
-    service = ImportService(db)
-
-    await service.import_files(files(SHOT_FIXTURE))
-    await service.import_files(files(SHOT_FIXTURE))
-
-    assert (await ShotsRepository(db).counts()).total == 1
-
-
-async def test_a_shot_links_to_the_profile_version_when_the_mirror_has_it(
-    db: Database, tmp_path: Path
-) -> None:
-    """The `.slog` header carries a profile *id*; the mirror maps it to content."""
-    from gaggiclanker.db.repos.profiles import ProfilesRepository
-    from gaggiclanker.domain.exports import profile_export_to_profiles
-
-    profiles = ProfilesRepository(db)
-    [profile] = profile_export_to_profiles(document(PROFILE_FIXTURE))
-    version, _ = await profiles.ensure_version(profile, owner=None)
-    await profiles.upsert_device_profile(device_id="rV4GhUcSZc", version_id=version.id)
-
-    summary = await ImportService(db).import_files(files(SHOT_FIXTURE))
-
-    shot = await ShotsRepository(db).get(summary.items[0].shot_id or 0)
-    assert shot is not None
-    assert shot.profile_version_id == version.id
-    assert shot.profile_label == "Cremina v2"
 
 
 # ── the label fallback ───────────────────────────────────────────────

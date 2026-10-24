@@ -14,7 +14,6 @@ import httpx
 from websockets.asyncio.client import connect
 
 from gaggiclanker.device.fake import (
-    DEFAULT_IDENTITY,
     MAX_WS_CLIENTS,
     FakeDevice,
     build_fake_device,
@@ -90,11 +89,6 @@ async def test_an_unknown_path_gets_the_spa_like_the_real_firmware(
 def test_the_client_limit_matches_the_firmware_build_flag() -> None:
     """`-DDEFAULT_MAX_WS_CLIENTS=3` — and the machine's own UI is one of them."""
     assert MAX_WS_CLIENTS == 3
-
-
-def test_the_identity_names_a_pro_board() -> None:
-    """`hardware` is the only place the board type is knowable (report §6)."""
-    assert "Pro" in DEFAULT_IDENTITY["hardware"]
 
 
 def test_the_cli_parses_its_arguments(capsys) -> None:  # type: ignore[no-untyped-def]

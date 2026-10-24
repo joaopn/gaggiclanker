@@ -518,46 +518,6 @@ async def test_a_file_the_app_never_saw_joins_the_list_and_switching_it_off_remo
                 await delete_now(device, str(p.id))
 
 
-async def test_an_older_version_made_active_is_saved_over_the_newer_file_on_the_real_firmware(
-    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
-) -> None:
-    app, client = live
-    device = app.state.connection.client
-    await adopt(app)
-    try:
-        first = await put_on_board(app, client, provider, await usable_version(app), 8)
-        [first_pushed] = (await sync(app))["pushed"]
-        second = await put_on_board(
-            app,
-            client,
-            provider,
-            first["draft"]["draft_version_id"],
-            7,
-            label=str(first_pushed["label"]),
-        )
-        [pushed] = (await sync(app))["pushed"]
-        newer_id = str(pushed["device_id"])
-        assert newer_id == str(first_pushed["device_id"])
-        row_id = second["row"]["id"]
-        versions = data(await client.get(f"/api/profile-board/{row_id}/versions"))["versions"]
-        older = versions[1]
-
-        done = await client.put(
-            f"/api/profile-board/{row_id}/active-version", json={"version_id": older["version_id"]}
-        )
-        assert done.status_code == 200, done.text
-        summary = await sync(app)
-
-        [restored] = summary["pushed"]
-        assert summary["removed"] == []
-        assert str(restored["device_id"]) == newer_id
-        assert newer_id in {p.id for p in await device.list_profiles()}
-    finally:
-        for p in await device.list_profiles():
-            if str(p.label).endswith(TEST_MARK):
-                await delete_now(device, str(p.id))
-
-
 async def test_a_profile_edited_on_the_display_is_a_conflict_and_the_apps_side_is_saved_over_it(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:

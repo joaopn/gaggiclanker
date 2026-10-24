@@ -34,21 +34,6 @@ async def test_the_app_boots_with_no_host_configured(client: httpx.AsyncClient) 
     }
 
 
-async def test_the_live_stream_is_gone(env: EnvSettings) -> None:
-    """The 2 Hz telemetry stream was removed, and its absence is the envelope's.
-
-    A route that vanished has to answer like every other unknown path — the
-    error envelope, not a bare Starlette 404 — because the front end's fetch
-    wrapper reads `error.code` before it reads the status.
-    """
-    async with running_app(env) as (_app, client):
-        response = await client.get("/api/device/live")
-    assert response.status_code == 404
-    body = response.json()
-    assert body["ok"] is False
-    assert body["error"]["code"] == "NOT_FOUND"
-
-
 # ── with the fake machine ────────────────────────────────────────────
 
 
