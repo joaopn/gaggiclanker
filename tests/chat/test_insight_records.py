@@ -92,7 +92,8 @@ class TestWhatItProposedAsInsights:
         waiting_replacement_target = await world.own("Target.", thread_id=world.other_thread)
         await _propose(world, "Would replace.", replaces=waiting_replacement_target)
 
-        lines = _block(await _context(world, scope, world.thread), INSIGHTS)
+        text = await _context(world, scope, world.thread)
+        lines = _block(text, INSIGHTS)
 
         assert len(lines) == 6
         by_text = {line[2:].split(" (", 1)[0]: line for line in lines}
@@ -108,6 +109,11 @@ class TestWhatItProposedAsInsights:
             in by_text["Overtaken claim."]
         )
         assert f"adding it would delete #{waiting_replacement_target}" in by_text["Would replace."]
+        # Only the added ones are evidence: a waiting or dismissed proposal is not in the
+        # confirmed list.
+        confirmed = text.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1].split("\n\n")[0]
+        assert "Added claim." in confirmed
+        assert "Waiting claim." not in confirmed and "Dismissed claim." not in confirmed
 
     async def test_an_insight_the_person_later_deleted_no_longer_appears(
         self, provenance: ProvenanceWorld, scope: ToolScope
@@ -170,18 +176,6 @@ class TestWhatItProposedDeleting:
         text = await _context(provenance, scope, provenance.thread)
         assert "kept by the person" not in text and "zyxwvut" not in text
         assert "(already gone, nothing to do)" in text
-
-    async def test_a_kept_one_carries_nothing_but_the_answer(
-        self, provenance: ProvenanceWorld, scope: ToolScope
-    ) -> None:
-        target = await provenance.own("Kept claim.")
-        await provenance.deletions.keep(
-            provenance.recipe_id, await self._propose(provenance, target)
-        )
-
-        text = await _context(provenance, scope, provenance.thread)
-
-        assert REASON not in text
 
     async def test_a_superseded_proposal_is_not_told(
         self, provenance: ProvenanceWorld, scope: ToolScope

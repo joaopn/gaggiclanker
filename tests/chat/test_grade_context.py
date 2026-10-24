@@ -202,41 +202,6 @@ class TestThisVersionsConversation:
         )
         assert not any(heading in text for heading in (*GRADE_HEADINGS, INSIGHT_HEADING))
 
-    async def test_the_insights_it_proposed_are_told_in_every_state(
-        self, experiment: Experiment
-    ) -> None:
-        insights = InsightsRepository(experiment.db)
-        ids = {}
-        for name in ("waiting", "added", "dismissed"):
-            ids[name] = await insights.insert(
-                InsightWrite(
-                    text=f"The {name} lesson.",
-                    source="chat",
-                    recipe_id=experiment.recipe_id,
-                    recipe_version_id=experiment.v5,
-                    thread_id=await _thread(experiment, experiment.v5),
-                )
-            )
-        await insights.set_confirmed(ids["added"], True)
-        await insights.dismiss(ids["dismissed"])
-
-        text = await opening_context(
-            experiment.db,
-            ToolScope.for_thread(experiment.recipe_id, experiment.v5),
-            thread_id=await _thread(experiment, experiment.v5),
-        )
-
-        block = text.split(INSIGHT_HEADING + "\n")[1].split("\n\n")[0]
-        assert block.splitlines() == [
-            "- The waiting lesson. (waiting: the person has not answered, so it is not "
-            "evidence yet)",
-            "- The added lesson. (added by the person — it is in the confirmed list above)",
-            "- The dismissed lesson. (dismissed by the person — do not offer it again)",
-        ]
-        confirmed = text.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1].split("\n\n")[0]
-        assert "The added lesson." in confirmed
-        assert "waiting lesson" not in confirmed and "dismissed lesson" not in confirmed
-
 
 class TestProposedInThisConversation:
     """ "You proposed" is about the conversation that wrote it, not the version or the source."""
