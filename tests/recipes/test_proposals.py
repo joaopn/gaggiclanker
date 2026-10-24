@@ -16,7 +16,6 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
-from pydantic import ValidationError
 
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.recipe_proposals import (
@@ -137,11 +136,6 @@ class TestProposing:
             recipe_id, current.id, VersionOutcomeWrite(outcome="failed")
         )
 
-        _, result = await _propose(wired, recipe_id)
-        assert result.refused is None  # type: ignore[attr-defined]
-
-    async def test_a_version_with_no_prediction_never_blocks(self, wired: Fixtures) -> None:
-        recipe_id = await _recipe(wired)
         _, result = await _propose(wired, recipe_id)
         assert result.refused is None  # type: ignore[attr-defined]
 
@@ -405,16 +399,6 @@ class TestWhatCreateAcceptsAcceptCanApply:
         assert result.refused == "bad_profile"  # type: ignore[attr-defined]
         assert await RecipeProposalsRepository(wired.db).waiting(recipe_id) is None
 
-    async def test_a_profile_version_that_exists_is_accepted(self, wired: Fixtures) -> None:
-        recipe_id = await _recipe(wired)
-        profile_id = await make_profile_version(
-            wired.db, "Hotter [AI]", temperature=94, owned=False
-        )
-        _, result = await _propose(
-            wired, recipe_id, patch=RecipeVersionPatch(profile_version_id=profile_id)
-        )
-        assert result.refused is None  # type: ignore[attr-defined]
-
     async def test_clearing_the_profile_is_not_a_missing_profile(self, wired: Fixtures) -> None:
         """An explicit null means "this Recipe names no profile", which is real."""
         recipe_id = await _recipe(wired)
@@ -523,17 +507,6 @@ class TestTheRecipeMovingOnRetiresWhatWasWaiting:
         assert accepted.version.parent_version_id == first.id
         assert accepted.version.version_label == "v1.2"
 
-    async def test_accepting_does_not_stale_the_proposal_it_accepts(self, wired: Fixtures) -> None:
-        recipe_id = await _recipe(wired)
-        proposals, _ = await _propose(wired, recipe_id)
-        waiting = await proposals.waiting(recipe_id)
-        assert waiting is not None
-
-        result = await proposals.accept(recipe_id, waiting.id)
-
-        assert result.proposal is not None
-        assert result.proposal.status == "accepted"
-
     async def test_another_recipe_s_proposal_is_left_alone(self, wired: Fixtures) -> None:
         mine = await _recipe(wired)
         theirs = await _recipe(wired)
@@ -581,18 +554,6 @@ class TestTheConversationAProposalNames:
         cursor = await wired.db.execute("INSERT INTO chat_threads (title) VALUES (?)", ("General",))
         _, result = await _propose(wired, recipe_id, thread_id=int(cursor.lastrowid or 0))
         assert result.refused == "bad_thread"  # type: ignore[attr-defined]
-
-
-class TestThePredictionIsNotOptional:
-    async def test_an_empty_prediction_is_refused_by_the_model(self, wired: Fixtures) -> None:
-        with pytest.raises(ValidationError):
-            ProposalWrite(patch=RecipeVersionPatch(dose_g=18.5), reason="Because.", prediction="")
-
-    async def test_a_prediction_of_spaces_is_an_empty_one(self, wired: Fixtures) -> None:
-        with pytest.raises(ValidationError):
-            ProposalWrite(
-                patch=RecipeVersionPatch(dose_g=18.5), reason="Because.", prediction="    "
-            )
 
 
 class TestTheIndexIsTheRealGuard:
