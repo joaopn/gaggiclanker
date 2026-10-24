@@ -125,7 +125,7 @@ async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_sample
         ({"brew_flow": {"min": 0}}, ()),
         ({"brew_cup_flow": {"min": 0}}, ()),
         ({"balance": "balanced"}, (3,)),
-        ({"label": "improve"}, (5,)),
+        ({"label": "bad"}, (0, 5)),
         ({"resistance_level": {"min": 2.2}}, (0, 1, 2, 3, 4)),
         ({"resistance_level": {"max": 2.2}}, (5,)),
         ({"resistance_level": {"min": 3}}, ()),
@@ -307,7 +307,7 @@ async def test_a_general_conversation_is_not_offered_the_search(ctx: ToolContext
 #: Every search argument that reads an item, with a value that uses it, and the
 #: item it reads. `version` reads the Recipe version, which is locked to base.
 _FILTERS: tuple[tuple[str, dict[str, Any], str], ...] = (
-    ("label", {"label": "keep"}, "label"),
+    ("label", {"label": "good"}, "label"),
     ("balance", {"balance": "sour"}, "balance"),
     # Sorted on something else, so it is the filter that is refused, not the
     # default sort on the date.

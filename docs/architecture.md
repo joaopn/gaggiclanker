@@ -138,7 +138,7 @@ Python one: it stores a table of profile documents — the field missing, null,
 expected to do, against which earlier version — can be written and re-written
 only while the version has no shots and no grade, because one typed afterwards
 would grade itself. The outcome, somebody's grade of that prediction, needs a
-prediction and a shot labelled Keep or Improve before it can be recorded, and
+prediction and a shot rated or labelled (Good or Bad) before it can be recorded, and
 can be changed or cleared for ever after. `recipe_versions` carries all three and
 the comment on it in `db/schema.sql` says which is which. **A version has a
 name and nothing else of the kind**: `version_major`.`version_minor` is what every screen, prompt and tool shows ("v1.1"), an identifier like a

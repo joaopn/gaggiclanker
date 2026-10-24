@@ -70,7 +70,7 @@ from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import version_name_sql
-from gaggiclanker.db.repos.shots import NEEDS_RECIPE_SQL
+from gaggiclanker.db.repos.shots import DECISION_SQL, NEEDS_RECIPE_SQL, decision_sql
 from gaggiclanker.db.repos.version_names import (
     label_sql,
     names_from_state,
@@ -2011,10 +2011,11 @@ class RecipesRepository(Repository):
         """Grade this version's prediction. Changeable, and never automatic.
 
         Two things have to exist before there is a grade to give: a prediction,
-        and a shot somebody has actually formed a view about. "Judged,
-        non-discarded" means a decision of keep or improve — a discarded shot
-        says the shot went wrong, not that the recipe did, and grading a
-        prediction on one would be reading the wrong signal.
+        and a shot somebody has actually formed a view about. That is a Good or Bad
+        shot: one labelled so, or, when nothing was chosen, one rated (the shared
+        rule, :data:`DECISION_SQL`). A discarded shot says the shot went wrong, not
+        that the recipe did, and grading a prediction on one would be reading the
+        wrong signal, whatever its rating.
         """
         async with self.db.transaction():
             return await self.grade_in_transaction(recipe_id, version_id, spec)
@@ -2207,39 +2208,50 @@ class RecipesRepository(Repository):
         return await self.gradable_shot_count(version_id) > 0
 
     async def gradable_shot_count(self, version_id: int) -> int:
-        """How many shots of this version a person judged Keep or Improve.
+        """How many shots of this version are Good or Bad: chosen so, or rated so.
 
         The shots a grade rests on: a discarded shot says the shot went wrong,
         not that the recipe did. One definition, read by the outcome guard and by
-        the agent's proposed grade, which records how many it was written on.
+        the agent's proposed grade, which records how many it was written on. The
+        decision is the shared rule (:data:`DECISION_SQL`), so a rated shot nobody
+        labelled counts.
         """
         return int(
             await self.db.fetch_value(
-                """
+                f"""
                 SELECT COUNT(*) FROM shots s
-                JOIN shot_judgements j ON j.shot_id = s.id
-                WHERE s.recipe_version_id = ? AND j.decision IN ('keep', 'improve')
-                """,
+                LEFT JOIN shot_judgements j ON j.shot_id = s.id
+                LEFT JOIN device_shot_notes n ON n.shot_id = s.id
+                WHERE s.recipe_version_id = ? AND ({DECISION_SQL}) IN ('keep', 'improve')
+                """,  # noqa: S608 - the only interpolation is the decision expression, a constant
                 (version_id,),
             )
             or 0
         )
 
     async def label_counts(self, recipe_id: int) -> dict[int, VersionLabelCounts]:
-        """How every version's shots were labelled, in one grouped pass."""
+        """How every version's shots are labelled, in one grouped pass.
+
+        Good and Bad count the shared rule's decision (:data:`DECISION_SQL`): a person's
+        choice, else what the rating says. ``unlabelled`` is a shot with neither.
+        """
         rows = await self.db.fetch_all(
-            """
-            SELECT sh.recipe_version_id AS version_id,
-                   SUM(j.decision = 'keep') AS keep,
-                   SUM(j.decision = 'improve') AS improve,
-                   SUM(j.decision = 'discard') AS discard,
-                   SUM(j.decision IS NULL) AS unlabelled
-            FROM shots sh
-            JOIN recipe_versions v ON v.id = sh.recipe_version_id
-            LEFT JOIN shot_judgements j ON j.shot_id = sh.id
-            WHERE v.recipe_id = ?
-            GROUP BY sh.recipe_version_id
-            """,
+            f"""
+            SELECT d.version_id AS version_id,
+                   SUM(d.decision = 'keep') AS keep,
+                   SUM(d.decision = 'improve') AS improve,
+                   SUM(d.decision = 'discard') AS discard,
+                   SUM(d.decision IS NULL) AS unlabelled
+            FROM (
+                SELECT s.recipe_version_id AS version_id, ({DECISION_SQL}) AS decision
+                FROM shots s
+                JOIN recipe_versions v ON v.id = s.recipe_version_id
+                LEFT JOIN shot_judgements j ON j.shot_id = s.id
+                LEFT JOIN device_shot_notes n ON n.shot_id = s.id
+                WHERE v.recipe_id = ?
+            ) d
+            GROUP BY d.version_id
+            """,  # noqa: S608 - the only interpolation is the decision expression, a constant
             (recipe_id,),
         )
         return {
@@ -2257,11 +2269,11 @@ class RecipesRepository(Repository):
 
         The nearest **ancestor** of the current version on the fork history (the
         line walked back as :func:`live_line` walks it, so an old roll back row
-        steps to what it restored) that has a Keep shot. Not the newest one made:
-        after going back, that can sit on a branch the Recipe left, and an offer to
-        "go back" must not point forward. Never the current version, and never one
-        whose only shots were discarded or never labelled, because "it worked" is
-        a thing somebody said, not a thing a shot count implies.
+        steps to what it restored) that has a Good shot (chosen so, or rated so). Not the
+        newest one made: after going back, that can sit on a branch the Recipe left, and an
+        offer to "go back" must not point forward. Never the current version, and never one
+        whose only shots were discarded, Bad or neither labelled nor rated, because "it worked"
+        is a thing somebody said or rated, not a thing a shot count implies.
         """
         current = await self.db.fetch_value(
             "SELECT current_version_id FROM recipes WHERE id = ?", (recipe_id,)
@@ -2274,12 +2286,13 @@ class RecipesRepository(Repository):
         kept = {
             int(row["id"])
             for row in await self.db.fetch_all(
-                """
-                SELECT DISTINCT sh.recipe_version_id AS id FROM shots sh
-                  JOIN shot_judgements j ON j.shot_id = sh.id
-                  JOIN recipe_versions v ON v.id = sh.recipe_version_id
-                 WHERE v.recipe_id = ? AND j.decision = 'keep'
-                """,
+                f"""
+                SELECT DISTINCT s.recipe_version_id AS id FROM shots s
+                  LEFT JOIN shot_judgements j ON j.shot_id = s.id
+                  LEFT JOIN device_shot_notes n ON n.shot_id = s.id
+                  JOIN recipe_versions v ON v.id = s.recipe_version_id
+                 WHERE v.recipe_id = ? AND ({DECISION_SQL}) = 'keep'
+                """,  # noqa: S608 - the only interpolation is the decision expression, a constant
                 (recipe_id,),
             )
         }
@@ -2653,7 +2666,9 @@ class RecipesRepository(Repository):
           scale, which is the number they would compare against.
 
         The version's recipe rides along on each shot, because grouping repeats
-        is then a pass over one list rather than a second query.
+        is then a pass over one list rather than a second query. So does its
+        decision, the shared rule's (a choice, else what the rating says), which is
+        what the Good and Bad counts and the gold standard read.
         """
         rows = await self.db.fetch_all(
             f"""
@@ -2668,10 +2683,11 @@ class RecipesRepository(Repository):
                    {_MEASURE_COLUMNS},
                    j.rating,
                    j.balance,
-                   j.decision
+                   {decision_sql(s="sh")} AS decision
             FROM shots sh
             JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
+            LEFT JOIN device_shot_notes n ON n.shot_id = sh.id
             WHERE v.recipe_id = ?
               AND sh.quarantined = 0
               AND sh.incomplete = 0
@@ -2727,7 +2743,7 @@ class RecipesRepository(Repository):
             where.append("v.id = :version_id")
             params["version_id"] = version_id
         if decision is not None:
-            where.append("j.decision = :decision")
+            where.append(f"({decision_sql(s='sh')}) = :decision")
             params["decision"] = decision
         if balance is not None:
             where.append("j.balance = :balance")
@@ -2754,6 +2770,7 @@ class RecipesRepository(Repository):
             FROM shots sh
             JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
+            LEFT JOIN device_shot_notes n ON n.shot_id = sh.id
             WHERE {" AND ".join(where)}
             ORDER BY sh.id
             """,  # noqa: S608 - the clauses are the literals above and the module constant, every value is bound
@@ -2787,7 +2804,7 @@ class RecipesRepository(Repository):
             where.append("v.id = :version_id")
             params["version_id"] = version_id
         if decision is not None:
-            where.append("j.decision = :decision")
+            where.append(f"({decision_sql(s='sh')}) = :decision")
             params["decision"] = decision
         rows = await self.db.fetch_all(
             f"""
@@ -2800,13 +2817,14 @@ class RecipesRepository(Repository):
                    {_MEASURE_COLUMNS},
                    j.rating,
                    j.balance,
-                   j.decision,
+                   {decision_sql(s="sh")} AS decision,
                    j.notes,
                    j.taste_notes_json,
                    j.aroma_notes_json
             FROM shots sh
             JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
+            LEFT JOIN device_shot_notes n ON n.shot_id = sh.id
             WHERE {" AND ".join(where)}
             ORDER BY COALESCE(sh.started_at, '') DESC, sh.id DESC
             LIMIT :limit

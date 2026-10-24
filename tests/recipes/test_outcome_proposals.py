@@ -35,7 +35,7 @@ NOTE = "Time held (31 s against 28 s); the sourness did not move; the yield held
 async def _graded_ready(
     wired: Fixtures, *, shots: int = 1, name: str = "Guji on the Niche", base: int = 700
 ) -> tuple[int, int]:
-    """A Recipe whose current version has a prediction and ``shots`` Keep shots."""
+    """A Recipe whose current version has a prediction and ``shots`` Good shots."""
     row = await wired.recipes.create(
         RecipeWrite(name=name, bean_id=wired.bean_id, grinder_id=wired.grinder_id),
         RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=36, grind_setting="22"),

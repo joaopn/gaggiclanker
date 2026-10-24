@@ -157,7 +157,7 @@ THIS BEAN'S OTHER RECIPES (newest first)
   - v1.1: grind 6.5, 20 g in, 44 g out, 93 °C from its profile, profile Library 18g · 0 shots · no rating · outcome open · trying: A touch finer.
   - v1: grind 7, 20 g in, 44 g out, 93 °C from its profile, profile Library 18g · 0 shots · no rating · outcome no prediction · trying: Same bag, flat burrs.
 - Recipe 1: Kenya AA on the niche — on Niche Zero, 5 shots.
-  - v1: grind 21, 18 g in, 45 g out, 93 °C from its profile, profile Medium 18g 1:2 · 5 shots (0 Keep, 0 Improve, 0 Discard, 5 unlabelled) · mean rating 4.4 · outcome no prediction · trying: Baseline for this bag.
+  - v1: grind 21, 18 g in, 45 g out, 93 °C from its profile, profile Medium 18g 1:2 · 5 shots (5 Good, 0 Bad, 0 Discard, 0 unlabelled) · mean rating 4.4 · outcome no prediction · trying: Baseline for this bag.
 
 SIMILAR RECIPES ON THIS GRINDER (other beans)
 [recipe_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji

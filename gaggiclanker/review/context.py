@@ -86,6 +86,26 @@ __all__ = [
 #: reads. Sixty is the chat's default.
 REVIEW_CURVE_POINTS = 60
 
+#: What the shot row carries of the person's verdict and the machine's notes card, and what each
+#: becomes before a review reads the shot: the ratings, the notes, the decision and the decision
+#: the rating gives (with the rating it came from), the balance (the verdict's and the machine's)
+#: and the flags that say a verdict or a card exists. A test lists every field of the row that
+#: looks like one of these and fails for a field missing here.
+VERDICT_FIELDS: Mapping[str, Any] = {
+    "rating": None,
+    "index_rating": None,
+    "judgement_rating": None,
+    "judgement_notes": None,
+    "judgement_decision": None,
+    "judgement_balance": None,
+    "derived_decision": None,
+    "decision_rating": None,
+    "decision_rating_source": None,
+    "balance": None,
+    "has_judgement": False,
+    "has_notes": False,
+}
+
 #: Catalogue groups a review never reads, each named by one of its items so a
 #: renamed group heading cannot quietly let the group back in: the person's
 #: judgement (`rating`), the note typed on the machine (`note_text`: its rating,
@@ -243,17 +263,7 @@ async def build_review_input(
     # judgement's rating, notes and label, the machine's own rating), which no
     # item a review reads renders; cleared all the same, so the rule holds by
     # what is in hand rather than by what happens to be printed.
-    shot = loaded[0].shot.model_copy(
-        update={
-            "rating": None,
-            "index_rating": None,
-            "judgement_rating": None,
-            "judgement_notes": None,
-            "judgement_decision": None,
-            "has_judgement": False,
-            "has_notes": False,
-        }
-    )
+    shot = loaded[0].shot.model_copy(update=dict(VERDICT_FIELDS))
     facts = dataclasses.replace(loaded[0], shot=shot, judgement=None, note=None, reading=None)
 
     profile_label = ""

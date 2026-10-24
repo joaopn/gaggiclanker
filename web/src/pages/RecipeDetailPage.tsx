@@ -517,9 +517,8 @@ function DesignNotice({ recipe }: { recipe: RecipeRow }) {
  *
  * The sentence is nothing until something has been graded — zero out of zero is
  * an absence, not a modest score. The roll-back offer appears only when the
- * archive can see that the current version is going badly: it has a shot you
- * said to improve on and none you said to keep, and there is an earlier version
- * you did keep shots from. Anything less than that and the button would be
+ * archive can see that the current version is going badly: it has a Bad shot
+ * and no Good one, and there is an earlier version that had Good shots. Anything less than that and the button would be
  * nagging.
  */
 function TrackRecord({ detail, recipeId }: { detail: RecipeDetailData; recipeId: number }) {
@@ -549,7 +548,7 @@ function TrackRecord({ detail, recipeId }: { detail: RecipeDetailData; recipeId:
           recipeId={recipeId}
           versionId={target.version.id}
           versionLabel={target.version.version_label}
-          label={`Go back to ${target.version.version_label}, the last version with Keep shots`}
+          label={`Go back to ${target.version.version_label}, the last version with Good shots`}
           icon={<Undo2 className="size-3.5" aria-hidden="true" />}
         />
       ) : null}

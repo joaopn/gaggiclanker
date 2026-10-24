@@ -457,7 +457,7 @@ class RecipeDetailData(BaseModel):
     #: a model, so the same shots always give the same figure.
     spread: list[MeasureSpread] = []
     #: The version the page offers to go back to: the newest one made, other
-    #: than the current, that has a Keep shot. NULL when there is nowhere to go.
+    #: than the current, that has a Good shot. NULL when there is nowhere to go.
     rollback_target_version_id: int | None = None
     #: Every time this Recipe went back to another version, newest first: the
     #: log's "Went back to v1.2 (from v2.1)" lines. Not versions.
@@ -541,11 +541,14 @@ def _refusal_no_prediction(recipe_id: int, version_id: int | None) -> AppError:
 
 def _refusal_nothing_to_grade(recipe_id: int, version_id: int | None) -> AppError:
     return Conflict(
-        f"Version {version_id} has no shot you have formed a view about",
+        f"Version {version_id} has no Good or Bad shot yet",
         code="NOTHING_TO_GRADE",
         details={
             "field": "outcome",
-            "message": "label a shot Keep or Improve before grading the prediction",
+            "message": (
+                "no shot of the version is Good or Bad yet (a discarded shot does not count): "
+                "rate a shot, or label it Good or Bad, before grading the prediction"
+            ),
         },
     )
 
@@ -650,8 +653,9 @@ def _proposal_error(refusal: ProposalRefusal, recipe_id: int, proposal_id: int) 
             details={
                 "field": "outcome",
                 "message": (
-                    "no shot of the version is labelled Keep or Improve any more; label one, or "
-                    "dismiss the grade, and accept again"
+                    "no shot of the version is Good or Bad any more (a discarded shot does not "
+                    "count): rate a shot, or label it Good or Bad, or dismiss the grade, and "
+                    "accept again"
                 ),
             },
         )
@@ -1191,8 +1195,8 @@ async def set_outcome(
 ) -> JSONResponse:
     """Held, partly held, failed or inconclusive, with the why beside it.
 
-    Recordable only once the version has a prediction and a shot somebody
-    labelled Keep or Improve; changeable afterwards as often as you like.
+    Recordable only once the version has a prediction and a Good or Bad shot (labelled so, or
+    rated; a discarded shot does not count); changeable afterwards as often as you like.
     """
     return _unwrap(await recipes.set_outcome(recipe_id, version_id, body), recipe_id, version_id)
 
@@ -1355,11 +1359,14 @@ def _outcome_error(
         )
     if refusal == "nothing_to_grade":
         return Conflict(
-            f"{named} has no shot you have formed a view about",
+            f"{named} has no Good or Bad shot yet",
             code="NOTHING_TO_GRADE",
             details={
                 "field": "outcome",
-                "message": "label a shot Keep or Improve before grading the prediction",
+                "message": (
+                    "no shot of the version is Good or Bad yet (a discarded shot does not count): "
+                    "rate a shot, or label it Good or Bad, before grading the prediction"
+                ),
             },
         )
     if refusal == "no_prediction":

@@ -25,10 +25,11 @@ from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.decision import GOOD_FROM_RATING, RatingSource
 from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.domain.signature import ShotChecks, check_key
 from gaggiclanker.domain.slog import shot_header_name
-from gaggiclanker.domain.vocab import Decision
+from gaggiclanker.domain.vocab import Balance, Decision
 from gaggiclanker.domain.warnings import shot_warnings
 from gaggiclanker.review.reading import ChecksBlock, ReviewBlock, Served, review_key, serve_review
 from gaggiclanker.signatures.checks import CheckSubject, checks_for_shots
@@ -255,6 +256,21 @@ class ShotListRow(BaseModel):
     #: machine, this is what was decided here. The list shows this first and
     #: falls back to the device's, and it is what the stars in a row write.
     judgement_rating: int | None = None
+    #: What the rating alone says the decision is (``keep`` from three stars, ``improve`` from one
+    #: or two), served only when the verdict stores no decision: the list draws it outlined, and
+    #: a click on it stores it. Worked out in SQL by :data:`DECISION_SQL`; the web never repeats
+    #: the rule.
+    derived_decision: Decision | None = None
+    #: The cup's balance from this box's own verdict, and the one on the machine's notes card
+    #: (``balance``, only when the card holds one of the three words): the list shows the first
+    #: filled and the second faint, as it does for the stars.
+    judgement_balance: Balance | None = None
+    balance: Balance | None = None
+    #: The rating ``derived_decision`` came from and where it sits (``judgement``, ``machine_notes``
+    #: or ``machine_index``), so the screen can say which one it was: non-null only when
+    #: ``derived_decision`` is. Worked out in SQL beside it, never repeated in the browser.
+    decision_rating: int | None = None
+    decision_rating_source: RatingSource | None = None
     has_notes: bool = False
     #: Whether the user has recorded a verdict on the cup. The list shows it as
     #: a dot; `needs_recipe` has an equivalent on the Recipe side.
@@ -432,6 +448,55 @@ HAS_SCALE_SQL = """
          ELSE s.scale_connected END
 """
 
+#: The one rating the Rating column shows: this box's verdict, then the machine's notes card,
+#: then the index's figure (over aliases ``j``, ``n``, ``s``).
+RATING_SQL = "COALESCE(j.rating, n.rating, s.index_rating)"
+
+
+def decision_sql(j: str = "j", n: str = "n", s: str = "s") -> str:
+    """The SQL twin of :func:`~gaggiclanker.domain.decision.effective_decision`.
+
+    A stored decision wins, Discard included; else the rating (:data:`RATING_SQL` over the three
+    aliases) reads ``keep`` from 3 and ``improve`` from 1 to 2, a rating of zero or less being no
+    rating; else NULL. Discard is never derived. A test runs this over every combination of the
+    three sources and compares it with the Python rule, so they cannot drift apart. The aliases
+    are parameters because a query that already uses ``sh`` for ``shots`` need not be renamed.
+    """
+    rating = f"COALESCE({j}.rating, {n}.rating, {s}.index_rating)"
+    return (
+        f"CASE WHEN {j}.decision IS NOT NULL THEN {j}.decision "
+        f"WHEN {rating} >= {GOOD_FROM_RATING} THEN 'keep' "
+        f"WHEN {rating} >= 1 THEN 'improve' END"
+    )
+
+
+def decision_rating_sql(j: str = "j", n: str = "n", s: str = "s") -> str:
+    """The rating the rule read, when it read one: NULL unless the rating gives a decision.
+
+    Over the same three sources as :func:`decision_sql`, and built from its rating, so the two
+    cannot disagree about which rating is meant.
+    """
+    rating = f"COALESCE({j}.rating, {n}.rating, {s}.index_rating)"
+    return f"CASE WHEN {rating} >= 1 THEN {rating} END"
+
+
+def decision_rating_source_sql(j: str = "j", n: str = "n", s: str = "s") -> str:
+    """Where that rating sits (``judgement``, ``machine_notes`` or ``machine_index``): the first
+    of the three that is present, as :func:`~gaggiclanker.domain.decision.rating_source` says.
+    NULL when the rating gives no decision."""
+    return (
+        f"CASE WHEN ({decision_rating_sql(j, n, s)}) IS NULL THEN NULL "
+        f"WHEN {j}.rating IS NOT NULL THEN 'judgement' "
+        f"WHEN {n}.rating IS NOT NULL THEN 'machine_notes' ELSE 'machine_index' END"
+    )
+
+
+#: :func:`decision_sql` over the aliases ``j`` (``shot_judgements``), ``n``
+#: (``device_shot_notes``) and ``s`` (``shots``).
+DECISION_SQL = decision_sql()
+DECISION_RATING_SQL = decision_rating_sql()
+DECISION_RATING_SOURCE_SQL = decision_rating_source_sql()
+
 # The list projection. Written once because the list route, the detail route and
 # the tests must all agree on what "volume" means: the scale's final weight when
 # there was a scale, and the device index's figure otherwise.
@@ -450,6 +515,13 @@ _LIST_COLUMNS = f"""
     j.rating AS judgement_rating,
     j.notes AS judgement_notes,
     j.decision AS judgement_decision,
+    CASE WHEN j.decision IS NULL THEN ({DECISION_SQL}) END AS derived_decision,
+    CASE WHEN j.decision IS NULL THEN ({DECISION_RATING_SQL}) END AS decision_rating,
+    CASE WHEN j.decision IS NULL THEN ({DECISION_RATING_SOURCE_SQL}) END
+        AS decision_rating_source,
+    j.balance AS judgement_balance,
+    CASE WHEN n.balance_taste IN ('sour', 'balanced', 'bitter') THEN n.balance_taste END
+        AS balance,
     s.recipe_version_id,
     sv.recipe_id AS badge_recipe_id,
     st.name AS badge_recipe_name,
@@ -500,7 +572,7 @@ _ORDER_KEY = "COALESCE(s.started_at, '')"
 #: these: a sort taken from the query string and pasted into SQL is an injection,
 #: so the parameter selects a key from here and never becomes one.
 #: What "the rating" means when something has to pick one number.
-_RATING_KEY = "COALESCE(j.rating, n.rating, s.index_rating)"
+_RATING_KEY = RATING_SQL
 
 #: The Curve check and Review columns' sorts. Not columns: the order is the badge's, which is
 #: worked out from the stored derivation, the filed version's target and the review in force

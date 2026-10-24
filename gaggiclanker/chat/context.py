@@ -817,7 +817,7 @@ def _ledger_line(
     shots = (
         _plural(version.shot_count, "shot")
         + (
-            f" ({counts.keep} Keep, {counts.improve} Improve, {counts.discard} Discard)"
+            f" ({counts.keep} Good, {counts.improve} Bad, {counts.discard} Discard)"
             if counts is not None and version.shot_count
             else ""
         )
@@ -1024,7 +1024,7 @@ def _side(measure: SpreadMeasure, mean: float | None, n: int) -> str:
 def _counts_line(label: str, counts: Any) -> str:
     return (
         f"{label}: {_plural(counts.shots, 'counted shot')} — {counts.sour} sour, {counts.balanced} "
-        f"balanced, {counts.bitter} bitter; {counts.keep} Keep, {counts.improve} Improve, "
+        f"balanced, {counts.bitter} bitter; {counts.keep} Good, {counts.improve} Bad, "
         f"{counts.unlabelled} unlabelled."
     )
 
@@ -1092,20 +1092,21 @@ async def _shots_block(
 def _gold_standard(
     counted: Sequence[Any], versions: Sequence[RecipeVersionRow], dead_ends: set[int]
 ) -> list[str]:
-    """What good has looked like in this Recipe: the Keep shots still on the line.
+    """What good has looked like in this Recipe: the Good shots still on the line.
 
-    On the live line only, because a Keep shot under a version a roll back
-    stepped over is a cup somebody liked on a branch nobody is brewing any more
-    — worth finding with `list_recipe_shots`, not worth holding an Improve shot up
-    against.
+    A Good shot is one the person labelled so or, when they chose no label, rated three stars
+    or more (the shot's decision is the shared rule's). On the live line only, because a
+    Good shot under a version a roll back stepped over is a cup somebody liked on a branch
+    nobody is brewing any more — worth finding with `list_recipe_shots`, not worth holding
+    a Bad shot up against.
     """
     live = {version.id for version in versions if version.id not in dead_ends}
     keeps = [shot for shot in counted if shot.decision == "keep" and shot.version_id in live]
     if not keeps:
         return [
             "THE GOLD STANDARD",
-            "No shot on the line being brewed has been labelled Keep yet, so there is no "
-            "target to compare an Improve shot against.",
+            "No shot on the line being brewed is Good yet (labelled so, or rated 3 stars or more), "
+            "so there is no target to compare a Bad shot against.",
         ]
     # In the order they were made, each by its name.
     by_id = {version.id: version for version in versions}
@@ -1119,10 +1120,10 @@ def _gold_standard(
     ]
     return [
         "THE GOLD STANDARD",
-        f"{_plural(len(keeps), 'Keep shot')} on the line being brewed, on "
+        f"{_plural(len(keeps), 'Good shot')} on the line being brewed, on "
         f"{', '.join(names)}. "
         f"Their averages: {', '.join(averages)}.",
-        "That is what good has tasted like here. An Improve shot is compared with it.",
+        "That is what good has tasted like here. A Bad shot is compared with it.",
     ]
 
 

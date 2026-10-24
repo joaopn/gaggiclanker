@@ -190,7 +190,7 @@ async def test_the_recipe_prompt_says_what_a_grade_and_a_proposal_have_to_be(
     assert "inconclusive" in system
     assert "new hypothesis" in system
     assert "One change at a time" in system
-    assert "Keep shots are the target" in system
+    assert "Good shots are the target" in system
     # It never decides the experiment is over.
     assert "never tell them to stop or to carry on" in system
     # And it knows it can see one Recipe.

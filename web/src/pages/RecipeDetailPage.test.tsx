@@ -422,7 +422,7 @@ describe("RecipeDetailPage", () => {
   });
 
   it("judges the track record by the current version, not the newest", async () => {
-    // v1 is current and going badly; v2, the newest, has a Keep shot. A page
+    // v1 is current and going badly; v2, the newest, has a Good shot. A page
     // that read the first row would see no struggle and offer no way back.
     const detail = recipeDetail({ rollback_target_version_id: 22 });
     detail.versions[0].version = { ...detail.versions[0].version, is_current: false };
@@ -434,7 +434,7 @@ describe("RecipeDetailPage", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: "Go back to v2, the last version with Keep shots",
+        name: "Go back to v2, the last version with Good shots",
       }),
     ).toBeInTheDocument();
   });
@@ -480,7 +480,7 @@ describe("RecipeDetailPage", () => {
     renderWithQueryClient(<RecipeDetailPage />);
 
     const offer = await screen.findByRole("button", {
-      name: "Go back to v1, the last version with Keep shots",
+      name: "Go back to v1, the last version with Good shots",
     });
     await user.click(offer);
     await user.click(screen.getAllByRole("button", { name: "Go back to v1" })[0]);
@@ -492,7 +492,7 @@ describe("RecipeDetailPage", () => {
     });
   });
 
-  it("does not nag when the current version has a Keep shot of its own", async () => {
+  it("does not nag when the current version has a Good shot of its own", async () => {
     const detail = recipeDetail({ rollback_target_version_id: 21 });
     detail.versions[0].labels = labelCounts({ keep: 1, improve: 2 });
     getRecipe.mockResolvedValue(detail);
@@ -500,7 +500,7 @@ describe("RecipeDetailPage", () => {
 
     await screen.findByTestId("version-timeline");
     expect(
-      screen.queryByRole("button", { name: /the last version with Keep shots/ }),
+      screen.queryByRole("button", { name: /the last version with Good shots/ }),
     ).not.toBeInTheDocument();
   });
 

@@ -785,7 +785,7 @@ async def test_a_change_proposed_over_stdio_waits_and_creates_no_version(
 async def _predicted_version_with_a_keep_shot(
     data_dir: Path, fixture: Fixture, *, with_shot: bool = True
 ) -> int:
-    """A new version with a prediction and, by default, one Keep shot, in the child's archive."""
+    """A new version with a prediction and, by default, one Good shot, in the child's archive."""
     db = Database(data_dir / "gaggiclanker.db")
     await db.connect()
     try:
@@ -863,7 +863,7 @@ async def test_a_grade_proposed_over_stdio_waits_and_records_nothing(
     assert no_prediction.is_error is True
     assert "has no prediction, so there is nothing to grade" in str(no_prediction.content)
     assert no_shot.is_error is True
-    assert "no shot the person has judged Keep or Improve" in str(no_shot.content)
+    assert "has no Good or Bad shot yet" in str(no_shot.content)
     assert bad.is_error is True and "outcome must be one of" in str(bad.content)
     assert result.is_error is False, result.content
     assert result.structured_content is not None

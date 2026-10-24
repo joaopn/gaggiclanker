@@ -37,7 +37,7 @@ async def refuse(ctx: ToolContext, name: str, **arguments: Any) -> dict[str, Any
 
 
 async def _predicted_version(archive: Fixture, *, shots: int = 1) -> RecipeVersionRow:
-    """A version with a prediction and ``shots`` Keep shots filed under it."""
+    """A version with a prediction and ``shots`` Good shots filed under it."""
     recipes = RecipesRepository(archive.db)
     version = await recipes.add_version(
         archive.recipe_id,
@@ -183,7 +183,7 @@ class TestRefusals:
         version = await _predicted_version(archive, shots=0)
         ctx = _in_version(archive, settings, version)
         data = await refuse(ctx, "propose_outcome", outcome="held", note=NOTE)
-        assert "no shot the person has judged Keep or Improve yet" in data["detail"]
+        assert "has no Good or Bad shot yet" in data["detail"]
 
     async def test_an_outcome_outside_the_vocabulary(
         self, archive: Fixture, settings: SettingsService

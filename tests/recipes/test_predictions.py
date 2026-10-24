@@ -521,7 +521,7 @@ class TestRevert:
 
 
 class TestTheWayBackOffer:
-    """`rollback_target`: the nearest ancestor with a Keep shot, never one that is ahead."""
+    """`rollback_target`: the nearest ancestor with a Good shot, never one that is ahead."""
 
     async def test_after_going_back_the_offer_does_not_point_forward(self, wired: Fixtures) -> None:
         row = await wired.recipes.create(

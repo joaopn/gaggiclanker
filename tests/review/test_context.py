@@ -35,17 +35,19 @@ from gaggiclanker.db.repos.reviews import (
     ShotReviewsRepository,
 )
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
-from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.repos.shots import ShotInsert, ShotListRow, ShotsRepository
 from gaggiclanker.db.repos.signatures import ExpectationWrite, SignatureRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.models import ShotNotes
 from gaggiclanker.review.context import (
     REVIEW_EXCLUDED_KEYS,
+    VERDICT_FIELDS,
     build_review_input,
     review_keys,
 )
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.shotinfo import CATALOGUE, ITEMS, ShotFacts, ShotTier, Tier, render_shot
+from gaggiclanker.shotinfo.render import load_shots
 from tests.review.conftest import FREE_TEXT, Fixture, confirm_free_text, predict
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "review-prompt.txt"
@@ -424,6 +426,31 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
             claims=[ClaimWrite(kind="claim", text="An earlier claim about this shot.")],
         ),
     )
+    # Give the shot every copy of the verdict and the machine's card the row can carry: no stored
+    # decision (so the rating's decision is derived), the three ratings, and both balances.
+    await fixture.db.execute(
+        "UPDATE shot_judgements SET decision = NULL, rating = 2, balance = 'sour' "
+        "WHERE shot_id = ?",
+        (subject,),
+    )
+    await fixture.db.execute("UPDATE shots SET index_rating = 4 WHERE id = ?", (subject,))
+    await NotesRepository(fixture.db).upsert(
+        subject, ShotNotes(id="000999", rating=3, balanceTaste="bitter")
+    )
+    before = (await load_shots(fixture.db, [subject]))[0].shot
+    # A stored decision and a derived one exclude each other, so the state with a stored decision
+    # is read too, and between the two every field is set before the review clears it.
+    await fixture.db.execute(
+        "UPDATE shot_judgements SET decision = 'keep' WHERE shot_id = ?", (subject,)
+    )
+    stored = (await load_shots(fixture.db, [subject]))[0].shot
+    await fixture.db.execute(
+        "UPDATE shot_judgements SET decision = NULL WHERE shot_id = ?", (subject,)
+    )
+    for name, cleared in VERDICT_FIELDS.items():
+        assert getattr(before, name) != cleared or getattr(stored, name) != cleared, (
+            f"the precondition: {name} is set before"
+        )
     everything = frozenset(item.key for item in CATALOGUE)
     monkeypatch.setattr("gaggiclanker.review.context.review_keys", lambda: everything)
     rendered: list[ShotFacts] = []
@@ -455,3 +482,15 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
     assert facts.shot.judgement_rating is None
     assert facts.shot.judgement_notes is None
     assert facts.shot.judgement_decision is None
+    # Every field of the row that carries the verdict or the machine's card is cleared, the
+    # derived decision and the balances included; a field added later that looks like one of them
+    # must be declared in `VERDICT_FIELDS` or this fails.
+    looks_like_verdict = {
+        name
+        for name in ShotListRow.model_fields
+        if name.startswith(("judgement_", "decision_", "derived_"))
+        or name in {"rating", "index_rating", "balance", "has_judgement", "has_notes"}
+    }
+    assert looks_like_verdict == set(VERDICT_FIELDS)
+    for name, cleared in VERDICT_FIELDS.items():
+        assert getattr(facts.shot, name) == cleared, name

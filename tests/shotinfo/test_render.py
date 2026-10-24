@@ -349,7 +349,7 @@ async def test_the_judgement_reads_with_its_flavour_wheel_paths(archive: Archive
     )
     assert "Aroma notes: Floral › Floral › Jasmine" in rendered
     assert "Ratio: 1:2.03" in rendered
-    assert "Label: Keep" in rendered
+    assert "Label: Good" in rendered
     assert "Counted: counted" in rendered
 
 

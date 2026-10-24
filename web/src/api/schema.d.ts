@@ -2330,8 +2330,8 @@ export interface paths {
          * Grade this version's prediction
          * @description Held, partly held, failed or inconclusive, with the why beside it.
          *
-         *     Recordable only once the version has a prediction and a shot somebody
-         *     labelled Keep or Improve; changeable afterwards as often as you like.
+         *     Recordable only once the version has a prediction and a Good or Bad shot (labelled so, or
+         *     rated; a discarded shot does not count); changeable afterwards as often as you like.
          */
         put: operations["set_outcome_api_recipes__recipe_id__versions__version_id__outcome_put"];
         post?: never;
@@ -7426,6 +7426,8 @@ export interface components {
             /** Stopped */
             stopped: boolean;
         };
+        /** @enum {string} */
+        RatingSource: "judgement" | "machine_notes" | "machine_index";
         /**
          * RecipeBrewing
          * @description The Recipe a profile has, so a page can warn before the profile is changed: the Recipe
@@ -8676,15 +8678,20 @@ export interface components {
          *     caller can tell "we hold the bytes" from "we hold a row".
          */
         ShotDetailRow: {
+            balance?: components["schemas"]["Balance"] | null;
             /** Brew Delay Ms */
             brew_delay_ms?: number | null;
             /** Brewed As */
             brewed_as?: string | null;
+            /** Decision Rating */
+            decision_rating?: number | null;
+            decision_rating_source?: components["schemas"]["RatingSource"] | null;
             /**
              * Deleted On Device
              * @default false
              */
             deleted_on_device: boolean;
+            derived_decision?: components["schemas"]["Decision"] | null;
             /** Device Id */
             device_id: string;
             diagnostics?: components["schemas"]["JsonObject"];
@@ -8733,6 +8740,7 @@ export interface components {
             index_rating?: number | null;
             /** Index Volume G */
             index_volume_g?: number | null;
+            judgement_balance?: components["schemas"]["Balance"] | null;
             judgement_decision?: components["schemas"]["Decision"] | null;
             /** Judgement Notes */
             judgement_notes?: string | null;
@@ -8933,14 +8941,19 @@ export interface components {
          *     and never changes with a review; the review is what the model wrote.
          */
         ShotListItem: {
+            balance?: components["schemas"]["Balance"] | null;
             /** Brewed As */
             brewed_as?: string | null;
             checks: components["schemas"]["ChecksBlock"];
+            /** Decision Rating */
+            decision_rating?: number | null;
+            decision_rating_source?: components["schemas"]["RatingSource"] | null;
             /**
              * Deleted On Device
              * @default false
              */
             deleted_on_device: boolean;
+            derived_decision?: components["schemas"]["Decision"] | null;
             /** Device Id */
             device_id: string;
             /**
@@ -8980,6 +8993,7 @@ export interface components {
             index_max_pressure_bar?: number | null;
             /** Index Rating */
             index_rating?: number | null;
+            judgement_balance?: components["schemas"]["Balance"] | null;
             judgement_decision?: components["schemas"]["Decision"] | null;
             /** Judgement Notes */
             judgement_notes?: string | null;

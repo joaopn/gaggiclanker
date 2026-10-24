@@ -132,16 +132,16 @@ export function handSettingsWords(
 }
 
 /**
- * How a version's shots were labelled, on one line: "2 Keep · 1 Improve".
+ * How a version's shots were labelled, on one line: "2 Good · 1 Bad".
  *
  * Only the counts that are not zero, and the unlabelled ones last and in lower
  * case: they are the work still to do, not a verdict anybody gave. Empty when
- * there are no shots, so the caller renders nothing rather than "0 Keep".
+ * there are no shots, so the caller renders nothing rather than "0 Good".
  */
 export function labelSummary(labels: RecipeVersionDetail["labels"]): string {
   const parts: string[] = [];
-  if (labels.keep) parts.push(`${labels.keep} Keep`);
-  if (labels.improve) parts.push(`${labels.improve} Improve`);
+  if (labels.keep) parts.push(`${labels.keep} Good`);
+  if (labels.improve) parts.push(`${labels.improve} Bad`);
   if (labels.discard) parts.push(`${labels.discard} Discard`);
   if (labels.unlabelled) parts.push(`${labels.unlabelled} not labelled`);
   return parts.join(" · ");
@@ -249,8 +249,8 @@ export function evidenceSideSummary(side: EvidenceCounts): string {
   if (side.sour) parts.push(`${side.sour} sour`);
   if (side.balanced) parts.push(`${side.balanced} balanced`);
   if (side.bitter) parts.push(`${side.bitter} bitter`);
-  if (side.keep) parts.push(`${side.keep} Keep`);
-  if (side.improve) parts.push(`${side.improve} Improve`);
+  if (side.keep) parts.push(`${side.keep} Good`);
+  if (side.improve) parts.push(`${side.improve} Bad`);
   if (side.unlabelled) parts.push(`${side.unlabelled} not labelled`);
   return parts.join(" · ");
 }

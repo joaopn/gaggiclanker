@@ -49,6 +49,7 @@ import structlog
 
 from gaggiclanker.db.repos.reviews import ReviewClaimRow
 from gaggiclanker.domain import diagnostics as engine
+from gaggiclanker.domain.decision import effective_decision, rating_of
 from gaggiclanker.domain.drinks import drink_label
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
 from gaggiclanker.domain.phase_metrics import (
@@ -409,6 +410,22 @@ def balance(f: ShotFacts) -> str | None:
 
 
 # ── accessors for the rest ───────────────────────────────────────────
+
+
+def _label(f: ShotFacts) -> str:
+    """The Label line: the person's label, else what the rating says (and from which rating)."""
+    stored = f.judgement.decision if f.judgement is not None else None
+    if stored is not None:
+        return _DECISIONS[stored]
+    stars = rating_of(
+        f.judgement.rating if f.judgement is not None else None,
+        f.note.rating if f.note is not None else None,
+        f.shot.index_rating,
+    )
+    derived = effective_decision(None, stars)
+    if derived is None:
+        return "not labelled"
+    return f"{_DECISIONS[derived]} (from the {stars}★ rating)"
 
 
 def _counted(f: ShotFacts) -> str:
@@ -1045,15 +1062,15 @@ def _items() -> tuple[Item, ...]:
             name="Label",
             label="Label",
             meaning=(
-                "The person's verdict on the shot. Keep: this is what good tastes like here (the "
-                "target). Improve: what is being worked on. Discard: the shot went wrong rather "
-                "than the numbers (a knocked cup, a bad puck), so it is not evidence. A shot "
-                "nobody labelled says not labelled."
+                "Whether the shot is Good or Bad, or was thrown away. Good: this is what good "
+                "tastes like here (the target). Bad: what is being worked on. Discard: the shot "
+                "went wrong rather than the numbers (a knocked cup, a bad puck), so it is not "
+                "evidence. It is the person's label; when they chose none, the shot's rating "
+                "says it (3 stars or more is Good, 1 or 2 is Bad) and the line says so. A shot "
+                "with neither says not labelled."
             ),
             default_tier="base",
-            shot=lambda f: _DECISIONS.get(
-                (f.judgement.decision if f.judgement is not None else None) or "", "not labelled"
-            ),
+            shot=_label,
         ),
         Item(
             key="counted",

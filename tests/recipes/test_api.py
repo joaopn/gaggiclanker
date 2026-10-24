@@ -122,7 +122,7 @@ class TestVocab:
         }
         assert "taste_groups" not in body
         assert [term["value"] for term in body["decisions"]] == ["keep", "improve", "discard"]
-        assert [term["label"] for term in body["decisions"]] == ["Keep", "Improve", "Discard"]
+        assert [term["label"] for term in body["decisions"]] == ["Good", "Bad", "Discard"]
         assert [term["label"] for term in body["balances"]] == ["Sour", "Balanced", "Bitter"]
 
     async def test_the_enums_reach_openapi(self, client: httpx.AsyncClient) -> None:
@@ -728,6 +728,11 @@ class TestPredictionsAndOutcomes:
         )
         assert response.status_code == 409
         assert error(response)["code"] == "NOTHING_TO_GRADE"
+        # What is missing is a Good or Bad shot: a discarded one is rated and labelled, and does
+        # not count, so the sentence says that and not "label a shot".
+        message = error(response)["details"]["message"]
+        assert "Good or Bad" in message and "a discarded shot does not count" in message
+        assert "rate a shot" in message
 
         await self._labelled_shot(client, app, first, "000802", "improve")
         body = data(
@@ -924,6 +929,74 @@ class TestJudgementAndAssignment:
         assert data(await client.delete(f"/api/shots/{shot_id}/judgement"))["deleted"] is True
         assert (await client.delete(f"/api/shots/{shot_id}/judgement")).status_code == 404
         assert data(await client.get(f"/api/shots/{shot_id}"))["judgement"] is None
+
+    async def test_the_list_row_serves_the_decision_the_rating_gives_only_when_none_is_stored(
+        self, app: FastAPI, client: httpx.AsyncClient, shot_id: int
+    ) -> None:
+        def row() -> Any:
+            return client.get("/api/shots")
+
+        listed = data(await row())["items"][0]
+        assert (listed["judgement_decision"], listed["derived_decision"]) == (None, None)
+        assert (listed["decision_rating"], listed["decision_rating_source"]) == (None, None)
+
+        # The index's figure is the last place the rating is read from.
+        await app.state.db.execute("UPDATE shots SET index_rating = 4 WHERE id = ?", (shot_id,))
+        listed = data(await row())["items"][0]
+        assert (listed["judgement_decision"], listed["derived_decision"]) == (None, "keep")
+
+        assert (listed["decision_rating"], listed["decision_rating_source"]) == (4, "machine_index")
+        await app.state.db.execute(
+            "INSERT INTO device_shot_notes (shot_id, raw_json, rating) VALUES (?, '{}', 3)",
+            (shot_id,),
+        )
+        listed = data(await row())["items"][0]
+        assert (listed["decision_rating"], listed["decision_rating_source"]) == (3, "machine_notes")
+
+        # The verdict's own rating comes first, and two stars read Bad.
+        await client.put(f"/api/shots/{shot_id}/judgement", json={"rating": 2})
+        listed = data(await row())["items"][0]
+        assert (listed["judgement_decision"], listed["derived_decision"]) == (None, "improve")
+        assert (listed["decision_rating"], listed["decision_rating_source"]) == (2, "judgement")
+
+        # A stored decision is served as it is, and nothing is derived beside it.
+        await client.put(
+            f"/api/shots/{shot_id}/judgement", json={"rating": 5, "decision": "improve"}
+        )
+        listed = data(await row())["items"][0]
+        assert (listed["judgement_decision"], listed["derived_decision"]) == ("improve", None)
+        assert (listed["decision_rating"], listed["decision_rating_source"]) == (None, None)
+        await client.put(
+            f"/api/shots/{shot_id}/judgement", json={"rating": 5, "decision": "discard"}
+        )
+        listed = data(await row())["items"][0]
+        assert (listed["judgement_decision"], listed["derived_decision"]) == ("discard", None)
+
+    async def test_the_list_row_serves_both_balances_apart(
+        self, app: FastAPI, client: httpx.AsyncClient, shot_id: int
+    ) -> None:
+        db = app.state.db
+        listed = data(await client.get("/api/shots"))["items"][0]
+        assert (listed["judgement_balance"], listed["balance"]) == (None, None)
+
+        await db.execute(
+            "INSERT INTO device_shot_notes (shot_id, raw_json, balance_taste) VALUES (?, '{}', ?)",
+            (shot_id, "bitter"),
+        )
+        listed = data(await client.get("/api/shots"))["items"][0]
+        assert (listed["judgement_balance"], listed["balance"]) == (None, "bitter")
+
+        # The person's verdict is a different fact from the machine's card.
+        await client.put(f"/api/shots/{shot_id}/judgement", json={"balance": "sour"})
+        listed = data(await client.get("/api/shots"))["items"][0]
+        assert (listed["judgement_balance"], listed["balance"]) == ("sour", "bitter")
+
+        # The card holds whatever the machine wrote; only its three words are a balance.
+        await db.execute(
+            "UPDATE device_shot_notes SET balance_taste = '' WHERE shot_id = ?", (shot_id,)
+        )
+        listed = data(await client.get("/api/shots"))["items"][0]
+        assert listed["balance"] is None
 
     async def test_the_list_row_carries_the_verdict_s_notes(
         self, client: httpx.AsyncClient, shot_id: int

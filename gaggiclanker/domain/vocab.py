@@ -110,8 +110,10 @@ type StepUnit = Literal["clicks", "numbers", "microns", "free"]
 #: is a copy rather than a translation.
 type Balance = Literal["sour", "balanced", "bitter"]
 
-#: What to do next with this recipe: keep it, improve on it, or throw the shot
-#: away. NULL is "not decided yet", which is most shots.
+#: Whether the shot is what the Recipe should make (``keep``, shown Good), a shot that counts
+#: but should be better (``improve``, shown Bad), or a shot that does not count (``discard``).
+#: The stored words are older than the shown ones and stay. NULL is "not chosen", which is most
+#: shots; the rating then says Good or Bad (:mod:`gaggiclanker.domain.decision`).
 type Decision = Literal["keep", "improve", "discard"]
 
 #: The two lists of wheel notes a person keeps for the shot panel: the notes
@@ -587,8 +589,8 @@ _BALANCE_LABELS = {
     "bitter": "Bitter",
 }
 _DECISION_LABELS = {
-    "keep": "Keep",
-    "improve": "Improve",
+    "keep": "Good",
+    "improve": "Bad",
     "discard": "Discard",
 }
 _OUTCOME_LABELS = {

@@ -161,7 +161,7 @@ change, marked as coming from it.
 Each version says what changed against the version before it, what you were
 trying, and — optionally —
 what you **predicted** it would do, compared to which version. Once the shots
-are in and you have labelled them Keep or Improve, you record the **outcome**:
+are in and you have rated or labelled them, you record the **outcome**:
 held, partly held, failed or inconclusive, with a line saying why. Above the log
 sits the only number that matters, "6 of 10 predictions held".
 
@@ -202,7 +202,7 @@ like, because a second opinion about a grade is ordinary.
 
 **The agent can propose the outcome for you to accept.** At the end of its grade
 a conversation about a version proposes one outcome for the whole version,
-worked out from all its counted (Keep or Improve) shots, with the per-claim lines
+worked out from all its counted (Good or Bad) shots, with the per-claim lines
 under it. It shows as a card in the chat: **Accept** records it as written,
 **Record another outcome** records your own choice of the four, **Dismiss**
 records nothing and may say why. Nothing is recorded until you press one, the
@@ -238,6 +238,16 @@ distance from itself.
 not incomplete and not labelled Discard. Shots you have not labelled count too —
 they are plain data, and leaving them out would make the number depend on how
 diligent you have been with the buttons.
+
+**Good, Bad and Discard.** A shot is **Good** when it is what the Recipe should make, **Bad**
+when it counts but should be better, and **Discard** when it does not count at all. They are
+your label on the shot (stored as keep, improve and discard); a shot you did not label is read
+from its rating instead, the one the Rating column shows (your verdict's, then the machine's
+notes card, then the machine's index): three stars or more is Good, one or two is Bad, and
+no rating (or 0) is neither. A label you chose always wins, so a Bad shot with five stars is
+Bad, and Discard is never worked out from a rating. The counts, the gold standard, what a
+prediction can be graded on, the way back to a version that worked and the agent's shot search
+all read the shot this way.
 
 **Eight measures**, each used only where the archive already holds it: shot time,
 first drip (when coffee first reached the cup, from the scale), first puck flow
@@ -275,7 +285,7 @@ and the comparison is made on the numbers rather than on what is printed. A
 difference and its yardstick are written one decimal finer than the means they
 came from, so a row can never read "+2.0 s, beyond 2.0 s" when what happened was
 "+2.04 s, beyond 2.00 s".
-Under the table sit the balance counts and the Keep / Improve / unlabelled
+Under the table sit the balance counts and the Good / Bad / unlabelled
 counts for both sides, as plain facts with no verdict on them. It is closed
 unless the prediction is still ungraded and there are shots to grade it with.
 None of this appears on the shot page: the prediction is hidden there until you
@@ -292,16 +302,16 @@ filed under it, and a recorded outcome is not reopened. The log gets one line,
 "Went back to v1.2 (from v2.1)", with the date and an optional note. The next
 change continues that line: from v2.1 back to v1.2, the next minor is v1.3 (or
 the next free minor if that is taken), and the next major is the highest major
-plus one. When the current version has shots you want to improve on and none you
-kept, the page offers the way back to the nearest version behind it, on the line
-it was made from, that you did keep shots from.
+plus one. When the current version has Bad shots and no Good one, the page offers
+the way back to the nearest version behind it, on the line it was made from, that has a
+Good shot.
 **Going back changes the machine, by the usual route.** The Recipe's profile goes back to what
 that version brews (it becomes the profile's active version), and the next sync puts it on
 the machine if the profile is switched on and writes are on. A Recipe has one profile, so going
 back never moves it to another one.
 
 Each version's shot count is a link into the shots list narrowed to **that
-version**, not to the whole Recipe: the Keep / Improve / Discard counts beside it
+version**, not to the whole Recipe: the Good / Bad / Discard counts beside it
 are that version's too.
 
 Versions off the line you are now brewing are marked **dead ends** and muted,
@@ -1040,7 +1050,7 @@ numbers, every version with what changed, what was predicted, against which
 version and how it turned out, the track record, how much this Recipe's shots vary
 when nothing changed, the evidence table this version's prediction is graded on,
 this version's newest shots (twenty by default, `chatRecentShots`) with the
-discards marked, the Keep shots that are the target, and the insights you have
+discards marked, the Good shots that are the target, and the insights you have
 confirmed. So the first turn is about the coffee rather than about learning what
 Recipe 3 is. Beside the composer, the page lists exactly what the agent can do in
 *this* conversation.

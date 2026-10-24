@@ -101,10 +101,8 @@ describe("VersionEvidence", () => {
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     const counts = screen.getByTestId("evidence-counts");
-    expect(counts).toHaveTextContent("v2: 3 shots · 2 balanced · 1 bitter · 2 Keep · 1 Improve");
-    expect(counts).toHaveTextContent(
-      "v1: 4 shots · 3 sour · 1 balanced · 3 Improve · 1 not labelled",
-    );
+    expect(counts).toHaveTextContent("v2: 3 shots · 2 balanced · 1 bitter · 2 Good · 1 Bad");
+    expect(counts).toHaveTextContent("v1: 4 shots · 3 sour · 1 balanced · 3 Bad · 1 not labelled");
   });
 
   it("writes a difference a decimal finer than the means it came from", async () => {

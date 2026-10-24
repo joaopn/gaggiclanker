@@ -41,7 +41,7 @@ SECRET = "the maintainer's private reasoning about the grinder"
 async def _graded_recipe(
     client: httpx.AsyncClient, app: FastAPI, bean: int, *, shots: int = 1, name: str = "Guji"
 ) -> tuple[int, int]:
-    """A Recipe whose v1 has a prediction (written before any shot) and ``shots`` Keep shots."""
+    """A Recipe whose v1 has a prediction (written before any shot) and ``shots`` Good shots."""
     created = await _make_recipe(client, bean, name=name)
     recipe_id = int(created["id"])
     version_id = int(created["current_version_id"])
@@ -283,8 +283,11 @@ class TestAnswering:
         assert response.status_code == 409
         assert error(response)["code"] == "NOTHING_TO_GRADE"
         # Names the version it is about, never "Version None".
-        assert "v1 has no shot" in error(response)["message"]
+        assert "v1 has no Good or Bad shot yet" in error(response)["message"]
         assert "None" not in error(response)["message"]
+        # The route's own `details.message` says what is missing, as the Recipe page's does.
+        details = error(response)["details"]["message"]
+        assert "Good or Bad" in details and "a discarded shot does not count" in details
         waiting = data(await client.get(f"/api/recipes/{recipe_id}"))["outcome_proposal"]
         assert waiting is not None and waiting["id"] == proposal_id
 
@@ -446,3 +449,5 @@ class TestTheNextVersionCardSaysItRecordsTheGrade:
 
         assert response.status_code == 409
         assert error(response)["code"] == "PROPOSAL_GRADE_UNRECORDABLE"
+        message = error(response)["details"]["message"]
+        assert "Good or Bad any more" in message and "a discarded shot does not count" in message

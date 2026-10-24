@@ -13,6 +13,41 @@ database.
 
 ## [Unreleased]
 
+### Good, Bad and Discard, and a decision from the rating
+
+- **Changed: the labels are Good, Bad and Discard.** What was Keep is Good, and what was Improve
+  is Bad. Discard is unchanged. Only the words changed: nothing in your database is touched and
+  nothing needs doing, because the stored values are still keep, improve and discard. The agent
+  speaks the new words too: the Recipe and design prompts, the tool descriptions, the opening
+  context ("5 Good shots on the line being brewed"), the counts beside each version and the
+  shot information's Label line. The shot search's `label` takes good, bad or discard. If you
+  edited the chat-recipe or chat-design prompt under Settings, you keep your text, and so its
+  old words (Keep and Improve): nothing rewrites them, though the tool descriptions and the
+  context the agent reads use the new ones; to get the new wording, reset that prompt to its
+  default.
+- **New: a shot you rated but did not label is Good or Bad by its rating.** Three stars or more
+  is Good, one or two is Bad, using the rating the Rating column shows (your verdict's, then the
+  machine's notes card, then the machine's index; 0 means unrated). A label you chose always wins,
+  so a Bad shot with five stars is Bad, and a Discard with five stars stays out of the counted
+  shots; Discard is never worked out from a rating. This is what the agent reads as Good or Bad
+  everywhere it asks: the gold standard, the counts, whether a prediction can be graded, the
+  way back to a version that worked, and the shot search. The shot's Label line says where it
+  came from ("Good (from the 4★ rating)"). A shot with neither a label nor a rating is "not
+  labelled". The SQL views the agent can query still hold only your verdict, which includes a
+  rating copied from the machine's notes card when the verdict was created from it, but not a
+  rating that lives only on the machine's index or a notes-card rating that arrived after you had
+  typed a verdict; so a count of Good and Bad in SQL can differ from the app's for those shots, and
+  the schema notes say so.
+- **New: the shots list serves the rating's decision and the balance.** Each row carries
+  `derived_decision` (set only when you stored no decision) with the rating it came from and where
+  that rating sits (`decision_rating`, `decision_rating_source`), `judgement_balance` (your verdict's
+  balance) and `balance` (the machine's notes card, when it holds sour, balanced or bitter) for
+  the screens to draw.
+- **Changed: the Recipe page and the grade card say Good and Bad.** The Recipe page says "Good
+  shots", the counts read "2 Good · 1 Bad", and when a prediction cannot be graded the page, the
+  grade card, the API and the agent say what is missing: no Good or Bad shot yet. A discarded shot
+  does not count, however it was rated, and rating a shot is enough.
+
 ### A drink and drink notes on every Recipe version
 
 - **New: a Recipe version says what it is for.** The **drink** is what is added to the shot after

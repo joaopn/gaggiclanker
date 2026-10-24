@@ -310,12 +310,12 @@ describe("OutcomeCard", () => {
     });
 
     it("when there is nothing left to grade", () => {
-      const error = new ApiClientError("Version 22 has no shot you have formed a view about", {
+      const error = new ApiClientError("Version 22 has no Good or Bad shot yet", {
         status: 409,
         code: "NOTHING_TO_GRADE",
       });
       expect(outcomeFailure(error)).toBe(
-        "No shot of this version is labelled Keep or Improve any more, so there is nothing to grade. Label a shot again, or dismiss this grade.",
+        "No shot of this version is Good or Bad any more (a discarded one does not count), so there is nothing to grade. Rate a shot or label it Good or Bad, or dismiss this grade.",
       );
     });
 

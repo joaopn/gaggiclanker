@@ -4,12 +4,12 @@ The golden file is `golden/recipe-chat-context.txt`, and it is the real check on
 this module: the other tests here each pin one rule, while the golden asserts
 that the whole document — the version being argued, the ledger with its dead
 ends and outcomes, the spread, the evidence table, this version's shots in
-their base information and the Keep shots that are the target — reads as one
+their base information and the Good shots that are the target — reads as one
 thing a person would recognise.
 
 The archive behind it is built here rather than borrowed, because it has to
 carry everything at once: a roll back, the two versions it stepped over, a
-failed prediction, an inconclusive one, an open one, Keep shots and a Discard.
+failed prediction, an inconclusive one, an open one, Good shots and a Discard.
 
 Regenerate with `uv run pytest tests/chat -k golden --update-golden` and read
 the diff: that diff is what the model would have been told differently.
@@ -816,10 +816,10 @@ def test_the_default_number_of_shots_is_the_setting_s_default() -> None:
     assert SETTINGS_REGISTRY["chatRecentShots"].default == RECENT_SHOTS
 
 
-async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(
+async def test_a_good_shot_on_a_dead_end_is_not_the_gold_standard(
     experiment: Experiment,
 ) -> None:
-    """Good on a branch nobody is brewing is not what an Improve shot is held to."""
+    """Good on a branch nobody is brewing is not what a Bad shot is held to."""
     from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 
     on_a_dead_end = await RecipesRepository(experiment.db).recipe_shots(
@@ -834,7 +834,7 @@ async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(
         experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
-    gold = next(line for line in rendered.splitlines() if "Keep shot" in line)
+    gold = next(line for line in rendered.splitlines() if "Good shot" in line)
     assert "v1.1" not in gold
     assert "on v1, v2.1" in gold
 
@@ -887,14 +887,14 @@ async def test_the_insights_block_is_bounded_and_says_how_many_more_there_are(
     assert f"Insight {INSIGHTS_SHOWN + 4}." in listed[0]
 
 
-async def test_the_gold_standard_is_the_keep_shots_still_on_the_line(
+async def test_the_gold_standard_is_the_good_shots_still_on_the_line(
     experiment: Experiment,
 ) -> None:
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
     )
 
-    assert "5 Keep shots on the line being brewed, on v1, v2.1" in rendered
+    assert "5 Good shots on the line being brewed, on v1, v2.1" in rendered
 
 
 async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_matter(
@@ -1021,7 +1021,7 @@ async def test_the_ledger_averages_count_only_the_shots_that_count(experiment: E
     )
     line = _ledger_line_of(rendered, "v2.2")
 
-    assert "2 shots (0 Keep, 1 Improve, 1 Discard)" in line
+    assert "2 shots (0 Good, 1 Bad, 1 Discard)" in line
     assert _averages_of(line)["shot time"] == 36.0
     assert _averages_of(line)["first puck flow"] == 8.0
     assert "averages over 1 counted shot:" in line
@@ -1041,7 +1041,7 @@ async def test_a_version_with_shots_but_none_that_count_says_so(experiment: Expe
     )
     line = _ledger_line_of(rendered, "v1.1")
 
-    assert "1 shot (0 Keep, 0 Improve, 1 Discard) · no counted shots ·" in line
+    assert "1 shot (0 Good, 0 Bad, 1 Discard) · no counted shots ·" in line
     assert "averages over" not in line
 
 
@@ -1172,7 +1172,7 @@ async def test_counted_shots_that_recorded_nothing_say_so(experiment: Experiment
     )
     line = _ledger_line_of(rendered, version.version_label)
 
-    assert "1 shot (0 Keep, 0 Improve, 0 Discard) · counted shots recorded no values ·" in line
+    assert "1 shot (0 Good, 0 Bad, 0 Discard) · counted shots recorded no values ·" in line
 
 
 async def test_the_context_reads_the_counted_shots_once(

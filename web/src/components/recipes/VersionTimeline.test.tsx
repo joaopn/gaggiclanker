@@ -344,7 +344,7 @@ describe("VersionTimeline", () => {
     const entry = screen.getAllByTestId("version-entry")[0];
     expect(entry).toHaveTextContent("less bitter, a shorter shot");
     expect(entry).toHaveTextContent("compared to v1");
-    expect(entry).toHaveTextContent("2 Keep · 1 Improve");
+    expect(entry).toHaveTextContent("2 Good · 1 Bad");
     expect(entry).toHaveTextContent("Restores v1");
     expect(screen.getAllByTestId("version-outcome")[0]).toHaveAttribute(
       "data-state",
@@ -545,7 +545,10 @@ describe("VersionTimeline", () => {
     // The reason is text on the page tied to the button, not a `title` on a
     // control nothing can focus.
     const described = document.getElementById(buttons[0].getAttribute("aria-describedby") ?? "");
-    expect(described).toHaveTextContent("Label a shot Keep or Improve first");
+    expect(described).toHaveTextContent("No Good or Bad shot yet");
+    expect(described).toHaveTextContent(
+      "a discarded one does not count, and rating a shot is enough",
+    );
     // And on the version that predicted nothing, the reason is the other one.
     const other = document.getElementById(buttons[1].getAttribute("aria-describedby") ?? "");
     expect(other).toHaveTextContent("states no prediction");

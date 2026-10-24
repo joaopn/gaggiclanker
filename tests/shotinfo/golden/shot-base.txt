@@ -10,7 +10,7 @@ phase 3 · Extraction: duration 24.8 s; ended by Unknown; cup at end 31.6 g, 87.
 [Identity and status]
 Date and time: 2026-04-03 12:06
 Recipe version: v1 of Recipe 1
-Label: Keep
+Label: Good
 Counted: counted
 Profile: Amigo Alturas Bloom [AI]
 Machine's shot number: 000204

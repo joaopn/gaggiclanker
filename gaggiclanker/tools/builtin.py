@@ -66,7 +66,7 @@ from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.recipes import grind_value, parse_version_label
 from gaggiclanker.domain.signature import ExpectationInput, SignatureRefused
-from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance
+from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance, Decision
 from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, Tier, effective_tiers
@@ -175,7 +175,14 @@ SCHEMA_NOTES = (
     "claim of a shot's newest finished review "
     "that a person did not reject (the fault word, the window it is about, its text and the "
     "numbers behind it); v_reviews says how many claims a review kept and how many a person "
-    "rejected."
+    "rejected. decision (v_shots, v_judgements) holds only what the person chose, in stored "
+    "words: keep means Good, improve means Bad, discard means Discard, and NULL means they "
+    "chose none. The views hold the person's verdict, which includes a rating, balance and "
+    "note copied from the machine's notes card when the verdict was created from it. They do "
+    "not hold a rating that lives only on the machine's index, or a notes-card rating that "
+    "arrived after a verdict was already typed here. A shot with no decision may still be Good "
+    "or Bad by its rating (3 stars or more is Good, 1 or 2 is Bad), which these views do not "
+    "work out, so a count of Good and Bad in SQL can differ from the app's for those shots."
 )
 
 
@@ -548,6 +555,10 @@ _ORDER_KEYS: dict[str, str] = {
 }
 
 
+#: The words the agent filters by, and the stored decision each one is.
+_STORED_LABELS: dict[str, Decision] = {"good": "keep", "bad": "improve", "discard": "discard"}
+
+
 class SearchShotsInput(_Model):
     version: str | int | float | None = Field(
         default=None,
@@ -557,11 +568,13 @@ class SearchShotsInput(_Model):
             "trailing zeros, so 1.10 would arrive as v1.1."
         ),
     )
-    label: Literal["keep", "improve", "discard"] | None = Field(
+    label: Literal["good", "bad", "discard"] | None = Field(
         default=None,
         description=(
-            "Only the shots labelled this way. Keep is the gold standard, Improve is what you "
-            "are working on, and Discard says the shot went wrong rather than the version."
+            "Only the shots labelled this way. Good is the gold standard, Bad is what you "
+            "are working on, and Discard says the shot went wrong rather than the version. A "
+            "shot the person did not label is Good from a rating of 3 stars or more and Bad "
+            "from 1 or 2, so it is found under the label its rating gives it."
         ),
     )
     balance: Balance | None = Field(default=None, description="Only this taste balance.")
@@ -691,8 +704,9 @@ def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier], order: s
     permission="read",
     description=(
         "Search this Recipe's shots on their base information, and get each match's base "
-        "rendering. Filter by version, label, balance and dates, or by a range on shot time, "
-        "yield, first drip, peak pressure, average brew flow, rating, dose in, dose out, ratio, "
+        "rendering. Filter by version, label (good, bad or discard), balance and dates, or by "
+        "a range on shot time, yield, first drip, peak pressure, average brew flow, rating, "
+        "dose in, dose out, ratio, "
         "resistance level, pressure adherence or flow adherence; sort by date or any of those "
         "numbers. At most 10 shots come back; "
         "truncated says more matched. A shot with no value for a filter never matches it. A "
@@ -739,7 +753,7 @@ async def list_recipe_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchS
         recipe_id,
         ShotQuery(
             version_id=version_id,
-            label=args.label,
+            label=_STORED_LABELS[args.label] if args.label is not None else None,
             balance=args.balance,
             since=args.since.isoformat() if args.since is not None else None,
             until=args.until.isoformat() if args.until is not None else None,
@@ -1661,11 +1675,12 @@ class ProposeOutcomeOutput(_Model):
     permission="propose",
     description=(
         "Propose how THIS conversation's version turned out — held, partly_held, failed or "
-        "inconclusive — graded against all of its counted shots (Keep or Improve), never one "
+        "inconclusive — graded against all of its counted shots (Good or Bad), never one "
         "shot. It records nothing: the person sees a card and accepts it, records another "
         "outcome, or dismisses it, and until they accept it the version's outcome is what it "
         "was. Refused when the version has no prediction (there is nothing to grade) or no "
-        "shot the person has judged Keep or Improve. Call it at the end of your grade, "
+        "Good or Bad shot (a rated shot is one; a discarded shot does not count). Call it at the "
+        "end of your grade, "
         "once; a second call replaces the first while the person has not answered. Once it "
         "is waiting you may propose the next version in the same answer, and accepting that "
         "version records the grade."
@@ -1720,9 +1735,10 @@ async def propose_outcome(ctx: ToolContext, args: ProposeOutcomeInput) -> Propos
     )
     if result.refused == "nothing_to_grade":
         raise ValueError(
-            f"{version.version_label} has no shot the person has judged Keep or Improve yet, so "
-            "there is nothing to grade it on. Ask them to label a shot, or say what you would "
-            "look for in the next one."
+            f"{version.version_label} has no Good or Bad shot yet (a discarded shot does not "
+            "count, and rating a shot is enough), so there is nothing to grade it on. Ask them "
+            "to rate a shot or label it Good or Bad, or say what you would look for in the next "
+            "one."
         )
     if result.refused == "bad_thread":
         raise ValueError(
