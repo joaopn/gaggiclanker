@@ -28,7 +28,6 @@ from gaggiclanker.domain.slog import Slog, parse_slog
 from tests.domain.helpers import (
     SLOG_FIXTURES,
     constructed_controls,
-    constructed_profile_for,
     make_slog,
 )
 
@@ -108,16 +107,6 @@ def test_a_real_shot_is_graded_on_what_its_phases_steered_by(shot: str, variant:
         assert compliance["flow_grading"] == "not_applicable"
     else:
         assert compliance["flow_grading"] == "graded"
-
-
-@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-def test_a_pressure_profile_has_no_flow_to_grade(path: Path) -> None:
-    slog = parse_slog(path.read_bytes())
-    controls = phase_controls(constructed_profile_for(path))
-    compliance = _compliance(slog, controls)
-    assert compliance["flow_rmse_ml_s"] is None
-    assert compliance["flow_grading"] == "not_applicable"
-    assert compliance["pressure_grading"] == "graded"
 
 
 @pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)

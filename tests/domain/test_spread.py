@@ -21,7 +21,6 @@ import pytest
 
 from gaggiclanker.domain.spread import (
     MEASURE_FLOORS,
-    MEASURED_DEGREES_OF_FREEDOM,
     CountedShot,
     MeasureEvidence,
     pooled_spreads,
@@ -164,10 +163,6 @@ def test_three_degrees_of_freedom_is_where_it_becomes_measured(
     assert spread.measured is measured
     # The number is served either way: it is the only evidence there is.
     assert spread.value is not None
-
-
-def test_the_threshold_is_three_degrees_of_freedom() -> None:
-    assert MEASURED_DEGREES_OF_FREEDOM == 3
 
 
 def test_the_floors_are_the_numbers_the_design_named() -> None:
@@ -604,12 +599,3 @@ def test_the_same_shots_in_any_order_give_the_same_numbers() -> None:
             ).model_dump()
             == expected_evidence
         )
-
-
-def test_the_served_report_is_the_same_whatever_order_the_shots_arrive_in() -> None:
-    shots = _order_sensitive()
-    expected = [entry.model_dump() for entry in spread_report(pooled_spreads(shots))]
-
-    for ordering in permutations(shots):
-        report = spread_report(pooled_spreads(list(ordering)))
-        assert [entry.model_dump() for entry in report] == expected

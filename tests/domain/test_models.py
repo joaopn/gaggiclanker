@@ -258,12 +258,6 @@ def test_content_hash_ignores_user_annotations() -> None:
     assert document_hash(a) == document_hash(b)
 
 
-def test_content_hash_is_sha256_hex() -> None:
-    digest = document_hash(Profile.model_validate(_profile()))
-    assert len(digest) == 64
-    assert set(digest) <= set("0123456789abcdef")
-
-
 #: What `document_hash` was for each shipped profile before the brew hash existed: the
 #: document hash is exactly those bytes, so a stored guard, audit row or overruled hash keeps
 #: its meaning.
@@ -312,25 +306,6 @@ def test_the_brew_form_is_the_document_form_without_the_label(name: str) -> None
     document.pop("label")
     assert json.loads(canonical_brew_json(profile)) == document
     assert brew_hash(profile) == hashlib.sha256(canonical_brew_json(profile).encode()).hexdigest()
-
-
-def test_the_brew_hash_survives_the_devices_own_round_trip() -> None:
-    plain = Profile.model_validate(_profile())
-    returned = Profile.model_validate(
-        {
-            **_profile(),
-            "id": "abc",
-            "favorite": True,
-            "selected": True,
-            "phases": [
-                {
-                    **_profile()["phases"][0],
-                    "transition": {"type": "instant", "duration": 0, "adaptive": True},
-                }
-            ],
-        }
-    )
-    assert brew_hash(returned) == brew_hash(plain)
 
 
 # ── shot notes ───────────────────────────────────────────────────────

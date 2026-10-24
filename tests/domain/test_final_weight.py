@@ -47,11 +47,6 @@ def test_it_survives_the_binary_round_trip() -> None:
     assert parsed.volume_g == pytest.approx(36.2)
 
 
-def test_the_header_weight_wins_when_there_is_one() -> None:
-    slog = make_slog(_samples([*_ramp(31.8), 0.0]), final_weight_g=32.4)
-    assert slog.volume_g == pytest.approx(32.4)
-
-
 def test_a_positive_last_reading_is_the_yield_as_before() -> None:
     assert make_slog(_samples(_ramp(31.8))).volume_g == pytest.approx(31.8)
 

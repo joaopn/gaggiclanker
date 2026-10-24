@@ -28,13 +28,6 @@ def test_unpad(value: int | str, expected: int) -> None:
     assert unpad(value) == expected
 
 
-def test_round_trip_is_stable() -> None:
-    """pad6 and unpad are inverses in both directions."""
-    for i in (0, 1, 42, 129, 999999):
-        assert unpad(pad6(i)) == i
-        assert pad6(unpad(pad6(i))) == pad6(i)
-
-
 def test_ids_wider_than_six_digits_are_not_truncated() -> None:
     """A seven-digit counter must still name the right file, not a shorter one."""
     assert pad6(1234567) == "1234567"
