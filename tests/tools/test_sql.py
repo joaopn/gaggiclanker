@@ -7,9 +7,12 @@ what it will not do.
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.tools import sql
 from gaggiclanker.tools.sql import (
     ALLOWED_VIEWS,
     MAX_ROW_LIMIT,
@@ -291,7 +294,12 @@ async def test_a_blob_column_never_reaches_the_model(archive: Fixture) -> None:
     assert "raw_slog" not in result.columns
 
 
-async def test_the_connection_is_query_only(archive: Fixture, tool_db: Database) -> None:
-    """Belt and braces behind the authorizer: even a permitted read cannot write."""
-    with pytest.raises(SqlRefused):
-        await run_query(archive.db.path, "UPDATE v_shots SET rating = 5")
+def test_the_connection_is_query_only(
+    archive: Fixture, tool_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Belt and braces behind the authorizer: with the authorizer allowing everything, a
+    write is still refused by SQLite itself."""
+    monkeypatch.setattr(sql, "_make_authorizer", lambda relations: lambda *args: sqlite3.SQLITE_OK)
+
+    with pytest.raises(SqlRefused, match="readonly"):
+        sql._run_blocking(archive.db.path, "UPDATE shots SET quarantined = 1", 10, 5.0)
