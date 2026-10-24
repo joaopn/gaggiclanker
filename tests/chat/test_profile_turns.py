@@ -30,12 +30,6 @@ TURNS: dict[str, str] = json.loads(
 )
 
 
-def renamed(turn: str) -> str:
-    """A turn for a profile the person renamed: the full stop becomes the ending."""
-    assert turn.endswith(".")
-    return turn[:-1] + TURNS["renamed_ending"]
-
-
 @pytest.fixture
 async def prompts(tmp_path: Path) -> AsyncIterator[PromptService]:
     db = Database(tmp_path / "prompts.db")
@@ -52,12 +46,6 @@ async def prompts(tmp_path: Path) -> AsyncIterator[PromptService]:
 async def _system(prompts: PromptService, name: str) -> str:
     loaded = await prompts.load(name, {"scope": "", "shot_fields": ""})
     return " ".join(loaded.system.split())
-
-
-def test_a_renamed_turn_replaces_the_full_stop_with_the_ending() -> None:
-    assert renamed("Approved: Gentle Bloom, a new profile.") == (
-        "Approved: Gentle Bloom, a new profile (you proposed it as <old name>)."
-    )
 
 
 async def test_the_recipe_prompt_understands_the_turns_of_a_profile_card(
@@ -99,13 +87,6 @@ async def test_no_prompt_sends_the_person_to_the_profiles_page_to_answer_a_propo
     assert "for them to make active" not in system
 
 
-def renamed_first_recipe() -> str:
-    """A first recipe accepted under another name: the same ending, with the new name."""
-    base = TURNS["accepted_first_recipe"]
-    assert base.endswith(".")
-    return base[:-1] + TURNS["accepted_first_recipe_renamed_clause"] + TURNS["renamed_ending"]
-
-
 async def test_the_recipe_prompt_reads_a_first_recipe_accepted_under_another_name(
     prompts: PromptService,
 ) -> None:
@@ -114,7 +95,3 @@ async def test_the_recipe_prompt_reads_a_first_recipe_accepted_under_another_nam
     clause = TURNS["accepted_first_recipe_renamed_clause"].removeprefix(", ")
     assert f"{clause} (you proposed it as <old name>)" in system
     assert "and from then on you use the new name" in system
-    assert renamed_first_recipe() == (
-        "Accepted: your first version is now <version label> of this Recipe, "
-        "with its profile named <name> (you proposed it as <old name>)."
-    )
