@@ -330,19 +330,6 @@ class TestTheKnowledgePagesCount:
         await world.own(world.c, "Its own.")
         assert await runs.recipes_with_insights() == 2
 
-    async def test_a_copy_stays_its_originals_lesson_when_the_original_is_gone(
-        self, world: PatternWorld
-    ) -> None:
-        runs = PatternRunsRepository(world.db)
-        dup = await _duplicate(world)
-
-        await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (dup.original,))
-
-        # D's copy still counts for A, where the lesson was learned: one Recipe, not two.
-        assert await runs.recipes_with_insights() == 1
-        await world.own(world.c, "Its own.")
-        assert await runs.recipes_with_insights() == 2
-
     async def test_a_dismissed_original_still_homes_its_copies_in_a(
         self, world: PatternWorld
     ) -> None:

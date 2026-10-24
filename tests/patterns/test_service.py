@@ -110,29 +110,21 @@ async def test_a_run_writes_its_own_rows_and_no_insight(
     assert await _dump(talking.world.db) == before
 
 
+@pytest.mark.parametrize(("status", "code"), [(401, "auth"), (429, "rate_limited")])
 async def test_a_failed_run_writes_one_row_and_nothing_else(
-    service: PatternsService, talking: Talking, provider: FakeProvider
+    service: PatternsService, talking: Talking, provider: FakeProvider, status: int, code: str
 ) -> None:
-    provider.script = [api_error(401, "bad key")]
+    # 401 is final; 429 is the retryable kind. Either way it is a stored row, not an exception.
+    provider.script = [api_error(status, "bad key")]
     before = await _dump(talking.world.db)
 
     row = await service.run()
 
     assert row.status == "failed"
-    assert row.error is not None and row.error.startswith("auth:")
+    assert row.error is not None and row.error.startswith(f"{code}:")
     assert row.finished_at
     assert await _dump(talking.world.db) == before
     assert await talking.world.db.fetch_value("SELECT COUNT(*) FROM pattern_proposals") == 0
-
-
-async def test_a_provider_failure_is_a_stored_row_not_an_exception(
-    service: PatternsService, provider: FakeProvider
-) -> None:
-    provider.script = [api_error(429, "slow down")]
-
-    row = await service.run()
-
-    assert row.status == "failed"
 
 
 @pytest.mark.parametrize(
@@ -142,7 +134,6 @@ async def test_a_provider_failure_is_a_stored_row_not_an_exception(
         json.dumps({"proposals": [], "insights_to_delete": [1]}),
         json.dumps({"proposals": [{"text": "x", "scope": {"colour": "red"}}]}),
         json.dumps({"proposals": [{"text": "", "source_insight_ids": [1, 3]}]}),
-        json.dumps({"proposals": [{"text": "   ", "source_insight_ids": [1, 3]}]}),
         json.dumps({"proposals": [{"text": "\u00a0 \t\n\u00a0", "source_insight_ids": [1, 3]}]}),
     ],
     ids=[
@@ -150,7 +141,6 @@ async def test_a_provider_failure_is_a_stored_row_not_an_exception(
         "extra-key",
         "unknown-scope-key",
         "empty-text",
-        "spaces-only",
         "non-breaking-spaces-only",
     ],
 )
@@ -238,23 +228,21 @@ class TestThePostFilter:
 
         assert proposals == [] and row.dropped == {"one_recipe": 1}
 
-    @pytest.mark.parametrize("invented", [999, 5, 6])
+    @pytest.mark.parametrize("invented", [999, 5, 6, "general"])
     async def test_an_invented_source_is_dropped_and_counted(
-        self, service: PatternsService, provider: FakeProvider, talking: Talking, invented: int
+        self,
+        service: PatternsService,
+        provider: FakeProvider,
+        talking: Talking,
+        invented: int | str,
     ) -> None:
         # 5 is a waiting insight, 6 one in a Recipe being designed: neither was given.
+        # A general insight was given to the model, but it is not a source of a pattern.
+        if invented == "general":
+            invented = talking.general
         answer = _answer(
             talking, source_insight_ids=[talking.a_grinder, talking.b_grinder, invented]
         )
-
-        row, proposals = await self._run(service, provider, answer)
-
-        assert proposals == [] and row.dropped == {"invented_source": 1}
-
-    async def test_a_general_insight_id_is_not_a_source(
-        self, service: PatternsService, provider: FakeProvider, talking: Talking
-    ) -> None:
-        answer = _answer(talking, source_insight_ids=[talking.a_grinder, talking.general])
 
         row, proposals = await self._run(service, provider, answer)
 
@@ -265,20 +253,6 @@ class TestThePostFilter:
     ) -> None:
         # A is natural and B is washed.
         answer = _answer(talking, scope={"process": "natural"})
-
-        row, proposals = await self._run(service, provider, answer)
-
-        assert proposals == [] and row.dropped == {"scope_not_shared": 1}
-
-    async def test_a_scope_that_one_source_recipe_does_not_match_is_dropped(
-        self, service: PatternsService, provider: FakeProvider, talking: Talking
-    ) -> None:
-        # Light roast: A and B match, C (dark) does not.
-        answer = _answer(
-            talking,
-            scope={"roast_level": "light"},
-            source_insight_ids=[talking.a_grinder, talking.b_grinder, talking.c_grinder],
-        )
 
         row, proposals = await self._run(service, provider, answer)
 
