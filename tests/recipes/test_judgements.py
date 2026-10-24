@@ -178,9 +178,12 @@ class TestSeedingFromDeviceNotes:
         shot_id = await make_shot(wired.db, "000322")
         await wired.judgements.seed_from_device_notes(shot_id, _note("000322", rating=2))
 
-        await wired.judgements.upsert(
+        edited = await wired.judgements.upsert(
             shot_id, JudgementWrite(rating=5, notes="actually excellent", decision="keep")
         )
+        # The two have just diverged, so a stale timestamp would claim the
+        # opposite to anything that later reconciles them.
+        assert edited.device_synced_at is None
 
         # Sync comes round again with a different note. Nothing moves.
         assert (
@@ -262,17 +265,3 @@ class TestNotesTheFirmwareAcceptsAndWeDoNot:
             is False
         )
         assert await wired.judgements.get(shot_id) is None
-
-    async def test_a_user_edit_stops_claiming_to_be_in_step_with_the_machine(
-        self, wired: Fixtures
-    ) -> None:
-        shot_id = await make_shot(wired.db, "000332")
-        await wired.judgements.seed_from_device_notes(shot_id, _note("000332", rating=3))
-        seeded = await wired.judgements.get(shot_id)
-        assert seeded is not None and seeded.device_synced_at is not None
-
-        edited = await wired.judgements.upsert(shot_id, JudgementWrite(rating=5))
-
-        # The two have just diverged, so a stale timestamp would claim the
-        # opposite to anything that later reconciles them.
-        assert edited.device_synced_at is None

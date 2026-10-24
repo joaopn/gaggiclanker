@@ -45,8 +45,7 @@ def _device_profile_ids() -> tuple[str, str]:
     """
     ids = [parse_slog(raw).header.profile_id for raw in fixture_slogs()]
     distinct = list(dict.fromkeys(ids))
-    if len(distinct) < 2:  # pragma: no cover - the shipped fixtures differ
-        pytest.skip("the .slog fixtures no longer carry two distinct profile ids")
+    assert len(distinct) >= 2, "the .slog fixtures no longer carry two distinct profile ids"
     return distinct[0], distinct[1]
 
 

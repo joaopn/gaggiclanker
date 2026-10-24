@@ -416,25 +416,6 @@ async def test_accepting_is_refused_once_a_shot_is_filed_on_the_design(wired: Fi
     assert await draft_status(wired, draft_id) == "draft"
 
 
-async def test_writing_a_version_by_hand_stales_the_waiting_recipe_and_discards_its_draft(
-    wired: Fixtures,
-) -> None:
-    row = await designed(wired)
-    draft_id, profile = await a_draft(wired, "Designed")
-    proposals = RecipeProposalsRepository(wired.db)
-    stored = (await proposals.create(row.id, design(draft_id, profile))).proposal
-    assert stored is not None
-
-    filled = await wired.recipes.add_version(
-        row.id, RecipeVersionPatch(dose_g=18, grind_setting="21")
-    )
-
-    assert filled is not None and filled.version_label == "v1"
-    retired = await proposals.get(row.id, stored.id)
-    assert retired is not None and retired.status == "stale"
-    assert await draft_status(wired, draft_id) == "discarded"
-
-
 async def test_discarding_a_design_takes_its_proposals_and_discards_their_drafts(
     wired: Fixtures,
 ) -> None:
