@@ -1,4 +1,4 @@
-import { waitFor } from "@testing-library/react";
+import { createEvent, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInPage } from "@/pages/SignInPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
@@ -80,5 +80,24 @@ describe("SignInPage", () => {
     const form = container.querySelector("form");
     expect(form?.getAttribute("method")).toBeNull();
     expect(container.querySelector('input[name="password"]')).toHaveAttribute("type", "password");
+  });
+
+  it("handles the submit itself, so the browser never sends the form as a GET", async () => {
+    // Without preventDefault a form with no method submits as a GET, and the
+    // password lands in the URL.
+    login.mockResolvedValue({ token: "t", expires_in: 60, user: "barista" });
+    const user = setupUser();
+    const { container, getByLabelText } = renderWithQueryClient(<SignInPage />, {
+      initialEntries: ["/sign-in"],
+    });
+    await user.type(getByLabelText("Username"), "barista");
+    await user.type(getByLabelText("Password"), "secret");
+
+    const form = container.querySelector("form") as HTMLFormElement;
+    const submit = createEvent.submit(form);
+    fireEvent(form, submit);
+
+    expect(submit.defaultPrevented).toBe(true);
+    await waitFor(() => expect(login).toHaveBeenCalledWith("barista", "secret"));
   });
 });

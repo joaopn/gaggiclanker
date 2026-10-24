@@ -164,6 +164,36 @@ describe("PromptsPage", () => {
     expect(within(card).getByRole("button", { name: /reset to default/i })).toBeDisabled();
   });
 
+  it("resets an edited prompt to the version that shipped", async () => {
+    const user = setupUser();
+    getPrompt.mockResolvedValue({
+      name: "fragments/style",
+      content: "voice: terse\n",
+      default_content: "voice: plain\n",
+      edited: true,
+      updated_at: "2026-09-11T00:00:00.000Z",
+      fragment: true,
+    });
+    resetPrompt.mockResolvedValue({
+      name: "fragments/style",
+      content: "voice: plain\n",
+      default_content: "voice: plain\n",
+      edited: false,
+      updated_at: "2026-09-11T00:02:00.000Z",
+      fragment: true,
+    });
+    renderWithQueryClient(<PromptsPage page={PAGE} />);
+    await user.click(await screen.findByRole("button", { name: "fragments/style" }));
+    const editor = await screen.findByLabelText("Content of fragments/style");
+    const card = editor.closest("[data-slot=card]") as HTMLElement;
+
+    const reset = within(card).getByRole("button", { name: /reset to default/i });
+    expect(reset).toBeEnabled();
+    await user.click(reset);
+
+    await waitFor(() => expect(resetPrompt).toHaveBeenCalledWith("fragments/style"));
+  });
+
   it("does nothing until the text actually changes", async () => {
     await openPing();
     expect(screen.getByRole("button", { name: /save prompt/i })).toBeDisabled();
