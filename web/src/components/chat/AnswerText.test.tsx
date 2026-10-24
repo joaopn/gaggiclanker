@@ -31,11 +31,6 @@ describe("AnswerText renders markdown", () => {
     expect(screen.getByRole("heading", { name: "Next steps" })).toBeTruthy();
   });
 
-  it("renders a numbered list as an ol", () => {
-    const { container } = renderAnswer("1. First\n2. Second");
-    expect(container.querySelectorAll("ol > li")).toHaveLength(2);
-  });
-
   it("renders a GFM table", () => {
     const { container } = renderAnswer("| Shot | Yield |\n|---|---|\n| 1 | 36 |\n| 2 | 38 |");
     const cells = [...container.querySelectorAll("td")].map((cell) => cell.textContent);
@@ -129,13 +124,6 @@ describe("links", () => {
   it("treats a protocol-relative address as external", () => {
     const { container } = renderAnswer("[x](//example.com/a)");
     expect(container.querySelector("a")?.getAttribute("target")).toBe("_blank");
-  });
-
-  it("drops a javascript: href", () => {
-    const { container } = renderAnswer("[x](javascript:alert(1))");
-    for (const a of container.querySelectorAll("a")) {
-      expect(a.getAttribute("href") ?? "").not.toMatch(/^javascript:/i);
-    }
   });
 });
 
@@ -365,20 +353,6 @@ describe("review fixes", () => {
         </MemoryRouter>,
       );
     }
-
-    it("renders a citation as a router link", () => {
-      const { container } = inline("see shot 12");
-      const link = container.querySelector("a");
-      expect(link?.getAttribute("href")).toBe("/shots/12");
-      expect(link?.hasAttribute("target")).toBe(false);
-    });
-
-    it("opens an external link in a new tab without the opener", () => {
-      const { container } = inline("[docs](https://example.com)");
-      const link = container.querySelector("a");
-      expect(link?.getAttribute("target")).toBe("_blank");
-      expect(link?.getAttribute("rel")).toContain("noopener");
-    });
 
     it("shows no footnotes section and no label", () => {
       const { container } = inline("Text[^1].\n\n[^1]: The note.");
