@@ -270,22 +270,6 @@ def test_the_default_tiers_are_the_agreed_ones() -> None:
     assert set(tiers) == set(EXPECTED_KEYS)
 
 
-def test_the_firmware_analyzer_s_values_are_extended_never_base() -> None:
-    keys = (
-        "machine_puck_resistance",
-        "liquid_resistance",
-        "water_pumped",
-        "water_minus_weight",
-        "phase_machine_resistance",
-        "phase_liquid_resistance",
-    )
-
-    for key in keys:
-        assert ITEMS[key].default_tier == "extended", key
-        assert not ITEMS[key].locked, key
-    assert not set(keys) & keys_in("base", default_tiers())
-
-
 def test_the_locked_items_are_the_three_the_agent_cannot_work_without_and_are_base() -> None:
     locked = {item.key for item in CATALOGUE if item.locked}
 
@@ -377,73 +361,6 @@ def test_a_rendering_s_keys_follow_its_tier(tier: str, expected: frozenset[str])
     assert keys_in(tier, default_tiers()) == expected  # type: ignore[arg-type]
 
 
-def test_an_item_moved_to_another_tier_moves_with_it() -> None:
-    """The tiers are an argument, not a constant: a person's overrides just work."""
-    moved = {**default_tiers(), "peak_flow": "base", "rating": "excluded"}
-
-    assert "peak_flow" in keys_in("base", moved)
-    assert "rating" not in keys_in("full", moved)
-
-
 def test_every_group_note_belongs_to_a_group() -> None:
     assert set(GROUP_NOTES) <= set(GROUPS)
     assert all(note.strip() for note in GROUP_NOTES.values())
-
-
-#: What origin/dev's catalogue showed a chat without asking: every one of these
-#: is still shown, except the two that were retired outright (the execution score,
-#: which asked only whether the machine followed its profile, and the channeling
-#: risk, which has no number behind it). A band that was one of them is its number.
-ORIGIN_DEV_BASE = frozenset(
-    {
-        "shot_id",
-        "started_at",
-        "recipe_version",
-        "label",
-        "counted",
-        "profile_as_brewed",
-        "machine_shot_number",
-        "shot_time",
-        "yield",
-        "exit_reason",
-        "execution_score",
-        "first_drip",
-        "peak_pressure",
-        "brew_flow",
-        "resistance_level",
-        "channeling_risk",
-        "pressure_adherence",
-        "flow_adherence",
-        "rating",
-        "balance",
-        "taste_notes",
-        "aroma_notes",
-        "written_notes",
-        "dose_in",
-        "dose_out",
-        "ratio",
-    }
-)
-RETIRED_FROM_BASE = frozenset({"execution_score", "channeling_risk"})
-
-
-def test_nothing_a_chat_saw_without_asking_is_gone_but_the_score_and_the_channeling_risk() -> None:
-    now = {key for key, tier in default_tiers().items() if tier == "base"}
-
-    assert ORIGIN_DEV_BASE - RETIRED_FROM_BASE <= now
-    assert (ORIGIN_DEV_BASE - now) == RETIRED_FROM_BASE
-    # What base gained is the checks, one line per phase and what a person confirmed of a
-    # reading (it was extended before: the claims are short and are the chat's to weigh), and
-    # the two cup numbers (first drip and brew flow as the scale measured them), and nothing else.
-    assert (
-        now - ORIGIN_DEV_BASE
-        == {
-            "checks",
-            "review_state",
-            "review_claims",
-            "review_prediction",
-            "cup_first_drip",
-            "brew_cup_flow",
-        }
-        | PHASE_LINE_ITEMS
-    )

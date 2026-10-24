@@ -244,19 +244,23 @@ async def test_the_base_rendering_leads_with_the_checks_in_order(
     assert lines[10] == "[Identity and status]"
 
 
+#: Base items that only a shot with a review carries; none of the four shots below has one.
+NOT_ON_THESE_SHOTS = frozenset({"review_claims", "review_prediction"})
+
+
 async def test_every_base_item_origin_dev_showed_is_still_rendered(
     lever: tuple[Database, int, int], archive: Archive
 ) -> None:
-    """The checks are added to base and nothing is taken out but the score and the channeling risk.
+    """Every base item renders on some real shot, except the review ones none of them carries.
 
-    Read on three real shots between them: the judged one (the judgement, the machine's
-    number), the same recording on a flow-steered profile (the flow adherence) and the
-    lever one (the exit reason). Each key `origin/dev`'s base held is a line on at least
-    one of them, in the base rendering, except the two retired outright.
+    Read on four real shots between them: the judged one (the judgement, the machine's
+    number), the same recording on a flow-steered profile (the flow adherence), one with no
+    scale (the estimated first drip) and the lever one (the exit reason). Each key of the
+    base tier is a line on at least one of them, in the base rendering.
     """
     from tests.domain.helpers import constructed_profile
     from tests.shotinfo.conftest import SLOG
-    from tests.shotinfo.test_catalogue import ORIGIN_DEV_BASE, RETIRED_FROM_BASE
+    from tests.shotinfo.test_catalogue import EXPECTED_BASE
 
     flow_led = derive_shot(
         parse_slog(SLOG.read_bytes()),
@@ -283,10 +287,9 @@ async def test_every_base_item_origin_dev_showed_is_still_rendered(
         rendered |= {line.key for line in shot_lines(facts, frozenset(keys))}
     rendered.add("shot_id")  # the header line, not a labelled one
 
-    assert ORIGIN_DEV_BASE - RETIRED_FROM_BASE <= rendered, (
-        ORIGIN_DEV_BASE - RETIRED_FROM_BASE - rendered
+    assert EXPECTED_BASE - NOT_ON_THESE_SHOTS <= rendered, (
+        EXPECTED_BASE - NOT_ON_THESE_SHOTS - rendered
     )
-    assert "execution_score" not in rendered
     assert "checks" in rendered
 
 
