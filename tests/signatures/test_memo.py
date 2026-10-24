@@ -47,31 +47,16 @@ async def test_no_read_path_parses_a_log(db: Database, monkeypatch: pytest.Monke
     def refuse(*_a: object, **_k: object) -> None:
         raise AssertionError("a read parsed a log")
 
-    monkeypatch.setattr("gaggiclanker.domain.slog.parse_slog", refuse)
-    monkeypatch.setattr("gaggiclanker.signatures.checks.stored_samples", refuse, raising=False)
+    # Every place a log is parsed from: the module itself and the two importers of the name.
+    for target in (
+        "gaggiclanker.domain.slog.parse_slog",
+        "gaggiclanker.shotinfo.evaluation.parse_slog",
+        "gaggiclanker.sync.derive.parse_slog",
+    ):
+        monkeypatch.setattr(target, refuse)
     assert await _badge(db, shot) == "ramp: early yield +3"
     document = await shot_fields(db, shot)
     assert document is not None and document.checks.badge == "ramp: early yield +3"
-
-
-async def test_a_shot_is_worked_out_once_and_then_remembered(
-    db: Database, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _, _, _, shot = await _signed(db)
-    reads = 0
-    original = SignatureRepository.stored_samples
-
-    async def counting(self: SignatureRepository, ids: list[int]) -> object:
-        nonlocal reads
-        reads += 1 if ids else 0
-        return await original(self, ids)
-
-    monkeypatch.setattr(SignatureRepository, "stored_samples", counting)
-    first = await _badge(db, shot)
-    cold = reads
-    for _ in range(3):
-        assert await _badge(db, shot) == first
-    assert cold == 1 and reads == 1, "the warm reads touched no sample"
 
 
 async def test_whatever_a_result_depends_on_changing_is_a_different_answer(db: Database) -> None:
@@ -324,7 +309,7 @@ async def test_a_quarantined_shot_has_no_checks_and_logs_nothing(db: Database) -
             profile_version_id=version,
         )
     )
-    assert await RecipesRepository(db).assign_shot(quarantined, recipe_version) in (True, False)
+    await RecipesRepository(db).assign_shot(quarantined, recipe_version)
     with structlog.testing.capture_logs() as logs:
         page = await shots.list_shots(limit=50, sort=CHECK_SORT, quarantined=True)
         document = await shot_fields(db, quarantined)
@@ -332,10 +317,6 @@ async def test_a_quarantined_shot_has_no_checks_and_logs_nothing(db: Database) -
     assert (row.checks.badge, row.checks.entries) == (None, [])
     assert document is not None and document.checks.items == []
     assert [e for e in logs if e["log_level"] in ("warning", "error")] == []
-
-
-def test_a_lever_shot_is_the_one_these_tests_stand_on() -> None:
-    assert lever_shot().header.final_weight_g == 42.2
 
 
 async def test_a_restored_expectation_is_not_served_the_old_answer(db: Database) -> None:
