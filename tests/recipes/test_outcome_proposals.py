@@ -271,9 +271,8 @@ class TestAnswering:
         last = await proposals.last_answered(version_id)
         assert last is not None and last.id == stored.id
 
-    @pytest.mark.parametrize("answer", ["accept", "change", "dismiss"])
     async def test_an_answered_proposal_answers_409_to_every_further_press(
-        self, wired: Fixtures, answer: str
+        self, wired: Fixtures
     ) -> None:
         recipe_id, version_id = await _graded_ready(wired)
         proposals = OutcomeProposalsRepository(wired.db)
@@ -285,9 +284,13 @@ class TestAnswering:
             "accept": await proposals.accept(recipe_id, stored.id),
             "change": await proposals.change(recipe_id, stored.id, "failed"),
             "dismiss": await proposals.dismiss(recipe_id, stored.id),
-        }[answer]
+        }
 
-        assert again.refused == "not_waiting"
+        assert {press: result.refused for press, result in again.items()} == {
+            "accept": "not_waiting",
+            "change": "not_waiting",
+            "dismiss": "not_waiting",
+        }
         version = await wired.recipes.get_version(version_id)
         assert version is not None and version.outcome is None
 

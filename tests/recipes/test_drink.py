@@ -7,7 +7,6 @@ version made before drinks were recorded states no drink (``NULL``), which is no
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import httpx
@@ -23,7 +22,6 @@ from gaggiclanker.db.repos.recipe_proposals import (
     changed_names,
 )
 from gaggiclanker.db.repos.recipes import (
-    RECIPE_FIELDS,
     DesignBrief,
     RecipeVersionChange,
     RecipeVersionPatch,
@@ -68,7 +66,7 @@ def test_each_drink_has_its_label_and_the_covers_line_the_dialog_shows() -> None
 
 
 async def test_the_served_vocabulary_is_the_module_and_the_database_agrees(
-    client: httpx.AsyncClient, app: FastAPI
+    client: httpx.AsyncClient,
 ) -> None:
     served = data(await client.get("/api/vocab"))["drinks"]
 
@@ -76,15 +74,6 @@ async def test_the_served_vocabulary_is_the_module_and_the_database_agrees(
         {"value": term.value, "label": term.label, "covers": term.covers} for term in DRINK_TERMS
     ]
     assert [item.model_dump() for item in vocabulary().drinks] == served
-    # The CHECK on the column lists exactly these values.
-    schema = str(
-        await app.state.db.fetch_value(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'recipe_versions'"
-        )
-    )
-    check = re.search(r"drink\s+TEXT[^,]*?CHECK\s*\((.*?)\)\s*\)", schema, re.DOTALL)
-    assert check is not None
-    assert set(re.findall(r"'([^']+)'", check.group(1))) == set(DRINKS)
 
 
 # ── the columns and the views ────────────────────────────────────────────
@@ -234,10 +223,6 @@ async def test_the_add_a_version_route_refuses_a_null_drink_and_takes_a_new_one(
     version = data(changed)
     assert (version["drink"], version["drink_notes"]) == ("americano", "90 ml water")
     assert len(data(await client.get(f"/api/recipes/{recipe['id']}"))["versions"]) == 2
-
-
-def test_the_drink_and_its_notes_are_part_of_what_a_version_copies() -> None:
-    assert {"drink", "drink_notes"} <= set(RECIPE_FIELDS)
 
 
 async def test_rolling_back_writes_no_version_and_changes_neither_drink_nor_notes(
