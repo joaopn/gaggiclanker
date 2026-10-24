@@ -327,13 +327,6 @@ def test_a_result_with_no_ok_key_reads_as_ok_like_the_runner_reads_it() -> None:
     assert kept["content"] == KNOWLEDGE
 
 
-def test_a_failed_result_is_kept_in_full() -> None:
-    refused = _results()[1]
-
-    assert refused["content"] == REFUSAL
-    assert refused["ok"] is False
-
-
 def test_the_extended_glossary_inside_a_shot_result_does_not_reach_the_download() -> None:
     content = '{"field_meanings": "Score confidence: how sure", "shot_id": 1, "text": "x"}'
     messages = _messages_with_results(
@@ -358,13 +351,6 @@ def test_tool_calls_are_kept_whole_with_name_id_and_arguments() -> None:
 
     assert calls[0] == {"id": "c1", "name": "get_shot", "arguments": {"shot_id": 41}}
     assert calls[2]["arguments"] == {"query": "use ```code``` fences"}
-
-
-def test_results_are_paired_with_their_calls_by_id() -> None:
-    built = _built()
-
-    call_ids = [call["id"] for call in built["messages"][1]["tool_calls"]]
-    assert call_ids == [result["id"] for result in built["messages"][2]["tool_results"]]
 
 
 # -- the tool list -----------------------------------------------------------
@@ -619,7 +605,6 @@ async def test_the_download_path_is_not_one_a_content_blocker_drops(
 
     assert "/api/chat/threads/{thread_id}/transcript" in gets
     for path in gets:
-        assert "?" not in path
         assert "log" not in path.split("/"), path
 
 

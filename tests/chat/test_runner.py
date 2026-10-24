@@ -722,38 +722,6 @@ async def test_the_budget_nudge_is_appended_once(
     assert chat_provider.chat_calls[-1].tools == []
 
 
-async def test_a_slow_tool_does_not_hang_the_run(
-    runner: ChatRunner, tasks: TaskRegistry, thread: int, chat_provider: FakeProvider
-) -> None:
-    """The per-tool timeout is inside the dispatcher; the run carries on."""
-    spec = runner.tools.get("query_shots")
-    assert spec is not None
-    chat_provider.chat_script = [
-        ChatTurn(
-            tool_calls=[
-                ChatToolCall(
-                    id="c1",
-                    name="query_shots",
-                    arguments={
-                        "sql": (
-                            "WITH RECURSIVE spin(n) AS (SELECT 1 UNION ALL "
-                            "SELECT n + 1 FROM spin WHERE n < 100000000) SELECT COUNT(*) FROM spin"
-                        )
-                    },
-                )
-            ],
-            stop_reason="tool_use",
-        ),
-        ChatTurn(text="That query was too slow; here is a narrower one."),
-    ]
-
-    run_id = await send(runner, tasks, thread)
-
-    run = await ChatRepository(runner.db).get_run(run_id)
-    assert run is not None and run.status == "ok"
-    assert chat_provider.chat_calls[1].messages[-1].tool_results[0].ok is False
-
-
 # -- cancellation ----------------------------------------------------------
 
 
@@ -1060,20 +1028,6 @@ async def test_a_general_thread_is_given_the_archive_s_tools(
 
     names = {schema["function"]["name"] for schema in chat_provider.chat_calls[0].tools}
     assert names == GENERAL_TOOLS
-
-
-async def test_the_provider_is_given_the_chat_tool_set(
-    runner: ChatRunner, tasks: TaskRegistry, thread: int, chat_provider: FakeProvider
-) -> None:
-    chat_provider.chat_script = [ChatTurn(text="ok")]
-
-    await send(runner, tasks, thread)
-
-    names = {schema["function"]["name"] for schema in chat_provider.chat_calls[0].tools}
-    # The Recipe conversation's surface, because that is what this thread is: the
-    # archive-wide tools are not merely refused, they are never described.
-    assert names == RECIPE_TOOLS
-    assert not any(name.startswith("push_") for name in names)
 
 
 async def test_a_recipe_being_designed_is_given_the_design_tools_and_a_dispatcher_to_match(

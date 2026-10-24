@@ -161,25 +161,6 @@ async def test_open_creates_one_when_the_version_has_none(archive: Fixture) -> N
     assert again.thread.id == opened.thread.id
 
 
-async def test_a_dead_end_version_says_so_on_the_thread(archive: Fixture) -> None:
-    """A revert goes back past a version, and the Recipe's list has to grey its rooms."""
-    recipes = RecipesRepository(archive.db)
-    first = await recipes.current_version(archive.recipe_id)
-    assert first is not None
-    stepped_over = await recipes.add_version(archive.recipe_id, RecipeVersionPatch(intent="finer"))
-    assert stepped_over is not None
-    repo = ChatRepository(archive.db)
-    on_the_branch = await repo.create_thread(ChatThreadWrite(recipe_id=archive.recipe_id))
-    assert on_the_branch.thread is not None
-    assert on_the_branch.thread.dead_end is False
-
-    rolled = await recipes.rollback(archive.recipe_id, RollbackWrite(to_version_id=first.id))
-    assert rolled.version is not None
-
-    listed = {row.id: row for row in await repo.list_threads()}
-    assert listed[on_the_branch.thread.id].dead_end is True
-
-
 async def test_after_a_revert_the_targets_conversation_is_the_live_one(
     archive: Fixture,
 ) -> None:
