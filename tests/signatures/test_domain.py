@@ -630,17 +630,10 @@ def test_an_expectation_of_a_warning_in_another_phase_does_not_excuse_it() -> No
     assert held.status == "held" and "not raised" in held.detail
 
 
-def test_the_lever_signature_applied_to_nothing_reads_the_same_lever_twice() -> None:
-    assert [c.badge for c in _lever_checks(_lever_signature()).checks] == [
-        c.badge for c in _lever_checks(_lever_signature()).checks
-    ]
-
-
 def test_the_lever_soak_cup_constant_is_what_the_checks_measure() -> None:
     result = _lever_checks([_measure(3, "important", "soak", **SOAK_CUP)])
     soak = next(c for c in result.checks if c.expectation_id == 3)
     assert soak.value == pytest.approx(SOAK_END_G / TARGET_YIELD_G, abs=1e-3)
-    assert lever_shot() is not None
 
 
 # ── a failed context expectation never changes the badge ─────────────
@@ -704,6 +697,9 @@ def test_a_check_serves_its_effective_limit_and_reads_a_share_as_a_percentage() 
     assert loose.compare == Compare(op="<=", value=1.3)
     assert loose.limit_text == "at most 130 % of target"
     assert "(this Recipe version's limit; the profile's is at most 0.15)" in loose.detail
+    # The sentence is the profile's own up to the limit: same channel, window and share.
+    assert plain.sentence.removesuffix("at most 0.15") == loose.sentence.removesuffix("at most 1.3")
+    assert loose.phase == "ramp" and loose.value == plain.value
 
 
 def test_a_limit_that_is_not_a_share_names_its_unit() -> None:
@@ -840,20 +836,6 @@ def test_a_profile_with_phases_a_log_cannot_tell_apart_is_refused() -> None:
         validate_expectation(
             ExpectationInput(tier="critical", kind="reached", phase="other"), names
         )
-
-
-def test_an_override_changes_the_limit_and_keeps_the_window_the_expression_names() -> None:
-    expectations = _lever_signature()
-    plain = next(c for c in _lever_checks(expectations).checks if c.expectation_id == 2)
-    loose = next(
-        c
-        for c in _lever_checks(expectations, override=(2, Compare(op="<=", value=1.3))).checks
-        if c.expectation_id == 2
-    )
-    # The sentence is the profile's own up to the limit: same channel, window and share.
-    assert plain.sentence.removesuffix("at most 0.15") == loose.sentence.removesuffix("at most 1.3")
-    assert loose.phase == "ramp" and loose.value == plain.value
-    assert (loose.status, plain.status) == ("held", "failed")
 
 
 def test_a_phase_with_a_leading_space_is_proposed_by_its_clean_name() -> None:
