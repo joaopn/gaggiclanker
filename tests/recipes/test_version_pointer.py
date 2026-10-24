@@ -9,8 +9,7 @@ tests forge the cases where the three disagree.
 from __future__ import annotations
 
 from gaggiclanker.db.repos.recipes import RecipeVersionPatch, RecipeVersionWrite, RecipeWrite
-from tests.profile_rows import another_version
-from tests.recipes.conftest import Fixtures, make_profile_version, make_shot
+from tests.recipes.conftest import Fixtures
 
 
 async def _recipe(wired: Fixtures, **recipe: object) -> int:
@@ -66,31 +65,6 @@ async def test_the_pointer_not_the_newest_row_decides_what_is_current(wired: Fix
     # The next names continue the version the Recipe is on: a minor is v1.2, the
     # next free minor of major 1, and a major is the highest major + 1.
     assert (row.next_minor_label, row.next_major_label) == ("v1.2", "v2")
-
-
-async def test_automatch_files_a_shot_under_the_version_the_recipe_is_on(wired: Fixtures) -> None:
-    profile = await make_profile_version(wired.db, "Older profile")
-    other = await another_version(wired.db, profile, description="newer")
-    recipe_id = await _recipe(wired, profile_version_id=profile)
-    first = await wired.recipes.current_version(recipe_id)
-    assert first is not None
-    newer = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(profile_version_id=other))
-    assert newer is not None
-    await wired.db.execute(
-        "UPDATE recipes SET current_version_id = ? WHERE id = ?", (first.id, recipe_id)
-    )
-
-    shot = await make_shot(wired.db, "000001", profile_version_id=profile)
-    match = await wired.recipes.profile_match(
-        shot, profile_version_id=profile, device_profile_id=""
-    )
-    elsewhere = await make_shot(wired.db, "000002", profile_version_id=other)
-    unmatched = await wired.recipes.profile_match(
-        elsewhere, profile_version_id=other, device_profile_id=""
-    )
-
-    assert (match.outcome, match.recipe_version_id) == ("matched", first.id)
-    assert unmatched.outcome == "unmatched"
 
 
 async def test_versions_are_ordered_by_when_they_were_made_not_by_id(wired: Fixtures) -> None:

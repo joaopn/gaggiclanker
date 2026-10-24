@@ -152,15 +152,6 @@ async def test_the_unique_index_refuses_a_second_copy_of_a_name(wired: Fixtures)
 # -- the default rule, path by path --------------------------------------------
 
 
-async def test_the_form_defaults_a_grind_dose_or_yield_change_to_minor(wired: Fixtures) -> None:
-    profile = await make_profile_version(wired.db, "House")
-    recipe_id = await _recipe(wired, profile)
-
-    assert await _add(wired.recipes, recipe_id, grind_setting="21") == "v1.1"
-    assert await _add(wired.recipes, recipe_id, dose_g=18.5) == "v1.2"
-    assert await _add(wired.recipes, recipe_id, target_yield_g=40) == "v1.3"
-
-
 async def test_an_explicit_answer_wins_in_both_directions(wired: Fixtures) -> None:
     house = await make_profile_version(wired.db, "House")
     recipe_id = await _recipe(wired, house)

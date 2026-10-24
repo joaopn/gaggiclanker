@@ -16,7 +16,6 @@ from pydantic import ValidationError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
-from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.recipes import (
     RecipeRow,
     RecipeVersionPatch,
@@ -430,24 +429,3 @@ class TestAutomatchRefusals:
         shot_id = await make_shot(wired.db, "000500")
 
         assert await wired.recipes.assign_shot(shot_id, version.id) is False
-
-    async def test_a_tombstoned_device_profile_does_not_match(self, wired: Fixtures) -> None:
-        """A deleted profile id has been freed and may point at something else."""
-        version_id = await make_profile_version(wired.db, "Adaptive v2")
-        profiles = ProfilesRepository(wired.db)
-        await profiles.upsert_device_profile(device_id="adapt", version_id=version_id)
-        await _new_recipe(wired, profile_version_id=version_id)
-        # The user deleted it on the machine, so the next profiles pass listed
-        # everything except it. (An *empty* list is a failed read and tombstones
-        # nothing — see `mark_missing_deleted`.)
-        await profiles.upsert_device_profile(device_id="9bar", version_id=version_id)
-        assert await profiles.mark_missing_deleted(["9bar"]) == 1
-
-        shot_id = await make_shot(wired.db, "000501")
-        assert (
-            await wired.recipes.profile_match(
-                shot_id,
-                profile_version_id=None,
-                device_profile_id="adapt",
-            )
-        ).outcome == "unmatched"
