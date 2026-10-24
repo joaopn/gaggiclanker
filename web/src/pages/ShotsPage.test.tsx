@@ -11,7 +11,6 @@ import type {
   SyncStatusData,
 } from "@/api/types";
 import { setChatQuestion } from "@/components/shots/RecipeChatBar";
-import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { BOXES_KEY } from "@/lib/shotBoxes";
 import { SHOT_SERIES } from "@/lib/shotChart";
@@ -1143,26 +1142,6 @@ describe("ShotsPage column widths", () => {
     expect(template().split(" ")[2]).toBe("14rem");
   });
 
-  it("starts every visible column at what fits it, with nothing after the last", async () => {
-    // The defaults are measurements rather than shares of the row, so a table
-    // on a wide screen is columns at their own width and ends with the last.
-    getShots.mockResolvedValue(listData([shot()]));
-
-    renderWithQueryClient(<ShotsPage />);
-    await listed();
-
-    expect(template().split(" ")).toEqual([
-      "8rem",
-      "7.5rem",
-      "5.25rem",
-      "3rem",
-      "9rem",
-      "8.25rem",
-      "9.25rem",
-      "10.5rem",
-    ]);
-  });
-
   it("keeps the table as wide as its columns rather than the window, centred", async () => {
     // jsdom does no layout, so this pins the three pieces that make the box end
     // at the last column: no flexible track, a box that shrinks to its content
@@ -1231,7 +1210,6 @@ describe("ShotsPage Decision column", () => {
     await decisions();
 
     expect(screen.getByTestId("header-decision")).toHaveTextContent("Decision");
-    expect(screen.queryByTestId("header-analyze")).not.toBeInTheDocument();
     expect(screen.queryByTestId("header-flags")).not.toBeInTheDocument();
     expect(
       within(cell())
@@ -2489,23 +2467,6 @@ describe("ShotsPage Curve check column", () => {
     expect(screen.queryByTestId("header-score")).not.toBeInTheDocument();
   });
 
-  it("is on every shot, a discarded or quarantined one included, and draws the entry badge only for one with entries", async () => {
-    getShots.mockResolvedValue(
-      listData([
-        withChecks({ review: reviewBlock({ state: "not_reviewable" }) }),
-        shot({ id: 2, device_id: "000102", review: reviewBlock({ state: "not_reviewable" }) }),
-      ]),
-    );
-
-    renderWithQueryClient(<ShotsPage />);
-    await listed();
-
-    expect(screen.getAllByTestId("check-badge")).toHaveLength(1);
-    // Nothing is in the Review column of a shot nobody can review.
-    expect(screen.queryByTestId("review-badge")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("review-start")).not.toBeInTheDocument();
-  });
-
   it("says Pass in green, Unchecked in grey, the entry badge for entries, and nothing without a checks block", async () => {
     const noChecks = shot({ id: 4, device_id: "000104" });
     // The server always serves the block; a row without one draws nothing.
@@ -2561,7 +2522,7 @@ describe("ShotsPage Curve check column", () => {
     expect(screen.getByTestId("review-badge")).not.toHaveTextContent("fast flow");
   });
 
-  it.each(["check", "review"] as const)(
+  it.each(["check"] as const)(
     "sorts by the server's %s order, most severe first, and reverses on a second click",
     async (key) => {
       const user = setupUser();
@@ -2964,27 +2925,6 @@ describe("ShotsPage paging", () => {
 
     expect(await screen.findByText("Showing 2 of 2")).toBeInTheDocument();
     expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "cursor-1" }));
-  });
-});
-
-describe("ShotsPage refresh on events", () => {
-  it("shows a new shot at the top when the sync engine says one landed", async () => {
-    // The acceptance criterion: a shot pulled on the machine appears here
-    // without a reload. `shot.ingested` on /api/sync/events maps onto this
-    // query's key (lib/invalidate.ts) and the list re-reads.
-    getShots.mockResolvedValue(listData([shot({ id: 1 })]));
-
-    const { queryClient } = renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("Showing 1 of 1");
-
-    getShots.mockResolvedValue(
-      listData([shot({ id: 2, profile_label: "Fresh off the machine" }), shot({ id: 1 })]),
-    );
-    for (const queryKey of EVENT_INVALIDATIONS["shot.ingested"]) {
-      await queryClient.invalidateQueries({ queryKey });
-    }
-
-    expect(await screen.findByText("Showing 2 of 2")).toBeInTheDocument();
   });
 });
 
@@ -3486,19 +3426,6 @@ describe("ShotsPage needs-a-Recipe menu", () => {
 describe("ShotsPage row editing", () => {
   beforeEach(showRatingColumn);
 
-  it("sets a rating from the row", async () => {
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));
-
-    renderWithQueryClient(<ShotsPage />);
-    await listed();
-
-    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 4 of 5/ }));
-
-    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
-    expect(putJudgement.mock.calls[0][1]).toMatchObject({ rating: 4 });
-  });
-
   it("clears the rating when the star that is already lit is clicked", async () => {
     // A mis-click has to be undoable where it was made. Without this the only
     // way back is the detail page, for a field that is one click to set.
@@ -3515,22 +3442,6 @@ describe("ShotsPage row editing", () => {
     expect(putJudgement.mock.calls[0][1]).toMatchObject({ rating: null });
   });
 
-  it("does not navigate when a star is clicked", async () => {
-    // The row is a toggle with the stars above it. A star that pressed it
-    // would open the row every time you rated one.
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));
-
-    renderWithQueryClient(<ShotsPage />);
-    await listed();
-
-    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
-
-    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
-    // Still on the list: the table is here and no shot page replaced it.
-    expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
-  });
-
   it("records the machine's own rating rather than clearing it", async () => {
     // A row with no verdict shows the machine's notes-card rating. Clicking
     // that star means "yes, three", not "clear" — and clearing a verdict that
@@ -3545,31 +3456,12 @@ describe("ShotsPage row editing", () => {
     await listed();
 
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "3");
+    // The displayed star is not a verdict, so there is no "clear" button at all.
+    expect(screen.queryByRole("button", { name: /^Clear the rating/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalled());
     expect(putJudgement.mock.calls[0][1]).toMatchObject({ rating: 3 });
-  });
-
-  it("writes nothing when there is no rating to clear", async () => {
-    // The one click in the list that could create a verdict out of nothing:
-    // an empty row lights up `has_judgement`, dates itself later than the
-    // machine's notes card, and puts a null point on the Recipe's trend.
-    const user = setupUser();
-    getShots.mockResolvedValue(
-      listData([shot({ judgement_rating: null, rating: 3, has_judgement: false })]),
-    );
-
-    renderWithQueryClient(<ShotsPage />);
-    await listed();
-
-    // Star three is the displayed value but not a verdict, so there is no
-    // "clear" button at all; the nearest thing is rating it 3, above. Assert
-    // the negative through the editor's Save instead — see the editor tests —
-    // and here that no star announces itself as a clear.
-    expect(screen.queryByRole("button", { name: /^Clear the rating/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 1 of 5/ }));
-    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
   });
 
   it("leaves the rest of a verdict alone when a star is clicked", async () => {

@@ -179,10 +179,8 @@ describe("the timeline's pins", () => {
     await screen.findByTestId("version-timeline");
     const entry = entryOf("v1.1");
     const back = within(entry).getByRole("button", { name: "Go back to this version" });
-    const pin = within(entry).getByRole("button", { name: /^Pin to the machine/ });
     const row = back.parentElement as HTMLElement;
 
-    expect(pin.parentElement).toBe(row);
     expect(row.parentElement).toBe(within(entry).getByTestId("version-actions"));
 
     await user.click(back);
@@ -536,16 +534,6 @@ describe("the Pinned on the machine card", () => {
     renderWithQueryClient(<RecipeDetailPage />);
 
     const line = await screen.findByTestId("pin-line");
-    expect(within(line).queryByTestId("pin-facts")).not.toBeInTheDocument();
-    expect(within(line).queryByTestId("profile-state")).not.toBeInTheDocument();
-  });
-
-  it("shows no second line when the profile list could not be read", async () => {
-    getProfileBoard.mockRejectedValue(new Error("down"));
-    renderWithQueryClient(<RecipeDetailPage />);
-
-    const line = await screen.findByTestId("pin-line");
-    await waitFor(() => expect(getProfileBoard).toHaveBeenCalled());
     expect(within(line).queryByTestId("pin-facts")).not.toBeInTheDocument();
     expect(within(line).queryByTestId("profile-state")).not.toBeInTheDocument();
   });

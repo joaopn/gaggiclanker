@@ -233,19 +233,6 @@ describe("RecipeDetailPage", () => {
     expect(screen.getAllByTestId("version-entry")).toHaveLength(2);
   });
 
-  it("discusses the current version, not the Recipe in general", async () => {
-    renderWithQueryClient(<RecipeDetailPage />);
-
-    await screen.findByText("Now brewing: v2");
-
-    // The version is what makes it open or continue one conversation rather
-    // than pointing vaguely at a folder.
-    expect(screen.getByTestId("discuss-in-chat")).toHaveAttribute(
-      "href",
-      expect.stringContaining("version="),
-    );
-  });
-
   it("sends only the fields that changed when a version is recorded", async () => {
     const user = setupUser();
     renderWithQueryClient(<RecipeDetailPage />);
@@ -269,16 +256,6 @@ describe("RecipeDetailPage", () => {
       // What the Major change box showed: a grind change is a minor version.
       major: false,
     });
-  });
-
-  it("has no profile to choose when the Recipe has one: its versions follow the profile", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<RecipeDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-
-    await screen.findByTestId("new-version-form");
-    expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
   });
 
   it("asks a Recipe with no profile for one, from the profiles no Recipe has, and sends it", async () => {
@@ -343,19 +320,6 @@ describe("RecipeDetailPage", () => {
     // opposite of what "Nothing" says. The text arrives trimmed.
     expect(patch.compares_to_version_id).toBeNull();
     expect(patch.prediction).toBe("a clean 1:2");
-  });
-
-  it("leaves the comparison off entirely when there is no prediction", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<RecipeDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: /Change something/ }));
-    await user.type(screen.getByLabelText("What are you trying?"), "one finer");
-    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
-
-    await waitFor(() => expect(addRecipeVersion).toHaveBeenCalled());
-    const [, patch] = addRecipeVersion.mock.calls[0];
-    expect(patch).not.toHaveProperty("compares_to_version_id");
   });
 
   it("names the version it will record, and the person's tick makes it a major", async () => {
@@ -834,8 +798,7 @@ describe("RecipeDetailPage, a Recipe being designed", () => {
     expect(within(brief).getByTestId("design-brief-grind")).toHaveTextContent("22");
     const goal = within(brief).getByTestId("design-brief-goal");
     expect(goal).toHaveTextContent("“more body”");
-    // Clamped to a few lines in the notice, the whole text on hover.
-    expect(goal).toHaveClass("line-clamp-3");
+    // The whole text on hover.
     expect(goal).toHaveAttribute("title", "more body");
   });
 

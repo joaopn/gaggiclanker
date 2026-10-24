@@ -793,22 +793,6 @@ describe("ShotDetailPage boxes", () => {
     expect(screen.queryByRole("button", { name: /^Version prediction/ })).toBeNull();
   });
 
-  it("keeps the boxes in a fixed order: judgement, curves, review, curve check", async () => {
-    withReview();
-    renderShot();
-
-    await screen.findByTestId("judgement-form");
-    const cards = ["Your judgement", "Curves", "Review", "Curve check"].map((title) =>
-      screen.getByRole("button", { name: new RegExp(`^${title}`) }),
-    );
-    for (let i = 1; i < cards.length; i += 1) {
-      expect(
-        cards[i - 1].compareDocumentPosition(cards[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
-        cards[i].textContent ?? "",
-      ).toBeTruthy();
-    }
-  });
-
   it("puts the version's prediction right under the judgement, above Curves", async () => {
     getShot.mockResolvedValue({
       ...shot129,

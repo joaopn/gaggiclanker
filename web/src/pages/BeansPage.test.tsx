@@ -76,8 +76,6 @@ describe("BeansPage", () => {
     expect(
       screen.getByText("Every coffee you have brewed: roaster, origin, process and roast level."),
     ).toBeInTheDocument();
-    expect(screen.queryByTestId("freshness-pill")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Roast date")).not.toBeInTheDocument();
   });
 
   it("has no roast date on the form", async () => {

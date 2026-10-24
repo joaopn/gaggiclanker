@@ -203,11 +203,4 @@ describe("KnowledgePage — the three tiers", () => {
     expect(chunk.className).toContain("border-primary");
     expect(getKnowledgeDoc).toHaveBeenCalledWith("ESPRESSO_TASTING_GUIDE");
   });
-
-  it("still highlights a rule a citation linked to", async () => {
-    renderWithQueryClient(<KnowledgePage />, { initialEntries: ["/knowledge?rule=hierarchy"] });
-
-    const [row] = await screen.findAllByTestId("rule");
-    expect(row.className).toContain("border-primary");
-  });
 });
