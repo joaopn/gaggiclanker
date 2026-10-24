@@ -236,20 +236,6 @@ async def test_a_prediction_stance_is_served_unless_rejected(
     assert STANCE in (await call(ctx, "get_shot", shot_id=shot))["text"]
 
 
-async def test_a_claim_the_numbers_do_not_bear_out_says_so_to_the_chat(
-    ctx: ToolContext, archive: Fixture
-) -> None:
-    shot = archive.shots[-1]
-    claims = [
-        ClaimWrite(kind="claim", text=CLAIM, evidence=[_evidence(None)], supported=False),
-    ]
-    await _reading(archive.db, shot, claims=claims)
-
-    text = (await call(ctx, "get_shot", shot_id=shot))["text"]
-    assert "not measured (no recorded sample falls in the window)" in text
-    assert "(the numbers do not bear this out)" in text
-
-
 async def test_a_claim_the_numbers_do_not_bear_out_still_reaches_the_chat(
     ctx: ToolContext, archive: Fixture
 ) -> None:
@@ -267,6 +253,7 @@ async def test_a_claim_the_numbers_do_not_bear_out_still_reaches_the_chat(
     review_id = await _reading(archive.db, shot, claims=claims)
     text = (await call(ctx, "get_shot", shot_id=shot))["text"]
     assert CLAIM in text and "(the numbers do not bear this out)" in text
+    assert "not measured (no recorded sample falls in the window)" in text
 
     await _answer(archive.db, review_id, 0, keep=False)
     assert CLAIM not in (await call(ctx, "get_shot", shot_id=shot))["text"]

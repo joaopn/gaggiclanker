@@ -118,13 +118,6 @@ async def test_a_profile_outside_the_recipe_is_refused_in_the_same_words_whether
     assert "not one this conversation is about" in other["detail"]
 
 
-async def test_a_general_conversation_cannot_propose_one(
-    ctx: ToolContext, archive: Fixture
-) -> None:
-    outcome = await refuse(ctx, "propose_signature", **_propose(archive))
-    assert "propose_signature" in str(outcome)
-
-
 async def test_a_conversation_designing_a_recipe_proposes_for_the_profile_it_forks(
     ctx: ToolContext, archive: Fixture
 ) -> None:

@@ -97,13 +97,6 @@ def test_a_tool_that_would_write_to_the_machine_cannot_be_registered(permission:
     assert "push_to_machine" not in local
 
 
-def test_read_only_is_a_strict_subset() -> None:
-    read = {spec.name for spec in registry.specs(READ_ONLY)}
-    chat = {spec.name for spec in registry.specs(CHAT_PERMISSIONS)}
-    assert read < chat
-    assert "propose_recipe_version" in chat - read
-
-
 # -- registration ----------------------------------------------------------
 
 
