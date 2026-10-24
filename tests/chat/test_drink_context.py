@@ -76,7 +76,12 @@ async def test_the_block_is_the_entry_whole_once_and_inside_the_protected_prefix
     assert entry.startswith("# Cappuccino") and "## What the shot has to do in this cup" in entry
 
 
-@pytest.mark.parametrize("term", DRINK_TERMS, ids=lambda term: term.value)
+#: One drink with a document and the one without: every document's existence and slug are pinned in
+#: tests/knowledge/test_drink_documents.py, and rendering is one lookup by slug.
+SAMPLED_TERMS = [term for term in DRINK_TERMS if term.value in ("espresso", "other")]
+
+
+@pytest.mark.parametrize("term", SAMPLED_TERMS, ids=lambda term: term.value)
 async def test_each_drink_renders_its_own_document_and_other_has_no_block(
     experiment: Experiment, term: object
 ) -> None:
@@ -219,7 +224,7 @@ async def _brief_with(kitchen: Fixture, designed_id: int, drink: str | None, not
     )
 
 
-@pytest.mark.parametrize("term", DRINK_TERMS, ids=lambda term: term.value)
+@pytest.mark.parametrize("term", SAMPLED_TERMS, ids=lambda term: term.value)
 async def test_the_design_chat_has_each_drinks_block_and_other_has_none(
     kitchen: Fixture, term: object
 ) -> None:

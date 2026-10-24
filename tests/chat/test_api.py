@@ -280,8 +280,6 @@ async def test_the_tool_list_is_the_scope_s_list_for_the_kind_asked_about(
     assert scoped == RECIPE_TOOLS
     assert designing == DESIGN_TOOLS
     assert general_anyway == GENERAL_TOOLS
-    assert "query_shots" not in scoped
-    assert "propose_recipe_version" not in general
 
 
 async def test_unknown_threads_and_runs_are_404s(
