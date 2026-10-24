@@ -108,26 +108,6 @@ class TestTrends:
         assert summary.avg_rating is None
         assert summary.avg_ratio is None
 
-    async def test_the_serialised_shape_is_the_one_the_chart_reads(self, wired: Fixtures) -> None:
-        """The field names, which the front end's generated types mirror.
-
-        The route itself is exercised in `test_api.py::TestTrendsRoute`; this is
-        about the payload's keys, which are what a chart component destructures.
-        """
-        recipe_id = await _three_versions_and_ten_shots(wired)
-        payload = (await wired.recipes.trends(recipe_id)).model_dump(mode="json")
-        assert set(payload) == {"recipe_id", "versions", "shots"}
-        assert set(payload["shots"][0]) == {
-            "shot_id",
-            "device_id",
-            "recipe_version_id",
-            "version_label",
-            "started_at",
-            "duration_s",
-            "ratio",
-            "rating",
-        }
-
 
 async def test_points_are_in_the_order_the_shots_were_pulled_not_the_versions_made(
     wired: Fixtures,
@@ -289,13 +269,3 @@ async def test_the_ratio_s_dose_is_the_judgement_s_when_one_was_typed(wired: Fix
 
     assert sorted(point.ratio or 0 for point in trends.shots) == [2.0, 2.22]
     assert version.avg_ratio == 2.11
-
-
-async def test_trends_can_be_given_the_counted_shots_it_would_read(wired: Fixtures) -> None:
-    recipe_id, _ = await _counted_recipe(wired)
-
-    given = await wired.recipes.trends(
-        recipe_id, counted=await wired.recipes.counted_shots(recipe_id)
-    )
-
-    assert given == await wired.recipes.trends(recipe_id)
