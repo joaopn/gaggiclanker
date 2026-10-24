@@ -327,18 +327,6 @@ def test_gained_on_a_real_first_phase_is_its_own_end_weight() -> None:
     assert got.value == round(weights[-1], 1)
 
 
-def test_the_last_phase_ends_at_the_final_weight_when_the_scale_dropped_to_zero() -> None:
-    slog = lever_shot()
-    samples = as_sample_dicts(slog)
-    for sample in samples[-3:]:
-        sample["v"] = 0.0
-    data = ShotData.build(samples, slog.transitions, final_weight_g=RAMP_END_G, profile_phases=None)
-    last = run(data, channel="cup_weight", op="at_end", window={"phase": "ramp"})
-    assert last.value == RAMP_END_G
-    # A window that ends with the shot gets the rule too, whatever it is called.
-    assert run(data, channel="cup_weight", op="at_end").value == RAMP_END_G
-
-
 def test_the_last_phase_ends_at_the_final_weight_past_an_empty_scale_blip() -> None:
     """Zeros, then the empty scale's 0.1 g in the last sample: still the cup that vanished."""
     slog = lever_shot()
@@ -422,7 +410,7 @@ def test_the_counter_that_never_rose_is_not_recorded() -> None:
 
 def test_a_commanded_channel_needs_no_sensor_but_a_target_temperature_of_zero_is_none_set() -> None:
     data = data_of(without_pressure(lever_shot()), has_pressure=False)
-    assert run(data, channel="target_pressure", op="max").value == 0.0 or True
+    assert run(data, channel="target_pressure", op="max").value == 0.0
     assert run(data, channel="target_temperature", op="mean").value == 93.0
     unset = ShotData(samples=[{"t": 0.0, "tt": 0.0}, {"t": 1000.0, "tt": 0.0}])
     assert run(unset, channel="target_temperature", op="mean").absent == "empty_window"

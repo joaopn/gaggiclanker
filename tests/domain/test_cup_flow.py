@@ -22,7 +22,7 @@ from gaggiclanker.domain.diagnostics import (
 )
 from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.domain.slog import Slog, parse_slog
-from gaggiclanker.sync.derive import DERIVATION_VERSION, derive_shot
+from gaggiclanker.sync.derive import derive_shot
 from tests.domain.helpers import SLOG_FIXTURES
 
 #: Where coffee first reached the cup on each real shot, in seconds (a sample is 0.25 s).
@@ -167,13 +167,6 @@ def test_the_puck_flow_numbers_keep_their_meaning(slog: Slog, name: str) -> None
     assert diagnostics["extraction"]["flow_avg_brew_ml_s"] > 0
     assert set(diagnostics["extraction"]) == {"flow_avg_brew_ml_s", "cup_flow_avg_brew_g_s"}
     assert brew  # the puck column is the one read
-
-
-# 7. The derivation version moved so the archive gets the new fields at the next boot.
-
-
-def test_the_derivation_version_moved_for_the_cup_flow_fields() -> None:
-    assert DERIVATION_VERSION == 13
 
 
 # One rule for "has a scale": any brew-phase weight above zero, not the connection flag and

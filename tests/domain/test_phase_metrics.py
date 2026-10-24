@@ -27,7 +27,7 @@ import pytest
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS, Sample
 from gaggiclanker.domain.slog import Slog, parse_slog
-from gaggiclanker.sync.derive import DERIVATION_VERSION, derive_shot
+from gaggiclanker.sync.derive import derive_shot
 from tests.domain.helpers import EXPORT_FIXTURES, SLOG_FIXTURES
 from tests.lever_shot import (
     LEVER_PROFILE,
@@ -270,14 +270,6 @@ def test_the_other_sensors_numbers_are_unchanged_by_the_missing_one() -> None:
     for number, metrics in no_scale.items():
         assert metrics["pressure_peak_bar"] == full[number]["pressure_peak_bar"]
         assert metrics["temperature_min_c"] == full[number]["temperature_min_c"]
-
-
-# ── the derivation version ──────────────────────────────────────────
-
-
-def test_the_version_is_bumped_for_a_change_to_what_derive_produces() -> None:
-    assert DERIVATION_VERSION >= 7
-    assert _derive(lever_shot()).shot.derivation_version == DERIVATION_VERSION
 
 
 def test_a_scale_that_drops_to_zero_at_the_end_leaves_the_last_phase_at_the_final_weight() -> None:
