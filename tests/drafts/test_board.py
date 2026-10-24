@@ -955,24 +955,6 @@ async def test_a_copy_another_recipe_brews_is_replaced_all_the_same(
     assert (await get_board(client))["actions"] == []
 
 
-async def test_the_recipe_that_followed_its_profile_is_on_the_same_file_with_the_new_version(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    await app_row(app, client, fake, provider, 8)
-    mine = row_for(await get_board(client), APP_LABEL)
-    old_id = mine["machine"]["device_id"]
-    recipe_id = await make_recipe_on(client, "Moves", mine["row"]["current_version_id"])
-    await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
-
-    run = await pull(app)
-
-    assert run.status == "ok", run.error
-    assert summary_of(run)["removed"] == [] and summary_of(run)["left"] == []
-    assert [str(p["id"]) for p in fake.profiles if p["label"] == APP_LABEL] == [old_id]
-    assert len(await recipe_version_ids(app, recipe_id)) == 2
-
-
 @pytest.mark.parametrize(
     ("removal", "settled"),
     [

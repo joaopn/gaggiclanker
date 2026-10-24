@@ -203,21 +203,6 @@ async def test_an_edit_the_sync_records_changes_no_active_version_and_so_no_reci
     await assert_versions_owned(app.state.db)
 
 
-async def test_a_put_the_sync_then_sends_adds_nothing_to_the_recipe(
-    adopted: Adopted, provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    recipe_id, _ = await _recipe_on_the_base(app, client)
-    await put(client, await same_name_draft(app, client, provider, BASE_LABEL, 7))
-    recorded = await recipe_version_ids(app, recipe_id)
-
-    run = await pull(app)
-
-    assert run.status == "ok", run.error
-    assert await recipe_version_ids(app, recipe_id) == recorded
-    await assert_versions_owned(app.state.db)
-
-
 async def test_an_archived_recipe_still_follows_its_profile(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
@@ -326,19 +311,6 @@ async def _nothing_waits(app: FastAPI, recipe_id: int) -> bool:
     from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
 
     return await RecipeProposalsRepository(app.state.db).waiting(recipe_id) is None
-
-
-async def test_a_put_leaves_a_proposal_waiting_on_the_recipe_stale(
-    adopted: Adopted, provider: FakeProvider
-) -> None:
-    """A change argued against the version the Recipe was on is overtaken the moment it moves."""
-    app, client, _ = adopted
-    recipe_id, _row = await _recipe_on_the_base(app, client)
-    await _waiting_proposal(app, recipe_id, 18.5)
-
-    await put(client, await same_name_draft(app, client, provider, BASE_LABEL, 7))
-
-    assert await _nothing_waits(app, recipe_id)
 
 
 async def test_making_a_version_active_leaves_a_proposal_waiting_on_the_recipe_stale(

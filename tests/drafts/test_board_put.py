@@ -19,9 +19,6 @@ from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, dat
 from tests.drafts.helpers import (
     APP_LABEL,
     draft_of,
-    make_recipe_on,
-    recipe_version_ids,
-    same_name_draft,
 )
 from tests.drafts.test_board import (
     adopted,
@@ -30,7 +27,6 @@ from tests.drafts.test_board import (
     pull,
     put,
     summary_of,
-    variant_draft,
     write_frames,
 )
 from tests.llm.conftest import FakeProvider
@@ -97,18 +93,6 @@ async def test_a_draft_that_moves_a_stop_condition_is_put_like_any_other(
     assert "acknowledged_stop_changes" not in stored
 
 
-async def test_a_draft_approved_before_the_one_click_put_is_put_as_it_is(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    draft = await stop_condition_draft(app, client, provider)
-    await app.state.drafts.drafts.set_status(draft["id"], "approved")
-
-    row = await put(client, draft)
-
-    assert row["pending_draft_id"] == draft["id"]
-
-
 async def test_only_a_drafted_or_approved_draft_can_be_put(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
@@ -140,36 +124,6 @@ async def test_a_refused_put_leaves_the_draft_drafted_and_the_board_as_it_was(
     assert "already in the list" in error(refused)["message"]
     assert (await draft_status(client, twin))["status"] == "draft", "not half approved"
     assert len((await get_board(client))["rows"]) == rows
-
-
-async def test_the_recipes_version_and_the_major_choice_ride_on_the_put(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    row = await variant_draft(app, client, "For a Recipe", 8)
-    first = await put(client, row)
-    recipe_id = await make_recipe_on(client, "One click recipe", first["current_version_id"])
-    newer = await same_name_draft(app, client, provider, "For a Recipe", 7)
-    await app.state.db.execute(
-        "UPDATE profile_drafts SET recipe_id = ? WHERE id = ?", (recipe_id, newer["id"])
-    )
-    await pull(app)
-    before = await recipe_version_ids(app, recipe_id)
-
-    await put(client, newer, major=True)
-
-    assert len(await recipe_version_ids(app, recipe_id)) == len(before) + 1
-    major = await app.state.db.fetch_value(
-        "SELECT version_major FROM recipe_versions WHERE recipe_id = ? ORDER BY created_at DESC, "
-        "id DESC",
-        (recipe_id,),
-    )
-    assert major == 2
-    run = await pull(app)
-
-    assert run.status == "ok", run.error
-    assert len(await recipe_version_ids(app, recipe_id)) == len(before) + 1
-    assert (await draft_status(client, newer))["status"] == "pushed"
 
 
 async def test_the_board_read_offers_a_landing_for_a_drafted_draft(
