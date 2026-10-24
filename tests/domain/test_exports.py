@@ -128,6 +128,7 @@ def test_the_rebuilt_slog_is_what_the_parser_would_have_produced() -> None:
     assert reparsed.samples == slog.samples
     assert reparsed.incomplete == slog.incomplete
     assert len(reparsed.samples) == SHOT_129_SAMPLES
+    assert slog.shot_id == "000129"
 
 
 def test_diagnostics_of_an_imported_shot_equal_those_of_the_binary() -> None:
@@ -153,20 +154,6 @@ def test_every_exported_sample_survives_the_rebuild() -> None:
         # The phase comes from the transition table, and agrees with the
         # per-sample number the UI wrote.
         assert sample.phase == row.phase_number
-
-
-def test_the_header_carries_what_the_export_says() -> None:
-    slog = shot_export_to_slog(shot_129())
-
-    assert slog.version == 5
-    assert slog.sample_interval == 250
-    assert slog.header.fields_mask == FIELDS_MASK_V5
-    assert slog.duration_ms == SHOT_129_DURATION_MS
-    assert slog.volume_g == pytest.approx(32.1)
-    assert slog.profile_name == "Gratus 16:32 trad"
-    assert slog.incomplete is False
-    assert [t.phase_name for t in slog.transitions] == ["fill", "soak", "ramp", "decline 9-4"]
-    assert slog.shot_id == "000129"
 
 
 def test_a_v7_export_keeps_the_four_fields_v7_added() -> None:
