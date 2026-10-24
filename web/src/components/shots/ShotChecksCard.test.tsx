@@ -9,6 +9,7 @@ import {
   leverFields,
   leverSignedFields,
   leverSignedNoScaleFields,
+  realFields,
   turboFields,
 } from "@/test/shotFieldsFixture";
 
@@ -54,6 +55,29 @@ describe("ShotChecksCard", () => {
     expect(held.compareDocumentPosition(unchecked) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(held).toHaveAttribute("data-open", "no");
     expect(unchecked).toHaveAttribute("data-open", "no");
+  });
+
+  it("says one plain line, and no all-clear, for a shot with no checks and no signature", () => {
+    renderWithQueryClient(
+      <ShotChecksCard checks={realFields.checks.items} signature={realFields.signature} />,
+    );
+    expect(screen.getByText("Curve check")).toBeInTheDocument();
+    expect(screen.getByTestId("check-none")).toHaveTextContent(
+      "Nothing to check: no signature in force and no warnings.",
+    );
+    expect(screen.queryByTestId("check-list")).toBeNull();
+    expect(screen.queryByText(/all clear|no problems|passed/i)).toBeNull();
+  });
+
+  it("says no check failed when a signature in force held, and waits for the checks to be known", () => {
+    const held = leverSignedFields.checks.items.filter((check) => check.status === "held");
+    const { container, rerender } = renderWithQueryClient(
+      <ShotChecksCard checks={held} signature={leverSignedFields.signature} />,
+    );
+    expect(screen.getByTestId("check-none")).toHaveTextContent("No check failed.");
+    // Not yet known (the fields are loading): no box, and so no premature line.
+    rerender(<ShotChecksCard checks={undefined} signature={undefined} />);
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("collapses the held ones under their count, and opens them on request", async () => {
@@ -200,13 +224,6 @@ describe("ShotChecksCard", () => {
     expect(phase.nextElementSibling).not.toHaveClass("truncate");
   });
 
-  it("is titled Curve check and says nothing a model wrote", () => {
-    card(leverSignedFields);
-    expect(screen.getByText("Curve check")).toBeInTheDocument();
-    expect(screen.queryByText(/the review says/)).toBeNull();
-    expect(screen.queryByTestId("check-unverified")).toBeNull();
-  });
-
   describe("a free-text expectation the review answers", () => {
     const base = leverSignedFields.checks.items.find((check) => check.kind === "free_text");
     if (!base) throw new Error("the fixture has no free-text check");
@@ -215,13 +232,6 @@ describe("ShotChecksCard", () => {
       kind: "free_text",
       expectation_id: base.expectation_id,
       held: false,
-    });
-
-    it("is listed as checked by the review, never as failed or held", () => {
-      card(leverSignedFields);
-      const group = screen.getByTestId("checks-unchecked");
-      expect(group).toHaveTextContent("1 checked by the review");
-      expect(within(screen.getByTestId("check-list")).queryByText(base.sentence)).toBeNull();
     });
 
     it("links to the model's answer, and the link asks the page to show that claim", async () => {

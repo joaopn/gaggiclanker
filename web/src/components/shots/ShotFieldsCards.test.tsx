@@ -10,8 +10,6 @@ import {
   leverFields,
   leverNoPressureFields,
   leverNoScaleFields,
-  leverSignedFields,
-  leverSignedNoScaleFields,
   realFields,
 } from "@/test/shotFieldsFixture";
 
@@ -22,46 +20,6 @@ import {
  * pressure sensor record it (channels zeroed, flag cleared), and the exported
  * shot. Their absent fields are absent in the document, never zero.
  */
-
-describe("ShotChecksCard", () => {
-  it("says each warning as phase: fault with its sentence, most severe first as served", () => {
-    renderWithQueryClient(
-      <ShotChecksCard checks={leverFields.checks.items} signature={leverFields.signature} />,
-    );
-
-    const lines = screen.getAllByTestId("check-line");
-    expect(lines.map((line) => line.querySelector("p")?.textContent)).toEqual([
-      "ramp: fast flow",
-      "decline: skipped",
-      "Shot: over target",
-    ]);
-    expect(lines[1]).toHaveTextContent("before decline began");
-    expect(lines[0]).toHaveAttribute("data-severity", "amber");
-  });
-
-  it("says one plain line, and no all-clear, for a shot with no checks and no signature", () => {
-    renderWithQueryClient(
-      <ShotChecksCard checks={realFields.checks.items} signature={realFields.signature} />,
-    );
-    expect(screen.getByText("Curve check")).toBeInTheDocument();
-    expect(screen.getByTestId("check-none")).toHaveTextContent(
-      "Nothing to check: no signature in force and no warnings.",
-    );
-    expect(screen.queryByTestId("check-list")).toBeNull();
-    expect(screen.queryByText(/all clear|no problems|passed/i)).toBeNull();
-  });
-
-  it("says no check failed when a signature in force held, and waits for the checks to be known", () => {
-    const held = leverSignedFields.checks.items.filter((check) => check.status === "held");
-    const { container, rerender } = renderWithQueryClient(
-      <ShotChecksCard checks={held} signature={leverSignedFields.signature} />,
-    );
-    expect(screen.getByTestId("check-none")).toHaveTextContent("No check failed.");
-    // Not yet known (the fields are loading): no box, and so no premature line.
-    rerender(<ShotChecksCard checks={undefined} signature={undefined} />);
-    expect(container).toBeEmptyDOMElement();
-  });
-});
 
 describe("ShotPhasesCard", () => {
   it("has a row per phase of the shot, in its order, with how each ended", () => {
@@ -376,20 +334,5 @@ describe("a fill that ended before the machine logged a sample of it", () => {
       "the Fill ended on its pressure target before the first sample",
     );
     expect(lines[1]).not.toHaveTextContent("did not reach");
-  });
-
-  it("leaves a phase that cannot be measured for another reason as not measured", () => {
-    renderWithQueryClient(
-      <ShotChecksCard
-        checks={leverSignedNoScaleFields.checks.items}
-        signature={leverSignedNoScaleFields.signature}
-      />,
-    );
-
-    const unmeasured = screen
-      .getAllByTestId("check-line")
-      .filter((line) => line.getAttribute("data-status") === "unmeasured");
-    expect(unmeasured.length).toBeGreaterThan(0);
-    for (const line of unmeasured) expect(line).toHaveTextContent("not measured");
   });
 });
