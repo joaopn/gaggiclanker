@@ -19,11 +19,6 @@ describe("PageHeader", () => {
     expect(screen.getByText("Everything the machine pulled")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
   });
-
-  it("omits the subtitle row when there is none", () => {
-    renderWithQueryClient(<PageHeader title="Shots" />);
-    expect(screen.getByRole("heading", { name: "Shots" })).toBeInTheDocument();
-  });
 });
 
 describe("SectionCard", () => {

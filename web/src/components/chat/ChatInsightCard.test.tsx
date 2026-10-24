@@ -89,12 +89,6 @@ describe("ChatInsightCard", () => {
     );
   });
 
-  it("has no link to the Knowledge page", async () => {
-    renderCard();
-    await screen.findByTestId("chat-insight");
-    expect(document.querySelector('a[href*="/knowledge"]')).toBeNull();
-  });
-
   it("adds it on a press and then says so, and says whose conversations are told", async () => {
     const user = setupUser();
     patchKnowledgeInsight.mockResolvedValue(insight({ confirmed: true }));

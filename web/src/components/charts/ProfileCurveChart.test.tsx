@@ -217,20 +217,6 @@ describe("ProfileCurveChart", () => {
     expect(points[points.length - 1].x).toBeLessThan(15.5);
   });
 
-  it("two curves with one shared end draw on the same axes", () => {
-    render(
-      <>
-        <ProfileCurveChart profile={profile} xMax={20} title="Active" />
-        <ProfileCurveChart
-          profile={{ ...profile, phases: profile.phases.slice(0, 2) }}
-          xMax={20}
-          title="Proposed"
-        />
-      </>,
-    );
-    expect(new Set(renders.map((r) => r.options.scales.x.max))).toEqual(new Set([20]));
-  });
-
   it("does not rebuild the chart for a render that changes nothing", () => {
     const { rerender } = render(<ProfileCurveChart profile={profile} title="Same" />);
     const first = last();

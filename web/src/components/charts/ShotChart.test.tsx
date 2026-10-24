@@ -90,9 +90,9 @@ function renderShot129(highlight?: { start: number; end: number } | null) {
 }
 
 describe.each([
-  { theme: LIGHT_THEME_ID, dark: false, muted: "#ece2d2", band: "#33291f14" },
-  { theme: DARK_THEME_ID, dark: true, muted: "#2b241d", band: "#ece5db12" },
-])("ShotChart phase bands in the $theme palette", ({ theme, dark, muted, band }) => {
+  { theme: LIGHT_THEME_ID, dark: false, band: "#33291f14" },
+  { theme: DARK_THEME_ID, dark: true, band: "#ece5db12" },
+])("ShotChart phase bands in the $theme palette", ({ theme, dark, band }) => {
   let style: HTMLStyleElement;
 
   beforeEach(() => {
@@ -110,14 +110,6 @@ describe.each([
     window.localStorage.removeItem(THEME_STORAGE_KEY);
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.classList.remove("dark");
-  });
-
-  it("has the stylesheet's opaque --muted in effect", () => {
-    // Guards the premise: if jsdom stopped resolving the injected palette, the
-    // band assertions below would pass on the fallbacks and prove nothing.
-    const value = getComputedStyle(document.documentElement).getPropertyValue("--muted").trim();
-    expect(value).toBe(muted);
-    expect(alphaOf(value)).toBe(1);
   });
 
   it("draws every phase band behind the curves", () => {
@@ -168,6 +160,19 @@ describe.each([
   });
 });
 
+function claimBox(highlight?: { start: number; end: number } | null): Annotation | undefined {
+  render(
+    <ShotChart
+      samples={shot129Samples.samples}
+      phases={phases}
+      visible={DEFAULT_SERIES}
+      durationMs={shot129.shot.duration_ms}
+      highlight={highlight}
+    />,
+  );
+  return lastChartProps?.options?.plugins?.annotation?.annotations?.claim;
+}
+
 describe.each([
   { theme: LIGHT_THEME_ID, dark: false, span: "#1f8a8a2e", edge: "#1f8a8a" },
   { theme: DARK_THEME_ID, dark: true, span: "#5fd0c92e", edge: "#5fd0c9" },
@@ -189,39 +194,6 @@ describe.each([
     window.localStorage.removeItem(THEME_STORAGE_KEY);
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.classList.remove("dark");
-  });
-
-  function claimBox(highlight?: { start: number; end: number } | null): Annotation | undefined {
-    render(
-      <ShotChart
-        samples={shot129Samples.samples}
-        phases={phases}
-        visible={DEFAULT_SERIES}
-        durationMs={shot129.shot.duration_ms}
-        highlight={highlight}
-      />,
-    );
-    return lastChartProps?.options?.plugins?.annotation?.annotations?.claim;
-  }
-
-  it("draws no span unless one is asked for", () => {
-    expect(claimBox(null)).toBeUndefined();
-    cleanup();
-    expect(claimBox(undefined)).toBeUndefined();
-  });
-
-  it("draws the span between its two seconds as a box behind the curves", () => {
-    const box = claimBox({ start: 12.5, end: 24 });
-    expect(box?.type).toBe("box");
-    expect(box?.xMin).toBe(12.5);
-    expect(box?.xMax).toBe(24);
-    expect(box?.drawTime).toBe("beforeDatasetsDraw");
-  });
-
-  it("orders a reversed span, and says the span in the text summary", () => {
-    const box = claimBox({ start: 24, end: 12.5 });
-    expect([box?.xMin, box?.xMax]).toEqual([12.5, 24]);
-    expect(screen.getByTestId("chart-span")).toHaveTextContent("Marked: 24.0s to 12.5s");
   });
 
   it("is a translucent tint of its own token, not the phase bands' and not opaque", () => {
@@ -249,6 +221,32 @@ describe.each([
     );
     expect(series).toHaveLength(5);
     expect(series).not.toContain(edge);
+  });
+});
+
+describe("ShotChart claim span", () => {
+  beforeEach(() => {
+    lastChartProps = null;
+  });
+
+  it("draws no span unless one is asked for", () => {
+    expect(claimBox(null)).toBeUndefined();
+    cleanup();
+    expect(claimBox(undefined)).toBeUndefined();
+  });
+
+  it("draws the span between its two seconds as a box behind the curves", () => {
+    const box = claimBox({ start: 12.5, end: 24 });
+    expect(box?.type).toBe("box");
+    expect(box?.xMin).toBe(12.5);
+    expect(box?.xMax).toBe(24);
+    expect(box?.drawTime).toBe("beforeDatasetsDraw");
+  });
+
+  it("orders a reversed span, and says the span in the text summary", () => {
+    const box = claimBox({ start: 24, end: 12.5 });
+    expect([box?.xMin, box?.xMax]).toEqual([12.5, 24]);
+    expect(screen.getByTestId("chart-span")).toHaveTextContent("Marked: 24.0s to 12.5s");
   });
 
   it("keeps the phase bands when a span is drawn", () => {

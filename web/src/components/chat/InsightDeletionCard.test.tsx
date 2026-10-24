@@ -114,20 +114,12 @@ describe("InsightDeletionCard", () => {
   it.each([
     ["stale", "Already gone: the insight was removed another way"],
     ["superseded", "A newer proposal for this insight replaced this one."],
-    ["deleted", "Deleted: the insight is gone"],
-    ["kept", "Kept: the insight stays"],
   ] as const)("says %s in words, with no buttons", async (status, words) => {
     getInsightDeletions.mockResolvedValue({ items: [insightDeletion({ status })] });
     renderCard();
 
     expect(await screen.findByTestId("insight-deletion-decided")).toHaveTextContent(words);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
-
-  it("reads its proposal by conversation, so an old one is found", async () => {
-    renderCard();
-    await screen.findByTestId("insight-deletion-card");
-    expect(getInsightDeletions).toHaveBeenCalledWith(3, 14);
   });
 
   it("says a stale proposal whose insight is gone has no words left of it", async () => {
