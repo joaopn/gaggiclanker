@@ -64,33 +64,46 @@ export function RatingInput({
 /**
  * A segmented control over a closed vocabulary, with the same "click it again
  * to clear it" rule as the stars — "not decided yet" is most shots.
+ *
+ * With nothing chosen it can show a `hint`: a value worked out elsewhere (the decision the rating
+ * gives), drawn as an outline instead of a fill. A click on it chooses that value, as it does in
+ * the shots table.
  */
 export function Segmented({
   name,
   options,
   value,
   onChange,
+  hint = null,
+  hintTitle,
 }: {
   name: string;
   options: Array<{ value: string; label: string }>;
   value: string | null;
   onChange: (next: string | null) => void;
+  hint?: string | null;
+  hintTitle?: string;
 }) {
   return (
     <div className="inline-flex flex-wrap gap-1" data-testid={`segmented-${name}`}>
       {options.map((option) => {
         const on = value === option.value;
+        const hinted = value === null && hint === option.value;
         return (
           <button
             key={option.value}
             type="button"
             aria-pressed={on}
+            data-hint={hinted ? "true" : undefined}
+            title={hinted ? hintTitle : undefined}
             onClick={() => onChange(on ? null : option.value)}
             className={cn(
               "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
               on
                 ? "border-foreground/30 bg-muted font-medium"
-                : "border-border text-muted-foreground hover:bg-muted/50",
+                : hinted
+                  ? "border-foreground/60 text-foreground hover:bg-muted/50"
+                  : "border-border text-muted-foreground hover:bg-muted/50",
             )}
           >
             {option.label}

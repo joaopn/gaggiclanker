@@ -7,6 +7,7 @@ import {
   loadShotWidths,
   PREVIOUS_DEFAULT_SHOT_COLUMNS,
   SHOT_COLUMNS,
+  SHOT_COLUMNS_BALANCE_KEY,
   SHOT_COLUMNS_CHECK_KEY,
   SHOT_COLUMNS_KEY,
   SHOT_WIDTHS_KEY,
@@ -44,15 +45,19 @@ const hostile: Storage = {
 
 beforeEach(() => {
   window.localStorage.clear();
+  // Most tests store a layout as a person's own choice; the bringing-along of a saved layout to
+  // the new default row has its own describe, which takes the mark away.
+  window.localStorage.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
 });
 
 describe("loadShotColumns", () => {
-  it("shows Profile from the first visit, and leaves Curve and Notes to the chooser", () => {
-    // What was brewed belongs on the row that is scanned. The two left off are
-    // the expensive one (a sparkline is a request and a canvas per row) and
-    // the long one (a note is for reading a session back, not for scanning).
+  it("leaves Profile, Curve and Notes to the chooser on a first visit", () => {
+    // The Recipe already names the profile, since a Recipe brews one. Curve is the
+    // expensive one (a sparkline is a request and a canvas per row) and Notes the
+    // long one (a note is for reading a session back, not for scanning).
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
-    expect(DEFAULT_SHOT_COLUMNS).toContain("profile");
+    expect(DEFAULT_SHOT_COLUMNS).not.toContain("profile");
+    expect(SHOT_COLUMNS.map((column) => column.id)).toContain("profile");
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("curve");
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("notes");
   });
@@ -78,15 +83,81 @@ describe("loadShotColumns", () => {
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
   });
 
-  it("puts Curve check and then Review where Score was: after Yield, before Rating, both on", () => {
+  it("draws the columns in one canonical order, AI Review last but for Flags", () => {
     const ids = SHOT_COLUMNS.map((column) => column.id);
     expect(ids).not.toContain("score");
-    expect(ids.indexOf("check")).toBe(ids.indexOf("yield") + 1);
-    expect(ids.indexOf("review")).toBe(ids.indexOf("check") + 1);
-    expect(ids.indexOf("rating")).toBe(ids.indexOf("review") + 1);
-    expect(DEFAULT_SHOT_COLUMNS).toContain("check");
-    expect(DEFAULT_SHOT_COLUMNS).toContain("review");
+    expect(ids).toEqual([
+      "recipe",
+      "drink",
+      "time",
+      "profile",
+      "curve",
+      "duration",
+      "yield",
+      "check",
+      "rating",
+      "notes",
+      "decision",
+      "balance",
+      "review",
+      "flags",
+    ]);
     expect(SHOT_COLUMNS.find((column) => column.id === "check")?.label).toBe("Curve check");
+    expect(SHOT_COLUMNS.find((column) => column.id === "review")?.label).toBe("AI Review");
+  });
+
+  it("starts on the row a reader scans: Decision and Balance in, the stars and Profile out, AI Review last", () => {
+    expect(DEFAULT_SHOT_COLUMNS).toEqual([
+      "recipe",
+      "time",
+      "duration",
+      "yield",
+      "check",
+      "decision",
+      "balance",
+      "review",
+    ]);
+    expect(DEFAULT_SHOT_COLUMNS).not.toContain("rating");
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+  });
+
+  it("reads the default of the release before as the default, in whatever order it was stored", () => {
+    // The generation this change replaced: Review and Rating before Decision, no Balance.
+    const before = [
+      "recipe",
+      "time",
+      "profile",
+      "duration",
+      "yield",
+      "check",
+      "review",
+      "rating",
+      "decision",
+    ];
+    expect(PREVIOUS_DEFAULT_SHOT_COLUMNS[0]).toEqual(before);
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(before));
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify([...before].reverse()));
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+  });
+
+  it("keeps a layout somebody chose, Balance or not, as they made it", () => {
+    const chosen = ["time", "rating", "decision", "check", "review"];
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(chosen));
+    expect(loadShotColumns()).toEqual(chosen);
+    // Balance is a column like another: a stored choice may name it, and it is drawn after
+    // Decision and before AI Review whatever order the list was stored in.
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify(["balance", "review", "check", "decision", "time"]),
+    );
+    expect(visibleColumns(loadShotColumns()).map((column) => column.id)).toEqual([
+      "time",
+      "check",
+      "decision",
+      "balance",
+      "review",
+    ]);
   });
 
   it("reads a layout stored before the change, naming score, as review in the same place", () => {
@@ -284,7 +355,13 @@ describe("gridTemplates", () => {
 
   it("sizes Decision for its three words and no wider", () => {
     const decision = SHOT_COLUMNS.find((column) => column.id === "decision");
-    expect(decision?.size).toEqual({ rem: 9.75, min: 9.75, max: 14 });
+    expect(decision?.size).toEqual({ rem: 8.25, min: 8.25, max: 14 });
+  });
+
+  it("sizes Balance for its three words and no wider, and hides it on a phone like Decision", () => {
+    const balance = SHOT_COLUMNS.find((column) => column.id === "balance");
+    expect(balance?.size).toEqual({ rem: 9.25, min: 9.25, max: 14 });
+    expect(balance?.narrowHidden).toBe(true);
   });
 
   it("covers every column the chooser offers, and nothing else", () => {
@@ -335,7 +412,8 @@ describe("column sizes", () => {
       review: 10.5,
       rating: 5.5,
       notes: 14,
-      decision: 9.75,
+      decision: 8.25,
+      balance: 9.25,
       flags: 9,
     });
   });
@@ -442,5 +520,75 @@ describe("column widths", () => {
     expect(clampWidth(size, 3)).toBe(4);
     expect(clampWidth(size, 7)).toBe(6);
     expect(clampWidth(size, 5.123456)).toBe(5.12);
+  });
+});
+
+describe("a saved layout is brought to the new default row, once", () => {
+  const saved = ["recipe", "time", "profile", "duration", "yield", "check", "rating", "review"];
+
+  beforeEach(() => {
+    window.localStorage.removeItem(SHOT_COLUMNS_BALANCE_KEY);
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(saved));
+  });
+
+  it("puts Balance where Rating was and hides Profile, and leaves every other column", () => {
+    // The precondition: the layout shows Rating and Profile, matches no earlier default, and has
+    // not been brought along.
+    expect(saved).toContain("rating");
+    expect(saved).toContain("profile");
+    expect(window.localStorage.getItem(SHOT_COLUMNS_BALANCE_KEY)).toBeNull();
+    expect(PREVIOUS_DEFAULT_SHOT_COLUMNS.map((g) => [...g].sort())).not.toContainEqual(
+      [...saved].sort(),
+    );
+
+    const after = loadShotColumns();
+
+    expect(after).toEqual(["recipe", "time", "duration", "yield", "check", "balance", "review"]);
+    expect(JSON.parse(window.localStorage.getItem(SHOT_COLUMNS_KEY) ?? "[]")).toEqual(after);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_BALANCE_KEY)).toBe("1");
+  });
+
+  it("does nothing once it has been done, so a Rating or Profile chosen later is kept", () => {
+    window.localStorage.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
+    expect(loadShotColumns()).toEqual(saved);
+    // And a layout brought along once is not brought along again after the person adds them back.
+    window.localStorage.removeItem(SHOT_COLUMNS_BALANCE_KEY);
+    loadShotColumns();
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(saved));
+    expect(loadShotColumns()).toEqual(saved);
+  });
+
+  it("only drops Rating from a layout that already shows Balance", () => {
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify(["time", "rating", "balance", "review"]),
+    );
+    expect(loadShotColumns()).toEqual(["time", "balance", "check", "review"]);
+  });
+
+  it("marks a layout that needed nothing, and keeps a layout that would be left empty", () => {
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["time", "flags"]));
+    expect(loadShotColumns()).toEqual(["time", "flags"]);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_BALANCE_KEY)).toBe("1");
+    window.localStorage.removeItem(SHOT_COLUMNS_BALANCE_KEY);
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["profile"]));
+    expect(loadShotColumns()).toEqual(["profile"]);
+  });
+
+  it("still reads an earlier default as the current default, and a very old layout gets all three", () => {
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(PREVIOUS_DEFAULT_SHOT_COLUMNS[0]));
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+    // Names score (-> review), no Curve check, shows Rating and Profile.
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify(["time", "profile", "score", "rating", "flags"]),
+    );
+    expect(loadShotColumns()).toEqual(["time", "check", "review", "balance", "flags"]);
+  });
+
+  it("is done by choosing columns, so a chosen Rating stays", () => {
+    saveShotColumns(["time", "rating", "profile"]);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_BALANCE_KEY)).toBe("1");
+    expect(loadShotColumns()).toEqual(["time", "rating", "profile"]);
   });
 });

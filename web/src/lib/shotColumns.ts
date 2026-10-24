@@ -26,6 +26,7 @@ export type ShotColumnId =
   | "drink"
   | "notes"
   | "decision"
+  | "balance"
   | "flags";
 
 export type ShotColumn = {
@@ -112,12 +113,6 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // pressure +12", 8.55rem in Chromium with the badge's padding and border) still fit
   // whole, so a drag can never cut the fault.
   { id: "check", label: "Curve check", size: { rem: 9, min: 8.75, max: 24 } },
-  // What the model wrote: the same "phase: fault +N" badge, or the Review button, or a grey
-  // "Failed to run" with its Retry button beside it. The minimum is what the two together
-  // need: "Failed to run" and "Retry" are 9.7rem in headless Chromium, and the longest fault
-  // with its count is narrower, so a drag can never cut either. A stored width below it (the
-  // old Score column's, or a drag from before) is raised to it on load.
-  { id: "review", label: "Review", size: { rem: 10.5, min: 9.75, max: 24 } },
   // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit,
   // and wider than the sorted heading.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },
@@ -125,15 +120,32 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // which is what the column is for — the whole note is on hover, and reading
   // a session back is what the drag is for.
   { id: "notes", label: "Notes", size: { rem: 14, min: 6, max: 32 }, narrowHidden: true },
-  // Keep, Improve and Discard side by side at text-xs: 9.75rem in DejaVu Sans,
-  // which is wider than the system faces a browser actually uses, so the
-  // default still shows all three words.
+  // Good, Bad and Discard side by side at text-xs: 8.0rem as measured in headless Chromium
+  // (DejaVu Sans, wider than the system faces a browser actually uses) with the buttons' padding
+  // and borders, so 8.25rem holds all three words whole, filled or outlined. The minimum is the
+  // default: a drag can never cut a word.
   {
     id: "decision",
     label: "Decision",
-    size: { rem: 9.75, min: 9.75, max: 14 },
+    size: { rem: 8.25, min: 8.25, max: 14 },
     narrowHidden: true,
   },
+  // Sour, Balanced and Bitter side by side at text-xs: 9.02rem as measured in headless Chromium,
+  // buttons' padding and borders included, so 9.25rem holds all three whole, filled or outlined.
+  // Not sortable, so no arrow ever widens the heading. The minimum is the default.
+  {
+    id: "balance",
+    label: "Balance",
+    size: { rem: 9.25, min: 9.25, max: 14 },
+    narrowHidden: true,
+  },
+  // What the model wrote: the same "phase: fault +N" badge, or the Review button, or a grey
+  // "Failed to run" with its Retry button beside it. The minimum is what the two together
+  // need: "Failed to run" and "Retry" are 9.7rem in headless Chromium, and the longest fault
+  // with its count is narrower, so a drag can never cut either. A stored width below it (the
+  // old Score column's, or a drag from before) is raised to it on load. It sits after the
+  // person's own columns, just before Flags: the model's reading comes last.
+  { id: "review", label: "AI Review", size: { rem: 10.5, min: 9.75, max: 24 } },
   // Badges that wrap: "gone from machine" is the widest single one.
   { id: "flags", label: "Flags", size: { rem: 9, min: 4, max: 24 }, narrowHidden: true },
 ];
@@ -141,31 +153,31 @@ export const SHOT_COLUMNS: ShotColumn[] = [
 /**
  * What a first visit shows.
  *
- * Recipe, Time and Profile say what was brewed and when; Duration and Yield say
- * what the machine did; Rating and Decision say what you made of it.
- * That is the row a reader scans, and it is the row they get without touching
- * the chooser.
+ * Recipe and Time say what was brewed and when; Duration and Yield say
+ * what the machine did; Curve check says what the deterministic checks make of the curve;
+ * Decision and Balance say what you made of the cup. That is the row a reader scans, and it is
+ * the row they get without touching the chooser. AI Review comes last of those: the model's
+ * reading, with the button that starts one.
  *
- * Curve and Notes are the two left off. A sparkline is a request and a canvas
- * per row, wanted by somebody comparing shapes rather than by somebody
- * scanning; Notes is long, and it is there for reading a session back. Flags
- * is off because the flags are mostly absences (imported, gone from the
- * machine, incomplete) that matter on a handful of rows — Decision, "keep this
- * recipe, improve on it, or bin the shot", is the question every shot ends on,
- * and a column that answers it with a click is worth more than a badge. Review
- * is on: its Review button starts a review, and the open row carries the review itself.
- * Curve check sits just before it: what the deterministic checks say about the shot.
+ * Profile is off the row, in the chooser: the Recipe already names it, since a Recipe brews one
+ * profile.
+ *
+ * Rating is off the row, in the chooser: a rated shot already shows its Good or Bad in
+ * Decision, outlined until you confirm it, so the stars would say it twice. Curve and Notes are
+ * left off too. A sparkline is a request and a canvas per row, wanted by somebody comparing
+ * shapes rather than by somebody scanning; Notes is long, and it is there for reading a session
+ * back. Flags is off because the flags are mostly absences (imported, gone from the machine,
+ * incomplete) that matter on a handful of rows.
  */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "recipe",
   "time",
-  "profile",
   "duration",
   "yield",
   "check",
-  "review",
-  "rating",
   "decision",
+  "balance",
+  "review",
 ];
 
 /**
@@ -185,6 +197,8 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
  * the browser this is for.
  */
 export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly ShotColumnId[])[] = [
+  // Before Balance joined the default row, and Rating and Profile left it.
+  ["recipe", "time", "profile", "duration", "yield", "check", "review", "rating", "decision"],
   // Before the Curve check column was split from Review.
   ["recipe", "time", "profile", "duration", "yield", "review", "rating", "decision"],
   // Before Profile joined the default row.
@@ -216,6 +230,16 @@ export const SHOT_COLUMNS_KEY = "shots.columns.v1";
  * after that a layout without it is a choice and is kept. Any other stored choice is untouched.
  */
 export const SHOT_COLUMNS_CHECK_KEY = "shots.columns.check.v1";
+
+/**
+ * Set once a stored layout has been brought to the new default row, or once the person chose
+ * their columns themselves. The stars gave way to Balance and Profile left the row (the
+ * maintainer asked for both), so a stored layout that matches no earlier default gets, exactly
+ * once: Balance in place of Rating, or just without Rating when it shows Balance already, and
+ * without Profile. Every other column stays as it was. After that a layout with Rating or
+ * Profile is a choice and is kept. Widths are not touched.
+ */
+export const SHOT_COLUMNS_BALANCE_KEY = "shots.columns.balance.v1";
 
 /**
  * Columns that were replaced, and what took their place. The Analyse button
@@ -255,7 +279,7 @@ export function loadShotColumns(storage: Storage | undefined = safeStorage()): S
       .map((value) => (typeof value === "string" ? (REPLACED[value] ?? value) : value))
       .filter(isColumnId);
     if (known.length === 0 || isPreviousDefault(known)) return DEFAULT_SHOT_COLUMNS;
-    return withCurveCheck(known, storage);
+    return withBalance(withCurveCheck(known, storage), storage);
   } catch {
     return DEFAULT_SHOT_COLUMNS;
   }
@@ -282,6 +306,33 @@ function withCurveCheck(known: ShotColumnId[], storage: Storage | undefined): Sh
   return added;
 }
 
+/** The stored layout with Rating swapped for Balance and Profile hidden, once; see the key above. */
+function withBalance(known: ShotColumnId[], storage: Storage | undefined): ShotColumnId[] {
+  let done = false;
+  try {
+    done = (storage?.getItem(SHOT_COLUMNS_BALANCE_KEY) ?? null) !== null;
+  } catch {
+    done = false;
+  }
+  if (done) return known;
+  const hasBalance = known.includes("balance");
+  const moved = known.flatMap((id): ShotColumnId[] =>
+    id === "rating" ? (hasBalance ? [] : ["balance"]) : id === "profile" ? [] : [id],
+  );
+  // Never a table with no columns: a layout that would end up empty is kept as it was.
+  const next = moved.length > 0 ? moved : known;
+  try {
+    if (next.length !== known.length || next.some((id, index) => id !== known[index])) {
+      storage?.setItem(SHOT_COLUMNS_KEY, JSON.stringify(next));
+    }
+    storage?.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
+  } catch {
+    // Not remembered: the next load does it again, which is what a person who cannot save
+    // anything would want.
+  }
+  return next;
+}
+
 export function saveShotColumns(
   visible: ShotColumnId[],
   storage: Storage | undefined = safeStorage(),
@@ -290,6 +341,7 @@ export function saveShotColumns(
     storage?.setItem(SHOT_COLUMNS_KEY, JSON.stringify(visible));
     // A layout the person chose is theirs: Curve check is not added to it behind their back.
     storage?.setItem(SHOT_COLUMNS_CHECK_KEY, "1");
+    storage?.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
   } catch {
     // A view preference is not worth a toast. The table is already showing
     // what was asked for; it just will not still be doing so tomorrow.

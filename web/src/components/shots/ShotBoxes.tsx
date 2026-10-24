@@ -12,6 +12,7 @@ import { inForceClaims, ReviewBox } from "@/components/shots/ReviewBox";
 import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { type ClaimSpanControls, showClaim, useClaimSpan } from "@/lib/claimSpan";
+import { derivedDecisionTitle } from "@/lib/decisionTitle";
 import { setBox, useBox } from "@/lib/shotBoxes";
 
 /**
@@ -101,6 +102,8 @@ export function ShotBoxes({
       <JudgementForm
         shotId={row.id}
         judgement={detail.judgement}
+        derivedDecision={row.derived_decision ?? null}
+        derivedTitle={derivedDecisionTitle(row)}
         // Where the doses start when the person has recorded none: the Recipe version's dose (when
         // the shot is filed) and the scale's yield (when it has a scale).
         prefill={{

@@ -15,6 +15,11 @@ import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { BOXES_KEY } from "@/lib/shotBoxes";
 import { SHOT_SERIES } from "@/lib/shotChart";
+import {
+  DEFAULT_SHOT_COLUMNS,
+  SHOT_COLUMNS_BALANCE_KEY,
+  SHOT_COLUMNS_KEY,
+} from "@/lib/shotColumns";
 import { LEGACY_SHOT_CURVES_KEY, SHOT_CURVES_KEY } from "@/lib/shotCurves";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { openAllBoxes, openBoxes } from "@/test/boxFixtures";
@@ -231,6 +236,19 @@ async function showColumn(user: ReturnType<typeof setupUser>, label: string): Pr
   await user.keyboard("{Escape}");
 }
 
+/**
+ * The default row with the Rating column added: the stars are off the first-visit row (a rated
+ * shot already shows its Good or Bad in Decision), so a test that clicks them asks for them.
+ */
+function showRatingColumn(): void {
+  window.localStorage.setItem(
+    SHOT_COLUMNS_KEY,
+    JSON.stringify([...DEFAULT_SHOT_COLUMNS, "rating"]),
+  );
+  // A layout chosen after the stars left the default row is the person's, and kept.
+  window.localStorage.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // The visible columns are stored per browser, so one test's chooser must not
@@ -295,7 +313,11 @@ describe("ShotsPage", () => {
     expect(screen.getByText("28.4 s")).toBeInTheDocument();
     expect(screen.getByText("36.4 g")).toBeInTheDocument();
     expect(screen.queryByTestId("score-badge")).not.toBeInTheDocument();
-    expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "4");
+    // The stars are off the first-visit row: the rating shows as Decision's outlined Good, and the
+    // Rating column is a choice in the chooser.
+    expect(screen.queryByTestId("rating-stars")).not.toBeInTheDocument();
+    expect(screen.getByTestId("decision-cell")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-cell")).toBeInTheDocument();
     // The row opens in place rather than navigating: one stretched button
     // across the row rather than a button wrapped around the cells, because
     // several of those cells hold buttons of their own.
@@ -307,6 +329,7 @@ describe("ShotsPage", () => {
   it("keeps the row's controls out of its toggle", async () => {
     // A button inside a button is invalid HTML, and five stars plus an editor
     // button inside one would announce as part of the row's own control.
+    showRatingColumn();
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
@@ -314,12 +337,13 @@ describe("ShotsPage", () => {
 
     const toggle = screen.getByRole("button", { name: "Shot 000101" });
     // The decisions render once the vocabulary has answered.
-    await screen.findByRole("button", { name: "Keep shot 000101" });
+    await screen.findByRole("button", { name: "Good shot 000101" });
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
       screen.getByRole("button", { name: /^needs a Recipe/ }),
-      ...screen.getAllByRole("button", { name: /^(Keep|Improve|Discard) shot 000101$/ }),
+      ...screen.getAllByRole("button", { name: /^(Good|Bad|Discard) shot 000101$/ }),
+      ...screen.getAllByRole("button", { name: /^(Sour|Balanced|Bitter) shot 000101$/ }),
       ...screen.getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
     ]) {
       expect(toggle.contains(control)).toBe(false);
@@ -327,6 +351,7 @@ describe("ShotsPage", () => {
   });
 
   it("leads with the Recipe and centres every heading and every cell", async () => {
+    showRatingColumn();
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
@@ -354,22 +379,41 @@ describe("ShotsPage", () => {
     }
   });
 
-  it("shows the profile from the first visit and leaves Curve out until somebody asks", async () => {
-    // What was brewed belongs on the row that is scanned. A sparkline per row
+  it("leaves Profile and Curve out of the first visit until somebody asks", async () => {
+    // The Recipe column already names the profile, since a Recipe brews one. A sparkline per row
     // is a request and a canvas per row, wanted by somebody comparing shapes
-    // rather than by somebody scanning, so that one waits to be asked for.
+    // rather than by somebody scanning, so that one waits to be asked for too.
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    expect(screen.getByText("9 Bar Espresso")).toBeInTheDocument();
+    expect(screen.queryByText("9 Bar Espresso")).not.toBeInTheDocument();
+    await showColumn(user, "Profile");
+    expect(await screen.findByText("9 Bar Espresso")).toBeInTheDocument();
     expect(screen.queryByTestId("shot-sparkline")).not.toBeInTheDocument();
     expect(getShotSamples).not.toHaveBeenCalled();
 
     await showColumn(user, "Curve");
     expect(await screen.findByTestId("shot-sparkline")).toBeInTheDocument();
+  });
+
+  it("brings a saved layout with the stars to the new row: Balance in their place, no Profile", async () => {
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify(["recipe", "time", "profile", "rating", "check", "review"]),
+    );
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(await screen.findByText("Balance")).toBeInTheDocument();
+    expect(screen.queryByText("Rating")).not.toBeInTheDocument();
+    expect(screen.queryByText("Profile")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("balance-cell")).toBeInTheDocument();
+    expect(screen.queryByTestId("rating-stars")).not.toBeInTheDocument();
   });
 
   it("remembers the chosen columns in this browser", async () => {
@@ -1075,8 +1119,13 @@ describe("ShotsPage column widths", () => {
 
   it("gives Profile an edge to drag, like every other column", async () => {
     // Profile was a flexible track: it took whatever the row had left and was
-    // the one column of text whose width a reader could not set. It is on the
-    // default row now, so the handle is there on a first visit.
+    // the one column of text whose width a reader could not set. It is off the
+    // default row now, so the test asks for it.
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify([...DEFAULT_SHOT_COLUMNS, "profile"]),
+    );
+    window.localStorage.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
@@ -1105,13 +1154,12 @@ describe("ShotsPage column widths", () => {
     expect(template().split(" ")).toEqual([
       "8rem",
       "7.5rem",
-      "9rem",
       "5.25rem",
       "3rem",
       "9rem",
+      "8.25rem",
+      "9.25rem",
       "10.5rem",
-      "5.5rem",
-      "9.75rem",
     ]);
   });
 
@@ -1173,7 +1221,7 @@ describe("ShotsPage Decision column", () => {
   /** The list, with the decisions drawn: their words come from the vocabulary. */
   async function decisions(): Promise<void> {
     await listed();
-    await within(cell()).findByRole("button", { name: "Keep shot 000101" });
+    await within(cell()).findByRole("button", { name: "Good shot 000101" });
   }
 
   it("is in the default columns where Analyse was, and Analyse is gone", async () => {
@@ -1189,7 +1237,7 @@ describe("ShotsPage Decision column", () => {
       within(cell())
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual(["Keep", "Improve", "Discard"]);
+    ).toEqual(["Good", "Bad", "Discard"]);
     // Fixed and resizable, like the columns beside it.
     expect(screen.getByRole("separator", { name: "Resize the Decision column" })).toBeVisible();
   });
@@ -1202,12 +1250,12 @@ describe("ShotsPage Decision column", () => {
 
     renderWithQueryClient(<ShotsPage />);
     await decisions();
-    expect(within(cell()).getByRole("button", { name: "Improve shot 000101" })).toHaveAttribute(
+    expect(within(cell()).getByRole("button", { name: "Bad shot 000101" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
 
-    await user.click(within(cell()).getByRole("button", { name: "Keep shot 000101" }));
+    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
     // The rest of the verdict rides along: a decision never takes the rating,
@@ -1222,12 +1270,12 @@ describe("ShotsPage Decision column", () => {
       notes: "sharp at the end",
       decision: "keep",
     });
-    expect(within(cell()).getByRole("button", { name: "Keep shot 000101" })).toHaveAttribute(
+    expect(within(cell()).getByRole("button", { name: "Good shot 000101" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
     // Clicking the pressed one clears it: "not decided yet" is a real answer.
-    await user.click(within(cell()).getByRole("button", { name: "Keep shot 000101" }));
+    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
     expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ decision: null }));
     // Still the list: a decision is not a click on the row.
@@ -1246,15 +1294,15 @@ describe("ShotsPage Decision column", () => {
 
     renderWithQueryClient(<ShotsPage />);
     await decisions();
-    await user.click(within(cell()).getByRole("button", { name: "Keep shot 000101" }));
-    await user.click(within(cell()).getByRole("button", { name: "Improve shot 000101" }));
+    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
+    await user.click(within(cell()).getByRole("button", { name: "Bad shot 000101" }));
     const pressed = () =>
       within(cell())
         .getAllByRole("button", { pressed: true })
         .map((button) => button.textContent);
-    expect(pressed()).toEqual(["Improve"]);
+    expect(pressed()).toEqual(["Bad"]);
 
-    // Keep lands, and the list is re-read with it while Improve is queued.
+    // Good lands, and the list is re-read with it while Bad is queued.
     await waitFor(() => expect(landed).toHaveLength(1));
     getShots.mockResolvedValue(
       listData([shot({ has_judgement: true, judgement_decision: "keep" })]),
@@ -1263,7 +1311,7 @@ describe("ShotsPage Decision column", () => {
     landed[0]();
     await waitFor(() => expect(getShots.mock.calls.length).toBeGreaterThan(reads));
     await waitFor(() => expect(landed).toHaveLength(2));
-    expect(pressed()).toEqual(["Improve"]);
+    expect(pressed()).toEqual(["Bad"]);
 
     getShots.mockResolvedValue(
       listData([shot({ has_judgement: true, judgement_decision: "improve" })]),
@@ -1272,7 +1320,7 @@ describe("ShotsPage Decision column", () => {
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
     expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ decision: "improve" }));
     await waitFor(() => expect(getShots.mock.calls.length).toBeGreaterThan(reads + 1));
-    expect(pressed()).toEqual(["Improve"]);
+    expect(pressed()).toEqual(["Bad"]);
   });
 
   it("writes nothing to clear a decision on a shot nobody has judged", async () => {
@@ -1285,7 +1333,7 @@ describe("ShotsPage Decision column", () => {
 
     renderWithQueryClient(<ShotsPage />);
     await decisions();
-    await user.click(within(cell()).getByRole("button", { name: "Keep shot 000101" }));
+    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
 
     expect(putJudgement).not.toHaveBeenCalled();
   });
@@ -1306,6 +1354,339 @@ describe("ShotsPage Decision column", () => {
         "false",
       ),
     );
+  });
+
+  it("draws the decision the rating gives outlined, apart from a chosen one", async () => {
+    getShots.mockResolvedValue(listData([shot({ derived_decision: "keep" })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+
+    const good = within(cell()).getByRole("button", { name: "Good shot 000101" });
+    // Outlined is not pressed: nobody chose it. It says where it comes from, on hover.
+    expect(good).toHaveAttribute("data-hint", "true");
+    expect(good).toHaveAttribute("aria-pressed", "false");
+    // No rating is served with this one, so the title says no more than the rule.
+    expect(good).toHaveAttribute(
+      "title",
+      "From the rating (3★ or more is Good). Click to confirm or change.",
+    );
+    for (const name of ["Bad shot 000101", "Discard shot 000101"]) {
+      const other = within(cell()).getByRole("button", { name });
+      expect(other).not.toHaveAttribute("data-hint");
+      expect(other).not.toHaveAttribute("title");
+    }
+    expect(within(cell()).queryAllByRole("button", { pressed: true })).toHaveLength(0);
+  });
+
+  it("says which rating the outlined decision came from, as the server served it", async () => {
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          derived_decision: "keep",
+          decision_rating: 4,
+          decision_rating_source: "machine_notes",
+        }),
+      ]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+
+    expect(within(cell()).getByRole("button", { name: "Good shot 000101" })).toHaveAttribute(
+      "title",
+      "From the 4★ rating on the machine's notes card (3★ or more is Good). Click to confirm or change.",
+    );
+  });
+
+  it("outlines a Bad the rating gives just the same", async () => {
+    getShots.mockResolvedValue(listData([shot({ derived_decision: "improve" })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+
+    expect(within(cell()).getByRole("button", { name: "Bad shot 000101" })).toHaveAttribute(
+      "data-hint",
+      "true",
+    );
+    expect(within(cell()).getByRole("button", { name: "Good shot 000101" })).not.toHaveAttribute(
+      "data-hint",
+    );
+  });
+
+  it("stores the outlined decision on a click, as the person's own, and nothing else", async () => {
+    const user = setupUser();
+    // A shot rated on the machine only: no verdict of this box's behind it.
+    getShot.mockResolvedValue({ ...shot129, judgement: null });
+    getShots.mockResolvedValue(
+      listData([shot({ derived_decision: "keep", has_judgement: false, rating: 4 })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    // Neither the machine's four stars nor any other field is written into the verdict.
+    expect(putJudgement.mock.calls[0][1]).toEqual({
+      rating: null,
+      balance: null,
+      taste_notes: [],
+      aroma_notes: [],
+      dose_in_g: null,
+      dose_out_g: null,
+      notes: "",
+      decision: "keep",
+    });
+    // It is filled the moment it is clicked, before the list has answered.
+    const good = within(cell()).getByRole("button", { name: "Good shot 000101" });
+    expect(good).toHaveAttribute("aria-pressed", "true");
+    expect(good).not.toHaveAttribute("data-hint");
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+  });
+
+  it("takes back a choice whose first write is still on the way, on a shot the row shows no verdict for", async () => {
+    const user = setupUser();
+    getShot.mockResolvedValue({ ...shot129, judgement: null });
+    getShots.mockResolvedValue(
+      listData([shot({ derived_decision: "keep", has_judgement: false, rating: 4 })]),
+    );
+    // The first write lands only when the test says so.
+    const landed: Array<() => void> = [];
+    putJudgement.mockImplementation(
+      (_id: number, body: unknown) => new Promise((resolve) => landed.push(() => resolve(body))),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
+    await waitFor(() => expect(landed).toHaveLength(1));
+    // The row has not heard of the verdict yet, but a write is in flight: it exists.
+    // Clicking the filled value again takes it back, as a write queued behind the first.
+    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
+    expect(within(cell()).queryAllByRole("button", { pressed: true })).toHaveLength(0);
+    landed[0]();
+    await waitFor(() => expect(landed).toHaveLength(2));
+    landed[1]();
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
+    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ decision: "keep" }));
+    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ decision: null }));
+  });
+
+  it("stores another decision over an outlined one, and clears a chosen one as before", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ derived_decision: "keep", has_judgement: true, judgement_decision: null })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+    await user.click(within(cell()).getByRole("button", { name: "Bad shot 000101" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ decision: "improve" }));
+    const pressed = within(cell()).getAllByRole("button", { pressed: true });
+    expect(pressed.map((button) => button.textContent)).toEqual(["Bad"]);
+    // The outline stands down once something is chosen.
+    expect(within(cell()).getByRole("button", { name: "Good shot 000101" })).not.toHaveAttribute(
+      "data-hint",
+    );
+  });
+
+  it("draws no outline on a shot whose decision was chosen", async () => {
+    getShots.mockResolvedValue(
+      listData([
+        shot({ has_judgement: true, judgement_decision: "improve", derived_decision: null }),
+      ]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+
+    expect(cell().querySelector("[data-hint]")).toBeNull();
+    expect(within(cell()).getByRole("button", { name: "Bad shot 000101" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+});
+
+describe("ShotsPage Balance column", () => {
+  function cell(): HTMLElement {
+    return screen.getByTestId("balance-cell");
+  }
+
+  /** The list, with the balances drawn: their words come from the vocabulary. */
+  async function balances(): Promise<void> {
+    await listed();
+    await within(cell()).findByRole("button", { name: "Sour shot 000101" });
+  }
+
+  const pressed = () =>
+    within(cell())
+      .queryAllByRole("button", { pressed: true })
+      .map((button) => button.textContent);
+  const hinted = () =>
+    Array.from(cell().querySelectorAll("[data-hint]")).map((button) => button.textContent);
+
+  it("is in the default columns after Decision, with the three words, fixed and resizable", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await balances();
+
+    expect(screen.getByTestId("header-balance")).toHaveTextContent("Balance");
+    const headings = screen.getAllByTestId(/^header-/).map((heading) => heading.dataset.testid);
+    expect(headings.indexOf("header-balance")).toBe(headings.indexOf("header-decision") + 1);
+    expect(headings.at(-1)).toBe("header-review");
+    expect(
+      within(cell())
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Sour", "Balanced", "Bitter"]);
+    expect(screen.getByRole("separator", { name: "Resize the Balance column" })).toBeVisible();
+  });
+
+  it("fills the verdict's balance, and outlines the machine's when the verdict has none", async () => {
+    getShots.mockResolvedValue(
+      listData([shot({ has_judgement: true, judgement_balance: "sour", balance: "bitter" })]),
+    );
+
+    const first = renderWithQueryClient(<ShotsPage />);
+    await balances();
+    // The verdict wins: the machine's word stands down.
+    expect(pressed()).toEqual(["Sour"]);
+    expect(hinted()).toEqual([]);
+    first.unmount();
+    cleanup();
+
+    getShots.mockResolvedValue(listData([shot({ judgement_balance: null, balance: "bitter" })]));
+    renderWithQueryClient(<ShotsPage />);
+    await balances();
+    expect(pressed()).toEqual([]);
+    expect(hinted()).toEqual(["Bitter"]);
+    expect(within(cell()).getByRole("button", { name: "Bitter shot 000101" })).toHaveAttribute(
+      "title",
+      "From the machine's notes card. Click to confirm or change.",
+    );
+  });
+
+  it("is empty when neither the verdict nor the machine said", async () => {
+    getShots.mockResolvedValue(listData([shot({ judgement_balance: null, balance: null })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await balances();
+
+    expect(pressed()).toEqual([]);
+    expect(hinted()).toEqual([]);
+  });
+
+  it("sets a balance from the row, merged into the verdict, without the rating or the decision", async () => {
+    const user = setupUser();
+    // The machine says four stars and the rating gives a Good, but this box's verdict holds
+    // neither: the click must not make them the person's.
+    getShot.mockResolvedValue({
+      ...shot129,
+      judgement: judgement({ rating: null, decision: null, balance: null }),
+    });
+    getShots.mockResolvedValue(
+      listData([
+        shot({ has_judgement: true, rating: 4, derived_decision: "keep", judgement_balance: null }),
+      ]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await balances();
+    await user.click(within(cell()).getByRole("button", { name: "Bitter shot 000101" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    expect(putJudgement.mock.calls[0][1]).toEqual({
+      rating: null,
+      balance: "bitter",
+      taste_notes: ["sour_fermented.sour"],
+      aroma_notes: ["fruity.berry"],
+      dose_in_g: 18,
+      dose_out_g: 36,
+      notes: "sharp at the end",
+      decision: null,
+    });
+    expect(pressed()).toEqual(["Bitter"]);
+    // Still the list: a balance is not a click on the row.
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+  });
+
+  it("keeps the machine's outlined balance as the verdict's on a click, and clears a filled one", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ has_judgement: true, judgement_balance: null, balance: "balanced" })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await balances();
+    await user.click(within(cell()).getByRole("button", { name: "Balanced shot 000101" }));
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ balance: "balanced" }));
+    expect(pressed()).toEqual(["Balanced"]);
+    expect(hinted()).toEqual([]);
+
+    await user.click(within(cell()).getByRole("button", { name: "Balanced shot 000101" }));
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
+    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ balance: null }));
+    // Still the list, and nothing else of the verdict moved.
+    expect(putJudgement.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ rating: 4, decision: "improve", notes: "sharp at the end" }),
+    );
+  });
+
+  it("writes nothing to clear a balance on a shot nobody has judged", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ has_judgement: false, judgement_balance: "sour" })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await balances();
+    await user.click(within(cell()).getByRole("button", { name: "Sour shot 000101" }));
+
+    expect(putJudgement).not.toHaveBeenCalled();
+  });
+
+  it("does not flick back to the first of two quick balances", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ has_judgement: true, judgement_balance: null })]));
+    const landed: Array<() => void> = [];
+    putJudgement.mockImplementation(
+      (_id: number, body: unknown) => new Promise((resolve) => landed.push(() => resolve(body))),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await balances();
+    await user.click(within(cell()).getByRole("button", { name: "Sour shot 000101" }));
+    await user.click(within(cell()).getByRole("button", { name: "Bitter shot 000101" }));
+    expect(pressed()).toEqual(["Bitter"]);
+
+    await waitFor(() => expect(landed).toHaveLength(1));
+    getShots.mockResolvedValue(
+      listData([shot({ has_judgement: true, judgement_balance: "sour" })]),
+    );
+    const reads = getShots.mock.calls.length;
+    landed[0]();
+    await waitFor(() => expect(getShots.mock.calls.length).toBeGreaterThan(reads));
+    await waitFor(() => expect(landed).toHaveLength(2));
+    expect(pressed()).toEqual(["Bitter"]);
+  });
+
+  it("puts the row's balance back when the write fails", async () => {
+    const user = setupUser();
+    putJudgement.mockRejectedValueOnce(new Error("disk full"));
+    getShots.mockResolvedValue(listData([shot({ has_judgement: true, judgement_balance: null })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await balances();
+    await user.click(within(cell()).getByRole("button", { name: "Sour shot 000101" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() => expect(pressed()).toEqual([]));
   });
 });
 
@@ -1873,6 +2254,7 @@ describe("ShotsPage open rows", () => {
   });
 
   it("saves a verdict from the panel without navigating, and the row's stars follow", async () => {
+    showRatingColumn();
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ judgement_rating: 4 })]));
     getShot.mockResolvedValue({ ...shot129, judgement: judgement({ rating: 4 }) });
@@ -1902,7 +2284,40 @@ describe("ShotsPage open rows", () => {
     expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
   });
 
+  it("draws the decision the rating gives outlined in the panel's form, with the rating it came from", async () => {
+    const user = setupUser();
+    const outlined = {
+      derived_decision: "keep" as const,
+      decision_rating: 4,
+      decision_rating_source: "machine_notes" as const,
+    };
+    getShots.mockResolvedValue(listData([shot(outlined)]));
+    // The shot page's own copy of the row, which is what the form is wired from.
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, ...outlined, judgement_decision: null },
+      judgement: judgement({ decision: null }),
+    });
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+    const form = await within(await screen.findByTestId("shot-panel")).findByTestId(
+      "judgement-form",
+    );
+
+    const good = within(form).getByRole("button", { name: "Good" });
+    expect(good).toHaveAttribute("data-hint", "true");
+    expect(good).toHaveAttribute("aria-pressed", "false");
+    expect(good).toHaveAttribute(
+      "title",
+      "From the 4★ rating on the machine's notes card (3★ or more is Good). Click to confirm or change.",
+    );
+    expect(within(form).getByRole("button", { name: "Bad" })).not.toHaveAttribute("data-hint");
+  });
+
   it("re-seeds the panel's form when a star in the row changes the verdict", async () => {
+    showRatingColumn();
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ judgement_rating: 4 })]));
     getShot.mockResolvedValue({ ...shot129, judgement: judgement({ rating: 4 }) });
@@ -1936,6 +2351,7 @@ describe("ShotsPage open rows", () => {
   });
 
   it("does not toggle the row from any of the row's own controls", async () => {
+    showRatingColumn();
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));
 
@@ -1946,11 +2362,12 @@ describe("ShotsPage open rows", () => {
     // is painted over them; in a browser it is the lift above the stretched
     // toggle that does. Each control, or a wrapper of it, carries it.
     const row = screen.getByTestId("shot-row");
-    await within(row).findByRole("button", { name: "Keep shot 000101" });
+    await within(row).findByRole("button", { name: "Good shot 000101" });
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       ...within(row).getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
-      ...within(row).getAllByRole("button", { name: /^(Keep|Improve|Discard) shot/ }),
+      ...within(row).getAllByRole("button", { name: /^(Good|Bad|Discard) shot/ }),
+      ...within(row).getAllByRole("button", { name: /^(Sour|Balanced|Bitter) shot/ }),
       screen.getByRole("button", { name: /^needs a Recipe/ }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
     ]) {
@@ -1959,13 +2376,14 @@ describe("ShotsPage open rows", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Compare shot 000101" }));
     await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
-    await user.click(screen.getByRole("button", { name: "Keep shot 000101" }));
+    await user.click(screen.getByRole("button", { name: "Good shot 000101" }));
+    await user.click(screen.getByRole("button", { name: "Sour shot 000101" }));
     await user.click(screen.getByRole("button", { name: /^needs a Recipe/ }));
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
     await user.keyboard("{Escape}");
 
-    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(3));
     expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
   });
@@ -3036,6 +3454,8 @@ describe("ShotsPage needs-a-Recipe menu", () => {
 });
 
 describe("ShotsPage row editing", () => {
+  beforeEach(showRatingColumn);
+
   it("sets a rating from the row", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));

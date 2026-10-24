@@ -119,11 +119,18 @@ export function JudgementForm({
   shotId,
   judgement,
   prefill,
+  derivedDecision = null,
+  derivedTitle,
   open,
   onOpenChange,
 }: {
   shotId: number;
   judgement: ShotJudgement | null | undefined;
+  /** The decision the shot's rating gives when none is stored (`derived_decision`, served by the
+   * server): drawn outlined, and a click on it chooses it. */
+  derivedDecision?: string | null;
+  /** What the outline says on hover: which rating it came from (`derivedDecisionTitle`). */
+  derivedTitle?: string;
   /** Where the doses start when the judgement has none (see {@link DosePrefill}). */
   prefill?: DosePrefill;
   /** When the box can be folded: whether it is open, and the way to change that. The form stays
@@ -216,6 +223,8 @@ export function JudgementForm({
                   }))}
                   value={state.decision}
                   onChange={(next) => set("decision", next)}
+                  hint={derivedDecision}
+                  hintTitle={derivedTitle}
                 />
               </Field>
             </div>

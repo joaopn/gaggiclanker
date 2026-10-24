@@ -73,8 +73,8 @@ export const vocabulary: Vocabulary = {
     { value: "bitter", label: "Bitter" },
   ],
   decisions: [
-    { value: "keep", label: "Keep" },
-    { value: "improve", label: "Improve" },
+    { value: "keep", label: "Good" },
+    { value: "improve", label: "Bad" },
     { value: "discard", label: "Discard" },
   ],
   origins: [

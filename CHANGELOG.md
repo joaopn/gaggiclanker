@@ -48,6 +48,27 @@ database.
   grade card, the API and the agent say what is missing: no Good or Bad shot yet. A discarded shot
   does not count, however it was rated, and rating a shot is enough.
 
+### Decision and Balance on the shots table
+
+- **Changed: the Decision column says Good, Bad or Discard, and shows what the rating says.** A
+  filled button is your choice, as before (a click on it clears it). An outlined Good or Bad is
+  what the shot's rating gives when you chose none (3 stars or more is Good, 1 or 2 is Bad); hover
+  it to see which rating it came from (yours, the machine's notes card or the machine's index), and
+  a click stores it as your own. Your verdict's decision control on the shot page and in the open
+  row does the same, and saves with its button.
+- **New: a Balance column** with Sour, Balanced and Bitter. A filled button is your verdict's
+  balance; an outlined one is the machine's notes card, shown only when you gave none (outlined
+  means "not your choice yet", as for Good and Bad), and a click on it keeps it as yours. A click
+  sets, a click on the filled one clears, and it never changes the rating or the decision.
+- **Changed: the default columns.** A first visit shows Recipe, Time, Duration, Yield, Curve check,
+  Decision, Balance and AI Review. Rating (the stars) is no longer on the default row, because a
+  rated shot shows its Good or Bad in Decision, and Profile is not either, because the Recipe
+  already names it; switch either on in the column chooser. Review is renamed **AI Review** and sits
+  last, just before Flags. If you never changed the columns you get the new row; a layout you chose
+  is kept as you made it, except that a layout you saved earlier is brought along once: Rating
+  becomes Balance (or is just hidden when Balance is already shown) and Profile is hidden. Change
+  either back in Columns and it stays.
+
 ### A drink and drink notes on every Recipe version
 
 - **New: a Recipe version says what it is for.** The **drink** is what is added to the shot after
