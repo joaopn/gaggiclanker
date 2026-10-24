@@ -614,25 +614,6 @@ async def test_somebody_elses_claim_keeps_the_file_and_is_the_reason_given(
     assert writes(fake_device, mark) == []
 
 
-async def test_a_profile_under_another_label_is_not_this_replacements_to_remove(
-    writes_on: Live, fake_device: FakeDevice
-) -> None:
-    app, _ = writes_on
-    old, old_id, _, _ = await two_copies(app, fake_device)
-
-    removal = await remove_profile(
-        app.state.connection.client,
-        device_id=old_id,
-        expected_hash=document_hash(old),
-        successor=None,
-        expected_label="Some other lineage [AI]",
-        carry_favorite=True,
-    )
-
-    assert removal.unrelated and not removal.removed
-    assert old_id in {str(p["id"]) for p in fake_device.profiles}
-
-
 async def test_a_profile_that_is_not_on_the_machine_is_gone_not_a_failure(
     writes_on: Live, fake_device: FakeDevice
 ) -> None:

@@ -2561,7 +2561,7 @@ class BoardService:
                 device_id,
                 {"row_id": row.id, "reason": action.reason},
             )
-        elif removal.gone or removal.unrelated:
+        elif removal.gone:
             return removal
         elif _is_asked_again(removal):
             await self._left(

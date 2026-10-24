@@ -248,9 +248,6 @@ class Removal:
     removed: bool = False
     #: It was not on the machine to begin with.
     gone: bool = False
-    #: It is a different profile from the one the caller meant (another label): not a
-    #: refusal, there is simply nothing to replace, and the caller says nothing.
-    unrelated: bool = False
     #: Why it was left alone, in one of the phrases above or the machine's own words.
     reason: str = ""
     #: The favourite star was moved to the successor.
@@ -266,7 +263,6 @@ async def _check(
     *,
     device_id: str,
     expected_hash: str,
-    expected_label: str | None,
     blocked: str | None,
     successor: str | None,
 ) -> tuple[Removal | None, Profile | None]:
@@ -286,8 +282,6 @@ async def _check(
         if device_id not in listed:
             return Removal(gone=True, reason=GONE), None
         return Removal(reason=f"could not be read: {exc}"), None
-    if expected_label is not None and fresh.label != expected_label:
-        return Removal(unrelated=True), None
     if document_hash(fresh) != expected_hash:
         return Removal(reason=CHANGED_SINCE), None
     if blocked is not None:
@@ -303,7 +297,6 @@ async def remove_profile(
     device_id: str,
     expected_hash: str,
     successor: str | None,
-    expected_label: str | None = None,
     blocked: str | None = None,
     carry_favorite: bool,
 ) -> Removal:
@@ -315,28 +308,25 @@ async def remove_profile(
     hash to ``expected_hash``, what the archive recorded for the file. In order:
 
     1. a **fresh load** of the profile. Not on the machine: nothing to do;
-    2. **the same profile**: with ``expected_label``, a profile carrying another label
-       is somebody else's lineage and is not this push's to replace;
-    3. **unchanged**: the fresh content hashes to ``expected_hash``. Anything else was edited
+    2. **unchanged**: the fresh content hashes to ``expected_hash``. Anything else was edited
        on the display since the last read, and removing it would destroy that edit (the next
        read records it as a version of its profile, and the sync after decides);
-    4. **not somebody else's**: ``blocked`` names another board profile still standing on
+    3. **not somebody else's**: ``blocked`` names another board profile still standing on
        it, and is the reason it stays; and the selected profile is never removed without a
        ``successor`` to take the selection;
-    5. the selection (and, with ``carry_favorite``, the favourite star) moves to
+    4. the selection (and, with ``carry_favorite``, the favourite star) moves to
        ``successor``, so the display looks the same to the person standing at it;
-    6. a **second fresh load** and the same content check, immediately before the delete,
-       so an edit made on the display while steps 1 to 5 ran is not destroyed;
-    7. the delete, through the client's own guard, which checks the content once more.
+    5. a **second fresh load** and the same content check, immediately before the delete,
+       so an edit made on the display while steps 1 to 4 ran is not destroyed;
+    6. the delete, through the client's own guard, which checks the content once more.
 
-    Any refusal or failure at 1 to 7, the write gate's included, leaves the profile where
+    Any refusal or failure at 1 to 6, the write gate's included, leaves the profile where
     it is and says why.
     """
     refusal, fresh = await _check(
         client,
         device_id=device_id,
         expected_hash=expected_hash,
-        expected_label=expected_label,
         blocked=blocked,
         successor=successor,
     )
