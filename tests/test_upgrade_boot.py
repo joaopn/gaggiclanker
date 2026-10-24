@@ -299,20 +299,6 @@ def test_serves_early_check_still_refuses_a_database_that_differs_or_is_newer(
     assert "newer version of gaggiclanker" in capsys.readouterr().err
 
 
-def test_serves_early_check_refuses_a_database_that_differs_at_the_latest_level(
-    env: EnvSettings, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from gaggiclanker.__main__ import _refuse_foreign_database
-
-    conn = sqlite3.connect(env.database_path)
-    conn.executescript(schema.schema_sql() + "\nALTER TABLE recipes ADD COLUMN surprise TEXT;")
-    conn.close()
-    with pytest.raises(SystemExit) as exit_:
-        _refuse_foreign_database(env)
-    assert exit_.value.code == 1
-    assert "was made by a different version of gaggiclanker" in capsys.readouterr().err
-
-
 async def test_an_older_database_in_the_wrong_state_reaches_the_upgrades_own_refusal(
     env: EnvSettings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

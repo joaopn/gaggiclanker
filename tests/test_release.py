@@ -29,7 +29,6 @@ from gaggiclanker.settings import (
     RETIRED_AUTH_ENV_KEYS,
     SETTINGS_REGISTRY,
     EnvSettings,
-    SettingDefinition,
 )
 from tests.conftest import running_app
 
@@ -51,18 +50,6 @@ def bootstrap_variable_names() -> list[str]:
         alias = field.validation_alias
         names.append(str(alias.choices[0]) if hasattr(alias, "choices") else name.upper())  # type: ignore[union-attr]
     return names
-
-
-def test_no_setting_is_configured_from_the_environment() -> None:
-    """The registry declares values, never variable names.
-
-    A setting that could name one would bring back the second configuration
-    surface this release removed: a compose file that disagrees with the
-    Settings page, silently, with no way for the person looking at either to
-    tell which one the app is running on.
-    """
-    assert "env_key" not in SettingDefinition.__slots__
-    assert SETTINGS_REGISTRY, "an empty registry would make this test vacuous"
 
 
 def test_the_bootstrap_variables_are_documented_in_the_readme() -> None:

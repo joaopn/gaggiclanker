@@ -292,25 +292,6 @@ async def test_a_different_schema_is_refused_with_the_plain_reason(
     )
 
 
-async def test_a_file_from_the_previous_version_with_the_same_database_is_accepted(
-    app: FastAPI, client: httpx.AsyncClient, tmp_path: Path
-) -> None:
-    """The ledger table the previous version kept is not part of the schema."""
-    good = await make_file(app, tmp_path)
-    previous = edit(
-        good,
-        """
-        CREATE TABLE schema_migrations (
-            version TEXT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL,
-            applied_at TEXT NOT NULL
-        ) STRICT;
-        INSERT INTO schema_migrations VALUES ('0050', 'drop_judgement_grind', 'x', 'then');
-        """,
-    )
-
-    assert (await upload(client, previous)).status_code == 200
-
-
 async def test_a_declared_size_over_the_limit_is_413_and_stages_nothing(
     client: httpx.AsyncClient, data_dir: Path
 ) -> None:

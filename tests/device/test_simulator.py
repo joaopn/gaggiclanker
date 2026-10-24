@@ -102,4 +102,3 @@ async def test_live_status_streams(sim_client: GaggimateClient) -> None:
     finally:
         await subscription.aclose()
     assert sim_client.last_status is not None
-

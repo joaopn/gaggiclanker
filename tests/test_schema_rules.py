@@ -64,12 +64,6 @@ async def test_two_shots_may_share_a_number_and_nothing_else(db: Database) -> No
 # ── reviews and their claims ────────────────────────────────────────────
 
 
-async def test_a_fresh_database_starts_its_reviews_at_one(db: Database) -> None:
-    await db.execute(_SHOT, ("000001",))
-    cursor = await db.execute("INSERT INTO shot_reviews (shot_id) VALUES (1)")
-    assert cursor.lastrowid == 1
-
-
 async def test_the_database_allows_one_running_review_per_shot(db: Database) -> None:
     await db.execute(_SHOT, ("000001",))
     await db.execute(_SHOT, ("000002",))

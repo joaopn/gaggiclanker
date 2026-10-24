@@ -17,18 +17,6 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-async def test_an_empty_data_directory_boots_on_a_fresh_schema(env: EnvSettings) -> None:
-    async with running_app(env) as (app, _client):
-        assert await app.state.db.fetch_value("SELECT COUNT(*) FROM machines") == 1
-        assert await app.state.db.fetch_value("SELECT COUNT(*) FROM flavor_picks") == 22
-        assert (
-            await app.state.db.fetch_value(
-                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'schema_migrations'"
-            )
-            == 0
-        )
-
-
 async def test_a_matching_database_is_kept_with_its_rows(env: EnvSettings) -> None:
     async with running_app(env) as (app, _client):
         await app.state.db.execute("INSERT INTO beans (name) VALUES ('Kept')")

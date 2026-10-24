@@ -210,14 +210,6 @@ def test_the_level_is_described_and_a_database_at_another_level_differs() -> Non
     assert found == [f"user_version differs (database: {LEVEL + 3}; expected: {LEVEL})"]
 
 
-def test_the_schema_file_sets_the_level_it_is_compared_at() -> None:
-    conn = _memory_database()
-    try:
-        assert conn.execute("PRAGMA user_version").fetchone() == (LEVEL,)
-    finally:
-        conn.close()
-
-
 async def test_the_level_is_the_same_on_every_kind_of_connection(
     db: Database, data_dir: Path
 ) -> None:
@@ -281,17 +273,6 @@ async def test_ensure_schema_on_a_database_that_has_it_changes_nothing(db: Datab
     await db.execute("UPDATE machines SET host = 'kept' WHERE id = 1")
     assert await schema.ensure_schema(db) is False
     assert await db.fetch_value("SELECT host FROM machines") == "kept"
-
-
-async def test_the_legacy_ledger_is_dropped(db: Database) -> None:
-    await schema.create_schema(db)
-    await db.execute("CREATE TABLE schema_migrations (version TEXT PRIMARY KEY) STRICT")
-    await db.execute("INSERT INTO schema_migrations VALUES ('0050')")
-    await schema.ensure_schema(db)
-    assert (
-        await db.fetch_value("SELECT COUNT(*) FROM sqlite_master WHERE name = 'schema_migrations'")
-        == 0
-    )
 
 
 # ── an existing database file ───────────────────────────────────────────

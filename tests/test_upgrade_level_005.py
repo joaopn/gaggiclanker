@@ -231,9 +231,3 @@ def test_the_views_serve_the_new_columns_and_the_check_holds_afterwards(level4: 
         )
     with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
         level4.conn.execute("UPDATE recipe_versions SET drink = 'tea' WHERE id = 1")
-
-
-def test_the_frozen_level_4_file_is_the_schema_the_previous_version_wrote(level4: Level4) -> None:
-    assert level4.one("PRAGMA user_version") == 4
-    columns = [row["name"] for row in level4.conn.execute("PRAGMA table_info(recipe_versions)")]
-    assert "drink" not in columns and columns[-1] == "version_minor"

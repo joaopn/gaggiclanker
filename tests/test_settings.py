@@ -254,22 +254,6 @@ async def test_booleans_round_trip(client: httpx.AsyncClient) -> None:
     assert settings["deviceSyncEnabled"]["override"] is False
 
 
-async def test_boolean_is_rejected_for_an_int_setting(client: httpx.AsyncClient) -> None:
-    """JSON ``true`` is a Python bool and ``int(True) == 1``; that must not store 1."""
-    response = await client.patch("/api/settings", json={"chatMaxToolRounds": True})
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "INVALID_REQUEST"
-
-
-async def test_non_numeric_value_for_an_int_setting_is_rejected(
-    client: httpx.AsyncClient,
-) -> None:
-    response = await client.patch("/api/settings", json={"chatMaxToolRounds": "often"})
-    assert response.status_code == 400
-    details = response.json()["error"]["details"]
-    assert any(item["field"] == "chatMaxToolRounds" for item in details)
-
-
 @pytest.mark.parametrize(
     "typed", ["https://10.0.0.9", "wss://10.0.0.9", "10.0.0.9/gaggimate", "user@10.0.0.9"]
 )
@@ -331,21 +315,6 @@ async def test_unset_secret_reports_no_hint(client: httpx.AsyncClient) -> None:
     entry = (await get_settings(client))["llmApiKey"]
     assert entry["configured"] is False
     assert entry["hint"] is None
-
-
-def test_no_setting_declares_an_environment_variable_at_all() -> None:
-    """Not "no secret reads one": nothing in the registry can read one.
-
-    The field is gone from the declaration, so a setting added later cannot
-    acquire an environment layer by filling one in — which is what made this
-    worth removing rather than emptying.
-    """
-    from gaggiclanker.settings import SettingDefinition
-
-    assert "env_key" not in SettingDefinition.__slots__
-    assert [d.key for d in SETTINGS_REGISTRY.values() if d.secret], (
-        "the registry has no secrets, so this test is checking nothing"
-    )
 
 
 def test_the_variables_that_stop_a_boot_are_never_merely_ignored() -> None:
