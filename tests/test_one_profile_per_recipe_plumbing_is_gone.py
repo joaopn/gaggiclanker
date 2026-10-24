@@ -12,8 +12,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 
 #: The names that went, by where they lived.
@@ -84,13 +82,14 @@ def _files() -> list[Path]:
     return found
 
 
-@pytest.mark.parametrize("pattern", GONE)
-def test_the_name_is_gone(pattern: str) -> None:
-    rx = re.compile(pattern)
-    hits = []
+def test_the_names_are_gone() -> None:
+    """Every file is read once and checked against every name; the hits are listed per name."""
+    compiled = [(pattern, re.compile(pattern)) for pattern in GONE]
+    hits: dict[str, list[str]] = {pattern: [] for pattern in GONE}
     for path in _files():
         rel = str(path.relative_to(ROOT))
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if rx.search(line) and (rel, pattern) not in ALLOWED:
-                hits.append(f"{rel}:{number}: {line.strip()[:100]}")
-    assert not hits, hits
+            for pattern, rx in compiled:
+                if rx.search(line) and (rel, pattern) not in ALLOWED:
+                    hits[pattern].append(f"{rel}:{number}: {line.strip()[:100]}")
+    assert not {pattern: found for pattern, found in hits.items() if found}
