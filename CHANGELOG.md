@@ -16,7 +16,7 @@ database.
 ### Good, Bad and Discard, and a decision from the rating
 
 - **Changed: the labels are Good, Bad and Discard.** What was Keep is Good, and what was Improve
-  is Bad. Discard is unchanged. Only the words changed: nothing in your database is touched and
+  is Bad. Discard is unchanged. Only the words changed: no stored label is touched and
   nothing needs doing, because the stored values are still keep, improve and discard. The agent
   speaks the new words too: the Recipe and design prompts, the tool descriptions, the opening
   context ("5 Good shots on the line being brewed"), the counts beside each version and the
@@ -68,6 +68,26 @@ database.
   is kept as you made it, except that a layout you saved earlier is brought along once: Rating
   becomes Balance (or is just hidden when Balance is already shown) and Profile is hidden. Change
   either back in Columns and it stays.
+- **Changed: a balance copied from the machine is only one you set there.** The machine's notes
+  card starts its balance on Balanced whether or not anyone touched it, so a copied "Balanced" said
+  nothing about the cup. A verdict made from the card now takes Sour or Bitter from it (the
+  machine never starts on either) and never Balanced. The card's balance still shows, outlined, in
+  the Balance column and now also in the Balance field of the judgement form on the shot page and
+  in the open row, and a click on it keeps it as yours. Balanced on the card only is not a reason
+  to make a verdict, as before. The agent's SQL views hold only a balance you set, and its schema
+  notes say a copied balance is only Sour or Bitter.
+- **What changes in the database:** no table or column changes. The database moves to level 6, and
+  the one step clears a Balanced on a verdict that was copied from the machine and not edited since,
+  and on any verdict whose shot's machine card also says balanced. The second part exists because
+  saving a copied verdict from a cell or the form carried its Balanced along, and after that it
+  cannot be told from a choice.
+- **Carried forward:** every row, with everything else on it as it was (rating, notes, doses,
+  decision, last-changed time). A Balanced you picked on a shot whose machine card also says
+  balanced is cleared too, because it cannot be told apart from the card's default; it still shows
+  outlined from the card, and one click fills it again. A Balanced on a shot with no card or with a
+  Sour or Bitter card stays, and so does a Sour or Bitter you set or copied from the card.
+- **What you do:** nothing. The step runs at the first start, after the automatic backup, all or
+  nothing. A backup taken before this release is upgraded when you restore it, by the same step.
 
 ### A drink and drink notes on every Recipe version
 

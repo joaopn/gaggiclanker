@@ -1155,7 +1155,8 @@ class SyncEngine:
                     index_volume_g=entry.volume_g,
                 )
                 # The machine's notes card is the same five fields the judgement
-                # form asks for, so a shot that arrives with notes and no
+                # form asks for (a balance is taken only when it is sour or
+                # bitter), so a shot that arrives with notes and no
                 # verdict gets one for free. Exactly once: the repository's
                 # insert does nothing on conflict, which is what stops a re-pull
                 # — and notes are re-pulled precisely *because* the user edited

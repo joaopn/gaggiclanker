@@ -1382,4 +1382,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;

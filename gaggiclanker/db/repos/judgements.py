@@ -6,8 +6,9 @@ flawless extraction of stale beans runs to its profile and tastes of cardboard,
 and an archive that blended them could not tell you so.
 
 One row per shot, keyed on the shot id. The machine's own notes card holds the
-same five fields, so a shot that arrives with notes and no judgement is seeded
-from them — **once**. The rule that keeps that safe is in
+same five fields (bar the balance, of which only sour or bitter is taken), so a
+shot that arrives with notes and no judgement is seeded from them — **once**. The
+rule that keeps that safe is in
 :meth:`JudgementsRepository.seed_from_device_notes`: it is an insert that does
 nothing on conflict, so no sync pass can ever overwrite a verdict somebody
 typed.
@@ -196,6 +197,12 @@ class JudgementsRepository(Repository):
         check-then-insert would lose the typed verdict about once a year, which
         is the worst possible frequency for a bug like this.
 
+        The balance is copied only when it is sour or bitter. The card's
+        control starts on 'balanced' whether or not anybody touched it, so a
+        copied 'balanced' would be the firmware's default passed off as the
+        person's choice. A card holding only a balance is still not filled in:
+        what counts is the rating, a dose or the notes.
+
         A note with nothing in it is not a judgement. The firmware creates the
         document as soon as its notes screen is opened, so "rating 0, everything
         empty" is the shape of a card somebody looked at and closed; seeding
@@ -218,10 +225,11 @@ class JudgementsRepository(Repository):
         try:
             judgement = JudgementWrite(
                 rating=rating,
-                # The device's `balanceTaste` defaults to 'balanced' whether or
-                # not anybody touched the control, so it is only trusted when
-                # something else on the card says the card was filled in.
-                balance=notes.balance_taste,
+                # The device's `balanceTaste` starts on 'balanced' whether or not
+                # anybody touched the control, so a copied 'balanced' would not be
+                # the person's. Sour and bitter are: the firmware never starts on
+                # either. A verdict holds a balance only if somebody chose it.
+                balance=notes.balance_taste if notes.balance_taste != "balanced" else None,
                 # Dropped rather than clamped: a dose of 150 g is not 100 g of
                 # coffee, it is somebody's typo or another client's unit, and
                 # clamping would turn a nonsense figure into a plausible one

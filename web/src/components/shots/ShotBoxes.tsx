@@ -104,6 +104,7 @@ export function ShotBoxes({
         judgement={detail.judgement}
         derivedDecision={row.derived_decision ?? null}
         derivedTitle={derivedDecisionTitle(row)}
+        machineBalance={row.balance ?? null}
         // Where the doses start when the person has recorded none: the Recipe version's dose (when
         // the shot is filed) and the scale's yield (when it has a scale).
         prefill={{

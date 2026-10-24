@@ -19,6 +19,8 @@ from gaggiclanker.db.upgrade import UpgradeReport, upgrade_database_file
 from gaggiclanker.db.upgrades import STEPS, frozen_schema_sql, level_005
 from gaggiclanker.domain.drinks import DRINKS
 
+LEVEL_FIVE = schema.describe_sql(frozen_schema_sql(5))
+
 NOW = datetime(2026, 10, 20, 12, 0, 0, tzinfo=UTC)
 
 #: Every table of the level-4 database, by row count, before and after.
@@ -138,7 +140,9 @@ class Level4:
     def upgrade(self) -> UpgradeReport:
         self.conn.commit()
         self.conn.close()
-        report = upgrade_database_file(self.path, self.path.parent, steps=STEPS, now=NOW)
+        report = upgrade_database_file(
+            self.path, self.path.parent, steps=STEPS[:5], expected=LEVEL_FIVE, now=NOW
+        )
         assert report is not None
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
@@ -181,7 +185,7 @@ def test_the_result_is_the_schema_file_and_nothing_else_moved(level4: Level4) ->
 
     level4.upgrade()
 
-    assert schema.schema_differences(level4.conn) == []
+    assert schema.schema_differences(level4.conn, LEVEL_FIVE) == []
     assert level4.one("PRAGMA user_version") == 5
     assert level4.one("PRAGMA integrity_check") == "ok"
     assert list(level4.conn.execute("PRAGMA foreign_key_check")) == []

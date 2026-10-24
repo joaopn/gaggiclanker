@@ -457,6 +457,10 @@ async def test_the_schema_notes_say_what_the_stored_words_mean_and_what_the_view
     assert (
         "copied from the machine's notes card when the verdict was created from it" in SCHEMA_NOTES
     )
+    # A copied balance is only Sour or Bitter: the card's Balanced is its default, not a choice.
+    assert "a Sour or Bitter balance copied the same way" in SCHEMA_NOTES
+    assert "a Balanced is never copied" in SCHEMA_NOTES
+    assert "rating, balance and note copied" not in SCHEMA_NOTES
     assert "a rating that lives only on the machine's index" in SCHEMA_NOTES
     assert "arrived after a verdict was already typed here" in SCHEMA_NOTES
     assert "has no rating here at all" not in SCHEMA_NOTES

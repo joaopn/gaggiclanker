@@ -248,6 +248,22 @@ describe("ShotDetailPage header", () => {
   });
 });
 
+describe("ShotDetailPage judgement", () => {
+  it("draws the machine's balance outlined in the form while the verdict has none", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, balance: "bitter", judgement_balance: null },
+      judgement: judgement({ balance: null }),
+    });
+    renderShot();
+
+    const form = await screen.findByTestId("judgement-form");
+    const bitter = await within(form).findByRole("button", { name: "Bitter" });
+    expect(bitter).toHaveAttribute("data-hint", "true");
+    expect(bitter).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
 describe("ShotDetailPage layout", () => {
   it("puts the curves on their own row, below the judgement", async () => {
     renderShot();

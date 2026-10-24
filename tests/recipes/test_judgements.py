@@ -120,6 +120,47 @@ class TestSeedingFromDeviceNotes:
         assert row.seeded_from_device_note is True
         assert row.device_synced_at is not None
 
+    @pytest.mark.parametrize(
+        ("card", "copied"), [("sour", "sour"), ("bitter", "bitter"), ("balanced", None)]
+    )
+    async def test_only_a_sour_or_bitter_card_is_copied_never_balanced(
+        self, wired: Fixtures, card: str, copied: str | None
+    ) -> None:
+        """The card starts on 'balanced' whether or not anybody touched it.
+
+        A copied 'balanced' would be the firmware's default passed off as the
+        person's choice, so it is not copied; the rest of the card still is.
+        """
+        shot_id = await make_shot(wired.db, f"00033{len(card)}")
+        note = _note(f"00033{len(card)}", rating=4, balanceTaste=card, doseIn="18")
+        # The precondition: the card does hold the word, so a NULL below is the rule at work and
+        # not an empty card.
+        assert note.balance_taste == card
+        assert await wired.judgements.seed_from_device_notes(shot_id, note) is True
+        row = await wired.judgements.get(shot_id)
+        assert row is not None
+        assert (row.rating, row.dose_in_g, row.balance) == (4, 18.0, copied)
+        assert row.seeded_from_device_note is True
+
+    async def test_a_card_that_never_set_its_balance_is_a_balance_nobody_chose(
+        self, wired: Fixtures
+    ) -> None:
+        shot_id = await make_shot(wired.db, "000334")
+        note = _note("000334", rating=3)
+        assert note.balance_taste == "balanced"  # the model's default, as the firmware's
+        await wired.judgements.seed_from_device_notes(shot_id, note)
+        row = await wired.judgements.get(shot_id)
+        assert row is not None and (row.rating, row.balance) == (3, None)
+
+    @pytest.mark.parametrize("card", ["sour", "balanced", "bitter"])
+    async def test_a_card_holding_only_a_balance_still_seeds_nothing(
+        self, wired: Fixtures, card: str
+    ) -> None:
+        shot_id = await make_shot(wired.db, f"00034{len(card)}")
+        note = _note(f"00034{len(card)}", balanceTaste=card)
+        assert await wired.judgements.seed_from_device_notes(shot_id, note) is False
+        assert await wired.judgements.get(shot_id) is None
+
     async def test_seeding_happens_exactly_once(self, wired: Fixtures) -> None:
         shot_id = await make_shot(wired.db, "000321")
         note = _note("000321", rating=3, doseIn="18")

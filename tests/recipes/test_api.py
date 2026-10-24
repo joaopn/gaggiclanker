@@ -972,6 +972,39 @@ class TestJudgementAndAssignment:
         listed = data(await row())["items"][0]
         assert (listed["judgement_decision"], listed["derived_decision"]) == ("discard", None)
 
+    async def test_a_save_from_the_form_or_a_cell_makes_a_copied_verdict_the_person_s(
+        self, app: FastAPI, client: httpx.AsyncClient, shot_id: int
+    ) -> None:
+        """The upgrade that clears copied 'balanced' values relies on this.
+
+        It clears only rows still flagged as copied from the machine, which is exact only
+        while every write a person makes clears the flag.
+        """
+        db = app.state.db
+
+        async def flag() -> int:
+            return int(
+                await db.fetch_value(
+                    "SELECT seeded_from_device_note FROM shot_judgements WHERE shot_id = ?",
+                    (shot_id,),
+                )
+            )
+
+        for body in (
+            {"rating": 4, "balance": "balanced"},  # the form
+            {"rating": 4, "balance": None},  # a cell's merge: one field changed
+            {},  # a save with nothing in it
+        ):
+            await db.execute(
+                "INSERT OR REPLACE INTO shot_judgements (shot_id, rating, balance, "
+                "seeded_from_device_note) VALUES (?, 4, 'balanced', 1)",
+                (shot_id,),
+            )
+            assert await flag() == 1  # the precondition: the row is a copy
+            response = await client.put(f"/api/shots/{shot_id}/judgement", json=body)
+            assert response.status_code == 200
+            assert await flag() == 0, body
+
     async def test_the_list_row_serves_both_balances_apart(
         self, app: FastAPI, client: httpx.AsyncClient, shot_id: int
     ) -> None:

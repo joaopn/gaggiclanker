@@ -2316,6 +2316,36 @@ describe("ShotsPage open rows", () => {
     expect(within(form).getByRole("button", { name: "Bad" })).not.toHaveAttribute("data-hint");
   });
 
+  it("draws the machine's balance outlined in the panel's form, as the Balance column draws it", async () => {
+    const user = setupUser();
+    const card = { balance: "bitter" as const, judgement_balance: null };
+    getShots.mockResolvedValue(listData([shot(card)]));
+    // The shot page's own copy of the row, which is what the form is wired from.
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, ...card },
+      judgement: judgement({ balance: null }),
+    });
+
+    renderList();
+    await listed();
+    // The column says the same thing: Bitter outlined, nothing filled.
+    const cell = within(await screen.findByTestId("balance-cell"));
+    expect(await cell.findByRole("button", { name: /^Bitter shot/ })).toHaveAttribute(
+      "data-hint",
+      "true",
+    );
+
+    await user.click(toggle());
+    const form = await within(await screen.findByTestId("shot-panel")).findByTestId(
+      "judgement-form",
+    );
+    const bitter = within(form).getByRole("button", { name: "Bitter" });
+    expect(bitter).toHaveAttribute("data-hint", "true");
+    expect(bitter).toHaveAttribute("aria-pressed", "false");
+    expect(within(form).getByRole("button", { name: "Sour" })).not.toHaveAttribute("data-hint");
+  });
+
   it("re-seeds the panel's form when a star in the row changes the verdict", async () => {
     showRatingColumn();
     const user = setupUser();

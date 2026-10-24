@@ -148,6 +148,73 @@ describe("JudgementForm", () => {
     expect(document.querySelector("[data-hint]")).toBeNull();
   });
 
+  it("outlines the machine's balance while the verdict has none, and stores it on a click", async () => {
+    const user = setupUser();
+    renderWithQueryClient(
+      <JudgementForm shotId={1} judgement={judgement({ balance: null })} machineBalance="bitter" />,
+    );
+
+    const bitter = await screen.findByRole("button", { name: "Bitter" });
+    // Outlined, not pressed: nobody chose it, and it says where it comes from.
+    expect(bitter).toHaveAttribute("data-hint", "true");
+    expect(bitter).toHaveAttribute("aria-pressed", "false");
+    expect(bitter).toHaveAttribute(
+      "title",
+      "From the machine's notes card. Click to confirm or change.",
+    );
+    expect(screen.getByRole("button", { name: "Sour" })).not.toHaveAttribute("data-hint");
+
+    await user.click(bitter);
+    expect(screen.getByRole("button", { name: "Bitter" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Bitter" })).not.toHaveAttribute("data-hint");
+    // Nothing is written until the form is saved, then the choice goes with it.
+    expect(putJudgement).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Save judgement" }));
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ balance: "bitter" }));
+
+    // Clicked again, it is cleared like any chosen one, and the outline is back.
+    await user.click(screen.getByRole("button", { name: "Bitter" }));
+    expect(screen.getByRole("button", { name: "Bitter" })).toHaveAttribute("data-hint", "true");
+  });
+
+  it("saves no balance when the machine's outlined one is left alone", async () => {
+    const user = setupUser();
+    renderWithQueryClient(
+      <JudgementForm shotId={1} judgement={judgement({ balance: null })} machineBalance="bitter" />,
+    );
+
+    // The precondition: the outline is there to be taken, so a null below is a decision.
+    expect(await screen.findByRole("button", { name: "Bitter" })).toHaveAttribute(
+      "data-hint",
+      "true",
+    );
+    await user.click(screen.getByRole("button", { name: "Save judgement" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ balance: null }));
+  });
+
+  it("draws no balance outline beside a balance the person chose, or when the card has none", async () => {
+    const { unmount } = renderWithQueryClient(
+      <JudgementForm
+        shotId={1}
+        judgement={judgement({ balance: "sour" })}
+        machineBalance="bitter"
+      />,
+    );
+    expect(await screen.findByRole("button", { name: "Sour" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Bitter" })).not.toHaveAttribute("data-hint");
+    unmount();
+
+    renderWithQueryClient(<JudgementForm shotId={1} judgement={judgement({ balance: null })} />);
+    await screen.findByRole("button", { name: "Bitter" });
+    expect(document.querySelector("[data-hint]")).toBeNull();
+  });
+
   it("edits the aroma and taste notes with the panel's chips, saved with the form", async () => {
     const user = setupUser();
     renderWithQueryClient(<JudgementForm shotId={1} judgement={judgement()} />);

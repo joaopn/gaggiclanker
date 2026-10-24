@@ -2,6 +2,7 @@ import { Trash2 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { JudgementWrite, ShotJudgement } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { MACHINE_BALANCE_TITLE } from "@/components/shots/BalanceCell";
 import {
   Field,
   FlavorNoteRows,
@@ -121,6 +122,7 @@ export function JudgementForm({
   prefill,
   derivedDecision = null,
   derivedTitle,
+  machineBalance = null,
   open,
   onOpenChange,
 }: {
@@ -131,6 +133,10 @@ export function JudgementForm({
   derivedDecision?: string | null;
   /** What the outline says on hover: which rating it came from (`derivedDecisionTitle`). */
   derivedTitle?: string;
+  /** The balance on the machine's notes card (`balance`, served by the server), which the
+   * verdict has not taken: drawn outlined in the Balance field while the verdict holds none, as
+   * the Balance column draws it, and a click on it chooses it. */
+  machineBalance?: string | null;
   /** Where the doses start when the judgement has none (see {@link DosePrefill}). */
   prefill?: DosePrefill;
   /** When the box can be folded: whether it is open, and the way to change that. The form stays
@@ -212,6 +218,8 @@ export function JudgementForm({
                   }))}
                   value={state.balance}
                   onChange={(next) => set("balance", next)}
+                  hint={machineBalance}
+                  hintTitle={MACHINE_BALANCE_TITLE}
                 />
               </Field>
               <Field label="Decision">
