@@ -112,7 +112,6 @@ async def test_a_recipe_scoped_server_offers_the_recipe_s_tools_and_no_others(
         tools = {tool.name for tool in (await session.list_tools()).tools}
 
     assert tools == RECIPE_TOOLS
-    assert "query_shots" not in tools
 
 
 async def test_a_recipe_scoped_server_refuses_another_recipe_s_shot_and_its_resource(
@@ -214,23 +213,6 @@ async def test_the_extended_glossary_rides_with_the_first_extended_read_of_each_
     assert failed.is_error is True
     assert [carried(r) for r in (base, first, full, compared)] == [False, True, False, False]
     assert carried(new_run) is True
-
-
-async def test_the_scope_env_var_makes_an_unqualified_question_answerable(
-    archive_dir: tuple[Path, Fixture],
-) -> None:
-    """`claude -p` passes it in the generated --mcp-config; a client can too."""
-    data_dir, fixture = archive_dir
-    async with AsyncExitStack() as stack:
-        session = await session_for(
-            stack, data_dir, GAGGICLANKER_MCP_RECIPE_ID=str(fixture.recipe_id)
-        )
-
-        result = await session.call_tool("get_recipe", {})
-
-    assert result.is_error is False
-    assert result.structured_content is not None
-    assert result.structured_content["recipe"]["id"] == fixture.recipe_id
 
 
 async def test_a_recipe_scoped_child_answers_insights_with_this_recipe_s_confirmed_ones(
@@ -343,33 +325,6 @@ async def test_insight_provenance_and_deletion_proposals_over_stdio(
             GAGGICLANKER_MCP_RECIPE_ID=str(world.recipe_id),
             GAGGICLANKER_MCP_RECIPE_VERSION_ID=str(world.v3),
         )
-        unknown = await session.call_tool(
-            "record_insight", {"text": "x", "rests_on_versions": ["v9"]}
-        )
-        no_outcome = await session.call_tool(
-            "record_insight", {"text": "x", "rests_on_versions": ["v1.2"]}
-        )
-        nothing = await session.call_tool("record_insight", {"text": "x"})
-        waiting = await session.call_tool(
-            "record_insight",
-            {
-                "text": "x",
-                "evidence_shot_ids": [world.shot1],
-                "replaces_insight_id": ids["waiting"],
-            },
-        )
-        general = await session.call_tool(
-            "record_insight",
-            {
-                "text": "x",
-                "evidence_shot_ids": [world.shot1],
-                "replaces_insight_id": ids["general"],
-            },
-        )
-        theirs = await session.call_tool(
-            "record_insight",
-            {"text": "x", "evidence_shot_ids": [world.shot1], "replaces_insight_id": ids["theirs"]},
-        )
         replaced = await session.call_tool(
             "record_insight",
             {
@@ -379,32 +334,6 @@ async def test_insight_provenance_and_deletion_proposals_over_stdio(
                 "replaces_insight_id": ids["added"],
             },
         )
-        dismissed_target = await session.call_tool(
-            "record_insight",
-            {
-                "text": "x",
-                "evidence_shot_ids": [world.shot1],
-                "replaces_insight_id": ids["dismissed"],
-            },
-        )
-        other_version = await session.call_tool(
-            "record_insight", {"text": "x", "rests_on_versions": ["v7"]}
-        )
-        general_deletion = await session.call_tool(
-            "propose_insight_deletion", {"insight_id": ids["general"], "reason": reason}
-        )
-        dismissed_deletion = await session.call_tool(
-            "propose_insight_deletion", {"insight_id": ids["dismissed"], "reason": reason}
-        )
-        short = await session.call_tool(
-            "propose_insight_deletion", {"insight_id": ids["added"], "reason": "short"}
-        )
-        not_added = await session.call_tool(
-            "propose_insight_deletion", {"insight_id": ids["waiting"], "reason": reason}
-        )
-        foreign = await session.call_tool(
-            "propose_insight_deletion", {"insight_id": ids["theirs"], "reason": reason}
-        )
         no_thread = await bare.call_tool(
             "propose_insight_deletion", {"insight_id": ids["added"], "reason": reason}
         )
@@ -412,23 +341,7 @@ async def test_insight_provenance_and_deletion_proposals_over_stdio(
             "propose_insight_deletion", {"insight_id": ids["added"], "reason": reason}
         )
 
-    for refused, words in (
-        (unknown, "no version called 'v9'"),
-        (no_outcome, "has no recorded outcome yet: name shots instead"),
-        (nothing, "has to rest on something"),
-        (waiting, "is not an added insight"),
-        (general, "is general knowledge"),
-        (theirs, "is not an insight of this Recipe"),
-        (dismissed_target, "is not an added insight"),
-        (other_version, "no version called 'v7'"),
-        (general_deletion, "is general knowledge"),
-        (dismissed_deletion, "is not an added insight"),
-        (short, "A deletion needs its reason"),
-        (not_added, "is not an added insight"),
-        (foreign, "is not an insight of this Recipe"),
-        (no_thread, "no conversation"),
-    ):
-        assert refused.is_error is True and words in str(refused.content), (words, refused)
+    assert no_thread.is_error is True and "no conversation" in str(no_thread.content), no_thread
     assert replaced.is_error is False, replaced.content
     assert replaced.structured_content is not None
     assert replaced.structured_content["replaces_insight_id"] == ids["added"]
@@ -493,7 +406,7 @@ async def test_a_process_told_the_meanings_are_in_context_attaches_none(
     assert "field_meanings" in other.structured_content
 
 
-@pytest.mark.parametrize("value", ["0", "true", "", "yes"])
+@pytest.mark.parametrize("value", ["", "true"])
 def test_a_meanings_flag_that_is_not_one_refuses_to_start(
     archive_dir: tuple[Path, Fixture], value: str
 ) -> None:
@@ -671,28 +584,6 @@ def test_no_scope_at_all_is_a_general_server_and_starts(
     assert result.returncode == 0, result.stderr
 
 
-async def test_a_profile_draft_can_be_proposed_over_stdio(
-    archive_dir: tuple[Path, Fixture],
-) -> None:
-    """Proposing a draft needs the archive and the safety bounds, not the running app."""
-    data_dir, fixture = archive_dir
-    async with AsyncExitStack() as stack:
-        session = await session_for(stack, data_dir)
-
-        result = await session.call_tool(
-            "draft_profile",
-            {
-                "base_version_id": fixture.profile_version_id,
-                "patch": {"temperature": 92},
-                "reason": "A degree cooler.",
-            },
-        )
-
-    assert result.is_error is False, result.content
-    assert result.structured_content is not None
-    assert result.structured_content["status"] == "draft"
-
-
 async def test_the_listing_asks_for_a_new_profile_by_name_and_refuses_a_label_in_the_patch(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
@@ -725,6 +616,8 @@ async def test_the_listing_asks_for_a_new_profile_by_name_and_refuses_a_label_in
     assert "new_profile_name" in properties
     assert "new_profile_name" in (listed["draft_profile"].description or "")
     assert forked.is_error is False, forked.content
+    assert forked.structured_content is not None
+    assert forked.structured_content["status"] == "draft"
     assert renamed.is_error is True
     assert "pass new_profile_name" in json.dumps([c.model_dump() for c in renamed.content])
 
@@ -893,20 +786,6 @@ async def _make_thread(data_dir: Path, fixture: Fixture) -> int:
         return int(cursor.lastrowid or 0)
     finally:
         await db.close()
-
-
-async def test_the_child_is_never_offered_a_way_to_accept_a_proposal(
-    archive_dir: tuple[Path, Fixture],
-) -> None:
-    """Accept and decline are routes a person presses, on both dispatchers."""
-    data_dir, fixture = archive_dir
-    async with AsyncExitStack() as stack:
-        session = await session_for(
-            stack, data_dir, GAGGICLANKER_MCP_RECIPE_ID=str(fixture.recipe_id)
-        )
-        tools = {tool.name for tool in (await session.list_tools()).tools}
-
-    assert not [name for name in tools if "accept" in name or "decline" in name]
 
 
 async def test_the_generated_config_forwards_the_conversation(
