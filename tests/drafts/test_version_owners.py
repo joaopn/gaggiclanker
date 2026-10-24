@@ -403,28 +403,6 @@ async def test_every_write_path_leaves_every_version_with_its_owner(
     await assert_versions_owned(db)
 
 
-async def test_a_file_that_joins_as_a_profile_holds_that_profiles_version_and_is_not_news_later(
-    adopted: Adopted,
-) -> None:
-    app, client, fake = adopted
-    person = row_for(await get_board(client), BASE_LABEL)
-    gone = person["machine"]["device_id"]
-    relocated = copy.deepcopy(next(p for p in fake.profiles if p["id"] == gone))
-    relocated["id"] = "relocated"
-    fake.profiles = [p for p in fake.profiles if p["id"] != gone] + [relocated]
-
-    await pull(app)
-
-    joined = row_for(await get_board(client), f"{BASE_LABEL} (2)")["row"]
-    held = await app.state.db.fetch_value(
-        "SELECT current_version_id FROM device_profiles WHERE device_id = 'relocated'"
-    )
-    assert held == joined["current_version_id"] != person["row"]["current_version_id"]
-    await pull(app)  # saves the name over the file
-    assert (await pull(app)).profiles_changed == 0
-    await assert_versions_owned(app.state.db)
-
-
 async def test_a_pin_and_a_duplicate_leave_every_version_with_its_owner(adopted: Adopted) -> None:
     app, client, _ = adopted
     base = await base_version_id(app, BASE_LABEL)

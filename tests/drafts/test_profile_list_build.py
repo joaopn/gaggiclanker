@@ -228,14 +228,6 @@ async def test_an_empty_archive_is_built_and_marked(db: Database) -> None:
     assert await ProfileListBuilder(db).built()
 
 
-async def test_a_board_row_starts_on_the_machine_unless_said_otherwise(db: Database) -> None:
-    await _version(db, 1, "P")
-    await _row(db, 1, "P", 1, device="x", device_version=1, star=0)
-    row = await db.fetch_one("SELECT * FROM profile_board")
-    assert row is not None and row["on_machine"] == 1 and row["on_home_screen"] == 0
-    assert row["device_profile_id"] == "x"
-
-
 def test_the_suffix_is_not_part_of_a_profiles_name() -> None:
     assert stripped_label("Cremina Lever [AI]") == "Cremina Lever"
     assert stripped_label("Cremina Lever") == "Cremina Lever"

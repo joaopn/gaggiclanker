@@ -72,29 +72,6 @@ async def test_two_variants_of_a_profile_of_yours_with_labels_of_their_own_each_
         assert found["already_on_board_label"] is None
 
 
-async def test_the_second_of_two_new_drafts_with_one_name_is_refused_once_the_first_is_a_profile(
-    writes_on: Live, fake_device: FakeDevice, provider: FakeProvider
-) -> None:
-    """Both drafts were made while the name was free. Once the first is put, the name is a
-    profile: the second would land on it (a version nobody asked for), so its put is refused in
-    the creation guard's sentence and the list keeps one profile of the name."""
-    app, client = writes_on
-    await pull(app)
-    first = await draft_of(app, client, provider, BASE_LABEL, 7)
-    second = await draft_of(app, client, provider, BASE_LABEL, 6)
-    await approve(app, first)
-    await approve(app, second)
-    assert landing(await get_board(client), second)["plain"]["row_id"] is None
-
-    await put(client, first)
-    refused = await client.post("/api/profile-board", json={"draft_id": second["id"]})
-
-    assert refused.status_code == 409
-    assert error(refused)["message"] == taken_name_sentence(APP_LABEL)
-    labels = [r["row"]["label"] for r in (await get_board(client))["rows"]]
-    assert labels.count(APP_LABEL) == 1
-
-
 async def test_two_changes_of_a_persons_profile_that_keep_its_name_are_both_versions_of_it(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:

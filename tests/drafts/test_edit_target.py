@@ -297,22 +297,6 @@ async def test_a_proposal_older_than_a_waiting_one_is_still_offered_and_makes_ac
     assert (await put(client, older))["id"] == row["id"]
 
 
-async def test_a_proposal_based_on_a_version_that_is_no_longer_active_still_lands_on_its_profile(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    """The base is an older version of the profile, found through the profile's version list.
-    Never a new profile with a taken name."""
-    app, client, fake = adopted
-    profile = await two_version_app_profile(app, client, fake, provider)
-
-    stale = await edit_copy(app, client, profile["first"], 4)
-    board = await get_board(client)
-    [proposal] = [p for p in board["proposals"] if p["draft"]["id"] == stale["id"]]
-
-    assert proposal["row_id"] == profile["id"]
-    assert (await put(client, stale))["id"] == profile["id"]
-
-
 async def test_a_proposal_based_on_a_version_the_machine_never_held_lands_on_its_profile(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:

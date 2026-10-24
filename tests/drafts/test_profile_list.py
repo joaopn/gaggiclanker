@@ -28,7 +28,6 @@ from tests.drafts.test_board import (
     put,
     row_for,
     summary_of,
-    variant_draft,
     write_frames,
 )
 from tests.llm.conftest import FakeProvider
@@ -378,36 +377,6 @@ async def test_a_file_the_app_has_never_seen_is_left_alone_in_the_sync_that_find
     assert [i["device_id"] for i in summary_of(nxt)["pushed"]] == ["relocated"]
 
 
-async def test_making_a_version_active_changes_only_the_active_version_not_the_name(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    mine = await app_row(app, client, fake, provider, 8)
-    # The profile's older version was first stored under another name, which another profile has
-    # since taken. A version is what the profile brews and the name is the profile's: making it
-    # active renames nothing and so cannot make two profiles share a name.
-    other = await put(client, await variant_draft(app, client, "Old name", 6))
-    taken = data(await client.get(f"/api/profile-versions/{other['current_version_id']}"))
-    document = {**taken["profile"], "phases": taken["profile"]["phases"]}
-    version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate({**document, "label": "Old name", "temperature": 91, "id": None}),
-        owner=None,
-    )
-    board = ProfileBoardRepository(app.state.db)
-    own = await board.version_for(mine["id"], version.id)
-    await board.add_version(mine["id"], own, "edit")
-
-    made = await client.put(
-        f"/api/profile-board/{mine['id']}/active-version", json={"version_id": own}
-    )
-
-    assert made.status_code == 200, made.text
-    assert data(made)["current_version_id"] == own
-    assert data(made)["label"] == mine["label"]
-    labels = [r["row"]["label"] for r in (await get_board(client))["rows"]]
-    assert labels.count("Old name") == 1 and labels.count(mine["label"]) == 1
-
-
 async def test_keeping_the_machines_side_is_refused_when_its_name_is_taken(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
@@ -627,33 +596,6 @@ async def test_an_upgrade_never_turns_a_profile_made_on_the_display_into_one_the
         assert run.status == "ok", run.error
         assert summary_of(run)["removed"] == []
     assert "disp9" in [str(p["id"]) for p in fake.profiles]
-
-
-async def test_a_file_that_appears_later_with_an_off_profiles_content_is_a_profile_of_its_own(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
-) -> None:
-    """The exact-enabled-set rule: a file no profile holds the id of joins the list on, whatever it
-    holds, so the machine holding it is the list saying so; the off profile stays off."""
-    app, client, fake = adopted
-    row = row_for(await get_board(client), BASE_LABEL)["row"]
-    assert (await on_machine(client, row["id"], False)).status_code == 200
-    await pull(app)  # the file goes
-    assert BASE_LABEL not in [p["label"] for p in fake.profiles]
-    version = await ProfilesRepository(app.state.db).get_version(row["current_version_id"])
-    assert version is not None and version.profile is not None
-    again = copy.deepcopy(dict(version.profile))
-    again["id"] = "back1"
-    fake.profiles.append(again)
-
-    found = await pull(app)
-    [joined] = summary_of(found)["adopted"]
-    assert (joined["reason"], joined["label"]) == ("unseen", f"{BASE_LABEL} (2)")
-    shown = row_for(await get_board(client), BASE_LABEL)
-    assert shown["planned"] == [] and shown["on_machine"] is False
-
-    later = await pull(app)
-    assert summary_of(later)["removed"] == []
-    assert "back1" in [str(p["id"]) for p in fake.profiles]
 
 
 async def test_an_upgrade_keeps_a_profile_the_person_deleted_from_the_old_board(

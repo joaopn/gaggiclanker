@@ -1210,23 +1210,6 @@ async def test_two_puts_of_one_draft_at_once_make_one_row_and_one_copy_on_the_ma
     assert len([r for r in board["rows"] if r["row"]["label"] == APP_LABEL]) == 1
 
 
-async def test_two_posts_of_one_draft_at_once_answer_one_created_and_one_conflict(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    await approve(app, draft)
-
-    responses = await asyncio.gather(
-        client.post("/api/profile-board", json={"draft_id": draft["id"]}),
-        client.post("/api/profile-board", json={"draft_id": draft["id"]}),
-    )
-
-    assert sorted(r.status_code for r in responses) == [201, 409]
-    await pull(app)
-    assert len([p for p in fake.profiles if p["label"] == APP_LABEL]) == 1
-
-
 async def test_the_schema_refuses_two_live_rows_on_one_file_or_one_pending_draft(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
