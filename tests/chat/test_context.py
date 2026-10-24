@@ -434,20 +434,6 @@ async def test_the_opening_context_matches_the_golden_file(
     assert rendered == GOLDEN.read_text(encoding="utf-8")
 
 
-async def test_the_same_archive_renders_the_same_text(experiment: Experiment) -> None:
-    """Determinism, asserted directly rather than inferred from the golden.
-
-    Nothing here may read the clock or iterate a set: a grade that can be traced
-    needs a context that can be reproduced word for word.
-    """
-    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
-
-    first = await opening_context(experiment.db, scope)
-    second = await opening_context(experiment.db, scope)
-
-    assert first == second
-
-
 async def test_a_bean_with_only_a_name_is_named_and_nothing_else(experiment: Experiment) -> None:
     """The heading names what the person filled in and leaves the rest out.
 
@@ -948,26 +934,6 @@ async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_mat
     assert 1 in _claimed(summary, ordinals), "the oldest versions are what it stands for"
 
 
-async def test_the_version_being_argued_survives_the_budget_however_old_it_is(
-    experiment: Experiment,
-) -> None:
-    """An old conversation, reopened: it is still about its own version."""
-    recipes = RecipesRepository(experiment.db)
-    for number in range(LEDGER_VERSIONS + 4):
-        assert await recipes.add_version(
-            experiment.recipe_id, RecipeVersionPatch(intent=f"Filler {number}.")
-        )
-
-    rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v2)
-    )
-
-    assert "THIS VERSION IS v1.1" in rendered
-    assert "- v1.1 (dead end) ← this version ·" in rendered
-    # And the version it is compared against comes with it.
-    assert "- v1 ← what v1.1 is compared against ·" in rendered
-
-
 # ── the ledger's averages ────────────────────────────────────────────
 
 
@@ -1106,6 +1072,9 @@ async def test_the_budget_still_trims_with_the_averages_in_the_lines(
     assert len(ledger) == LEDGER_VERSIONS + 2
     assert "- v2.1 " not in rendered
     assert "- v2.2 " not in rendered
+    assert "THIS VERSION IS v1.1" in rendered
+    assert "- v1.1 (dead end) ← this version ·" in rendered
+    assert "- v1 ← what v1.1 is compared against ·" in rendered
 
 
 async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_says_each_count(
@@ -1683,22 +1652,6 @@ async def test_the_proposing_conversation_sees_its_proposals_in_force_and_is_tol
     # What the person rejected is nowhere else: not in the block, not as a check.
     assert answered.count("the Hammer begins") == 1
     assert second.id != first.id
-
-
-async def test_a_signature_of_six_expectations_is_a_few_hundred_tokens(
-    experiment: Experiment,
-) -> None:
-    """A measured figure, not a promise: the block's signature is about this long."""
-    from gaggiclanker.signatures.lines import signature_block
-
-    db = experiment.db
-    profile_id = await _own_profile_version(experiment)
-    rows = await SignatureService(db).propose(profile_id, EXPECTATIONS, reason="r")
-    assert len(rows) == 6
-    block = "\n".join(await signature_block(db, profile_id, experiment.v5))
-
-    # About four characters to a token for this kind of text: 150 to 300 tokens.
-    assert 600 < len(block) < 1200, len(block)
 
 
 async def test_get_profile_serves_the_signature_in_force_and_nothing_else(

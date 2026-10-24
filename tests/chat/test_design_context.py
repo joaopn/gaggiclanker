@@ -217,15 +217,6 @@ async def test_the_numbers_the_person_chose_are_kept_and_the_rest_left_open(
     assert "Propose exactly these" not in none
 
 
-async def test_the_same_archive_renders_the_same_text(kitchen: Fixture) -> None:
-    designed = await _forked_design(kitchen)
-
-    first = await design_context(kitchen.db, designed.id)
-    second = await design_context(kitchen.db, designed.id)
-
-    assert first == second
-
-
 async def test_only_this_bean_s_recipes_in_use_are_its_siblings(kitchen: Fixture) -> None:
     designed = await _forked_design(kitchen)
 

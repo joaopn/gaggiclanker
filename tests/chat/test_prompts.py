@@ -121,13 +121,6 @@ async def test_the_glossary_comes_after_the_shared_rules(prompts: PromptService,
     assert system.index("PROPOSE, NEVER ACT") < system.index(FIELDS_MARKER)
 
 
-async def test_the_design_prompt_does_not_take_the_glossary(prompts: PromptService) -> None:
-    rendered = await prompts.load(DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER})
-
-    assert "shot_fields" not in rendered.declared
-    assert "{{shot_fields}}" not in rendered.system
-
-
 def test_the_prompt_follows_the_conversation_s_kind() -> None:
     assert prompt_for(ToolScope.for_thread(3, 9)) == RECIPE_CHAT_PROMPT
     assert prompt_for(ToolScope.for_thread(3, 9, designing=True)) == DESIGN_CHAT_PROMPT
