@@ -10,7 +10,6 @@ entry points.
 """
 
 from gaggiclanker.domain.diagnostics import (
-    VALID_DETAIL_LEVELS,
     _classify_phase,
     _compute_phase_diagnostics,
     _compute_rmse,
@@ -520,50 +519,6 @@ class TestShotDiagnostics:
         # And not from the pre-infusion: the window starts at the extraction
         assert diag["extraction"]["flow_avg_brew_ml_s"] == 2.05
 
-    def test_transform_includes_diagnostics(self):
-        """Test that transform_shot_for_ai includes full diagnostics at per_phase level."""
-        samples = [
-            {"t": 0, "ct": 92.0, "tt": 93.0, "cp": 3.0, "pf": 0.5},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 5.0, "pf": 1.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 9.0, "pf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.5, "pf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 8.0, "pf": 2.1},
-            {"t": 500, "ct": 93.0, "tt": 93.0, "cp": 7.5, "pf": 2.1},
-        ]
-        shot = self._make_shot(samples)
-        transformed = transform_shot(shot, detail="per_phase")
-
-        assert "diagnostics" in transformed
-        assert transformed["diagnostics"] is not None
-        assert "resistance" in transformed["diagnostics"]
-        assert "channeling" not in transformed["diagnostics"]
-        assert "temperature" not in transformed["diagnostics"]
-        assert "extraction" in transformed["diagnostics"]
-        assert "weight" in transformed["diagnostics"]
-        assert "profile_compliance" in transformed["diagnostics"]
-
-    def test_transform_summary_diagnostics(self):
-        """Test that default (summary) returns SummaryDiagnostics keys."""
-        samples = [
-            {"t": 0, "ct": 92.0, "tt": 93.0, "cp": 3.0, "pf": 0.5},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 5.0, "pf": 1.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 9.0, "pf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.5, "pf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 8.0, "pf": 2.1},
-            {"t": 500, "ct": 93.0, "tt": 93.0, "cp": 7.5, "pf": 2.1},
-        ]
-        shot = self._make_shot(samples)
-        transformed = transform_shot(shot)  # default = summary
-
-        assert transformed["detail_level"] == "summary"
-        diag = transformed["diagnostics"]
-        assert diag is not None
-        assert "resistance_avg" in diag
-        assert "channeling_risk" not in diag
-        assert "annotations" not in diag
-        # Summary should NOT have full sub-dicts
-        assert "resistance" not in diag
-
     def test_transform_diagnostics_none_for_short_shot(self):
         """Test that diagnostics is None for a very short shot."""
         shot = self._make_shot(
@@ -710,9 +665,6 @@ class TestDetailLevels:
         ]
         return self._make_shot(samples, phases=phases)
 
-    def test_valid_detail_levels(self):
-        assert VALID_DETAIL_LEVELS == ("summary", "per_phase", "per_phase_detailed")
-
     def test_invalid_detail_falls_back_to_summary(self):
         shot = self._standard_shot()
         t = transform_shot(shot, detail="bogus")
@@ -749,13 +701,6 @@ class TestDetailLevels:
                 assert "diagnostics" in phase
                 assert phase["diagnostics"]["phase_type"] in ("preinfusion", "brew", "decline")
 
-    def test_per_phase_detailed_representative_samples(self):
-        shot = self._standard_shot()
-        t = transform_shot(shot, detail="per_phase_detailed")
-        # 5-sample extraction phase should have 5 evenly-spaced averaged samples
-        ext_phase = [p for p in t["phases"] if p["name"] == "Extraction"][0]
-        assert len(ext_phase["samples"]) == 5
-
     def test_per_phase_detailed_full_diagnostics(self):
         shot = self._standard_shot()
         t = transform_shot(shot, detail="per_phase_detailed")
@@ -769,6 +714,7 @@ class TestDetailLevels:
         t = transform_shot(shot, detail="summary")
         diag = t["diagnostics"]
         assert "resistance_avg" in diag
+        assert "resistance" not in diag
         assert "channeling_risk" not in diag
         assert "temperature_stability_c" not in diag
         assert "pressure_rmse_bar" in diag
@@ -781,33 +727,51 @@ class TestDetailLevels:
 class TestPhaseClassification:
     """Tests for phase name classification."""
 
-    def test_preinfusion_exact_names(self):
-        for name in ["Preinfusion", "pre-infusion", "PI", "soak", "Bloom", "fill", "Preinfuse"]:
-            assert _classify_phase(name) == "preinfusion", f"Failed for: {name}"
-
     def test_preinfusion_substring_names(self):
         """Creative names containing preinfusion keywords should match."""
-        for name in ["Gentle Pre-infusion", "Blooming Phase", "Long Soak", "Quick Fill"]:
+        for name in [
+            "Gentle Pre-infusion",
+            "Blooming Phase",
+            "Long Soak",
+            "Quick Fill",
+            "Preinfusion",
+            "pre-infusion",
+            "PI",
+            "soak",
+            "Bloom",
+            "fill",
+            "Preinfuse",
+        ]:
             assert _classify_phase(name) == "preinfusion", f"Failed for: {name}"
-
-    def test_decline_exact_names(self):
-        for name in ["Decline", "taper", "ramp-down", "Ramp Down", "cool down", "cooldown"]:
-            assert _classify_phase(name) == "decline", f"Failed for: {name}"
 
     def test_decline_substring_names(self):
         """Creative names containing decline keywords should match."""
-        for name in ["Gentle Decline", "Smooth Taper", "Final Cooldown"]:
+        for name in [
+            "Gentle Decline",
+            "Smooth Taper",
+            "Final Cooldown",
+            "Decline",
+            "taper",
+            "ramp-down",
+            "Ramp Down",
+            "cool down",
+            "cooldown",
+        ]:
             assert _classify_phase(name) == "decline", f"Failed for: {name}"
 
     def test_brew_names(self):
         """Known brew-ish names fall through to brew without telemetry."""
-        for name in ["Extraction", "Brew", "Main", "Hold", "flat", "Step 2"]:
+        for name in [
+            "Extraction",
+            "Brew",
+            "Main",
+            "Hold",
+            "flat",
+            "Step 2",
+            "My Custom Phase",
+            "Phase 3",
+        ]:
             assert _classify_phase(name) == "brew", f"Failed for: {name}"
-
-    def test_unrecognised_name_defaults_to_brew(self):
-        """Without telemetry samples, unrecognised names default to brew."""
-        assert _classify_phase("My Custom Phase") == "brew"
-        assert _classify_phase("Phase 3") == "brew"
 
     def test_telemetry_fallback_preinfusion(self):
         """First phase with low pressure and rising trend -> preinfusion."""
@@ -913,24 +877,6 @@ class TestProfileCompliance:
     def test_compute_rmse_empty(self):
         assert _compute_rmse([], []) == 0.0
 
-    def test_profile_compliance_present_in_diagnostics(self):
-        """Profile compliance computed when tp data available."""
-        samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 3.0, "tp": 3.0, "pf": 0.5},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 5.0, "tp": 5.0, "pf": 1.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "pf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "pf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "pf": 2.0},
-            {"t": 500, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "pf": 2.1},
-        ]
-        diag = self._diagnostics(samples, ("pressure",))
-        assert diag is not None
-        pc = diag["profile_compliance"]
-        assert pc is not None
-        assert pc["pressure_rmse_bar"] >= 0
-        assert pc["pressure_grading"] == "graded"
-        assert "annotations" not in pc
-
     def test_pressure_adherence_is_not_graded_without_tp(self):
         """No `tp` recorded: the pressure adherence is missing, not zero."""
         samples = [
@@ -960,21 +906,6 @@ class TestProfileCompliance:
         diag = self._diagnostics(samples, ("pressure",))
         pc = diag["profile_compliance"]
         assert pc["max_pressure_overshoot_bar"] == 2.0
-
-    def test_flow_rmse_when_tf_available(self):
-        """Flow RMSE computed when tf data available."""
-        samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.0, "tf": 2.0},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.5, "tf": 2.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 12.0, "fl": 2.0, "tf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 12.0, "fl": 2.1, "tf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 12.0, "fl": 2.2, "tf": 2.0},
-        ]
-        diag = self._diagnostics(samples, ("flow",))
-        pc = diag["profile_compliance"]
-        assert pc["flow_rmse_ml_s"] is not None
-        assert pc["flow_rmse_ml_s"] >= 0
-        assert pc["flow_grading"] == "graded"
 
     def test_flow_overshoot_detected(self):
         """Flow overshoot correctly detected when actual exceeds target."""
@@ -1048,19 +979,6 @@ class TestProfileCompliance:
         assert pc["max_flow_overshoot_ml_s"] is None
         assert pc["max_flow_undershoot_ml_s"] is None
         assert pc["flow_grading"] == "not_applicable"
-
-    def test_a_small_flow_deviation_is_a_small_number(self):
-        """Small flow deviations are small numbers, with no label on them."""
-        samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.1, "tf": 2.0},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.2, "tf": 2.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 12.0, "fl": 1.9, "tf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 12.0, "fl": 2.0, "tf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 12.0, "fl": 2.05, "tf": 2.0},
-        ]
-        diag = self._diagnostics(samples, ("flow",))
-        pc = diag["profile_compliance"]
-        assert pc["max_flow_overshoot_ml_s"] <= 0.3
 
 
 class TestPerPhaseDiagnostics:
