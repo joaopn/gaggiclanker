@@ -144,3 +144,19 @@ async def test_deleting_a_document_takes_its_chunks_and_its_index_entries(
     assert not [
         hit for hit in await small.search_chunks("puck", k=10) if hit.chunk.doc_id == doc.id
     ]
+
+
+async def test_a_rechunk_leaves_no_index_entry_for_a_chunk_that_is_gone(
+    small: KnowledgeService,
+) -> None:
+    """Search joins the chunks table and hides stale index rows, so read the index itself."""
+    sql = "SELECT rowid FROM knowledge_chunks_fts WHERE knowledge_chunks_fts MATCH 'puck'"
+    old = {row[0] for row in await small.db.fetch_all(sql)}
+    assert old
+
+    await small.set_doc_markdown(
+        "CHANNELING", "# Channeling\n\n## Gone\n\n" + ("unrelated " * 300).strip() + "\n"
+    )
+
+    alive = {row[0] for row in await small.db.fetch_all("SELECT id FROM knowledge_chunks")}
+    assert {row[0] for row in await small.db.fetch_all(sql)} <= alive
