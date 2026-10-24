@@ -52,7 +52,7 @@ describe("LlmActivity", () => {
     renderWithQueryClient(<LlmActivity />);
 
     const button = await screen.findByTestId("llm-activity");
-    expect(button).toHaveTextContent("");
+    expect(button.textContent).toBe("");
     expect(button).toHaveAccessibleName("LLM activity");
   });
 

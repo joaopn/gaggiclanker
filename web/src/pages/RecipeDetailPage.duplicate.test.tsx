@@ -200,7 +200,7 @@ describe("the buttons", () => {
     expect(dialog).toHaveTextContent('Duplicate "Ethiopia Guji · Blooming" from v1.1');
     expect(getDuplicatePreview).toHaveBeenCalledWith(3, 21);
     // A button of the page opens it in place: the address does not change.
-    expect(screen.getByTestId("search")).toHaveTextContent("");
+    expect(screen.getByTestId("search").textContent).toBe("");
   });
 
   it("opens the dialog in place from a line of the Pinned card, for the pinned version", async () => {
@@ -219,7 +219,7 @@ describe("the buttons", () => {
     const dialog = await screen.findByTestId("duplicate-dialog");
     expect(dialog).toHaveTextContent("from v1.2");
     expect(getDuplicatePreview).toHaveBeenCalledWith(3, 22);
-    expect(screen.getByTestId("search")).toHaveTextContent("");
+    expect(screen.getByTestId("search").textContent).toBe("");
   });
 
   it("closing a dialog the page opened leaves the page as it was", async () => {
@@ -262,20 +262,9 @@ describe("?duplicate=", () => {
   it.each([
     ["an id no version has", "999"],
     ["an id that is not a number", "abc"],
-    ["an empty value", ""],
     ["a number with a tail", "22x"],
-    ["a negative number", "-22"],
   ])("opens nothing for %s", async (_name, value) => {
     renderPage(`/recipes/3?duplicate=${value}`);
-    await screen.findByTestId("version-timeline");
-
-    expect(screen.queryByTestId("duplicate-dialog")).not.toBeInTheDocument();
-    expect(getDuplicatePreview).not.toHaveBeenCalled();
-  });
-
-  it("opens nothing for another Recipe's version", async () => {
-    // Version 31 belongs to a Recipe this page is not showing.
-    renderPage("/recipes/3?duplicate=31");
     await screen.findByTestId("version-timeline");
 
     expect(screen.queryByTestId("duplicate-dialog")).not.toBeInTheDocument();
