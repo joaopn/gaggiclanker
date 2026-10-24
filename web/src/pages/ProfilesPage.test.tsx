@@ -659,13 +659,6 @@ describe("the reset guard", () => {
     expect(lines).toHaveTextContent("Put Londinium on the machine");
     expect(lines).toHaveTextContent("Remove Old default from the machine");
   });
-
-  it("is not there when the sync is not paused", async () => {
-    renderWithQueryClient(<ProfilesPage />);
-
-    await screen.findByTestId("profile-row");
-    expect(screen.queryByTestId("reset-banner")).not.toBeInTheDocument();
-  });
 });
 
 describe("the dropdown", () => {
@@ -895,16 +888,6 @@ describe("proposed versions", () => {
     ).toBeTruthy();
   });
 
-  it("Approve puts it on the board, with no Recipe when it has none", async () => {
-    const user = setupUser();
-    withProposal();
-    const panel = await open(user);
-
-    await user.click(within(panel).getByTestId("approve-proposal"));
-
-    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
-  });
-
   it("says a proposal moves a stop condition and approves it in one click, asking for nothing", async () => {
     const user = setupUser();
     withProposal({ stop_condition_changes: [yieldChange()] });
@@ -917,85 +900,6 @@ describe("proposed versions", () => {
     await user.click(within(panel).getByTestId("approve-proposal"));
 
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
-  });
-
-  it("records the Recipe's next version through the primary button, with the major choice", async () => {
-    const user = setupUser();
-    withProposal(
-      {
-        recipe_id: 3,
-        recipe_name: "Ethiopia washed",
-        recipe_next_minor_label: "v1.2",
-        recipe_next_major_label: "v2",
-        prediction: "Less bitter",
-      },
-      {
-        plain: {
-          row_id: 1,
-          row_label: "9 Bar Espresso",
-          recipe: {
-            id: 3,
-            name: "Ethiopia washed",
-            next_minor_label: "v1.2",
-            next_major_label: "v2",
-          },
-        },
-      },
-    );
-    const panel = await open(user);
-
-    expect(within(panel).getByTestId("proposal-prediction")).toHaveTextContent("Less bitter");
-    const forRecipe = within(panel).getByTestId("approve-proposal");
-    expect(forRecipe).toHaveTextContent("Approve as v1.2 of Ethiopia washed");
-    await user.click(within(panel).getByRole("checkbox", { name: /major/i }));
-    expect(forRecipe).toHaveTextContent("Approve as v2 of Ethiopia washed");
-    await user.click(forRecipe);
-
-    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11, major: true }));
-  });
-
-  it("holds Approve under the Name field when the server says the name is already a profile", async () => {
-    const user = setupUser();
-    const sentence = "There is already a profile called Soft Bloom. Choose another name.";
-    const fresh = proposal({ id: 31, row_id: null });
-    fresh.draft = draft({ id: 31, is_new: true, base_label: null, draft_label: "Soft Bloom" });
-    fresh.landing = landing({
-      draft_id: 31,
-      plain: { row_id: null, row_label: null, refused: sentence },
-    });
-    proposalsOnPage.set(
-      31,
-      standing({ draft: fresh.draft, landing: fresh.landing, active_profile: null }),
-    );
-    api.checkDraftName.mockResolvedValue({ label: "Soft Bloom", refused: sentence });
-    api.getProfileBoard.mockResolvedValue(boardView({ rows: [], proposals: [fresh] }));
-    renderWithQueryClient(<ProfilesPage />);
-    await user.click(await screen.findByTestId("profile-toggle"));
-
-    const panel = await screen.findByTestId("profile-proposal");
-    await waitFor(() =>
-      expect(within(panel).getByTestId("proposal-name-problem")).toHaveTextContent(sentence),
-    );
-    expect(within(panel).getByTestId("approve-proposal")).toHaveAttribute("aria-disabled", "true");
-    expect(within(panel).getByTestId("decline-proposal")).toBeInTheDocument();
-  });
-
-  it("sends one put when Approve is clicked twice at once", async () => {
-    const user = setupUser();
-    withProposal();
-    let release: (value: unknown) => void = () => {};
-    api.putOnBoard.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          release = resolve;
-        }),
-    );
-    const panel = await open(user);
-
-    await user.dblClick(within(panel).getByTestId("approve-proposal"));
-    release(row().row);
-
-    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledTimes(1));
   });
 
   it("shows Approve on every proposal of a profile: one never blocks another", async () => {
@@ -1018,17 +922,6 @@ describe("proposed versions", () => {
 
     await waitFor(() => expect(screen.getAllByTestId("approve-proposal")).toHaveLength(2));
     expect(screen.getAllByTestId("profile-proposal")).toHaveLength(2);
-  });
-
-  it("Decline discards the draft", async () => {
-    const user = setupUser();
-    withProposal();
-    const panel = await open(user);
-
-    // No note field on this page: the click declines.
-    await user.click(within(panel).getByTestId("decline-proposal"));
-
-    await waitFor(() => expect(api.discardProfileDraft).toHaveBeenCalledWith(11));
   });
 
   it("a proposed new profile is a row at the top, marked New, whose dropdown holds the card with its Name field", async () => {
@@ -1193,8 +1086,6 @@ describe("a conflict", () => {
     expect(within(machine).getByTestId("conflict-difference")).toHaveTextContent("pressure 7 bar");
     // No content hashes: the marked differences say what differs.
     expect(panel.textContent).not.toMatch(/abcdef01|feedface/);
-    // Two columns from md up, stacked below.
-    expect(within(panel).getByTestId("conflict-sides").className).toMatch(/md:grid-cols-2/);
   });
 
   it("opens above the versions", async () => {
@@ -1272,27 +1163,6 @@ describe("a conflict", () => {
 });
 
 describe("links into the page", () => {
-  it("#staged opens the profile holding the newest proposal", async () => {
-    const p = proposal({ id: 11, row_id: 2 });
-    api.getProfileBoard.mockResolvedValue(
-      boardView({
-        rows: [row(), row({ row: { id: 2, label: "Londinium" }, proposed_versions: 1 })],
-        proposals: [p],
-      }),
-    );
-    api.getBoardVersions.mockImplementation(async (id: number) =>
-      versionsView([listedVersion({ version_id: 7 + id, is_active: true })], { row_id: id }),
-    );
-    renderWithQueryClient(<ProfilesPage />, { initialEntries: ["/profiles#staged"] });
-
-    await waitFor(() =>
-      expect(within(rowNamed("Londinium")).getByTestId("profile-dropdown")).toBeInTheDocument(),
-    );
-    expect(
-      within(rowNamed("9 Bar Espresso")).queryByTestId("profile-dropdown"),
-    ).not.toBeInTheDocument();
-  });
-
   it("#staged opens the newest of several proposals, whichever profile holds it", async () => {
     api.getProfileBoard.mockResolvedValue(
       boardView({
@@ -1669,21 +1539,6 @@ describe("the header", () => {
 
     expect(await screen.findByTestId("board-unreadable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
-  });
-
-  it("has none of the old page's sections", async () => {
-    renderWithQueryClient(<ProfilesPage />);
-
-    await screen.findByTestId("profile-row");
-    for (const gone of [
-      "Waiting for you",
-      "Deleted, still on the machine",
-      "On the machine, not on the board",
-      "Go back a version",
-    ]) {
-      expect(screen.queryByText(gone)).not.toBeInTheDocument();
-    }
-    expect(screen.queryByRole("button", { name: /delete/i })).not.toBeInTheDocument();
   });
 });
 

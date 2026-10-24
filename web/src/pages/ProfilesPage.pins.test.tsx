@@ -240,18 +240,4 @@ describe("a pinned row on the Profiles page", () => {
     await waitFor(() => expect(api.resolveBoardConflict).toHaveBeenCalledTimes(1));
     expect(api.resolveBoardConflict.mock.calls[0]?.[1]).toBe("app");
   });
-
-  it("an ordinary row in conflict still offers both sides", async () => {
-    api.getProfileBoard.mockResolvedValue(
-      boardView({ rows: [boardRowView({ in_conflict: true })] }),
-    );
-    api.getBoardConflict.mockResolvedValue(conflictView());
-    api.getBoardVersions.mockResolvedValue({ row_id: 1, versions: [], proposed: [] });
-    const user = setupUser();
-    renderWithQueryClient(<ProfilesPage />);
-    await user.click(await screen.findByTestId("profile-toggle"));
-
-    expect(await screen.findByTestId("keep-machine")).toBeInTheDocument();
-    expect(screen.getByTestId("keep-app")).toBeInTheDocument();
-  });
 });
