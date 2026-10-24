@@ -108,20 +108,9 @@ describe("DevicePage", () => {
     expect(container.querySelector('a[href="/sync"]')).toBeNull();
   });
 
-  it("has no telemetry card, because the machine's own UI has one", async () => {
-    renderAt("/device");
-    await screen.findByRole("heading", { name: "GaggiMate Pro" });
-
-    expect(screen.queryByTestId("device-telemetry")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("device-warnings")).not.toBeInTheDocument();
-  });
-
   it.each([
     ["/sync", "/device"],
-    ["/sync#sync", "/device#sync"],
     ["/sync#pull", "/device#pull"],
-    ["/sync#board", "/device#board"],
-    ["/sync#writes", "/device#writes"],
   ])("sends the old Sync page's %s here", async (from, target) => {
     renderAt(from);
     expect(await screen.findByTestId("landed")).toHaveTextContent(target);

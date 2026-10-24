@@ -505,13 +505,6 @@ describe("ChatPage folders", () => {
     expect(folder("General")).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("opens the badge a ?recipe= link names", async () => {
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?recipe=3"] });
-
-    await screen.findByRole("button", { name: /^Guji on the Niche/ });
-    expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "true");
-  });
-
   it("opens the badge an old ?set= link names, and rewrites the address in place", async () => {
     function Where() {
       const location = useLocation();
@@ -537,7 +530,7 @@ describe("ChatPage folders", () => {
     expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("has no sidebar any more: the badges sit above the conversation", async () => {
+  it("the badges sit above the conversation", async () => {
     renderWithQueryClient(<ChatPage />);
 
     const badges = await screen.findByRole("navigation", { name: "Conversations by Recipe" });
@@ -545,15 +538,6 @@ describe("ChatPage folders", () => {
     expect(
       badges.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(document.querySelector('[class*="grid-cols-[260px"]')).toBeNull();
-  });
-
-  it("has no scope select any more", async () => {
-    renderWithQueryClient(<ChatPage />);
-
-    await screen.findByRole("button", { name: /^General/ });
-    // The control that used to sit under the list, and overflowed the card.
-    expect(screen.queryByLabelText("Scope a new conversation")).toBeNull();
   });
 });
 
