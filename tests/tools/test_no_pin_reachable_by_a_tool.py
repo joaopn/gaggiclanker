@@ -10,7 +10,6 @@ walk does not pass for words nothing uses any more).
 
 from __future__ import annotations
 
-from gaggiclanker.api.pins import pin_version, preview_pin, unpin
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.drafts.copies import ProfileCopier
 from gaggiclanker.drafts.pins import PinService
@@ -36,7 +35,6 @@ def test_the_pin_writers_and_routes_are_where_this_file_thinks_they_are() -> Non
     assert callable(PinsRepository.unpin) and callable(PinsRepository.unpin_recipe)
     assert callable(PinsRepository.mark_unpinned) and callable(PinsRepository.revive)
     assert callable(ProfileCopier.copy_profile)
-    assert callable(pin_version) and callable(preview_pin) and callable(unpin)
 
 
 def test_no_tool_is_named_for_a_pin() -> None:

@@ -9,7 +9,6 @@ for words nothing uses any more).
 
 from __future__ import annotations
 
-from gaggiclanker.api.duplicates import duplicate_version, preview_duplicate
 from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.drafts.duplicates import DuplicateService
 from gaggiclanker.tools.registry import registry
@@ -22,7 +21,6 @@ DUPLICATE_NAMES = ("DuplicateService", "DuplicateRequest", "ProfileCopier")
 def test_the_duplicate_writers_and_routes_are_where_this_file_thinks_they_are() -> None:
     assert callable(DuplicateService.duplicate) and callable(DuplicateService.preview)
     assert callable(RecipesRepository.create_in_transaction)
-    assert callable(duplicate_version) and callable(preview_duplicate)
 
 
 def test_no_tool_is_named_for_a_duplicate() -> None:

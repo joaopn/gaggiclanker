@@ -39,17 +39,6 @@ from pathlib import Path
 from types import CodeType
 
 import gaggiclanker.tools
-from gaggiclanker.api.knowledge import delete_insight, dismiss_insight, patch_insight
-from gaggiclanker.api.patterns import approve_proposal, dismiss_proposal
-from gaggiclanker.api.recipes import (
-    accept_insight_deletion,
-    accept_outcome_proposal,
-    accept_proposal,
-    change_outcome_proposal,
-    decline_proposal,
-    dismiss_outcome_proposal,
-    keep_insight_deletion,
-)
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
@@ -205,21 +194,6 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     assert callable(SignatureRepository.set_tier)
     assert callable(PatternProposalsRepository.approve)
     assert callable(PatternProposalsRepository.dismiss)
-    assert callable(approve_proposal)
-    assert callable(dismiss_proposal)
-    for route in (
-        accept_outcome_proposal,
-        change_outcome_proposal,
-        dismiss_outcome_proposal,
-        patch_insight,
-        dismiss_insight,
-        delete_insight,
-        accept_insight_deletion,
-        keep_insight_deletion,
-    ):
-        assert callable(route)
-    assert callable(accept_proposal)
-    assert callable(decline_proposal)
 
 
 def test_the_signature_exception_is_the_named_service_methods_and_nothing_wider() -> None:

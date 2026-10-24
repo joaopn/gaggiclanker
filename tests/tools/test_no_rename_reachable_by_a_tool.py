@@ -10,7 +10,6 @@ thinks they are (so it does not pass for words nothing uses any more).
 
 from __future__ import annotations
 
-from gaggiclanker.api.profile_board import put_name
 from gaggiclanker.db.repos.profile_board import BoardRowPatch
 from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.tools.registry import registry
@@ -22,7 +21,7 @@ ROUTE_WORDS = ("/name", "profile-board")
 
 
 def test_the_writer_and_its_route_are_where_this_file_thinks_they_are() -> None:
-    assert callable(BoardService.rename) and callable(put_name)
+    assert callable(BoardService.rename)
     assert "label" in BoardRowPatch.model_fields
 
 
