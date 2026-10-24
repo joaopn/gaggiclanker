@@ -44,11 +44,17 @@ started its own simulator and then lost it ends non-zero and says how the
 simulator went; the tests that find it gone fail rather than skip, so a
 simulator dying mid-suite cannot pass for a green run with skips.
 
-**`repro_<bug>.py` — one per open bug.** The project's rule is that a bug gets
-a reproduction before it gets a fix: the script exits
+**`repro_<bug>.py` — a bug's reproduction, until its fix lands.** The project's
+rule is that a bug gets a reproduction before it gets a fix: the script exits
 non-zero while the bug exists and zero once it is fixed, and it is verified on
-the base branch as well as the fix branch. It stays in the tree after the fix as
-the cheapest possible regression test.
+the base branch as well as the fix branch. The fix lands with a test the gates
+run that fails the same way, and the script goes with it: nothing runs these
+scripts on its own, so a kept one drifts out of step with the API it drives
+and stops proving anything. The ones still here have no gated equivalent: they
+build the Docker image (`repro_image_*`), run the firmware simulator
+(`repro_simulator_sigpipe`), or carry a scheme-typed machine address from the
+settings all the way to a connected machine (`repro_host_with_scheme`). Run them
+by hand when you touch what they cover.
 
 **`profile_gate.py` — the four validation layers, over a file you have.**
 The CI gate for profile drafts, and the five minutes before somebody puts a hand-written
