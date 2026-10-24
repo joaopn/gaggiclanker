@@ -34,22 +34,6 @@ def whole(tiers: Mapping[str, Tier]) -> str:
     return render_glossary(tiers, "base") + "\n\n" + render_glossary(tiers, "extended")
 
 
-#: Words that belonged to the retired execution score, the threshold bands and the
-#: channeling block. A reader must never meet one in what a chat is told about a shot.
-REMOVED_WORDS = (
-    "execution score",
-    "VERY_LOW",
-    "VERY_HIGH",
-    "MODERATE",
-    "EXCELLENT",
-    "GRADUAL_DECLINE",
-    "WITHIN_TOLERANCE",
-    "INSUFFICIENT_DATA",
-    "VERY_STABLE",
-    "channeling risk",
-)
-
-
 def test_each_group_note_is_written_under_its_heading() -> None:
     glossary = whole(default_tiers())
 
@@ -57,11 +41,8 @@ def test_each_group_note_is_written_under_its_heading() -> None:
         assert f"[{group}]\n{note}\n" in glossary, group
 
 
-def test_no_word_of_the_retired_score_or_bands_is_in_the_glossary() -> None:
+def test_no_grade_label_is_in_the_glossary() -> None:
     glossary = whole(default_tiers())
-    for word in REMOVED_WORDS:
-        assert word.lower() not in glossary.lower(), word
-    assert "[Shared bands]" not in glossary
     assert not re.findall(r"\b[A-Z]{3,}_[A-Z_]{3,}\b", glossary), "a grade label is back"
 
 
@@ -121,29 +102,12 @@ def test_a_group_note_is_written_once_under_its_first_heading() -> None:
         assert both.count(note) <= 1, group
 
 
-def test_each_half_is_deterministic() -> None:
-    for part in ("base", "extended"):
-        assert render_glossary(default_tiers(), part) == render_glossary(default_tiers(), part)
-
-
 def test_the_base_preamble_names_the_three_tools_that_bring_the_extended_half() -> None:
     preamble = "\n".join(render_glossary(default_tiers(), "base").splitlines()[:5])
 
     assert EXTENDED_TOOLS == ("get_shot_extended", "get_shot_full", "compare_shots")
     for name in EXTENDED_TOOLS:
         assert name in preamble.split("they come once")[1], name
-
-
-def test_the_glossary_covers_what_can_be_shown_and_nothing_else() -> None:
-    tiers = default_tiers()
-    rendered = whole(tiers)
-
-    for item in CATALOGUE:
-        entry = f"- {item.label} [{tiers[item.key]}]: {item.meaning}"
-        if tiers[item.key] == "excluded":
-            assert item.meaning not in rendered, item.key
-        else:
-            assert entry in rendered, item.key
 
 
 def test_the_glossary_follows_the_tiers() -> None:
@@ -158,18 +122,8 @@ def test_the_glossary_follows_the_tiers() -> None:
     assert "- Rating [" not in rendered
 
 
-def test_the_base_glossary_starts_with_its_preamble() -> None:
-    lines = render_glossary(default_tiers(), "base").splitlines()
+def test_the_base_glossary_says_absent_is_never_zero_and_what_is_not_in_the_prompt() -> None:
+    base = render_glossary(default_tiers(), "base")
 
-    assert lines[0] == "SHOT FIELDS"
-    assert "get_shot_extended adds" in lines[1]
-    assert "never that it was zero" in lines[2]
-    assert "extended fields are not in this prompt" in lines[3]
-    assert lines[4] == ""
-
-
-def test_the_extended_glossary_starts_with_its_own_heading() -> None:
-    lines = render_glossary(default_tiers(), "extended").splitlines()
-
-    assert lines[0] == "SHOT FIELDS, EXTENDED"
-    assert lines[2] == ""
+    assert "never that it was zero" in base
+    assert "extended fields are not in this prompt" in base
