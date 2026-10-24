@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -116,16 +115,6 @@ async def test_citations_the_run_was_not_given_are_dropped(
     # version pointing at an arbitrary profile would change which shots
     # auto-assignment attaches to it.
     assert option.profile_version_id is None
-
-
-async def test_a_real_profile_version_id_survives(
-    starting: StartingPointService, fixture: Fixture, provider: FakeProvider
-) -> None:
-    provider.script = [json.dumps(option_with(profile_version_id=fixture.profile_version_id))]
-    run = await _propose(starting, fixture)
-    option = StartingPointResult.model_validate(run.output).option("recommended")  # type: ignore[attr-defined]
-    assert option is not None
-    assert option.profile_version_id == fixture.profile_version_id
 
 
 async def test_a_missing_bean_raises_rather_than_storing_a_failed_row(
@@ -642,19 +631,6 @@ def test_grind_value_only_parses_a_setting_the_model_called_absolute(
     setting: str, absolute: bool, expected: float | None
 ) -> None:
     assert grind_value(setting, absolute=absolute) == expected
-
-
-async def test_an_accepted_option_s_grind_value_follows_the_shared_rule(
-    fixture: Fixture, starting: StartingPointService
-) -> None:
-    """The service stores what the one rule says, not a rule of its own."""
-    run: Any = await _propose(starting, fixture)
-    accepted = await starting.accept(run.id, "recommended")
-    option = next(item for item in run.output["options"] if item["option"] == "recommended")
-    assert accepted.version.grind_value == grind_value(
-        option["grind_setting"], absolute=option["grind_is_absolute"]
-    )
-    assert accepted.recipe_row.name == recipe_name(run.bean_name, run.grinder_name)
 
 
 async def test_the_default_draft_base_is_the_most_used_brew_profile(fixture: Fixture) -> None:

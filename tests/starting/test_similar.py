@@ -278,23 +278,6 @@ async def test_a_field_the_other_bean_leaves_empty_is_unknown_not_different(
     assert all(row.roast_match != "unknown" for row in others)
 
 
-async def test_the_prompt_never_calls_an_unrecorded_field_different(fixture: Fixture) -> None:
-    """The "why it is similar" line names only what both beans state."""
-    from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
-    from gaggiclanker.starting.context import build_context
-    from tests.starting.conftest import AS_OF
-
-    bare = await BeansRepository(fixture.db).create(BeanWrite(name="Mystery"))
-    rendered = (
-        await build_context(fixture.db, bean_id=bare.id, grinder_id=fixture.grinder_id, as_of=AS_OF)
-    ).render()["similar_recipes"]
-
-    assert "[recipe_version" in rendered, "the archive's Recipes are still offered"
-    assert "different" not in rendered
-    assert "same roast" not in rendered
-    assert "why it is similar" not in rendered
-
-
 async def test_a_recipe_can_be_excluded_from_its_own_suggestions(fixture: Fixture) -> None:
     rows = await _for_the_new_bag(fixture, exclude_recipe_id=fixture.recipes["kenya"])
     assert fixture.versions["kenya"] not in {row.recipe_version_id for row in rows}

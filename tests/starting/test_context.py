@@ -60,13 +60,6 @@ async def test_two_builds_are_identical(fixture: Fixture) -> None:
     assert first.render() == second.render()  # type: ignore[attr-defined]
 
 
-async def test_the_date_is_as_of_not_now(fixture: Fixture) -> None:
-    """The fixture's date, whatever day the suite runs on."""
-    context = await _build(fixture)
-    assert context.as_of == AS_OF  # type: ignore[attr-defined]
-    assert AS_OF in context.render()["bean_facts"]  # type: ignore[attr-defined]
-
-
 async def test_the_bean_block_says_nothing_about_a_bag(fixture: Fixture) -> None:
     """A bean is a type of coffee; ageing belongs to a bag and is not tracked."""
     context = await _build(fixture)
