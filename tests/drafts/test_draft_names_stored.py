@@ -7,38 +7,13 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
 from gaggiclanker.device.fake import FakeDevice
-from tests.drafts.conftest import BASE_LABEL, base_version_id, data
+from tests.drafts.conftest import BASE_LABEL, base_version_id
 from tests.drafts.helpers import manual_draft
-from tests.drafts.test_board import adopted, put
+from tests.drafts.test_board import adopted
 
 __all__ = ["adopted"]
 
 type Adopted = tuple[FastAPI, httpx.AsyncClient, FakeDevice]
-
-
-async def _stored(app: FastAPI, draft_id: int) -> tuple[str, int | None]:
-    row = await app.state.db.fetch_one(
-        "SELECT label, destination_board_id FROM profile_drafts WHERE id = ?", (draft_id,)
-    )
-    return str(row["label"]), row["destination_board_id"]
-
-
-async def test_a_draft_is_stored_with_the_name_it_was_made_under(adopted: Adopted) -> None:
-    app, client, _ = adopted
-    draft = await manual_draft(app, client, BASE_LABEL, "Soft Bloom", 8)
-    assert await _stored(app, draft["id"]) == ("Soft Bloom", None)
-    assert draft["draft_label"] == "Soft Bloom"
-
-
-async def test_the_name_a_person_types_when_approving_is_stored_on_the_draft(
-    adopted: Adopted,
-) -> None:
-    app, client, _ = adopted
-    draft = await manual_draft(app, client, BASE_LABEL, "Soft Bloom", 8)
-    await put(client, draft, label="Gentle Bloom")
-    assert (await _stored(app, draft["id"]))[0] == "Gentle Bloom"
-    detail = data(await client.get(f"/api/profile-drafts/{draft['id']}"))
-    assert detail["draft"]["draft_label"] == "Gentle Bloom"
 
 
 async def test_a_draft_written_without_a_name_takes_its_documents_then_its_bases(

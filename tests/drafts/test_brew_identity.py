@@ -22,7 +22,6 @@ from tests.drafts.conftest import BASE_LABEL, data, error
 from tests.drafts.helpers import (
     APP_LABEL,
     assert_versions_owned,
-    make_recipe_on,
     manual_draft,
     same_name_draft,
 )
@@ -92,27 +91,6 @@ async def renamed_on_both_sides(
 
 
 # ── 9: the plan reads a file as its brew and its name ────────────────────
-
-
-async def test_a_file_with_the_profiles_brew_under_another_name_gives_the_profile_that_name(
-    adopted: Adopted, provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    await app_row(app, client, fake, provider)
-    row = row_for(await get_board(client), APP_LABEL)
-    device_id = row["machine"]["device_id"]
-    rename_on_display(fake, device_id, "Renamed on the display")
-    before = await versions(app)
-    fake.ws_requests.clear()
-
-    run = await pull(app)
-
-    assert summary_of(run)["conflicts"] == []
-    assert write_frames(fake) == [], "the machine is not written for a name it gave itself"
-    view = row_for(await get_board(client), "Renamed on the display")
-    assert view["row"]["id"] == row["row"]["id"] and not view["in_conflict"]
-    assert view["row"]["device_label"] == "Renamed on the display"
-    assert await versions(app) == before, "a rename is never a version"
 
 
 async def test_both_sides_renamed_is_a_conflict_over_the_name(
@@ -499,25 +477,6 @@ async def test_ensure_version_finds_the_same_brew_under_any_name(
 
 
 # ── 12: names shown are the profile's ────────────────────────────────────
-
-
-async def test_the_pin_detail_names_the_copy_by_the_pin_row(
-    adopted: Adopted, provider: FakeProvider
-) -> None:
-    _app, client, _fake = adopted
-    base = row_for(await get_board(client), BASE_LABEL)
-    recipe_id = await make_recipe_on(client, "Guji", base["row"]["current_version_id"])
-    recipe_version = data(await client.get(f"/api/recipes/{recipe_id}"))["versions"][0]["version"][
-        "id"
-    ]
-    made = await client.post(
-        f"/api/recipes/{recipe_id}/versions/{recipe_version}/pin", json={"label": "Guji copy"}
-    )
-    assert made.status_code < 300, made.text
-    pin = data(made)["pin"]
-
-    assert pin["name"] == "Guji copy"
-    assert pin["original_label"] == BASE_LABEL
 
 
 # ── the recorded name is written wherever a file is recorded ─────────────

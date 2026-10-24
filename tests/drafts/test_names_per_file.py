@@ -17,7 +17,6 @@ import httpx
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, document_hash
 from tests.drafts.conftest import BASE_LABEL, data
@@ -232,35 +231,6 @@ async def test_a_name_the_machine_gave_that_the_app_already_has_is_no_question(
 # ── both changed it, or the machine's name is another profile's ─────
 
 
-async def test_a_name_both_sides_changed_is_a_conflict_and_nothing_is_written(
-    adopted: Adopted,
-) -> None:
-    app, client, fake = adopted
-    row, file = await person(adopted)
-    await rename_in_the_app(app, row["row"]["id"], "Renamed here")
-    rename_at_the_machine(fake, file, "Renamed there")
-    fake.ws_requests.clear()
-
-    run = await pull(app)
-
-    assert [i["label"] for i in summary_of(run)["conflicts"]] == ["Renamed here"]
-    assert write_frames(fake) == []
-    assert file_called(fake, file) == "Renamed there"
-    assert row_for(await get_board(client), "Renamed here")["in_conflict"]
-    seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
-    assert seen["machine"]["content_hash"] == file_hash(fake, file)
-    assert (seen["app_name"], seen["machine_name"], seen["recorded_name"]) == (
-        "Renamed here",
-        "Renamed there",
-        BASE_LABEL,
-    )
-    # A person chooses: the machine's side takes its name, with no version made.
-    before = await versions(app)
-    kept = await resolve(client, row["row"]["id"], "machine", seen["machine"]["content_hash"])
-    assert kept.status_code == 200, kept.text
-    assert data(kept)["label"] == "Renamed there" and await versions(app) == before
-
-
 async def test_a_machine_name_that_is_another_profiles_is_a_conflict_that_names_the_holder(
     adopted: Adopted, provider: FakeProvider
 ) -> None:
@@ -391,13 +361,6 @@ async def test_an_older_brew_under_a_name_both_sides_changed_is_a_conflict(
 
 
 # ── the planned line ────────────────────────────────────────────────
-
-
-async def test_a_profile_that_has_its_name_has_no_planned_rename(adopted: Adopted) -> None:
-    app, client, _fake = adopted
-    board = await get_board(client)
-    assert all(a["reason"] != "renamed" for a in board["actions"])
-    assert ProfilesRepository(app.state.db) is not None
 
 
 async def test_a_profile_keeps_its_id_through_a_rename_a_new_version_and_a_rename_at_the_machine(

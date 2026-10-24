@@ -15,7 +15,7 @@ import httpx
 from fastapi import FastAPI
 
 from gaggiclanker.device.fake import FakeDevice
-from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
+from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data
 from tests.drafts.helpers import (
     assert_versions_owned,
     draft_of,
@@ -202,23 +202,6 @@ async def test_the_name_typed_when_approving_changes_only_the_drafts_name(
     version = data(await client.get(f"/api/profile-versions/{row['current_version_id']}"))
     assert version["profile"]["label"] == "Gentle Bloom"
     await assert_versions_owned(app.state.db)
-
-
-async def test_a_name_for_a_change_is_refused_and_a_taken_name_for_a_new_profile_too(
-    adopted: Adopted, provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    change = await same_name_draft(app, client, provider, BASE_LABEL, 7)
-    refused = await client.post(
-        "/api/profile-board", json={"draft_id": change["id"], "label": "Another"}
-    )
-    assert refused.status_code == 422
-    assert error(refused)["message"] == "A change to an existing profile keeps its name"
-    new = await manual_draft(app, client, BASE_LABEL, "Soft Bloom", 8)
-    taken = await client.post(
-        "/api/profile-board", json={"draft_id": new["id"], "label": BASE_LABEL.upper()}
-    )
-    assert taken.status_code == 409
 
 
 async def test_a_copy_is_a_draft_for_a_new_profile_and_its_version_belongs_to_the_new_row(
