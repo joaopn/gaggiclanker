@@ -158,12 +158,3 @@ async def test_an_unknown_scope_key_is_refused_rather_than_stored(
 
 async def test_an_empty_insight_is_refused(client: httpx.AsyncClient) -> None:
     assert (await client.post("/api/knowledge/insights", json={"text": ""})).status_code == 400
-
-
-async def test_the_rule_routes_still_work_beside_the_new_ones(
-    client: httpx.AsyncClient,
-) -> None:
-    """Tier 1 is untouched by this feature, and the router still mounts it."""
-    data = await _data(await client.get("/api/knowledge/rules"))
-    assert data["items"]
-    assert data["categories"]

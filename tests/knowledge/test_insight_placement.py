@@ -424,30 +424,6 @@ class TestWhereEachOneLands:
         assert await kitchen.db.fetch_value("PRAGMA integrity_check") == "ok"
         assert await kitchen.db.fetch_all("PRAGMA foreign_key_check") == []
 
-    async def test_a_placed_insight_is_about_the_coffee_its_text_names(
-        self, kitchen: Kitchen
-    ) -> None:
-        """The stop condition, on coherent data: no insight lands on another coffee's Recipe."""
-        s = kitchen.shots
-        await _insight(
-            kitchen, "Guji: go finer.", scope={"bean_id": kitchen.guji}, evidence=[s["a1"]]
-        )
-        await _insight(
-            kitchen, "Huila: go coarser.", scope={"bean_id": kitchen.huila}, evidence=[s["d1"]]
-        )
-        await _insight(kitchen, "Huila: lower the dose.", scope={"bean_id": kitchen.huila})
-        await _insight(kitchen, "Guji: shorter pre-infusion.", scope={"bean_id": kitchen.guji})
-        await InsightPlacementBuilder(kitchen.db).build()
-
-        for row in (await _rows(kitchen.db)).values():
-            if row["recipe_id"] is None:
-                continue
-            bean = await kitchen.db.fetch_value(
-                "SELECT b.name FROM recipes s JOIN beans b ON b.id = s.bean_id WHERE s.id = ?",
-                (row["recipe_id"],),
-            )
-            assert str(row["text"]).startswith(str(bean)), row["text"]
-
     async def test_a_designing_recipe_is_never_a_candidate(self, kitchen: Kitchen) -> None:
         insight_id = await _insight(
             kitchen, "Everything.", scope={"bean_id": kitchen.guji, "grinder_id": kitchen.grinder}

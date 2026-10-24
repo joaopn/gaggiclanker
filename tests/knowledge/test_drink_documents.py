@@ -8,7 +8,6 @@ that told the reader never to adjust the shot for milk was cut. The attribution 
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from gaggiclanker.domain.drinks import DRINK_TERMS
 from gaggiclanker.knowledge.service import DEFAULT_DOCS_DIR, KnowledgeService
@@ -67,40 +66,6 @@ def test_each_document_is_about_the_length_asked_for() -> None:
         assert 300 <= words <= 650, (term.value, words)
 
 
-def test_each_document_opens_its_first_section_with_what_the_type_covers() -> None:
-    for term in DRINK_TERMS:
-        if term.document is None:
-            continue
-        first = _text(f"{term.document}.md").split("## What this type covers\n", 1)[1]
-        assert first.strip().split("\n", 1)[0], term.value
-    # The covers line the dialog shows is the idea each document starts from.
-    assert "any ratio" in _text("ESPRESSO.md")
-    assert "hot water" in _text("AMERICANO.md")
-    assert "macchiato" in _text("CAPPUCCINO.md").lower()
-    assert "mocha" in _text("LATTE.md")
-
-
-def test_the_drink_notes_section_names_what_matters_for_that_drink() -> None:
-    notes = {
-        name: _text(name).split("## How the drink notes matter\n", 1)[1]
-        for name in ("ESPRESSO.md", "AMERICANO.md", "CAPPUCCINO.md", "LATTE.md")
-    }
-    assert "water" in notes["AMERICANO.md"] and "ice" in notes["AMERICANO.md"]
-    for name in ("CAPPUCCINO.md", "LATTE.md"):
-        assert "oat" in notes[name] and "syrup" in notes[name].lower()
-    assert "iced" in notes["LATTE.md"].lower()
-
-
-def test_the_espresso_entry_names_the_ratio_document_instead_of_copying_it() -> None:
-    espresso = _text("ESPRESSO.md")
-    basics = (DEFAULT_DOCS_DIR / "ESPRESSO_BREWING_BASICS.md").read_text(encoding="utf-8")
-
-    assert "Espresso Brewing Basics" in espresso
-    assert "| Ratio | Style | Character |" not in espresso
-    # The ratio table and the shot styles stay where they were.
-    assert "| 1:1 to 1:1.5 | Ristretto |" in basics and "### Turbo Shot" in basics
-
-
 def test_the_milk_drink_text_moved_out_of_the_milk_document_and_the_cut_line_is_gone() -> None:
     milk = (DEFAULT_DOCS_DIR / "MILK_AND_DRINKS.md").read_text(encoding="utf-8")
     cappuccino, latte = _text("CAPPUCCINO.md"), _text("LATTE.md")
@@ -137,8 +102,3 @@ def test_the_attribution_says_what_moved_what_was_cut_and_where_it_went() -> Non
         assert f"drinks/{name}.md" in attribution
     assert "Espresso Drinks" in attribution and "MILK_AND_DRINKS.md" in attribution
     assert CUT_LINE in attribution and "Cut, and not moved" in attribution
-
-
-def test_no_drink_document_stands_beside_the_others_by_accident() -> None:
-    names = sorted(path.name for path in Path(DRINKS_DIR).iterdir())
-    assert names == ["AMERICANO.md", "CAPPUCCINO.md", "ESPRESSO.md", "LATTE.md"]

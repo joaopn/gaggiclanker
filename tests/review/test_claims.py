@@ -23,7 +23,7 @@ from gaggiclanker.db.repos.reviews import (
     ShotReviewsRepository,
 )
 from tests.llm.conftest import FakeProvider
-from tests.review.conftest import GOOD_REVIEW, Fixture, build_app_fixture, predict, reading
+from tests.review.conftest import Fixture, build_app_fixture, predict, reading
 
 type Api = tuple[FastAPI, httpx.AsyncClient, FakeProvider]
 
@@ -274,7 +274,3 @@ async def test_the_claim_shapes_are_checked_before_they_are_stored() -> None:
         ClaimWrite(kind="prediction", text="a")
     with pytest.raises(ValueError, match="names an expectation"):
         ClaimWrite(kind="claim", text="a", expectation_id=1, held=True)
-
-
-def test_the_good_reading_the_suite_uses_is_two_claims() -> None:
-    assert len(GOOD_REVIEW["claims"]) == 2

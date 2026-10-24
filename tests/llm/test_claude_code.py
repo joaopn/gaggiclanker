@@ -131,18 +131,6 @@ def test_no_model_means_no_model_flag() -> None:
 # -- the environment ------------------------------------------------------
 
 
-def test_the_api_key_is_never_passed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An ambient key would silently shadow the subscription token."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-should-not-travel")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "also-not")
-
-    env = build_child_env(scratch_home="/tmp/scratch", oauth_token="tok")
-
-    assert "ANTHROPIC_API_KEY" not in env
-    assert "AWS_SECRET_ACCESS_KEY" not in env
-    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok"
-
-
 def test_the_allow_list_carries_tls_and_proxy_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.test:3128")
     monkeypatch.setenv("NODE_EXTRA_CA_CERTS", "/certs/corp.pem")

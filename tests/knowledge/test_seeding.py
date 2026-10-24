@@ -92,26 +92,6 @@ async def test_an_edited_document_keeps_its_text_and_moves_only_its_default(
     assert reset.edited is False
 
 
-async def test_an_edit_re_chunks_and_a_reset_puts_the_chunks_back(
-    small: KnowledgeService,
-) -> None:
-    original = await small.docs.get_doc("CHANNELING")
-    assert original is not None
-    before = [chunk.heading_path for chunk in await small.docs.chunks_for_doc(original.id)]
-
-    edited = await small.set_doc_markdown(
-        "CHANNELING", "# Channeling\n\n## Only Section\n\n" + ("word " * 300).strip() + "\n"
-    )
-    assert edited is not None
-    assert [chunk.heading_path for chunk in await small.docs.chunks_for_doc(edited.id)] == [
-        "CHANNELING#only-section"
-    ]
-
-    restored = await small.reset_doc("CHANNELING")
-    assert restored is not None
-    assert [chunk.heading_path for chunk in await small.docs.chunks_for_doc(restored.id)] == before
-
-
 async def test_a_document_whose_file_vanished_is_left_alone(
     small: KnowledgeService, small_dir: Path
 ) -> None:

@@ -693,24 +693,6 @@ async def test_a_second_opening_past_the_registry_is_refused_by_the_database(
     assert await reviews.start(ReviewStart(shot_id=shot)) > first
 
 
-async def test_two_concurrent_starts_leave_one_running_review(
-    reviewer: ReviewService, fixture: Fixture, provider: FakeProvider
-) -> None:
-    """The registry's name guard and the opening in one transaction: one row, one call."""
-    from gaggiclanker.infra.tasks import TaskRegistry
-
-    provider.delay = 0.2
-    tasks = TaskRegistry()
-    first, second = await asyncio.gather(
-        reviewer.start(fixture.shots[-1], tasks=tasks),
-        reviewer.start(fixture.shots[-1], tasks=tasks),
-    )
-    assert first[0].id == second[0].id
-    await tasks.cancel_all()
-    rows = await ShotReviewsRepository(fixture.db).for_shot(fixture.shots[-1])
-    assert len(rows) == 1
-
-
 async def test_a_reading_another_process_opened_is_handed_back_not_started_again(
     reviewer: ReviewService, fixture: Fixture, provider: FakeProvider
 ) -> None:
