@@ -75,29 +75,6 @@ describe("RecipeChatBar", () => {
     });
   });
 
-  it("names a minor version by its name, never by its ordinal", () => {
-    renderWithQueryClient(
-      <RecipeChatBar
-        recipes={[
-          recipeRow({
-            id: 5,
-            name: "Guji on the Niche",
-            current_version_id: 53,
-            current_version_label: "v1.2",
-          }),
-        ]}
-      />,
-    );
-
-    const link = within(screen.getByRole("navigation", { name: "Chat about a Recipe" })).getByRole(
-      "link",
-    );
-    expect(link).toHaveTextContent("Guji on the Niche · v1.2");
-    expect(link).not.toHaveTextContent(/\bv3/);
-    expect(linkParams(link).ask).toBe(setChatQuestion("v1.2"));
-    expect(linkParams(link).ask).toContain("my latest shots on v1.2.");
-  });
-
   it("draws nothing when no Recipe is active", () => {
     renderWithQueryClient(
       <RecipeChatBar

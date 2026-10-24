@@ -122,7 +122,7 @@ describe("ReviewBadge", () => {
         review={reviewBlock({ state: "reviewed", verdict: "no_faults", badge: "No faults" })}
       />,
     );
-    expect(screen.getByTestId("review-badge")).toHaveTextContent("No faults");
+    expect(screen.getByTestId("review-badge")).toHaveTextContent(/^No faults$/);
     expect(screen.getByTestId("review-badge")).toHaveAttribute("data-tone", "muted");
   });
 
@@ -216,14 +216,5 @@ describe("ReviewBadge", () => {
     expect(fault.className).not.toMatch(/(^|\s)shrink(\s|$|-\[)/);
     expect(count).toHaveTextContent("+1");
     expect(count).toHaveClass("shrink-0");
-  });
-
-  it("never shows a deterministic check: it renders only the review block it is given", () => {
-    render(
-      <ReviewBadge
-        review={reviewBlock({ state: "reviewed", verdict: "no_faults", badge: "No faults" })}
-      />,
-    );
-    expect(screen.getByTestId("review-badge")).toHaveTextContent(/^No faults$/);
   });
 });

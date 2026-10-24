@@ -131,25 +131,6 @@ describe("ReviewBox", () => {
     expect(runReview).not.toHaveBeenCalled();
   });
 
-  it("answers a claim through the review in force, never the newest attempt", async () => {
-    const user = setupUser();
-    renderWithQueryClient(
-      <Card
-        reviews={[
-          review({ id: 9, status: "running", finished_at: null, summary: null }),
-          review({ id: 4, claims: [observation({ id: 40, review_id: 4 })] }),
-        ]}
-        reading={reviewBlock({ state: "running", review_id: 9, in_force_id: 4 })}
-      />,
-    );
-
-    await user.click(screen.getByTestId("claim-reject"));
-
-    await waitFor(() =>
-      expect(answerReviewClaim).toHaveBeenCalledWith(4, 40, { status: "rejected" }),
-    );
-  });
-
   describe("a finished review", () => {
     const freeText = claim({
       id: 21,

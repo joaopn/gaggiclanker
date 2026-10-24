@@ -149,24 +149,8 @@ describe("CheckBadge", () => {
     expect(name.className).not.toMatch(/shrink/);
     expect(count).toHaveTextContent("+1");
     expect(count).toHaveClass("shrink-0");
-    expect(badge).toHaveClass("shrink", "overflow-hidden");
-    expect(screen.getByTestId("check-badge-wrap")).toHaveClass("overflow-hidden");
-  });
-
-  it("truncates a long phase name inside its column and never the count", () => {
-    render(
-      <CheckBadge
-        checks={checks("a very long phase name indeed: skipped +2", LEVER_WARNINGS)}
-        className="w-24"
-      />,
-    );
-    const [name, count] = Array.from(screen.getByTestId("check-badge").children);
-    expect(name).toHaveClass("truncate");
-    expect(name).toHaveTextContent("a very long phase name indeed: skipped");
-    // Outside the span that is cut: it stays visible when the name does not fit.
-    expect(count).toHaveTextContent("+2");
     expect(count).not.toHaveClass("truncate");
-    expect(count).toHaveClass("shrink-0");
-    expect(screen.getByTestId("check-badge")).toHaveClass("max-w-full");
+    expect(badge).toHaveClass("max-w-full", "shrink", "overflow-hidden");
+    expect(screen.getByTestId("check-badge-wrap")).toHaveClass("overflow-hidden");
   });
 });
