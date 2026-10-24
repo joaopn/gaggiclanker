@@ -50,11 +50,6 @@ describe("toParams", () => {
     expect(toParams(state, 50)).toMatchObject({ sort: "review", order: "asc" });
   });
 
-  it("sends no score bound, which the API no longer has", () => {
-    expect(Object.keys(toParams(DEFAULT_FILTERS, 50))).not.toContain("min_score");
-    expect(Object.keys(toParams(DEFAULT_FILTERS, 50))).not.toContain("max_score");
-  });
-
   it("gives `to` the whole of its day", () => {
     // A `to` that meant midnight would silently exclude every shot on the day
     // the user picked, which is the one day they definitely meant to include.

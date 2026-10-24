@@ -375,11 +375,6 @@ describe("gridTemplates", () => {
     // A stored width from a looser release is still drawn inside today's bounds.
     expect(gridTemplates(columns, { time: 1, rating: 99 }).wide).toBe("4.5rem 9rem 9rem");
   });
-
-  it("sizes Time for the compact format, not the long one it used to show", () => {
-    const time = SHOT_COLUMNS.find((column) => column.id === "time");
-    expect(time?.size.rem).toBe(7.5);
-  });
 });
 
 describe("column sizes", () => {

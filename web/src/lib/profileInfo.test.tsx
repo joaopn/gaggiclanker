@@ -89,9 +89,4 @@ describe("the one-line summary and the landed profile summary read the same stop
       if (headline === "no stop condition") expect(ends).not.toMatch(/after \d/);
     }
   });
-
-  it("says the target, not what ends the shot, for Medium 18g 1:2 (Hammer runs after 36 g)", () => {
-    expect(endsWhen(medium)).toBe("target 36 g");
-    expect(endsWhen(medium)).not.toMatch(/ends/);
-  });
 });

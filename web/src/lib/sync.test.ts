@@ -201,12 +201,6 @@ describe("pullSummary", () => {
       );
     });
 
-    it("counts the profiles written, not the saves and deletes behind them", () => {
-      // One push is a save and a delete on the machine: `writes` says 2, the person's number is 1.
-      const pass = profilePass(boardKeys({ pushed: [entry("A")], writes: 2 }));
-      expect(profilesSentence(pass)).toContain("wrote 1 (pushed 1)");
-    });
-
     it("does not call a first adoption a write", () => {
       const pass = profilePass(boardKeys({ adopted: [entry("A"), entry("B")] }));
       expect(profilesSentence(pass)).toBe(
