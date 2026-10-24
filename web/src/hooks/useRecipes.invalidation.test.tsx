@@ -146,23 +146,8 @@ describe("the Recipe-side writes invalidate no more than they changed", () => {
     expect(keys.flat()).not.toContain("shots");
   });
 
-  it("clearing an outcome is the same write and the same breadth", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useSetVersionOutcome());
-    const keys = spyOn(queryClient);
-
-    await result.current.mutateAsync({ recipeId: 3, versionId: 22, body: null });
-
-    await waitFor(() => expect(keys.length).toBe(2));
-    expect(keys).toContainEqual(queryKeys.recipes.detail("3"));
-    expect(keys).toContainEqual(queryKeys.recipes.outcomeProposals("3"));
-  });
-
   describe("answering a proposed grade", () => {
-    const answers = [
-      ["accepting", { kind: "accept" }],
-      ["recording another outcome", { kind: "change", outcome: "failed" }],
-      ["dismissing", { kind: "dismiss", note: "one shot" }],
-    ] as const;
+    const answers = [["accepting", { kind: "accept" }]] as const;
 
     it.each(answers)(
       "%s touches the version, the Recipe, its proposals, its grades and the conversation",

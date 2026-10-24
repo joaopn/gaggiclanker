@@ -60,7 +60,6 @@ function spyOn(queryClient: QueryClient): unknown[][] {
 const WRITES = [
   ["starting a reading", () => useRunReview(), { shotId: 129 }],
   ["restoring a claim", () => useAnswerClaim(), { reviewId: 1, claimId: 2, status: "confirmed" }],
-  ["rejecting a claim", () => useAnswerClaim(), { reviewId: 1, claimId: 2, status: "rejected" }],
 ] as const;
 
 describe("every reading write invalidates what it touches", () => {

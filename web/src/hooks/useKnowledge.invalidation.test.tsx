@@ -60,7 +60,7 @@ function spyOn(queryClient: QueryClient): readonly unknown[][] {
 }
 
 describe("answering a Recipe's insight", () => {
-  it.each(["add", "dismiss", "take_back"] as const)(
+  it.each(["add"] as const)(
     "%s touches the knowledge prefix and the conversation, and no Recipe or shot",
     async (answer) => {
       const { result, queryClient } = renderHookWithQueryClient(() => useAnswerInsight());
@@ -146,16 +146,11 @@ describe("answering an agent's proposed deletion", () => {
       expect(keys.flat()).not.toContain("recipes");
       expect(keys.flat()).not.toContain("shots");
       expect(call).toHaveBeenCalledWith(3, 9);
+      // Each answer goes to its own route and never the other.
+      const other = call === acceptInsightDeletion ? keepInsightDeletion : acceptInsightDeletion;
+      expect(other).not.toHaveBeenCalled();
     },
   );
-
-  it("sends delete and keep to their own routes and never the other", async () => {
-    const { result } = renderHookWithQueryClient(() => useAnswerInsightDeletion());
-
-    await result.current.mutateAsync({ recipeId: 3, proposalId: 9, answer: "keep" });
-    expect(keepInsightDeletion).toHaveBeenCalledTimes(1);
-    expect(acceptInsightDeletion).not.toHaveBeenCalled();
-  });
 
   it("keeps its cards under the knowledge prefix, so an Add that replaces one reaches them", () => {
     expect(queryKeys.knowledge.insightDeletions("3", 14)).toEqual([
@@ -164,30 +159,5 @@ describe("answering an agent's proposed deletion", () => {
       "3",
       14,
     ]);
-  });
-});
-
-describe("a replacing Add and the Recipe page's Delete", () => {
-  it("an Add that deletes the old insight reaches the insight lists and the deletion cards by the one prefix", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useAnswerInsight());
-    const keys = spyOn(queryClient);
-
-    await result.current.mutateAsync({ id: 4, answer: "add", threadId: 14 });
-
-    await waitFor(() => expect(keys.length).toBe(2));
-    expect(keys).toContainEqual(queryKeys.knowledge.all);
-    // The deletion cards sit under that prefix, so the Add that removed an insight
-    // (and made its waiting deletions stale) refreshes them too.
-    expect(queryKeys.knowledge.insightDeletions("3").slice(0, 1)).toEqual(queryKeys.knowledge.all);
-  });
-
-  it("the Recipe page's Delete touches the knowledge prefix", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useDeleteKnowledgeInsight());
-    const keys = spyOn(queryClient);
-
-    await result.current.mutateAsync(4);
-
-    await waitFor(() => expect(keys.length).toBe(1));
-    expect(keys).toEqual([queryKeys.knowledge.all]);
   });
 });

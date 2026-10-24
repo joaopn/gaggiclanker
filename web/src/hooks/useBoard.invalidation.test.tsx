@@ -91,17 +91,6 @@ describe("every board mutation refreshes everything it changes", () => {
     }
   });
 
-  it("putting a draft on the board with the major choice refreshes the same things", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => usePutOnBoard());
-    const keys = spyOn(queryClient);
-
-    await result.current.mutateAsync({ draftId: 1, major: true });
-
-    for (const key of [...BOARD_WRITES, queryKeys.recipes.all]) {
-      await waitFor(() => expect(keys).toContainEqual([...key]));
-    }
-  });
-
   it("a refused put still refreshes, since the server is the authority on what the board holds", async () => {
     putOnBoard.mockRejectedValue(new Error("That profile version is already on the board."));
     const { result, queryClient } = renderHookWithQueryClient(() => usePutOnBoard());

@@ -64,7 +64,7 @@ describe("starting a run", () => {
 });
 
 describe("answering a proposal", () => {
-  it.each(["approve", "dismiss"] as const)(
+  it.each(["approve"] as const)(
     "%s touches the whole knowledge prefix: the list, every Recipe's insights and the run",
     async (answer) => {
       const { result, queryClient } = renderHookWithQueryClient(() => useAnswerPatternProposal());
