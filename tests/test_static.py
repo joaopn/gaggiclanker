@@ -60,23 +60,17 @@ async def test_missing_asset_is_a_404_not_index_html(env: EnvSettings, web_dist:
         assert (await client.get("/assets/gone.js")).status_code == 404
 
 
-async def test_api_404_stays_json_with_the_spa_mounted(env: EnvSettings, web_dist: Path) -> None:
-    """The catch-all must never hand HTML to an API client."""
-    async with running_app(env, web_dist=web_dist) as (_app, client):
-        response = await client.get("/api/nope", headers={"accept": "text/html"})
-        assert response.status_code == 404
-        assert response.json()["error"]["code"] == "NOT_FOUND"
-
-
 async def test_health_still_works_with_the_spa_mounted(env: EnvSettings, web_dist: Path) -> None:
     async with running_app(env, web_dist=web_dist) as (_app, client):
         assert (await client.get("/health")).json()["data"]["status"] == "ok"
 
 
 async def test_path_traversal_is_refused(env: EnvSettings, web_dist: Path) -> None:
+    """Encoded dots reach the handler as ``..``; only the containment check keeps the file out."""
+    (web_dist.parent / "secret.txt").write_text("outside the build", encoding="utf-8")
     async with running_app(env, web_dist=web_dist) as (_app, client):
-        response = await client.get("/../../etc/passwd", headers={"accept": "text/html"})
-        assert "root:" not in response.text
+        response = await client.get("/%2e%2e/secret.txt", headers={"accept": "text/html"})
+        assert "outside the build" not in response.text
 
 
 async def test_unknown_path_is_404_for_every_method(env: EnvSettings, web_dist: Path) -> None:

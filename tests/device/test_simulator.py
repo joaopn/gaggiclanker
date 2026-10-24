@@ -26,7 +26,7 @@ import os
 import pytest
 
 from gaggiclanker.device.client import GaggimateClient
-from gaggiclanker.device.events import ShotSaved, StatusChanged
+from gaggiclanker.device.events import StatusChanged
 
 pytestmark = pytest.mark.simulator
 
@@ -103,28 +103,3 @@ async def test_live_status_streams(sim_client: GaggimateClient) -> None:
         await subscription.aclose()
     assert sim_client.last_status is not None
 
-
-@pytest.mark.skip(reason="superseded by tests/simulator/test_e2e.py, which drives the brew")
-async def test_a_simulated_brew_produces_a_shot_saved(sim_client: GaggimateClient) -> None:
-    """Press brew in the sim window within 60 s of starting this.
-
-    Kept for the manual case and skipped by default. It turned out that the sim
-    *can* be brewed headlessly — `req:change-mode` then `req:process:activate`,
-    the two frames its own web UI sends — and `tests/simulator/test_e2e.py` does
-    exactly that from a throwaway socket of its own. It has to be a socket of
-    its own: this client is read-only and both frames are on the forbidden list
-    in `tests/device/test_public_surface.py`, which is the point.
-    """
-    subscription = sim_client.subscribe()
-    try:
-        async with asyncio.timeout(60):
-            while True:
-                event = await anext(subscription)
-                if isinstance(event, ShotSaved):
-                    break
-    finally:
-        await subscription.aclose()
-
-    fetched = await sim_client.fetch_slog(event.shot_id)
-    assert fetched is not None
-    assert fetched.slog is not None
