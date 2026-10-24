@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 
-from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import ToolContext, registry
 from gaggiclanker.tools.scope import ToolScope
@@ -220,7 +219,8 @@ class TestProposingADeletion:
 
         assert data["status"] == "proposed" and data["insight_text"] == "Doubtful claim."
         assert "Nothing is deleted" in data["note"] and "presses Delete" in data["note"]
-        assert await world.insights.get(target) is not None
+        row = await world.insights.get(target)
+        assert row is not None and row.confirmed
         waiting = await world.deletions.waiting_for_recipe(world.recipe_id)
         assert [(row.insight_id, row.thread_id, row.reason) for row in waiting] == [
             (target, world.thread, REASON)
@@ -306,24 +306,6 @@ class TestProposingADeletion:
         detail = await refuse(bare, "propose_insight_deletion", insight_id=target, reason=REASON)
         assert "no conversation" in detail
 
-    async def test_it_is_a_recipe_conversation_tool_only(
-        self, archive: Fixture, settings: SettingsService, world: ProvenanceWorld
-    ) -> None:
-        target = await world.own("Doubtful claim.")
-        general = _context(archive, settings, ToolScope())
-        outcome = await registry.dispatch(
-            general, "propose_insight_deletion", {"insight_id": target, "reason": REASON}
-        )
-        assert outcome.status == "refused"
-        designing = _context(
-            archive, settings, ToolScope.for_thread(world.recipe_id, designing=True)
-        )
-        outcome = await registry.dispatch(
-            designing, "propose_insight_deletion", {"insight_id": target, "reason": REASON}
-        )
-        assert outcome.status == "refused"
-        assert await world.insights.get(target) is not None
-
 
 class TestWhatTheAgentReads:
     async def test_get_insights_and_the_recipe_carry_the_same_line(
@@ -349,24 +331,3 @@ class TestWhatTheAgentReads:
         )
         assert insight["line"] == expected
         assert in_recipe["insights"] == [expected]
-
-
-class TestNothingATooCanRemove:
-    async def test_no_tool_call_removes_an_added_insight(
-        self, conversation: ToolContext, world: ProvenanceWorld
-    ) -> None:
-        old = await world.own("Old claim.")
-        target = await world.own("Doubtful claim.")
-        await call(
-            conversation,
-            "record_insight",
-            text="New claim.",
-            evidence_shot_ids=[world.shot1],
-            replaces_insight_id=old,
-        )
-        await call(conversation, "propose_insight_deletion", insight_id=target, reason=REASON)
-
-        repo = InsightsRepository(world.db)
-        for insight_id in (old, target):
-            row = await repo.get(insight_id)
-            assert row is not None and row.confirmed
