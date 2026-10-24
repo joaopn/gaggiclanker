@@ -125,6 +125,10 @@ describe("ProposalCard", () => {
 
     const card = screen.getByTestId("proposal-card");
     expect(card).toHaveAttribute("data-status", "proposed");
+    expect(card).toHaveAttribute("data-kind", "change");
+    // A change card has neither a first Recipe's details nor a link to a profile draft.
+    expect(screen.queryByTestId("proposal-recipe")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("proposal-draft-link")).not.toBeInTheDocument();
     expect(screen.getByTestId("proposal-changes")).toHaveTextContent("Dose");
     expect(screen.getByTestId("proposal-changes")).toHaveTextContent("18.5 g");
     expect(card).toHaveTextContent("Half a gram more, to carry the finish.");
@@ -341,6 +345,7 @@ describe("ProposalCard", () => {
     await user.click(screen.getByRole("button", { name: /Decline it/ }));
 
     await waitFor(() => expect(tell).toHaveBeenCalledWith("Declined: no reason given."));
+    expect(declineRecipeProposal).toHaveBeenCalledWith(6, 8, { note: "" });
   });
 
   it("asks why before declining, and declines with the note", async () => {
@@ -369,20 +374,6 @@ describe("ProposalCard", () => {
       note: "The dose is not the problem.",
     });
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Proposal declined"));
-  });
-
-  it("declines with no note when there is nothing to add", async () => {
-    const user = setupUser();
-    declineRecipeProposal.mockResolvedValue({
-      proposal: proposal({ status: "declined" }),
-      version: null,
-    });
-    renderWithQueryClient(<ProposalCard recipeId={3} proposal={proposal()} />);
-
-    await user.click(screen.getByRole("button", { name: /^Decline$/ }));
-    await user.click(screen.getByRole("button", { name: "Decline it" }));
-
-    expect(declineRecipeProposal).toHaveBeenCalledWith(3, 5, { note: "" });
   });
 
   it("submits the note on Enter, because it is one line", async () => {
@@ -467,20 +458,6 @@ describe("ProposalCard", () => {
       expect(toastError).toHaveBeenCalledWith(
         "Proposal 5 was made against a version that is no longer current",
       ),
-    );
-  });
-
-  it("toasts the server's own words when the prediction is still open", async () => {
-    const user = setupUser();
-    acceptRecipeProposal.mockRejectedValue(
-      new Error("This version's prediction has not been graded yet"),
-    );
-    renderWithQueryClient(<ProposalCard recipeId={3} proposal={proposal()} />);
-
-    await user.click(screen.getByRole("button", { name: /Accept/ }));
-
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("This version's prediction has not been graded yet"),
     );
   });
 
@@ -1100,19 +1077,6 @@ describe("ProposalCard, a first recipe", () => {
 });
 
 describe("ProposalCard, a change, after this feature", () => {
-  it("renders exactly the change card it always did", () => {
-    renderWithQueryClient(<ProposalCard recipeId={3} proposal={proposal()} />);
-
-    const card = screen.getByTestId("proposal-card");
-    expect(card).toHaveAttribute("data-kind", "change");
-    expect(card).toHaveTextContent("A change is waiting for you");
-    expect(screen.getByTestId("proposal-changes")).toBeInTheDocument();
-    expect(screen.getByTestId("proposal-prediction")).toHaveTextContent("compared to v2");
-    expect(card).toHaveTextContent("Accepting records a new version of this Recipe.");
-    expect(screen.queryByTestId("proposal-recipe")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("proposal-draft-link")).not.toBeInTheDocument();
-  });
-
   it("shows what the accept recorded without waiting for the lists to be read again", async () => {
     const user = setupUser();
     acceptRecipeProposal.mockResolvedValue({

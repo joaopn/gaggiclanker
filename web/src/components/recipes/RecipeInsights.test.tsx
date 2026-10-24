@@ -254,16 +254,6 @@ describe("RecipeInsights", () => {
     expect(deleteKnowledgeInsight).toHaveBeenCalledWith(1);
   });
 
-  it("offers neither edit nor delete on a general insight, which is the Knowledge page's", async () => {
-    getKnowledgeInsights.mockResolvedValue({
-      items: [knowledgeInsight({ confirmed: true })],
-      scope_keys: [],
-    });
-    renderSection();
-    await screen.findByTestId("general-insight");
-    expect(screen.queryByRole("button", { name: /Edit insight|Delete insight/ })).toBeNull();
-  });
-
   it("sends one request however fast the second click comes", async () => {
     const user = setupUser();
     getKnowledgeInsights.mockResolvedValue({

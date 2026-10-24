@@ -88,20 +88,6 @@ describe("VersionOverrides", () => {
     );
   });
 
-  it("restores a rejected override with one call under a double press", async () => {
-    const user = setupUser();
-    api.restoreSignatureOverride.mockReturnValue(new Promise(() => undefined));
-    renderOverrides([overrideRejected]);
-
-    await user.dblClick(await screen.findByTestId("override-restore"));
-
-    expect(api.restoreSignatureOverride).toHaveBeenCalledTimes(1);
-    expect(api.restoreSignatureOverride).toHaveBeenCalledWith(
-      SIGNATURE_RECIPE_ID,
-      overrideRejected.id,
-    );
-  });
-
   it("cannot restore an override of an expectation that is out of force, and links to where that is done", async () => {
     const user = setupUser();
     renderOverrides([{ ...overrideRejected, expectation_status: "rejected" }]);
@@ -188,6 +174,10 @@ describe("focus", () => {
     await user.dblClick(within(item).getByTestId("override-restore"));
 
     expect(api.restoreSignatureOverride).toHaveBeenCalledTimes(1);
+    expect(api.restoreSignatureOverride).toHaveBeenCalledWith(
+      SIGNATURE_RECIPE_ID,
+      overrideRejected.id,
+    );
     expect(item).toHaveFocus();
   });
 

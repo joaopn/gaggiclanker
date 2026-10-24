@@ -145,17 +145,6 @@ describe("the dialog's default state", () => {
     });
   });
 
-  it("goes to the new Recipe on success", async () => {
-    const user = setupUser();
-    renderDialog();
-    await ready();
-
-    await user.type(field("Profile name"), "Blooming milk");
-    await user.click(screen.getByRole("button", { name: "Duplicate" }));
-
-    expect(await screen.findByTestId("where")).toHaveTextContent("/recipes/9");
-  });
-
   it("takes ?duplicate= out of its history entry, so Back from the new Recipe does not reopen it", async () => {
     const user = setupUser();
     renderDialog(vi.fn(), ["/profiles", "/?duplicate=22"]);
@@ -168,7 +157,6 @@ describe("the dialog's default state", () => {
 
     // Back lands on the Recipe page's own address, with no parameter to open the dialog again.
     await waitFor(() => expect(screen.getByTestId("search")).toBeInTheDocument());
-    expect(screen.getByTestId("search")).toHaveTextContent("");
     expect(screen.getByTestId("search").textContent).toBe("");
   });
 

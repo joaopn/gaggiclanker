@@ -60,54 +60,8 @@ describe("VersionPrediction", () => {
     expect(screen.getByText("less bitter, a shorter shot")).toHaveFocus();
   });
 
-  it("hides itself again when the shot under it changes", async () => {
-    const user = setupUser();
-    const { rerender } = renderWithQueryClient(
-      <VersionPrediction shotId={1} version={predicted} decision={null} />,
-    );
-    await user.click(screen.getByRole("button", { name: "Show prediction" }));
-    expect(screen.getByText("less bitter, a shorter shot")).toBeInTheDocument();
-
-    // The same element, a different shot: React reuses the component, and a
-    // reveal that carried over would show the next prediction unasked.
-    rerender(
-      <VersionPrediction
-        shotId={2}
-        version={version({
-          id: 99,
-          version_major: 3,
-          prediction: "sweeter, the same time",
-          compares_to_version_label: "v2",
-        })}
-        decision={null}
-      />,
-    );
-
-    expect(screen.queryByText("sweeter, the same time")).not.toBeInTheDocument();
-    expect(screen.getByTestId("version-prediction-row")).toHaveAttribute("data-shown", "no");
-    expect(screen.getByRole("button", { name: "Show prediction" })).toBeInTheDocument();
-  });
-
-  it("hides itself again when the same shot is moved to another version", async () => {
-    const user = setupUser();
-    const { rerender } = renderWithQueryClient(
-      <VersionPrediction shotId={1} version={predicted} decision={null} />,
-    );
-    await user.click(screen.getByRole("button", { name: "Show prediction" }));
-
-    rerender(
-      <VersionPrediction
-        shotId={1}
-        version={version({ id: 98, version_major: 4, prediction: "a different claim" })}
-        decision={null}
-      />,
-    );
-
-    expect(screen.queryByText("a different claim")).not.toBeInTheDocument();
-  });
-
   /**
-   * The same two resets again, under the double render the app really uses.
+   * The two resets, under the double render the app really uses.
    *
    * `web/src/main.tsx` mounts StrictMode, so `npm run dev` renders every
    * component twice and throws the first pass away. A guard that remembers the
@@ -144,6 +98,7 @@ describe("VersionPrediction", () => {
 
       expect(screen.queryByText("sweeter, the same time")).not.toBeInTheDocument();
       expect(screen.getByTestId("version-prediction-row")).toHaveAttribute("data-shown", "no");
+      expect(screen.getByRole("button", { name: "Show prediction" })).toBeInTheDocument();
     });
 
     it("hides itself again when the same shot is moved to another version", async () => {
