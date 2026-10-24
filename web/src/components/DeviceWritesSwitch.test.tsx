@@ -18,6 +18,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getProfileBoard,
 }));
 
+const GONE = /send(ing)? (your )?(judgement|notes)|clean(ing)? up|deleting shots|storage/i;
+
 function settings(enabled: boolean): SettingsMap {
   return {
     deviceWritesEnabled: {
@@ -83,16 +85,6 @@ describe("DeviceWritesSwitch", () => {
     expect(toggle().querySelector("svg")).toHaveClass("lucide-pen-off");
   });
 
-  it("spans the viewport under sm: the wrapper is static and the panel has side insets", async () => {
-    const user = setupUser();
-    await renderSwitch(false);
-    await user.click(toggle());
-    // Below sm the panel is positioned against the sticky header, not against
-    // the switch's own wrapper; without these it collapses to a sliver.
-    expect(toggle().parentElement).toHaveClass("max-sm:static");
-    expect(screen.getByRole("dialog")).toHaveClass("max-sm:inset-x-4", "max-sm:w-auto");
-  });
-
   it("is a plain switch: no popup attributes on it", async () => {
     const user = setupUser();
     await renderSwitch(false);
@@ -111,6 +103,8 @@ describe("DeviceWritesSwitch", () => {
     expect(patchSettings).not.toHaveBeenCalled();
     const panel = screen.getByRole("dialog", { name: "Writes to the machine" });
     expect(panel).toHaveTextContent(WRITES_ON_SENTENCE);
+    // A sync writes profiles only: the sentence sends nobody to a feature that is gone.
+    expect(WRITES_ON_SENTENCE).not.toMatch(GONE);
     expect(panel).toHaveTextContent(
       "every sync makes the machine hold exactly the profiles that are on",
     );
@@ -306,6 +300,9 @@ describe("DeviceWritesSwitch", () => {
     const user = setupUser();
     await renderSwitch(false);
     await user.click(toggle());
+    // Below sm the panel is positioned against the sticky header, not against
+    // the switch's own wrapper; without this it collapses to a sliver.
+    expect(toggle().parentElement).toHaveClass("max-sm:static");
     expect(screen.getByRole("dialog")).toHaveClass(
       "max-h-[calc(100dvh-5rem)]",
       "overflow-y-auto",
