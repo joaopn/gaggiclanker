@@ -152,27 +152,6 @@ async def test_a_recipes_own_draft_records_its_prediction_on_the_version(
     assert version["profile_version_id"] == draft["draft_version_id"]
 
 
-async def test_a_recipes_draft_says_which_version_the_put_records_before_and_after(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], a_recipe: int
-) -> None:
-    """The card names the version before the put and after it, from the archive.
-
-    Before: the Recipe's next number, so the button can say "record it as v1.1". After: the
-    version really recorded, so the card claims the prediction landed only when it did,
-    including after a reload.
-    """
-    app, client, _ = adopted
-    draft = await drafted_for(app, a_recipe)
-    assert draft["recipe_next_minor_label"] == "v1.1" and draft["recorded_version_label"] is None
-
-    await put(client, draft)
-
-    reread = await draft_row(client, draft["id"])
-    assert (
-        reread["recorded_version_label"] == "v1.1" and reread["recipe_next_minor_label"] == "v1.2"
-    )
-
-
 async def test_a_put_records_a_minor_version_unless_marked_major(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], a_recipe: int
 ) -> None:
@@ -198,6 +177,7 @@ async def test_a_put_records_a_minor_version_unless_marked_major(
         "v1.1",
         "v2",
     )
+    assert first["recorded_version_label"] is None
 
     await put(client, first)
 
