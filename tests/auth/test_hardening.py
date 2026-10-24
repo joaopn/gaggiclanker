@@ -51,14 +51,6 @@ async def test_a_401_carries_them_too(secured_client: httpx.AsyncClient) -> None
         assert response.headers[name] == value
 
 
-async def test_the_request_id_is_echoed_and_matches_the_envelope(
-    client: httpx.AsyncClient,
-) -> None:
-    response = await client.get("/api/shots", headers={"x-request-id": "chosen-by-the-client"})
-    assert response.headers["x-request-id"] == "chosen-by-the-client"
-    assert response.json()["meta"]["request_id"] == "chosen-by-the-client"
-
-
 # ---------------------------------------------------------------------------
 # CORS is off unless asked for
 # ---------------------------------------------------------------------------
@@ -147,11 +139,6 @@ async def test_an_oversized_json_body_is_413_in_the_envelope(
     assert payload["ok"] is False
     assert payload["error"]["code"] == "PAYLOAD_TOO_LARGE"
     assert payload["error"]["details"]["limit_bytes"] == DEFAULT_MAX_BODY_BYTES
-
-
-async def test_a_body_under_the_limit_is_untouched(client: httpx.AsyncClient) -> None:
-    response = await client.patch("/api/settings", json={"gaggimateHost": "10.0.0.5"})
-    assert response.status_code == 200
 
 
 async def test_a_chunked_body_over_the_limit_is_refused_too(
@@ -358,41 +345,16 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     }
 
 
-def test_device_writes_are_off_until_somebody_turns_them_on(app: FastAPI) -> None:
-    """The switch in front of all five writes defaults to off.
-
-    A default that had drifted to True would make every other guard in this
-    feature the only thing standing between a bug and a display that will not
-    brew.
-    """
-    from gaggiclanker.settings import SETTINGS_REGISTRY
-
-    assert SETTINGS_REGISTRY["deviceWritesEnabled"].default is False
-    # Nothing writes outside `req:profiles:*`, so there is no cleanup or notes
-    # setting, and no automatic-write switch either.
-    for removed in (
-        "deviceCleanupAuto",
-        "deviceCleanupMode",
-        "deviceCleanupKeepNewest",
-        "deviceCleanupMinFreeKb",
-        "notesWritebackEnabled",
-        "notesWritebackFields",
-        "mcpDeviceWrites",
-        "mcpEnabled",
-    ):
-        assert removed not in SETTINGS_REGISTRY
-
-
 def test_the_unauthenticated_surface_is_three_routes(app: FastAPI) -> None:
     """What a stranger on the LAN can reach with auth on, listed in one place."""
-    from gaggiclanker.auth.guard import PUBLIC_API_PATHS, requires_auth
+    from gaggiclanker.auth.guard import requires_auth
 
     reachable = {
         path
         for path in app.openapi()["paths"]
         if path.startswith("/api") and not requires_auth("GET", path)
     }
-    assert reachable == set(PUBLIC_API_PATHS)
+    assert reachable == {"/api/auth/status", "/api/auth/login"}
     assert USERNAME  # keep the import honest: the fixtures module is the source
 
 

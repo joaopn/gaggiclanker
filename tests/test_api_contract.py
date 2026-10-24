@@ -94,12 +94,6 @@ async def test_unknown_non_api_route_returns_envelope_404(client: httpx.AsyncCli
     assert_envelope(response.json())
 
 
-async def test_wrong_method_returns_envelope_405(client: httpx.AsyncClient) -> None:
-    response = await client.delete("/api/settings")
-    assert response.status_code == 405
-    assert_envelope(response.json())
-
-
 async def test_validation_error_is_400_with_field_details(client: httpx.AsyncClient) -> None:
     """A body that does not match the schema is a 400 listing the offending fields."""
     response = await client.patch("/api/settings", json=["not", "an", "object"])
@@ -184,4 +178,5 @@ async def test_method_not_allowed_has_its_own_code(client: httpx.AsyncClient) ->
     """405 used to fall through to INTERNAL_ERROR, which reads as a server bug."""
     response = await client.delete("/api/settings")
     assert response.status_code == 405
+    assert_envelope(response.json())
     assert response.json()["error"]["code"] == "METHOD_NOT_ALLOWED"

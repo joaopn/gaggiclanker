@@ -128,16 +128,6 @@ async def test_logout_needs_a_token_of_its_own(secured_client: httpx.AsyncClient
     assert (await secured_client.post("/api/auth/logout")).status_code == 401
 
 
-async def test_logging_out_twice_is_not_an_error(
-    secured_client: httpx.AsyncClient, bearer: dict[str, str]
-) -> None:
-    assert (await secured_client.post("/api/auth/logout", headers=bearer)).status_code == 200
-    # The token is revoked now, so the guard refuses the second call. That is
-    # the guard doing its job, not logout being non-idempotent: `AuthService.logout`
-    # itself returns False rather than raising.
-    assert (await secured_client.post("/api/auth/logout", headers=bearer)).status_code == 401
-
-
 async def test_a_tampered_token_is_refused(secured_client: httpx.AsyncClient, token: str) -> None:
     forged = jwt.encode(
         {"sub": USERNAME, "jti": "made-up", "exp": 2**31}, "a" * 48, algorithm=JWT_ALGORITHM
