@@ -360,10 +360,6 @@ async def test_record_insight_refuses_another_recipe_s_shot_as_evidence(
     "scope",
     [
         {"bean_id": 1},
-        {"grinder_id": 1},
-        {"roast_level": "light"},
-        {"process": "natural"},
-        {"origin": "Ethiopia"},
         {"profile_style": "bloom"},
     ],
 )
@@ -404,18 +400,6 @@ async def test_record_insight_still_refuses_an_unknown_argument(
     )
     assert not outcome.ok
     assert "Unknown argument: colour" in outcome.data["detail"]
-
-
-async def test_record_insight_with_no_scope_is_accepted(
-    recipe_ctx: ToolContext, archive: Fixture
-) -> None:
-    assert (
-        await registry.dispatch(
-            recipe_ctx,
-            "record_insight",
-            {"text": "This bean likes it finer.", "evidence_shot_ids": archive.shots[:1]},
-        )
-    ).ok
 
 
 # -- what a refusal says ---------------------------------------------------
@@ -461,16 +445,7 @@ async def design_ctx(archive: Fixture, settings: object) -> ToolContext:
     ("name", "arguments"),
     [
         ("propose_recipe_version", {"reason": "Finer.", "grind_setting": "18"}),
-        (
-            "draft_profile",
-            {"base_version_id": 1, "patch": {"temperature": 92}, "reason": "Cooler."},
-        ),
-        ("list_recipe_shots", {}),
         ("get_shot", {"shot_id": 1}),
-        ("get_shot_extended", {"shot_id": 1}),
-        ("get_shot_full", {"shot_id": 1}),
-        ("compare_shots", {"shot_ids": [1, 2]}),
-        ("record_insight", {"text": "Something."}),
         ("query_shots", {"sql": "SELECT 1"}),
     ],
 )

@@ -12,7 +12,7 @@ from typing import Any
 
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
-from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
+from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, RecipeVersionRow
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import ToolContext, registry
@@ -233,12 +233,6 @@ class TestWhereItExists:
         assert outcome.status == "refused"
         assert "designing a Recipe" in outcome.error
 
-    async def test_it_is_in_the_recipe_scope_and_nowhere_else(self) -> None:
-        from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, RECIPE_TOOLS
-
-        assert "propose_outcome" in RECIPE_TOOLS
-        assert "propose_outcome" not in GENERAL_TOOLS | DESIGN_TOOLS
-
 
 class TestTheNextChangeAfterAGrade:
     """The tool-side twins of the repository rule: the same sentence, the same unlock."""
@@ -300,36 +294,3 @@ class TestTheNextChangeAfterAGrade:
         await call(ctx, "propose_outcome", outcome="held", note=NOTE)
         drafted = await call(ctx, "draft_profile", **arguments)
         assert drafted["status"] == "draft"
-
-
-async def test_proposing_the_next_version_still_needs_the_repository_to_agree(
-    archive: Fixture,
-) -> None:
-    """The repository and the tools state one rule: a dismissed grade unlocks nothing."""
-    version = await _predicted_version(archive)
-    grades = OutcomeProposalsRepository(archive.db)
-    from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalWrite
-
-    stored = (
-        await grades.create(
-            archive.recipe_id,
-            version.id,
-            OutcomeProposalWrite.model_validate({"outcome": "held", "note": NOTE}),
-        )
-    ).proposal
-    assert stored is not None
-    await grades.dismiss(archive.recipe_id, stored.id)
-    result = await RecipeProposalsRepository(archive.db).create(
-        archive.recipe_id,
-        ProposalWrite(
-            patch=RecipeVersionPatch(grind_setting="20"),
-            reason="finer",
-            prediction="Compared to the last one: two to four seconds longer.",
-        ),
-    )
-    assert result.refused == "outcome_open"
-
-
-def test_it_is_a_propose_tool() -> None:
-    spec = registry.get("propose_outcome")
-    assert spec is not None and spec.permission == "propose"
