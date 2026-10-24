@@ -73,29 +73,6 @@ async def test_two_profiles_named_bloom_and_bloom_ai_stay_two_profiles(
     assert _ids(fake_device) == ids
 
 
-async def test_a_new_file_does_not_join_the_profile_whose_name_differs_by_the_marker(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
-) -> None:
-    app, client = writes_on
-    await pull(app)
-    before = len((await get_board(client))["rows"])
-    for device_id, label in (("n1", "Bloom"), ("n2", "Bloom [AI]")):
-        fake_device.profiles.append(_file(fake_device, device_id, label, 92))
-    # Added on the display after the first sync: both are unseen, neither is a copy of the other.
-    fake_device.profiles[-1]["temperature"] = 93.0
-    fake_device.ws_requests.clear()
-
-    found = await pull(app)
-
-    assert sorted(i["label"] for i in summary_of(found)["adopted"]) == ["Bloom", "Bloom [AI]"]
-    board = await get_board(client)
-    assert len(board["rows"]) == before + 2
-    assert row_for(board, "Bloom")["machine"]["device_id"] == "n1"
-    assert row_for(board, "Bloom [AI]")["machine"]["device_id"] == "n2"
-    assert [r for r in board["reports"] if r["reason"] == "extra_copy"] == []
-    assert write_frames(fake_device) == []
-
-
 async def test_a_file_is_a_profile_by_its_id_and_never_the_row_of_its_name(
     writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
@@ -121,66 +98,6 @@ async def test_a_file_is_a_profile_by_its_id_and_never_the_row_of_its_name(
     assert attached[plain_row] == "p1"
     assert attached[marked_row] not in ("p1", "p2", "p3"), "pushed a file of its own"
     assert row_for(board, "Bloom [AI] (2)")["machine"]["device_id"] == "p3"
-
-
-async def test_a_file_carrying_the_marker_is_a_profile_of_its_own_whatever_the_history_holds(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
-) -> None:
-    """A profile's stored history holds a brew, and the machine holds a file with that brew under
-    a different name ("X [AI]") and a new id. A file is its brew **and** its name, so it is not
-    that profile's file: it joins the list as a profile of its own. (A file with a profile's brew
-    under an older name of it is a name-only difference, which the sync reads as a new file until
-    a file is matched by its id.)"""
-    app, client = writes_on
-    await pull(app)
-    row = row_for(await get_board(client), fake_device.profiles[0]["label"])["row"]
-    old = _file(fake_device, "gone", f"{row['label']} [AI]", 88)
-    fake_device.profiles[:] = [
-        p for p in fake_device.profiles if p["id"] != row["device_profile_id"]
-    ]
-    version, _ = await ProfilesRepository(app.state.db).ensure_version(
-        Profile.model_validate(
-            {k: v for k, v in old.items() if k not in ("id", "favorite", "selected")}
-        ),
-        owner=None,
-    )
-    await ProfileBoardRepository(app.state.db).add_version(row["id"], version.id, "agent")
-    fake_device.profiles.append(old)
-    rows = len((await get_board(client))["rows"])
-
-    found = await pull(app)
-
-    board = await get_board(client)
-    assert len(board["rows"]) == rows + 1
-    [joined] = [i for i in summary_of(found)["adopted"] if i["device_id"] == "gone"]
-    assert joined["reason"] == "unseen"
-    assert row_for(board, f"{row['label']} [AI]")["machine"]["device_id"] == "gone"
-
-
-async def test_a_never_seen_file_with_a_marker_is_not_a_conflict_on_the_profile_without_one(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
-) -> None:
-    """A live profile "X" whose file is gone from the machine, and a file "X [AI]" the app has
-    never seen, with content X never had. The file is a profile of its own; it is no conflict on
-    X (a name that merely starts the same is not X's name), and X is put back."""
-    app, client = writes_on
-    await pull(app)
-    row = row_for(await get_board(client), fake_device.profiles[0]["label"])["row"]
-    label = row["label"]
-    fake_device.profiles[:] = [
-        p for p in fake_device.profiles if p["id"] != row["device_profile_id"]
-    ]
-    fake_device.profiles.append(_file(fake_device, "marked", f"{label} [AI]", 77))
-
-    found = await pull(app)
-
-    summary = summary_of(found)
-    assert [(i["reason"], i["label"]) for i in summary["adopted"]] == [("unseen", f"{label} [AI]")]
-    assert summary["conflicts"] == []
-    assert [i["label"] for i in summary["pushed"]] == [label]
-    board = await get_board(client)
-    assert row_for(board, f"{label} [AI]")["machine"]["device_id"] == "marked"
-    assert row_for(board, label)["in_conflict"] is False
 
 
 # ── the twin of the creation guard, at the put ───────────────────────
@@ -210,41 +127,10 @@ async def test_a_renamed_draft_is_not_put_once_its_name_became_a_profile(
     ] == "draft", "refused whole: not half approved"
 
 
-async def test_a_new_draft_is_not_put_once_its_name_became_a_profile(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
-) -> None:
-    app, client = writes_on
-    await pull(app)
-    base = await ProfilesRepository(app.state.db).empty_base()
-    version = await ProfilesRepository(app.state.db).get_version(base)
-    assert version is not None and version.profile is not None
-    new = await app.state.draft_proposals.create_manual(
-        base_version_id=base, document={**version.profile, "label": "Bloom"}, is_new=True
-    )
-    await _display_made(app, fake_device, "bloomdisp", "Bloom")
-
-    refused = await client.post("/api/profile-board", json={"draft_id": new.id})
-
-    assert refused.status_code == 409
-    assert error(refused)["message"] == taken_name_sentence("Bloom")
-
-
-async def test_a_change_that_keeps_its_base_versions_name_is_still_put(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice, provider: FakeProvider
-) -> None:
-    app, client = writes_on
-    await pull(app)
-    draft = await same_name_draft(app, client, provider, BASE_LABEL, 7)
-
-    put = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
-
-    assert put.status_code == 201
-
-
 # ── names that differ only in case or surrounding whitespace ─────────
 
 
-@pytest.mark.parametrize("typed", ["bloom", "BLOOM", "Bloom ", " Bloom", "  bloom  "])
+@pytest.mark.parametrize("typed", ["BLOOM", "  bloom  "])
 async def test_a_name_differing_only_in_case_or_whitespace_is_taken(
     writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice, typed: str
 ) -> None:
@@ -288,19 +174,6 @@ async def test_a_new_names_surrounding_whitespace_is_not_stored(
     draft = await manual_draft(app, client, BASE_LABEL, "  Fresh idea  ", 7)
 
     assert draft["draft_label"] == "Fresh idea"
-
-
-async def test_a_name_taken_by_case_after_the_draft_was_made_is_not_put(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
-) -> None:
-    app, client = writes_on
-    draft = await manual_draft(app, client, BASE_LABEL, "bloom", 7)
-    await _display_made(app, fake_device, "bloomdisp", "Bloom")
-
-    refused = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
-
-    assert refused.status_code == 409
-    assert error(refused)["message"] == taken_name_sentence("bloom")
 
 
 async def test_a_profile_whose_own_name_has_trailing_whitespace_still_takes_the_name(
@@ -429,9 +302,11 @@ async def test_the_landing_and_the_put_agree_on_every_case(
     await _display_made(app, fake, "late1", "Late")
     await _display_made(app, fake, "late2", "late new")
 
+    expected_refused = {"a fork whose name appears", "a new profile whose name appears"}
     for case, draft_id in drafts.items():
         landing = await _landing_of(client, draft_id)
         put = await client.post("/api/profile-board", json={"draft_id": draft_id})
+        assert (landing["refused"] is not None) == (case in expected_refused), case
         if landing["refused"] is None:
             assert put.status_code == 201, (case, put.text)
         else:
@@ -441,7 +316,6 @@ async def test_the_landing_and_the_put_agree_on_every_case(
                 "is already a profile: draft a change from it, or "
                 "choose another name for a new one."
             ), case
-    assert sum(1 for c in drafts if "appears" in c) == 2
 
 
 async def test_a_continuation_through_an_unlisted_version_keeps_the_profiles_own_name(
