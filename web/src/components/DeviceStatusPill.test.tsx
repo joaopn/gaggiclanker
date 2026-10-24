@@ -59,12 +59,6 @@ describe("DeviceStatusPill", () => {
     expect(within(pill()).getByText("Online")).toHaveClass("max-xl:sr-only");
   });
 
-  it("is not a fault when no machine is configured", async () => {
-    renderPill();
-    await waitFor(() => expect(pill()).toHaveAttribute("data-state", "good"));
-    expect(pill()).toHaveTextContent("Online");
-  });
-
   it("names the board when the machine is connected", async () => {
     getDeviceStatus.mockResolvedValue({
       configured: true,

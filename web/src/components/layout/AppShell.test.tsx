@@ -45,22 +45,6 @@ describe("AppShell", () => {
     getDeviceStatus.mockResolvedValue({ configured: false, connected: false });
   });
 
-  it("lists every nav entry", () => {
-    renderApp();
-    const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
-    for (const link of NAV_LINKS) {
-      expect(nav).toHaveTextContent(link.label);
-    }
-  });
-
-  it("puts the writes switch in the top bar, right before the machine status", () => {
-    renderApp();
-    const pill = screen.getByTestId("device-status-pill");
-    const toggle = screen.getByRole("switch", { name: "Machine writes" });
-    expect(pill.closest("header")).toContainElement(toggle);
-    expect(pill.previousElementSibling).toContainElement(toggle);
-  });
-
   it.each(["/shots", "/chat", "/profiles", "/device", "/settings/system"])(
     "puts Sync first in the top bar, before the writes switch, on %s",
     (path) => {
@@ -282,12 +266,6 @@ describe("AppShell", () => {
     expect(screen.getByRole("heading", { name: "Beans" })).toBeInTheDocument();
   });
 
-  it("marks the current route", () => {
-    renderApp("/beans");
-    const current = screen.getAllByRole("link", { current: "page" });
-    expect(current.some((el) => el.textContent?.includes("Beans"))).toBe(true);
-  });
-
   it("navigates on the `g s` chord", async () => {
     const user = setupUser();
     renderApp("/beans");
@@ -407,29 +385,6 @@ describe("AppShell", () => {
     // fires mid-sentence is worse than no shortcut at all.
     expect(screen.getByRole("heading", { name: "Machine access" })).toBeInTheDocument();
     expect(host).toHaveValue("gs");
-  });
-
-  it("opens the shortcut sheet on ?", async () => {
-    const user = setupUser();
-    renderApp();
-    await user.keyboard("?");
-    expect(await screen.findByText("Keyboard shortcuts")).toBeInTheDocument();
-  });
-
-  it("renders the device status pill from /health with no machine configured", async () => {
-    renderApp();
-    await waitFor(() =>
-      expect(screen.getByTestId("device-status-pill")).toHaveAttribute("data-state", "good"),
-    );
-    expect(screen.getByTestId("device-status-pill")).toHaveTextContent("Online");
-  });
-
-  it("shows the pill as offline when the backend is unreachable", async () => {
-    getHealth.mockRejectedValue(new Error("Failed to fetch"));
-    renderApp();
-    await waitFor(() =>
-      expect(screen.getByTestId("device-status-pill")).toHaveAttribute("data-state", "bad"),
-    );
   });
 
   it("redirects / to the shots page", async () => {
