@@ -92,6 +92,22 @@ def provider() -> FakeProvider:
     return FakeProvider(script=[json.dumps(GOOD_REVIEW)])
 
 
+def reading_on(phase: str) -> dict[str, Any]:
+    """`GOOD_REVIEW` with every phase it names replaced by ``phase``.
+
+    A reading may only name the reviewed shot's own phases (the output schema is built from
+    them), and `GOOD_REVIEW` names `Pressurise`, a phase of the review fixtures' profile. The
+    simulator brews whatever profile it has selected, so the reply is written for the shot it
+    reviews rather than reused as it stands.
+    """
+    reading: dict[str, Any] = json.loads(json.dumps(GOOD_REVIEW))
+    for claim in reading["claims"]:
+        for window in [claim["window"], *(item.get("window", {}) for item in claim["evidence"])]:
+            if "phase" in window:
+                window["phase"] = phase
+    return reading
+
+
 @pytest.fixture
 async def live(
     sim_env: EnvSettings, provider: FakeProvider
@@ -341,8 +357,11 @@ async def test_the_whole_prototype_against_the_simulator(
     )
     assert assigned["recipe_version_id"] == version_id
 
-    # 8. Review it with the fake provider. `?wait=1` blocks until the task is
-    #    done, which is what this route offers for exactly this case.
+    # 8. Review it with the fake provider, scripted to name a phase this shot ran.
+    #    `?wait=1` blocks until the task is done, which is what this route offers
+    #    for exactly this case.
+    phase = str(detail["shot"]["phases"][0]["name"])
+    provider.script = [json.dumps(reading_on(phase))]
     review = data(await client.post(f"/api/shots/{shot_id}/reviews?wait=1", json={}, timeout=60.0))
     assert review["status"] == "ok", review.get("error")
     assert provider.calls, "the review never called a provider"
