@@ -426,7 +426,10 @@ async def test_a_renamed_recipe_draft_is_a_profile_of_its_own_and_the_firmware_p
     run = await pull(app)
     assert run.status == "ok", run.error
     labels = [p["label"] for p in fake.profiles]
-    assert BASE_LABEL in labels and "9 Bar Warm" in labels
+    # The Recipe brews the firmware profile, so the machine shows its name with the Recipe's
+    # version; the profile of its own has no Recipe and keeps its plain name.
+    shown = row_for(await get_board(client), BASE_LABEL)["machine_name"]
+    assert shown != BASE_LABEL and shown in labels and "9 Bar Warm" in labels
     assert summary_of(run)["removed"] == []
 
 

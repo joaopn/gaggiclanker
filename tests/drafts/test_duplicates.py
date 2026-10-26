@@ -520,7 +520,8 @@ async def test_the_new_profile_reaches_the_machine_through_the_ordinary_sync(
     run = await pull(app)
 
     assert run.status == "ok", run.error
-    assert "Blooming milk" in [p["label"] for p in fake.profiles]
+    # The new Recipe brews it, so the machine shows its name with the Recipe's first version.
+    assert "Blooming milk v1" in [p["label"] for p in fake.profiles]
 
 
 async def test_a_new_bean_and_grinder_are_the_dialogs_not_the_sources(adopted: Adopted) -> None:

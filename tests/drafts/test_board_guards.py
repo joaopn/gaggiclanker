@@ -144,7 +144,10 @@ async def test_putting_a_deleted_profile_back_revives_its_row_instead_of_pushing
         run = await pull(app)
 
     assert run.status == "ok", run.error
-    assert len([p for p in fake.profiles if p["label"] == APP_LABEL]) == 1
+    # The Recipe brews it, so its one file shows the name and the Recipe's version.
+    shown = row_for(await get_board(client), APP_LABEL)["machine_name"]
+    assert shown != APP_LABEL
+    assert [str(p["id"]) for p in fake.profiles if p["label"] in (APP_LABEL, shown)] == [file]
     assert row_for(await get_board(client), APP_LABEL)["row"]["device_profile_id"] == file
     assert kinds(await audit(app), "profile_delete") == []
 
@@ -882,7 +885,9 @@ async def test_a_persons_profile_ending_in_the_app_label_is_continued_like_any_o
     assert run.status == "ok", run.error
     assert row_for(await get_board(client), STAGED)["row"]["id"] == mine_row["row"]["id"]
     # The person's file was saved over by the new version under the same name, and nothing else.
-    assert [str(p["id"]) for p in fake_device.profiles if p["label"] == STAGED] == ["mine"]
+    shown = row_for(await get_board(client), STAGED)["machine_name"]
+    assert shown.startswith(f"{STAGED} v")
+    assert [str(p["id"]) for p in fake_device.profiles if p["label"] == shown] == ["mine"]
 
 
 async def test_a_deleted_copy_the_app_saved_before_adoption_is_removed_under_the_guards(

@@ -78,7 +78,9 @@ async def _edited_on_the_machine(
     """A pinned copy on the machine, edited there: its row and the conflict's content hash."""
     row = await _pinned_row(app, client)
     await pull(app)  # the copy reaches the machine
-    edited = next(p for p in fake.profiles if p["label"] == NAME)
+    # The Recipe's own profile shows the same name on the machine: the pin's file is the row's.
+    pin_file = row_for(await get_board(client), NAME)["machine"]["device_id"]
+    edited = next(p for p in fake.profiles if str(p["id"]) == pin_file)
     edited["temperature"] = float(edited.get("temperature", 90)) + 1
     await pull(app)  # the machine's file is not what the app put there: a conflict
     seen = data(await client.get(f"/api/profile-board/{row['row']['id']}/conflict"))
@@ -151,8 +153,9 @@ async def test_keeping_the_machines_side_of_a_pinned_files_conflict_gives_the_re
         (own,),
     )
     assert active["board_id"] == own and active["label"] == BASE_LABEL
+    pin_file = row_for(await get_board(client), NAME)["machine"]["device_id"]
     assert json.loads(active["json"])["temperature"] == float(
-        next(p for p in fake.profiles if p["label"] == NAME)["temperature"]
+        next(p for p in fake.profiles if str(p["id"]) == pin_file)["temperature"]
     )
     assert (
         await app.state.db.fetch_value(
@@ -418,7 +421,8 @@ async def test_keeping_the_machines_name_in_a_both_sides_name_conflict_touches_n
     await pull(app)  # the copy reaches the machine
     row_id = row["row"]["id"]
     await app.state.board.board.update(row_id, BoardRowPatch(label="Pinned renamed here"))
-    next(p for p in fake.profiles if p["label"] == NAME)["label"] = "Pinned renamed there"
+    pin_file = row_for(await get_board(client), "Pinned renamed here")["machine"]["device_id"]
+    next(p for p in fake.profiles if str(p["id"]) == pin_file)["label"] = "Pinned renamed there"
     await pull(app)
     seen = data(await client.get(f"/api/profile-board/{row_id}/conflict"))
     assert (seen["app_name"], seen["machine_name"]) == (

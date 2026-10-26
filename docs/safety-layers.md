@@ -128,6 +128,27 @@ index. A file the app has never seen whose name a live profile has joins the lis
 "<name> (2)" (or the next free number), and the next sync saves that name over the file. Making a
 version active never changes the profile's name.
 
+**The machine's name for a profile is derived.** A profile a Recipe brews (archived or not) is
+called, on the machine, its own name, a space and the Recipe's current version label ("Alma Lever
+v1.3"); a profile with no Recipe, a Recipe with no version yet, and a pin's copy keep their own
+name. The profile's own name (`profile_board.label`, every version's label, what Rename edits,
+what the name check keeps unique, what the agent reads) never carries the version, and
+`profile_board.device_label` records the exact name on the file. A new current version needs no
+trigger of its own: the next sync sees the file is not held under the derived name and saves the
+profile's document over its own file in place, through the guarded save above (shot pull first,
+fresh-load guard, read-back), planned as `renamed` ("Becomes <name> on the machine at the next
+sync"). With Writes off nothing is sent. Reading a name back, for a profile a Recipe brews its own
+name followed by a well-formed version label (`v1`, `v1.3`) is what the app wrote, not a rename at
+the machine: a stale or edited suffix is put right by the next save. For any other profile the
+app writes no suffix, so any name but its own is a rename, as it always was. Any other name is a
+rename at the machine, and what the profile takes is that name with the suffix the app itself
+expected or recorded cut off when it ends with exactly that suffix, never a pattern. Two files may
+carry one machine name (a pin of the version the Recipe is on), but a name is **taken** when
+another live profile has it as its name or as its machine name, and that one question
+(`drafts/taken_names.py`) is asked by every path that can give a profile a name: a new profile, a
+rename, a file renamed at the display, keeping the machine's side of a conflict, and an unseen
+file joining the list ("(2)"). A profile's own machine name never counts against itself.
+
 **Conflicts.** A profile edited outside the app is never overwritten silently. On a profile's own
 file **the brew and the name are decided separately**. A brew the app has never seen on that file
 (not what it last recorded for it, not the active version, not a version the profile has had)

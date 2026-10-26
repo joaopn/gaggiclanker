@@ -388,18 +388,18 @@ describe("names on a row", () => {
     );
   });
 
-  it("says a planned rename is a rename, and any other push is a push", () => {
+  it("says a planned change of the machine name is shown as the server says it, and any other push is a push", () => {
     const renamed = boardRowView({
       planned: [
         boardAction({
           row_id: 1,
           reason: "renamed",
-          detail: "Will be renamed on the machine at the next sync",
+          detail: "Becomes Alma Lever v1.3 on the machine at the next sync",
         }),
       ],
     });
     expect(rowStateOf(boardView({ rows: [renamed] }), renamed)).toMatchObject({
-      text: "Will be renamed on the machine at the next sync",
+      text: "Becomes Alma Lever v1.3 on the machine at the next sync",
       tone: "info",
     });
     const superseded = boardRowView({

@@ -328,7 +328,9 @@ async def test_unpin_takes_the_copy_off_at_the_next_sync_and_leaves_no_proposal(
     assert board["proposals"] == []
     run = await pull(app)
     assert run.status == "ok", run.error
-    assert name not in [p["label"] for p in fake.profiles]
+    # The Recipe's own profile is called the same on the machine while it is at v1: one file
+    # left, not the pin's.
+    assert [p["label"] for p in fake.profiles].count(name) == 1
     # The shots already filed stay filed, and the pin is not a live one any more.
     detail = data(await client.get(f"/api/recipes/{recipe_id}"))
     assert detail["versions"][0]["version"]["id"] == version_id
@@ -343,7 +345,8 @@ async def test_unpinning_before_any_sync_leaves_nothing_behind(adopted: Adopted)
     run = await pull(app)
 
     assert run.status == "ok", run.error
-    assert f"{BASE_LABEL} v1" not in [p["label"] for p in fake.profiles]
+    # The Recipe's own profile shows the same name on the machine while it is at v1.
+    assert [p["label"] for p in fake.profiles].count(f"{BASE_LABEL} v1") == 1
     board = await get_board(client)
     assert board["proposals"] == [] and board["pending_removals"] == []
 
@@ -501,6 +504,8 @@ async def test_archiving_a_recipe_unpins_every_pin_in_one_step_and_the_sync_take
     names = [data(await _pin(client, recipe_id, v))["pin"]["name"] for v in (v1, v2)]
     await pull(app)
     assert set(names) <= {p["label"] for p in fake.profiles}
+    # The Recipe is at its second version, so its own profile shows that name too.
+    assert [p["label"] for p in fake.profiles].count(names[1]) == 2
 
     archived = data(await client.post(f"/api/recipes/{recipe_id}/archive"))
 
@@ -519,7 +524,10 @@ async def test_archiving_a_recipe_unpins_every_pin_in_one_step_and_the_sync_take
     assert board["proposals"] == []
     run = await pull(app)
     assert run.status == "ok", run.error
-    assert not set(names) & {p["label"] for p in fake.profiles}
+    # An archived Recipe keeps its last version on the machine: only the profile's own file is
+    # left under the second name.
+    labels = [p["label"] for p in fake.profiles]
+    assert names[0] not in labels and labels.count(names[1]) == 1
     assert (await client.post("/api/recipes/9999/archive")).status_code == 404
 
 
@@ -531,7 +539,7 @@ async def test_unpinning_the_profile_selected_on_the_machine_selects_another_one
     pin = data(await _pin(client, recipe_id, version_id))["pin"]
     await pull(app)
     name = pin["name"]
-    [file_id] = [str(p["id"]) for p in fake.profiles if p["label"] == name]
+    file_id = str(row_for(await get_board(client), name)["machine"]["device_id"])
     fake.selected_profile_id = file_id
     data(await client.post(f"/api/pins/{pin['id']}/unpin"))
 

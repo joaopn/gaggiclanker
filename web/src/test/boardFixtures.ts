@@ -68,6 +68,7 @@ export function boardRowView(
   const base = boardRow(row);
   return {
     row: base,
+    machine_name: base.label,
     type: "standard",
     utility: false,
     machine: {

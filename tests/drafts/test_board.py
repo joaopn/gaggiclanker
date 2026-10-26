@@ -949,7 +949,10 @@ async def test_a_copy_another_recipe_brews_is_replaced_all_the_same(
     assert run.status == "ok", run.error
     assert [i["device_id"] for i in summary_of(run)["pushed"]] == [old_id]
     assert summary_of(run)["removed"] == [] and summary_of(run)["left"] == []
-    assert [str(p["id"]) for p in fake.profiles if p["label"] == APP_LABEL] == [old_id]
+    # The Recipe brews it, so the machine shows its name and the version the Recipe followed to.
+    shown = row_for(await get_board(client), APP_LABEL)["machine_name"]
+    assert shown == f"{APP_LABEL} v1.1"
+    assert [str(p["id"]) for p in fake.profiles if p["label"] == shown] == [old_id]
     # The Recipe followed its profile when the draft was put.
     assert len(await recipe_version_ids(app, recipe_id)) == 2
     assert (await get_board(client))["actions"] == []
@@ -1119,7 +1122,7 @@ async def test_adoption_takes_two_profiles_with_one_label_and_the_next_sync_rena
     [planned] = row_for(board, f"{original['label']} (2)")["planned"]
     assert (planned["reason"], planned["detail"]) == (
         "renamed",
-        "Will be renamed on the machine at the next sync",
+        f"Becomes {original['label']} (2) on the machine at the next sync",
     )
 
     again = await pull(app)

@@ -152,6 +152,7 @@ async def test_a_recipe_draft_renamed_onto_a_profile_s_name_is_refused_by_landin
     app, client, fake = adopted
     first = await app_row(app, client, fake, provider, 8, name="First")
     recipe_id = await make_recipe_on(client, "Rename set", first["current_version_id"])
+    await pull(app)  # its file now shows the Recipe's version
     version = data(await client.get(f"/api/profile-versions/{first['current_version_id']}"))
     document = dict(version["profile"])
     document["label"] = "Second"

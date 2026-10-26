@@ -36,6 +36,7 @@ __all__ = [
     "destination_now",
     "free_name",
     "lineage_owner",
+    "machine_name_sentence",
     "name_key",
     "person_taken_sentence",
     "pinned_copy_agent_sentence",
@@ -80,6 +81,12 @@ def person_taken_sentence(existing_label: str) -> str:
     was typed (the typed case may differ), and no advice about drafting. The agent keeps
     :func:`taken_name_sentence`."""
     return f"There is already a profile called {existing_label}. Choose another name."
+
+
+def machine_name_sentence(machine_name: str, holder_label: str) -> str:
+    """The refusal for a new or renamed profile whose name is what another live profile is called
+    on the machine (its own name and the version of its Recipe)."""
+    return f"{machine_name} is what {holder_label} is called on the machine. Choose another name."
 
 
 def pinned_sentence(profile_name: str, recipe_name: str, version_label: str) -> str:

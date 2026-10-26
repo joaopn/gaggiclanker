@@ -555,7 +555,7 @@ async def test_a_profile_edited_on_the_display_is_a_conflict_and_the_apps_side_i
         )
     finally:
         for p in await device.list_profiles():
-            if str(p.label).endswith(TEST_MARK):
+            if TEST_MARK in str(p.label):
                 await delete_now(device, str(p.id))
 
 
@@ -612,9 +612,7 @@ async def test_a_firmware_default_switched_off_is_removed_and_back_on_pushed_aga
         await sync(app)
         board = data(await client.get("/api/profile-board?live=true"))
         target = next(
-            r
-            for r in board["rows"]
-            if not r["utility"] and not r["row"]["label"].endswith(TEST_MARK)
+            r for r in board["rows"] if not r["utility"] and TEST_MARK not in r["row"]["label"]
         )
         row_id, label = target["row"]["id"], target["row"]["label"]
         file = target["machine"]["device_id"]
@@ -758,6 +756,68 @@ async def test_a_profile_keeps_its_id_through_a_rename_a_new_version_and_a_renam
     finally:
         async with httpx.AsyncClient() as machine_ui:
             await machine_ui.post(f"http://{SIM_HOST}/api/settings", data={"startupProfile": ""})
+        listed = {p.id for p in await device.list_profiles()}
+        for device_id in created:
+            if device_id in listed:
+                await delete_now(device, device_id)
+
+
+async def test_a_recipes_profile_shows_its_version_on_the_real_firmware(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
+) -> None:
+    """A Recipe on a profile, then a version that changes only the grind: the firmware's file
+    keeps its id, star and selection through each save of the name and the version after it, and
+    the profile's own name never carries the version."""
+    app, client = live
+    device = app.state.connection.client
+    created: list[str] = []
+    try:
+        await adopt(app)
+        first = await put_on_board(app, client, provider, await usable_version(app), 8)
+        [pushed] = (await sync(app))["pushed"]
+        file_id = str(pushed["device_id"])
+        created.append(file_id)
+        row_id = first["row"]["id"]
+        name = str(first["row"]["label"])
+        await device.select_profile(file_id)
+        before = await device.load_profile(file_id)
+        assert before.favorite and before.selected
+
+        bean = data(await client.post("/api/beans", json={"name": "Sim", "roaster": "nobody"}))
+        recipe = data(
+            await client.post(
+                "/api/recipes",
+                json={
+                    "name": "Sim recipe",
+                    "bean_id": bean["id"],
+                    "version": {
+                        "drink": "espresso",
+                        "profile_version_id": first["row"]["current_version_id"],
+                        "dose_g": 18.0,
+                        "target_yield_g": 36.0,
+                    },
+                },
+            )
+        )
+
+        for shown, version in ((f"{name} v1", "v1"), (f"{name} v1.1", "v1.1")):
+            if version == "v1.1":
+                grind = await client.post(
+                    f"/api/recipes/{recipe['id']}/versions", json={"grind_value": 21.0}
+                )
+                assert grind.status_code < 300, grind.text
+            summary = await sync(app)
+            [saved] = summary["pushed"]
+            assert str(saved["device_id"]) == file_id and saved["reason"] == "renamed"
+            assert summary["removed"] == [] and summary["writes"] == 1
+            loaded = await device.load_profile(file_id)
+            assert loaded.label == shown
+            assert (loaded.favorite, loaded.selected) == (True, True)
+            board = data(await client.get("/api/profile-board?live=true"))
+            row = next(r for r in board["rows"] if r["row"]["id"] == row_id)
+            assert row["row"]["label"] == name and row["machine_name"] == shown
+            assert (await sync(app))["writes"] == 0, "nothing is left to do"
+    finally:
         listed = {p.id for p in await device.list_profiles()}
         for device_id in created:
             if device_id in listed:

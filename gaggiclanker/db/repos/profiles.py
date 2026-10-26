@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.base import JsonObject, utc_now
 from gaggiclanker.db.repository import Repository, row_to_dict
+from gaggiclanker.domain.machine_names import app_suffix
 from gaggiclanker.domain.models import Profile, brew_hash, canonical_document_json
 from gaggiclanker.domain.profile_recipe import profile_recipe
 
@@ -336,6 +337,31 @@ class ProfilesRepository(Repository):
             raise RuntimeError("profile version vanished between write and read")
         return version, True
 
+    async def named_as_stored(self, profile: Profile, owner: int | None) -> Profile:
+        """``profile`` as a version of ``owner`` is stored.
+
+        For a profile a Recipe brews, a document called what the machine shows (the profile's own
+        name with the version of its Recipe after it, or the name the app last recorded for the
+        file, which may be an older name or version) is stored under the profile's own name: a
+        version's stored name never carries that suffix. Any other profile has no suffix, and its
+        document keeps the name it came with."""
+        if owner is None:
+            return profile
+        row = await self.db.fetch_one(
+            "SELECT b.label AS label, b.device_label AS device_label, "
+            "EXISTS (SELECT 1 FROM recipes r WHERE r.board_id = b.id) AS has_recipe "
+            "FROM profile_board b WHERE b.id = ?",
+            (owner,),
+        )
+        if row is None or not row["has_recipe"]:
+            return profile
+        label = str(row["label"])
+        if profile.label == label or not (
+            app_suffix(profile.label, label) or profile.label == row["device_label"]
+        ):
+            return profile
+        return profile.model_copy(update={"label": label})
+
     async def version_for_file(
         self, profile: Profile, device_id: str, *, device_json: str | None = None
     ) -> tuple[ProfileVersionRow, bool]:
@@ -350,6 +376,7 @@ class ProfilesRepository(Repository):
         profile's version: it is the document it came as).
         """
         owner = await self.standing_profile(device_id)
+        profile = await self.named_as_stored(profile, owner)
         if owner is None:
             content_hash = brew_hash(profile)
             owned = await self.db.fetch_all(

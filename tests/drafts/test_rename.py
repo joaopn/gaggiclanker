@@ -88,7 +88,7 @@ async def test_the_machine_hears_of_it_at_the_next_sync_in_one_save_over_its_own
     renamed = await own_row(client, "A new name")
     [planned] = renamed["planned"]
     assert (planned["kind"], planned["reason"]) == ("push", "renamed")
-    assert planned["detail"] == "Will be renamed on the machine at the next sync"
+    assert planned["detail"] == "Becomes A new name on the machine at the next sync"
     fake.ws_requests.clear()
 
     await pull(app)
@@ -180,7 +180,7 @@ async def test_it_works_with_writes_off_and_the_machine_follows_when_they_are_on
     await pull(app)
     assert write_frames(fake) == [] and file_called(fake, file) == BASE_LABEL
     [planned] = (await own_row(client, "Renamed with writes off"))["planned"]
-    assert planned["detail"] == "Will be renamed on the machine at the next sync"
+    assert planned["detail"] == ("Becomes Renamed with writes off on the machine at the next sync")
 
     await app.state.settings_service.apply({"deviceWritesEnabled": True})
     await pull(app)

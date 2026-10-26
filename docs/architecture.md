@@ -333,7 +333,9 @@ delete's fresh-load guard, the audit's payload hash and the conflict's `content_
 function builds a document from a version, `document_for(version, name)`, with the owner's
 current name (a new profile's draft: the draft's); the label stored with a version is only the
 name it was first stored with. The board plan reads a machine file as its brew and its name
-(`FileContent`) and compares it with the profile's active version under the profile's name, and
+(`FileContent`) and compares it with the profile's active version under the profile's machine name
+(its name, then the current version label of the Recipe that brews it, if any:
+`domain/machine_names.py`; the name itself never carries the version), and
 with what the app recorded for the file (`profile_board.device_label`, written beside
 `device_version_id`). The brew and the name are decided apart (`judge_file`): a brew the profile
 never had is a conflict, a name only the app changed is saved over the file, a name only the

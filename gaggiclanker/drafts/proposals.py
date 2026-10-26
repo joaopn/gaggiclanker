@@ -29,6 +29,7 @@ from gaggiclanker.db.repos.lineage import (
     change_destination,
     destination_now,
     name_key,
+    person_taken_sentence,
     pinned_copy_agent_sentence,
     pinned_copy_sentence,
     place_draft,
@@ -54,6 +55,7 @@ from gaggiclanker.domain.profile_policy import (
     diff_stop_conditions,
 )
 from gaggiclanker.drafts.live_lineage import LiveLineage
+from gaggiclanker.drafts.taken_names import TakenNames
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import DraftSignature, SignatureService, split_duplicates
@@ -101,12 +103,17 @@ class PreparedDraft:
 class TakenName(Conflict):
     """A new or renamed draft asked for the name of a profile that is already in the list."""
 
-    def __init__(self, label: str, *, existing: str | None = None) -> None:
-        super().__init__(taken_name_sentence(label))
+    def __init__(
+        self, label: str, *, existing: str | None = None, sentence: str | None = None
+    ) -> None:
+        super().__init__(sentence or taken_name_sentence(label))
         self.label = label
         #: The stored name of the live profile that has it (its case may differ from ``label``):
         #: what a person is told, in their own sentence.
         self.existing = existing if existing is not None else label
+        #: What a person is told under a Name field: the taken-name sentence, or, when the name is
+        #: what another profile is called on the machine, that profile's machine-name sentence.
+        self.person = sentence or person_taken_sentence(self.existing)
 
 
 class PinFrozen(Conflict):
@@ -197,6 +204,17 @@ class DraftProposals:
             pinned = await self.pinned_copy_of(document)
             if pinned is not None:
                 raise pinned
+            if target.destination_board_id is None:
+                # A new profile may not be called what another profile is called on the machine
+                # (its name and its Recipe's version). A pin's copy is exempt: its name is the
+                # version's on purpose, and two files of one name are allowed.
+                holder = await TakenNames.over(self.db).holder(target.label)
+                if holder is not None:
+                    raise TakenName(
+                        target.label,
+                        existing=holder.row.label,
+                        sentence=holder.sentence if holder.on_the_machine else None,
+                    )
         return PreparedDraft(
             profile=document,
             clamp_changes=changes,

@@ -2299,6 +2299,20 @@ class RecipesRepository(Repository):
         line = live_line(self.to_models(VersionLink, rows), current)
         return next((version_id for version_id in line[1:] if version_id in kept), None)
 
+    async def version_labels_by_profile(self) -> dict[int, str]:
+        """The current version's label of the Recipe each profile has, by profile id, archived
+        Recipes included (an archived Recipe keeps its last version on the machine). A profile with
+        no Recipe, or whose Recipe has no current version yet (a design not accepted), is absent."""
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT s.board_id AS board_id, {label_sql("v")} AS version_label
+              FROM recipes s
+              JOIN recipe_versions v ON v.id = s.current_version_id
+             WHERE s.board_id IS NOT NULL
+            """  # noqa: S608 - the only interpolation is the version label expression, a constant
+        )
+        return {int(r["board_id"]): str(r["version_label"]) for r in rows}
+
     async def live_recipes_by_profile(self) -> dict[int, LiveRecipe]:
         """The Recipe each profile has, by profile id: archived Recipes left out (a warning about a
         profile a Recipe no longer uses would only be noise), with the version the Recipe brews now,

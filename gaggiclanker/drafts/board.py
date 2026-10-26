@@ -87,6 +87,7 @@ from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
 from gaggiclanker.db.repos.version_names import next_names
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
+from gaggiclanker.domain.machine_names import machine_name
 from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.domain.profile_policy import (
     ProfileRejected,
@@ -136,6 +137,7 @@ from gaggiclanker.drafts.proposals import (
     schema_errors,
 )
 from gaggiclanker.drafts.standing import RowFacts, StandingState, classify
+from gaggiclanker.drafts.taken_names import NameHolder, TakenNames
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.signatures.service import SignatureService
@@ -278,6 +280,10 @@ class BoardRowView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     row: BoardRow
+    #: What the machine shows for this profile: its name, then its Recipe's current version label
+    #: when it has one (the Recipe's, archived or not). Equal to the name when nothing is added.
+    #: The name itself never carries the version.
+    machine_name: str
     #: ``pro``/``standard``, from the current version, for a list that shows both kinds.
     type: str
     utility: bool = False
@@ -458,6 +464,11 @@ class _MirrorConflict:
 
     version: ProfileVersionRow
     name: str
+    #: The profile's name when the machine's side is kept: ``name`` without the version the app
+    #: expected or recorded after it.
+    taken_name: str
+    #: What the machine shows for the profile now (its name and its Recipe's version).
+    expected_name: str
     document_hash: str
     #: The name the app last recorded for the file, if it recorded one.
     recorded_name: str | None = None
@@ -528,7 +539,10 @@ class BoardService:
         self.writes = DeviceWritesRepository(db)
         self.runs = SyncRepository(db)
         self.proposals = DraftProposals(db, settings)
-        self.plans = PlanBuilder(self.board, self.profiles, policy=self.policy_refusal)
+        self.names = TakenNames(self.board, self.recipes)
+        self.plans = PlanBuilder(
+            self.board, self.profiles, policy=self.policy_refusal, recipes=self.recipes
+        )
 
     # ── reading ──────────────────────────────────────────────────────
 
@@ -568,12 +582,17 @@ class BoardService:
         counts = await self.board.shot_counts([p.version.id for p in computed.rows])
         pinned = await PinsRepository(self.db).live_for_boards(p.row.id for p in computed.rows)
         renamed = await self._renamed_on_machine()
+        version_labels = await self.recipes.version_labels_by_profile()
+        machine_names = {
+            p.row.id: machine_name(p.row.label, version_labels.get(p.row.id)) for p in computed.rows
+        }
         rows: list[BoardRowView] = []
         for plan in computed.rows:
             entry = await self.board.get_version_entry(plan.row.id, plan.version.id)
             rows.append(
                 BoardRowView(
                     row=plan.row,
+                    machine_name=machine_names.get(plan.row.id, plan.machine_name),
                     type=plan.version.type,
                     utility=plan.version.utility,
                     machine=_machine_state(plan, machine),
@@ -694,14 +713,25 @@ class BoardService:
                 recorded = FileContent(held.content_hash, row.device_label or "")
         if file == recorded:
             return None
+        expected_name = machine_name(
+            row.label, (await self.recipes.version_labels_by_profile()).get(row.id)
+        )
         judged = await judge_file(
-            self.board, row, file, recorded, document, FileContent(active.content_hash, row.label)
+            self.names,
+            self.board,
+            row,
+            file,
+            recorded,
+            document,
+            FileContent(active.content_hash, expected_name),
         )
         if judged.outcome != "conflict":
             return None
         return _MirrorConflict(
             version=version,
             name=mirrored.label,
+            taken_name=judged.taken_name or mirrored.label,
+            expected_name=expected_name,
             document_hash=document,
             recorded_name=None if recorded is None else recorded.name,
             holder=judged.holder,
@@ -730,8 +760,8 @@ class BoardService:
             machine_profile=stored_document(machine.version, machine.name),
             app_version_id=active.id,
             app_short_hash=short_hash(active.content_hash),
-            app_profile=stored_document(active, row.label),
-            app_name=row.label,
+            app_profile=stored_document(active, machine.expected_name),
+            app_name=machine.expected_name,
             machine_name=machine.name,
             recorded_name=machine.recorded_name,
             machine_name_held_by=None if machine.holder is None else machine.holder.label,
@@ -778,18 +808,16 @@ class BoardService:
                     row.id, BoardRowPatch(conflict_overruled_hash=machine.document_hash)
                 )
             else:
-                if machine.name != row.label:
-                    holder = await self.board.find_live_by_name_key(machine.name, excluding=row.id)
+                if machine.taken_name != row.label:
+                    holder = await self.names.holder(
+                        machine.taken_name, excluding=row.id, on_file=True
+                    )
                     if holder is not None:
-                        raise Conflict(
-                            f"The list already has {holder.label}; rename or switch off that one "
-                            "first.",
-                            details={"reason": "duplicate_label"},
-                        )
+                        raise _name_held(holder)
                 updated = await self.board.update(
                     row.id,
                     BoardRowPatch(
-                        label=machine.name,
+                        label=machine.taken_name,
                         current_version_id=kept,
                         previous_version_id=row.current_version_id,
                         device_version_id=kept,
@@ -815,16 +843,13 @@ class BoardService:
         version, the Recipe that follows it and a pin stay as they are, and the next sync decides
         the brew by its own rule (an older brew under the current name is matched and replaced).
         """
-        holder = await self.board.find_live_by_name_key(machine.name, excluding=row.id)
-        if holder is not None and machine.name != row.label:
-            raise Conflict(
-                f"The list already has {holder.label}; rename or switch off that one first.",
-                details={"reason": "duplicate_label"},
-            )
+        holder = await self.names.holder(machine.taken_name, excluding=row.id, on_file=True)
+        if holder is not None and machine.taken_name != row.label:
+            raise _name_held(holder)
         updated = await self.board.update(
             row.id,
             BoardRowPatch(
-                label=machine.name,
+                label=machine.taken_name,
                 device_version_id=row.device_version_id,
                 device_label=machine.name,
                 conflict_overruled_hash=None,
@@ -905,6 +930,10 @@ class BoardService:
         pinned = await self._pinned_copy_named(version, placed.name)
         if pinned is not None:
             return NameCheck(label=name, refused=pinned.person)
+        if placed.owner is None:
+            holder = await self.names.holder(name)
+            if holder is not None:
+                return NameCheck(label=name, refused=holder.sentence)
         return NameCheck(label=name)
 
     async def _pinned_copy_named(
@@ -1574,11 +1603,9 @@ class BoardService:
             row = await self._live_row(row_id)
             if name == row.label:
                 return row
-            holder = await self.board.find_live_by_name_key(name, excluding=row.id)
+            holder = await self.names.holder(name, excluding=row.id)
             if holder is not None:
-                raise Conflict(
-                    person_taken_sentence(holder.label), details={"reason": "duplicate_label"}
-                )
+                raise Conflict(holder.sentence, details={"reason": "duplicate_label"})
             patch = BoardRowPatch(label=name)
             machine = await self._mirror_conflict(row)
             if machine is not None and machine.name_only:
@@ -1837,6 +1864,7 @@ class BoardService:
                     # Not taken (another profile has the name now): the file is not recorded as
                     # holding that name either, so the next sync sees the difference and asks.
                     plan.edited_file = None
+                    plan.machine_name = plan.derived_name
 
     async def _take_name(self, plan: RowPlan, *, run_id: int) -> BoardSummaryItem | None:
         """The profile takes the name its file has at the machine; nothing is written there.
@@ -1846,8 +1874,9 @@ class BoardService:
         follows the profile's, so the file and the profile agree. A rename never writes a version.
         """
         name = plan.take_name
+        file_name = plan.take_file_name
         row = plan.row
-        if name is None or row.device_version_id is None:
+        if name is None or file_name is None or row.device_version_id is None:
             return None
         async with self.db.transaction():
             fresh = await self.board.get(row.id)
@@ -1856,7 +1885,7 @@ class BoardService:
                 or fresh.deleted_at is not None
                 or fresh.label != row.label
                 or fresh.device_version_id is None
-                or await self.board.find_live_by_name_key(name, excluding=row.id) is not None
+                or await self.names.holder(name, excluding=row.id, on_file=True) is not None
             ):
                 return None
             updated = await self.board.update(
@@ -1864,7 +1893,7 @@ class BoardService:
                 BoardRowPatch(
                     label=name,
                     device_version_id=fresh.device_version_id,
-                    device_label=name,
+                    device_label=file_name,
                 ),
             )
         assert updated is not None
@@ -1984,7 +2013,9 @@ class BoardService:
             assert row is not None  # the plan read it a moment ago
             # The file's content, as a version of the profile it is now attached to: its active
             # brew, since that is how the plan matched it.
-            version, _ = await self.profiles.ensure_version(profile, owner=row.id)
+            version, _ = await self.profiles.ensure_version(
+                await self.profiles.named_as_stored(profile, row.id), owner=row.id
+            )
             await self.board.add_version(row.id, version.id, "edited_on_machine")
             # The mirror read the file before any profile stood on it: it holds this profile's
             # version of that content from now on.
@@ -2035,7 +2066,9 @@ class BoardService:
         if served is None:  # pragma: no cover - the plan read it from this machine
             return
         version, _ = await self.profiles.ensure_version(
-            served, owner=row.id, device_json=json.dumps(served.to_device())
+            await self.profiles.named_as_stored(served, row.id),
+            owner=row.id,
+            device_json=json.dumps(served.to_device()),
         )
         # The row's own version of what the file holds (an ownerless or another profile's
         # version is attached, or copied, to it first).
@@ -2074,7 +2107,9 @@ class BoardService:
         served = phase.machine.profiles.get(device_id)
         if served is not None:
             version, _ = await self.profiles.ensure_version(
-                served, owner=row.id, device_json=json.dumps(served.to_device())
+                await self.profiles.named_as_stored(served, row.id),
+                owner=row.id,
+                device_json=json.dumps(served.to_device()),
             )
             await self.board.add_version(row.id, version.id, "edited_on_machine")
         phase.summary.conflicts.append(
@@ -2123,14 +2158,14 @@ class BoardService:
         if (
             row.device_profile_id != new_id
             or row.device_version_id != plan.version.id
-            or row.device_label != row.label
+            or row.device_label != plan.machine_name
         ):
             await self.board.update(
                 row.id,
                 BoardRowPatch(
                     device_profile_id=new_id,
                     device_version_id=plan.version.id,
-                    device_label=row.label,
+                    device_label=plan.machine_name,
                 ),
             )
         if row.device_profile_id != new_id:
@@ -2240,7 +2275,7 @@ class BoardService:
                 phase, plan.push, "policy", refusal, counts_as_device_failure=False
             )
             return None
-        clamped = document_for(plan.version, plan.row.label)
+        clamped = document_for(plan.version, plan.machine_name)
         row = await self._fresh(plan.row)
         if row.device_profile_id is not None and row.device_profile_id in phase.machine.profiles:
             return await self._push_over(phase, plan, clamped, row.device_profile_id)
@@ -2717,7 +2752,10 @@ class BoardService:
         """Put what was just saved into the archive's mirror straight away, as a version of the
         profile it was saved for."""
         version, _ = await self.profiles.ensure_version(
-            served, owner=owner, source="draft", device_json=json.dumps(served.to_device())
+            await self.profiles.named_as_stored(served, owner),
+            owner=owner,
+            source="draft",
+            device_json=json.dumps(served.to_device()),
         )
         existing = await self.profiles.get_device_profile(device_id)
         await self.profiles.upsert_device_profile(
@@ -2780,7 +2818,7 @@ class BoardService:
             verification=None
             if served is None
             else {
-                "sent": document_for(plan.version, row.label).to_device(),
+                "sent": document_for(plan.version, plan.machine_name).to_device(),
                 "loaded": served.to_device(),
             },
             outcome=outcome,
@@ -2837,6 +2875,17 @@ _REASON = {
     "deleted": "the profile was deleted",
     "off": "the profile is switched off",
 }
+
+
+def _name_held(holder: NameHolder) -> Conflict:
+    """Keeping the machine's side would give the profile a name another profile has (its own, or
+    what it is called on the machine)."""
+    sentence = (
+        holder.sentence
+        if holder.on_the_machine
+        else f"The list already has {holder.row.label}; rename or switch off that one first."
+    )
+    return Conflict(sentence, details={"reason": "duplicate_label"})
 
 
 def _row_pin(pin: PinDetail | None) -> BoardRowPin | None:

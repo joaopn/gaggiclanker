@@ -4414,6 +4414,8 @@ export interface components {
              */
             in_conflict: boolean;
             machine: components["schemas"]["BoardMachineState"];
+            /** Machine Name */
+            machine_name: string;
             /**
              * On Machine
              * @default true

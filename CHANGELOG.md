@@ -13,6 +13,31 @@ database.
 
 ## [Unreleased]
 
+### The machine shows the Recipe's version in the profile's name
+
+- **New: a profile a Recipe brews shows the Recipe's current version after its name on the
+  machine** ("Alma Lever v1.3"). The profile's own name, the one you see and edit in the app, never
+  carries it, so the version follows the Recipe and not a name you typed. Every new current
+  version (a grind, dose or yield change, an accepted proposal, going back) renames the profile's
+  file in place at the next sync with Writes on: the same file, with its star, selection and shots
+  kept. With Writes off nothing is sent and the row says "Becomes Alma Lever v1.4 on the machine at
+  the next sync" until Writes are on. An archived Recipe keeps its last version on the machine; a
+  profile with no Recipe, and a pin's copy, keep their own name. Two files may be called the same
+  (a pin of the version the Recipe is on), and a new or renamed profile may not be called what
+  another profile is called on the machine. Shots already brewed keep the name they were brewed
+  with, and a shot filed under a Recipe version and brewed under the name and a version is not
+  shown as "brewed as" anything.
+- **What you do after updating**: nothing. At the first sync with Writes on, every profile that has
+  a Recipe is renamed in place on the machine (for example "Alma Lever" becomes "Alma Lever v1.3");
+  nothing in the database changes, so there is no upgrade step.
+- **Not handled**: a fresh or restored database, or an import, that meets a machine file already
+  called "X v1.4" has no record that the app added the version, so the profile keeps "X v1.4" as its
+  name; rename it to fix it.
+- **Also worth knowing**: an import links a shot to a profile by name only when the shot carries no
+  machine id, so a shot brewed as "X v1.4" that comes in that way is not linked by its name. A
+  Recipe profile the safety bounds refuse to push, or whose save did not read back, keeps its old
+  name on the machine, and its row says why, as for any refused push.
+
 ### Good, Bad and Discard, and a decision from the rating
 
 - **Changed: the labels are Good, Bad and Discard.** What was Keep is Good, and what was Improve

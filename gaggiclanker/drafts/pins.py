@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.lineage import person_taken_sentence, pinned_copy_sentence
+from gaggiclanker.db.repos.lineage import pinned_copy_sentence
 from gaggiclanker.db.repos.pins import PinDetail, PinRow, PinsRepository, PinWrite
 from gaggiclanker.db.repos.profile_board import BoardRow, BoardRowPatch
 from gaggiclanker.db.repos.recipes import RecipeRow, RecipesRepository, RecipeVersionRow
@@ -161,7 +161,7 @@ class PinService:
             found.taken = True
             found.refusal = PinRefused(
                 "PIN_NAME_TAKEN",
-                person_taken_sentence(taken.existing),
+                taken.person,
                 details={"name": taken.label},
             )
         except CopyBeyondPolicy as refused:

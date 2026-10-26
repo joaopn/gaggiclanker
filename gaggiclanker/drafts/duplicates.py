@@ -36,7 +36,6 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightWrite,
     grouped_by_version,
 )
-from gaggiclanker.db.repos.lineage import person_taken_sentence
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.recipes import (
@@ -373,7 +372,7 @@ class DuplicateService:
         try:
             copy = await self.copier.prepare(base_version_id, name, document=document)
         except TakenName as taken:
-            raise _name_taken(person_taken_sentence(taken.existing), taken.label) from None
+            raise _name_taken(taken.person, taken.label) from None
         except PinnedCopyName as named:
             raise _name_taken(named.person, named.label) from None
         except CopyBeyondPolicy as refused:

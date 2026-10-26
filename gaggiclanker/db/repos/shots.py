@@ -27,6 +27,7 @@ from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.decision import GOOD_FROM_RATING, RatingSource
 from gaggiclanker.domain.drinks import Drink
+from gaggiclanker.domain.machine_names import is_app_name_in_shot_header
 from gaggiclanker.domain.signature import ShotChecks, check_key
 from gaggiclanker.domain.slog import shot_header_name
 from gaggiclanker.domain.vocab import Balance, Decision
@@ -200,7 +201,9 @@ class ShotRecipeBadge(BaseModel):
     version_label: str
 
 
-def brewed_as(label: str | None, name_on_device: str) -> str | None:
+def brewed_as(
+    label: str | None, name_on_device: str, *, filed_under_recipe: bool = False
+) -> str | None:
     """The name a shot was brewed under, when the profile is not called that now.
 
     ``None`` for a shot in no profile and for a name that is only the current one as the shot
@@ -210,6 +213,11 @@ def brewed_as(label: str | None, name_on_device: str) -> str | None:
     if label is None or not name_on_device:
         return None
     if name_on_device.rstrip("\ufffd") == shot_header_name(label):
+        return None
+    # The machine shows a profile that a Recipe brews as its name and the Recipe's version: for a
+    # shot filed under a Recipe version that is the profile under its own name, not a rename. A
+    # shot in no Recipe is as it always was (the app adds no version to such a profile's name).
+    if filed_under_recipe and is_app_name_in_shot_header(name_on_device, label):
         return None
     return name_on_device
 
@@ -302,7 +310,11 @@ class ShotListRow(BaseModel):
 
     @model_validator(mode="after")
     def _derive_brewed_as(self) -> ShotListRow:
-        self.brewed_as = brewed_as(self.profile_label, self.profile_name_on_device)
+        self.brewed_as = brewed_as(
+            self.profile_label,
+            self.profile_name_on_device,
+            filed_under_recipe=self.recipe_badge is not None,
+        )
         return self
 
     @model_validator(mode="before")

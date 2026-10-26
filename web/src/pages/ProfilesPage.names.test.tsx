@@ -288,7 +288,7 @@ describe("the row's lines", () => {
             row_id: 1,
             reason: "renamed",
             device_id: "9bar",
-            detail: "Will be renamed on the machine at the next sync",
+            detail: "Becomes Blooming milk v2 on the machine at the next sync",
           }),
         ],
       }),
@@ -296,7 +296,7 @@ describe("the row's lines", () => {
     renderWithQueryClient(<ProfilesPage />);
 
     const line = await screen.findByTestId("profile-state");
-    expect(line).toHaveTextContent("Will be renamed on the machine at the next sync");
+    expect(line).toHaveTextContent("Becomes Blooming milk v2 on the machine at the next sync");
     expect(line).not.toHaveTextContent("put on the machine");
     expect(line).toHaveAttribute("data-tone", "info");
   });

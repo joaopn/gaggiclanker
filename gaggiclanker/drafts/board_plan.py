@@ -38,7 +38,8 @@ who made it but whether the app has *seen* what the file holds:
   whose brew is a lost profile's active version attaches to it.
 
 **What counts as the machine "holding" a profile**: its own file (the id the row stands on) with
-exactly the row's active brew and the profile's name (a file is compared as
+exactly the row's active brew and the profile's machine name (its name, then the version label
+of the Recipe that brews it, if any; a file is compared as
 :class:`~gaggiclanker.drafts.machine.FileContent`, brew and name, never by either alone). Another
 file with the same content is a profile of its own.
 
@@ -62,11 +63,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from gaggiclanker.db.repos.lineage import free_name, name_key
+from gaggiclanker.db.repos.lineage import free_name
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
+from gaggiclanker.db.repos.recipes import RecipesRepository
+from gaggiclanker.domain.machine_names import is_app_name, machine_name, name_taken_from
 from gaggiclanker.domain.models import Profile, document_hash
 from gaggiclanker.drafts.machine import NO_SUCCESSOR, FileContent, MachineState
+from gaggiclanker.drafts.taken_names import TakenNames
 
 __all__ = [
     "ANOTHER_ROW",
@@ -74,7 +78,6 @@ __all__ = [
     "EDITED",
     "FINAL_REFUSALS",
     "NO_SUCCESSOR",
-    "RENAMED_AT_NEXT_SYNC",
     "RESET_REASON",
     "BoardAction",
     "BoardPlan",
@@ -83,6 +86,7 @@ __all__ = [
     "PlanBuilder",
     "PolicyCheck",
     "RowPlan",
+    "becomes_at_next_sync",
     "judge_file",
 ]
 
@@ -98,8 +102,11 @@ ANOTHER_ROW = "another profile stands on it"
 #: version of its profile now, and the next sync decides.
 EDITED = "edited on the machine since the last sync; recorded as a version, the next sync decides"
 
-#: What a push that only saves the profile's name over its file says it will do.
-RENAMED_AT_NEXT_SYNC = "Will be renamed on the machine at the next sync"
+
+def becomes_at_next_sync(name: str) -> str:
+    """What a push that only saves the profile's machine name over its file says it will do."""
+    return f"Becomes {name} on the machine at the next sync"
+
 
 #: Why nothing is done for a profile in conflict.
 CONFLICT = (
@@ -167,6 +174,14 @@ class RowPlan:
 
     row: BoardRow
     version: ProfileVersionRow
+    #: The name the machine shows for this profile (its name and the Recipe's current version
+    #: label), or, when the profile takes the name the machine gave its file, that file's name
+    #: until the next sync saves the derived one. What a push sends and what is recorded for the
+    #: file afterwards.
+    machine_name: str
+    #: The name the machine would show for the profile now, whatever a file is called: its name
+    #: and the Recipe's current version label.
+    derived_name: str
     #: The file already holding the row's active content, when there is one.
     held: str | None = None
     push: BoardAction | None = None
@@ -186,6 +201,9 @@ class RowPlan:
     #: The name the machine gave the profile's file, which the profile takes (see
     #: :func:`judge_file`): nothing is written to the machine for it.
     take_name: str | None = None
+    #: The name the file has when the profile takes a name from it (``take_name`` is that name
+    #: without the version the app expected or recorded after it).
+    take_file_name: str | None = None
     #: A file this sync attaches to the profile. The profile is otherwise left alone this sync.
     attached: str | None = None
     #: The profile is in conflict: a machine file carries content the app has neither recorded
@@ -276,9 +294,13 @@ class Judgement:
     #: A conflict about the name alone: the file's brew is one the profile has had (the active one
     #: or an older one), so only the name is in question.
     name_only: bool = False
+    #: The profile's name when the machine's name is taken: the machine's name without the version
+    #: the app expected or recorded after it. ``None`` when nothing is to be taken.
+    taken_name: str | None = None
 
 
 async def judge_file(
+    names: TakenNames,
     board: ProfileBoardRepository,
     row: BoardRow,
     seen: FileContent,
@@ -300,28 +322,48 @@ async def judge_file(
     is free, else asks; both changed it asks. A file already called what the profile is called has
     no name question.
     """
+    taken = name_taken_from(
+        seen.name, row.label, expected.name, None if recorded is None else recorded.name
+    )
     known = {expected.brew} | await board.listed_brews(row.id)
     if recorded is not None:
         known.add(recorded.brew)
     if seen.brew not in known:
         if document == row.conflict_overruled_hash:
-            return Judgement("record")
-        return Judgement("conflict")
-    if seen.name == row.label or (recorded is not None and seen.name == recorded.name):
-        return Judgement("record")
-    if recorded is None or row.label != recorded.name:
+            return Judgement("record", taken_name=taken)
+        return Judgement("conflict", taken_name=taken)
+    # Only a profile a Recipe brews has a version after its name: the app writes no suffix for any
+    # other, so for those any name but the profile's own is a rename, as it always was.
+    versioned = expected.name != row.label
+    # The profile's own name, with any well-formed version after it, is what the app wrote: a
+    # stale suffix (the Recipe moved on) or one edited at the display is put right by the save
+    # that follows, and is never taken as the profile's name.
+    if (
+        seen.name == expected.name
+        or (versioned and is_app_name(seen.name, row.label))
+        or (recorded is not None and seen.name == recorded.name)
+    ):
+        return Judgement("record", taken_name=taken)
+    # Whether the person (not the Recipe's version) changed the profile's name since the app last
+    # recorded the file: the recorded name is the profile's own, with its version when a Recipe
+    # brews it.
+    app_renamed = recorded is None or not (
+        is_app_name(recorded.name, row.label) if versioned else recorded.name == row.label
+    )
+    if app_renamed:
         # The name was changed on both sides, or nothing says who changed it.
         return (
-            Judgement("record")
+            Judgement("record", taken_name=taken)
             if document == row.conflict_overruled_hash
-            else Judgement("conflict", name_only=True)
+            else Judgement("conflict", name_only=True, taken_name=taken)
         )
-    holder = await board.find_live_by_name_key(seen.name, excluding=row.id)
+    named = await names.holder(taken, excluding=row.id, on_file=True)
+    holder = None if named is None else named.row
     if holder is not None:
         if document == row.conflict_overruled_hash:
-            return Judgement("record")
-        return Judgement("conflict", holder, name_only=True)
-    return Judgement("take_name")
+            return Judgement("record", taken_name=taken)
+        return Judgement("conflict", holder, name_only=True, taken_name=taken)
+    return Judgement("take_name", taken_name=taken)
 
 
 class PlanBuilder:
@@ -333,9 +375,13 @@ class PlanBuilder:
         profiles: ProfilesRepository,
         *,
         policy: PolicyCheck | None = None,
+        recipes: RecipesRepository,
     ) -> None:
         self.board = board
         self.profiles = profiles
+        #: Where the Recipe's current version label comes from, for a profile's machine name.
+        self.recipes = recipes
+        self.names = TakenNames(board, recipes)
         #: The safety policy as it is now. ``None`` only in a test that is not about it.
         self.policy = policy
 
@@ -407,22 +453,28 @@ class PlanBuilder:
             paused = RESET_REASON
         resuming = paused is not None or (adoption is not None and adoption.resume_pending)
 
+        version_labels = await self.recipes.version_labels_by_profile()
         computed = Computed(adopted=adoption is not None, paused=paused)
         by_row: dict[int, RowPlan] = {}
         for row in live:
             current = await version(row.current_version_id)
-            plan = RowPlan(row=row, version=current)
+            plan = RowPlan(
+                row=row,
+                version=current,
+                machine_name=machine_name(row.label, version_labels.get(row.id)),
+                derived_name=machine_name(row.label, version_labels.get(row.id)),
+            )
             by_row[row.id] = plan
             computed.rows.append(plan)
             old_id = row.device_profile_id
             if old_id is not None and old_id in machine.unreadable:
                 plan.report = _report(row, row.label, "unreadable", old_id, UNREADABLE)
                 continue
-            expected = FileContent(current.content_hash, row.label)
+            expected = FileContent(current.content_hash, plan.machine_name)
             recorded = await self._recorded(row)
             if old_id is not None and old_id in machine.profiles and files[old_id] != recorded:
                 judged = await judge_file(
-                    self.board, row, files[old_id], recorded, docs[old_id], expected
+                    self.names, self.board, row, files[old_id], recorded, docs[old_id], expected
                 )
                 if judged.outcome == "conflict":
                     plan.conflict_file, plan.conflict_hash = old_id, docs[old_id]
@@ -435,8 +487,12 @@ class PlanBuilder:
                     # this very file: recorded as what the file holds.
                     plan.edited_file = old_id
                     if judged.outcome == "take_name":
-                        plan.take_name = files[old_id].name
-                        expected = FileContent(current.content_hash, files[old_id].name)
+                        plan.take_name = judged.taken_name
+                        plan.take_file_name = files[old_id].name
+                        # What the profile takes is what the file is called now; the save of
+                        # its derived name (the version after it) is the next sync's.
+                        plan.machine_name = files[old_id].name
+                        expected = FileContent(current.content_hash, plan.machine_name)
             if row.on_machine:
                 plan.held = _held(row, expected, files)
 
@@ -446,7 +502,7 @@ class PlanBuilder:
         unseen = [
             i for i in sorted(machine.profiles) if i not in claimed and i not in machine.unreadable
         ]
-        taken_names = {name_key(row.label) for row in live}
+        taken_names = await self.names.keys()
         lost = [
             plan
             for plan in computed.rows
@@ -603,7 +659,7 @@ class PlanBuilder:
                 label=row.label,
                 reason="missing" if old is None else "renamed" if renamed else "superseded",
                 device_id=old_id if old is not None else None,
-                detail=RENAMED_AT_NEXT_SYNC if renamed else "",
+                detail=becomes_at_next_sync(plan.machine_name) if renamed else "",
             )
         if old_id is not None and old is not None:
             # A save over its own file keeps the star where it was (the firmware stars only a

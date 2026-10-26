@@ -94,7 +94,7 @@ async def test_a_name_only_the_app_changed_is_saved_over_the_file_at_the_next_sy
     await rename_in_the_app(app, row["row"]["id"], "Renamed in the app")
     [planned] = row_for(await get_board(client), "Renamed in the app")["planned"]
     assert (planned["kind"], planned["reason"], planned["device_id"]) == ("push", "renamed", file)
-    assert planned["detail"] == "Will be renamed on the machine at the next sync"
+    assert planned["detail"] == "Becomes Renamed in the app on the machine at the next sync"
     fake.ws_requests.clear()
 
     run = await pull(app)
