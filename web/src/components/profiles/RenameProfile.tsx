@@ -20,21 +20,34 @@ export const RENAME_SENTENCE =
  * is the server's own sentence under the field, and the field stays open with what was typed.
  *
  * Nothing is sent to the machine: the name is the profile's, and the next sync gives the machine's
- * file the name. A pinned copy has the same control, since a pin freezes the brew and not the name.
+ * file the name. When a Recipe brews the profile, a line under the field says what the machine
+ * will show (the name and the Recipe's version); the version is never part of the name typed. The
+ * line keeps showing the machine's current name, not one that follows what is typed. A pinned copy
+ * has the same control, since a pin freezes the brew and not the name.
  */
 export function RenameProfile({
   rowId,
   name,
+  machineName,
   editing,
   onEditingChange,
 }: {
   rowId: number;
   name: string;
+  /** What the machine shows: the name and the Recipe's version when a Recipe brews the profile. */
+  machineName: string;
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
 }) {
   if (editing) {
-    return <NameField rowId={rowId} name={name} onDone={() => onEditingChange(false)} />;
+    return (
+      <NameField
+        rowId={rowId}
+        name={name}
+        machineName={machineName}
+        onDone={() => onEditingChange(false)}
+      />
+    );
   }
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -56,11 +69,23 @@ export function RenameProfile({
 }
 
 /** The Name field. Mounted only while it is open, so it always starts from the profile's name. */
-function NameField({ rowId, name, onDone }: { rowId: number; name: string; onDone: () => void }) {
+function NameField({
+  rowId,
+  name,
+  machineName,
+  onDone,
+}: {
+  rowId: number;
+  name: string;
+  machineName: string;
+  onDone: () => void;
+}) {
   const rename = useRenameProfile();
   const [typed, setTyped] = useState(name);
   const id = useId();
   const helpId = useId();
+  const machineId = useId();
+  const showsMachineName = machineName !== name;
   const clicking = useRef(false);
   const trimmed = typed.trim();
   const problem = rename.isError ? refusal(rename.error) : null;
@@ -106,7 +131,7 @@ function NameField({ rowId, name, onDone }: { rowId: number; name: string; onDon
         maxLength={NAME_MAX}
         autoComplete="off"
         aria-invalid={problem !== null}
-        aria-describedby={helpId}
+        aria-describedby={showsMachineName ? `${helpId} ${machineId}` : helpId}
         data-testid="rename-name"
         className="h-8 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[invalid=true]:border-destructive"
         onChange={(event) => {
@@ -117,6 +142,15 @@ function NameField({ rowId, name, onDone }: { rowId: number; name: string; onDon
       <p id={helpId} className="break-words text-muted-foreground text-xs">
         {RENAME_SENTENCE}
       </p>
+      {showsMachineName ? (
+        <p
+          id={machineId}
+          className="break-words text-muted-foreground text-xs"
+          data-testid="rename-machine-name"
+        >
+          {`On the machine: ${machineName} — the version follows the Recipe.`}
+        </p>
+      ) : null}
       {problem !== null ? (
         <p
           className="flex items-start gap-1.5 text-destructive text-xs"

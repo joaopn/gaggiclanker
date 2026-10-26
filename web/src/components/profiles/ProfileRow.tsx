@@ -71,6 +71,7 @@ export function ProfileRow({
     <RenameProfile
       rowId={row.id}
       name={row.label}
+      machineName={entry.machine_name}
       editing={renaming}
       onEditingChange={setRenaming}
     />

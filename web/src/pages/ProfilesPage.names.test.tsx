@@ -191,6 +191,42 @@ describe("Rename, in an open profile", () => {
   });
 });
 
+describe("the Name field and the machine's name", () => {
+  const HINT = "On the machine: 9 Bar Espresso v1.3 — the version follows the Recipe.";
+
+  it("says what the machine will show when a Recipe's version follows the name", async () => {
+    board(boardRowView({ machine_name: "9 Bar Espresso v1.3" }));
+    const user = setupUser();
+    const dropdown = await openFirst(user);
+
+    // The name itself never carries the version.
+    expect(within(dropdown).getByTestId("profile-name")).toHaveTextContent(/^9 Bar Espresso$/);
+    await user.click(within(dropdown).getByTestId("rename-open"));
+
+    const form = await screen.findByTestId("rename-form");
+    expect(within(form).getByLabelText("Name")).toHaveValue("9 Bar Espresso");
+    expect(within(form).getByTestId("rename-machine-name")).toHaveTextContent(HINT);
+    // The field is described by both lines, and the hint does not follow what is typed.
+    expect(within(form).getByLabelText("Name")).toHaveAccessibleDescription(
+      `${RENAME_SENTENCE} ${HINT}`,
+    );
+    await user.type(within(form).getByLabelText("Name"), " x");
+    expect(within(form).getByTestId("rename-machine-name")).toHaveTextContent(HINT);
+  });
+
+  it("adds nothing when the machine shows the name as it is", async () => {
+    const user = setupUser();
+    const dropdown = await openFirst(user);
+
+    await user.click(within(dropdown).getByTestId("rename-open"));
+
+    const form = await screen.findByTestId("rename-form");
+    expect(within(form).queryByTestId("rename-machine-name")).not.toBeInTheDocument();
+    expect(form).not.toHaveTextContent("On the machine:");
+    expect(within(form).getByLabelText("Name")).toHaveAccessibleDescription(RENAME_SENTENCE);
+  });
+});
+
 describe("a pinned row", () => {
   it("has Rename, beside its name, above the frozen sentence", async () => {
     const user = setupUser();
