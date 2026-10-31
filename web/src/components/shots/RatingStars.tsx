@@ -1,5 +1,21 @@
 import { Star } from "lucide-react";
+import type { ShotListRow } from "@/api/types";
 import { cn } from "@/lib/utils";
+
+/** The band the server says a rating is in (`rating_band`): the web never works it out. */
+export type RatingBand = NonNullable<ShotListRow["rating_band"]>;
+
+/**
+ * The colour of a lit star by band: Good is the good status, Neutral the muted foreground, Bad
+ * the warning status. A rating with no served band (a machine's own card, a half-edited form)
+ * keeps the warning colour the stars always had.
+ */
+const LIT: Record<RatingBand, string> = {
+  good: "fill-status-good text-status-good",
+  neutral: "fill-muted-foreground text-muted-foreground",
+  bad: "fill-status-warn text-status-warn",
+};
+const LIT_UNBANDED = "fill-status-warn text-status-warn";
 
 /**
  * What somebody thought of the cup, in five stars.
@@ -21,6 +37,7 @@ export function RatingStars({
   className,
   onRate,
   label,
+  band,
 }: {
   rating: number | null;
   /**
@@ -41,6 +58,8 @@ export function RatingStars({
   onRate?: (rating: number | null) => void;
   /** Names the thing being rated, for the buttons' labels. */
   label?: string;
+  /** The band of the displayed rating, as the server served it; the lit stars take its colour. */
+  band?: ShotListRow["rating_band"];
 }) {
   if (onRate === undefined) {
     if (rating == null || rating <= 0) {
@@ -61,9 +80,10 @@ export function RatingStars({
         aria-label={`${rating} of 5`}
         data-testid="rating-stars"
         data-rating={rating}
+        data-band={band ?? undefined}
       >
         {[1, 2, 3, 4, 5].map((step) => (
-          <Star key={step} aria-hidden="true" className={starClass(step, rating)} />
+          <Star key={step} aria-hidden="true" className={starClass(step, rating, band)} />
         ))}
       </span>
     );
@@ -78,6 +98,7 @@ export function RatingStars({
       data-testid="rating-stars"
       data-rating={shown || undefined}
       data-own-rating={own || undefined}
+      data-band={band ?? undefined}
     >
       {[1, 2, 3, 4, 5].map((step) => (
         <button
@@ -98,7 +119,7 @@ export function RatingStars({
               : `Rate${of} ${step} of 5${own ? `, currently ${own}` : ""}`
           }
         >
-          <Star aria-hidden="true" className={starClass(step, shown)} />
+          <Star aria-hidden="true" className={starClass(step, shown, band)} />
         </button>
       ))}
       {shown === 0 ? <span className="sr-only">not rated</span> : null}
@@ -106,9 +127,7 @@ export function RatingStars({
   );
 }
 
-function starClass(step: number, rating: number): string {
-  return cn(
-    "size-3",
-    step <= rating ? "fill-status-warn text-status-warn" : "text-muted-foreground/40",
-  );
+function starClass(step: number, rating: number, band?: ShotListRow["rating_band"]): string {
+  const lit = band ? LIT[band] : LIT_UNBANDED;
+  return cn("size-3", step <= rating ? lit : "text-muted-foreground/40");
 }

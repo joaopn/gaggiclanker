@@ -401,7 +401,10 @@ export function VersionTimeline({
                       </span>
                       <span className="tabular-nums">{formatSeconds(shot.duration_ms)}</span>
                       <CheckBadge checks={shot.checks} />
-                      <RatingStars rating={judgement?.rating ?? shot.rating ?? null} />
+                      <RatingStars
+                        rating={judgement?.rating ?? shot.rating ?? null}
+                        band={shot.rating_band}
+                      />
                     </Link>
                   </li>
                 );

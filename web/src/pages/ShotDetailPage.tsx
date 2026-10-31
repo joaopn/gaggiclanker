@@ -125,6 +125,7 @@ export function ShotDetailPage() {
           <div className="flex items-center gap-2">
             <RatingStars
               rating={shot.data.judgement?.rating ?? row.rating ?? row.index_rating ?? null}
+              band={row.rating_band}
             />
             {/* The conversation about the version this shot was pulled under,
                 so the chat starts on the change this shot is evidence for

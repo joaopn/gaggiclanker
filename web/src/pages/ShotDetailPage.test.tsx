@@ -144,6 +144,21 @@ describe("ShotDetailPage version prediction", () => {
 });
 
 describe("ShotDetailPage header", () => {
+  it("colours the header's stars by the band the server served", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, rating_band: "neutral" },
+      judgement: { ...shot129.judgement, rating: 3 },
+    });
+    renderShot();
+
+    await screen.findByRole("heading", { name: "Gratus 16:32 trad" });
+    const [stars] = screen.getAllByTestId("rating-stars");
+    expect(stars).toHaveAttribute("data-rating", "3");
+    expect(stars).toHaveAttribute("data-band", "neutral");
+    expect(stars.querySelector("svg.fill-muted-foreground")).not.toBeNull();
+  });
+
   it("says what the shot was", async () => {
     renderShot();
 

@@ -45,7 +45,8 @@ database.
 - **Changed: Discard is its own column.** The Decision column is gone. The shots table's first
   visit shows Recipe, Time, Duration, Yield, Curve check, Rating, Balance, Discard and AI Review.
   Discard reads "Discard" until you click it, then a red "Discarded", and a click on that clears
-  it. A layout you saved is brought along once: Decision becomes the stars (unless they are
+  it. The stars are coloured by their band: green for Good, grey for Neutral, amber for Bad. A
+  layout you saved is brought along once: Decision becomes the stars (unless they are
   shown) and Discard goes after Balance. The judgement form has a separate "Discard this shot"
   switch in place of the Good / Bad / Discard choice, so a phone, which hides the Discard column,
   can still discard.

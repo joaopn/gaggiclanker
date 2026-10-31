@@ -812,6 +812,7 @@ function RatingCell({ shot }: { shot: ShotListRow }) {
   return (
     <RatingStars
       rating={ratingOf(shot)}
+      band={shot.rating_band}
       ownRating={own}
       label={`shot ${shot.device_id}`}
       onRate={(rating) => {

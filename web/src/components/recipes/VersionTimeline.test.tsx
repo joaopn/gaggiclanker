@@ -288,6 +288,7 @@ describe("VersionTimeline", () => {
         has_notes: false,
         has_judgement: true,
         discarded: false,
+        rating_band: "good",
         recipe_version_id: 22,
         recipe_badge: { recipe_id: 3, recipe_name: "Guji on the Niche", version_label: "v2" },
         synced_at: "2026-04-03T08:16:00.000Z",
@@ -313,6 +314,9 @@ describe("VersionTimeline", () => {
     const shots = screen.getByTestId("version-shots");
     expect(shots).toHaveTextContent("9 Bar Espresso");
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "5");
+    // The stars take the band the server served for the shot, in the log as everywhere.
+    expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-band", "good");
+    expect(screen.getByTestId("rating-stars").querySelector("svg.fill-status-good")).not.toBeNull();
     // The same badge as the shots table's Curve check column, and never the review's.
     expect(within(shots).getAllByTestId("check-badge")).toHaveLength(1);
     expect(within(shots).getByTestId("check-badge")).toHaveTextContent("ramp: fast flow +2");

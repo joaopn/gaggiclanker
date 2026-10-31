@@ -1339,6 +1339,40 @@ describe("ShotsPage Discard column", () => {
   });
 });
 
+describe("ShotsPage Rating column", () => {
+  it("colours the stars by the band the server served, and by nothing the page works out", async () => {
+    // Two rows with the same displayed rating but different served bands: the colour follows
+    // the served band, so a page that worked the band out from the stars would colour them alike.
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          id: 1,
+          device_id: "000101",
+          judgement_rating: 3,
+          has_judgement: true,
+          rating_band: "neutral",
+        }),
+        shot({
+          id: 2,
+          device_id: "000102",
+          judgement_rating: 3,
+          has_judgement: true,
+          rating_band: "good",
+        }),
+      ]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const [first, second] = screen.getAllByTestId("rating-stars");
+    expect(first).toHaveAttribute("data-band", "neutral");
+    expect(first.querySelector("svg.fill-muted-foreground")).not.toBeNull();
+    expect(second).toHaveAttribute("data-band", "good");
+    expect(second.querySelector("svg.fill-status-good")).not.toBeNull();
+  });
+});
+
 describe("ShotsPage Balance column", () => {
   function cell(): HTMLElement {
     return screen.getByTestId("balance-cell");
