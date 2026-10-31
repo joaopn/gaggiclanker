@@ -107,7 +107,7 @@ async def test_newest_is_the_shot_list_s_order(shots: ShotsRepository) -> None:
     assert example.id == second
 
 
-@pytest.mark.parametrize("verdict", [{"rating": 4}, {"decision": "discard"}])
+@pytest.mark.parametrize("verdict", [{"rating": 4}, {"discarded": True}])
 async def test_a_rating_or_a_decision_beats_a_newer_judgement_without_either(
     shots: ShotsRepository, verdict: dict[str, object]
 ) -> None:

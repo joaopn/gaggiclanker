@@ -323,7 +323,7 @@ export type ShotListParams = {
   profile_version_id?: number;
   quarantined?: boolean;
   include_deleted?: boolean;
-  /** `false` leaves out shots labelled Discard; the server's default lists them. */
+  /** `false` leaves out discarded shots; the server's default lists them. */
   include_discarded?: boolean;
   recipe_id?: number;
   recipe_version_id?: number;

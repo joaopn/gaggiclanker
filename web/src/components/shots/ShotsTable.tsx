@@ -14,7 +14,7 @@ import { RecipeBadge } from "@/components/recipes/RecipeBadge";
 import { BalanceCell } from "@/components/shots/BalanceCell";
 import { CheckCell } from "@/components/shots/CheckBadge";
 import { CurveChooser } from "@/components/shots/CurveChooser";
-import { DecisionCell } from "@/components/shots/DecisionCell";
+import { DiscardCell } from "@/components/shots/DiscardCell";
 import { NeedsRecipeMenu } from "@/components/shots/NeedsRecipeMenu";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ReviewBadge } from "@/components/shots/ReviewBadge";
@@ -747,13 +747,13 @@ function Cell({
           {shot.judgement_notes || ""}
         </span>
       );
-    case "decision":
+    case "balance":
       // Lifted like the stars, on the control rather than the cell: the empty
       // rest of the cell still toggles the row.
-      return <DecisionCell shot={shot} className={INTERACTIVE} />;
-    case "balance":
-      // The same lift as Decision, for the same reason.
       return <BalanceCell shot={shot} className={INTERACTIVE} />;
+    case "discard":
+      // The same lift, for the same reason.
+      return <DiscardCell shot={shot} className={INTERACTIVE} />;
     case "flags":
       return (
         <span className="flex flex-wrap justify-center gap-1">
@@ -770,7 +770,7 @@ function Cell({
  * for most shots it is the only thing — so it is a click in the list rather
  * than a page visit. The write merges into whatever verdict already exists
  * (`usePatchJudgement`), because `PUT` replaces the row and the flavour notes,
- * doses, grind and decision typed elsewhere must survive a star.
+ * doses, grind and discard typed elsewhere must survive a star.
  *
  * What is shown and what a click means are two different numbers, which is why
  * `ownRating` is passed separately. A row shows the machine's own notes-card

@@ -311,8 +311,8 @@ class RecipeVersionDetail(BaseModel):
     #: Computed from the list, not from the row: it is a fact about what came
     #: after, not about this version.
     dead_end: bool = False
-    #: How this version's shots were labelled. Counted over the Recipe's shots
-    #: rather than over `shots` above, which is capped at `SHOTS_PER_RECIPE`.
+    #: How this version's shots were rated (and how many were discarded). Counted over the
+    #: Recipe's shots rather than over `shots` above, which is capped at `SHOTS_PER_RECIPE`.
     labels: VersionLabelCounts = VersionLabelCounts()
     #: This version's shots against the compared version's, measure by measure,
     #: with each difference marked as beyond the Recipe's spread or inside it.
@@ -457,7 +457,8 @@ class RecipeDetailData(BaseModel):
     #: a model, so the same shots always give the same figure.
     spread: list[MeasureSpread] = []
     #: The version the page offers to go back to: the newest one made, other
-    #: than the current, that has a Good shot. NULL when there is nowhere to go.
+    #: than the current, that has a Good shot (4 or 5 stars, not discarded). NULL when there is
+    #: nowhere to go.
     rollback_target_version_id: int | None = None
     #: Every time this Recipe went back to another version, newest first: the
     #: log's "Went back to v1.2 (from v2.1)" lines. Not versions.
@@ -541,13 +542,13 @@ def _refusal_no_prediction(recipe_id: int, version_id: int | None) -> AppError:
 
 def _refusal_nothing_to_grade(recipe_id: int, version_id: int | None) -> AppError:
     return Conflict(
-        f"Version {version_id} has no Good or Bad shot yet",
+        f"Version {version_id} has no rated shot yet",
         code="NOTHING_TO_GRADE",
         details={
             "field": "outcome",
             "message": (
-                "no shot of the version is Good or Bad yet (a discarded shot does not count): "
-                "rate a shot, or label it Good or Bad, before grading the prediction"
+                "no shot of the version is rated yet (a discarded shot does not count): "
+                "rate a shot before grading the prediction"
             ),
         },
     )
@@ -653,9 +654,8 @@ def _proposal_error(refusal: ProposalRefusal, recipe_id: int, proposal_id: int) 
             details={
                 "field": "outcome",
                 "message": (
-                    "no shot of the version is Good or Bad any more (a discarded shot does not "
-                    "count): rate a shot, or label it Good or Bad, or dismiss the grade, and "
-                    "accept again"
+                    "no shot of the version is rated any more (a discarded shot does not "
+                    "count): rate a shot, or dismiss the grade, and accept again"
                 ),
             },
         )
@@ -1195,8 +1195,8 @@ async def set_outcome(
 ) -> JSONResponse:
     """Held, partly held, failed or inconclusive, with the why beside it.
 
-    Recordable only once the version has a prediction and a Good or Bad shot (labelled so, or
-    rated; a discarded shot does not count); changeable afterwards as often as you like.
+    Recordable only once the version has a prediction and a rated shot (a
+    discarded shot does not count); changeable afterwards as often as you like.
     """
     return _unwrap(await recipes.set_outcome(recipe_id, version_id, body), recipe_id, version_id)
 
@@ -1359,13 +1359,13 @@ def _outcome_error(
         )
     if refusal == "nothing_to_grade":
         return Conflict(
-            f"{named} has no Good or Bad shot yet",
+            f"{named} has no rated shot yet",
             code="NOTHING_TO_GRADE",
             details={
                 "field": "outcome",
                 "message": (
-                    "no shot of the version is Good or Bad yet (a discarded shot does not count): "
-                    "rate a shot, or label it Good or Bad, before grading the prediction"
+                    "no shot of the version is rated yet (a discarded shot does not count): "
+                    "rate a shot before grading the prediction"
                 ),
             },
         )

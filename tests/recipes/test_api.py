@@ -121,8 +121,9 @@ class TestVocab:
             "children": [],
         }
         assert "taste_groups" not in body
-        assert [term["value"] for term in body["decisions"]] == ["keep", "improve", "discard"]
-        assert [term["label"] for term in body["decisions"]] == ["Good", "Bad", "Discard"]
+        assert "decisions" not in body
+        assert [term["value"] for term in body["rating_bands"]] == ["good", "neutral", "bad"]
+        assert [term["label"] for term in body["rating_bands"]] == ["Good", "Neutral", "Bad"]
         assert [term["label"] for term in body["balances"]] == ["Sour", "Balanced", "Bitter"]
 
     async def test_the_enums_reach_openapi(self, client: httpx.AsyncClient) -> None:
@@ -513,7 +514,7 @@ class TestPredictionsAndOutcomes:
         app: FastAPI,
         version_id: int,
         device_id: str,
-        decision: str,
+        kind: str,
     ) -> int:
         shot_id = await ShotsRepository(app.state.db).insert(
             ShotInsert(device_id=device_id, raw_slog=b"not-a-slog")
@@ -521,7 +522,14 @@ class TestPredictionsAndOutcomes:
         await client.put(
             f"/api/shots/{shot_id}/recipe-version", json={"recipe_version_id": version_id}
         )
-        await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": decision})
+        # A discarded shot is five stars, so only the discard keeps it from counting as Good.
+        body = {
+            "good": {"rating": 4},
+            "neutral": {"rating": 3},
+            "bad": {"rating": 2},
+            "discarded": {"rating": 5, "discarded": True},
+        }[kind]
+        await client.put(f"/api/shots/{shot_id}/judgement", json=body)
         return shot_id
 
     async def test_a_prediction_is_recorded_and_read_back_with_the_version(
@@ -548,7 +556,7 @@ class TestPredictionsAndOutcomes:
     ) -> None:
         created = await _make_recipe(client, bean_id)
         (first,) = await self._version_ids(client, created["id"])
-        await self._labelled_shot(client, app, first, "000801", "keep")
+        await self._labelled_shot(client, app, first, "000801", "good")
 
         response = await client.patch(
             f"/api/recipes/{created['id']}/versions/{first}/prediction",
@@ -678,7 +686,7 @@ class TestPredictionsAndOutcomes:
             f"/api/recipes/{created['id']}/versions/{first}/prediction",
             json={"prediction": "less bitter"},
         )
-        shot_id = await self._labelled_shot(client, app, first, "000805", "keep")
+        shot_id = await self._labelled_shot(client, app, first, "000805", "good")
         await client.put(
             f"/api/recipes/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
         )
@@ -728,13 +736,13 @@ class TestPredictionsAndOutcomes:
         )
         assert response.status_code == 409
         assert error(response)["code"] == "NOTHING_TO_GRADE"
-        # What is missing is a Good or Bad shot: a discarded one is rated and labelled, and does
-        # not count, so the sentence says that and not "label a shot".
+        # What is missing is a rated shot: a discarded one is rated, and does not count, so the
+        # sentence says that.
         message = error(response)["details"]["message"]
-        assert "Good or Bad" in message and "a discarded shot does not count" in message
+        assert "is rated yet" in message and "a discarded shot does not count" in message
         assert "rate a shot" in message
 
-        await self._labelled_shot(client, app, first, "000802", "improve")
+        await self._labelled_shot(client, app, first, "000802", "bad")
         body = data(
             await client.put(
                 f"/api/recipes/{created['id']}/versions/{first}/outcome",
@@ -830,12 +838,12 @@ class TestPredictionsAndOutcomes:
         created = await _make_recipe(client, bean_id)
         await client.post(f"/api/recipes/{created['id']}/versions", json={"intent": "one finer"})
         first, second = await self._version_ids(client, created["id"])
-        await self._labelled_shot(client, app, first, "000803", "keep")
+        await self._labelled_shot(client, app, first, "000803", "good")
         await client.patch(
             f"/api/recipes/{created['id']}/versions/{second}/prediction",
             json={"prediction": "less bitter"},
         )
-        await self._labelled_shot(client, app, second, "000804", "improve")
+        await self._labelled_shot(client, app, second, "000804", "bad")
         await client.put(
             f"/api/recipes/{created['id']}/versions/{second}/outcome", json={"outcome": "failed"}
         )
@@ -847,7 +855,13 @@ class TestPredictionsAndOutcomes:
         assert detail["track_record"]["no_prediction"] == 1
         assert detail["rollback_target_version_id"] == first
         newest = detail["versions"][0]
-        assert newest["labels"] == {"keep": 0, "improve": 1, "discard": 0, "unlabelled": 0}
+        assert newest["labels"] == {
+            "good": 0,
+            "neutral": 0,
+            "bad": 1,
+            "discarded": 0,
+            "unrated": 0,
+        }
         assert newest["dead_end"] is False
 
     async def test_a_roll_back_marks_what_it_stepped_over_on_the_page(
@@ -913,14 +927,14 @@ class TestJudgementAndAssignment:
                     "dose_in_g": 18,
                     "dose_out_g": 36,
                     "notes": "sharp",
-                    "decision": "improve",
+                    "discarded": True,
                 },
             )
         )
         assert saved["ratio"] == 2.0
         assert saved["taste_notes"] == ["sour_fermented.sour"]
         assert saved["aroma_notes"] == ["fruity.berry", "floral"]
-        assert saved["decision"] == "improve"
+        assert saved["discarded"] is True
 
         detail = data(await client.get(f"/api/shots/{shot_id}"))
         assert detail["judgement"]["rating"] == 4
@@ -930,47 +944,38 @@ class TestJudgementAndAssignment:
         assert (await client.delete(f"/api/shots/{shot_id}/judgement")).status_code == 404
         assert data(await client.get(f"/api/shots/{shot_id}"))["judgement"] is None
 
-    async def test_the_list_row_serves_the_decision_the_rating_gives_only_when_none_is_stored(
+    async def test_the_list_row_serves_the_rating_band_and_whether_the_shot_is_discarded(
         self, app: FastAPI, client: httpx.AsyncClient, shot_id: int
     ) -> None:
         def row() -> Any:
             return client.get("/api/shots")
 
+        def served(listed: Any) -> tuple[Any, Any]:
+            return listed["rating_band"], listed["discarded"]
+
         listed = data(await row())["items"][0]
-        assert (listed["judgement_decision"], listed["derived_decision"]) == (None, None)
-        assert (listed["decision_rating"], listed["decision_rating_source"]) == (None, None)
+        assert served(listed) == (None, False)
+        for gone in ("judgement_decision", "derived_decision", "decision_rating"):
+            assert gone not in listed
 
         # The index's figure is the last place the rating is read from.
         await app.state.db.execute("UPDATE shots SET index_rating = 4 WHERE id = ?", (shot_id,))
-        listed = data(await row())["items"][0]
-        assert (listed["judgement_decision"], listed["derived_decision"]) == (None, "keep")
+        assert served(data(await row())["items"][0]) == ("good", False)
 
-        assert (listed["decision_rating"], listed["decision_rating_source"]) == (4, "machine_index")
+        # The machine's notes card comes before the index.
         await app.state.db.execute(
             "INSERT INTO device_shot_notes (shot_id, raw_json, rating) VALUES (?, '{}', 3)",
             (shot_id,),
         )
-        listed = data(await row())["items"][0]
-        assert (listed["decision_rating"], listed["decision_rating_source"]) == (3, "machine_notes")
+        assert served(data(await row())["items"][0]) == ("neutral", False)
 
         # The verdict's own rating comes first, and two stars read Bad.
         await client.put(f"/api/shots/{shot_id}/judgement", json={"rating": 2})
-        listed = data(await row())["items"][0]
-        assert (listed["judgement_decision"], listed["derived_decision"]) == (None, "improve")
-        assert (listed["decision_rating"], listed["decision_rating_source"]) == (2, "judgement")
+        assert served(data(await row())["items"][0]) == ("bad", False)
 
-        # A stored decision is served as it is, and nothing is derived beside it.
-        await client.put(
-            f"/api/shots/{shot_id}/judgement", json={"rating": 5, "decision": "improve"}
-        )
-        listed = data(await row())["items"][0]
-        assert (listed["judgement_decision"], listed["derived_decision"]) == ("improve", None)
-        assert (listed["decision_rating"], listed["decision_rating_source"]) == (None, None)
-        await client.put(
-            f"/api/shots/{shot_id}/judgement", json={"rating": 5, "decision": "discard"}
-        )
-        listed = data(await row())["items"][0]
-        assert (listed["judgement_decision"], listed["derived_decision"]) == ("discard", None)
+        # A discard changes nothing about the band: the shot keeps its stars.
+        await client.put(f"/api/shots/{shot_id}/judgement", json={"rating": 5, "discarded": True})
+        assert served(data(await row())["items"][0]) == ("good", True)
 
     async def test_a_save_from_the_form_or_a_cell_makes_a_copied_verdict_the_person_s(
         self, app: FastAPI, client: httpx.AsyncClient, shot_id: int
@@ -1043,17 +1048,15 @@ class TestJudgementAndAssignment:
         listed = data(await client.get("/api/shots"))["items"]
         assert [row["judgement_notes"] for row in listed] == [None]
         assert [row["judgement_rating"] for row in listed] == [None]
-        assert [row["judgement_decision"] for row in listed] == [None]
 
         await client.put(
             f"/api/shots/{shot_id}/judgement",
-            json={"rating": 4, "notes": "sharp, and short by a gram", "decision": "improve"},
+            json={"rating": 4, "notes": "sharp, and short by a gram"},
         )
 
         listed = data(await client.get("/api/shots"))["items"]
         assert listed[0]["judgement_notes"] == "sharp, and short by a gram"
         assert listed[0]["judgement_rating"] == 4
-        assert listed[0]["judgement_decision"] == "improve"
         # …and the filter agrees with the column, which it would not if the
         # verdict's rating were invisible to the query.
         assert data(await client.get("/api/shots", params={"min_rating": 4}))["total"] == 1
@@ -1062,7 +1065,6 @@ class TestJudgementAndAssignment:
         listed = data(await client.get("/api/shots"))["items"]
         assert listed[0]["judgement_notes"] is None
         assert listed[0]["judgement_rating"] is None
-        assert listed[0]["judgement_decision"] is None
 
     @pytest.mark.parametrize("field", ["taste_notes", "aroma_notes"])
     async def test_an_unknown_note_is_refused_by_name(
@@ -1077,7 +1079,7 @@ class TestJudgementAndAssignment:
     async def test_the_old_decision_word_is_refused(
         self, client: httpx.AsyncClient, shot_id: int
     ) -> None:
-        response = await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": "adjust"})
+        response = await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": "keep"})
         assert response.status_code == 400
 
     async def test_judging_a_shot_that_is_not_there(self, client: httpx.AsyncClient) -> None:
@@ -1146,9 +1148,9 @@ class TestJudgementAndAssignment:
     ) -> None:
         """Discard takes a shot off the "needs a Recipe" list and its count; nothing else does.
 
-        Keep and Improve are verdicts on a shot that still belongs somewhere, so
-        they leave it waiting. Changing the label back, or withdrawing the
-        judgement, puts it back on the list, since the shot still has no Recipe.
+        A rating is a verdict on a shot that still belongs somewhere, so it leaves it waiting.
+        Undoing the discard, or withdrawing the judgement, puts it back on the list, since the
+        shot still has no Recipe.
         """
 
         async def waiting() -> tuple[int, int]:
@@ -1156,15 +1158,15 @@ class TestJudgementAndAssignment:
             counted = data(await client.get("/api/sync/status"))["counts"]["needs_recipe"]
             return listed, counted
 
-        for decision, expected in (
-            ("keep", (1, 1)),
-            ("improve", (1, 1)),
-            ("discard", (0, 0)),
-            (None, (1, 1)),
-            ("discard", (0, 0)),
+        for body, expected in (
+            ({"rating": 4}, (1, 1)),
+            ({"rating": 2}, (1, 1)),
+            ({"rating": 5, "discarded": True}, (0, 0)),
+            ({"rating": 5}, (1, 1)),
+            ({"discarded": True}, (0, 0)),
         ):
-            await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": decision})
-            assert await waiting() == expected, decision
+            await client.put(f"/api/shots/{shot_id}/judgement", json=body)
+            assert await waiting() == expected, body
 
         # Still an unfiled shot: the list of every shot shows it, and the
         # filter for filed shots does not.
@@ -1178,7 +1180,7 @@ class TestJudgementAndAssignment:
     async def test_a_list_can_leave_out_discarded_shots(
         self, client: httpx.AsyncClient, shot_id: int, sort: str
     ) -> None:
-        """Only Discard is left out, on every sort: unjudged, Keep and Improve stay."""
+        """Only a discarded shot is left out, on every sort: unjudged and rated ones stay."""
 
         async def listed(**params: str) -> tuple[int, list[int]]:
             body = data(await client.get("/api/shots", params={"sort": sort, **params}))
@@ -1186,16 +1188,16 @@ class TestJudgementAndAssignment:
 
         hidden = {"include_discarded": "false"}
         assert await listed(**hidden) == (1, [shot_id])
-        for decision, expected in (
-            ("keep", (1, [shot_id])),
-            ("improve", (1, [shot_id])),
-            ("discard", (0, [])),
-            (None, (1, [shot_id])),
+        for body, expected in (
+            ({"rating": 4}, (1, [shot_id])),
+            ({"rating": 2}, (1, [shot_id])),
+            ({"rating": 5, "discarded": True}, (0, [])),
+            ({}, (1, [shot_id])),
         ):
-            await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": decision})
-            assert await listed(**hidden) == expected, decision
+            await client.put(f"/api/shots/{shot_id}/judgement", json=body)
+            assert await listed(**hidden) == expected, body
 
-        await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": "discard"})
+        await client.put(f"/api/shots/{shot_id}/judgement", json={"discarded": True})
         # The default, and every other caller, still lists it.
         assert await listed() == (1, [shot_id])
         assert await listed(include_discarded="true") == (1, [shot_id])

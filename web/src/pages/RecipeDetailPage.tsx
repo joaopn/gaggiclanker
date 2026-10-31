@@ -528,8 +528,7 @@ function TrackRecord({ detail, recipeId }: { detail: RecipeDetailData; recipeId:
   const target = detail.versions.find(
     (entry) => entry.version.id === detail.rollback_target_version_id,
   );
-  const struggling =
-    current !== undefined && current.labels.improve > 0 && current.labels.keep === 0;
+  const struggling = current !== undefined && current.labels.bad > 0 && current.labels.good === 0;
 
   if (!sentence && !(target && struggling)) return null;
 

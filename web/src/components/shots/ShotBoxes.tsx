@@ -12,7 +12,6 @@ import { inForceClaims, ReviewBox } from "@/components/shots/ReviewBox";
 import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { type ClaimSpanControls, showClaim, useClaimSpan } from "@/lib/claimSpan";
-import { derivedDecisionTitle } from "@/lib/decisionTitle";
 import { setBox, useBox } from "@/lib/shotBoxes";
 
 /**
@@ -21,7 +20,7 @@ import { setBox, useBox } from "@/lib/shotBoxes";
  *
  * ```
  *  ▼ Your judgement      open by default
- *    Version prediction  hidden until the shot has a decision; not a box that folds
+ *    Version prediction  always shown; not a box that folds
  *  ▶ Curves              closed by default
  *  ▶ Review              closed by default
  *  ▶ Curve check         closed by default
@@ -102,8 +101,6 @@ export function ShotBoxes({
       <JudgementForm
         shotId={row.id}
         judgement={detail.judgement}
-        derivedDecision={row.derived_decision ?? null}
-        derivedTitle={derivedDecisionTitle(row)}
         machineBalance={row.balance ?? null}
         // Where the doses start when the person has recorded none: the Recipe version's dose (when
         // the shot is filed) and the scale's yield (when it has a scale).
@@ -114,13 +111,7 @@ export function ShotBoxes({
         open={judgementOpen}
         onOpenChange={setJudgement}
       />
-      {/* Keyed by the shot: a revealed prediction must not survive a change of subject. */}
-      <VersionPrediction
-        key={row.id}
-        shotId={row.id}
-        version={detail.recipe_version}
-        decision={detail.judgement?.decision ?? null}
-      />
+      <VersionPrediction version={detail.recipe_version} />
       {row.quarantined ? (
         whenQuarantined
       ) : samples.isError && curvesOpen ? (

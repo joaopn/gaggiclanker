@@ -2330,8 +2330,8 @@ export interface paths {
          * Grade this version's prediction
          * @description Held, partly held, failed or inconclusive, with the why beside it.
          *
-         *     Recordable only once the version has a prediction and a Good or Bad shot (labelled so, or
-         *     rated; a discarded shot does not count); changeable afterwards as often as you like.
+         *     Recordable only once the version has a prediction and a rated shot (a
+         *     discarded shot does not count); changeable afterwards as often as you like.
          */
         put: operations["set_outcome_api_recipes__recipe_id__versions__version_id__outcome_put"];
         post?: never;
@@ -2652,9 +2652,9 @@ export interface paths {
          *     ``needs_recipe=1`` is the inbox — shots the archive could not attach to a Recipe
          *     on its own and is waiting for an answer on. Quarantined shots are excluded
          *     from it: their bytes never parsed, so there is nothing to judge and the
-         *     count would never reach zero. So are shots labelled Discard: the person
+         *     count would never reach zero. So are discarded shots: the person
          *     already said the shot went wrong, and it counts towards no Recipe.
-         *     ``include_discarded=false`` leaves shots labelled Discard out of any list,
+         *     ``include_discarded=false`` leaves discarded shots out of any list,
          *     which is the Shots page's default view.
          *
          *     ``sort`` takes one of a fixed set of names — a sort column pasted out of a
@@ -2854,7 +2854,7 @@ export interface paths {
          *
          *     This is the only way a review starts: a person pressing a shot's Review button in the shots
          *     table or Review on its page. A shot nobody can review is refused: 422 when its bytes never
-         *     parsed, 409 when the person labelled it Discard. The provider call takes tens of seconds and
+         *     parsed, 409 when the person discarded it. The provider call takes tens of seconds and
          *     does **not** run inside this request; it goes to the app's task registry, the row is the
          *     handle, and the LLM stream carries `review.started` / `review.finished` for the page to
          *     follow.
@@ -4906,8 +4906,6 @@ export interface components {
             /** Provider */
             provider: string;
         };
-        /** @enum {string} */
-        Decision: "keep" | "improve" | "discard";
         /**
          * DesignBrief
          * @description What the person asked for when they set out to design a Recipe in chat.
@@ -5495,13 +5493,18 @@ export interface components {
         };
         /**
          * EvidenceCounts
-         * @description One side's plain facts: how the cup went, and how it was labelled.
+         * @description One side's plain facts: how the cup went, and how it was rated.
          *
-         *     No verdict on any of them. There is no Discard count because a discarded
+         *     No verdict on any of them. There is no discarded count because a discarded
          *     shot is not a counted shot — it says the shot went wrong, not that the
          *     recipe did.
          */
         EvidenceCounts: {
+            /**
+             * Bad
+             * @default 0
+             */
+            bad: number;
             /**
              * Balanced
              * @default 0
@@ -5513,15 +5516,15 @@ export interface components {
              */
             bitter: number;
             /**
-             * Improve
+             * Good
              * @default 0
              */
-            improve: number;
+            good: number;
             /**
-             * Keep
+             * Neutral
              * @default 0
              */
-            keep: number;
+            neutral: number;
             /**
              * Shots
              * @default 0
@@ -5533,10 +5536,10 @@ export interface components {
              */
             sour: number;
             /**
-             * Unlabelled
+             * Unrated
              * @default 0
              */
-            unlabelled: number;
+            unrated: number;
             /** Version Id */
             version_id: number;
             /** Version Label */
@@ -6122,7 +6125,7 @@ export interface components {
          * JudgementWrite
          * @description A verdict as the API accepts it. Every field optional; all of them mean something.
          *
-         *     There is no "empty judgement" guard: a row with nothing but a decision is a
+         *     There is no "empty judgement" guard: a row with nothing but a discard is a
          *     legitimate thing to record ("discard, I knocked the portafilter"), and
          *     refusing it would make the form argue with the user.
          */
@@ -6130,7 +6133,11 @@ export interface components {
             /** Aroma Notes */
             aroma_notes?: string[];
             balance?: components["schemas"]["Balance"] | null;
-            decision?: components["schemas"]["Decision"] | null;
+            /**
+             * Discarded
+             * @default false
+             */
+            discarded: boolean;
             /** Dose In G */
             dose_in_g?: number | null;
             /** Dose Out G */
@@ -7170,7 +7177,7 @@ export interface components {
          * @description `POST /api/shots/profile-match`: which shots to offer the profile match.
          *
          *     No `shot_ids` means every shot that needs a Recipe (the Shots page's button),
-         *     which leaves out a shot labelled Discard; a list is the one-shot button on a
+         *     which leaves out a discarded shot; a list is the one-shot button on a
          *     shot's own page, which files the shot it names whatever its label.
          */
         ProfileMatchRequest: {
@@ -7429,7 +7436,7 @@ export interface components {
             stopped: boolean;
         };
         /** @enum {string} */
-        RatingSource: "judgement" | "machine_notes" | "machine_index";
+        RatingBand: "good" | "neutral" | "bad";
         /**
          * RecipeBrewing
          * @description The Recipe a profile has, so a page can warn before the profile is changed: the Recipe
@@ -7943,7 +7950,7 @@ export interface components {
          * @description One version's averages: what `get_recipe`'s trajectory and the chat's ledger read.
          *
          *     The averages are over the version's **counted** shots (the ones the spread
-         *     and the evidence use: not quarantined, not incomplete, not a Discard), so a
+         *     and the evidence use: not quarantined, not incomplete, not discarded), so a
          *     knocked-over cup does not pull a bar down. ``shots`` is every shot filed
          *     under the version, ``counted_shots`` the ones the means can be over.
          */
@@ -8082,10 +8089,11 @@ export interface components {
             evidence?: components["schemas"]["VersionEvidence"] | null;
             /**
              * @default {
-             *       "keep": 0,
-             *       "improve": 0,
-             *       "discard": 0,
-             *       "unlabelled": 0
+             *       "good": 0,
+             *       "neutral": 0,
+             *       "bad": 0,
+             *       "discarded": 0,
+             *       "unrated": 0
              *     }
              */
             labels: components["schemas"]["VersionLabelCounts"];
@@ -8685,18 +8693,19 @@ export interface components {
             brew_delay_ms?: number | null;
             /** Brewed As */
             brewed_as?: string | null;
-            /** Decision Rating */
-            decision_rating?: number | null;
-            decision_rating_source?: components["schemas"]["RatingSource"] | null;
             /**
              * Deleted On Device
              * @default false
              */
             deleted_on_device: boolean;
-            derived_decision?: components["schemas"]["Decision"] | null;
             /** Device Id */
             device_id: string;
             diagnostics?: components["schemas"]["JsonObject"];
+            /**
+             * Discarded
+             * @default false
+             */
+            discarded: boolean;
             /**
              * Duration Ms
              * @default 0
@@ -8743,7 +8752,6 @@ export interface components {
             /** Index Volume G */
             index_volume_g?: number | null;
             judgement_balance?: components["schemas"]["Balance"] | null;
-            judgement_decision?: components["schemas"]["Decision"] | null;
             /** Judgement Notes */
             judgement_notes?: string | null;
             /** Judgement Rating */
@@ -8772,6 +8780,7 @@ export interface components {
             quarantined: boolean;
             /** Rating */
             rating?: number | null;
+            rating_band?: components["schemas"]["RatingBand"] | null;
             /**
              * Raw Bytes
              * @default 0
@@ -8877,9 +8886,13 @@ export interface components {
             /** Aroma Notes */
             aroma_notes?: string[];
             balance?: components["schemas"]["Balance"] | null;
-            decision?: components["schemas"]["Decision"] | null;
             /** Device Synced At */
             device_synced_at?: string | null;
+            /**
+             * Discarded
+             * @default false
+             */
+            discarded: boolean;
             /** Dose In G */
             dose_in_g?: number | null;
             /** Dose Out G */
@@ -8947,17 +8960,18 @@ export interface components {
             /** Brewed As */
             brewed_as?: string | null;
             checks: components["schemas"]["ChecksBlock"];
-            /** Decision Rating */
-            decision_rating?: number | null;
-            decision_rating_source?: components["schemas"]["RatingSource"] | null;
             /**
              * Deleted On Device
              * @default false
              */
             deleted_on_device: boolean;
-            derived_decision?: components["schemas"]["Decision"] | null;
             /** Device Id */
             device_id: string;
+            /**
+             * Discarded
+             * @default false
+             */
+            discarded: boolean;
             /**
              * Duration Ms
              * @default 0
@@ -8996,7 +9010,6 @@ export interface components {
             /** Index Rating */
             index_rating?: number | null;
             judgement_balance?: components["schemas"]["Balance"] | null;
-            judgement_decision?: components["schemas"]["Decision"] | null;
             /** Judgement Notes */
             judgement_notes?: string | null;
             /** Judgement Rating */
@@ -9024,6 +9037,7 @@ export interface components {
             quarantined: boolean;
             /** Rating */
             rating?: number | null;
+            rating_band?: components["schemas"]["RatingBand"] | null;
             recipe_badge?: components["schemas"]["ShotRecipeBadge"] | null;
             recipe_drink?: components["schemas"]["Drink"] | null;
             /** Recipe Version Id */
@@ -9882,29 +9896,34 @@ export interface components {
         };
         /**
          * VersionLabelCounts
-         * @description How the shots on one version were labelled, for the log's one line.
+         * @description How the shots on one version were rated, for the log's one line.
          */
         VersionLabelCounts: {
             /**
-             * Discard
+             * Bad
              * @default 0
              */
-            discard: number;
+            bad: number;
             /**
-             * Improve
+             * Discarded
              * @default 0
              */
-            improve: number;
+            discarded: number;
             /**
-             * Keep
+             * Good
              * @default 0
              */
-            keep: number;
+            good: number;
             /**
-             * Unlabelled
+             * Neutral
              * @default 0
              */
-            unlabelled: number;
+            neutral: number;
+            /**
+             * Unrated
+             * @default 0
+             */
+            unrated: number;
         };
         /** @enum {string} */
         VersionOutcome: "held" | "partly_held" | "failed" | "inconclusive";
@@ -9999,8 +10018,6 @@ export interface components {
             balances: components["schemas"]["Term"][];
             /** Burr Types */
             burr_types: components["schemas"]["Term"][];
-            /** Decisions */
-            decisions: components["schemas"]["Term"][];
             /** Drinks */
             drinks: components["schemas"]["DrinkOption"][];
             /** Flavor Wheel */
@@ -10011,6 +10028,8 @@ export interface components {
             outcome_states: components["schemas"]["Term"][];
             /** Processes */
             processes: components["schemas"]["Term"][];
+            /** Rating Bands */
+            rating_bands: components["schemas"]["Term"][];
             /** Roast Levels */
             roast_levels: components["schemas"]["Term"][];
             /** Rule Categories */

@@ -252,8 +252,9 @@ CREATE TABLE shot_judgements (
     dose_in_g               REAL,
     dose_out_g              REAL,
     notes                   TEXT    NOT NULL DEFAULT '',
-    decision                TEXT    CHECK (decision IS NULL OR decision IN
-                                    ('keep', 'improve', 'discard')),
+    -- 1 when the person said "this shot went wrong, do not count it". Independent of the rating,
+    -- which a discarded shot keeps; the rating's band (good, neutral, bad) is never stored.
+    discarded               INTEGER NOT NULL DEFAULT 0 CHECK (discarded IN (0, 1)),
     seeded_from_device_note INTEGER NOT NULL DEFAULT 0,
     -- When this judgement was last reconciled with the device's notes card.
     -- Set by the seeding path; NULL on a judgement typed here.
@@ -1258,7 +1259,8 @@ SELECT s.id                                        AS shot_id,
        g.name                                      AS grinder_name,
        j.rating,
        j.balance,
-       j.decision,
+       -- A true 0/1 fact about every shot: a shot nobody judged is not discarded.
+       COALESCE(j.discarded, 0)                    AS discarded,
        j.dose_in_g,
        j.dose_out_g,
        -- Yield over dose: the judgement's dose in when one was entered and the
@@ -1330,7 +1332,7 @@ SELECT j.shot_id,
        j.aroma_notes_json,
        j.dose_in_g,
        j.dose_out_g,
-       j.decision,
+       j.discarded,
        j.notes,
        j.updated_at,
        s.started_at,
@@ -1382,4 +1384,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;

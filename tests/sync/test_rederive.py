@@ -147,7 +147,7 @@ async def test_only_the_derived_columns_and_the_version_change(db: Database) -> 
     # What is ours and must survive: a judgement, a device note, Recipe membership.
     target = ids["000300"]
     await JudgementsRepository(db).upsert(
-        target, JudgementWrite(rating=4, balance="sour", notes="mine", decision="keep")
+        target, JudgementWrite(rating=4, balance="sour", notes="mine")
     )
     await db.execute(
         "INSERT INTO device_shot_notes (shot_id, raw_json, notes) VALUES (?, ?, ?)",

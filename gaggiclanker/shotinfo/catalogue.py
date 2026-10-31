@@ -49,7 +49,6 @@ import structlog
 
 from gaggiclanker.db.repos.reviews import ReviewClaimRow
 from gaggiclanker.domain import diagnostics as engine
-from gaggiclanker.domain.decision import effective_decision, rating_of
 from gaggiclanker.domain.drinks import drink_label
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
 from gaggiclanker.domain.phase_metrics import (
@@ -57,6 +56,7 @@ from gaggiclanker.domain.phase_metrics import (
     FAST_FLOW_SCALE_FLOW_G_S,
     FAST_FLOW_WINDOW_MS,
 )
+from gaggiclanker.domain.rating_band import rating_band, rating_of
 from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.signature import Check
 from gaggiclanker.domain.slog import (
@@ -300,7 +300,7 @@ def _notes(notes: list[str]) -> str | None:
 #: units and precision, so "Shot time: 33.0 s" here and on the page are one
 #: reading.
 _MEASURES = {term.value: term for term in vocabulary().spread_measures}
-_DECISIONS = {term.value: term.label for term in vocabulary().decisions}
+_BANDS = {term.value: term.label for term in vocabulary().rating_bands}
 _BALANCES = {term.value: term.label for term in vocabulary().balances}
 
 
@@ -413,28 +413,25 @@ def balance(f: ShotFacts) -> str | None:
 
 
 def _label(f: ShotFacts) -> str:
-    """The Label line: the person's label, else what the rating says (and from which rating)."""
-    stored = f.judgement.decision if f.judgement is not None else None
-    if stored is not None:
-        return _DECISIONS[stored]
-    stars = rating_of(
-        f.judgement.rating if f.judgement is not None else None,
-        f.note.rating if f.note is not None else None,
-        f.shot.index_rating,
-    )
-    derived = effective_decision(None, stars)
-    if derived is None:
-        return "not labelled"
-    return f"{_DECISIONS[derived]} (from the {stars}★ rating)"
+    """The Label line: Discarded, else the rating's band with the stars it read (and "from the
+    machine's rating" when the rating is not the person's own), else not rated."""
+    if f.judgement is not None and f.judgement.discarded:
+        return "Discarded"
+    own = f.judgement.rating if f.judgement is not None else None
+    stars = rating_of(own, f.note.rating if f.note is not None else None, f.shot.index_rating)
+    band = rating_band(stars)
+    if band is None:
+        return "not rated"
+    source = "" if own is not None else ", from the machine's rating"
+    return f"{_BANDS[band]} ({stars}★{source})"
 
 
 def _counted(f: ShotFacts) -> str:
-    decision = f.judgement.decision if f.judgement is not None else None
     if f.shot.quarantined:
         return "not counted: quarantined"
     if f.shot.incomplete:
         return "not counted: stopped early"
-    if decision == "discard":
+    if f.judgement is not None and f.judgement.discarded:
         return "not counted: discarded"
     return "counted"
 
@@ -1062,12 +1059,12 @@ def _items() -> tuple[Item, ...]:
             name="Label",
             label="Label",
             meaning=(
-                "Whether the shot is Good or Bad, or was thrown away. Good: this is what good "
-                "tastes like here (the target). Bad: what is being worked on. Discard: the shot "
-                "went wrong rather than the numbers (a knocked cup, a bad puck), so it is not "
-                "evidence. It is the person's label; when they chose none, the shot's rating "
-                "says it (3 stars or more is Good, 1 or 2 is Bad) and the line says so. A shot "
-                "with neither says not labelled."
+                "What the shot's rating says, or that it was thrown away. Good (4 or 5 stars): "
+                "this is what good tastes like here (the target). Neutral (3 stars). Bad (1 or 2 "
+                "stars): what is being worked on. The line gives the stars it read, and says "
+                "when they are the machine's rating rather than the person's. Discarded: the "
+                "shot went wrong rather than the numbers (a knocked cup, a bad puck), so it is "
+                "not evidence, whatever its stars. A shot with no rating says not rated."
             ),
             default_tier="base",
             shot=_label,

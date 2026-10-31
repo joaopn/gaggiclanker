@@ -90,7 +90,7 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
     """The rule the whole feature rests on.
 
     The subject shot carries a full judgement (rating, balance, taste and aroma
-    notes, notes text, a decision), a note typed on the machine, an earlier reading and
+    notes, notes text, a discard), a note typed on the machine, an earlier reading and
     is filed under a version with a prediction in a named Recipe that has five other shots
     and a confirmed insight. None of the person's side may reach the stored input or the
     rendered prompt; the version's recipe and prediction do.
@@ -129,10 +129,10 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
     )
     # Every row the leak test looks for is really there to leak.
     stored = await db.fetch_one(
-        "SELECT rating, balance, notes, decision FROM shot_judgements WHERE shot_id = ?",
+        "SELECT rating, balance, notes, discarded FROM shot_judgements WHERE shot_id = ?",
         (subject,),
     )
-    assert stored is not None and stored["decision"] == "improve"
+    assert stored is not None and stored["rating"] is not None and stored["notes"]
 
     review = await build_review_input(db, subject)
     stored_input = review.model_dump_json()
@@ -427,10 +427,9 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
         ),
     )
     # Give the shot every copy of the verdict and the machine's card the row can carry: no stored
-    # decision (so the rating's decision is derived), the three ratings, and both balances.
+    # discard (so the band is the rating's), the three ratings, and both balances.
     await fixture.db.execute(
-        "UPDATE shot_judgements SET decision = NULL, rating = 2, balance = 'sour' "
-        "WHERE shot_id = ?",
+        "UPDATE shot_judgements SET discarded = 0, rating = 2, balance = 'sour' WHERE shot_id = ?",
         (subject,),
     )
     await fixture.db.execute("UPDATE shots SET index_rating = 4 WHERE id = ?", (subject,))
@@ -438,14 +437,14 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
         subject, ShotNotes(id="000999", rating=3, balanceTaste="bitter")
     )
     before = (await load_shots(fixture.db, [subject]))[0].shot
-    # A stored decision and a derived one exclude each other, so the state with a stored decision
-    # is read too, and between the two every field is set before the review clears it.
+    # A discarded shot is read too, and between the two every field is set before the review
+    # clears it.
     await fixture.db.execute(
-        "UPDATE shot_judgements SET decision = 'keep' WHERE shot_id = ?", (subject,)
+        "UPDATE shot_judgements SET discarded = 1 WHERE shot_id = ?", (subject,)
     )
     stored = (await load_shots(fixture.db, [subject]))[0].shot
     await fixture.db.execute(
-        "UPDATE shot_judgements SET decision = NULL WHERE shot_id = ?", (subject,)
+        "UPDATE shot_judgements SET discarded = 0 WHERE shot_id = ?", (subject,)
     )
     for name, cleared in VERDICT_FIELDS.items():
         assert getattr(before, name) != cleared or getattr(stored, name) != cleared, (
@@ -474,22 +473,32 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
     assert "Review: not reviewed" in review.shot, (
         "the widened list rendered the reading group, empty"
     )
-    assert "not labelled" in review.shot, "the widened list really did render the label"
+    assert "not rated" in review.shot, "the widened list really did render the label"
 
     [facts] = rendered
     assert (facts.judgement, facts.note, facts.reading) == (None, None, None)
     assert facts.version is not None, "the version's recipe is what the checks measure against"
     assert facts.shot.judgement_rating is None
     assert facts.shot.judgement_notes is None
-    assert facts.shot.judgement_decision is None
+    assert facts.shot.discarded is False
+    assert facts.shot.rating_band is None
     # Every field of the row that carries the verdict or the machine's card is cleared, the
-    # derived decision and the balances included; a field added later that looks like one of them
+    # discard, the band and the balances included; a field added later that looks like one of them
     # must be declared in `VERDICT_FIELDS` or this fails.
     looks_like_verdict = {
         name
         for name in ShotListRow.model_fields
-        if name.startswith(("judgement_", "decision_", "derived_"))
-        or name in {"rating", "index_rating", "balance", "has_judgement", "has_notes"}
+        if name.startswith("judgement_")
+        or name
+        in {
+            "rating",
+            "index_rating",
+            "balance",
+            "discarded",
+            "rating_band",
+            "has_judgement",
+            "has_notes",
+        }
     }
     assert looks_like_verdict == set(VERDICT_FIELDS)
     for name, cleared in VERDICT_FIELDS.items():

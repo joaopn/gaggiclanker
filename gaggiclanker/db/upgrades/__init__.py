@@ -31,6 +31,7 @@ from gaggiclanker.db.upgrades.level_003 import STEP as _LEVEL_3
 from gaggiclanker.db.upgrades.level_004 import STEP as _LEVEL_4
 from gaggiclanker.db.upgrades.level_005 import STEP as _LEVEL_5
 from gaggiclanker.db.upgrades.level_006 import STEP as _LEVEL_6
+from gaggiclanker.db.upgrades.level_007 import STEP as _LEVEL_7
 from gaggiclanker.db.upgrades.step import Step, validate_steps
 
 __all__ = [
@@ -45,7 +46,7 @@ __all__ = [
 
 #: Registered in order; the step at index N-1 produces level N.
 STEPS: tuple[Step, ...] = validate_steps(
-    (_LEVEL_1, _LEVEL_2, _LEVEL_3, _LEVEL_4, _LEVEL_5, _LEVEL_6)
+    (_LEVEL_1, _LEVEL_2, _LEVEL_3, _LEVEL_4, _LEVEL_5, _LEVEL_6, _LEVEL_7)
 )
 
 #: The level a database ends at: what ``schema.sql`` says, which a test ties to ``STEPS``.

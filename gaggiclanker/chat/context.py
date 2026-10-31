@@ -817,7 +817,8 @@ def _ledger_line(
     shots = (
         _plural(version.shot_count, "shot")
         + (
-            f" ({counts.keep} Good, {counts.improve} Bad, {counts.discard} Discard)"
+            f" ({counts.good} Good, {counts.neutral} Neutral, {counts.bad} Bad, "
+            f"{counts.discarded} Discarded)"
             if counts is not None and version.shot_count
             else ""
         )
@@ -1024,8 +1025,8 @@ def _side(measure: SpreadMeasure, mean: float | None, n: int) -> str:
 def _counts_line(label: str, counts: Any) -> str:
     return (
         f"{label}: {_plural(counts.shots, 'counted shot')} — {counts.sour} sour, {counts.balanced} "
-        f"balanced, {counts.bitter} bitter; {counts.keep} Good, {counts.improve} Bad, "
-        f"{counts.unlabelled} unlabelled."
+        f"balanced, {counts.bitter} bitter; {counts.good} Good, {counts.neutral} Neutral, "
+        f"{counts.bad} Bad, {counts.unrated} unrated."
     )
 
 
@@ -1094,18 +1095,18 @@ def _gold_standard(
 ) -> list[str]:
     """What good has looked like in this Recipe: the Good shots still on the line.
 
-    A Good shot is one the person labelled so or, when they chose no label, rated three stars
-    or more (the shot's decision is the shared rule's). On the live line only, because a
+    A Good shot is one rated four or five stars and not discarded (a discarded shot is not in the
+    counted shots, and the band is the shared rule's). On the live line only, because a
     Good shot under a version a roll back stepped over is a cup somebody liked on a branch
     nobody is brewing any more — worth finding with `list_recipe_shots`, not worth holding
     a Bad shot up against.
     """
     live = {version.id for version in versions if version.id not in dead_ends}
-    keeps = [shot for shot in counted if shot.decision == "keep" and shot.version_id in live]
+    keeps = [shot for shot in counted if shot.band == "good" and shot.version_id in live]
     if not keeps:
         return [
             "THE GOLD STANDARD",
-            "No shot on the line being brewed is Good yet (labelled so, or rated 3 stars or more), "
+            "No shot on the line being brewed is Good yet (rated 4 or 5 stars), "
             "so there is no target to compare a Bad shot against.",
         ]
     # In the order they were made, each by its name.

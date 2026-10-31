@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.recipes import RecipesRepository
-from gaggiclanker.domain.vocab import Decision
+from gaggiclanker.domain.vocab import ShotLabel
 from gaggiclanker.shotinfo import catalogue
 from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import load_shots
@@ -64,7 +64,7 @@ class ShotQuery:
     #: One version of the Recipe, by row id: the tool resolves the name the agent
     #: typed ("v1.1") into this, and refuses a name the Recipe does not have.
     version_id: int | None = None
-    label: Decision | None = None
+    label: ShotLabel | None = None
     balance: str | None = None
     #: ``YYYY-MM-DD``, inclusive, of the shot's UTC start.
     since: str | None = None
@@ -89,7 +89,7 @@ async def search_shots(db: Database, recipe_id: int, query: ShotQuery) -> Search
     ids = await RecipesRepository(db).search_shot_ids(
         recipe_id,
         version_id=query.version_id,
-        decision=query.label,
+        label=query.label,
         balance=query.balance,
         since=query.since,
         until=query.until,

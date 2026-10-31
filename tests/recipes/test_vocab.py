@@ -24,7 +24,6 @@ from gaggiclanker.domain.spread import MEASURE_FLOORS
 from gaggiclanker.domain.vocab import (
     BALANCES,
     BURR_TYPES,
-    DECISIONS,
     FLAVOR_LABELS,
     FLAVOR_NOTES,
     FLAVOR_PICK_KINDS,
@@ -34,6 +33,7 @@ from gaggiclanker.domain.vocab import (
     OUTCOME_STATES,
     PREDICTION_STANCES,
     PROCESSES,
+    RATING_BANDS,
     RECIPE_VERSION_ORIGINS,
     REVIEW_CLAIM_KINDS,
     REVIEW_CLAIM_STATUSES,
@@ -59,7 +59,6 @@ CHECKED: list[tuple[str, str, tuple[str, ...]]] = [
     ("recipe_versions", "outcome", VERSION_OUTCOMES),
     ("recipe_versions", "drink", DRINKS),
     ("shot_judgements", "balance", BALANCES),
-    ("shot_judgements", "decision", DECISIONS),
     ("flavor_picks", "kind", FLAVOR_PICK_KINDS),
     ("shot_reviews", "status", REVIEW_STATUSES),
     ("review_claims", "kind", REVIEW_CLAIM_KINDS),
@@ -216,7 +215,8 @@ def test_a_measure_says_how_a_mean_and_a_difference_are_written() -> None:
 def test_the_served_vocabulary_carries_every_term() -> None:
     served = vocabulary()
     assert [term.value for term in served.roast_levels] == list(ROAST_LEVELS)
-    assert [term.value for term in served.decisions] == list(DECISIONS)
+    assert [term.value for term in served.rating_bands] == list(RATING_BANDS)
+    assert [term.label for term in served.rating_bands] == ["Good", "Neutral", "Bad"]
     assert [term.value for term in served.drinks] == list(DRINKS)
     assert all(term.label and term.covers for term in served.drinks)
     # Six states are rendered and only four can be recorded: `open` and

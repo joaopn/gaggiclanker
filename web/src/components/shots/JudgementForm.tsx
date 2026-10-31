@@ -23,8 +23,8 @@ import { cn } from "@/lib/utils";
  * ran, this says whether the coffee was good, and a flawless extraction of stale
  * beans is a bad cup.
  *
- * Every closed vocabulary on this form — balance, the flavour wheel, the
- * decisions — comes from `GET /api/vocab` rather than from a list typed here.
+ * Every closed vocabulary on this form — balance and the flavour wheel —
+ * comes from `GET /api/vocab` rather than from a list typed here.
  * A UI that hard-codes an enum drifts from the database the first time one
  * changes, and the symptom is a 422 on a value the user picked from a dropdown
  * we shipped.
@@ -44,7 +44,8 @@ type FormState = {
   doseIn: string;
   doseOut: string;
   notes: string;
-  decision: string | null;
+  /** "This shot went wrong, do not count it": the Discard switch, apart from the stars. */
+  discarded: boolean;
 };
 
 const EMPTY: FormState = {
@@ -55,7 +56,7 @@ const EMPTY: FormState = {
   doseIn: "",
   doseOut: "",
   notes: "",
-  decision: null,
+  discarded: false,
 };
 
 /**
@@ -89,7 +90,7 @@ function toState(
     doseIn: judgement.dose_in_g == null ? prefilled.doseIn : String(judgement.dose_in_g),
     doseOut: judgement.dose_out_g == null ? prefilled.doseOut : String(judgement.dose_out_g),
     notes: judgement.notes ?? "",
-    decision: judgement.decision ?? null,
+    discarded: judgement.discarded ?? false,
   };
 }
 
@@ -107,7 +108,7 @@ export function toBody(state: FormState): JudgementWrite {
     dose_in_g: toNumber(state.doseIn),
     dose_out_g: toNumber(state.doseOut),
     notes: state.notes,
-    decision: state.decision as JudgementWrite["decision"],
+    discarded: state.discarded,
   };
 }
 
@@ -120,19 +121,12 @@ export function JudgementForm({
   shotId,
   judgement,
   prefill,
-  derivedDecision = null,
-  derivedTitle,
   machineBalance = null,
   open,
   onOpenChange,
 }: {
   shotId: number;
   judgement: ShotJudgement | null | undefined;
-  /** The decision the shot's rating gives when none is stored (`derived_decision`, served by the
-   * server): drawn outlined, and a click on it chooses it. */
-  derivedDecision?: string | null;
-  /** What the outline says on hover: which rating it came from (`derivedDecisionTitle`). */
-  derivedTitle?: string;
   /** The balance on the machine's notes card (`balance`, served by the server), which the
    * verdict has not taken: drawn outlined in the Balance field while the verdict holds none, as
    * the Balance column draws it, and a click on it chooses it. */
@@ -222,18 +216,40 @@ export function JudgementForm({
                   hintTitle={MACHINE_BALANCE_TITLE}
                 />
               </Field>
-              <Field label="Decision">
-                <Segmented
-                  name="decision"
-                  options={(vocab.data?.decisions ?? []).map((term) => ({
-                    value: term.value,
-                    label: term.label,
-                  }))}
-                  value={state.decision}
-                  onChange={(next) => set("decision", next)}
-                  hint={derivedDecision}
-                  hintTitle={derivedTitle}
-                />
+              <Field label="Discard">
+                {/* A switch of its own, not a choice among the stars' words: it means "this shot
+                    went wrong, do not count it", whatever the shot was rated. */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={state.discarded}
+                  aria-label="Discard this shot"
+                  data-testid="discard-switch"
+                  onClick={() => set("discarded", !state.discarded)}
+                  className="inline-flex items-center gap-2 rounded-md px-1 py-0.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "relative h-4 w-7 shrink-0 rounded-full border transition-colors",
+                      state.discarded
+                        ? "border-status-bad bg-status-bad/30"
+                        : "border-border bg-muted",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-0.5 size-2.5 rounded-full transition-all",
+                        state.discarded ? "left-3.5 bg-status-bad" : "left-0.5 bg-muted-foreground",
+                      )}
+                    />
+                  </span>
+                  <span
+                    className={state.discarded ? "text-status-bad-text" : "text-muted-foreground"}
+                  >
+                    Discard this shot
+                  </span>
+                </button>
               </Field>
             </div>
 

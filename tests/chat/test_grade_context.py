@@ -115,7 +115,7 @@ class TestThisVersionsConversation:
         from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 
         await JudgementsRepository(experiment.db).upsert(
-            extra, JudgementWrite.model_validate({"decision": "keep"})
+            extra, JudgementWrite.model_validate({"rating": 4})
         )
 
         text = await opening_context(

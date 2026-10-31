@@ -61,16 +61,18 @@ async def _recipe_with_versions(
     return row.id, versions
 
 
-async def _judged_shot(
-    wired: Fixtures, version_id: int, device_id: str, decision: str | None
-) -> int:
-    """A shot on this version, labelled (or deliberately not)."""
+async def _judged_shot(wired: Fixtures, version_id: int, device_id: str, kind: str | None) -> int:
+    """A shot on this version, rated into a band (or deliberately not rated).
+
+    A ``discarded`` shot is five stars and discarded, so that only the discard keeps it from
+    counting as Good.
+    """
     shot_id = await make_shot(wired.db, device_id)
     assert await wired.recipes.assign_shot(shot_id, version_id)
-    if decision is not None:
+    if kind is not None:
+        stars = {"good": 4, "neutral": 3, "bad": 2, "discarded": 5}[kind]
         await JudgementsRepository(wired.db).upsert(
-            shot_id,
-            JudgementWrite.model_validate({"decision": decision}),
+            shot_id, JudgementWrite(rating=stars, discarded=kind == "discarded")
         )
     return shot_id
 
@@ -277,7 +279,7 @@ class TestPrediction:
         await wired.recipes.set_prediction(
             recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
-        shot_id = await _judged_shot(wired, versions[1].id, "000740", "keep")
+        shot_id = await _judged_shot(wired, versions[1].id, "000740", "good")
         await wired.recipes.set_outcome(
             recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
         )
@@ -318,7 +320,7 @@ class TestPrediction:
 class TestOutcome:
     async def test_it_is_refused_with_no_prediction(self, wired: Fixtures) -> None:
         recipe_id, versions = await _recipe_with_versions(wired)
-        await _judged_shot(wired, versions[1].id, "000702", "keep")
+        await _judged_shot(wired, versions[1].id, "000702", "good")
 
         result = await wired.recipes.set_outcome(
             recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
@@ -333,7 +335,7 @@ class TestOutcome:
             recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
         await _judged_shot(wired, versions[1].id, "000703", None)
-        await _judged_shot(wired, versions[1].id, "000704", "discard")
+        await _judged_shot(wired, versions[1].id, "000704", "discarded")
 
         assert (
             await wired.recipes.set_outcome(
@@ -341,7 +343,7 @@ class TestOutcome:
             )
         ).refused == "nothing_to_grade"
 
-        await _judged_shot(wired, versions[1].id, "000705", "improve")
+        await _judged_shot(wired, versions[1].id, "000705", "bad")
         result = await wired.recipes.set_outcome(
             recipe_id,
             versions[1].id,
@@ -367,7 +369,7 @@ class TestOutcome:
         await wired.recipes.set_prediction(
             recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
-        shot_id = await _judged_shot(wired, versions[1].id, "000741", "keep")
+        shot_id = await _judged_shot(wired, versions[1].id, "000741", "good")
         await wired.recipes.set_outcome(
             recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
         )
@@ -386,7 +388,7 @@ class TestOutcome:
         await wired.recipes.set_prediction(
             recipe_id, versions[1].id, VersionPredictionWrite(prediction="less bitter")
         )
-        await _judged_shot(wired, versions[1].id, "000706", "keep")
+        await _judged_shot(wired, versions[1].id, "000706", "good")
         await wired.recipes.set_outcome(
             recipe_id, versions[1].id, VersionOutcomeWrite(outcome="held")
         )
@@ -417,7 +419,7 @@ class TestRevert:
         await wired.recipes.set_prediction(
             recipe_id, target.id, VersionPredictionWrite(prediction="less bitter, a bit shorter")
         )
-        shot_id = await _judged_shot(wired, target.id, "000001", "keep")
+        shot_id = await _judged_shot(wired, target.id, "000001", "good")
         await wired.recipes.set_outcome(
             recipe_id, target.id, VersionOutcomeWrite(outcome="held", note="it did")
         )
@@ -536,8 +538,8 @@ class TestTheWayBackOffer:
         )
         v21 = await wired.recipes.add_version(row.id, RecipeVersionPatch(grind_setting="19"))
         assert v11 is not None and v2 is not None and v21 is not None
-        await _judged_shot(wired, v1.id, "000001", "keep")
-        await _judged_shot(wired, v2.id, "000002", "keep")
+        await _judged_shot(wired, v1.id, "000001", "good")
+        await _judged_shot(wired, v2.id, "000002", "good")
         assert await wired.recipes.rollback_target(row.id) == v2.id
 
         await wired.recipes.rollback(row.id, RollbackWrite(to_version_id=v11.id))
@@ -546,8 +548,8 @@ class TestTheWayBackOffer:
 
     async def test_an_old_roll_back_row_steps_to_what_it_restored(self, wired: Fixtures) -> None:
         recipe_id, versions = await _recipe_with_versions(wired, count=3)
-        await _judged_shot(wired, versions[0].id, "000001", "keep")
-        await _judged_shot(wired, versions[1].id, "000002", "keep")
+        await _judged_shot(wired, versions[0].id, "000001", "good")
+        await _judged_shot(wired, versions[1].id, "000002", "good")
         await wired.db.execute(
             "UPDATE recipe_versions SET restores_version_id = ? WHERE id = ?",
             (versions[0].id, versions[2].id),
@@ -708,7 +710,7 @@ class TestTrackRecordAndTarget:
             await wired.recipes.set_prediction(
                 recipe_id, version.id, VersionPredictionWrite(prediction="less bitter")
             )
-            await _judged_shot(wired, version.id, f"00074{index}", "keep")
+            await _judged_shot(wired, version.id, f"00074{index}", "good")
             result = await wired.recipes.set_outcome(
                 recipe_id, version.id, VersionOutcomeWrite(outcome=cast("VersionOutcome", outcome))
             )
@@ -730,33 +732,38 @@ class TestTrackRecordAndTarget:
         self, wired: Fixtures
     ) -> None:
         recipe_id, versions = await _recipe_with_versions(wired, count=4)
-        await _judged_shot(wired, versions[0].id, "000720", "keep")
-        await _judged_shot(wired, versions[1].id, "000721", "keep")
+        await _judged_shot(wired, versions[0].id, "000720", "good")
+        await _judged_shot(wired, versions[1].id, "000721", "good")
         # Discarded and unlabelled shots are not somebody saying "it worked".
-        await _judged_shot(wired, versions[2].id, "000722", "discard")
+        await _judged_shot(wired, versions[2].id, "000722", "discarded")
         await _judged_shot(wired, versions[2].id, "000723", None)
+        await _judged_shot(wired, versions[2].id, "000726", "neutral")
         # The current version's own Keep does not count: you are already there.
-        await _judged_shot(wired, versions[3].id, "000724", "keep")
+        await _judged_shot(wired, versions[3].id, "000724", "good")
 
         assert await wired.recipes.rollback_target(recipe_id) == versions[1].id
 
     async def test_there_is_no_target_when_nothing_was_ever_kept(self, wired: Fixtures) -> None:
         recipe_id, versions = await _recipe_with_versions(wired, count=2)
-        await _judged_shot(wired, versions[0].id, "000725", "improve")
+        await _judged_shot(wired, versions[0].id, "000725", "bad")
+        await _judged_shot(wired, versions[1].id, "000727", "neutral")
+        await _judged_shot(wired, versions[1].id, "000728", "discarded")
 
         assert await wired.recipes.rollback_target(recipe_id) is None
 
     async def test_the_label_counts_are_grouped_per_version(self, wired: Fixtures) -> None:
         recipe_id, versions = await _recipe_with_versions(wired)
-        await _judged_shot(wired, versions[1].id, "000730", "keep")
-        await _judged_shot(wired, versions[1].id, "000731", "keep")
-        await _judged_shot(wired, versions[1].id, "000732", "improve")
+        await _judged_shot(wired, versions[1].id, "000730", "good")
+        await _judged_shot(wired, versions[1].id, "000731", "good")
+        await _judged_shot(wired, versions[1].id, "000732", "bad")
+        await _judged_shot(wired, versions[1].id, "000734", "neutral")
+        await _judged_shot(wired, versions[1].id, "000735", "discarded")
         await _judged_shot(wired, versions[1].id, "000733", None)
 
         counts = await wired.recipes.label_counts(recipe_id)
 
-        assert counts[versions[1].id].keep == 2
-        assert counts[versions[1].id].improve == 1
-        assert counts[versions[1].id].discard == 0
-        assert counts[versions[1].id].unlabelled == 1
+        mine = counts[versions[1].id]
+        # A discarded shot is five stars: it is counted as discarded and as nothing else.
+        assert (mine.good, mine.neutral, mine.bad) == (2, 1, 1)
+        assert (mine.discarded, mine.unrated) == (1, 1)
         assert versions[0].id not in counts

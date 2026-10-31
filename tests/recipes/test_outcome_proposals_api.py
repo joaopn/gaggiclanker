@@ -55,7 +55,7 @@ async def _graded_recipe(
         shot_id = await make_shot(app.state.db, f"{recipe_id}00{number:03d}")
         assert await recipes.assign_shot(shot_id, version_id)
         await JudgementsRepository(app.state.db).upsert(
-            shot_id, JudgementWrite.model_validate({"decision": "keep"})
+            shot_id, JudgementWrite.model_validate({"rating": 4})
         )
     return recipe_id, version_id
 
@@ -276,18 +276,18 @@ class TestAnswering:
     ) -> None:
         recipe_id, version_id = await _graded_recipe(client, app, bean_id)
         proposal_id = await _propose(app, recipe_id, version_id)
-        await app.state.db.execute("UPDATE shot_judgements SET decision = 'discard'")
+        await app.state.db.execute("UPDATE shot_judgements SET discarded = 1")
 
         response = await client.post(_url(recipe_id, proposal_id, "accept"))
 
         assert response.status_code == 409
         assert error(response)["code"] == "NOTHING_TO_GRADE"
         # Names the version it is about, never "Version None".
-        assert "v1 has no Good or Bad shot yet" in error(response)["message"]
+        assert "v1 has no rated shot yet" in error(response)["message"]
         assert "None" not in error(response)["message"]
         # The route's own `details.message` says what is missing, as the Recipe page's does.
         details = error(response)["details"]["message"]
-        assert "Good or Bad" in details and "a discarded shot does not count" in details
+        assert "is rated yet" in details and "a discarded shot does not count" in details
         waiting = data(await client.get(f"/api/recipes/{recipe_id}"))["outcome_proposal"]
         assert waiting is not None and waiting["id"] == proposal_id
 
@@ -441,7 +441,7 @@ class TestTheNextVersionCardSaysItRecordsTheGrade:
         recipe_id, version_id = await _graded_recipe(client, app, bean_id)
         await _propose(app, recipe_id, version_id, "held")
         proposal_id = await self._next_version(app, recipe_id)
-        await app.state.db.execute("UPDATE shot_judgements SET decision = 'discard'")
+        await app.state.db.execute("UPDATE shot_judgements SET discarded = 1")
 
         response = await client.post(
             f"/api/recipes/{recipe_id}/proposals/{proposal_id}/accept", json={}
@@ -450,4 +450,4 @@ class TestTheNextVersionCardSaysItRecordsTheGrade:
         assert response.status_code == 409
         assert error(response)["code"] == "PROPOSAL_GRADE_UNRECORDABLE"
         message = error(response)["details"]["message"]
-        assert "Good or Bad any more" in message and "a discarded shot does not count" in message
+        assert "is rated any more" in message and "a discarded shot does not count" in message

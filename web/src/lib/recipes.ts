@@ -132,18 +132,20 @@ export function handSettingsWords(
 }
 
 /**
- * How a version's shots were labelled, on one line: "2 Good · 1 Bad".
+ * How a version's shots were rated, on one line: "2 Good · 1 Neutral · 1 Bad · 1 Discarded".
  *
- * Only the counts that are not zero, and the unlabelled ones last and in lower
- * case: they are the work still to do, not a verdict anybody gave. Empty when
- * there are no shots, so the caller renders nothing rather than "0 Good".
+ * Good, Neutral and Bad are the words for a rating's band (4-5, 3, 1-2 stars); a discarded shot
+ * is counted only as discarded. Only the counts that are not zero, and the unrated ones last and
+ * in lower case: they are the work still to do, not a verdict anybody gave. Empty when there are
+ * no shots, so the caller renders nothing rather than "0 Good".
  */
 export function labelSummary(labels: RecipeVersionDetail["labels"]): string {
   const parts: string[] = [];
-  if (labels.keep) parts.push(`${labels.keep} Good`);
-  if (labels.improve) parts.push(`${labels.improve} Bad`);
-  if (labels.discard) parts.push(`${labels.discard} Discard`);
-  if (labels.unlabelled) parts.push(`${labels.unlabelled} not labelled`);
+  if (labels.good) parts.push(`${labels.good} Good`);
+  if (labels.neutral) parts.push(`${labels.neutral} Neutral`);
+  if (labels.bad) parts.push(`${labels.bad} Bad`);
+  if (labels.discarded) parts.push(`${labels.discarded} Discarded`);
+  if (labels.unrated) parts.push(`${labels.unrated} not rated`);
   return parts.join(" · ");
 }
 
@@ -242,16 +244,17 @@ export function verdictSentence(row: MeasureEvidence, term?: MeasureTerm): strin
 
 /**
  * One side's plain facts, zeros left out: how the cups went and how they were
- * labelled. No Discard, because a discarded shot is not counted at all.
+ * rated. No Discarded, because a discarded shot is not counted at all.
  */
 export function evidenceSideSummary(side: EvidenceCounts): string {
   const parts = [`${side.shots} shot${side.shots === 1 ? "" : "s"}`];
   if (side.sour) parts.push(`${side.sour} sour`);
   if (side.balanced) parts.push(`${side.balanced} balanced`);
   if (side.bitter) parts.push(`${side.bitter} bitter`);
-  if (side.keep) parts.push(`${side.keep} Good`);
-  if (side.improve) parts.push(`${side.improve} Bad`);
-  if (side.unlabelled) parts.push(`${side.unlabelled} not labelled`);
+  if (side.good) parts.push(`${side.good} Good`);
+  if (side.neutral) parts.push(`${side.neutral} Neutral`);
+  if (side.bad) parts.push(`${side.bad} Bad`);
+  if (side.unrated) parts.push(`${side.unrated} not rated`);
   return parts.join(" · ");
 }
 

@@ -392,8 +392,8 @@ def _sibling_version(
     shots = _plural(version.shot_count, "shot")
     if counts is not None and version.shot_count:
         shots += (
-            f" ({counts.keep} Good, {counts.improve} Bad, {counts.discard} Discard, "
-            f"{counts.unlabelled} unlabelled)"
+            f" ({counts.good} Good, {counts.neutral} Neutral, {counts.bad} Bad, "
+            f"{counts.discarded} Discarded, {counts.unrated} unrated)"
         )
     rating = ratings.get(version.id)
     parts = [

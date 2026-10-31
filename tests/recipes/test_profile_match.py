@@ -252,8 +252,8 @@ class TestMatchUnfiled:
         guji = await _recipe_on(wired, "Guji", profile)
         discarded = await make_shot(wired.db, "000750", profile_version_id=profile)
         kept = await make_shot(wired.db, "000751", profile_version_id=profile)
-        await wired.judgements.upsert(discarded, JudgementWrite(decision="discard"))
-        await wired.judgements.upsert(kept, JudgementWrite(decision="keep"))
+        await wired.judgements.upsert(discarded, JudgementWrite(discarded=True))
+        await wired.judgements.upsert(kept, JudgementWrite(rating=4))
 
         summary = await wired.recipes.match_unfiled()
 

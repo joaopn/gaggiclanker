@@ -368,10 +368,10 @@ def test_the_measured_yardstick_is_what_a_difference_is_held_against() -> None:
 
 def test_the_counts_are_plain_facts_with_no_verdict_on_them() -> None:
     shots = [
-        shot(10, 1, RECIPE_A, shot_time_s=28.0, balance="sour", decision="improve"),
+        shot(10, 1, RECIPE_A, shot_time_s=28.0, balance="sour", band="bad"),
         shot(11, 1, RECIPE_A, shot_time_s=30.0, balance="sour"),
-        shot(20, 2, RECIPE_B, shot_time_s=31.0, balance="balanced", decision="keep"),
-        shot(21, 2, RECIPE_B, shot_time_s=31.0, balance="bitter", decision="keep"),
+        shot(20, 2, RECIPE_B, shot_time_s=31.0, balance="balanced", band="good"),
+        shot(21, 2, RECIPE_B, shot_time_s=31.0, balance="bitter", band="neutral"),
     ]
 
     evidence = version_evidence(
@@ -390,12 +390,13 @@ def test_the_counts_are_plain_facts_with_no_verdict_on_them() -> None:
         "sour": 0,
         "balanced": 1,
         "bitter": 1,
-        "keep": 2,
-        "improve": 0,
-        "unlabelled": 0,
+        "good": 1,
+        "neutral": 1,
+        "bad": 0,
+        "unrated": 0,
     }
     assert evidence.other is not None
-    assert (evidence.other.sour, evidence.other.improve, evidence.other.unlabelled) == (2, 1, 1)
+    assert (evidence.other.sour, evidence.other.bad, evidence.other.unrated) == (2, 1, 1)
 
 
 # ── the other side is that version's own shots, all of them ──────────

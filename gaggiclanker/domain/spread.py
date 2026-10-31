@@ -111,9 +111,9 @@ class CountedShot(BaseModel):
     """One shot that counts towards a Recipe's spread, and what it measured.
 
     "Counts" is decided before this model: filed under a version of the Recipe, not
-    quarantined, not incomplete, not labelled Discard. An unlabelled shot counts
+    quarantined, not incomplete, not discarded. An unrated shot counts
     — it is plain data, and leaving it out would mean the spread depended on how
-    diligent somebody had been about labelling.
+    diligent somebody had been about rating.
 
     Every measure is optional and every missing one is simply not counted for
     that shot, rather than counted as a zero: a machine with no pressure sensor
@@ -153,7 +153,9 @@ class CountedShot(BaseModel):
     #: yardstick: they are words, not quantities, and "two sour against one
     #: bitter" is for a person to read rather than for arithmetic to grade.
     balance: str | None = None
-    decision: str | None = None
+    #: The band of the rating (``good``, ``neutral``, ``bad``), ``None`` for a shot nobody rated.
+    #: A discarded shot never reaches this model, so there is no discard here.
+    band: str | None = None
 
     @property
     def recipe(self) -> tuple[object, ...]:
@@ -277,9 +279,9 @@ class MeasureEvidence(BaseModel):
 
 
 class EvidenceCounts(BaseModel):
-    """One side's plain facts: how the cup went, and how it was labelled.
+    """One side's plain facts: how the cup went, and how it was rated.
 
-    No verdict on any of them. There is no Discard count because a discarded
+    No verdict on any of them. There is no discarded count because a discarded
     shot is not a counted shot — it says the shot went wrong, not that the
     recipe did.
     """
@@ -293,9 +295,10 @@ class EvidenceCounts(BaseModel):
     sour: int = 0
     balanced: int = 0
     bitter: int = 0
-    keep: int = 0
-    improve: int = 0
-    unlabelled: int = 0
+    good: int = 0
+    neutral: int = 0
+    bad: int = 0
+    unrated: int = 0
 
 
 class VersionEvidence(BaseModel):
@@ -496,9 +499,10 @@ def _counts(shots: Sequence[CountedShot], version_id: int, version_label: str) -
         sour=sum(1 for shot in shots if shot.balance == "sour"),
         balanced=sum(1 for shot in shots if shot.balance == "balanced"),
         bitter=sum(1 for shot in shots if shot.balance == "bitter"),
-        keep=sum(1 for shot in shots if shot.decision == "keep"),
-        improve=sum(1 for shot in shots if shot.decision == "improve"),
-        unlabelled=sum(1 for shot in shots if shot.decision is None),
+        good=sum(1 for shot in shots if shot.band == "good"),
+        neutral=sum(1 for shot in shots if shot.band == "neutral"),
+        bad=sum(1 for shot in shots if shot.band == "bad"),
+        unrated=sum(1 for shot in shots if shot.band is None),
     )
 
 

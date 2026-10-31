@@ -38,9 +38,11 @@ describe("JudgementForm", () => {
   it("renders the vocabularies the server serves rather than its own", async () => {
     renderWithQueryClient(<JudgementForm shotId={1} judgement={null} />);
 
-    // Balance and the decisions come from /api/vocab, labels and all.
+    // Balance comes from /api/vocab, labels and all.
     expect(await screen.findByRole("button", { name: "Sour" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Bad" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bitter" })).toBeInTheDocument();
+    // The stars are the judgement: there is no Good or Bad to pick.
+    expect(screen.queryByRole("button", { name: "Bad" })).not.toBeInTheDocument();
   });
 
   it("has no ratio and no grind: the server's ratio is elsewhere, and the grind is the recipe's", async () => {
@@ -87,65 +89,55 @@ describe("JudgementForm", () => {
 
     await user.click(await screen.findByRole("button", { name: "4 stars" }));
     await user.click(screen.getByRole("button", { name: "Sour" }));
-    // "Not rated" and "not decided" are real answers, and the second click is
-    // the only place to say them.
-    await user.click(screen.getByRole("button", { name: "Good" }));
-    await user.click(screen.getByRole("button", { name: "Good" }));
+    // "Not chosen" is a real answer, and the second click is the only place to say it.
+    await user.click(screen.getByRole("button", { name: "Bitter" }));
+    await user.click(screen.getByRole("button", { name: "Bitter" }));
     await user.click(screen.getByRole("button", { name: "Save judgement" }));
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
     expect(putJudgement).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ rating: 4, balance: "sour", decision: null }),
+      expect.objectContaining({ rating: 4, balance: null, discarded: false }),
     );
   });
 
-  it("outlines the decision the rating gives, and stores it on a click like a chosen one", async () => {
+  it("has a separate Discard switch, off by default, in place of a Good or Bad choice", async () => {
+    renderWithQueryClient(<JudgementForm shotId={1} judgement={null} />);
+
+    const discard = await screen.findByRole("switch", { name: "Discard this shot" });
+    expect(discard).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Discard" })).not.toBeInTheDocument();
+  });
+
+  it("stores a discard with the rest of the verdict, and keeps the stars", async () => {
     const user = setupUser();
-    renderWithQueryClient(
-      <JudgementForm
-        shotId={1}
-        judgement={judgement({ decision: null })}
-        derivedDecision="keep"
-        derivedTitle="From the 4★ rating on the machine's notes card (3★ or more is Good). Click to confirm or change."
-      />,
-    );
+    renderWithQueryClient(<JudgementForm shotId={1} judgement={judgement({ rating: 4 })} />);
 
-    const good = await screen.findByRole("button", { name: "Good" });
-    // Outlined, not pressed: nobody chose it, and it says where it comes from.
-    expect(good).toHaveAttribute("data-hint", "true");
-    expect(good).toHaveAttribute("aria-pressed", "false");
-    expect(good).toHaveAttribute(
-      "title",
-      "From the 4★ rating on the machine's notes card (3★ or more is Good). Click to confirm or change.",
-    );
-    expect(screen.getByRole("button", { name: "Bad" })).not.toHaveAttribute("data-hint");
-
-    await user.click(good);
-    expect(screen.getByRole("button", { name: "Good" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Good" })).not.toHaveAttribute("data-hint");
-    // Nothing is written until the form is saved, then the choice goes with it.
+    const discard = await screen.findByRole("switch", { name: "Discard this shot" });
+    expect(discard).toHaveAttribute("aria-checked", "false");
+    await user.click(discard);
+    expect(discard).toHaveAttribute("aria-checked", "true");
+    // Nothing is written until the form is saved.
     expect(putJudgement).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Save judgement" }));
-    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
-    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ decision: "keep" }));
 
-    // Clicked again, it is cleared like any chosen one, and the outline is back.
-    await user.click(screen.getByRole("button", { name: "Good" }));
-    expect(screen.getByRole("button", { name: "Good" })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByRole("button", { name: "Good" })).toHaveAttribute("data-hint", "true");
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    expect(putJudgement.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ rating: 4, discarded: true }),
+    );
+    // Switched off again, it is cleared like any other choice.
+    await user.click(discard);
+    expect(discard).toHaveAttribute("aria-checked", "false");
   });
 
-  it("draws no outline beside a decision the person chose", async () => {
-    renderWithQueryClient(
-      <JudgementForm shotId={1} judgement={judgement({ decision: "improve" })} />,
-    );
+  it("starts the switch on for a shot that is discarded", async () => {
+    renderWithQueryClient(<JudgementForm shotId={1} judgement={judgement({ discarded: true })} />);
 
-    expect(await screen.findByRole("button", { name: "Bad" })).toHaveAttribute(
-      "aria-pressed",
+    expect(await screen.findByRole("switch", { name: "Discard this shot" })).toHaveAttribute(
+      "aria-checked",
       "true",
     );
-    expect(document.querySelector("[data-hint]")).toBeNull();
   });
 
   it("outlines the machine's balance while the verdict has none, and stores it on a click", async () => {
@@ -239,7 +231,7 @@ describe("JudgementForm", () => {
       expect.objectContaining({
         taste_notes: ["other.chemical.bitter"],
         aroma_notes: ["fruity.berry", "floral"],
-        decision: "improve",
+        discarded: false,
       }),
     );
   });

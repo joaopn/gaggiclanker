@@ -48,7 +48,7 @@ from gaggiclanker.db.repos.recipes import (
     RecipeVersionRow,
     VersionOutcomeWrite,
 )
-from gaggiclanker.db.repos.shots import DECISION_SQL
+from gaggiclanker.db.repos.shots import RATING_BAND_SQL, not_discarded_sql
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.vocab import VersionOutcome
@@ -122,7 +122,7 @@ class OutcomeProposalRow(BaseModel):
     thread_id: int | None = None
     outcome: VersionOutcome
     note: str
-    #: How many graded (Good or Bad) shots the version had when this was written.
+    #: How many graded (rated, not discarded) shots the version had when this was written.
     counted_shots: int = 0
     #: How many it has now, so the card can say "2 more since".
     counted_shots_now: int = 0
@@ -159,10 +159,11 @@ _SELECT = f"""
               LEFT JOIN shot_judgements j ON j.shot_id = s.id
               LEFT JOIN device_shot_notes n ON n.shot_id = s.id
              WHERE s.recipe_version_id = p.recipe_version_id
-               AND ({DECISION_SQL}) IN ('keep', 'improve')) AS counted_shots_now
+               AND {not_discarded_sql()}
+               AND ({RATING_BAND_SQL}) IS NOT NULL) AS counted_shots_now
     FROM recipe_outcome_proposals p
     JOIN recipe_versions v ON v.id = p.recipe_version_id
-"""  # noqa: S608 - the only interpolations are the version label and decision expressions, constants
+"""  # noqa: S608 - the only interpolations are the version label and SQL expressions, constants
 
 
 def _refusal_of(refused: str) -> OutcomeProposalRefusal:
@@ -243,7 +244,7 @@ class OutcomeProposalsRepository(Repository):
         """Write down a grade the person has not agreed to yet.
 
         The guards are the Recipe page's own for a grade — the version has a
-        prediction, and a shot that is Good or Bad (labelled so, or rated so) — because a
+        prediction, and a shot that is rated and not discarded — because a
         proposal the person could not accept is a card that can only answer 409.
         They read inside the transaction that writes. A grade already waiting
         for this version is **replaced**: the agent revises its answer and the

@@ -23,6 +23,8 @@ from gaggiclanker.db import schema
 from gaggiclanker.db.upgrade import UpgradeReport, upgrade_database_file
 from gaggiclanker.db.upgrades import STEPS, frozen_schema_sql, level_006
 
+LEVEL_SIX = schema.describe_sql(frozen_schema_sql(6))
+
 NOW = datetime(2026, 10, 24, 12, 0, 0, tzinfo=UTC)
 
 #: The columns that must come through untouched on every row but the one the step clears.
@@ -122,7 +124,9 @@ class Level5:
     def upgrade(self) -> UpgradeReport:
         self.conn.commit()
         self.conn.close()
-        report = upgrade_database_file(self.path, self.path.parent, steps=STEPS, now=NOW)
+        report = upgrade_database_file(
+            self.path, self.path.parent, steps=STEPS[:6], expected=LEVEL_SIX, now=NOW
+        )
         assert report is not None
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
@@ -195,7 +199,7 @@ def test_the_result_is_the_schema_file_and_no_row_is_lost(level5: Level5) -> Non
 
     level5.upgrade()
 
-    assert schema.schema_differences(level5.conn) == []
+    assert schema.schema_differences(level5.conn, LEVEL_SIX) == []
     assert level5.one("PRAGMA user_version") == 6
     assert level5.one("PRAGMA integrity_check") == "ok"
     assert list(level5.conn.execute("PRAGMA foreign_key_check")) == []
@@ -215,7 +219,9 @@ def test_a_database_with_nothing_to_clear_comes_through_as_it_was(tmp_path: Path
     conn.executescript(frozen_schema_sql(5))
     conn.close()
 
-    report = upgrade_database_file(tmp_path / "gaggiclanker.db", tmp_path, steps=STEPS, now=NOW)
+    report = upgrade_database_file(
+        tmp_path / "gaggiclanker.db", tmp_path, steps=STEPS[:6], expected=LEVEL_SIX, now=NOW
+    )
 
     assert report is not None
     assert report.steps[0].counts == {"balances_cleared": 0}

@@ -146,7 +146,6 @@ async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
                 dose_in_g=18.0,
                 dose_out_g=36.5,
                 notes="Sweet, a little thin at the end.",
-                decision="keep",
             ),
         )
         await NotesRepository(db).upsert(

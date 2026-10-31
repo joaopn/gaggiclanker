@@ -264,7 +264,7 @@ def shot_fields_of(facts: ShotFacts) -> ShotFields:
     served = serve_review(
         facts.signature_checks,
         facts.reading,
-        reviewable=not facts.shot.quarantined and facts.shot.judgement_decision != "discard",
+        reviewable=not facts.shot.quarantined and not facts.shot.discarded,
     )
     checks = served.checks
     share = facts.share_of_target(facts.shot.final_weight_g if facts.has_scale else None)

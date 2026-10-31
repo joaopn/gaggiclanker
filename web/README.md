@@ -110,7 +110,7 @@ src/
                       Profiles page), ProposalName (the Name field and its as-typed check)
     shots/            table, filters, columns, drop zone, import results, row editor,
                       ShotRowPanel (an open row), ShotCurvesCard (the Curves box, shared with
-                      the shot page), DecisionCell, DeviceNotesCard, ReviewBadge (the Review
+                      the shot page), DiscardCell, DeviceNotesCard, ReviewBadge (the Review
                       column's badge), ShotWarningsCard / ShotPhasesCard / ShotWideCards (the
                       shot page's cards, built from the fields route)
 ```
@@ -119,7 +119,7 @@ Four things about the shots table are worth knowing before editing it.
 
 **A row opens in place; it is not a link.** The row's stretched overlay is a
 `<button>` with `aria-expanded`, and the controls in the row (compare box, stars,
-Recipe badge or menu, the decision, the row editor) are lifted above it with `z-[1]`,
+Recipe badge or menu, Balance, Discard, the row editor) are lifted above it with `z-[1]`,
 the same arrangement the link used — a button wrapping them would be invalid HTML.
 The open panel (`ShotRowPanel`) is the shot page's own two boxes, stacked as on
 the page: `JudgementForm` across the width, saved with its button, and
@@ -146,15 +146,16 @@ column: the grids are exactly their tracks' width, the table (`min-w-max`) is
 as wide as its rows, and the page wraps it in `mx-auto w-fit max-w-full`, so
 the box is centred, ends where the last column does and a row wider than the page scrolls
 sideways. An open row's panel is `w-0 min-w-full` so its text
-cannot widen the table. The default row is Recipe, Time, Profile,
-Duration, Yield, Rating, Decision; Curve, Notes and Flags wait to be
-asked for. A stored column choice that is exactly one of the previous defaults
+cannot widen the table. The default row is Recipe, Time, Duration,
+Yield, Curve check, Rating, Balance, Discard, AI Review; Profile, Curve, Notes, Drink and Flags
+wait to be asked for. A stored column choice that is exactly one of the previous defaults
 (`PREVIOUS_DEFAULT_SHOT_COLUMNS`, one entry per generation, newest first) reads
 as the current default, a stored Analyse column (from before the per-shot
-analysis was retired) reads as Decision, and any
-other stored choice is kept.
+analysis was retired) reads as Decision, and a saved layout that shows Decision is brought along
+once (`shots.columns.discard.v1`): the stars take its place unless shown, and Discard goes after
+Balance. Any other stored choice is kept.
 
-**Every write to a verdict merges and queues.** The stars, the Decision column,
+**Every write to a verdict merges and queues.** The stars, the Balance and Discard columns,
 and the row editor all go through `usePatchJudgement(shotId)`:
 it reads the verdict, changes the fields it was given and puts the whole row back
 (`PUT` replaces), and it runs in a mutation scope per shot, so a star and a chip
@@ -412,7 +413,7 @@ how a rule that misleads gets found and turned off.
 
 Nothing in `src/` types a coffee word. Roast levels, processes, burr types,
 grind step units, balance, the flavour wheel, the
-decisions, the Recipe-version origins, the shot styles, and the rule categories and
+rating bands, the Recipe-version origins, the shot styles, and the rule categories and
 confidences all come
 from `GET /api/vocab`
 (`useVocabulary`, cached for the session because they change with a redeploy and

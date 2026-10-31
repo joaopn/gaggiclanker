@@ -70,7 +70,13 @@ from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import version_name_sql
-from gaggiclanker.db.repos.shots import DECISION_SQL, NEEDS_RECIPE_SQL, decision_sql
+from gaggiclanker.db.repos.shots import (
+    NEEDS_RECIPE_SQL,
+    RATING_BAND_SQL,
+    not_discarded_sql,
+    rating_band_sql,
+    shot_label_sql,
+)
 from gaggiclanker.db.repos.version_names import (
     label_sql,
     names_from_state,
@@ -86,9 +92,9 @@ from gaggiclanker.domain.slog import FIELD_DEFS
 from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.domain.vocab import (
     VERSION_OUTCOMES,
-    Decision,
     OutcomeState,
     RecipeVersionOrigin,
+    ShotLabel,
     VersionOutcome,
 )
 
@@ -450,15 +456,17 @@ class RecipeRevertRow(BaseModel):
 
 
 class VersionLabelCounts(BaseModel):
-    """How the shots on one version were labelled, for the log's one line."""
+    """How the shots on one version were rated, for the log's one line."""
 
     model_config = ConfigDict(extra="forbid")
 
-    keep: int = 0
-    improve: int = 0
-    discard: int = 0
-    #: Shots on this version with no decision yet — judged or not.
-    unlabelled: int = 0
+    good: int = 0
+    neutral: int = 0
+    bad: int = 0
+    #: Shots the person discarded, whatever their stars: counted here and nowhere else.
+    discarded: int = 0
+    #: Shots on this version with no rating (and not discarded) — judged or not.
+    unrated: int = 0
 
 
 class RecipeTrackRecord(BaseModel):
@@ -796,7 +804,6 @@ class RecipeShotRow(BaseModel):
 
     rating: int | None = None
     balance: str | None = None
-    decision: Decision | None = None
     notes: str = ""
     taste_notes: list[str] = Field(default_factory=list, validation_alias="taste_notes_json")
     aroma_notes: list[str] = Field(default_factory=list, validation_alias="aroma_notes_json")
@@ -862,7 +869,7 @@ class RecipeTrendVersion(BaseModel):
     """One version's averages: what `get_recipe`'s trajectory and the chat's ledger read.
 
     The averages are over the version's **counted** shots (the ones the spread
-    and the evidence use: not quarantined, not incomplete, not a Discard), so a
+    and the evidence use: not quarantined, not incomplete, not discarded), so a
     knocked-over cup does not pull a bar down. ``shots`` is every shot filed
     under the version, ``counted_shots`` the ones the means can be over.
     """
@@ -2011,10 +2018,9 @@ class RecipesRepository(Repository):
         """Grade this version's prediction. Changeable, and never automatic.
 
         Two things have to exist before there is a grade to give: a prediction,
-        and a shot somebody has actually formed a view about. That is a Good or Bad
-        shot: one labelled so, or, when nothing was chosen, one rated (the shared
-        rule, :data:`DECISION_SQL`). A discarded shot says the shot went wrong, not
-        that the recipe did, and grading a prediction on one would be reading the
+        and a shot somebody has actually formed a view about. That is a rated shot (the Rating
+        column's rating, any band) that was not discarded. A discarded shot says the shot went
+        wrong, not that the recipe did, and grading a prediction on one would be reading the
         wrong signal, whatever its rating.
         """
         async with self.db.transaction():
@@ -2208,13 +2214,12 @@ class RecipesRepository(Repository):
         return await self.gradable_shot_count(version_id) > 0
 
     async def gradable_shot_count(self, version_id: int) -> int:
-        """How many shots of this version are Good or Bad: chosen so, or rated so.
+        """How many shots of this version are rated and not discarded.
 
         The shots a grade rests on: a discarded shot says the shot went wrong,
-        not that the recipe did. One definition, read by the outcome guard and by
-        the agent's proposed grade, which records how many it was written on. The
-        decision is the shared rule (:data:`DECISION_SQL`), so a rated shot nobody
-        labelled counts.
+        not that the recipe did, and a Neutral (3 star) shot counts. One definition, read by the
+        outcome guard and by the agent's proposed grade, which records how many it was written
+        on. The band is the shared rule (:data:`RATING_BAND_SQL`).
         """
         return int(
             await self.db.fetch_value(
@@ -2222,28 +2227,32 @@ class RecipesRepository(Repository):
                 SELECT COUNT(*) FROM shots s
                 LEFT JOIN shot_judgements j ON j.shot_id = s.id
                 LEFT JOIN device_shot_notes n ON n.shot_id = s.id
-                WHERE s.recipe_version_id = ? AND ({DECISION_SQL}) IN ('keep', 'improve')
-                """,  # noqa: S608 - the only interpolation is the decision expression, a constant
+                WHERE s.recipe_version_id = ? AND {not_discarded_sql()}
+                  AND ({RATING_BAND_SQL}) IS NOT NULL
+                """,  # noqa: S608 - the only interpolations are SQL expressions, constants
                 (version_id,),
             )
             or 0
         )
 
     async def label_counts(self, recipe_id: int) -> dict[int, VersionLabelCounts]:
-        """How every version's shots are labelled, in one grouped pass.
+        """How every version's shots are rated, in one grouped pass.
 
-        Good and Bad count the shared rule's decision (:data:`DECISION_SQL`): a person's
-        choice, else what the rating says. ``unlabelled`` is a shot with neither.
+        Good, Neutral and Bad count the rating's band (:data:`RATING_BAND_SQL`) of a shot that
+        was not discarded; ``discarded`` counts the discarded ones whatever their stars, so a
+        shot is in exactly one part; ``unrated`` is a shot with neither.
         """
         rows = await self.db.fetch_all(
             f"""
             SELECT d.version_id AS version_id,
-                   SUM(d.decision = 'keep') AS keep,
-                   SUM(d.decision = 'improve') AS improve,
-                   SUM(d.decision = 'discard') AS discard,
-                   SUM(d.decision IS NULL) AS unlabelled
+                   SUM(NOT d.discarded AND d.band = 'good') AS good,
+                   SUM(NOT d.discarded AND d.band = 'neutral') AS neutral,
+                   SUM(NOT d.discarded AND d.band = 'bad') AS bad,
+                   SUM(d.discarded) AS discarded,
+                   SUM(NOT d.discarded AND d.band IS NULL) AS unrated
             FROM (
-                SELECT s.recipe_version_id AS version_id, ({DECISION_SQL}) AS decision
+                SELECT s.recipe_version_id AS version_id, ({RATING_BAND_SQL}) AS band,
+                       NOT ({not_discarded_sql()}) AS discarded
                 FROM shots s
                 JOIN recipe_versions v ON v.id = s.recipe_version_id
                 LEFT JOIN shot_judgements j ON j.shot_id = s.id
@@ -2251,15 +2260,16 @@ class RecipesRepository(Repository):
                 WHERE v.recipe_id = ?
             ) d
             GROUP BY d.version_id
-            """,  # noqa: S608 - the only interpolation is the decision expression, a constant
+            """,  # noqa: S608 - the only interpolations are SQL expressions, constants
             (recipe_id,),
         )
         return {
             int(row["version_id"]): VersionLabelCounts(
-                keep=int(row["keep"] or 0),
-                improve=int(row["improve"] or 0),
-                discard=int(row["discard"] or 0),
-                unlabelled=int(row["unlabelled"] or 0),
+                good=int(row["good"] or 0),
+                neutral=int(row["neutral"] or 0),
+                bad=int(row["bad"] or 0),
+                discarded=int(row["discarded"] or 0),
+                unrated=int(row["unrated"] or 0),
             )
             for row in rows
         }
@@ -2269,11 +2279,11 @@ class RecipesRepository(Repository):
 
         The nearest **ancestor** of the current version on the fork history (the
         line walked back as :func:`live_line` walks it, so an old roll back row
-        steps to what it restored) that has a Good shot (chosen so, or rated so). Not the
+        steps to what it restored) that has a Good shot (4 or 5 stars, not discarded). Not the
         newest one made: after going back, that can sit on a branch the Recipe left, and an
         offer to "go back" must not point forward. Never the current version, and never one
-        whose only shots were discarded, Bad or neither labelled nor rated, because "it worked"
-        is a thing somebody said or rated, not a thing a shot count implies.
+        whose only shots were discarded, Neutral, Bad or unrated, because "it worked"
+        is a thing somebody rated, not a thing a shot count implies.
         """
         current = await self.db.fetch_value(
             "SELECT current_version_id FROM recipes WHERE id = ?", (recipe_id,)
@@ -2291,8 +2301,9 @@ class RecipesRepository(Repository):
                   LEFT JOIN shot_judgements j ON j.shot_id = s.id
                   LEFT JOIN device_shot_notes n ON n.shot_id = s.id
                   JOIN recipe_versions v ON v.id = s.recipe_version_id
-                 WHERE v.recipe_id = ? AND ({DECISION_SQL}) = 'keep'
-                """,  # noqa: S608 - the only interpolation is the decision expression, a constant
+                 WHERE v.recipe_id = ? AND {not_discarded_sql()}
+                   AND ({RATING_BAND_SQL}) = 'good'
+                """,  # noqa: S608 - the only interpolations are SQL expressions, constants
                 (recipe_id,),
             )
         }
@@ -2604,7 +2615,7 @@ class RecipesRepository(Repository):
         """Run :meth:`profile_match` over every shot that needs a Recipe.
 
         No ``shot_ids`` is the inbox exactly as the Shots page counts it
-        (`NEEDS_RECIPE_SQL`), so a shot labelled Discard is not filed by the
+        (`NEEDS_RECIPE_SQL`), so a discarded shot is not filed by the
         page's button: it is not on the list the button stands beside.
         ``shot_ids`` narrows it to those shots (the one-shot button on a shot's
         own page), and there a discarded shot is filed like any other, since
@@ -2646,9 +2657,9 @@ class RecipesRepository(Repository):
         "Counts" is three exclusions and no more. A **quarantined** shot never
         parsed, so its numbers are whatever the header happened to hold; an
         **incomplete** one stopped early, and its shot time measures the
-        interruption rather than the recipe; a **Discard** says the shot went
+        interruption rather than the recipe; a **discard** says the shot went
         wrong, not that the recipe did, and grading a prediction on one reads
-        the wrong signal. A shot nobody labelled counts: it is plain data, and
+        the wrong signal. A shot nobody rated counts: it is plain data, and
         excluding it would make the spread depend on how diligent somebody had
         been with the buttons.
 
@@ -2681,8 +2692,8 @@ class RecipesRepository(Repository):
 
         The version's recipe rides along on each shot, because grouping repeats
         is then a pass over one list rather than a second query. So does its
-        decision, the shared rule's (a choice, else what the rating says), which is
-        what the Good and Bad counts and the gold standard read.
+        band, the shared rule's (:data:`RATING_BAND_SQL`), which is what the Good, Neutral and Bad
+        counts and the gold standard read. A discarded shot is not here.
         """
         rows = await self.db.fetch_all(
             f"""
@@ -2697,7 +2708,7 @@ class RecipesRepository(Repository):
                    {_MEASURE_COLUMNS},
                    j.rating,
                    j.balance,
-                   {decision_sql(s="sh")} AS decision
+                   {rating_band_sql(s="sh")} AS band
             FROM shots sh
             JOIN recipe_versions v ON v.id = sh.recipe_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
@@ -2705,7 +2716,7 @@ class RecipesRepository(Repository):
             WHERE v.recipe_id = ?
               AND sh.quarantined = 0
               AND sh.incomplete = 0
-              AND (j.decision IS NULL OR j.decision != 'discard')
+              AND {not_discarded_sql()}
             ORDER BY sh.id
             """,  # noqa: S608 - the interpolation is the module constant above, the id is bound
             (recipe_id,),
@@ -2735,7 +2746,7 @@ class RecipesRepository(Repository):
         recipe_id: int,
         *,
         version_id: int | None = None,
-        decision: Decision | None = None,
+        label: ShotLabel | None = None,
         balance: str | None = None,
         since: str | None = None,
         until: str | None = None,
@@ -2756,9 +2767,8 @@ class RecipesRepository(Repository):
         if version_id is not None:
             where.append("v.id = :version_id")
             params["version_id"] = version_id
-        if decision is not None:
-            where.append(f"({decision_sql(s='sh')}) = :decision")
-            params["decision"] = decision
+        if label is not None:
+            where.append(shot_label_sql(label, s="sh"))
         if balance is not None:
             where.append("j.balance = :balance")
             params["balance"] = balance
@@ -2797,13 +2807,13 @@ class RecipesRepository(Repository):
         recipe_id: int,
         *,
         version_id: int | None = None,
-        decision: Decision | None = None,
+        label: ShotLabel | None = None,
         limit: int = 50,
     ) -> list[RecipeShotRow]:
         """This Recipe's shots, newest first, with the measures and the verdict.
 
         What :meth:`counted_shots` leaves out on purpose is here: a quarantined,
-        an incomplete and a **Discard** shot are all listed, each saying which
+        an incomplete and a **discarded** shot are all listed, each saying which
         it is. This is the reading list rather than the arithmetic — "gather
         when it went good and when it went bad" — and a discarded shot is part
         of that story even though it counts towards nothing.
@@ -2817,9 +2827,8 @@ class RecipesRepository(Repository):
         if version_id is not None:
             where.append("v.id = :version_id")
             params["version_id"] = version_id
-        if decision is not None:
-            where.append(f"({decision_sql(s='sh')}) = :decision")
-            params["decision"] = decision
+        if label is not None:
+            where.append(shot_label_sql(label, s="sh"))
         rows = await self.db.fetch_all(
             f"""
             SELECT sh.id AS shot_id,
@@ -2831,7 +2840,6 @@ class RecipesRepository(Repository):
                    {_MEASURE_COLUMNS},
                    j.rating,
                    j.balance,
-                   {decision_sql(s="sh")} AS decision,
                    j.notes,
                    j.taste_notes_json,
                    j.aroma_notes_json

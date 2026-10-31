@@ -102,7 +102,7 @@ describe("VersionEvidence", () => {
 
     const counts = screen.getByTestId("evidence-counts");
     expect(counts).toHaveTextContent("v2: 3 shots · 2 balanced · 1 bitter · 2 Good · 1 Bad");
-    expect(counts).toHaveTextContent("v1: 4 shots · 3 sour · 1 balanced · 3 Bad · 1 not labelled");
+    expect(counts).toHaveTextContent("v1: 4 shots · 3 sour · 1 balanced · 3 Bad · 1 not rated");
   });
 
   it("writes a difference a decimal finer than the means it came from", async () => {
@@ -160,9 +160,10 @@ describe("VersionEvidence", () => {
         sour: 0,
         balanced: 0,
         bitter: 0,
-        keep: 0,
-        improve: 0,
-        unlabelled: 0,
+        good: 0,
+        neutral: 0,
+        bad: 0,
+        unrated: 0,
       },
     });
     renderWithQueryClient(<VersionEvidence evidence={empty} versionLabel="v2" />);

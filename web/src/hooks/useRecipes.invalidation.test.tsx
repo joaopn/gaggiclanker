@@ -402,7 +402,7 @@ describe("a judgement reaches the shots page's count of shots that need a Recipe
   // the three ways to write one must name it, or the count keeps a shot the
   // filtered list no longer shows.
   beforeEach(() => {
-    putJudgement.mockResolvedValue({ shot_id: 7, decision: "discard" });
+    putJudgement.mockResolvedValue({ shot_id: 7, discarded: true });
     deleteJudgement.mockResolvedValue({ deleted: true });
     getShot.mockResolvedValue({ id: 7, judgement: null });
   });
@@ -411,19 +411,19 @@ describe("a judgement reaches the shots page's count of shots that need a Recipe
     const { result, queryClient } = renderHookWithQueryClient(() => useSaveJudgement());
     const keys = spyOn(queryClient);
 
-    await result.current.mutateAsync({ shotId: 7, body: { decision: "discard", notes: "" } });
+    await result.current.mutateAsync({ shotId: 7, body: { discarded: true, notes: "" } });
 
     await waitFor(() => expect(keys).toContainEqual(queryKeys.sync.status()));
   });
 
-  it("a decision set from the list", async () => {
+  it("a discard set from the list", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => usePatchJudgement(7));
     const keys = spyOn(queryClient);
 
-    await result.current.mutateAsync({ shotId: 7, patch: { decision: "discard" } });
+    await result.current.mutateAsync({ shotId: 7, patch: { discarded: true } });
 
     await waitFor(() => expect(keys).toContainEqual(queryKeys.sync.status()));
-    expect(putJudgement).toHaveBeenCalledWith(7, expect.objectContaining({ decision: "discard" }));
+    expect(putJudgement).toHaveBeenCalledWith(7, expect.objectContaining({ discarded: true }));
   });
 
   it("withdrawing the judgement", async () => {

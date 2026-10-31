@@ -72,10 +72,10 @@ export const vocabulary: Vocabulary = {
     { value: "balanced", label: "Balanced" },
     { value: "bitter", label: "Bitter" },
   ],
-  decisions: [
-    { value: "keep", label: "Good" },
-    { value: "improve", label: "Bad" },
-    { value: "discard", label: "Discard" },
+  rating_bands: [
+    { value: "good", label: "Good" },
+    { value: "neutral", label: "Neutral" },
+    { value: "bad", label: "Bad" },
   ],
   origins: [
     { value: "manual", label: "You changed it" },
@@ -371,7 +371,7 @@ export function judgement(overrides: Partial<ShotJudgement> = {}): ShotJudgement
     dose_in_g: 18,
     dose_out_g: 36,
     notes: "sharp at the end",
-    decision: "improve",
+    discarded: false,
     seeded_from_device_note: false,
     device_synced_at: null,
     updated_at: "2026-04-03T08:00:00.000Z",
@@ -597,7 +597,7 @@ export function designProposal(overrides: Partial<RecipeProposal> = {}): RecipeP
 export function labelCounts(
   overrides: Partial<RecipeVersionDetail["labels"]> = {},
 ): RecipeVersionDetail["labels"] {
-  return { keep: 0, improve: 0, discard: 0, unlabelled: 0, ...overrides };
+  return { good: 0, neutral: 0, bad: 0, discarded: 0, unrated: 0, ...overrides };
 }
 
 export function trackRecord(
@@ -725,9 +725,10 @@ export function evidence(overrides: Partial<VersionEvidence> = {}): VersionEvide
       sour: 0,
       balanced: 2,
       bitter: 1,
-      keep: 2,
-      improve: 1,
-      unlabelled: 0,
+      good: 2,
+      neutral: 0,
+      bad: 1,
+      unrated: 0,
     },
     other: {
       version_id: 21,
@@ -736,9 +737,10 @@ export function evidence(overrides: Partial<VersionEvidence> = {}): VersionEvide
       sour: 3,
       balanced: 1,
       bitter: 0,
-      keep: 0,
-      improve: 3,
-      unlabelled: 1,
+      good: 0,
+      neutral: 0,
+      bad: 3,
+      unrated: 1,
     },
     ...overrides,
   };

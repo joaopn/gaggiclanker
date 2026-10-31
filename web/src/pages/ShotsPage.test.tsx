@@ -17,6 +17,7 @@ import { SHOT_SERIES } from "@/lib/shotChart";
 import {
   DEFAULT_SHOT_COLUMNS,
   SHOT_COLUMNS_BALANCE_KEY,
+  SHOT_COLUMNS_DISCARD_KEY,
   SHOT_COLUMNS_KEY,
 } from "@/lib/shotColumns";
 import { LEGACY_SHOT_CURVES_KEY, SHOT_CURVES_KEY } from "@/lib/shotCurves";
@@ -124,6 +125,8 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     rating: 4,
     has_notes: true,
     has_judgement: false,
+    discarded: false,
+    rating_band: null,
     recipe_version_id: null,
     recipe_badge: null,
     source: "device",
@@ -236,16 +239,14 @@ async function showColumn(user: ReturnType<typeof setupUser>, label: string): Pr
 }
 
 /**
- * The default row with the Rating column added: the stars are off the first-visit row (a rated
- * shot already shows its Good or Bad in Decision), so a test that clicks them asks for them.
+ * The default row, stored as the person's own choice (so it is kept as it is and not brought
+ * along): Rating, Balance and Discard are on it.
  */
 function showRatingColumn(): void {
-  window.localStorage.setItem(
-    SHOT_COLUMNS_KEY,
-    JSON.stringify([...DEFAULT_SHOT_COLUMNS, "rating"]),
-  );
-  // A layout chosen after the stars left the default row is the person's, and kept.
+  // The stars are on the default row; a layout stored as the person's own is kept as it is.
+  window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify([...DEFAULT_SHOT_COLUMNS]));
   window.localStorage.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
+  window.localStorage.setItem(SHOT_COLUMNS_DISCARD_KEY, "1");
 }
 
 beforeEach(() => {
@@ -312,11 +313,11 @@ describe("ShotsPage", () => {
     expect(screen.getByText("28.4 s")).toBeInTheDocument();
     expect(screen.getByText("36.4 g")).toBeInTheDocument();
     expect(screen.queryByTestId("score-badge")).not.toBeInTheDocument();
-    // The stars are off the first-visit row: the rating shows as Decision's outlined Good, and the
-    // Rating column is a choice in the chooser.
-    expect(screen.queryByTestId("rating-stars")).not.toBeInTheDocument();
-    expect(screen.getByTestId("decision-cell")).toBeInTheDocument();
+    // The stars are the judgement and are on the first-visit row, with Balance and Discard.
+    expect(screen.getByTestId("rating-stars")).toBeInTheDocument();
+    expect(screen.queryByTestId("decision-cell")).not.toBeInTheDocument();
     expect(screen.getByTestId("balance-cell")).toBeInTheDocument();
+    expect(screen.getByTestId("discard-cell")).toBeInTheDocument();
     // The row opens in place rather than navigating: one stretched button
     // across the row rather than a button wrapped around the cells, because
     // several of those cells hold buttons of their own.
@@ -335,13 +336,13 @@ describe("ShotsPage", () => {
     await listed();
 
     const toggle = screen.getByRole("button", { name: "Shot 000101" });
-    // The decisions render once the vocabulary has answered.
-    await screen.findByRole("button", { name: "Good shot 000101" });
+    // The balances render once the vocabulary has answered.
+    await screen.findByRole("button", { name: "Sour shot 000101" });
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
       screen.getByRole("button", { name: /^needs a Recipe/ }),
-      ...screen.getAllByRole("button", { name: /^(Good|Bad|Discard) shot 000101$/ }),
+      screen.getByRole("button", { name: "Discard this shot" }),
       ...screen.getAllByRole("button", { name: /^(Sour|Balanced|Bitter) shot 000101$/ }),
       ...screen.getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
     ]) {
@@ -1192,52 +1193,65 @@ describe("ShotsPage column widths", () => {
   });
 });
 
-describe("ShotsPage Decision column", () => {
+describe("ShotsPage Discard column", () => {
   function cell(): HTMLElement {
-    return screen.getByTestId("decision-cell");
+    return screen.getByTestId("discard-cell");
   }
 
-  /** The list, with the decisions drawn: their words come from the vocabulary. */
-  async function decisions(): Promise<void> {
+  async function drawn(): Promise<void> {
     await listed();
-    await within(cell()).findByRole("button", { name: "Good shot 000101" });
+    await screen.findByTestId("discard-cell");
   }
 
-  it("is in the default columns where Analyse was, and Analyse is gone", async () => {
+  it("is in the default columns after Balance, and there is no Decision column", async () => {
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
-    await decisions();
+    await drawn();
 
-    expect(screen.getByTestId("header-decision")).toHaveTextContent("Decision");
-    expect(screen.queryByTestId("header-flags")).not.toBeInTheDocument();
-    expect(
-      within(cell())
-        .getAllByRole("button")
-        .map((button) => button.textContent),
-    ).toEqual(["Good", "Bad", "Discard"]);
+    expect(screen.getByTestId("header-discard")).toHaveTextContent("Discard");
+    expect(screen.queryByTestId("header-decision")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("decision-cell")).not.toBeInTheDocument();
+    const headings = screen.getAllByTestId(/^header-/).map((heading) => heading.dataset.testid);
+    expect(headings.indexOf("header-discard")).toBe(headings.indexOf("header-balance") + 1);
+    expect(headings.indexOf("header-rating")).toBeGreaterThan(headings.indexOf("header-check"));
+    expect(headings.at(-1)).toBe("header-review");
     // Fixed and resizable, like the columns beside it.
-    expect(screen.getByRole("separator", { name: "Resize the Decision column" })).toBeVisible();
+    expect(screen.getByRole("separator", { name: "Resize the Discard column" })).toBeVisible();
   });
 
-  it("records a decision from the row, merged into the verdict, and clears it again", async () => {
+  it("reads Discard until clicked, and a red Discarded once the shot is discarded", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />);
+    await drawn();
+
+    expect(cell()).toHaveTextContent(/^Discard$/);
+    expect(cell()).toHaveAccessibleName("Discard this shot");
+    expect(cell()).toHaveAttribute("title", "Discard this shot");
+    expect(cell()).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("shows a discarded shot as Discarded", async () => {
+    getShots.mockResolvedValue(listData([shot({ has_judgement: true, discarded: true })]));
+    renderWithQueryClient(<ShotsPage />);
+    await drawn();
+
+    expect(cell()).toHaveTextContent("Discarded");
+    expect(cell()).toHaveAttribute("aria-pressed", "true");
+    expect(cell().className).toContain("bg-status-bad");
+  });
+
+  it("discards from the row, merged into the verdict, and clears it again", async () => {
     const user = setupUser();
-    getShots.mockResolvedValue(
-      listData([shot({ has_judgement: true, judgement_decision: "improve" })]),
-    );
+    getShots.mockResolvedValue(listData([shot({ has_judgement: true })]));
 
     renderWithQueryClient(<ShotsPage />);
-    await decisions();
-    expect(within(cell()).getByRole("button", { name: "Bad shot 000101" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-
-    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
+    await drawn();
+    await user.click(cell());
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
-    // The rest of the verdict rides along: a decision never takes the rating,
-    // the notes or the flavour notes with it.
+    // The rest of the verdict rides along: a discard never takes the rating, the notes or the
+    // flavour notes with it.
     expect(putJudgement.mock.calls[0][1]).toEqual({
       rating: 4,
       balance: "sour",
@@ -1246,246 +1260,82 @@ describe("ShotsPage Decision column", () => {
       dose_in_g: 18,
       dose_out_g: 36,
       notes: "sharp at the end",
-      decision: "keep",
+      discarded: true,
     });
-    expect(within(cell()).getByRole("button", { name: "Good shot 000101" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    // Clicking the pressed one clears it: "not decided yet" is a real answer.
-    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
+    expect(cell()).toHaveTextContent("Discarded");
+    // Clicking Discarded clears it.
+    await user.click(cell());
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
-    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ decision: null }));
-    // Still the list: a decision is not a click on the row.
+    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ discarded: false }));
+    // Still the list: a discard is not a click on the row.
     expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
   });
 
-  it("does not flick back to the first of two quick decisions", async () => {
+  it("writes nothing to clear a discard on a shot nobody has judged", async () => {
     const user = setupUser();
-    getShots.mockResolvedValue(listData([shot({ has_judgement: true, judgement_decision: null })]));
-    // The writes land when the test says so, one at a time: the second queues
-    // behind the first.
-    const landed: Array<() => void> = [];
-    putJudgement.mockImplementation(
-      (_id: number, body: unknown) => new Promise((resolve) => landed.push(() => resolve(body))),
-    );
+    // A row the list has not caught up with: it shows Discarded, but there is no verdict behind
+    // it to take it out of.
+    getShots.mockResolvedValue(listData([shot({ has_judgement: false, discarded: true })]));
 
     renderWithQueryClient(<ShotsPage />);
-    await decisions();
-    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
-    await user.click(within(cell()).getByRole("button", { name: "Bad shot 000101" }));
-    const pressed = () =>
-      within(cell())
-        .getAllByRole("button", { pressed: true })
-        .map((button) => button.textContent);
-    expect(pressed()).toEqual(["Bad"]);
-
-    // Good lands, and the list is re-read with it while Bad is queued.
-    await waitFor(() => expect(landed).toHaveLength(1));
-    getShots.mockResolvedValue(
-      listData([shot({ has_judgement: true, judgement_decision: "keep" })]),
-    );
-    const reads = getShots.mock.calls.length;
-    landed[0]();
-    await waitFor(() => expect(getShots.mock.calls.length).toBeGreaterThan(reads));
-    await waitFor(() => expect(landed).toHaveLength(2));
-    expect(pressed()).toEqual(["Bad"]);
-
-    getShots.mockResolvedValue(
-      listData([shot({ has_judgement: true, judgement_decision: "improve" })]),
-    );
-    landed[1]();
-    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
-    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ decision: "improve" }));
-    await waitFor(() => expect(getShots.mock.calls.length).toBeGreaterThan(reads + 1));
-    expect(pressed()).toEqual(["Bad"]);
-  });
-
-  it("writes nothing to clear a decision on a shot nobody has judged", async () => {
-    const user = setupUser();
-    // A row the list has not caught up with: it shows a decision, but there is
-    // no verdict behind it to take one out of.
-    getShots.mockResolvedValue(
-      listData([shot({ has_judgement: false, judgement_decision: "keep" })]),
-    );
-
-    renderWithQueryClient(<ShotsPage />);
-    await decisions();
-    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
+    await drawn();
+    expect(cell()).toHaveTextContent("Discarded");
+    await user.click(cell());
 
     expect(putJudgement).not.toHaveBeenCalled();
   });
 
-  it("puts the row's decision back when the write fails", async () => {
+  it("puts the row's value back when the write fails", async () => {
     const user = setupUser();
     putJudgement.mockRejectedValueOnce(new Error("disk full"));
-    getShots.mockResolvedValue(listData([shot({ has_judgement: true, judgement_decision: null })]));
+    getShots.mockResolvedValue(listData([shot({ has_judgement: true })]));
 
     renderWithQueryClient(<ShotsPage />);
-    await decisions();
-    await user.click(within(cell()).getByRole("button", { name: "Discard shot 000101" }));
+    await drawn();
+    await user.click(cell());
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(within(cell()).getByRole("button", { name: "Discard shot 000101" })).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      ),
-    );
+    await waitFor(() => expect(cell()).toHaveAttribute("aria-pressed", "false"));
   });
 
-  it("draws the decision the rating gives outlined, apart from a chosen one", async () => {
-    getShots.mockResolvedValue(listData([shot({ derived_decision: "keep" })]));
-
-    renderWithQueryClient(<ShotsPage />);
-    await decisions();
-
-    const good = within(cell()).getByRole("button", { name: "Good shot 000101" });
-    // Outlined is not pressed: nobody chose it. It says where it comes from, on hover.
-    expect(good).toHaveAttribute("data-hint", "true");
-    expect(good).toHaveAttribute("aria-pressed", "false");
-    // No rating is served with this one, so the title says no more than the rule.
-    expect(good).toHaveAttribute(
-      "title",
-      "From the rating (3★ or more is Good). Click to confirm or change.",
-    );
-    for (const name of ["Bad shot 000101", "Discard shot 000101"]) {
-      const other = within(cell()).getByRole("button", { name });
-      expect(other).not.toHaveAttribute("data-hint");
-      expect(other).not.toHaveAttribute("title");
-    }
-    expect(within(cell()).queryAllByRole("button", { pressed: true })).toHaveLength(0);
-  });
-
-  it("says which rating the outlined decision came from, as the server served it", async () => {
-    getShots.mockResolvedValue(
-      listData([
-        shot({
-          derived_decision: "keep",
-          decision_rating: 4,
-          decision_rating_source: "machine_notes",
-        }),
-      ]),
-    );
-
-    renderWithQueryClient(<ShotsPage />);
-    await decisions();
-
-    expect(within(cell()).getByRole("button", { name: "Good shot 000101" })).toHaveAttribute(
-      "title",
-      "From the 4★ rating on the machine's notes card (3★ or more is Good). Click to confirm or change.",
-    );
-  });
-
-  it("outlines a Bad the rating gives just the same", async () => {
-    getShots.mockResolvedValue(listData([shot({ derived_decision: "improve" })]));
-
-    renderWithQueryClient(<ShotsPage />);
-    await decisions();
-
-    expect(within(cell()).getByRole("button", { name: "Bad shot 000101" })).toHaveAttribute(
-      "data-hint",
-      "true",
-    );
-    expect(within(cell()).getByRole("button", { name: "Good shot 000101" })).not.toHaveAttribute(
-      "data-hint",
-    );
-  });
-
-  it("stores the outlined decision on a click, as the person's own, and nothing else", async () => {
-    const user = setupUser();
-    // A shot rated on the machine only: no verdict of this box's behind it.
-    getShot.mockResolvedValue({ ...shot129, judgement: null });
-    getShots.mockResolvedValue(
-      listData([shot({ derived_decision: "keep", has_judgement: false, rating: 4 })]),
-    );
-
-    renderWithQueryClient(<ShotsPage />);
-    await decisions();
-    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
-
-    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
-    // Neither the machine's four stars nor any other field is written into the verdict.
-    expect(putJudgement.mock.calls[0][1]).toEqual({
-      rating: null,
-      balance: null,
-      taste_notes: [],
-      aroma_notes: [],
-      dose_in_g: null,
-      dose_out_g: null,
-      notes: "",
-      decision: "keep",
-    });
-    // It is filled the moment it is clicked, before the list has answered.
-    const good = within(cell()).getByRole("button", { name: "Good shot 000101" });
-    expect(good).toHaveAttribute("aria-pressed", "true");
-    expect(good).not.toHaveAttribute("data-hint");
-    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
-  });
-
-  it("takes back a choice whose first write is still on the way, on a shot the row shows no verdict for", async () => {
+  it("takes back a discard whose first write is still on the way", async () => {
     const user = setupUser();
     getShot.mockResolvedValue({ ...shot129, judgement: null });
-    getShots.mockResolvedValue(
-      listData([shot({ derived_decision: "keep", has_judgement: false, rating: 4 })]),
-    );
-    // The first write lands only when the test says so.
+    getShots.mockResolvedValue(listData([shot({ has_judgement: false })]));
     const landed: Array<() => void> = [];
     putJudgement.mockImplementation(
       (_id: number, body: unknown) => new Promise((resolve) => landed.push(() => resolve(body))),
     );
 
     renderWithQueryClient(<ShotsPage />);
-    await decisions();
-    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
+    await drawn();
+    await user.click(cell());
     await waitFor(() => expect(landed).toHaveLength(1));
-    // The row has not heard of the verdict yet, but a write is in flight: it exists.
-    // Clicking the filled value again takes it back, as a write queued behind the first.
-    await user.click(within(cell()).getByRole("button", { name: "Good shot 000101" }));
-    expect(within(cell()).queryAllByRole("button", { pressed: true })).toHaveLength(0);
+    // The row has not heard of the verdict yet, but a write is in flight: it exists, so the
+    // second click is a write queued behind the first.
+    await user.click(cell());
+    expect(cell()).toHaveAttribute("aria-pressed", "false");
     landed[0]();
     await waitFor(() => expect(landed).toHaveLength(2));
     landed[1]();
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
-    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ decision: "keep" }));
-    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ decision: null }));
+    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ discarded: true }));
+    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ discarded: false }));
   });
 
-  it("stores another decision over an outlined one, and clears a chosen one as before", async () => {
-    const user = setupUser();
-    getShots.mockResolvedValue(
-      listData([shot({ derived_decision: "keep", has_judgement: true, judgement_decision: null })]),
-    );
-
-    renderWithQueryClient(<ShotsPage />);
-    await decisions();
-    await user.click(within(cell()).getByRole("button", { name: "Bad shot 000101" }));
-
-    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
-    expect(putJudgement.mock.calls[0][1]).toEqual(expect.objectContaining({ decision: "improve" }));
-    const pressed = within(cell()).getAllByRole("button", { pressed: true });
-    expect(pressed.map((button) => button.textContent)).toEqual(["Bad"]);
-    // The outline stands down once something is chosen.
-    expect(within(cell()).getByRole("button", { name: "Good shot 000101" })).not.toHaveAttribute(
-      "data-hint",
-    );
-  });
-
-  it("draws no outline on a shot whose decision was chosen", async () => {
+  it("keeps a discarded shot's stars", async () => {
     getShots.mockResolvedValue(
       listData([
-        shot({ has_judgement: true, judgement_decision: "improve", derived_decision: null }),
+        shot({ has_judgement: true, discarded: true, judgement_rating: 4, rating_band: "good" }),
       ]),
     );
-
     renderWithQueryClient(<ShotsPage />);
-    await decisions();
+    await drawn();
 
-    expect(cell().querySelector("[data-hint]")).toBeNull();
-    expect(within(cell()).getByRole("button", { name: "Bad shot 000101" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(cell()).toHaveTextContent("Discarded");
+    expect(
+      within(screen.getByTestId("rating-stars")).getAllByRole("button", { pressed: true }),
+    ).toHaveLength(4);
   });
 });
 
@@ -1507,7 +1357,7 @@ describe("ShotsPage Balance column", () => {
   const hinted = () =>
     Array.from(cell().querySelectorAll("[data-hint]")).map((button) => button.textContent);
 
-  it("is in the default columns after Decision, with the three words, fixed and resizable", async () => {
+  it("is in the default columns after Rating, with the three words, fixed and resizable", async () => {
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
@@ -1515,7 +1365,7 @@ describe("ShotsPage Balance column", () => {
 
     expect(screen.getByTestId("header-balance")).toHaveTextContent("Balance");
     const headings = screen.getAllByTestId(/^header-/).map((heading) => heading.dataset.testid);
-    expect(headings.indexOf("header-balance")).toBe(headings.indexOf("header-decision") + 1);
+    expect(headings.indexOf("header-balance")).toBe(headings.indexOf("header-rating") + 1);
     expect(headings.at(-1)).toBe("header-review");
     expect(
       within(cell())
@@ -1559,17 +1409,17 @@ describe("ShotsPage Balance column", () => {
     expect(hinted()).toEqual([]);
   });
 
-  it("sets a balance from the row, merged into the verdict, without the rating or the decision", async () => {
+  it("sets a balance from the row, merged into the verdict, without the rating or the discard", async () => {
     const user = setupUser();
     // The machine says four stars and the rating gives a Good, but this box's verdict holds
     // neither: the click must not make them the person's.
     getShot.mockResolvedValue({
       ...shot129,
-      judgement: judgement({ rating: null, decision: null, balance: null }),
+      judgement: judgement({ rating: null, discarded: false, balance: null }),
     });
     getShots.mockResolvedValue(
       listData([
-        shot({ has_judgement: true, rating: 4, derived_decision: "keep", judgement_balance: null }),
+        shot({ has_judgement: true, rating: 4, rating_band: "good", judgement_balance: null }),
       ]),
     );
 
@@ -1586,7 +1436,7 @@ describe("ShotsPage Balance column", () => {
       dose_in_g: 18,
       dose_out_g: 36,
       notes: "sharp at the end",
-      decision: null,
+      discarded: false,
     });
     expect(pressed()).toEqual(["Bitter"]);
     // Still the list: a balance is not a click on the row.
@@ -1612,7 +1462,7 @@ describe("ShotsPage Balance column", () => {
     expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ balance: null }));
     // Still the list, and nothing else of the verdict moved.
     expect(putJudgement.mock.calls[1][1]).toEqual(
-      expect.objectContaining({ rating: 4, decision: "improve", notes: "sharp at the end" }),
+      expect.objectContaining({ rating: 4, discarded: false, notes: "sharp at the end" }),
     );
   });
 
@@ -2262,38 +2112,6 @@ describe("ShotsPage open rows", () => {
     expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
   });
 
-  it("draws the decision the rating gives outlined in the panel's form, with the rating it came from", async () => {
-    const user = setupUser();
-    const outlined = {
-      derived_decision: "keep" as const,
-      decision_rating: 4,
-      decision_rating_source: "machine_notes" as const,
-    };
-    getShots.mockResolvedValue(listData([shot(outlined)]));
-    // The shot page's own copy of the row, which is what the form is wired from.
-    getShot.mockResolvedValue({
-      ...shot129,
-      shot: { ...shot129.shot, ...outlined, judgement_decision: null },
-      judgement: judgement({ decision: null }),
-    });
-
-    renderList();
-    await listed();
-    await user.click(toggle());
-    const form = await within(await screen.findByTestId("shot-panel")).findByTestId(
-      "judgement-form",
-    );
-
-    const good = within(form).getByRole("button", { name: "Good" });
-    expect(good).toHaveAttribute("data-hint", "true");
-    expect(good).toHaveAttribute("aria-pressed", "false");
-    expect(good).toHaveAttribute(
-      "title",
-      "From the 4★ rating on the machine's notes card (3★ or more is Good). Click to confirm or change.",
-    );
-    expect(within(form).getByRole("button", { name: "Bad" })).not.toHaveAttribute("data-hint");
-  });
-
   it("draws the machine's balance outlined in the panel's form, as the Balance column draws it", async () => {
     const user = setupUser();
     const card = { balance: "bitter" as const, judgement_balance: null };
@@ -2370,11 +2188,11 @@ describe("ShotsPage open rows", () => {
     // is painted over them; in a browser it is the lift above the stretched
     // toggle that does. Each control, or a wrapper of it, carries it.
     const row = screen.getByTestId("shot-row");
-    await within(row).findByRole("button", { name: "Good shot 000101" });
+    await within(row).findByRole("button", { name: "Sour shot 000101" });
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       ...within(row).getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
-      ...within(row).getAllByRole("button", { name: /^(Good|Bad|Discard) shot/ }),
+      within(row).getByRole("button", { name: "Discard this shot" }),
       ...within(row).getAllByRole("button", { name: /^(Sour|Balanced|Bitter) shot/ }),
       screen.getByRole("button", { name: /^needs a Recipe/ }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
@@ -2384,7 +2202,7 @@ describe("ShotsPage open rows", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Compare shot 000101" }));
     await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
-    await user.click(screen.getByRole("button", { name: "Good shot 000101" }));
+    await user.click(screen.getByRole("button", { name: "Discard this shot" }));
     await user.click(screen.getByRole("button", { name: "Sour shot 000101" }));
     await user.click(screen.getByRole("button", { name: /^needs a Recipe/ }));
     await user.keyboard("{Escape}");
@@ -3485,7 +3303,7 @@ describe("ShotsPage row editing", () => {
       dose_in_g: 18,
       dose_out_g: 36,
       notes: "sharp at the end",
-      decision: "improve",
+      discarded: false,
     });
   });
 

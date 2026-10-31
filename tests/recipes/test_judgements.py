@@ -35,13 +35,13 @@ class TestJudgement:
                 dose_in_g=18.0,
                 dose_out_g=36.0,
                 notes="a bit sharp on the finish",
-                decision="improve",
+                discarded=True,
             ),
         )
         assert row.rating == 4
         assert row.taste_notes == ["sour_fermented.sour", "fruity.citrus_fruit.lemon"]
         assert row.aroma_notes == ["floral.floral.jasmine"]
-        assert row.decision == "improve"
+        assert row.discarded is True
         assert row.ratio == 2.0
         assert row.seeded_from_device_note is False
 
@@ -72,7 +72,7 @@ class TestJudgement:
 
     async def test_the_old_decision_word_is_refused(self) -> None:
         with pytest.raises(ValueError, match="decision"):
-            JudgementWrite.model_validate({"decision": "adjust"})
+            JudgementWrite.model_validate({"decision": "keep"})
 
     async def test_notes_are_capped_at_the_firmware_limit(self) -> None:
         with pytest.raises(ValueError, match="200"):
@@ -179,7 +179,7 @@ class TestSeedingFromDeviceNotes:
         await wired.judgements.seed_from_device_notes(shot_id, _note("000322", rating=2))
 
         edited = await wired.judgements.upsert(
-            shot_id, JudgementWrite(rating=5, notes="actually excellent", decision="keep")
+            shot_id, JudgementWrite(rating=5, notes="actually excellent")
         )
         # The two have just diverged, so a stale timestamp would claim the
         # opposite to anything that later reconciles them.

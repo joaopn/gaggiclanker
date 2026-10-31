@@ -55,7 +55,7 @@ async def _predicted_version(archive: Fixture, *, shots: int = 1) -> RecipeVersi
         shot_id = await make_shot(archive.db, f"0009{number:02d}")
         assert await recipes.assign_shot(shot_id, version.id)
         await JudgementsRepository(archive.db).upsert(
-            shot_id, JudgementWrite.model_validate({"decision": "keep"})
+            shot_id, JudgementWrite.model_validate({"rating": 4})
         )
     return version
 
@@ -183,7 +183,7 @@ class TestRefusals:
         version = await _predicted_version(archive, shots=0)
         ctx = _in_version(archive, settings, version)
         data = await refuse(ctx, "propose_outcome", outcome="held", note=NOTE)
-        assert "has no Good or Bad shot yet" in data["detail"]
+        assert "has no rated shot yet" in data["detail"]
 
     async def test_an_outcome_outside_the_vocabulary(
         self, archive: Fixture, settings: SettingsService

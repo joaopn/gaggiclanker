@@ -426,7 +426,7 @@ export function VersionTimeline({
           <VersionOutcomeControl
             recipeId={recipeId}
             version={entry.version}
-            gradable={entry.labels.keep + entry.labels.improve > 0}
+            gradable={entry.labels.good + entry.labels.neutral + entry.labels.bad > 0}
             proposed={entry.outcome_proposal ?? null}
           />
 

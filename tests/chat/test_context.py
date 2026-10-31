@@ -191,9 +191,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 brew_flow=flow,
             )
             assert await recipes.assign_shot(shot, v1)
-            await judgements.upsert(
-                shot, JudgementWrite(rating=4, balance="balanced", decision="keep")
-            )
+            await judgements.upsert(shot, JudgementWrite(rating=4, balance="balanced"))
 
         # v2: finer, and it did not work. Graded failed.
         version = await recipes.add_version(
@@ -222,7 +220,6 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             JudgementWrite(
                 rating=2,
                 balance="bitter",
-                decision="improve",
                 notes="Choked and went harsh at the end.",
                 taste_notes=["roasted.burnt"],
             ),
@@ -260,9 +257,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             brew_flow=1.15,
         )
         assert await recipes.assign_shot(shot, v3)
-        await judgements.upsert(
-            shot, JudgementWrite(rating=2, balance="bitter", decision="improve")
-        )
+        await judgements.upsert(shot, JudgementWrite(rating=2, balance="bitter"))
         graded = await recipes.set_outcome(
             recipe_id,
             v3,
@@ -307,7 +302,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             brew_flow=1.88,
         )
         assert await recipes.assign_shot(shot, v4)
-        await judgements.upsert(shot, JudgementWrite(rating=4, balance="balanced", decision="keep"))
+        await judgements.upsert(shot, JudgementWrite(rating=4, balance="balanced"))
         # Two more on the same recipe, so the Recipe has repeats and its spread is
         # measured rather than sitting on the floors.
         for index, (device, duration, weight, drip, bar, flow, rating) in enumerate(
@@ -327,9 +322,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 brew_flow=flow,
             )
             assert await recipes.assign_shot(more, v4)
-            await judgements.upsert(
-                more, JudgementWrite(rating=rating, balance="balanced", decision="keep")
-            )
+            await judgements.upsert(more, JudgementWrite(rating=rating, balance="balanced"))
         graded = await recipes.set_outcome(
             recipe_id, v4, VersionOutcomeWrite(outcome="held", note="Straight back where it was.")
         )
@@ -365,7 +358,6 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             JudgementWrite(
                 rating=3,
                 balance="balanced",
-                decision="improve",
                 notes="Sweeter, but the finish is drying.",
                 taste_notes=["sweet.brown_sugar"],
             ),
@@ -381,9 +373,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             brew_flow=2.40,
         )
         assert await recipes.assign_shot(spilled, v5)
-        await judgements.upsert(
-            spilled, JudgementWrite(decision="discard", notes="Knocked the cup.")
-        )
+        await judgements.upsert(spilled, JudgementWrite(discarded=True, notes="Knocked the cup."))
 
         await InsightsRepository(db).insert(
             InsightWrite(
@@ -813,7 +803,7 @@ async def test_a_good_shot_on_a_dead_end_is_not_the_gold_standard(
     )
     assert on_a_dead_end
     await JudgementsRepository(experiment.db).upsert(
-        on_a_dead_end[0].shot_id, JudgementWrite(decision="keep")
+        on_a_dead_end[0].shot_id, JudgementWrite(rating=4)
     )
 
     rendered = await opening_context(
@@ -987,7 +977,7 @@ async def test_the_ledger_averages_count_only_the_shots_that_count(experiment: E
     )
     line = _ledger_line_of(rendered, "v2.2")
 
-    assert "2 shots (0 Good, 1 Bad, 1 Discard)" in line
+    assert "2 shots (0 Good, 1 Neutral, 0 Bad, 1 Discarded)" in line
     assert _averages_of(line)["shot time"] == 36.0
     assert _averages_of(line)["first puck flow"] == 8.0
     assert "averages over 1 counted shot:" in line
@@ -999,7 +989,7 @@ async def test_a_version_with_shots_but_none_that_count_says_so(experiment: Expe
         (await recipes.recipe_shots(experiment.recipe_id, version_id=experiment.v2, limit=1))[
             0
         ].shot_id,
-        JudgementWrite(decision="discard"),
+        JudgementWrite(discarded=True),
     )
 
     rendered = await opening_context(
@@ -1007,7 +997,7 @@ async def test_a_version_with_shots_but_none_that_count_says_so(experiment: Expe
     )
     line = _ledger_line_of(rendered, "v1.1")
 
-    assert "1 shot (0 Good, 0 Bad, 1 Discard) · no counted shots ·" in line
+    assert "1 shot (0 Good, 0 Neutral, 0 Bad, 1 Discarded) · no counted shots ·" in line
     assert "averages over" not in line
 
 
@@ -1104,7 +1094,7 @@ async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_sa
         )
         assert await recipes.assign_shot(shot, version.id)
         if index >= 7:
-            await judgements.upsert(shot, JudgementWrite(decision="discard"))
+            await judgements.upsert(shot, JudgementWrite(discarded=True))
         elif index < 5:
             await judgements.upsert(shot, JudgementWrite(rating=4))
 
@@ -1141,7 +1131,10 @@ async def test_counted_shots_that_recorded_nothing_say_so(experiment: Experiment
     )
     line = _ledger_line_of(rendered, version.version_label)
 
-    assert "1 shot (0 Good, 0 Bad, 0 Discard) · counted shots recorded no values ·" in line
+    assert (
+        "1 shot (0 Good, 0 Neutral, 0 Bad, 0 Discarded) · counted shots recorded no values ·"
+        in line
+    )
 
 
 async def test_the_context_reads_the_counted_shots_once(
@@ -1263,7 +1256,7 @@ async def test_nothing_that_changes_between_turns_comes_before_the_profile(
         brew_flow=1.9,
     )
     assert await recipes.assign_shot(shot, version.id)
-    await JudgementsRepository(db).upsert(shot, JudgementWrite(rating=3, decision="improve"))
+    await JudgementsRepository(db).upsert(shot, JudgementWrite(rating=3))
     states.append(("a shot", await render()))
     graded = await recipes.set_outcome(
         experiment.recipe_id,

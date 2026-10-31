@@ -58,7 +58,7 @@ async def _keep_shot(wired: Fixtures, version_id: int, device_id: str) -> int:
     shot_id = await make_shot(wired.db, device_id)
     assert await wired.recipes.assign_shot(shot_id, version_id)
     await JudgementsRepository(wired.db).upsert(
-        shot_id, JudgementWrite.model_validate({"decision": "keep"})
+        shot_id, JudgementWrite.model_validate({"rating": 4})
     )
     return shot_id
 
@@ -178,7 +178,7 @@ class TestWriting:
         shot_id = await make_shot(wired.db, "000722")
         await wired.recipes.assign_shot(shot_id, version_id)
         await JudgementsRepository(wired.db).upsert(
-            shot_id, JudgementWrite.model_validate({"decision": "discard"})
+            shot_id, JudgementWrite.model_validate({"discarded": True})
         )
         proposals = OutcomeProposalsRepository(wired.db)
         assert (
@@ -324,7 +324,7 @@ class TestAnswering:
         stored = (await proposals.create(recipe_id, version_id, _write("held"))).proposal
         assert stored is not None
         await wired.db.execute(
-            "UPDATE shot_judgements SET decision = 'discard' WHERE 1 = 1",
+            "UPDATE shot_judgements SET discarded = 1 WHERE 1 = 1",
         )
 
         result = await proposals.accept(recipe_id, stored.id)
@@ -504,7 +504,7 @@ class TestTheNextVersionRecordsTheGrade:
         await grades.create(recipe_id, version_id, _write())
         proposals, made = await _next_version(wired, recipe_id)
         assert made.proposal is not None
-        await wired.db.execute("UPDATE shot_judgements SET decision = 'discard' WHERE 1 = 1")
+        await wired.db.execute("UPDATE shot_judgements SET discarded = 1 WHERE 1 = 1")
 
         result = await proposals.accept(recipe_id, made.proposal.id)
 

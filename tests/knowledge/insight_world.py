@@ -96,7 +96,7 @@ async def _graded(
     )
     shot = await make_shot(db, device_id)
     assert await recipes.assign_shot(shot, version_id)
-    await JudgementsRepository(db).upsert(shot, JudgementWrite.model_validate({"decision": "keep"}))
+    await JudgementsRepository(db).upsert(shot, JudgementWrite.model_validate({"rating": 4}))
     await recipes.set_outcome(
         recipe_id, version_id, VersionOutcomeWrite.model_validate({"outcome": outcome})
     )

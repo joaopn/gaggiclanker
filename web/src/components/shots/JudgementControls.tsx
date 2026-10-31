@@ -65,9 +65,8 @@ export function RatingInput({
  * A segmented control over a closed vocabulary, with the same "click it again
  * to clear it" rule as the stars — "not decided yet" is most shots.
  *
- * With nothing chosen it can show a `hint`: a value worked out elsewhere (the decision the rating
- * gives), drawn as an outline instead of a fill. A click on it chooses that value, as it does in
- * the shots table.
+ * With nothing chosen it can show a `hint`: a value read elsewhere (the machine's balance), drawn as
+ * an outline instead of a fill. A click on it chooses that value, as it does in the shots table.
  */
 export function Segmented({
   name,

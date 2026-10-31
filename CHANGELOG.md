@@ -13,6 +13,46 @@ database.
 
 ## [Unreleased]
 
+### The stars are the judgement, and Discard is its own column
+
+- **Breaking: the database changes (an upgrade step carries it; you do nothing).** What changes:
+  `shot_judgements.decision` (Keep / Improve / Discard, shown as Good / Bad / Discard) is replaced
+  by `discarded`, a yes-or-no, and the SQL views `v_shots` and `v_judgements` serve `discarded`
+  where they served `decision`. Whether your rows are carried forward: all of them are, argued
+  from what the change does to each. A discarded shot stays discarded and keeps its stars. A shot
+  that was labelled Good or Bad and has a rating anywhere (your verdict's, the machine's notes
+  card, or its index) keeps that rating and loses the label, because the rating already says it.
+  A shot labelled Good or Bad with no rating anywhere gets your verdict's rating written for it,
+  4 stars for Good and 2 for Bad, so what you said is not lost. What is lost: a label that
+  contradicted the stars (a Good on a 2 star shot) now reads as the stars say. A rating the step
+  wrote is yours, not the machine's, so it reaches the machine only if you choose it on the Sync
+  page, as any rating of yours does. What you do: nothing. The step runs when the app starts,
+  after the automatic backup (`upgrade-backup-L6-…` in the data folder).
+- **Changed: a shot's stars are its judgement, and Good, Neutral and Bad are the words for them.**
+  Four or five stars is Good, three is Neutral, one or two is Bad, using the rating the Rating
+  column shows. Nothing is stored for it and nothing can be chosen as it. Wherever shots are
+  counted it is read this way: the Recipe page's counts ("2 Good · 1 Neutral · 1 Bad ·
+  1 Discarded"), the gold standard (Good shots), what a prediction can be graded on (any rated
+  shot that is not discarded, so a three-star shot counts), the way back to a version that worked
+  (the nearest earlier version with a Good shot), the agent's opening context and tools, and the
+  shot information's Label line ("Good (4★)", "Neutral (3★)", "Bad (2★)", "from the machine's
+  rating" when the rating is not yours, "Discarded", "not rated"). The shot search's `label`
+  takes good, neutral, bad or discard, and the Decision vocabulary is gone from `/api/vocab`
+  (`rating_bands` replaces it). The Label item keeps its place in your Shot information tiers.
+  If you edited the chat-recipe prompt under Settings, you keep your text and its old words (Keep,
+  Improve, labels); reset that prompt to its default to read the new ones. The chat-design prompt
+  is unchanged.
+- **Changed: Discard is its own column.** The Decision column is gone. The shots table's first
+  visit shows Recipe, Time, Duration, Yield, Curve check, Rating, Balance, Discard and AI Review.
+  Discard reads "Discard" until you click it, then a red "Discarded", and a click on that clears
+  it. A layout you saved is brought along once: Decision becomes the stars (unless they are
+  shown) and Discard goes after Balance. The judgement form has a separate "Discard this shot"
+  switch in place of the Good / Bad / Discard choice, so a phone, which hides the Discard column,
+  can still discard.
+- **Changed: a version's prediction is always shown.** There is no "Show prediction" button and
+  nothing is hidden until you have judged the shot, on the shot page, in the shots list's panel
+  and everywhere else.
+
 ### The machine shows the Recipe's version in the profile's name
 
 - **New: a profile a Recipe brews shows the Recipe's current version after its name on the

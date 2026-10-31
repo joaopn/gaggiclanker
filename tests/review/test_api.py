@@ -421,7 +421,7 @@ async def test_the_fields_of_a_discarded_shot_say_it_is_not_reviewable(
     data = await build_app_fixture(app)
     shot_id = data.shots[-1]
     await app.state.db.execute(
-        "UPDATE shot_judgements SET decision = 'discard' WHERE shot_id = ?", (shot_id,)
+        "UPDATE shot_judgements SET discarded = 1 WHERE shot_id = ?", (shot_id,)
     )
 
     fields = (await client.get(f"/api/shots/{shot_id}/fields")).json()["data"]
@@ -437,7 +437,7 @@ async def test_a_discarded_shot_cannot_be_read(
     app, client, provider = api
     data = await build_app_fixture(app)
     await app.state.db.execute(
-        "UPDATE shot_judgements SET decision = 'discard' WHERE shot_id = ?", (data.shots[-1],)
+        "UPDATE shot_judgements SET discarded = 1 WHERE shot_id = ?", (data.shots[-1],)
     )
 
     response = await client.post(f"/api/shots/{data.shots[-1]}/reviews", json={})

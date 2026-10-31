@@ -698,7 +698,7 @@ async def _predicted_version_with_a_keep_shot(
             shot_id = await make_shot(db, "000950")
             assert await recipes.assign_shot(shot_id, version.id)
             await JudgementsRepository(db).upsert(
-                shot_id, JudgementWrite.model_validate({"decision": "keep"})
+                shot_id, JudgementWrite.model_validate({"rating": 4})
             )
         return version.id
     finally:
@@ -756,7 +756,7 @@ async def test_a_grade_proposed_over_stdio_waits_and_records_nothing(
     assert no_prediction.is_error is True
     assert "has no prediction, so there is nothing to grade" in str(no_prediction.content)
     assert no_shot.is_error is True
-    assert "has no Good or Bad shot yet" in str(no_shot.content)
+    assert "has no rated shot yet" in str(no_shot.content)
     assert bad.is_error is True and "outcome must be one of" in str(bad.content)
     assert result.is_error is False, result.content
     assert result.structured_content is not None

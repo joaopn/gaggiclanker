@@ -55,7 +55,7 @@ export function outcomeFailure(error: Error): string {
       return "This grade was already answered, here in another tab or on the Recipe page. The card will show how once it refreshes.";
     }
     if (error.code === "NOTHING_TO_GRADE") {
-      return "No shot of this version is Good or Bad any more (a discarded one does not count), so there is nothing to grade. Rate a shot or label it Good or Bad, or dismiss this grade.";
+      return "No shot of this version is rated any more (a discarded one does not count), so there is nothing to grade. Rate a shot, or dismiss this grade.";
     }
   }
   return error.message;

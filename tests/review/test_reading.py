@@ -528,7 +528,7 @@ async def _states(fixture: Fixture) -> dict[str, int]:
     for shot in shots.values():
         await recipes.assign_shot(shot, fixture.version_id)
     await fixture.db.execute(
-        "INSERT INTO shot_judgements (shot_id, decision) VALUES (?, 'discard')",
+        "INSERT INTO shot_judgements (shot_id, discarded) VALUES (?, 1)",
         (shots["discarded"],),
     )
     await confirm_free_text(fixture)  # the profile now has a confirmed signature

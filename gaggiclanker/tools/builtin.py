@@ -66,7 +66,7 @@ from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.recipes import grind_value, parse_version_label
 from gaggiclanker.domain.signature import ExpectationInput, SignatureRefused
-from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance, Decision
+from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance, ShotLabel
 from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, Tier, effective_tiers
@@ -175,18 +175,20 @@ SCHEMA_NOTES = (
     "claim of a shot's newest finished review "
     "that a person did not reject (the fault word, the window it is about, its text and the "
     "numbers behind it); v_reviews says how many claims a review kept and how many a person "
-    "rejected. decision (v_shots, v_judgements) holds only what the person chose, in stored "
-    "words: keep means Good, improve means Bad, discard means Discard, and NULL means they "
-    "chose none. The views hold the person's verdict, which includes a rating and "
+    "rejected. rating (v_shots, v_judgements) is the judgement, 1 to 5 stars, and "
+    "discarded (v_shots, v_judgements) is 1 when the person discarded the shot as one that went "
+    "wrong and must not be counted, 0 otherwise, whatever its stars. A rating is Good from 4 "
+    "stars, Neutral at 3 and Bad at 1 or 2; a discarded shot is none of these and is never "
+    "counted. The views hold the person's verdict, which includes a rating and "
     "note copied from the machine's notes card when the verdict was created from it, and a Sour "
     "or Bitter balance copied the same way (the card starts on Balanced whether or not anybody "
     "chose it, so a Balanced is never copied; a balance of balanced here is one the person "
     "chose, and one saved earlier on a shot whose card also said balanced was cleared, since it "
     "could not be told from that default). "
     "They do not hold a rating that lives only on the machine's index, or a notes-card rating that "
-    "arrived after a verdict was already typed here. A shot with no decision may still be Good "
-    "or Bad by its rating (3 stars or more is Good, 1 or 2 is Bad), which these views do not "
-    "work out, so a count of Good and Bad in SQL can differ from the app's for those shots."
+    "arrived after a verdict was already typed here. A shot whose verdict holds no rating may "
+    "still be rated on the machine, which these views do not show, so a count of Good, "
+    "Neutral and Bad in SQL can differ from the app's for those shots."
 )
 
 
@@ -559,10 +561,6 @@ _ORDER_KEYS: dict[str, str] = {
 }
 
 
-#: The words the agent filters by, and the stored decision each one is.
-_STORED_LABELS: dict[str, Decision] = {"good": "keep", "bad": "improve", "discard": "discard"}
-
-
 class SearchShotsInput(_Model):
     version: str | int | float | None = Field(
         default=None,
@@ -572,13 +570,14 @@ class SearchShotsInput(_Model):
             "trailing zeros, so 1.10 would arrive as v1.1."
         ),
     )
-    label: Literal["good", "bad", "discard"] | None = Field(
+    label: ShotLabel | None = Field(
         default=None,
         description=(
-            "Only the shots labelled this way. Good is the gold standard, Bad is what you "
-            "are working on, and Discard says the shot went wrong rather than the version. A "
-            "shot the person did not label is Good from a rating of 3 stars or more and Bad "
-            "from 1 or 2, so it is found under the label its rating gives it."
+            "Only the shots in one group. good means 4 or 5 stars and is the gold standard. "
+            "neutral means 3 stars. bad means 1 or 2 stars and is what you are working on. "
+            "discard finds the shots the person discarded because the shot went wrong rather "
+            "than the version, whatever their stars. A discarded shot is never found under "
+            "good, neutral or bad."
         ),
     )
     balance: Balance | None = Field(default=None, description="Only this taste balance.")
@@ -708,7 +707,8 @@ def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier], order: s
     permission="read",
     description=(
         "Search this Recipe's shots on their base information, and get each match's base "
-        "rendering. Filter by version, label (good, bad or discard), balance and dates, or by "
+        "rendering. Filter by version, label (good, neutral, bad or discard), balance and dates, "
+        "or by "
         "a range on shot time, yield, first drip, peak pressure, average brew flow, rating, "
         "dose in, dose out, ratio, "
         "resistance level, pressure adherence or flow adherence; sort by date or any of those "
@@ -757,7 +757,7 @@ async def list_recipe_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchS
         recipe_id,
         ShotQuery(
             version_id=version_id,
-            label=_STORED_LABELS[args.label] if args.label is not None else None,
+            label=args.label,
             balance=args.balance,
             since=args.since.isoformat() if args.since is not None else None,
             until=args.until.isoformat() if args.until is not None else None,
@@ -1679,11 +1679,11 @@ class ProposeOutcomeOutput(_Model):
     permission="propose",
     description=(
         "Propose how THIS conversation's version turned out — held, partly_held, failed or "
-        "inconclusive — graded against all of its counted shots (Good or Bad), never one "
+        "inconclusive — graded against all of its counted shots (rated, not discarded), never one "
         "shot. It records nothing: the person sees a card and accepts it, records another "
         "outcome, or dismisses it, and until they accept it the version's outcome is what it "
         "was. Refused when the version has no prediction (there is nothing to grade) or no "
-        "Good or Bad shot (a rated shot is one; a discarded shot does not count). Call it at the "
+        "rated shot (a discarded shot does not count, whatever its stars). Call it at the "
         "end of your grade, "
         "once; a second call replaces the first while the person has not answered. Once it "
         "is waiting you may propose the next version in the same answer, and accepting that "
@@ -1739,9 +1739,9 @@ async def propose_outcome(ctx: ToolContext, args: ProposeOutcomeInput) -> Propos
     )
     if result.refused == "nothing_to_grade":
         raise ValueError(
-            f"{version.version_label} has no Good or Bad shot yet (a discarded shot does not "
-            "count, and rating a shot is enough), so there is nothing to grade it on. Ask them "
-            "to rate a shot or label it Good or Bad, or say what you would look for in the next "
+            f"{version.version_label} has no rated shot yet (a discarded shot does not "
+            "count, however it was rated), so there is nothing to grade it on. Ask them "
+            "to rate a shot, or say what you would look for in the next "
             "one."
         )
     if result.refused == "bad_thread":

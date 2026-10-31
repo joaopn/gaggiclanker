@@ -112,7 +112,7 @@ async def a_recipe(wired: Fixtures) -> tuple[int, int]:
 
 class TestWhichShotsCount:
     async def test_discards_quarantines_and_incompletes_are_left_out(self, wired: Fixtures) -> None:
-        """Three exclusions, and an unlabelled shot is not one of them."""
+        """Three exclusions, and an unrated shot is not one of them."""
         recipe_id, version_id = await a_recipe(wired)
         judgements = JudgementsRepository(wired.db)
         plain = await store_shot(wired.shots, "000001")
@@ -122,13 +122,14 @@ class TestWhichShotsCount:
         incomplete = await store_shot(wired.shots, "000005", incomplete=True)
         for shot_id in (plain, kept, discarded, quarantined, incomplete):
             assert await wired.recipes.assign_shot(shot_id, version_id)
-        await judgements.upsert(kept, JudgementWrite(decision="keep"))
-        await judgements.upsert(discarded, JudgementWrite(decision="discard"))
+        await judgements.upsert(kept, JudgementWrite(rating=4))
+        # A discarded shot keeps its stars; the stars are why the exclusion has to look first.
+        await judgements.upsert(discarded, JudgementWrite(rating=5, discarded=True))
 
         counted = await wired.recipes.counted_shots(recipe_id)
 
         assert [shot.shot_id for shot in counted] == [plain, kept]
-        assert [shot.decision for shot in counted] == [None, "keep"]
+        assert [shot.band for shot in counted] == [None, "good"]
 
     async def test_a_shot_filed_under_another_recipe_is_not_this_recipes_evidence(
         self, wired: Fixtures
@@ -164,7 +165,7 @@ class TestWhereEachMeasureComesFrom:
         )
         assert await wired.recipes.assign_shot(shot_id, version_id)
         await JudgementsRepository(wired.db).upsert(
-            shot_id, JudgementWrite(rating=4, balance="sour", decision="improve")
+            shot_id, JudgementWrite(rating=4, balance="sour")
         )
 
         counted = (await wired.recipes.counted_shots(recipe_id))[0]
@@ -177,7 +178,7 @@ class TestWhereEachMeasureComesFrom:
         assert counted.cup_first_drip_s == 2.25
         assert counted.cup_flow_g_s == 1.4
         assert counted.rating == 4
-        assert (counted.balance, counted.decision) == ("sour", "improve")
+        assert (counted.balance, counted.band) == ("sour", "good")
 
     async def test_a_measure_the_shot_does_not_hold_is_absent_rather_than_zero(
         self, wired: Fixtures
@@ -456,7 +457,7 @@ class TestTheRecipeDetail:
             )
             await client.put(
                 f"/api/shots/{shot_id}/judgement",
-                json={"rating": rating, "balance": "balanced", "decision": "improve"},
+                json={"rating": rating, "balance": "balanced"},
             )
         return {
             "recipe_id": created["id"],
@@ -513,7 +514,8 @@ class TestTheRecipeDetail:
         assert pressure["verdict"] == "no_data"
         # Plain facts, with nothing held against them.
         assert evidence["this"]["balanced"] == 2
-        assert evidence["this"]["improve"] == 2
+        assert (evidence["this"]["good"], evidence["this"]["neutral"]) == (2, 0)
+        assert (evidence["other"]["good"], evidence["other"]["neutral"]) == (0, 2)
         assert evidence["other"]["version_label"] == "v1"
 
     async def test_a_version_with_no_prediction_has_no_evidence(
@@ -581,9 +583,10 @@ class TestTheRecipeDetail:
             "sour": 0,
             "balanced": 0,
             "bitter": 0,
-            "keep": 0,
-            "improve": 0,
-            "unlabelled": 0,
+            "good": 0,
+            "neutral": 0,
+            "bad": 0,
+            "unrated": 0,
         }
         times = next(row for row in evidence["measures"] if row["measure"] == "shot_time_s")
         assert times["this"] == {"mean": 31.0, "n": 2}

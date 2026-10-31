@@ -25,8 +25,8 @@ export type ShotColumnId =
   | "recipe"
   | "drink"
   | "notes"
-  | "decision"
   | "balance"
+  | "discard"
   | "flags";
 
 export type ShotColumn = {
@@ -120,16 +120,6 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // which is what the column is for — the whole note is on hover, and reading
   // a session back is what the drag is for.
   { id: "notes", label: "Notes", size: { rem: 14, min: 6, max: 32 }, narrowHidden: true },
-  // Good, Bad and Discard side by side at text-xs: 8.0rem as measured in headless Chromium
-  // (DejaVu Sans, wider than the system faces a browser actually uses) with the buttons' padding
-  // and borders, so 8.25rem holds all three words whole, filled or outlined. The minimum is the
-  // default: a drag can never cut a word.
-  {
-    id: "decision",
-    label: "Decision",
-    size: { rem: 8.25, min: 8.25, max: 14 },
-    narrowHidden: true,
-  },
   // Sour, Balanced and Bitter side by side at text-xs: 9.02rem as measured in headless Chromium,
   // buttons' padding and borders included, so 9.25rem holds all three whole, filled or outlined.
   // Not sortable, so no arrow ever widens the heading. The minimum is the default.
@@ -139,6 +129,11 @@ export const SHOT_COLUMNS: ShotColumn[] = [
     size: { rem: 9.25, min: 9.25, max: 14 },
     narrowHidden: true,
   },
+  // An outlined "Discard" until clicked, then a filled "Discarded" (text-xs with the button's padding:
+  // 4.4rem as measured in headless Chromium, DejaVu Sans, the widest face). The heading and
+  // its sort arrow are narrower. Not sortable. Hidden on a phone like Balance. The minimum is
+  // the default: a drag can never cut the word.
+  { id: "discard", label: "Discard", size: { rem: 5, min: 5, max: 10 }, narrowHidden: true },
   // What the model wrote: the same "phase: fault +N" badge, or the Review button, or a grey
   // "Failed to run" with its Retry button beside it. The minimum is what the two together
   // need: "Failed to run" and "Retry" are 9.7rem in headless Chromium, and the longest fault
@@ -155,16 +150,18 @@ export const SHOT_COLUMNS: ShotColumn[] = [
  *
  * Recipe and Time say what was brewed and when; Duration and Yield say
  * what the machine did; Curve check says what the deterministic checks make of the curve;
- * Decision and Balance say what you made of the cup. That is the row a reader scans, and it is
- * the row they get without touching the chooser. AI Review comes last of those: the model's
- * reading, with the button that starts one.
+ * Rating and Balance say what you made of the cup, and Discard is the one click that takes a
+ * shot that went wrong out of every count. That is the row a reader scans, and it is the row
+ * they get without touching the chooser. AI Review comes last of those: the model's reading,
+ * with the button that starts one.
+ *
+ * The stars are the whole judgement: their colour is the band (Good, Neutral, Bad) the server
+ * says they are in, so there is no Decision column to say it twice.
  *
  * Profile is off the row, in the chooser: the Recipe already names it, since a Recipe brews one
  * profile.
  *
- * Rating is off the row, in the chooser: a rated shot already shows its Good or Bad in
- * Decision, outlined until you confirm it, so the stars would say it twice. Curve and Notes are
- * left off too. A sparkline is a request and a canvas per row, wanted by somebody comparing
+ * Curve and Notes are left off. A sparkline is a request and a canvas per row, wanted by somebody comparing
  * shapes rather than by somebody scanning; Notes is long, and it is there for reading a session
  * back. Flags is off because the flags are mostly absences (imported, gone from the machine,
  * incomplete) that matter on a handful of rows.
@@ -175,8 +172,9 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "duration",
   "yield",
   "check",
-  "decision",
+  "rating",
   "balance",
+  "discard",
   "review",
 ];
 
@@ -196,7 +194,10 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
  * browser that has not been opened since the older one was current is exactly
  * the browser this is for.
  */
-export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly ShotColumnId[])[] = [
+export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly string[])[] = [
+  // Before the stars came back as the judgement and Discard became its own column: the Decision
+  // column (a retired id, which only a stored layout can still hold) stood where they are.
+  ["recipe", "time", "duration", "yield", "check", "decision", "balance", "review"],
   // Before Balance joined the default row, and Rating and Profile left it.
   ["recipe", "time", "profile", "duration", "yield", "check", "review", "rating", "decision"],
   // Before the Curve check column was split from Review.
@@ -212,7 +213,7 @@ export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly ShotColumnId[])[]
  * a set, because the order a list was stored in carries nothing: the table
  * draws columns in the canonical order whatever the list says.
  */
-function isPreviousDefault(ids: ShotColumnId[]): boolean {
+function isPreviousDefault(ids: string[]): boolean {
   const stored = new Set(ids);
   if (stored.size !== ids.length) return false;
   return PREVIOUS_DEFAULT_SHOT_COLUMNS.some(
@@ -242,6 +243,16 @@ export const SHOT_COLUMNS_CHECK_KEY = "shots.columns.check.v1";
 export const SHOT_COLUMNS_BALANCE_KEY = "shots.columns.balance.v1";
 
 /**
+ * Set once a stored layout has been brought to the stars-and-Discard row, or once the person
+ * chose their columns themselves. The Decision column is gone: where it was shown, the stars
+ * (Rating) take its place unless they are already shown, and Discard sits right after Balance
+ * (or where Decision was when Balance is off). A layout that did not show Decision gets no
+ * Discard, because the person hid that column. After that, a layout without Rating or Discard is
+ * a choice and is kept. Widths are not touched.
+ */
+export const SHOT_COLUMNS_DISCARD_KEY = "shots.columns.discard.v1";
+
+/**
  * Columns that were replaced, and what took their place. The Analyse button
  * gave way to Decision: somebody who chose the button gets its replacement in
  * the same place rather than losing a column without a word. Any other stored
@@ -249,7 +260,7 @@ export const SHOT_COLUMNS_BALANCE_KEY = "shots.columns.balance.v1";
  * place, so a layout that names `score` shows `review` at the same position,
  * on or off as it was.
  */
-const REPLACED: Record<string, ShotColumnId> = {
+const REPLACED: Record<string, string> = {
   analyze: "decision",
   score: "review",
   set: "recipe",
@@ -260,6 +271,9 @@ const ALL_IDS = new Set<string>(SHOT_COLUMNS.map((column) => column.id));
 function isColumnId(value: unknown): value is ShotColumnId {
   return typeof value === "string" && ALL_IDS.has(value);
 }
+
+/** The retired Decision column's id, which only a stored layout can still name. */
+const RETIRED_DECISION = "decision";
 
 /**
  * The stored choice, or the default.
@@ -277,16 +291,18 @@ export function loadShotColumns(storage: Storage | undefined = safeStorage()): S
     if (!Array.isArray(parsed)) return DEFAULT_SHOT_COLUMNS;
     const known = parsed
       .map((value) => (typeof value === "string" ? (REPLACED[value] ?? value) : value))
-      .filter(isColumnId);
+      .filter((value): value is string => isColumnId(value) || value === RETIRED_DECISION);
     if (known.length === 0 || isPreviousDefault(known)) return DEFAULT_SHOT_COLUMNS;
-    return withBalance(withCurveCheck(known, storage), storage);
+    const shown = withDiscard(withBalance(withCurveCheck(known, storage), storage), storage);
+    const columns = shown.filter(isColumnId);
+    return columns.length > 0 ? columns : DEFAULT_SHOT_COLUMNS;
   } catch {
     return DEFAULT_SHOT_COLUMNS;
   }
 }
 
 /** The stored layout with Curve check added in front of Review, once; see the key above. */
-function withCurveCheck(known: ShotColumnId[], storage: Storage | undefined): ShotColumnId[] {
+function withCurveCheck(known: string[], storage: Storage | undefined): string[] {
   if (!known.includes("review") || known.includes("check")) return known;
   let done = false;
   try {
@@ -295,7 +311,7 @@ function withCurveCheck(known: ShotColumnId[], storage: Storage | undefined): Sh
     done = false;
   }
   if (done) return known;
-  const added = known.flatMap((id): ShotColumnId[] => (id === "review" ? ["check", id] : [id]));
+  const added = known.flatMap((id): string[] => (id === "review" ? ["check", id] : [id]));
   try {
     storage?.setItem(SHOT_COLUMNS_KEY, JSON.stringify(added));
     storage?.setItem(SHOT_COLUMNS_CHECK_KEY, "1");
@@ -307,7 +323,7 @@ function withCurveCheck(known: ShotColumnId[], storage: Storage | undefined): Sh
 }
 
 /** The stored layout with Rating swapped for Balance and Profile hidden, once; see the key above. */
-function withBalance(known: ShotColumnId[], storage: Storage | undefined): ShotColumnId[] {
+function withBalance(known: string[], storage: Storage | undefined): string[] {
   let done = false;
   try {
     done = (storage?.getItem(SHOT_COLUMNS_BALANCE_KEY) ?? null) !== null;
@@ -316,7 +332,7 @@ function withBalance(known: ShotColumnId[], storage: Storage | undefined): ShotC
   }
   if (done) return known;
   const hasBalance = known.includes("balance");
-  const moved = known.flatMap((id): ShotColumnId[] =>
+  const moved = known.flatMap((id): string[] =>
     id === "rating" ? (hasBalance ? [] : ["balance"]) : id === "profile" ? [] : [id],
   );
   // Never a table with no columns: a layout that would end up empty is kept as it was.
@@ -333,6 +349,42 @@ function withBalance(known: ShotColumnId[], storage: Storage | undefined): ShotC
   return next;
 }
 
+/**
+ * The stored layout with Decision replaced by Rating and Discard, once; see the key above.
+ *
+ * Rating takes Decision's place unless the stars are shown already. Discard goes right after
+ * Balance, or where Decision was when Balance is off. A layout that never showed Decision is
+ * left as it is. The retired id never survives this function, flag or no flag.
+ */
+function withDiscard(known: string[], storage: Storage | undefined): string[] {
+  const hadDecision = known.includes(RETIRED_DECISION);
+  let done = false;
+  try {
+    done = (storage?.getItem(SHOT_COLUMNS_DISCARD_KEY) ?? null) !== null;
+  } catch {
+    done = false;
+  }
+  if (done || !hadDecision) {
+    return known.filter((id) => id !== RETIRED_DECISION);
+  }
+  const hasRating = known.includes("rating");
+  const hasBalance = known.includes("balance");
+  const next = known.flatMap((id): string[] => {
+    if (id === RETIRED_DECISION) {
+      return [...(hasRating ? [] : ["rating"]), ...(hasBalance ? [] : ["discard"])];
+    }
+    return id === "balance" ? [id, "discard"] : [id];
+  });
+  try {
+    storage?.setItem(SHOT_COLUMNS_KEY, JSON.stringify(next));
+    storage?.setItem(SHOT_COLUMNS_DISCARD_KEY, "1");
+  } catch {
+    // Not remembered: the next load does it again, which is what a person who cannot save
+    // anything would want.
+  }
+  return next;
+}
+
 export function saveShotColumns(
   visible: ShotColumnId[],
   storage: Storage | undefined = safeStorage(),
@@ -342,6 +394,7 @@ export function saveShotColumns(
     // A layout the person chose is theirs: Curve check is not added to it behind their back.
     storage?.setItem(SHOT_COLUMNS_CHECK_KEY, "1");
     storage?.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
+    storage?.setItem(SHOT_COLUMNS_DISCARD_KEY, "1");
   } catch {
     // A view preference is not worth a toast. The table is already showing
     // what was asked for; it just will not still be doing so tomorrow.

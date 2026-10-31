@@ -10,7 +10,7 @@ phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; ended by Unknow
 [Identity and status]
 Date and time: 2026-04-03 12:06
 Recipe version: v1 of Recipe 1
-Label: Good
+Label: Good (4★)
 Counted: counted
 Profile: Amigo Alturas Bloom [AI]
 Machine's shot number: 000204

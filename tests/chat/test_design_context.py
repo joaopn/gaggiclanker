@@ -23,6 +23,7 @@ import pytest
 from gaggiclanker.chat.context import opening_context
 from gaggiclanker.chat.design_context import design_context
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
 from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
@@ -159,6 +160,44 @@ async def test_the_forked_design_with_siblings_matches_its_golden(
     rendered = await opening_context(kitchen.db, await ToolScope.resolve(kitchen.db, designed.id))
 
     _check_golden(rendered, "design-chat-context.txt", update_golden)
+
+
+async def test_a_sibling_version_says_how_its_shots_were_rated_and_discarded(
+    kitchen: Fixture,
+) -> None:
+    """The sibling's counts read every part: Good, Neutral, Bad, Discarded and unrated."""
+    designed = await _forked_design(kitchen)
+    recipes = RecipesRepository(kitchen.db)
+    kenya = await recipes.get(kitchen.recipes["kenya"])
+    assert kenya is not None and kenya.current_version_id is not None
+    ids = [
+        int(row["id"])
+        for row in await kitchen.db.fetch_all(
+            "SELECT id FROM shots WHERE recipe_version_id = ? ORDER BY id",
+            (kenya.current_version_id,),
+        )
+    ]
+    judgements = JudgementsRepository(kitchen.db)
+
+    async def line() -> str:
+        rendered = await opening_context(
+            kitchen.db, await ToolScope.resolve(kitchen.db, designed.id)
+        )
+        return next(
+            row for row in rendered.splitlines() if "profile Medium 18g 1:2 · 5 shots" in row
+        )
+
+    # The precondition: five Good shots, nothing else (the golden's line).
+    assert "(5 Good, 0 Neutral, 0 Bad, 0 Discarded, 0 unrated)" in await line()
+
+    await judgements.upsert(ids[0], JudgementWrite(rating=3))
+    await judgements.upsert(ids[1], JudgementWrite(rating=5, discarded=True))
+    await judgements.delete(ids[2])
+    await judgements.upsert(ids[3], JudgementWrite(rating=2))
+    await judgements.upsert(ids[4], JudgementWrite(rating=1))
+
+    # Two Bad and one of each other part, so no count can stand in for another.
+    assert "(0 Good, 1 Neutral, 2 Bad, 1 Discarded, 1 unrated)" in await line()
 
 
 async def test_the_bare_design_matches_its_golden(kitchen: Fixture, update_golden: bool) -> None:

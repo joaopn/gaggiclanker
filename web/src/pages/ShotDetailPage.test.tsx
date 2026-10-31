@@ -88,24 +88,19 @@ describe("ShotDetailPage version prediction", () => {
     compares_to_version_label: "v1",
   });
 
-  it("keeps the prediction out of the page until the shot has been decided about", async () => {
-    const user = setupUser();
+  it("shows the prediction at once, with no button to show it and nothing hidden", async () => {
     getShot.mockResolvedValue({ ...shot129, recipe_version: predicted, judgement: null });
     renderShot();
 
-    await screen.findByTestId("version-prediction-row");
-    expect(screen.queryByText("less bitter, a shorter shot")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Show prediction" }));
-    expect(screen.getByText("less bitter, a shorter shot")).toBeInTheDocument();
+    expect(await screen.findByText("less bitter, a shorter shot")).toBeInTheDocument();
+    expect(screen.getByTestId("version-prediction-row")).toHaveTextContent("compared to v1");
+    expect(screen.queryByRole("button", { name: "Show prediction" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/hidden until/i)).not.toBeInTheDocument();
   });
 
-  it("does not carry a reveal from one shot to another the cache already holds", async () => {
+  it("shows each shot's own prediction as the page moves between shots the cache holds", async () => {
     const user = setupUser();
-    // The production cache, not the test one: `gcTime: 0` makes every
-    // navigation remount through the loading branch, which hides the bug this
-    // test exists for. With a warm cache the route element is reused and a
-    // reveal that lived in component state would survive the change of shot.
+    // The production cache, not the test one: with a warm cache the route element is reused.
     const caching = new QueryClient({
       defaultOptions: {
         queries: { retry: false, staleTime: 30_000, gcTime: 600_000 },
@@ -139,33 +134,12 @@ describe("ShotDetailPage version prediction", () => {
       { initialEntries: ["/shots/129"], queryClient: caching },
     );
 
-    // Visit both, so each is in the cache and fresh.
-    await screen.findByTestId("version-prediction-row");
+    expect(await screen.findByText("what 129 was expected to do")).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "the next shot" }));
-    await waitFor(() => expect(screen.getByTestId("version-prediction-row")).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Show prediction" }));
     expect(await screen.findByText("what 130 was expected to do")).toBeInTheDocument();
-
-    // Back to a shot the cache can answer at once: no loading branch, the same
-    // route element — and still nothing revealed.
     await user.click(screen.getByRole("link", { name: "the first shot" }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("version-prediction-row")).toHaveAttribute("data-shown", "no"),
-    );
-    expect(screen.queryByText("what 129 was expected to do")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show prediction" })).toBeInTheDocument();
-  });
-
-  it("shows it straight away once there is a decision", async () => {
-    getShot.mockResolvedValue({
-      ...shot129,
-      recipe_version: predicted,
-      judgement: { ...shot129.judgement, decision: "improve" },
-    });
-    renderShot();
-
-    expect(await screen.findByText("less bitter, a shorter shot")).toBeInTheDocument();
+    expect(await screen.findByText("what 129 was expected to do")).toBeInTheDocument();
+    expect(screen.queryByText("what 130 was expected to do")).not.toBeInTheDocument();
   });
 });
 

@@ -138,7 +138,7 @@ Python one: it stores a table of profile documents — the field missing, null,
 expected to do, against which earlier version — can be written and re-written
 only while the version has no shots and no grade, because one typed afterwards
 would grade itself. The outcome, somebody's grade of that prediction, needs a
-prediction and a shot rated or labelled (Good or Bad) before it can be recorded, and
+prediction and a rated shot that was not discarded before it can be recorded, and
 can be changed or cleared for ever after. `recipe_versions` carries all three and
 the comment on it in `db/schema.sql` says which is which. **A version has a
 name and nothing else of the kind**: `version_major`.`version_minor` is what every screen, prompt and tool shows ("v1.1"), an identifier like a
@@ -158,7 +158,7 @@ matcher may file a shot under this Recipe. Any number of Recipes carry it. A sho
 filed when exactly one of them names the profile it was brewed with; none or
 several leaves it in the "needs a Recipe" inbox, because a mis-filed shot pollutes
 a trend chart nobody re-reads while an unfiled one is on a list with a button
-next to it. The inbox leaves out quarantined shots and shots labelled Discard
+next to it. The inbox leaves out quarantined shots and discarded shots
 (`NEEDS_RECIPE_SQL` in `db/repos/shots.py`, read by the count, the filter and the
 button alike): neither is waiting for an answer.
 
@@ -208,7 +208,7 @@ digits or drop the one that mattered.
 The arithmetic is `domain/spread.py`, pure, with hand-computed tests: what a
 prediction is graded against has to be something a person can redo on paper.
 `RecipesRepository.counted_shots` is the only SQL — it decides which shots count
-(not quarantined, not incomplete, not Discard; unlabelled shots do count) and
+(not quarantined, not incomplete, not discarded; unrated shots do count) and
 reads each measure where it already lives, two columns, three paths into the
 diagnostics stored at ingest, and the judgement's rating. Nothing is derived a
 second time. Grouping sorts by shot id before it sums, and for one specific

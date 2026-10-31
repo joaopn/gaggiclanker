@@ -315,7 +315,7 @@ describe("OutcomeCard", () => {
         code: "NOTHING_TO_GRADE",
       });
       expect(outcomeFailure(error)).toBe(
-        "No shot of this version is Good or Bad any more (a discarded one does not count), so there is nothing to grade. Rate a shot or label it Good or Bad, or dismiss this grade.",
+        "No shot of this version is rated any more (a discarded one does not count), so there is nothing to grade. Rate a shot, or dismiss this grade.",
       );
     });
 

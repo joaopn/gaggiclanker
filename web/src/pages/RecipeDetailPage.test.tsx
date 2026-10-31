@@ -391,8 +391,8 @@ describe("RecipeDetailPage", () => {
     const detail = recipeDetail({ rollback_target_version_id: 22 });
     detail.versions[0].version = { ...detail.versions[0].version, is_current: false };
     detail.versions[1].version = { ...detail.versions[1].version, is_current: true };
-    detail.versions[0].labels = labelCounts({ keep: 3 });
-    detail.versions[1].labels = labelCounts({ improve: 2 });
+    detail.versions[0].labels = labelCounts({ good: 3 });
+    detail.versions[1].labels = labelCounts({ bad: 2 });
     getRecipe.mockResolvedValue(detail);
     renderWithQueryClient(<RecipeDetailPage />);
 
@@ -438,8 +438,8 @@ describe("RecipeDetailPage", () => {
   it("offers the way back when the current version is going badly", async () => {
     const user = setupUser();
     const detail = recipeDetail({ rollback_target_version_id: 21 });
-    detail.versions[0].labels = labelCounts({ improve: 2 });
-    detail.versions[1].labels = labelCounts({ keep: 3 });
+    detail.versions[0].labels = labelCounts({ bad: 2 });
+    detail.versions[1].labels = labelCounts({ good: 3 });
     getRecipe.mockResolvedValue(detail);
     renderWithQueryClient(<RecipeDetailPage />);
 
@@ -458,7 +458,7 @@ describe("RecipeDetailPage", () => {
 
   it("does not nag when the current version has a Good shot of its own", async () => {
     const detail = recipeDetail({ rollback_target_version_id: 21 });
-    detail.versions[0].labels = labelCounts({ keep: 1, improve: 2 });
+    detail.versions[0].labels = labelCounts({ good: 1, bad: 2 });
     getRecipe.mockResolvedValue(detail);
     renderWithQueryClient(<RecipeDetailPage />);
 

@@ -25,12 +25,12 @@ from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
-from gaggiclanker.domain.decision import GOOD_FROM_RATING, RatingSource
 from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.domain.machine_names import is_app_name_in_shot_header
+from gaggiclanker.domain.rating_band import GOOD_FROM_RATING, NEUTRAL_RATING
 from gaggiclanker.domain.signature import ShotChecks, check_key
 from gaggiclanker.domain.slog import shot_header_name
-from gaggiclanker.domain.vocab import Balance, Decision
+from gaggiclanker.domain.vocab import Balance, RatingBand
 from gaggiclanker.domain.warnings import shot_warnings
 from gaggiclanker.review.reading import ChecksBlock, ReviewBlock, Served, review_key, serve_review
 from gaggiclanker.signatures.checks import CheckSubject, checks_for_shots
@@ -264,21 +264,18 @@ class ShotListRow(BaseModel):
     #: machine, this is what was decided here. The list shows this first and
     #: falls back to the device's, and it is what the stars in a row write.
     judgement_rating: int | None = None
-    #: What the rating alone says the decision is (``keep`` from three stars, ``improve`` from one
-    #: or two), served only when the verdict stores no decision: the list draws it outlined, and
-    #: a click on it stores it. Worked out in SQL by :data:`DECISION_SQL`; the web never repeats
-    #: the rule.
-    derived_decision: Decision | None = None
+    #: Whether the person discarded the shot ("it went wrong, do not count it"). Independent of
+    #: the stars: a discarded shot keeps its rating and is never counted.
+    discarded: bool = False
+    #: The band the rating the Rating column shows is in (``good`` from four stars, ``neutral``
+    #: at three, ``bad`` at one or two; ``None`` unrated). Worked out in SQL by
+    #: :data:`RATING_BAND_SQL`; the web colours the stars by it and never repeats the rule.
+    rating_band: RatingBand | None = None
     #: The cup's balance from this box's own verdict, and the one on the machine's notes card
     #: (``balance``, only when the card holds one of the three words): the list shows the first
     #: filled and the second faint, as it does for the stars.
     judgement_balance: Balance | None = None
     balance: Balance | None = None
-    #: The rating ``derived_decision`` came from and where it sits (``judgement``, ``machine_notes``
-    #: or ``machine_index``), so the screen can say which one it was: non-null only when
-    #: ``derived_decision`` is. Worked out in SQL beside it, never repeated in the browser.
-    decision_rating: int | None = None
-    decision_rating_source: RatingSource | None = None
     has_notes: bool = False
     #: Whether the user has recorded a verdict on the cup. The list shows it as
     #: a dot; `needs_recipe` has an equivalent on the Recipe side.
@@ -288,9 +285,6 @@ class ShotListRow(BaseModel):
     #: The join that carries `rating` and `has_judgement` is already here, so
     #: this costs a column and no query.
     judgement_notes: str | None = None
-    #: The verdict's decision — keep, improve, discard — which the list shows
-    #: and sets from the row. The same join, one more column.
-    judgement_decision: Decision | None = None
     #: What the user says they were brewing. NULL is the `needs_recipe`
     #: state: the shot arrived while no Recipe matched it, and it is waiting for
     #: somebody to say which one it belongs to.
@@ -465,49 +459,44 @@ HAS_SCALE_SQL = """
 RATING_SQL = "COALESCE(j.rating, n.rating, s.index_rating)"
 
 
-def decision_sql(j: str = "j", n: str = "n", s: str = "s") -> str:
-    """The SQL twin of :func:`~gaggiclanker.domain.decision.effective_decision`.
+def rating_band_sql(j: str = "j", n: str = "n", s: str = "s") -> str:
+    """The SQL twin of :func:`~gaggiclanker.domain.rating_band.rating_band`.
 
-    A stored decision wins, Discard included; else the rating (:data:`RATING_SQL` over the three
-    aliases) reads ``keep`` from 3 and ``improve`` from 1 to 2, a rating of zero or less being no
-    rating; else NULL. Discard is never derived. A test runs this over every combination of the
-    three sources and compares it with the Python rule, so they cannot drift apart. The aliases
-    are parameters because a query that already uses ``sh`` for ``shots`` need not be renamed.
+    The rating (:data:`RATING_SQL` over the three aliases) reads ``good`` from 4, ``neutral`` at 3
+    and ``bad`` at 1 or 2, a rating of zero or less being no rating; else NULL. It knows nothing
+    of a discard: a counting reader leaves discarded shots out before it reads the band. A test
+    runs this over every combination of the three sources and compares it with the Python rule,
+    so they cannot drift apart. The aliases are parameters because a query that already uses
+    ``sh`` for ``shots`` need not be renamed.
     """
     rating = f"COALESCE({j}.rating, {n}.rating, {s}.index_rating)"
     return (
-        f"CASE WHEN {j}.decision IS NOT NULL THEN {j}.decision "
-        f"WHEN {rating} >= {GOOD_FROM_RATING} THEN 'keep' "
-        f"WHEN {rating} >= 1 THEN 'improve' END"
+        f"CASE WHEN {rating} >= {GOOD_FROM_RATING} THEN 'good' "
+        f"WHEN {rating} = {NEUTRAL_RATING} THEN 'neutral' "
+        f"WHEN {rating} >= 1 THEN 'bad' END"
     )
 
 
-def decision_rating_sql(j: str = "j", n: str = "n", s: str = "s") -> str:
-    """The rating the rule read, when it read one: NULL unless the rating gives a decision.
-
-    Over the same three sources as :func:`decision_sql`, and built from its rating, so the two
-    cannot disagree about which rating is meant.
-    """
-    rating = f"COALESCE({j}.rating, {n}.rating, {s}.index_rating)"
-    return f"CASE WHEN {rating} >= 1 THEN {rating} END"
+def not_discarded_sql(j: str = "j") -> str:
+    """A shot the person did not discard (over the ``shot_judgements`` alias): a shot nobody
+    judged is not discarded. Every counting reader asks this before it reads the band."""
+    return f"COALESCE({j}.discarded, 0) = 0"
 
 
-def decision_rating_source_sql(j: str = "j", n: str = "n", s: str = "s") -> str:
-    """Where that rating sits (``judgement``, ``machine_notes`` or ``machine_index``): the first
-    of the three that is present, as :func:`~gaggiclanker.domain.decision.rating_source` says.
-    NULL when the rating gives no decision."""
-    return (
-        f"CASE WHEN ({decision_rating_sql(j, n, s)}) IS NULL THEN NULL "
-        f"WHEN {j}.rating IS NOT NULL THEN 'judgement' "
-        f"WHEN {n}.rating IS NOT NULL THEN 'machine_notes' ELSE 'machine_index' END"
-    )
+def shot_label_sql(label: str, j: str = "j", n: str = "n", s: str = "s") -> str:
+    """The condition for a shot search's ``label``: ``good``, ``neutral`` or ``bad`` is the rating
+    band of a shot that was not discarded; ``discard`` is the discarded shots, whatever their
+    stars. The label is one of the four words (a closed set), never user text."""
+    if label == "discard":
+        return f"NOT ({not_discarded_sql(j)})"
+    if label not in ("good", "neutral", "bad"):  # pragma: no cover - the types close the set
+        raise ValueError(f"unknown label {label!r}")
+    return f"({not_discarded_sql(j)} AND ({rating_band_sql(j, n, s)}) = '{label}')"
 
 
-#: :func:`decision_sql` over the aliases ``j`` (``shot_judgements``), ``n``
+#: :func:`rating_band_sql` over the aliases ``j`` (``shot_judgements``), ``n``
 #: (``device_shot_notes``) and ``s`` (``shots``).
-DECISION_SQL = decision_sql()
-DECISION_RATING_SQL = decision_rating_sql()
-DECISION_RATING_SOURCE_SQL = decision_rating_source_sql()
+RATING_BAND_SQL = rating_band_sql()
 
 # The list projection. Written once because the list route, the detail route and
 # the tests must all agree on what "volume" means: the scale's final weight when
@@ -526,11 +515,8 @@ _LIST_COLUMNS = f"""
     j.shot_id IS NOT NULL AS has_judgement,
     j.rating AS judgement_rating,
     j.notes AS judgement_notes,
-    j.decision AS judgement_decision,
-    CASE WHEN j.decision IS NULL THEN ({DECISION_SQL}) END AS derived_decision,
-    CASE WHEN j.decision IS NULL THEN ({DECISION_RATING_SQL}) END AS decision_rating,
-    CASE WHEN j.decision IS NULL THEN ({DECISION_RATING_SOURCE_SQL}) END
-        AS decision_rating_source,
+    COALESCE(j.discarded, 0) AS discarded,
+    ({RATING_BAND_SQL}) AS rating_band,
     j.balance AS judgement_balance,
     CASE WHEN n.balance_taste IN ('sour', 'balanced', 'bitter') THEN n.balance_taste END
         AS balance,
@@ -545,7 +531,7 @@ _LIST_COLUMNS = f"""
 #: The "needs a Recipe" inbox, over `shots s`: the shots the archive is still
 #: waiting for an answer on. A quarantined shot is not one: its bytes never
 #: parsed, so there is no profile to match and nothing to judge, and leaving it
-#: in would mean the count never reached zero. Nor is a shot labelled Discard:
+#: in would mean the count never reached zero. Nor is a discarded shot:
 #: the person has already said it went wrong, it counts towards no Recipe's spread,
 #: and asking them where it belongs is asking about a shot they threw away. The
 #: header's count, the list's filter and the button that files the inbox all
@@ -553,7 +539,7 @@ _LIST_COLUMNS = f"""
 NEEDS_RECIPE_SQL = """(
     s.recipe_version_id IS NULL AND s.quarantined = 0
     AND NOT EXISTS (
-        SELECT 1 FROM shot_judgements dj WHERE dj.shot_id = s.id AND dj.decision = 'discard'
+        SELECT 1 FROM shot_judgements dj WHERE dj.shot_id = s.id AND dj.discarded = 1
     )
 )"""
 
@@ -607,7 +593,7 @@ _REVIEW_COLUMNS = f"""
                   WHEN 'false' THEN 0 ELSE 1 END
          ELSE 1 END AS has_pressure,
     sv.target_yield_g AS target_yield_g, sv.dose_g AS dose_g,
-    j.decision AS judgement_decision
+    COALESCE(j.discarded, 0) AS discarded
 """
 
 SORT_KEYS: dict[str, str] = {
@@ -1127,7 +1113,7 @@ class ShotsRepository(Repository):
         """The shot a page takes its examples from; ``None`` for an empty archive.
 
         The newest **judged** shot — one whose judgement carries a rating or a
-        decision — because that is the shot with every item on it: the newest
+        discard — because that is the shot with every item on it: the newest
         shot is often the one nobody has tasted yet. Failing that the newest
         with any judgement at all (the machine's notes card can seed one that
         holds only a dose), and failing that the newest shot. A quarantined
@@ -1137,7 +1123,7 @@ class ShotsRepository(Repository):
         row = await self.db.fetch_one(
             """
             SELECT s.id, s.started_at,
-                   (j.rating IS NOT NULL OR j.decision IS NOT NULL) AS judged
+                   (j.rating IS NOT NULL OR COALESCE(j.discarded, 0) = 1) AS judged
             FROM shots s
             LEFT JOIN shot_judgements j ON j.shot_id = s.id
             WHERE s.quarantined = 0
@@ -1222,7 +1208,7 @@ class ShotsRepository(Repository):
         if not include_discarded:
             # `j` is the shot's one judgement (`shot_judgements.shot_id` is its
             # key); a shot nobody judged is not discarded.
-            where.append("(j.decision IS NULL OR j.decision != 'discard')")
+            where.append("COALESCE(j.discarded, 0) = 0")
 
         filters = " AND ".join(where)
         total = await self.db.fetch_value(
@@ -1307,7 +1293,7 @@ class ShotsRepository(Repository):
     ) -> tuple[dict[int, ShotChecks], dict[int, bool]]:
         """The signature checks of every shot the condition selects, and whether it may be reviewed.
 
-        A shot nobody can review is one whose bytes never parsed or that was labelled Discard.
+        A shot nobody can review is one whose bytes never parsed or that the person discarded.
         """
         rows = await self.db.fetch_all(
             f"SELECT {_REVIEW_COLUMNS} {_LIST_FROM} WHERE {where_sql}", list(params)
@@ -1315,9 +1301,7 @@ class ShotsRepository(Repository):
         subjects: list[CheckSubject] = []
         reviewable: dict[int, bool] = {}
         for row in rows:
-            reviewable[int(row["id"])] = (
-                not row["quarantined"] and row["judgement_decision"] != "discard"
-            )
+            reviewable[int(row["id"])] = not row["quarantined"] and not row["discarded"]
             target = row["target_yield_g"]
             target = target if target is not None and target > 0 else None
             phases = _decoded(row["phases_json"], list)

@@ -161,9 +161,9 @@ async def list_shots(
     ``needs_recipe=1`` is the inbox — shots the archive could not attach to a Recipe
     on its own and is waiting for an answer on. Quarantined shots are excluded
     from it: their bytes never parsed, so there is nothing to judge and the
-    count would never reach zero. So are shots labelled Discard: the person
+    count would never reach zero. So are discarded shots: the person
     already said the shot went wrong, and it counts towards no Recipe.
-    ``include_discarded=false`` leaves shots labelled Discard out of any list,
+    ``include_discarded=false`` leaves discarded shots out of any list,
     which is the Shots page's default view.
 
     ``sort`` takes one of a fixed set of names — a sort column pasted out of a
@@ -518,7 +518,7 @@ class ProfileMatchRequest(BaseModel):
     """`POST /api/shots/profile-match`: which shots to offer the profile match.
 
     No `shot_ids` means every shot that needs a Recipe (the Shots page's button),
-    which leaves out a shot labelled Discard; a list is the one-shot button on a
+    which leaves out a discarded shot; a list is the one-shot button on a
     shot's own page, which files the shot it names whatever its label.
     """
 
@@ -604,7 +604,7 @@ async def run_review(
 
     This is the only way a review starts: a person pressing a shot's Review button in the shots
     table or Review on its page. A shot nobody can review is refused: 422 when its bytes never
-    parsed, 409 when the person labelled it Discard. The provider call takes tens of seconds and
+    parsed, 409 when the person discarded it. The provider call takes tens of seconds and
     does **not** run inside this request; it goes to the app's task registry, the row is the
     handle, and the LLM stream carries `review.started` / `review.finished` for the page to
     follow.
@@ -635,13 +635,13 @@ async def run_review(
         )
 
     judgement = await judgements.get(shot_id)
-    if judgement is not None and judgement.decision == "discard":
+    if judgement is not None and judgement.discarded:
         raise Conflict(
             f"Shot {shot.device_id} was discarded",
             code="SHOT_DISCARDED",
             details={
                 "field": "shot_id",
-                "message": "A shot labelled Discard is not evidence, so it is never read.",
+                "message": "A discarded shot is not evidence, so it is never read.",
             },
         )
 

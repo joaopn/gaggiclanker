@@ -473,7 +473,6 @@ async def build_fixture(db: Database) -> Fixture:
             dose_in_g=18.0,
             dose_out_g=37.5,
             notes="Sharp up front, nothing behind it.",
-            decision="improve",
         ),
     )
     shot_ids.append(subject)

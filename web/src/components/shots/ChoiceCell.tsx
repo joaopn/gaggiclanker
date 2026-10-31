@@ -5,13 +5,12 @@ import { attempt } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
 
 /**
- * One choice out of a few words, set where the shot is listed: the Decision and Balance columns.
+ * One choice out of a few words, set where the shot is listed: the Balance column.
  *
  * Joined toggle buttons. A button is **filled** when it is what the person chose for this shot,
  * and a click on the filled one clears it, because "not chosen yet" is most shots and a
  * mis-click must be undoable where it happened. A button can also show a **hint**, a value the
- * server worked out or read from the machine when nothing was chosen (the decision the rating
- * gives, the balance on the machine's notes card): it is drawn apart from a choice, and a click on
+ * server worked out or read from the machine when nothing was chosen (the balance on the machine's notes card): it is drawn apart from a choice, and a click on
  * it stores that value as the person's own. The hint is served, never worked out here.
  *
  * The write merges into the verdict (`usePatchJudgement`), so a choice never takes the rating or
@@ -38,7 +37,7 @@ export function ChoiceCell({
 }: {
   shot: ShotListRow;
   /** The verdict's field this cell writes. */
-  field: "decision" | "balance";
+  field: "balance";
   terms: readonly ChoiceTerm[];
   /** What the person chose, from the verdict. */
   stored: string | null;
@@ -46,7 +45,7 @@ export function ChoiceCell({
   hint: string | null;
   /** What the hint's button says on hover, and why it looks different. */
   hintTitle: string;
-  /** The group's name, which the buttons' names build on: "Decision", "Balance". */
+  /** The group's name, which the buttons' names build on: "Balance". */
   heading: string;
   testId: string;
   /** The classes of a chosen button, by value. */

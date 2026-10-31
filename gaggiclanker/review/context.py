@@ -28,7 +28,7 @@ What goes in, and nothing else:
    selection picks from the shot's telemetry.
 
 **Independent by construction.** Nothing here reads the person's judgement (rating, balance,
-notes, decision), the note typed on the machine, the label, another shot, an earlier
+notes, discard), the note typed on the machine, the label, another shot, an earlier
 review, an insight or a conversation: the loader's judgement, note and review are dropped
 before rendering, and rule selection is given no Recipe attributes. A review of one shot
 cannot be told what the person thought of it, or what another shot did.
@@ -87,8 +87,8 @@ __all__ = [
 REVIEW_CURVE_POINTS = 60
 
 #: What the shot row carries of the person's verdict and the machine's notes card, and what each
-#: becomes before a review reads the shot: the ratings, the notes, the decision and the decision
-#: the rating gives (with the rating it came from), the balance (the verdict's and the machine's)
+#: becomes before a review reads the shot: the ratings, the notes, the discard and the band
+#: the rating is in, the balance (the verdict's and the machine's)
 #: and the flags that say a verdict or a card exists. A test lists every field of the row that
 #: looks like one of these and fails for a field missing here.
 VERDICT_FIELDS: Mapping[str, Any] = {
@@ -96,11 +96,9 @@ VERDICT_FIELDS: Mapping[str, Any] = {
     "index_rating": None,
     "judgement_rating": None,
     "judgement_notes": None,
-    "judgement_decision": None,
+    "discarded": False,
     "judgement_balance": None,
-    "derived_decision": None,
-    "decision_rating": None,
-    "decision_rating_source": None,
+    "rating_band": None,
     "balance": None,
     "has_judgement": False,
     "has_notes": False,
@@ -119,7 +117,7 @@ REVIEW_EXCLUDED_GROUP_MEMBERS: tuple[str, ...] = (
 
 #: Single items a review never reads, from groups it otherwise does: the
 #: person's label (their verdict) and whether the shot is counted (which says
-#: "discarded" for a shot they labelled so).
+#: "discarded" for a shot they discarded).
 REVIEW_EXCLUDED_KEYS: frozenset[str] = frozenset({"label", "counted"})
 
 

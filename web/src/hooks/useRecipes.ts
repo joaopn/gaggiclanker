@@ -554,7 +554,7 @@ export function useSaveJudgement(): UseMutationResult<
       void invalidateShots(queryClient, String(variables.shotId));
       void invalidateShots(queryClient);
       void invalidateRecipes(queryClient);
-      // A shot labelled Discard leaves the "needs a Recipe" inbox, and the shots
+      // A discarded shot leaves the "needs a Recipe" inbox, and the shots
       // page's count of it comes from the sync status (see useAssignShot),
       // which no event refreshes after a judgement.
       void queryClient.invalidateQueries({ queryKey: queryKeys.sync.status() });
@@ -569,7 +569,7 @@ export function useSaveJudgement(): UseMutationResult<
  * everything it renders, so a field left out is a field the user cleared. That
  * is right for a form and wrong for anything that changes one thing, which is
  * what a list row does: a rating clicked in the list must not take the taste
- * and aroma notes, the doses, the grind and the decision with it.
+ * and aroma notes, the doses and the discard flag with it.
  */
 function toWrite(judgement: ShotJudgement | null | undefined): JudgementWrite {
   return {
@@ -580,7 +580,7 @@ function toWrite(judgement: ShotJudgement | null | undefined): JudgementWrite {
     dose_in_g: judgement?.dose_in_g ?? null,
     dose_out_g: judgement?.dose_out_g ?? null,
     notes: judgement?.notes ?? "",
-    decision: judgement?.decision ?? null,
+    discarded: judgement?.discarded ?? false,
   };
 }
 
@@ -600,7 +600,7 @@ export function usePatchJudgement(
   const queryClient = useQueryClient();
   return useMutation({
     // One queue per shot, shared by every control that writes its verdict (the
-    // row's stars and decision, the panel under it). Each write reads the
+    // row's stars and cells, the panel under it). Each write reads the
     // verdict and puts it back with one field changed, so two in flight at
     // once — a star, then a chip, a moment apart — could each read the verdict
     // from before the other and the second would undo the first. Queued, each
@@ -623,7 +623,7 @@ export function usePatchJudgement(
       void invalidateShots(queryClient, String(variables.shotId));
       void invalidateShots(queryClient);
       void invalidateRecipes(queryClient);
-      // The decision column is where Discard is most often set (useSaveJudgement).
+      // A discard leaves the "needs a Recipe" count (useSaveJudgement).
       void queryClient.invalidateQueries({ queryKey: queryKeys.sync.status() });
     },
   });

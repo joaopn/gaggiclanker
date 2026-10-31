@@ -287,6 +287,7 @@ describe("VersionTimeline", () => {
         rating: null,
         has_notes: false,
         has_judgement: true,
+        discarded: false,
         recipe_version_id: 22,
         recipe_badge: { recipe_id: 3, recipe_name: "Guji on the Niche", version_label: "v2" },
         synced_at: "2026-04-03T08:16:00.000Z",
@@ -336,7 +337,7 @@ describe("VersionTimeline", () => {
       outcome_note: "shorter, still sharp",
       outcome_state: "partly_held",
     });
-    detail.versions[0].labels = labelCounts({ keep: 2, improve: 1 });
+    detail.versions[0].labels = labelCounts({ good: 2, bad: 1 });
     renderWithQueryClient(
       <VersionTimeline recipeId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
@@ -368,7 +369,7 @@ describe("VersionTimeline", () => {
         prediction: "less bitter, a shorter shot",
         outcome_state: "open",
       });
-      detail.versions[0].labels = labelCounts({ keep: 2, improve: 1 });
+      detail.versions[0].labels = labelCounts({ good: 2, bad: 1 });
       detail.versions[0].outcome_proposal = outcomeProposal(over);
       return detail;
     }
@@ -535,7 +536,7 @@ describe("VersionTimeline", () => {
       prediction: "less bitter",
       outcome_state: "open",
     });
-    detail.versions[0].labels = labelCounts({ discard: 1 });
+    detail.versions[0].labels = labelCounts({ discarded: 1 });
     renderWithQueryClient(
       <VersionTimeline recipeId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
@@ -545,10 +546,8 @@ describe("VersionTimeline", () => {
     // The reason is text on the page tied to the button, not a `title` on a
     // control nothing can focus.
     const described = document.getElementById(buttons[0].getAttribute("aria-describedby") ?? "");
-    expect(described).toHaveTextContent("No Good or Bad shot yet");
-    expect(described).toHaveTextContent(
-      "a discarded one does not count, and rating a shot is enough",
-    );
+    expect(described).toHaveTextContent("No rated shot yet");
+    expect(described).toHaveTextContent("a discarded one does not count");
     // And on the version that predicted nothing, the reason is the other one.
     const other = document.getElementById(buttons[1].getAttribute("aria-describedby") ?? "");
     expect(other).toHaveTextContent("states no prediction");
@@ -593,7 +592,7 @@ describe("VersionTimeline", () => {
       prediction: "less bitter",
       outcome_state: "open",
     });
-    detail.versions[0].labels = labelCounts({ keep: 1 });
+    detail.versions[0].labels = labelCounts({ good: 1 });
     renderWithQueryClient(
       <VersionTimeline recipeId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
@@ -736,7 +735,7 @@ describe("VersionTimeline", () => {
       prediction: "less bitter",
       outcome_state: "open",
     });
-    detail.versions[0].labels = labelCounts({ keep: 1 });
+    detail.versions[0].labels = labelCounts({ good: 1 });
     renderWithQueryClient(
       <VersionTimeline recipeId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
@@ -764,7 +763,7 @@ describe("VersionTimeline", () => {
       outcome: "held",
       outcome_state: "held",
     });
-    detail.versions[0].labels = labelCounts({ keep: 1 });
+    detail.versions[0].labels = labelCounts({ good: 1 });
     renderWithQueryClient(
       <VersionTimeline recipeId={3} versions={detail.versions} judgements={detail.judgements} />,
     );

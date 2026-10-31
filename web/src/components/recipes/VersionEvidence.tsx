@@ -119,7 +119,7 @@ export function VersionEvidence({
               floor is the whole yardstick.
             </p>
             {/* Plain facts with nothing held against them: how the cups went
-                and how they were labelled. They are words, not quantities, and
+                and how they were rated. They are words, not quantities, and
                 a verdict on them would be arithmetic pretending. */}
             <ul className="text-muted-foreground text-xs" data-testid="evidence-counts">
               <li data-side="this">

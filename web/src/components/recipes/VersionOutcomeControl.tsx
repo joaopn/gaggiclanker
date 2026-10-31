@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
  * seeing, not gaps. The control beside it offers exactly what the server will
  * accept, which is not one condition but two: **clearing** a grade is allowed
  * at any time, while **recording or changing** one needs a prediction and a
- * Good or Bad shot (labelled so, or rated; a discarded one does not count). A version whose shots were later
+ * rated shot (a discarded one does not count). A version whose shots were later
  * unfiled therefore still opens, and offers Clear alone — a panel that refused
  * to open would strand a grade nobody can take back.
  *
@@ -36,7 +36,7 @@ export function VersionOutcomeControl({
 }: {
   recipeId: number;
   version: RecipeVersionRow;
-  /** Has a Good or Bad shot (labelled so, or rated; a discarded one does not count). */
+  /** Has a rated shot (a discarded one does not count). */
   gradable: boolean;
   /**
    * The grade an agent proposed for this version that nobody has answered. Shown
@@ -70,7 +70,7 @@ export function VersionOutcomeControl({
     ? undefined
     : !version.prediction
       ? "This version states no prediction, so there is nothing to grade."
-      : "No Good or Bad shot yet — a discarded one does not count, and rating a shot is enough. There is nothing to grade yet.";
+      : "No rated shot yet — a discarded one does not count. There is nothing to grade yet.";
 
   async function write(body: { outcome: VersionOutcome; note: string } | null) {
     const result = await attempt(() => save.mutateAsync({ recipeId, versionId: version.id, body }));

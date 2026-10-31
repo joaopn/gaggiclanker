@@ -9,6 +9,7 @@ import {
   SHOT_COLUMNS,
   SHOT_COLUMNS_BALANCE_KEY,
   SHOT_COLUMNS_CHECK_KEY,
+  SHOT_COLUMNS_DISCARD_KEY,
   SHOT_COLUMNS_KEY,
   SHOT_WIDTHS_KEY,
   type ShotColumnId,
@@ -48,6 +49,7 @@ beforeEach(() => {
   // Most tests store a layout as a person's own choice; the bringing-along of a saved layout to
   // the new default row has its own describe, which takes the mark away.
   window.localStorage.setItem(SHOT_COLUMNS_BALANCE_KEY, "1");
+  window.localStorage.setItem(SHOT_COLUMNS_DISCARD_KEY, "1");
 });
 
 describe("loadShotColumns", () => {
@@ -62,8 +64,9 @@ describe("loadShotColumns", () => {
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("notes");
   });
 
-  it("shows Decision by default, and Flags only to somebody who asks", () => {
-    expect(DEFAULT_SHOT_COLUMNS).toContain("decision");
+  it("shows Rating, Balance and Discard by default, and Flags only to somebody who asks", () => {
+    expect(DEFAULT_SHOT_COLUMNS).toEqual(expect.arrayContaining(["rating", "balance", "discard"]));
+    expect(SHOT_COLUMNS.map((column) => column.id)).not.toContain("decision");
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("flags");
     expect(SHOT_COLUMNS.map((column) => column.id)).not.toContain("analyze");
   });
@@ -73,7 +76,8 @@ describe("loadShotColumns", () => {
       SHOT_COLUMNS_KEY,
       JSON.stringify(["time", "rating", "analyze", "flags"]),
     );
-    expect(loadShotColumns()).toEqual(["time", "rating", "decision", "flags"]);
+    // Analyse became Decision, and Decision is gone: the stars stand in the same place.
+    expect(loadShotColumns()).toEqual(["time", "rating", "flags"]);
     // Mapped first, so a stored generation that named Analyse is still read as
     // the generation it is, and upgraded whole.
     window.localStorage.setItem(
@@ -97,8 +101,8 @@ describe("loadShotColumns", () => {
       "check",
       "rating",
       "notes",
-      "decision",
       "balance",
+      "discard",
       "review",
       "flags",
     ]);
@@ -106,23 +110,24 @@ describe("loadShotColumns", () => {
     expect(SHOT_COLUMNS.find((column) => column.id === "review")?.label).toBe("AI Review");
   });
 
-  it("starts on the row a reader scans: Decision and Balance in, the stars and Profile out, AI Review last", () => {
+  it("starts on the row a reader scans: Rating, Balance and Discard in, Profile out, AI Review last", () => {
     expect(DEFAULT_SHOT_COLUMNS).toEqual([
       "recipe",
       "time",
       "duration",
       "yield",
       "check",
-      "decision",
+      "rating",
       "balance",
+      "discard",
       "review",
     ]);
-    expect(DEFAULT_SHOT_COLUMNS).not.toContain("rating");
+    expect(DEFAULT_SHOT_COLUMNS).not.toContain("profile");
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
   });
 
   it("reads the default of the release before as the default, in whatever order it was stored", () => {
-    // The generation this change replaced: Review and Rating before Decision, no Balance.
+    // An older generation: Review and Rating before Decision, no Balance.
     const before = [
       "recipe",
       "time",
@@ -134,7 +139,7 @@ describe("loadShotColumns", () => {
       "rating",
       "decision",
     ];
-    expect(PREVIOUS_DEFAULT_SHOT_COLUMNS[0]).toEqual(before);
+    expect(PREVIOUS_DEFAULT_SHOT_COLUMNS[1]).toEqual(before);
     window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(before));
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
     window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify([...before].reverse()));
@@ -142,20 +147,20 @@ describe("loadShotColumns", () => {
   });
 
   it("keeps a layout somebody chose, Balance or not, as they made it", () => {
-    const chosen = ["time", "rating", "decision", "check", "review"];
+    const chosen = ["time", "rating", "discard", "check", "review"];
     window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(chosen));
     expect(loadShotColumns()).toEqual(chosen);
-    // Balance is a column like another: a stored choice may name it, and it is drawn after
-    // Decision and before AI Review whatever order the list was stored in.
+    // Balance is a column like another: a stored choice may name it, and it is drawn before
+    // Discard and AI Review whatever order the list was stored in.
     window.localStorage.setItem(
       SHOT_COLUMNS_KEY,
-      JSON.stringify(["balance", "review", "check", "decision", "time"]),
+      JSON.stringify(["discard", "balance", "review", "check", "time"]),
     );
     expect(visibleColumns(loadShotColumns()).map((column) => column.id)).toEqual([
       "time",
       "check",
-      "decision",
       "balance",
+      "discard",
       "review",
     ]);
   });
@@ -353,12 +358,13 @@ describe("gridTemplates", () => {
     );
   });
 
-  it("sizes Decision for its three words and no wider", () => {
-    const decision = SHOT_COLUMNS.find((column) => column.id === "decision");
-    expect(decision?.size).toEqual({ rem: 8.25, min: 8.25, max: 14 });
+  it("sizes Discard for its word and no wider, and hides it on a phone", () => {
+    const discard = SHOT_COLUMNS.find((column) => column.id === "discard");
+    expect(discard?.size).toEqual({ rem: 5, min: 5, max: 10 });
+    expect(discard?.narrowHidden).toBe(true);
   });
 
-  it("sizes Balance for its three words and no wider, and hides it on a phone like Decision", () => {
+  it("sizes Balance for its three words and no wider, and hides it on a phone like Discard", () => {
     const balance = SHOT_COLUMNS.find((column) => column.id === "balance");
     expect(balance?.size).toEqual({ rem: 9.25, min: 9.25, max: 14 });
     expect(balance?.narrowHidden).toBe(true);
@@ -407,8 +413,8 @@ describe("column sizes", () => {
       review: 10.5,
       rating: 5.5,
       notes: 14,
-      decision: 8.25,
       balance: 9.25,
+      discard: 5,
       flags: 9,
     });
   });
@@ -585,5 +591,73 @@ describe("a saved layout is brought to the new default row, once", () => {
     saveShotColumns(["time", "rating", "profile"]);
     expect(window.localStorage.getItem(SHOT_COLUMNS_BALANCE_KEY)).toBe("1");
     expect(loadShotColumns()).toEqual(["time", "rating", "profile"]);
+  });
+});
+
+describe("a saved layout that showed Decision is brought to Rating and Discard, once", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem(SHOT_COLUMNS_DISCARD_KEY);
+  });
+
+  function store(layout: string[]) {
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(layout));
+  }
+
+  it("puts the stars where Decision was and Discard right after Balance", () => {
+    // The precondition: Decision is on, Rating is off, and the layout is a choice (it matches
+    // no default), and nothing has been brought along yet.
+    const saved = ["recipe", "time", "check", "decision", "balance", "notes", "review"];
+    store(saved);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_DISCARD_KEY)).toBeNull();
+    expect(PREVIOUS_DEFAULT_SHOT_COLUMNS.map((g) => [...g].sort())).not.toContainEqual(
+      [...saved].sort(),
+    );
+
+    const after = loadShotColumns();
+
+    expect(after).toEqual([
+      "recipe",
+      "time",
+      "check",
+      "rating",
+      "balance",
+      "discard",
+      "notes",
+      "review",
+    ]);
+    expect(JSON.parse(window.localStorage.getItem(SHOT_COLUMNS_KEY) ?? "[]")).toEqual(after);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_DISCARD_KEY)).toBe("1");
+  });
+
+  it("leaves the stars alone when they are on already, and puts Discard where Decision was without Balance", () => {
+    store(["time", "rating", "decision", "flags"]);
+    expect(loadShotColumns()).toEqual(["time", "rating", "discard", "flags"]);
+  });
+
+  it("gives Rating and Discard in Decision's place when both Balance and the stars are off", () => {
+    store(["time", "decision", "flags"]);
+    expect(loadShotColumns()).toEqual(["time", "rating", "discard", "flags"]);
+  });
+
+  it("adds nothing to a layout that never showed Decision", () => {
+    store(["time", "rating", "balance", "flags"]);
+    expect(loadShotColumns()).toEqual(["time", "rating", "balance", "flags"]);
+  });
+
+  it("does nothing once it has been done: Decision just falls away", () => {
+    window.localStorage.setItem(SHOT_COLUMNS_DISCARD_KEY, "1");
+    store(["time", "decision", "balance", "flags"]);
+    expect(loadShotColumns()).toEqual(["time", "balance", "flags"]);
+  });
+
+  it("is marked by saving the chooser, so a layout the person made is theirs", () => {
+    saveShotColumns(["time", "balance"]);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_DISCARD_KEY)).toBe("1");
+  });
+
+  it("reads the previous default row as the new default", () => {
+    store(["recipe", "time", "duration", "yield", "check", "decision", "balance", "review"]);
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+    expect(window.localStorage.getItem(SHOT_COLUMNS_DISCARD_KEY)).toBeNull();
   });
 });

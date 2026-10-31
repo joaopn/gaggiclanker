@@ -186,7 +186,7 @@ async def _counted_recipe(wired: Fixtures) -> tuple[int, int]:
         assert await wired.recipes.assign_shot(shot, version)
         if rating is not None or decision is not None:
             await wired.judgements.upsert(
-                shot, JudgementWrite(rating=rating, decision="discard" if decision else None)
+                shot, JudgementWrite(rating=rating, discarded=bool(decision))
             )
         ids.append(shot)
     await wired.db.execute("UPDATE shots SET incomplete = 1 WHERE id = ?", (ids[4],))
@@ -223,7 +223,7 @@ class TestTheAveragesAreOverCountedShots:
         assert row.current_version_id is not None
         shot = await make_shot(wired.db, "000810")
         await wired.recipes.assign_shot(shot, row.current_version_id)
-        await wired.judgements.upsert(shot, JudgementWrite(rating=1, decision="discard"))
+        await wired.judgements.upsert(shot, JudgementWrite(rating=1, discarded=True))
         (version,) = (await wired.recipes.trends(row.id)).versions
 
         assert (version.shots, version.counted_shots) == (1, 0)

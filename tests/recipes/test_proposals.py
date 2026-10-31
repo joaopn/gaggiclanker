@@ -131,7 +131,7 @@ class TestProposing:
         )
         shot_id = await make_shot(wired.db, "000401")
         await wired.recipes.assign_shot(shot_id, current.id)
-        await JudgementsRepository(wired.db).upsert(shot_id, JudgementWrite(decision="improve"))
+        await JudgementsRepository(wired.db).upsert(shot_id, JudgementWrite(rating=2))
         await wired.recipes.set_outcome(
             recipe_id, current.id, VersionOutcomeWrite(outcome="failed")
         )

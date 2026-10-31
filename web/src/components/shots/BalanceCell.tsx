@@ -7,10 +7,10 @@ import { useVocabulary } from "@/hooks/useCatalog";
  *
  * Where the cup sits on the one axis that maps onto extraction. A **filled** button is the
  * person's verdict (`judgement_balance`). An **outlined** one is the balance on the machine's notes
- * card (`balance`), shown only when the person gave none, drawn as the decision the rating gives is
+ * card (`balance`), shown only when the person gave none, drawn outlined
  * (outlined is not your choice); a click on it keeps it as their own, a click on a filled one
- * clears it. It merges into the verdict like the stars and the decision, so
- * it never carries the rating or the decision with it.
+ * clears it. It merges into the verdict like the stars, so
+ * it never carries the rating with it.
  *
  * The three words are the GaggiMate's own, from the vocabulary. Balance is not good or bad, so
  * every word takes the same neutral colour.
@@ -22,7 +22,7 @@ const FILLED: Record<string, string> = {
   bitter: "bg-muted text-foreground",
 };
 
-/** Outlined, as the decision the rating gives is: outlined means "not your choice yet". */
+/** Outlined means "not your choice yet". */
 const OUTLINED: Record<string, string> = {
   sour: "text-foreground ring-1 ring-inset ring-foreground/50",
   balanced: "text-foreground ring-1 ring-inset ring-foreground/50",

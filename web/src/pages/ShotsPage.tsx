@@ -334,7 +334,7 @@ export function ShotsPage() {
             activeFilterCount(filters) > 0
               ? "Nothing in the archive matches these filters. Clear them to see everything."
               : onlyDiscarded
-                ? "Every shot in the archive is labelled Discard. Untick Hide discarded to see them."
+                ? "Every shot in the archive is discarded. Untick Hide discarded to see them."
                 : sync.data?.configured
                   ? "Press Sync in the top bar, or drop exported files here."
                   : "Set the machine's address in Settings, or drop exported files here."

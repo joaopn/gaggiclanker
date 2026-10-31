@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_fie
 from gaggiclanker.db.repos.base import dumps, utc_now
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.models import ShotNotes
-from gaggiclanker.domain.vocab import FLAVOR_NOTES, Balance, Decision
+from gaggiclanker.domain.vocab import FLAVOR_NOTES, Balance
 
 __all__ = [
     "JudgementWrite",
@@ -58,7 +58,7 @@ def _within(value: float | None, low: float, high: float) -> float | None:
 class JudgementWrite(BaseModel):
     """A verdict as the API accepts it. Every field optional; all of them mean something.
 
-    There is no "empty judgement" guard: a row with nothing but a decision is a
+    There is no "empty judgement" guard: a row with nothing but a discard is a
     legitimate thing to record ("discard, I knocked the portafilter"), and
     refusing it would make the form argue with the user.
     """
@@ -78,7 +78,8 @@ class JudgementWrite(BaseModel):
     dose_in_g: float | None = Field(default=None, gt=0, le=100)
     dose_out_g: float | None = Field(default=None, gt=0, le=500)
     notes: str = Field(default="", max_length=NOTES_MAX)
-    decision: Decision | None = None
+    #: "This shot went wrong, do not count it." Independent of the rating.
+    discarded: bool = False
 
     @field_validator("taste_notes", "aroma_notes")
     @classmethod
@@ -104,7 +105,7 @@ class ShotJudgementRow(BaseModel):
     dose_in_g: float | None = None
     dose_out_g: float | None = None
     notes: str = ""
-    decision: Decision | None = None
+    discarded: bool = False
     #: True while this judgement is still exactly what the machine's notes card
     #: said. Any edit through the API clears it, and that is what makes "a
     #: device note becomes the initial judgement, and user edits are never
@@ -149,7 +150,7 @@ def _values(shot_id: int, judgement: JudgementWrite) -> dict[str, Any]:
         "dose_in_g": payload["dose_in_g"],
         "dose_out_g": payload["dose_out_g"],
         "notes": payload["notes"],
-        "decision": payload["decision"],
+        "discarded": int(payload["discarded"]),
     }
 
 

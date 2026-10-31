@@ -30,7 +30,6 @@ from gaggiclanker.domain.drinks import DRINK_TERMS, Drink
 __all__ = [
     "BALANCES",
     "BURR_TYPES",
-    "DECISIONS",
     "FLAVOR_LABELS",
     "FLAVOR_NOTES",
     "FLAVOR_PICK_KINDS",
@@ -40,6 +39,7 @@ __all__ = [
     "OUTCOME_STATES",
     "PREDICTION_STANCES",
     "PROCESSES",
+    "RATING_BANDS",
     "RECIPE_VERSION_ORIGINS",
     "REVIEW_CLAIM_KINDS",
     "REVIEW_CLAIM_STATUSES",
@@ -53,13 +53,13 @@ __all__ = [
     "VERSION_OUTCOMES",
     "Balance",
     "BurrType",
-    "Decision",
     "FlavorNode",
     "FlavorPickKind",
     "MeasureTerm",
     "OutcomeState",
     "PredictionStance",
     "Process",
+    "RatingBand",
     "RecipeVersionOrigin",
     "ReviewClaimKind",
     "ReviewClaimStatus",
@@ -67,6 +67,7 @@ __all__ = [
     "RoastLevel",
     "RuleCategory",
     "RuleConfidence",
+    "ShotLabel",
     "ShotStyle",
     "SpreadMeasure",
     "StepUnit",
@@ -110,11 +111,14 @@ type StepUnit = Literal["clicks", "numbers", "microns", "free"]
 #: is a copy rather than a translation.
 type Balance = Literal["sour", "balanced", "bitter"]
 
-#: Whether the shot is what the Recipe should make (``keep``, shown Good), a shot that counts
-#: but should be better (``improve``, shown Bad), or a shot that does not count (``discard``).
-#: The stored words are older than the shown ones and stay. NULL is "not chosen", which is most
-#: shots; the rating then says Good or Bad (:mod:`gaggiclanker.domain.decision`).
-type Decision = Literal["keep", "improve", "discard"]
+#: The words for what a shot's rating says where shots are counted: Good from four stars, Neutral
+#: at three, Bad at one or two (:mod:`gaggiclanker.domain.rating_band`). Never stored, never a
+#: control; a discarded shot is a separate fact and has no band here.
+type RatingBand = Literal["good", "neutral", "bad"]
+
+#: The words a shot search filters by: a rating band (of a shot that was not discarded) or
+#: ``discard`` for the discarded shots.
+type ShotLabel = Literal["good", "neutral", "bad", "discard"]
 
 #: The two lists of wheel notes a person keeps for the shot panel: the notes
 #: offered on its Taste row and the ones offered on its Aroma row.
@@ -231,7 +235,7 @@ ROAST_LEVELS: tuple[str, ...] = get_args(RoastLevel.__value__)
 BURR_TYPES: tuple[str, ...] = get_args(BurrType.__value__)
 STEP_UNITS: tuple[str, ...] = get_args(StepUnit.__value__)
 BALANCES: tuple[str, ...] = get_args(Balance.__value__)
-DECISIONS: tuple[str, ...] = get_args(Decision.__value__)
+RATING_BANDS: tuple[str, ...] = get_args(RatingBand.__value__)
 FLAVOR_PICK_KINDS: tuple[str, ...] = get_args(FlavorPickKind.__value__)
 RECIPE_VERSION_ORIGINS: tuple[str, ...] = get_args(RecipeVersionOrigin.__value__)
 VERSION_OUTCOMES: tuple[str, ...] = get_args(VersionOutcome.__value__)
@@ -546,7 +550,9 @@ class Vocabulary(BaseModel):
     burr_types: list[Term]
     step_units: list[Term]
     balances: list[Term]
-    decisions: list[Term]
+    #: Good, Neutral and Bad: the words for a rating's band (4-5, 3, 1-2 stars), used where shots
+    #: are counted. Served so the Recipe page and the agent's words come from one list.
+    rating_bands: list[Term]
     origins: list[Term]
     #: The four grades a version prediction can be given, which is what the
     #: "record an outcome" control offers.
@@ -588,10 +594,10 @@ _BALANCE_LABELS = {
     "balanced": "Balanced",
     "bitter": "Bitter",
 }
-_DECISION_LABELS = {
-    "keep": "Good",
-    "improve": "Bad",
-    "discard": "Discard",
+_RATING_BAND_LABELS = {
+    "good": "Good",
+    "neutral": "Neutral",
+    "bad": "Bad",
 }
 _OUTCOME_LABELS = {
     "held": "Held",
@@ -660,7 +666,7 @@ def vocabulary() -> Vocabulary:
         burr_types=_terms(BURR_TYPES),
         step_units=_terms(STEP_UNITS),
         balances=_terms(BALANCES, _BALANCE_LABELS),
-        decisions=_terms(DECISIONS, _DECISION_LABELS),
+        rating_bands=_terms(RATING_BANDS, _RATING_BAND_LABELS),
         origins=_terms(RECIPE_VERSION_ORIGINS, _ORIGIN_LABELS),
         version_outcomes=_terms(VERSION_OUTCOMES, _OUTCOME_LABELS),
         outcome_states=_terms(OUTCOME_STATES, _OUTCOME_LABELS),

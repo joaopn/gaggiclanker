@@ -125,7 +125,9 @@ async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_sample
         ({"brew_flow": {"min": 0}}, ()),
         ({"brew_cup_flow": {"min": 0}}, ()),
         ({"balance": "balanced"}, (3,)),
-        ({"label": "bad"}, (0, 5)),
+        ({"label": "bad"}, (0,)),
+        ({"label": "neutral"}, (1, 2, 4, 5)),
+        ({"label": "good"}, (3,)),
         ({"resistance_level": {"min": 2.2}}, (0, 1, 2, 3, 4)),
         ({"resistance_level": {"max": 2.2}}, (5,)),
         ({"resistance_level": {"min": 3}}, ()),
@@ -288,9 +290,7 @@ async def test_a_version_the_recipe_does_not_have_is_refused_in_words(
 async def test_a_shot_that_does_not_count_is_found_and_says_so(
     recipe_ctx: ToolContext, archive: Fixture
 ) -> None:
-    await JudgementsRepository(archive.db).upsert(
-        archive.shots[0], JudgementWrite(decision="discard")
-    )
+    await JudgementsRepository(archive.db).upsert(archive.shots[0], JudgementWrite(discarded=True))
 
     data = await search(recipe_ctx, label="discard")
 
