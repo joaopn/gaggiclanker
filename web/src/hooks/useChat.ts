@@ -359,6 +359,8 @@ export function useChatRun(runId: number | null, threadId: number | null): LiveR
           // ...or proposed a signature, which is in force at once: the Profiles card, the Recipe
           // line and every shot's checks (the shot page and the list's badge) change with it.
           void queryClient.invalidateQueries({ queryKey: queryKeys.signatures.all });
+          // ...or asked for a change to one, which is a card in this very conversation.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.signatureRequests.all });
           void queryClient.invalidateQueries({ queryKey: queryKeys.shots.all });
           break;
       }

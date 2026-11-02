@@ -7,6 +7,10 @@ import { clampChangesOf, stopConditionChangesOf } from "@/api/types";
 import { approvedProfileMessage, declinedMessage, useTellAgent } from "@/components/chat/tellAgent";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
 import { ProfileSummary } from "@/components/drafts/ProfileSummary";
+import {
+  DraftSignatureLines,
+  DraftSignatureOutcome,
+} from "@/components/profiles/DraftSignatureLines";
 import { ProfileCurve } from "@/components/profiles/ProfileCurve";
 import { ProposalNameField, useProposalName } from "@/components/profiles/ProposalName";
 import { MajorChoice } from "@/components/recipes/MajorChoice";
@@ -414,6 +418,8 @@ function Waiting({
 
       {!fresh && stopChanges.length > 0 ? <StopConditionWarning changes={stopChanges} /> : null}
 
+      {!fresh ? <DraftSignatureLines draft={draft} /> : null}
+
       {forRecipe !== null && forRecipe.minorLabel !== null && forRecipe.majorLabel !== null ? (
         <MajorChoice
           checked={major}
@@ -686,6 +692,9 @@ function Answered({
         ) : null}
       </div>
       {body}
+      {state === "declined" || state === "replaced" ? null : (
+        <DraftSignatureOutcome draft={draft} />
+      )}
       {hasCurve(standing.profile) ? (
         <div>
           <Button

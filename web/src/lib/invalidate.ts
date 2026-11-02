@@ -141,13 +141,16 @@ export function invalidateShotDetails(queryClient: QueryClient): Promise<void> {
  * the shot page's checks (`shots` detail and its fields), every list row's badge and warnings
  * (`shots` lists), and the Recipe pages that brew the profile (their versions carry shots with
  * badges, and the page's own signature state and overrides). The signature itself is the card
- * that was pressed. Refetching all of it is the point: a stale red badge after a confirm is
+ * that was pressed, and the signature change requests of the conversations (a request names
+ * rows the answer may have rejected, restored or moved, and the card then says it is no longer
+ * open). Refetching all of it is the point: a stale red badge after a confirm is
  * the bug this exists to prevent. Runs on success and on failure alike: a 409 means another tab
  * answered first, and the card must show that answer.
  */
 export async function invalidateSignatureAnswers(queryClient: QueryClient): Promise<void> {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.signatures.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.signatureRequests.all }),
     queryClient.invalidateQueries({ queryKey: queryKeys.shots.all }),
     queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all }),
   ]);

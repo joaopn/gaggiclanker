@@ -1097,3 +1097,124 @@ describe("the name as it is checked", () => {
     expect(checkDraftName).toHaveBeenLastCalledWith(1, "Soft Bloom Two");
   });
 });
+
+describe("the signature a proposal changes", () => {
+  const flags = [
+    {
+      expectation_id: 73,
+      sentence: "lowest value of temperature in the Hold, at least 93 °C",
+      cause: "the temperature changed from 95 to 93 °C",
+      revised: true,
+      revision: "lowest value of temperature in the Hold, at least 91.5 °C",
+    },
+    {
+      expectation_id: 80,
+      sentence: "highest value of temperature in the Hold, at most 96",
+      cause: "the temperature changed from 95 to 93 °C",
+      revised: false,
+      revision: null,
+    },
+  ];
+
+  it("lists each expectation the patch touches, with the cause and what the draft does about it", async () => {
+    getDraftStanding.mockResolvedValue(
+      standing({ draft: draft({ affected_expectations: flags }) }),
+    );
+    renderCard();
+
+    const lines = await screen.findByTestId("draft-signature-lines");
+    expect(within(lines).getByText("Signature it changes:")).toBeInTheDocument();
+    const [revised, kept] = within(lines).getAllByTestId("draft-signature-line");
+    expect(revised).toHaveTextContent("lowest value of temperature in the Hold, at least 93 °C");
+    expect(revised).toHaveTextContent("the temperature changed from 95 to 93 °C");
+    expect(revised).toHaveTextContent(
+      "in this draft: lowest value of temperature in the Hold, at least 91.5 °C",
+    );
+    expect(revised).toHaveAttribute("data-revised", "yes");
+    expect(kept).toHaveTextContent("kept as it is");
+    expect(kept).toHaveAttribute("data-revised", "no");
+  });
+
+  it("draws nothing when the patch touches no expectation, and for a profile written from scratch", async () => {
+    getDraftStanding.mockResolvedValue(standing());
+    const view = renderCard();
+    await screen.findByText("What changes");
+    expect(screen.queryByTestId("draft-signature-lines")).not.toBeInTheDocument();
+    view.unmount();
+
+    getDraftStanding.mockResolvedValue(
+      brandNew({
+        draft: draft({ is_new: true, draft_label: "Soft Bloom", affected_expectations: flags }),
+      }),
+    );
+    renderCard();
+    await screen.findByText("New profile");
+    expect(screen.queryByTestId("draft-signature-lines")).not.toBeInTheDocument();
+  });
+
+  const request = (status: "waiting" | "approved" | "stale", staleReason = "") => ({
+    id: 4,
+    status,
+    stale_reason: staleReason,
+    reason: "The floor was written under the old setpoint.",
+    changes: [
+      {
+        kind: "replace",
+        reason: "The floor was written under the old setpoint.",
+        old_sentence: "lowest value of temperature in the Hold, at least 93 °C",
+        summary: "lowest value of temperature in the Hold, at least 91.5 °C",
+      },
+    ],
+  });
+
+  it("says which change was not applied once the draft is approved without it", async () => {
+    getDraftStanding.mockResolvedValue(
+      answered("approved", "Approved. The next sync puts it on the machine.", {
+        draft: draft({
+          status: "approved",
+          draft_label: "Adaptive Bloom",
+          signature_request: request(
+            "stale",
+            "You rejected “at least 93 °C” on the Profiles page.",
+          ),
+        }),
+      }),
+    );
+    renderCard();
+
+    const notApplied = await screen.findByTestId("draft-signature-not-applied");
+    expect(notApplied).toHaveTextContent(
+      "The signature changes that came with it were not applied. You rejected “at least 93 °C” on the Profiles page.",
+    );
+    // The reason is a whole sentence: nothing is appended to it.
+    expect(notApplied.textContent).not.toContain("..");
+    expect(notApplied).toHaveTextContent(
+      "Replace “lowest value of temperature in the Hold, at least 93 °C” → “lowest value of temperature in the Hold, at least 91.5 °C”",
+    );
+  });
+
+  it("says the changes were applied when they were, and nothing for a declined draft", async () => {
+    getDraftStanding.mockResolvedValue(
+      answered("approved", "Approved.", {
+        draft: draft({ status: "approved", signature_request: request("approved") }),
+      }),
+    );
+    const view = renderCard();
+    expect(await screen.findByTestId("draft-signature-applied")).toHaveTextContent(
+      "The signature changes that came with it were applied.",
+    );
+    view.unmount();
+
+    getDraftStanding.mockResolvedValue(
+      answered("declined", null, {
+        draft: draft({
+          status: "discarded",
+          signature_request: request("stale", "the draft was declined"),
+        }),
+      }),
+    );
+    renderCard();
+    await screen.findByText("Declined · 9 Bar Espresso [AI]");
+    expect(screen.queryByTestId("draft-signature-not-applied")).not.toBeInTheDocument();
+  });
+});

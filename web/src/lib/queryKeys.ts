@@ -166,6 +166,16 @@ export const queryKeys = {
     all: ["signatures"] as const,
     version: (id: number) => ["signatures", "version", id] as const,
   },
+  /**
+   * The signature changes an agent asked for, by conversation. Its own prefix: answering one
+   * moves what `invalidateSignatureAnswers` names (the signature, every shot's checks, the Recipe
+   * pages) and also these cards.
+   */
+  signatureRequests: {
+    all: ["signature-requests"] as const,
+    thread: (threadId: number) => ["signature-requests", "thread", threadId] as const,
+    version: (versionId: number) => ["signature-requests", "version", versionId] as const,
+  },
   recipeOverrides: (recipeId: number, versionId: number) =>
     ["recipes", "signature-overrides", recipeId, versionId] as const,
   /** The wizard's runs. One entry per run id; there is no list the UI renders. */

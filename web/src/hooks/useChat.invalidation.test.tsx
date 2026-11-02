@@ -39,6 +39,8 @@ describe("a finished chat run refreshes what an agent may have written", () => {
       expect(keys).toContainEqual(queryKeys.recipes.all);
       expect(keys).toContainEqual(queryKeys.knowledge.all);
       expect(keys).toContainEqual(queryKeys.drafts.all);
+      // ...and a change it asked for is a card in the conversation.
+      expect(keys).toContainEqual(queryKeys.signatureRequests.all);
     },
   );
 });

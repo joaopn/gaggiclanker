@@ -122,6 +122,8 @@ import type {
   SignatureData,
   SignatureOverrideAnswer,
   SignatureOverrideList,
+  SignatureRequestAnswer,
+  SignatureRequestList,
   SignatureTier,
   SimilarRecipesData,
   StartingPointAccepted,
@@ -1335,6 +1337,36 @@ export async function dismissOutcomeProposal(
       body: JSON.stringify(body),
     },
   );
+}
+
+/**
+ * The signature changes one conversation's agent asked for (oldest first, however old), or
+ * every one made for a profile version (newest first).
+ */
+export async function getSignatureRequests(
+  scope: { threadId: number } | { profileVersionId: number },
+): Promise<SignatureRequestList> {
+  const query =
+    "threadId" in scope
+      ? `thread_id=${scope.threadId}`
+      : `profile_version_id=${scope.profileVersionId}`;
+  return fetchApi<SignatureRequestList>(`/signature-requests?${query}`);
+}
+
+/** Approve a signature change the agent asked for: the changes are made. A person's press. */
+export async function approveSignatureRequest(id: number): Promise<SignatureRequestAnswer> {
+  return fetchApi<SignatureRequestAnswer>(`/signature-requests/${id}/approve`, { method: "POST" });
+}
+
+/** Decline it: nothing changes, and the agent is told, with the reason when one is given. */
+export async function declineSignatureRequest(
+  id: number,
+  reason: string,
+): Promise<SignatureRequestAnswer> {
+  return fetchApi<SignatureRequestAnswer>(`/signature-requests/${id}/decline`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 /** Every deletion an agent has proposed for this Recipe's insights, newest first. */

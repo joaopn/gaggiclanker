@@ -87,10 +87,13 @@ describe("every answer about a signature invalidates what it touches", () => {
 
     await result.current.mutateAsync(variables);
 
-    await waitFor(() => expect(keys.length).toBe(3));
+    await waitFor(() => expect(keys.length).toBe(4));
     expect(keys).toContainEqual(queryKeys.signatures.all);
     expect(keys).toContainEqual(queryKeys.shots.all);
     expect(keys).toContainEqual(queryKeys.recipes.all);
+    // A waiting request names rows these answers can reject, restore or move: its card must be
+    // read again, or it goes on offering Approve for a request that is no longer open.
+    expect(keys).toContainEqual(queryKeys.signatureRequests.all);
   });
 
   it("also when the answer is refused, so the card shows the answer that won", async () => {
@@ -100,8 +103,9 @@ describe("every answer about a signature invalidates what it touches", () => {
 
     await expect(result.current.mutateAsync({ expectationId: 3, reason: "" })).rejects.toThrow();
 
-    await waitFor(() => expect(keys.length).toBe(3));
+    await waitFor(() => expect(keys.length).toBe(4));
     expect(keys).toContainEqual(queryKeys.signatures.all);
+    expect(keys).toContainEqual(queryKeys.signatureRequests.all);
   });
 
   it("sends each answer to its own route", async () => {

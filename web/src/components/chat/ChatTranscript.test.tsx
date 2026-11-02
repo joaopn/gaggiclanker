@@ -6,6 +6,7 @@ import { draft, standing } from "@/test/draftFixtures";
 import { insightDeletion, knowledgeInsight } from "@/test/knowledgeFixtures";
 import { designProposal, outcomeProposal, proposal } from "@/test/recipesFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { signatureRequest } from "@/test/signatureRequestFixtures";
 
 const {
   getRecipeProposals,
@@ -13,12 +14,14 @@ const {
   getKnowledgeInsight,
   getInsightDeletions,
   getDraftStanding,
+  getSignatureRequests,
 } = vi.hoisted(() => ({
   getRecipeProposals: vi.fn(),
   getOutcomeProposals: vi.fn(),
   getKnowledgeInsight: vi.fn(),
   getInsightDeletions: vi.fn(),
   getDraftStanding: vi.fn(),
+  getSignatureRequests: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -27,6 +30,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getKnowledgeInsight,
   getInsightDeletions,
   getDraftStanding,
+  getSignatureRequests,
 }));
 
 beforeEach(() => {
@@ -34,6 +38,7 @@ beforeEach(() => {
   getRecipeProposals.mockResolvedValue({ items: [] });
   getOutcomeProposals.mockResolvedValue({ items: [] });
   getInsightDeletions.mockResolvedValue({ items: [] });
+  getSignatureRequests.mockResolvedValue({ items: [] });
   getKnowledgeInsight.mockResolvedValue(
     knowledgeInsight({
       id: 7,
@@ -62,6 +67,7 @@ const PERMISSIONS = {
   propose_outcome: "propose",
   record_insight: "propose",
   propose_insight_deletion: "propose",
+  request_signature_change: "propose",
 };
 
 function message(overrides: Partial<ChatMessage> & { id: number }): ChatMessage {
@@ -499,6 +505,72 @@ describe("ChatTranscript", () => {
 
       expect(await screen.findByTestId("insight-deletion-decided")).toHaveTextContent("Deleted");
       expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("a requested signature change", () => {
+    function asked(): ChatMessage[] {
+      return [
+        message({ id: 1, role: "user", content: "the floor is wrong now" }),
+        message({
+          id: 2,
+          role: "assistant",
+          tool_calls: [{ id: "c1", name: "request_signature_change", arguments: {} }],
+        }),
+        message({
+          id: 3,
+          role: "tool",
+          tool_results: [
+            {
+              id: "c1",
+              name: "request_signature_change",
+              ok: true,
+              content: JSON.stringify({
+                request_id: 4,
+                profile_version_id: 27,
+                profile_label: "Regio Cappuccino",
+                status: "waiting",
+                changes: [
+                  {
+                    kind: "replace",
+                    description: "replace #73 “at least 93” with “at least 91.5”",
+                  },
+                ],
+              }),
+            },
+          ],
+        }),
+      ];
+    }
+
+    it("marks the call as a proposal and draws the live card with Approve and Decline", async () => {
+      getSignatureRequests.mockResolvedValue({ items: [signatureRequest()] });
+
+      renderWithQueryClient(
+        <ChatTranscript messages={asked()} runs={[]} permissions={PERMISSIONS} />,
+      );
+
+      // Before the row is read back, the tool's own words stand in for it.
+      const holder = screen.getByTestId("propose-card-signature_request");
+      expect(holder).toHaveTextContent("replace #73");
+      const card = await within(holder).findByTestId("signature-request-card");
+      expect(getSignatureRequests).toHaveBeenCalledWith({ profileVersionId: 27 });
+      expect(within(card).getByRole("button", { name: "Approve" })).toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: "Decline" })).toBeInTheDocument();
+      expect(screen.getByText("proposal")).toBeInTheDocument();
+    });
+
+    it("says how it ended when the conversation is read again", async () => {
+      getSignatureRequests.mockResolvedValue({
+        items: [signatureRequest({ status: "declined", answered_at: "2026-11-01T10:00:00.000Z" })],
+      });
+
+      renderWithQueryClient(
+        <ChatTranscript messages={asked()} runs={[]} permissions={PERMISSIONS} />,
+      );
+
+      expect(await screen.findByTestId("request-declined")).toHaveTextContent("Declined");
+      expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
     });
   });
 

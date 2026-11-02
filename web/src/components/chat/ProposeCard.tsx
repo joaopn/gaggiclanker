@@ -1,9 +1,10 @@
 import type { LucideIcon } from "lucide-react";
-import { FilePen, Gauge, Layers, Lightbulb, Sparkles, Trash2 } from "lucide-react";
+import { FilePen, Gauge, Layers, Lightbulb, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ChatInsightCard } from "@/components/chat/ChatInsightCard";
 import { InsightDeletionCard } from "@/components/chat/InsightDeletionCard";
 import { OutcomeCard } from "@/components/chat/OutcomeCard";
+import { SignatureRequestCard } from "@/components/chat/SignatureRequestCard";
 import { ProfileProposalCard } from "@/components/profiles/ProfileProposalCard";
 import { ProposalCard } from "@/components/recipes/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
@@ -23,7 +24,14 @@ import { currentToolName, recipeIdOf } from "@/lib/legacyTools";
  */
 
 export type Proposal = {
-  kind: "recipe_version" | "initial_recipe" | "draft" | "insight" | "insight_deletion" | "outcome";
+  kind:
+    | "recipe_version"
+    | "initial_recipe"
+    | "draft"
+    | "insight"
+    | "insight_deletion"
+    | "outcome"
+    | "signature_request";
   label: string;
   detail: string;
   href: string;
@@ -36,6 +44,8 @@ export type Proposal = {
   insightText?: string;
   /** A proposed deletion: which Recipe and insight, and its text until the live row is read. */
   deletion?: { insightId: number; text: string };
+  /** A requested signature change: which request, and what the tool said until it is read. */
+  signatureRequest?: { profileVersionId: number; profileLabel: string; changes: string[] };
   /** A proposed grade: what the tool said, shown until the live row is read. */
   grade?: { version: string; outcome: string; countedShots: number };
   /** A proposed profile version: which draft, and the name the call gave it, if it gave one. */
@@ -166,6 +176,30 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
+  if (name === "request_signature_change") {
+    const requestId = output.request_id;
+    const profileVersionId = output.profile_version_id;
+    if (requestId === undefined || profileVersionId === undefined) return null;
+    const lines = Array.isArray(output.changes)
+      ? (output.changes as { description?: unknown }[]).map((c) => String(c.description ?? ""))
+      : [];
+    return {
+      kind: "signature_request",
+      // "Asked for", not "changed": nothing changes until the person presses Approve, and
+      // this card is where they press it.
+      label: "A change to the signature",
+      detail: `${lines.join("; ")} — waiting for you to approve or decline it`,
+      href: "/profiles",
+      icon: ShieldCheck,
+      proposalId: Number(requestId),
+      signatureRequest: {
+        profileVersionId: Number(profileVersionId),
+        profileLabel: String(output.profile_label ?? ""),
+        changes: lines,
+      },
+    };
+  }
+
   if (name === "record_insight") {
     const insightId = output.insight_id;
     if (insightId === undefined) return null;
@@ -254,6 +288,15 @@ export function ProposeCard({ proposal }: { proposal: Proposal }) {
         recipeId={proposal.recipeId}
         proposalId={proposal.proposalId}
         fallback={proposal.deletion}
+      />
+    );
+  }
+  if (proposal.kind === "signature_request" && proposal.proposalId && proposal.signatureRequest) {
+    return (
+      <SignatureRequestCard
+        requestId={proposal.proposalId}
+        profileVersionId={proposal.signatureRequest.profileVersionId}
+        fallback={proposal.signatureRequest}
       />
     );
   }
