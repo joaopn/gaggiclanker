@@ -48,6 +48,7 @@ def test_a_recipe_conversation_has_exactly_these_tools() -> None:
             "propose_signature",
             "propose_signature_override",
             "record_insight",
+            "request_signature_change",
             "search_knowledge",
         }
     )
@@ -88,6 +89,7 @@ def test_a_conversation_designing_a_recipe_has_exactly_these_tools() -> None:
             "list_profiles",
             "propose_initial_recipe",
             "propose_signature",
+            "request_signature_change",
             "search_knowledge",
         }
     )

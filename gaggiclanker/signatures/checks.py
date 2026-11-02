@@ -220,8 +220,20 @@ def _remember(key: _Key, checks: ShotChecks, working_set: int) -> None:
         _MEMO.popitem(last=False)
 
 
-async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> dict[int, ShotChecks]:
-    """Each shot's ordered checks, by shot id."""
+async def checks_for_shots(
+    db: Database,
+    subjects: Sequence[CheckSubject],
+    *,
+    signatures: Mapping[int, Sequence[ExpectationRow]] | None = None,
+) -> dict[int, ShotChecks]:
+    """Each shot's ordered checks, by shot id.
+
+    ``signatures`` reads a profile version's signature as the caller says it would be, instead
+    of the one in force (a request's preview: "as it would be after the whole request"): the
+    rows given, by the id of the version that judges, take the place of its expectations in
+    force, through the very same code. Nothing is stored, and the memo's key already holds the
+    expectations, so a hypothetical signature is a different key from the real one.
+    """
     if not subjects:
         return {}
     repo = SignatureRepository(db)
@@ -237,6 +249,8 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
         return judges[subject.profile_version_id]
 
     confirmed = await repo.confirmed_for_versions(set(judges.values()))
+    if signatures:
+        confirmed = {**confirmed, **{k: list(v) for k, v in signatures.items()}}
     live = [s for s in subjects if not s.quarantined]
     applying = [s for s in live if (j := judged_by(s)) is not None and confirmed.get(j)]
     overrides = await repo.confirmed_overrides(

@@ -364,3 +364,52 @@ async def test_the_design_is_told_what_the_forked_profile_is_for_and_what_it_pro
     # The signature in force is told to every reader of the design, the rejection to nobody else.
     other = await design_context(kitchen.db, designed.id)
     assert "the bloom holds" in other and "the finish tapers" not in other
+
+
+async def test_the_design_is_told_what_became_of_the_changes_it_asked_for(
+    kitchen: Fixture,
+) -> None:
+    from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
+    from gaggiclanker.domain.signature import ExpectationInput
+    from gaggiclanker.signatures.change_requests import ChangeIn, SignatureRequestService
+    from gaggiclanker.signatures.service import SignatureService
+
+    designed = await _forked_design(kitchen)
+    created = await ChatRepository(kitchen.db).create_thread(
+        ChatThreadWrite(title="design", recipe_id=designed.id)
+    )
+    assert created.thread is not None
+    thread = created.thread.id
+    profile_id = kitchen.profile_version_id
+    (row,) = await SignatureService(kitchen.db).propose(
+        profile_id,
+        [
+            ExpectationInput(
+                tier="critical", kind="free_text", text="the bloom holds", fault="unstable"
+            )
+        ],
+        reason="what the fork is for",
+    )
+    title = "SIGNATURE CHANGES YOU REQUESTED IN THIS CONVERSATION"
+    assert title not in await design_context(kitchen.db, designed.id, thread_id=thread)
+
+    service = SignatureRequestService(kitchen.db)
+    request = await service.request(
+        profile_version_id=profile_id,
+        changes=[
+            ChangeIn(
+                kind="retire", expectation_id=row.id, reason="A fork is not held to the bloom."
+            )
+        ],
+        reason="because",
+        thread_id=thread,
+    )
+    told = await design_context(kitchen.db, designed.id, thread_id=thread)
+    assert (
+        f"{title}\n- request #{request.id}: retire #{row.id} “the bloom holds” "
+        "(waiting: nothing changes until the person presses Approve)"
+    ) in told
+    await service.decline(request.id, "keep it")
+    declined = await design_context(kitchen.db, designed.id, thread_id=thread)
+    assert '(declined by the person: "keep it")' in declined
+    assert title not in await design_context(kitchen.db, designed.id)

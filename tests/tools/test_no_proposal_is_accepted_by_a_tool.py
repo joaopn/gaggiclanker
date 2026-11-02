@@ -45,7 +45,9 @@ from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.patterns import PatternProposalsRepository
 from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import RecipesRepository
+from gaggiclanker.db.repos.signature_requests import SignatureRequestsRepository
 from gaggiclanker.db.repos.signatures import SignatureRepository
+from gaggiclanker.signatures.change_requests import SignatureRequestService
 from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.tools.registry import registry
 
@@ -96,6 +98,19 @@ DECIDING = (
     # making (a status, a needs-phase row) or an override with a status.
     "add_valid",
     "add_override",
+    # A signature change request is answered by a person's press on its card, or with its draft,
+    # and by nothing else: `approve` and `decline` are banned above, and these are the writes
+    # behind them (the one that applies the changes, the one that moves a status, the hooks that
+    # make a request stale). A tool reaches `request` and nothing more.
+    "apply_for_draft",
+    "_apply_changes",
+    "request_for_draft",
+    "decide",
+    "mark_stale",
+    "set_written",
+    "stale_naming",
+    "stale_where",
+    "stale_for_drafts",
     # The service's repository: a tool reads through `SignatureService` methods only, so
     # `service.repo.add(...)` (the one write with no name of its own) is out of reach too.
     "repo",
@@ -103,12 +118,19 @@ DECIDING = (
 
 #: Names a tool module may not mention at all: the repository and its write models. A tool
 #: that imported them could write a signature row of any status, whatever method it called.
-SIGNATURE_STORAGE_NAMES = ("SignatureRepository", "ExpectationWrite", "OverrideWrite")
+SIGNATURE_STORAGE_NAMES = (
+    "SignatureRepository",
+    "ExpectationWrite",
+    "OverrideWrite",
+    "SignatureRequestsRepository",
+    "SignatureRequestWrite",
+)
 #: Raw SQL against the signature tables is refused the same way, by the strings a module holds.
 SIGNATURE_TABLES = (
     "signature_expectations",
     "recipe_version_signature_overrides",
     "profile_signatures",
+    "signature_change_requests",
 )
 
 #: The signature exception: the only service methods through which a tool puts something in
@@ -145,10 +167,28 @@ def _tool_modules() -> list[Path]:
     return sorted(root.rglob("*.py"))
 
 
+#: Tools whose name contains a decision's word and is not that decision: it **asks** for a
+#: change a person answers (`SignatureRequestService.request` is all it reaches; the walk below
+#: and the signature-request guard further down keep it that way).
+NAMES_THAT_ASK = frozenset({"request_signature_change"})
+
+
+def _names_a_decision(tool_name: str) -> bool:
+    return tool_name not in NAMES_THAT_ASK and any(word in tool_name for word in DECIDING)
+
+
+def test_a_decision_is_found_in_a_name_and_a_request_for_one_is_not() -> None:
+    assert _names_a_decision("propose_recipe_version_and_accept")
+    assert _names_a_decision("approve_signature_change")
+    assert not _names_a_decision("request_signature_change")
+    # Only the one name is let through, not every name that has "request" in it.
+    assert _names_a_decision("request_and_accept")
+
+
 def test_no_tool_is_named_for_a_decision_a_person_makes() -> None:
     every = registry.names()
     assert every, "an empty registry would pass this vacuously"
-    assert not [name for name in every if any(word in name for word in DECIDING)], (
+    assert not [name for name in every if _names_a_decision(name)], (
         "accept and decline are routes a person presses, never tools"
     )
 
@@ -192,6 +232,12 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     assert callable(SignatureRepository.add_override)
     assert callable(SignatureService.add_valid)
     assert callable(SignatureRepository.set_tier)
+    assert callable(SignatureRequestService.approve)
+    assert callable(SignatureRequestService.decline)
+    assert callable(SignatureRequestService.apply_for_draft)
+    assert callable(SignatureRequestService._apply_changes)
+    assert callable(SignatureRequestsRepository.decide)
+    assert callable(SignatureRequestsRepository.mark_stale)
     assert callable(PatternProposalsRepository.approve)
     assert callable(PatternProposalsRepository.dismiss)
 
@@ -232,3 +278,28 @@ def test_no_tool_module_names_the_signature_storage_or_its_tables() -> None:
                 if isinstance(const, str) and any(table in const for table in SIGNATURE_TABLES):
                     offenders.append(f"{path.name}:{code.co_name} holds SQL on a signature table")
     assert not offenders, offenders
+
+
+#: What the signature-change service lets a tool do: ask. Everything that answers, applies or
+#: makes a request stale is a person's press, a draft's approval or the transaction of the cause.
+REQUEST_SERVICE_READERS = frozenset({"phase_names", "problem_list", "problems", "view", "views"})
+REQUEST_SERVICE_WRITERS = frozenset(
+    {"request", "request_for_draft", "approve", "decline", "apply_for_draft"}
+)
+
+
+def test_the_request_service_has_exactly_the_writers_this_file_knows() -> None:
+    public = {
+        name
+        for name, member in vars(SignatureRequestService).items()
+        if inspect.iscoroutinefunction(member) and not name.startswith("_")
+    }
+    assert public - REQUEST_SERVICE_READERS == REQUEST_SERVICE_WRITERS
+
+
+def test_a_tool_reaches_the_request_service_only_to_ask() -> None:
+    reachable: set[str] = set()
+    for path in _tool_modules():
+        for code in _code_objects(compile(path.read_text(), str(path), "exec")):
+            reachable |= REQUEST_SERVICE_WRITERS & set(code.co_names)
+    assert reachable == {"request"}, reachable

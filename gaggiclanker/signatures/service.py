@@ -29,13 +29,13 @@ from gaggiclanker.domain.metric_language import (
     Expression,
     PhaseEndAnchor,
     PhaseStartAnchor,
-    canonical_form,
 )
 from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.signature import (
     ExpectationInput,
     SignatureRefused,
     ValidExpectation,
+    expectation_identity,
     phase_key,
     validate_compare,
     validate_expectation,
@@ -75,26 +75,6 @@ def validate_all(
     return valid
 
 
-def _identity(
-    kind: str,
-    phase: str | None,
-    expression: Expression | None,
-    text: str,
-    warning: str | None,
-) -> tuple[str, str, str]:
-    """What makes two expectations the same: kind, phase and the expression or text itself.
-
-    The expression's canonical form includes its limit, so the same measure with another limit
-    is another expectation; the tier is not part of it (the person can move it).
-    """
-    what = (
-        canonical_form(expression)
-        if expression is not None
-        else (warning or " ".join(text.split()).casefold())
-    )
-    return kind, phase_key(phase or ""), what
-
-
 def split_duplicates(
     valid: Sequence[ValidExpectation], existing: Sequence[ExpectationRow]
 ) -> tuple[list[ValidExpectation], list[tuple[int, ValidExpectation, str]]]:
@@ -107,7 +87,10 @@ def split_duplicates(
     """
     why_there = {
         "confirmed": "already in force",
-        "rejected": "one the person rejected (only they can restore it)",
+        "rejected": (
+            "one the person rejected (only they can restore it; to ask for it back, call "
+            "request_signature_change with a put_back change)"
+        ),
     }
     needs_phase = (
         "already there, carried from the previous version, but it names a phase this profile "
@@ -124,12 +107,13 @@ def split_duplicates(
         return why_there[row.status]
 
     seen: dict[tuple[str, str, str], str] = {
-        _identity(r.kind, r.phase, r.expression, r.text, r.warning_fault): why(r) for r in existing
+        expectation_identity(r.kind, r.phase, r.expression, r.text, r.warning_fault): why(r)
+        for r in existing
     }
     fresh: list[ValidExpectation] = []
     duplicates: list[tuple[int, ValidExpectation, str]] = []
     for number, v in enumerate(valid, start=1):
-        key = _identity(v.kind, v.phase, v.expression, v.text, v.warning_fault)
+        key = expectation_identity(v.kind, v.phase, v.expression, v.text, v.warning_fault)
         if key in seen:
             duplicates.append((number, v, seen[key]))
         else:

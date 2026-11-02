@@ -44,11 +44,23 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.signature_requests import (
+    SignatureRequestRow,
+    SignatureRequestsRepository,
+)
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository, row_to_dict
 from gaggiclanker.domain.metric_language import Compare, Expression
+from gaggiclanker.domain.signature import expectation_identity, sentence_with_unit
+from gaggiclanker.domain.signature_changes import ReplaceChange
 
 log = structlog.get_logger(__name__)
+
+
+def _words(row: Any) -> str:
+    """A row (or a replacement) as a card says it: its sentence with the limit in its unit."""
+    return sentence_with_unit(row.sentence, row.expression)
+
 
 __all__ = [
     "EXPECTATION_KINDS",
@@ -431,6 +443,28 @@ class SignatureRepository(Repository):
                 ),
             )
             ids.append(int(cursor.lastrowid or 0))
+        # A waiting request that would write the very expectation another path has just written
+        # is no longer a question: the row is there. Same transaction as the write.
+        added = {
+            expectation_identity(w.kind, w.phase, w.expression, w.text, w.warning_fault)
+            for w in writes
+        }
+
+        def replacement_is_there(request: SignatureRequestRow) -> str | None:
+            for change in request.changes.changes if request.changes is not None else []:
+                if not isinstance(change, ReplaceChange):
+                    continue
+                new = change.expectation
+                identity = expectation_identity(
+                    new.kind, new.phase, new.expression, new.text, new.warning_fault
+                )
+                if identity in added:
+                    return f"“{_words(new)}” was added another way, so the replacement is there."
+            return None
+
+        await SignatureRequestsRepository(self.db).stale_where(
+            profile_version_id, replacement_is_there
+        )
         rows = [await self.get(expectation_id) for expectation_id in ids]
         return [row for row in rows if row is not None]
 
@@ -472,7 +506,16 @@ class SignatureRepository(Repository):
                 "WHERE expectation_id = ? AND status IN ('proposed', 'confirmed')",
                 (utc_now(), expectation_id),
             )
+            await self._stale_requests_naming(
+                row,
+                f"You rejected “{_words(row)}” on the Profiles page.",
+            )
             return AnswerResult(row=await self.get(expectation_id))
+
+    async def _stale_requests_naming(self, row: ExpectationRow, reason: str) -> None:
+        """The person answered a row a waiting request names: that request is no longer a
+        question, and says why. Called inside the answer's own transaction."""
+        await SignatureRequestsRepository(self.db).stale_naming([row.id], [], reason)
 
     async def restore(self, expectation_id: int) -> AnswerResult:
         """Put a rejected expectation back in force. One that needs a new phase cannot return."""
@@ -491,6 +534,10 @@ class SignatureRepository(Repository):
             )
             if cursor.rowcount != 1:
                 return AnswerResult(refused="not_rejected")
+            await self._stale_requests_naming(
+                row,
+                f"You restored “{_words(row)}” on the Profiles page.",
+            )
             return AnswerResult(row=await self.get(expectation_id))
 
     async def set_tier(self, expectation_id: int, tier: Tier) -> AnswerResult:
@@ -508,6 +555,10 @@ class SignatureRepository(Repository):
                 return AnswerResult(
                     refused="already_rejected" if row.status == "rejected" else "not_in_force"
                 )
+            await self._stale_requests_naming(
+                row,
+                f"You moved “{_words(row)}” to {tier} on the Profiles page.",
+            )
             return AnswerResult(row=await self.get(expectation_id))
 
     # ── overrides ────────────────────────────────────────────────────
@@ -596,6 +647,7 @@ class SignatureRepository(Repository):
             )
             row = await self.get_override(int(cursor.lastrowid or 0))
             assert row is not None
+            await self._stale_requests_for_another_override(row)
             return row
 
     async def reject_override(self, override_id: int, *, reason: str = "") -> OverrideAnswer:
@@ -613,6 +665,7 @@ class SignatureRepository(Repository):
             )
             if cursor.rowcount != 1:
                 return OverrideAnswer(refused="already_rejected")
+            await self._stale_requests_naming_override(row, "rejected")
             return OverrideAnswer(row=await self.get_override(override_id))
 
     async def restore_override(self, override_id: int) -> OverrideAnswer:
@@ -638,7 +691,27 @@ class SignatureRepository(Repository):
             )
             if cursor.rowcount != 1:
                 return OverrideAnswer(refused="not_rejected")
+            await self._stale_requests_naming_override(row, "restored")
+            await self._stale_requests_for_another_override(row)
             return OverrideAnswer(row=await self.get_override(override_id))
+
+    async def _stale_requests_for_another_override(self, row: OverrideRow) -> None:
+        """An override came into force on a Recipe version (put there by a tool, restored by the
+        person, restored by an approved request): a waiting request to put back another one there
+        can no longer be applied, since a version has one at a time. Same transaction."""
+        await SignatureRequestsRepository(self.db).stale_putting_back_on(
+            row.recipe_version_id,
+            "Another different limit was put in force for this Recipe version, and a version "
+            "has one at a time.",
+            except_override_id=row.id,
+        )
+
+    async def _stale_requests_naming_override(self, row: OverrideRow, did: str) -> None:
+        target = await self.get(row.expectation_id)
+        about = f"“{_words(target)}”" if target is not None else "a limit"
+        await SignatureRequestsRepository(self.db).stale_naming(
+            [], [row.id], f"You {did} the different limit for {about} on the Recipe page."
+        )
 
     async def recipes_using(self, profile_version_id: int) -> list[dict[str, Any]]:
         """The Recipes with a version on this profile version: where a person goes to ask for a

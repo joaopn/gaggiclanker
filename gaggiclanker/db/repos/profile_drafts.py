@@ -27,15 +27,20 @@ discards the draft behind the file the sync then takes off the machine.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Any, Literal
+from collections.abc import Iterable, Sequence
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
-from gaggiclanker.db.repos.base import JsonList, JsonObject, dumps, utc_now
+from gaggiclanker.db.repos.base import JsonList, JsonObject, dumps, loads_json, utc_now
 from gaggiclanker.db.repos.profiles import version_name_sql
+from gaggiclanker.db.repos.signature_requests import (
+    SignatureRequestRow,
+    SignatureRequestsRepository,
+)
 from gaggiclanker.db.repos.version_names import label_sql, next_names
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.signature_changes import revision_words
 
 __all__ = [
     "DRAFT_STATUSES",
@@ -110,7 +115,54 @@ class ProfileDraftWrite(BaseModel):
     change_summary: str = ""
     stop_condition_changes: list[Any] = Field(default_factory=list)
     clamp_changes: list[Any] = Field(default_factory=list)
+    #: The carried expectations the patch touches (`signatures/depends.py`), as stored.
+    affected_expectations: list[Any] = Field(default_factory=list)
     notes: str = ""
+
+
+class AffectedExpectation(BaseModel):
+    """One of the base's expectations the draft's patch touches."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The base version's expectation.
+    expectation_id: int
+    sentence: str
+    #: Why the patch touches it, in words ("the temperature changed from 95 to 93 °C").
+    cause: str
+    #: Whether the signature changes sent with the draft revise it, and how, in words.
+    revised: bool = False
+    revision: str | None = None
+
+
+type AffectedList = Annotated[list[AffectedExpectation], BeforeValidator(loads_json)]
+
+
+class DraftChangeLine(BaseModel):
+    """One change of a draft's signature request, as the draft's card lists it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    reason: str
+    #: The expectation as it was, and what the change makes of it ("at least 91.5 °C",
+    #: "taken out", "moved to important").
+    old_sentence: str
+    summary: str
+
+
+class DraftSignatureRequest(BaseModel):
+    """The signature changes that came with a draft, and where they stand: they wait with the
+    draft, are applied when it is approved, and go stale if the draft is declined or a change no
+    longer applies (``stale_reason`` then says which)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    status: Literal["waiting", "approved", "declined", "stale"]
+    stale_reason: str
+    reason: str
+    changes: list[DraftChangeLine]
 
 
 class ProfileDraftRow(BaseModel):
@@ -178,6 +230,13 @@ class ProfileDraftRow(BaseModel):
     )
     #: Every number the safety policy moved on the way in, with before and after.
     clamp_changes: JsonList = Field(default=None, validation_alias="clamp_changes_json")
+    #: The carried expectations the patch touches, with the cause of each in words and whether
+    #: the draft's signature changes revise it. Stored with the draft, like the lists above.
+    affected_expectations: Annotated[list[AffectedExpectation], BeforeValidator(loads_json)] = (
+        Field(default_factory=list, validation_alias="affected_expectations_json")
+    )
+    #: The signature changes sent with the draft, joined in; ``None`` when it came with none.
+    signature_request: DraftSignatureRequest | None = None
     notes: str = ""
     status: str = "draft"
     pushed_device_profile_id: str | None = None
@@ -268,12 +327,12 @@ class ProfileDraftsRepository(Repository):
                  source_analysis_id, source_suggestion_id,
                  parent_draft_id, base_device_profile_id, recipe_id, prediction,
                  compares_to_version_id, suggest_major, major_reason, is_new, change_summary,
-                 stop_condition_changes_json, clamp_changes_json, notes, status,
-                 made_by, created_at, updated_at)
+                 stop_condition_changes_json, clamp_changes_json, affected_expectations_json,
+                 notes, status, made_by, created_at, updated_at)
             VALUES (?, ?,
                     COALESCE(?, (SELECT {version_name_sql("nv")} FROM profile_versions nv
                                   WHERE nv.id = ?), ''),
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
             """,  # noqa: S608 - the one interpolation is a constant SQL expression
             (
                 write.base_version_id,
@@ -297,6 +356,7 @@ class ProfileDraftsRepository(Repository):
                 write.change_summary,
                 dumps(write.stop_condition_changes),
                 dumps(write.clamp_changes),
+                dumps(write.affected_expectations),
                 write.notes,
                 write.made_by,
                 now,
@@ -322,6 +382,13 @@ class ProfileDraftsRepository(Repository):
         """
         names: dict[int, tuple[str, str]] = {}
         filled: list[ProfileDraftRow] = []
+        requests = await SignatureRequestsRepository(self.db).for_drafts(d.id for d in drafts)
+        drafts = [
+            d.model_copy(update={"signature_request": _request_line(requests[d.id])})
+            if d.id in requests
+            else d
+            for d in drafts
+        ]
         for draft in drafts:
             if draft.recipe_id is None or draft.recipe_name is None:
                 filled.append(draft)
@@ -402,7 +469,31 @@ class ProfileDraftsRepository(Repository):
             f"UPDATE profile_drafts SET {', '.join(assignments)} WHERE id = ?",  # noqa: S608 - assignments are literals, values are bound
             [*params, draft_id],
         )
+        await self._close_requests([draft_id], status)
         return await self.get(draft_id)
+
+    async def set_affected_expectations(
+        self, draft_id: int, affected: list[dict[str, Any]]
+    ) -> ProfileDraftRow | None:
+        """Keep the flags with how the draft's signature changes revise them (written once, in
+        the transaction that makes the draft)."""
+        await self.db.execute(
+            "UPDATE profile_drafts SET affected_expectations_json = ? WHERE id = ?",
+            (dumps(affected), draft_id),
+        )
+        return await self.get(draft_id)
+
+    async def _close_requests(self, draft_ids: Sequence[int], status: str) -> None:
+        """A draft that is turned down or overtaken takes the signature changes that came with
+        it along: they are stale in the same transaction, saying why. Only a request still
+        waiting moves (an approved draft's was answered with it)."""
+        if status == "discarded":
+            reason = "The draft was declined."
+        elif status == "superseded":
+            reason = "A newer draft replaced it."
+        else:
+            return
+        await SignatureRequestsRepository(self.db).stale_for_drafts(draft_ids, reason)
 
     async def clear_pushed_profile(
         self, draft_id: int, *, outcome: dict[str, Any] | None = None
@@ -512,6 +603,7 @@ class ProfileDraftsRepository(Repository):
             f"WHERE status IN ('draft', 'approved') AND id IN ({placeholders})",
             [now or utc_now(), None if why is None else dumps({"action": why}), *wanted],
         )
+        await self._close_requests(wanted, "discarded")
         return cursor.rowcount
 
     async def supersede(self, draft_id: int) -> None:
@@ -525,3 +617,23 @@ class ProfileDraftsRepository(Repository):
             "UPDATE profile_drafts SET status = 'superseded', updated_at = ? WHERE id = ?",
             (utc_now(), draft_id),
         )
+        await self._close_requests([draft_id], "superseded")
+
+
+def _request_line(request: SignatureRequestRow) -> DraftSignatureRequest:
+    changes = request.changes.changes if request.changes is not None else []
+    return DraftSignatureRequest(
+        id=request.id,
+        status=request.status,
+        stale_reason=request.stale_reason,
+        reason=request.reason,
+        changes=[
+            DraftChangeLine(
+                kind=c.kind,
+                reason=c.reason,
+                old_sentence=c.old_sentence,
+                summary=revision_words(c),
+            )
+            for c in changes
+        ],
+    )

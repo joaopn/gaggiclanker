@@ -20,6 +20,8 @@ from gaggiclanker.db.upgrade import UpgradeReport, upgrade_database_file
 from gaggiclanker.db.upgrades import STEPS, frozen_schema_sql, level_007
 
 LEVEL_SIX = schema.describe_sql(frozen_schema_sql(6))
+#: What this step ends at; the schema file has moved on since.
+LEVEL_SEVEN = schema.describe_sql(frozen_schema_sql(7))
 NOW = datetime(2026, 10, 30, 12, 0, 0, tzinfo=UTC)
 
 LABELS = (None, "keep", "improve", "discard")
@@ -102,7 +104,9 @@ class Level6:
     def upgrade(self) -> UpgradeReport:
         self.conn.commit()
         self.conn.close()
-        report = upgrade_database_file(self.path, self.path.parent, steps=STEPS[:7], now=NOW)
+        report = upgrade_database_file(
+            self.path, self.path.parent, steps=STEPS[:7], expected=LEVEL_SEVEN, now=NOW
+        )
         assert report is not None
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
@@ -162,12 +166,14 @@ def test_the_result_is_the_schema_file_and_no_row_is_lost(level6: Level6) -> Non
     level6.conn.commit()
     level6.conn.close()
 
-    report = upgrade_database_file(level6.path, level6.path.parent, steps=STEPS, now=NOW)
+    report = upgrade_database_file(
+        level6.path, level6.path.parent, steps=STEPS[:7], expected=LEVEL_SEVEN, now=NOW
+    )
 
     assert report is not None and (report.from_level, report.to_level) == (6, 7)
     conn = sqlite3.connect(level6.path)
     try:
-        assert schema.schema_differences(conn) == []
+        assert schema.schema_differences(conn, LEVEL_SEVEN) == []
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
         assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert list(conn.execute("PRAGMA foreign_key_check")) == []
@@ -196,7 +202,9 @@ def test_a_database_with_no_judgements_comes_through_empty(tmp_path: Path) -> No
     conn.executescript(frozen_schema_sql(6))
     conn.close()
 
-    report = upgrade_database_file(tmp_path / "gaggiclanker.db", tmp_path, steps=STEPS, now=NOW)
+    report = upgrade_database_file(
+        tmp_path / "gaggiclanker.db", tmp_path, steps=STEPS[:7], expected=LEVEL_SEVEN, now=NOW
+    )
 
     assert report is not None
     assert report.steps[0].counts == {"discarded": 0, "labels_dropped": 0, "ratings_written": 0}

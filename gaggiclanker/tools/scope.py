@@ -84,6 +84,7 @@ RECIPE_TOOLS: frozenset[str] = frozenset(
         "propose_signature",
         "propose_signature_override",
         "record_insight",
+        "request_signature_change",
         "search_knowledge",
     }
 )
@@ -109,6 +110,7 @@ DESIGN_TOOLS: frozenset[str] = frozenset(
         "list_profiles",
         "propose_initial_recipe",
         "propose_signature",
+        "request_signature_change",
         "search_knowledge",
     }
 )

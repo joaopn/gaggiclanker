@@ -27,6 +27,7 @@ __all__ = [
     "RowModel",
     "dumps",
     "from_iso",
+    "loads_json",
     "to_iso",
     "utc_now",
 ]
@@ -83,6 +84,9 @@ def _loads(value: Any) -> Any:
     except ValueError as exc:
         raise ValueError(f"stored column is not valid JSON: {exc}") from None
 
+
+#: :func:`_loads`, for a read model that types the decoded document itself.
+loads_json = _loads
 
 #: A JSON object column, decoded on read.
 type JsonObject = Annotated[dict[str, Any] | None, BeforeValidator(_loads)]

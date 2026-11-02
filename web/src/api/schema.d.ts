@@ -2988,6 +2988,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/signature-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signature changes an agent asked for, in a conversation or on a profile version
+         * @description Waiting and answered alike, so a card read days later tells the truth.
+         */
+        get: operations["list_signature_requests_api_signature_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/signature-requests/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a signature change an agent asked for: the changes are made
+         * @description A person's press, and the only way a request changes anything. Every change is checked
+         *     again, by the guard the tool used, and written in one transaction with the reject, add,
+         *     tier and restore a person already has; a change that no longer applies makes the whole
+         *     request stale (409) and writes nothing.
+         */
+        post: operations["approve_signature_request_api_signature_requests__request_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/signature-requests/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline a signature change an agent asked for: nothing changes
+         * @description The agent is told at its next message, with the reason when one is given, and may ask
+         *     again with a new request.
+         */
+        post: operations["decline_signature_request_api_signature_requests__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/starting-points": {
         parameters: {
             query?: never;
@@ -3232,6 +3296,25 @@ export interface components {
         ActiveVersionBody: {
             /** Version Id */
             version_id: number;
+        };
+        /**
+         * AffectedExpectation
+         * @description One of the base's expectations the draft's patch touches.
+         */
+        AffectedExpectation: {
+            /** Cause */
+            cause: string;
+            /** Expectation Id */
+            expectation_id: number;
+            /**
+             * Revised
+             * @default false
+             */
+            revised: boolean;
+            /** Revision */
+            revision?: string | null;
+            /** Sentence */
+            sentence: string;
         };
         /**
          * ApiError
@@ -4025,6 +4108,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[SignatureRequestAnswer] */
+        ApiResponse_SignatureRequestAnswer_: {
+            data?: components["schemas"]["SignatureRequestAnswer"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SignatureRequestList] */
+        ApiResponse_SignatureRequestList_: {
+            data?: components["schemas"]["SignatureRequestList"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[SimilarRecipesData] */
         ApiResponse_SimilarRecipesData_: {
             data?: components["schemas"]["SimilarRecipesData"] | null;
@@ -4494,6 +4593,64 @@ export interface components {
         /** @enum {string} */
         BurrType: "conical" | "flat" | "unknown";
         /** @enum {string} */
+        ChangeTier: "critical" | "important" | "context";
+        /** ChangeView */
+        ChangeView: {
+            /** Expectation Id */
+            expectation_id?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "replace" | "retire" | "tier" | "put_back" | "put_back_override";
+            /**
+             * New Limit Text
+             * @default
+             */
+            new_limit_text: string;
+            /**
+             * New Sentence
+             * @default
+             */
+            new_sentence: string;
+            new_tier?: components["schemas"]["ChangeTier"] | null;
+            /**
+             * Old Limit Text
+             * @default
+             */
+            old_limit_text: string;
+            /**
+             * Old Sentence
+             * @default
+             */
+            old_sentence: string;
+            old_tier?: components["schemas"]["ChangeTier"] | null;
+            /** Override Id */
+            override_id?: number | null;
+            /** Phase */
+            phase?: string | null;
+            preview?: components["schemas"]["PreviewView"] | null;
+            /** Reason */
+            reason: string;
+            /** Rejected At */
+            rejected_at?: string | null;
+            /**
+             * Rejected Reason
+             * @default
+             */
+            rejected_reason: string;
+            /** Stays In Force */
+            stays_in_force?: components["schemas"]["StayingView"][];
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            tier?: components["schemas"]["ChangeTier"] | null;
+            /** Written Expectation Id */
+            written_expectation_id?: number | null;
+        };
+        /** @enum {string} */
         ChatKind: "general" | "recipe";
         /**
          * ChatMessageRow
@@ -4906,6 +5063,14 @@ export interface components {
             /** Provider */
             provider: string;
         };
+        /** DeclineBody */
+        DeclineBody: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
         /**
          * DesignBrief
          * @description What the person asked for when they set out to design a Recipe in chat.
@@ -5205,6 +5370,20 @@ export interface components {
             updated_at: string;
         };
         /**
+         * DraftChangeLine
+         * @description One change of a draft's signature request, as the draft's card lists it.
+         */
+        DraftChangeLine: {
+            /** Kind */
+            kind: string;
+            /** Old Sentence */
+            old_sentence: string;
+            /** Reason */
+            reason: string;
+            /** Summary */
+            summary: string;
+        };
+        /**
          * DraftCreate
          * @description Ask for a draft. Either the model writes it, or you did.
          *
@@ -5309,6 +5488,27 @@ export interface components {
              * @default
              */
             notes: string;
+        };
+        /**
+         * DraftSignatureRequest
+         * @description The signature changes that came with a draft, and where they stand: they wait with the
+         *     draft, are applied when it is approved, and go stale if the draft is declined or a change no
+         *     longer applies (``stale_reason`` then says which).
+         */
+        DraftSignatureRequest: {
+            /** Changes */
+            changes: components["schemas"]["DraftChangeLine"][];
+            /** Id */
+            id: number;
+            /** Reason */
+            reason: string;
+            /** Stale Reason */
+            stale_reason: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "approved" | "declined" | "stale";
         };
         /**
          * DraftStanding
@@ -6984,6 +7184,18 @@ export interface components {
         };
         /** @enum {string} */
         PredictionStance: "as_predicted" | "partly" | "against" | "not_shown";
+        /**
+         * PreviewView
+         * @description What a change does to the version's checks, over the shots they are read for.
+         */
+        PreviewView: {
+            /** Failing After */
+            failing_after: number;
+            /** Failing Now */
+            failing_now: number;
+            /** Shots */
+            shots: number;
+        };
         /** @enum {string} */
         Process: "washed" | "natural" | "honey" | "anaerobic" | "other";
         /**
@@ -7043,6 +7255,8 @@ export interface components {
          * @description One draft, with the joined labels a reader needs beside it.
          */
         ProfileDraftRow: {
+            /** Affected Expectations */
+            affected_expectations?: components["schemas"]["AffectedExpectation"][];
             /** Base Device Profile Id */
             base_device_profile_id?: string | null;
             /**
@@ -7133,6 +7347,7 @@ export interface components {
             replaced_device_profile_id?: string | null;
             /** Replaced Version Id */
             replaced_version_id?: number | null;
+            signature_request?: components["schemas"]["DraftSignatureRequest"] | null;
             /** Source Analysis Id */
             source_analysis_id?: number | null;
             /** Source Suggestion Id */
@@ -8262,6 +8477,42 @@ export interface components {
             /** From Name */
             from_name: string;
         };
+        /** RequestView */
+        RequestView: {
+            /** Answer Reason */
+            answer_reason: string;
+            /** Answered At */
+            answered_at: string | null;
+            /** Changes */
+            changes: components["schemas"]["ChangeView"][];
+            /** Created At */
+            created_at: string;
+            /** Draft Id */
+            draft_id: number | null;
+            /** Id */
+            id: number;
+            /** Loosens Open Prediction */
+            loosens_open_prediction: string | null;
+            /** Profile Label */
+            profile_label: string;
+            /** Profile Version Id */
+            profile_version_id: number;
+            /** Readable */
+            readable: boolean;
+            /** Reason */
+            reason: string;
+            /** Stale Reason */
+            stale_reason: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "approved" | "declined" | "stale";
+            /** Thread Id */
+            thread_id: number | null;
+            /** Version Label */
+            version_label: string | null;
+        };
         /** ResetData */
         ResetData: {
             /** Restarting */
@@ -9284,6 +9535,22 @@ export interface components {
             rejected: number;
         };
         /**
+         * SignatureRequestAnswer
+         * @description What answering produced: the request as it now stands.
+         */
+        SignatureRequestAnswer: {
+            request: components["schemas"]["RequestView"];
+        };
+        /**
+         * SignatureRequestList
+         * @description `GET /api/signature-requests`: oldest first for a conversation, newest first for a
+         *     profile version.
+         */
+        SignatureRequestList: {
+            /** Items */
+            items: components["schemas"]["RequestView"][];
+        };
+        /**
          * SignatureStateOut
          * @description Whether the shot was read against a confirmed signature.
          */
@@ -9563,6 +9830,16 @@ export interface components {
         };
         /** @enum {string} */
         StartingPointStatus: "running" | "ok" | "failed" | "interrupted";
+        /**
+         * StayingView
+         * @description An expectation in force that a replacement or retirement leaves where it is.
+         */
+        StayingView: {
+            /** Expectation Id */
+            expectation_id: number;
+            /** Words */
+            words: string;
+        };
         /** @enum {string} */
         StepUnit: "clicks" | "numbers" | "microns" | "free";
         /**
@@ -14908,6 +15185,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SignatureAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_signature_requests_api_signature_requests_get: {
+        parameters: {
+            query?: {
+                /** @description Every request made for this profile version. */
+                profile_version_id?: number | null;
+                /** @description Only what this conversation asked for, with no cap: the chat's cards read their request this way, so one is found however old it is. */
+                thread_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SignatureRequestList_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_signature_request_api_signature_requests__request_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SignatureRequestAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_signature_request_api_signature_requests__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeclineBody"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SignatureRequestAnswer_"];
                 };
             };
             /** @description Validation Error */

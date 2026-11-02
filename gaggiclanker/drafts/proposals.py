@@ -35,13 +35,14 @@ from gaggiclanker.db.repos.lineage import (
     place_draft,
     taken_name_sentence,
 )
-from gaggiclanker.db.repos.pins import PinsRepository
+from gaggiclanker.db.repos.pins import PinsRepository, judged_profile_version
 from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftRow,
     ProfileDraftsRepository,
     ProfileDraftWrite,
 )
 from gaggiclanker.db.repos.profiles import ProfilesRepository, document_for
+from gaggiclanker.db.repos.signature_requests import SignatureRequestRow
 from gaggiclanker.domain.models import Profile, brew_hash
 from gaggiclanker.domain.profile_policy import (
     PolicyBounds,
@@ -54,15 +55,22 @@ from gaggiclanker.domain.profile_policy import (
     clamp,
     diff_stop_conditions,
 )
+from gaggiclanker.domain.signature_changes import PutBackOverrideChange, revision_words
 from gaggiclanker.drafts.live_lineage import LiveLineage
 from gaggiclanker.drafts.taken_names import TakenNames
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.signatures.change_requests import (
+    DraftSignatureChanges,
+    SignatureRequestService,
+)
+from gaggiclanker.signatures.depends import affected_by
 from gaggiclanker.signatures.service import DraftSignature, SignatureService, split_duplicates
 
 __all__ = [
     "DraftProposals",
     "DraftSignature",
+    "DraftSignatureChanges",
     "DraftTarget",
     "PinFrozen",
     "PinnedCopyName",
@@ -144,6 +152,7 @@ class DraftProposals:
         self.drafts = ProfileDraftsRepository(db)
         self.profiles = ProfilesRepository(db)
         self.signatures = SignatureService(db)
+        self.signature_requests = SignatureRequestService(db)
 
     async def bounds(self) -> PolicyBounds:
         """The safety bounds as currently configured.
@@ -330,6 +339,7 @@ class DraftProposals:
         new_profile_name: str | None = None,
         made_by: Literal["agent", "edit"] = "agent",
         signature: DraftSignature | None = None,
+        signature_changes: DraftSignatureChanges | None = None,
     ) -> ProfileDraftRow:
         """A draft somebody typed, or a tool proposed. Same layers, no model involved.
 
@@ -381,6 +391,7 @@ class DraftProposals:
             is_new=is_new,
             made_by=made_by,
             signature=signature,
+            signature_changes=signature_changes,
         )
 
     def _atomic(self) -> AbstractAsyncContextManager[Any]:
@@ -403,6 +414,7 @@ class DraftProposals:
         is_new: bool = False,
         made_by: Literal["agent", "edit"] = "agent",
         signature: DraftSignature | None = None,
+        signature_changes: DraftSignatureChanges | None = None,
         carry_signature: bool = True,
     ) -> ProfileDraftRow:
         """Insert the draft row for a prepared document.
@@ -413,12 +425,18 @@ class DraftProposals:
 
         ``carry_signature`` false stores the version without its base's signature: a pin's copy
         is judged by the original's, so it carries none of its own.
+
+        The base's expectations in force that the patch touches are worked out here and stored
+        with the draft (:func:`~gaggiclanker.signatures.depends.affected_by`); the agent's
+        ``signature_changes`` become one request stored with it, in the same transaction, and
+        change nothing until the draft is approved.
         """
         version, created = await self.profiles.ensure_version(
             prepared.profile, owner=prepared.owner_board_id, source="draft"
         )
         if created and carry_signature:
             await self.signatures.carry_quietly(base_version_id, version.id)
+        affected = await self._affected_by_the_patch(base_version_id, prepared, is_new=is_new)
         # The draft and the expectations it carries are one write: a refusal or a crash between
         # them must not leave a draft whose signature is half there.
         async with self._atomic():
@@ -454,8 +472,21 @@ class DraftProposals:
                         change.model_dump(mode="json") for change in prepared.clamp_changes
                     ],
                     notes=notes,
+                    affected_expectations=[dict(item) for item in affected],
                 )
             )
+            if signature_changes is not None and signature_changes.changes:
+                request = await self.signature_requests.request_for_draft(
+                    draft_id=row.id,
+                    draft_version_id=version.id,
+                    base_version_id=base_version_id,
+                    changes=signature_changes.changes,
+                    reason=signature_changes.reason,
+                    thread_id=signature_changes.thread_id,
+                )
+                signature_changes.request_id = request.id
+                affected = await self._with_revisions(version.id, request, affected)
+                row = await self.drafts.set_affected_expectations(row.id, affected) or row
             if signature is not None and signature.expectations:
                 # What the draft's version already holds (carried from its base, or sent twice)
                 # is not stored a second: "Confirm all" would otherwise check it twice.
@@ -473,6 +504,54 @@ class DraftProposals:
                     )
 
         return row
+
+    async def _affected_by_the_patch(
+        self, base_version_id: int, prepared: PreparedDraft, *, is_new: bool
+    ) -> list[dict[str, Any]]:
+        """The base's expectations in force that this draft's patch touches, as stored."""
+        if is_new:
+            return []
+        judged = await judged_profile_version(self.db, base_version_id)
+        rows = (await self.signatures.repo.confirmed_for_versions([judged])).get(judged, [])
+        if not rows:
+            return []
+        base = await self.base_profile(base_version_id)
+        flags = affected_by(
+            base.model_dump(mode="json"), prepared.profile.model_dump(mode="json"), rows
+        )
+        return [
+            {
+                "expectation_id": f.expectation_id,
+                "sentence": f.sentence,
+                "cause": f.cause,
+                "revised": False,
+                "revision": None,
+            }
+            for f in flags
+        ]
+
+    async def _with_revisions(
+        self, draft_version_id: int, request: SignatureRequestRow, affected: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Mark the flags the draft's signature changes revise, saying how, in words."""
+        if request.changes is None:
+            return affected
+        base_of = {
+            r.id: r.carried_from_id
+            for r in await self.signatures.repo.for_version(draft_version_id)
+        }
+        revisions: dict[int, str] = {}
+        for change in request.changes.changes:
+            if isinstance(change, PutBackOverrideChange):
+                continue
+            source = base_of.get(change.expectation_id)
+            if source is not None:
+                revisions[source] = revision_words(change)
+        return [
+            {**item, "revised": item["expectation_id"] in revisions}
+            | {"revision": revisions.get(item["expectation_id"])}
+            for item in affected
+        ]
 
     async def base_profile(self, version_id: int) -> Profile:
         """The stored version a draft is derived from, as a document under its profile's name

@@ -13,6 +13,38 @@ database.
 
 ## [Unreleased]
 
+### The agent asks for changes to a signature, and a draft says what it breaks
+
+- **Breaking: the database changes (an upgrade step carries it; you do nothing).** What changes:
+  one new table, `signature_change_requests` (the changes an agent asks for, each with its status
+  and, once approved, the expectations it wrote), and one trailing column on `profile_drafts`,
+  `affected_expectations_json` (the carried expectations a draft's patch touches). Whether your
+  rows are carried forward: all of them, unchanged, because nothing existing is altered; the new
+  table is empty, which is true of every database (nobody could ask before), and every existing
+  draft reads "none flagged", which is true because no flag was ever worked out for it. What you
+  do: nothing; the first start backs the database up (`upgrade-backup-L7-…`) and upgrades it.
+- The agent can no longer be told "I cannot change that" and left with words only. It cannot
+  replace, retire, re-tier or put back an expectation (or a rejected different limit of a Recipe
+  version) by itself, as before, but it can now **ask** with `request_signature_change`: a card in
+  the conversation shows each change with the agent's reason, how many of the version's shots fail
+  the check now and after, and a line when a change loosens a check that an open prediction is
+  graded under. Nothing changes until you press **Approve**; Decline changes nothing, and the agent
+  is told your answer at its next message and may ask again. Approving uses what you already have
+  on the Profiles page: a replaced or retired expectation appears under Rejected with the agent's
+  reason and a Restore, so undoing it is Restore plus Reject on the new one. A request goes stale,
+  and says why, when you reject, restore or re-tier a row it names, when a newer request names the
+  same row, when the same expectation is added another way, or when another different limit
+  comes into force on the Recipe version a request would put one back on.
+- A draft that changes the profile now says which of the base's expectations it touches (the
+  temperature, a phase's pressure, flow, weight or pumped target, its duration or what ends it),
+  with the cause in words, and the agent may revise them in the same draft. The draft's card lists
+  them with the revision ("in this draft: at least 91.5 °C" or "kept as it is"); the changes are
+  applied when you approve the draft, and declining the draft drops them. The base version's
+  expectations are never touched, so old shots stay judged by the limits they were brewed under.
+- A person who edited the `chat-recipe` or `chat-design` prompt keeps their text on boot and so
+  does not get the new sentences about asking for a signature change and preferring the setpoint
+  offset; the tool descriptions carry the same rules either way.
+
 ### A signature limit can follow the profile's temperature
 
 - A temperature expectation can now be written as a distance from the shot's own profile

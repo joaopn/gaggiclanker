@@ -56,8 +56,10 @@ from gaggiclanker.domain.metric_language import (
     PhaseStartAnchor,
     Result,
     ShotData,
+    canonical_form,
     compare_words,
     evaluate,
+    expression_unit,
     limit_words,
     render,
     setpoint_words,
@@ -82,6 +84,7 @@ __all__ = [
     "ValidExpectation",
     "build_checks",
     "check_key",
+    "expectation_identity",
     "expectation_line",
     "fault_for_failure",
     "fault_words",
@@ -194,6 +197,26 @@ def _single_fault(expr: Expression) -> Fault | None:
 
 
 # ── the proposal ────────────────────────────────────────────────────
+
+
+def expectation_identity(
+    kind: str,
+    phase: str | None,
+    expression: Expression | None,
+    text: str,
+    warning: str | None,
+) -> tuple[str, str, str]:
+    """What makes two expectations the same: kind, phase and the expression or text itself.
+
+    The expression's canonical form includes its limit, so the same measure with another limit
+    is another expectation; the tier is not part of it (the person can move it).
+    """
+    what = (
+        canonical_form(expression)
+        if expression is not None
+        else (warning or " ".join(text.split()).casefold())
+    )
+    return kind, phase_key(phase or ""), what
 
 
 class SignatureRefused(ValueError):
@@ -763,6 +786,24 @@ def limit_text(expr: Expression, unit: str) -> str:
         # "at least 2 °C below the setpoint", never "at least -2 °C from the setpoint".
         return limit_words(expr, expr.compare)
     return f"{compare_words(expr.compare)}{(' ' + unit) if unit else ''}"
+
+
+def sentence_with_unit(sentence: str, expression: Expression | None) -> str:
+    """A measure's sentence with its limit in the unit a person reads it in.
+
+    The stored sentence is the language's own words ("lowest value of temperature in the soak,
+    at least 93"); a card says "…, at least 93 °C", the way the Profiles page words the limit.
+    **The one renderer** of that, for the request card, the draft card and the reasons a card
+    gives. A sentence that does not end in its comparison (a share of a filed weight already says
+    what it is a share of, and a row that is not a measure has none) is returned as it is.
+    """
+    if expression is None or expression.compare is None or expression.relative_to is not None:
+        return sentence
+    plain = limit_words(expression, expression.compare)
+    united = limit_text(expression, expression_unit(expression))
+    if united != plain and sentence.endswith(plain):
+        return sentence[: len(sentence) - len(plain)] + united
+    return sentence
 
 
 def value_text(value: float, unit: str, relative_to: str | None) -> str:

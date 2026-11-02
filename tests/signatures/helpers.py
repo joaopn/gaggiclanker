@@ -210,6 +210,17 @@ async def add_shot(
     return shot
 
 
+async def make_thread(db: Database, recipe_id: int | None = None) -> int:
+    """A conversation (of a Recipe, or a general one) for a request to be made in."""
+    from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
+
+    created = await ChatRepository(db).create_thread(
+        ChatThreadWrite(title="t", recipe_id=recipe_id)
+    )
+    assert created.thread is not None
+    return created.thread.id
+
+
 def sagging_shot(low: float, *, rest: float | None = None) -> Slog:
     """The constructed lever shot, its soak's temperature edited so the lowest reading is
     ``low`` (the rest sits 0.4 above it unless ``rest`` says): a boiler that sags under the
@@ -222,3 +233,12 @@ def sagging_shot(low: float, *, rest: float | None = None) -> Slog:
             sample = sample.model_copy(update={"ct": low if index == 40 else hold})
         samples.append(sample)
     return dataclasses.replace(base, samples=samples)
+
+
+def assert_a_sentence(reason: str) -> None:
+    """What a card shows as the cause: one whole sentence, capitalised (or opening with a quoted
+    row), ending in a single full stop, nothing doubled and nothing appended to it."""
+    import re
+
+    assert re.fullmatch(r"[A-Z“].*[^.\s]\.", reason, flags=re.S), reason
+    assert ".." not in reason and " ." not in reason, reason

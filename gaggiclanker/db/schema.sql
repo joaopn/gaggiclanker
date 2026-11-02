@@ -359,7 +359,10 @@ CREATE TABLE profile_drafts (
     destination_board_id INTEGER REFERENCES profile_board(id),
     -- What the draft is: 1 a new profile called `label` (asked for by name, written from scratch,
     -- a copy, a first version, or a hand edit under another name), 0 a change to a profile.
-    new_profile INTEGER NOT NULL DEFAULT 0 CHECK (new_profile IN (0, 1))
+    new_profile INTEGER NOT NULL DEFAULT 0 CHECK (new_profile IN (0, 1)),
+    -- The carried expectations this draft's patch touches, with the cause of each in words
+    -- (`signatures/depends.py`), worked out once when the draft is made and kept with it.
+    affected_expectations_json TEXT NOT NULL DEFAULT '[]'
 ) STRICT;
 CREATE INDEX idx_profile_drafts_status ON profile_drafts(status, id DESC);
 CREATE INDEX idx_profile_drafts_base ON profile_drafts(base_version_id, id DESC);
@@ -1023,6 +1026,32 @@ CREATE TABLE recipe_version_signature_overrides (
 CREATE UNIQUE INDEX idx_recipe_version_signature_overrides_live
     ON recipe_version_signature_overrides(recipe_version_id) WHERE status IN ('proposed', 'confirmed');
 
+CREATE TABLE signature_change_requests (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_version_id INTEGER NOT NULL REFERENCES profile_versions(id) ON DELETE CASCADE,
+    thread_id          INTEGER REFERENCES chat_threads(id) ON DELETE SET NULL,
+    -- NULL unless the request came with a profile draft: that one is answered by its draft.
+    draft_id           INTEGER REFERENCES profile_drafts(id) ON DELETE CASCADE,
+    reason             TEXT    NOT NULL CHECK (length(reason) BETWEEN 1 AND 500),
+    -- The changes, as a `StoredChanges` document (written through its model).
+    changes_json       TEXT    NOT NULL,
+    status             TEXT    NOT NULL DEFAULT 'waiting'
+                       CHECK (status IN ('waiting', 'approved', 'declined', 'stale')),
+    stale_reason       TEXT    NOT NULL DEFAULT '',
+    answer_reason      TEXT    NOT NULL DEFAULT '',
+    -- The expectation ids an approval wrote (a replacement's new row).
+    written_json       TEXT    NOT NULL DEFAULT '[]',
+    created_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    answered_at        TEXT
+) STRICT;
+CREATE INDEX idx_signature_change_requests_thread ON signature_change_requests(thread_id, id);
+CREATE INDEX idx_signature_change_requests_version
+    ON signature_change_requests(profile_version_id, id DESC);
+CREATE INDEX idx_signature_change_requests_draft
+    ON signature_change_requests(draft_id) WHERE draft_id IS NOT NULL;
+CREATE INDEX idx_signature_change_requests_waiting
+    ON signature_change_requests(id) WHERE status = 'waiting';
+
 CREATE TABLE shot_reviews (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     shot_id            INTEGER NOT NULL REFERENCES shots(id) ON DELETE CASCADE,
@@ -1384,4 +1413,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;

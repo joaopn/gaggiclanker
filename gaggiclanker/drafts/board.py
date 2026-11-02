@@ -140,6 +140,7 @@ from gaggiclanker.drafts.standing import RowFacts, StandingState, classify
 from gaggiclanker.drafts.taken_names import NameHolder, TakenNames
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.signatures.change_requests import SignatureRequestService
 from gaggiclanker.signatures.service import SignatureService
 
 __all__ = [
@@ -534,6 +535,7 @@ class BoardService:
         self.board = ProfileBoardRepository(db)
         self.profiles = ProfilesRepository(db)
         self.signatures = SignatureService(db)
+        self.signature_requests = SignatureRequestService(db)
         self.recipes = RecipesRepository(db)
         self.drafts = ProfileDraftsRepository(db)
         self.writes = DeviceWritesRepository(db)
@@ -1419,6 +1421,7 @@ class BoardService:
                 kept = await self.board.version_for(back.id, version.id)
                 await self.board.add_version(back.id, kept, source)
                 await self._follow(draft, kept)
+                await self._apply_signature_changes(draft, kept)
                 await self._recipe_follows(back.id, kept, draft=draft, major=major)
                 return back
             created = await self.board.insert(
@@ -1431,6 +1434,7 @@ class BoardService:
                 )
             )
             await self._follow(draft, created.current_version_id)
+            await self._apply_signature_changes(draft, created.current_version_id)
             return created
         kept = await self.board.version_for(row.id, version.id)
         await self.board.add_version(row.id, kept, source)
@@ -1451,8 +1455,18 @@ class BoardService:
         )
         assert updated is not None  # the row was read in this transaction
         await self._follow(draft, kept)
+        await self._apply_signature_changes(draft, kept)
         await self._recipe_follows(updated.id, kept, draft=draft, major=major)
         return updated
+
+    async def _apply_signature_changes(self, draft: ProfileDraftRow, version_id: int) -> None:
+        """Approving a draft applies the signature changes that came with it, to the version the
+        profile ended up with, after any carrying the put did and in the put's transaction.
+
+        A change that no longer applies makes the request stale, and the approval goes on
+        without it; the card then says which change was not applied.
+        """
+        await self.signature_requests.apply_for_draft(draft.id, version_id)
 
     async def _follow(self, draft: ProfileDraftRow, version_id: int) -> None:
         """Make the draft name the version its profile ended up with.

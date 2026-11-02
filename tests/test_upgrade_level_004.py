@@ -659,6 +659,9 @@ async def test_the_application_reads_every_rewritten_document_as_it_wrote_it(
     level3: Level3,
 ) -> None:
     level3.upgrade()
+    # The application reads with today's code, so the later steps carry the file on first.
+    level3.conn.close()
+    assert upgrade_database_file(level3.path, level3.path.parent, steps=STEPS, now=NOW)
     ids = level3.ids
     db = Database(level3.path)
     await db.connect()

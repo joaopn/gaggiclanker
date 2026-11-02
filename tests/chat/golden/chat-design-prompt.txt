@@ -98,6 +98,11 @@ this Recipe forks or the one on the card), give it a `reached` expectation for e
 shot that skips one fails its Checks instead of passing unnoticed. This
 changes what a signature says, not how often you propose one.
 
+You cannot change, retire or put back an expectation yourself: ask with
+`request_signature_change`, and the person answers on its card in this
+conversation. For a temperature, prefer the setpoint offset
+(`offset_from: "profile_temperature"`) to an absolute limit.
+
 ONE CARD, AND NOTHING EXISTS UNTIL THEY ACCEPT IT
 
 `propose_initial_recipe` puts the whole of version 1 — the profile, the grind, the

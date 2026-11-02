@@ -1647,6 +1647,125 @@ async def test_the_proposing_conversation_sees_its_proposals_in_force_and_is_tol
     assert second.id != first.id
 
 
+async def test_the_conversation_is_told_what_became_of_the_changes_it_asked_for(
+    experiment: Experiment,
+) -> None:
+    """One line per change with the request's state: waiting, approved (naming the row written),
+    declined with the reason, no longer open with why. This conversation's only."""
+    from gaggiclanker.signatures.change_requests import ChangeIn, SignatureRequestService
+
+    db = experiment.db
+    profile_id = await _own_profile_version(experiment)
+    mine = await _thread(db, experiment.recipe_id, experiment.v5)
+    other = await _thread(db, experiment.recipe_id, experiment.v5)
+    rows = await SignatureService(db).propose(profile_id, EXPECTATIONS[:3], reason="r")
+    service = SignatureRequestService(db)
+    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
+    title = "SIGNATURE CHANGES YOU REQUESTED IN THIS CONVERSATION"
+
+    async def ask(change: ChangeIn) -> int:
+        row = await service.request(
+            profile_version_id=profile_id,
+            changes=[change],
+            reason="because",
+            thread_id=mine,
+            recipe_version_id=experiment.v5,
+        )
+        return row.id
+
+    def retire(row_id: int) -> ChangeIn:
+        return ChangeIn(
+            kind="retire", expectation_id=row_id, reason="No longer true of this profile."
+        )
+
+    declined = await ask(retire(rows[0].id))
+    approved = await ask(
+        ChangeIn(
+            kind="replace",
+            expectation_id=rows[1].id,
+            reason="The limit was written for a bigger cup.",
+            expectation=ExpectationInput(
+                tier="critical",
+                kind="measure",
+                phase="Ramp down",
+                expression={
+                    "channel": "cup_weight",
+                    "op": "at_end",
+                    "window": {"phase": "Ramp down"},
+                    "relative_to": "target_yield",
+                    "compare": {"op": "<=", "value": 0.9},
+                },
+            ),
+        )
+    )
+    stale = await ask(retire(rows[2].id))
+    waiting = await ask(
+        ChangeIn(
+            kind="tier",
+            expectation_id=rows[2].id,
+            tier="context",
+            reason="It is a note, not a fault.",
+        )
+    )
+    # (the tier request replaces the retirement of the same row: that one is stale now)
+    await service.decline(declined, "keep it, the Hammer matters")
+    made = (await service.approve(approved)).request
+    assert made is not None
+
+    told = await opening_context(db, scope, thread_id=mine)
+    block = told[told.index(title) :].split("\n\n")[0].splitlines()
+    assert block[0] == title
+    lines = {line.split(":")[0]: line for line in block[1:]}
+    assert lines[f"- request #{declined}"].endswith(
+        '(declined by the person: "keep it, the Hammer matters")'
+    )
+    assert f"approved: in force now as #{made.written[0]})" in lines[f"- request #{approved}"]
+    assert lines[f"- request #{stale}"].endswith("(no longer open. A newer request replaced it.)")
+    assert lines[f"- request #{waiting}"].endswith(
+        "(waiting: nothing changes until the person presses Approve)"
+    )
+    assert f"retire #{rows[0].id} " in lines[f"- request #{declined}"]
+    assert "from important to context" in lines[f"- request #{waiting}"]
+    # Another conversation of the Recipe is told nothing of them.
+    assert title not in await opening_context(db, scope, thread_id=other)
+    assert title not in await opening_context(db, scope)
+
+
+async def test_a_request_lands_after_the_profile_block_in_the_cache_prefix(
+    experiment: Experiment,
+) -> None:
+    """Add a request: the first changed byte comes after the profile block."""
+    from gaggiclanker.signatures.change_requests import ChangeIn, SignatureRequestService
+
+    db = experiment.db
+    profile_id = await _own_profile_version(experiment)
+    thread = await _thread(db, experiment.recipe_id, experiment.v5)
+    rows = await SignatureService(db).propose(
+        profile_id, EXPECTATIONS[:1], reason="r", thread_id=thread
+    )
+    scope = ToolScope.for_thread(experiment.recipe_id, experiment.v5)
+    before = await opening_context(db, scope, thread_id=thread)
+    block_end = before.index("THIS CONVERSATION IS ABOUT ONE VERSION OF ONE RECIPE")
+
+    row = await SignatureRequestService(db).request(
+        profile_version_id=profile_id,
+        changes=[
+            ChangeIn(kind="retire", expectation_id=rows[0].id, reason="No longer true of it.")
+        ],
+        reason="because",
+        thread_id=thread,
+        recipe_version_id=experiment.v5,
+    )
+    after = await opening_context(db, scope, thread_id=thread)
+    assert after != before
+    assert _first_difference(before, after) > block_end
+    assert after[:block_end] == before[:block_end]
+    # The answer moves it too, and also only after the block.
+    await SignatureRequestService(db).decline(row.id, "keep it")
+    declined = await opening_context(db, scope, thread_id=thread)
+    assert _first_difference(after, declined) > block_end
+
+
 async def test_get_profile_serves_the_signature_in_force_and_nothing_else(
     experiment: Experiment,
 ) -> None:

@@ -66,6 +66,7 @@ from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.recipes import grind_value, parse_version_label
 from gaggiclanker.domain.signature import ExpectationInput, SignatureRefused
+from gaggiclanker.domain.signature_changes import CHANGE_REASON_MIN, MAX_CHANGES
 from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance, ShotLabel
 from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -74,6 +75,12 @@ from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.glossary import extended_meanings
 from gaggiclanker.shotinfo.render import load_shots, needs_samples, render_shot, with_samples
 from gaggiclanker.shotinfo.search import SEARCH_LIMIT, ShotQuery, search_shots
+from gaggiclanker.signatures.change_requests import (
+    ChangeIn,
+    ChangeView,
+    DraftSignatureChanges,
+    SignatureRequestService,
+)
 from gaggiclanker.signatures.lines import signature_lines
 from gaggiclanker.signatures.service import DraftSignature, SignatureService, validate_all
 from gaggiclanker.tools.registry import ToolContext, tool
@@ -1281,6 +1288,7 @@ PREDICTION_MIN_CHARS = 20
 #: How many expectations one proposal may carry: a signature is what a profile is for, in a
 #: handful of lines, not an inventory.
 SIGNATURE_MAX_EXPECTATIONS = 12
+SIGNATURE_MAX_CHANGES = MAX_CHANGES
 
 #: What a major version is, in the maintainer's words, for both tools that may
 #: suggest one. The person decides on the card; the agent only suggests.
@@ -1857,6 +1865,23 @@ async def _signature_profile_versions(ctx: ToolContext, recipe_id: int) -> set[i
     }
 
 
+async def _refuse_a_version_outside(ctx: ToolContext, profile_version_id: int, verb: str) -> None:
+    """The one refusal for a profile version this conversation is not about (the same words
+    whether or not it exists), shared by the tools that write to a signature."""
+    recipe_id = _resolve_recipe(ctx, None)
+    if profile_version_id not in await _signature_profile_versions(ctx, recipe_id):
+        raise ValueError(
+            "That profile version is not one this conversation is about. "
+            + (
+                f"While a Recipe is being designed, {verb} the profile it forks or the one on "
+                "the card."
+                if ctx.scope.designing
+                else f"{verb.capitalize()} a profile one of this Recipe's versions brews: the one "
+                "this version brews is at the top of your context."
+            )
+        )
+
+
 @tool(
     "propose_signature",
     permission="propose",
@@ -1877,19 +1902,7 @@ async def propose_signature(
     ctx: ToolContext, args: ProposeSignatureInput
 ) -> ProposeSignatureOutput:
     """The agent's signature as rows a person answers. Never a check."""
-    recipe_id = _resolve_recipe(ctx, None)
-    allowed = await _signature_profile_versions(ctx, recipe_id)
-    if args.profile_version_id not in allowed:
-        raise ValueError(
-            "That profile version is not one this conversation is about. "
-            + (
-                "While a Recipe is being designed, propose for the profile it forks or the one "
-                "on the card."
-                if ctx.scope.designing
-                else "Propose for a profile one of this Recipe's versions brews: the one this "
-                "version brews is at the top of your context."
-            )
-        )
+    await _refuse_a_version_outside(ctx, args.profile_version_id, "propose for")
     service = SignatureService(ctx.db)
     try:
         rows = await service.propose(
@@ -2000,6 +2013,129 @@ async def propose_signature_override(
     )
 
 
+class RequestSignatureChangeInput(_Model):
+    profile_version_id: int = Field(
+        gt=0,
+        description=(
+            "The profile version whose signature the changes are for, as for propose_signature: "
+            "the one this Recipe version brews is at the top of your context."
+        ),
+    )
+    changes: list[ChangeIn] = Field(
+        min_length=1,
+        max_length=SIGNATURE_MAX_CHANGES,
+        description=(
+            "What you ask for, one change per line, each with its own reason of at least "
+            f"{CHANGE_REASON_MIN} characters. replace: take an expectation in force out and put "
+            "a new one in its place (expectation_id, and expectation in the shape "
+            "propose_signature takes). retire: take one in force out. tier: move one in force "
+            "to another tier. put_back: ask for one the person rejected to come back. "
+            "put_back_override: ask for this version's rejected different limit to come back "
+            "(Recipe conversation only; override_id). At most one change per row."
+        ),
+    )
+    reason: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Why you ask, as a whole: what you saw that the signature does not say.",
+    )
+
+
+class RequestedChange(_Model):
+    kind: str
+    description: str
+
+
+class RequestSignatureChangeOutput(_Model):
+    request_id: int
+    profile_version_id: int
+    profile_label: str
+    status: str = "waiting"
+    changes: list[RequestedChange]
+    note: str = ""
+
+
+@tool(
+    "request_signature_change",
+    permission="propose",
+    description=(
+        "ASK for a change to a profile version's signature that you cannot make yourself: "
+        "replace an expectation in force with another, retire one, move one to another tier, or "
+        "put back one the person rejected (or, in a Recipe conversation, one of this version's "
+        "different limits they rejected). You cannot change, retire or put back an expectation "
+        "yourself; this writes one request and NOTHING changes until the person presses "
+        "Approve on its card in this conversation. The card shows each change with your reason "
+        "and, for a replacement or a retirement, how many of the version's shots fail the check "
+        "now and after. You are told their answer at your next message, and may ask again after "
+        "a Decline. Use it when a limit is wrong for the profile as it is now (a temperature "
+        "floor written under the old setpoint) and say what you saw; for a limit that follows "
+        "the setpoint write the replacement with offset_from. A refusal names every problem, "
+        "and writes nothing."
+    ),
+)
+async def request_signature_change(
+    ctx: ToolContext, args: RequestSignatureChangeInput
+) -> RequestSignatureChangeOutput:
+    """A request as a row a person answers. It is never a change: nothing is applied here."""
+    await _refuse_a_version_outside(ctx, args.profile_version_id, "ask about")
+    if ctx.thread_id is None:
+        raise ValueError(
+            "A signature change is answered on a card in a conversation, and this connection "
+            "has none."
+        )
+    recipe_version_id: int | None = None
+    if not ctx.scope.designing:
+        recipe_id = _resolve_recipe(ctx, None)
+        recipes = RecipesRepository(ctx.db)
+        version = (
+            await recipes.version_of_recipe(recipe_id, ctx.scope.recipe_version_id)
+            if ctx.scope.recipe_version_id is not None
+            else await recipes.current_version(recipe_id)
+        )
+        recipe_version_id = version.id if version is not None else None
+    service = SignatureRequestService(ctx.db)
+    try:
+        row = await service.request(
+            profile_version_id=args.profile_version_id,
+            changes=args.changes,
+            reason=args.reason.strip(),
+            thread_id=ctx.thread_id,
+            recipe_version_id=recipe_version_id,
+        )
+    except SignatureRefused as refused:
+        raise ValueError(str(refused)) from None
+    view = await service.view(row)
+    return RequestSignatureChangeOutput(
+        request_id=row.id,
+        profile_version_id=args.profile_version_id,
+        profile_label=view.profile_label,
+        changes=[RequestedChange(kind=c.kind, description=_change_line(c)) for c in view.changes],
+        note=(
+            "Nothing has changed. This is a card waiting for the person in this conversation: "
+            "they press Approve or Decline on it. Say what you asked and why, and that nothing "
+            "changes until they approve. You are told their answer at your next message; if "
+            "they decline you may ask again with a new request."
+        ),
+    )
+
+
+def _change_line(change: ChangeView) -> str:
+    """One change as a sentence for the agent's own result."""
+    target = (
+        f"override #{change.override_id}"
+        if change.override_id is not None
+        else f"#{change.expectation_id}"
+    )
+    quoted = f"“{change.old_sentence}”" if change.old_sentence else ""
+    if change.kind == "replace":
+        return f"replace {target} {quoted} with “{change.new_sentence}”"
+    if change.kind == "tier":
+        return f"move {target} {quoted} from {change.old_tier} to {change.new_tier}"
+    if change.kind == "put_back_override":
+        return f"put back the different limit {target} ({change.new_sentence}) for {quoted}"
+    return f"{change.kind.replace('_', ' ')} {target} {quoted}".strip()
+
+
 class DraftProfileInput(_Model):
     base_version_id: int | None = Field(
         default=None,
@@ -2070,6 +2206,18 @@ class DraftProfileInput(_Model):
             "version, unless the person rejects them on the Profiles page."
         ),
     )
+    signature_changes: list[ChangeIn] = Field(
+        default_factory=list,
+        max_length=SIGNATURE_MAX_CHANGES,
+        description=(
+            "Optional: changes to the base version's expectations that your patch makes wrong "
+            "(see affected_expectations in the result of an earlier draft, and "
+            "request_signature_change for the shapes: replace, retire, tier, put_back), naming "
+            "the BASE version's expectation ids. Nothing changes on the draft's version, and "
+            "nothing on the base, until the person approves the draft: the changes are shown on "
+            "its card and applied with it. Declining the draft drops them."
+        ),
+    )
 
 
 class DraftProfileOutput(_Model):
@@ -2088,6 +2236,11 @@ class DraftProfileOutput(_Model):
     suggest_major: bool = False
     #: How many expectations were stored, in force, with the draft.
     signature_proposed: int = 0
+    #: The base version's expectations your patch touches, each with the cause in words and
+    #: whether your signature_changes revise it. Revise the ones that should follow the patch.
+    affected_expectations: list[dict[str, Any]] = Field(default_factory=list)
+    #: The id of the request your signature_changes stored with the draft, when you sent some.
+    signature_request_id: int | None = None
     #: What the model should tell the person. A draft is further from the
     #: machine than a proposal is from the Recipe: somebody has to approve it on its card (saying
     #: which Recipe it is for), and a sync with writes on then sends it.
@@ -2232,19 +2385,34 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
             "version are checked against them unless the person rejects them on the Profiles "
             "page."
         )
-    draft = await ctx.drafts.create_manual(
-        base_version_id=base_version_id,
-        document=document,
-        change_summary=args.reason,
-        notes="Proposed in chat.",
-        recipe_id=recipe_id,
-        prediction=prediction if recipe_id is not None else "",
-        compares_to_version_id=compares_to,
-        suggest_major=suggest_major,
-        major_reason=major_reason,
-        signature=carried,
-        new_profile_name=args.new_profile_name,
-    )
+    changes: DraftSignatureChanges | None = None
+    if args.signature_changes:
+        changes = DraftSignatureChanges(
+            changes=tuple(args.signature_changes), reason=args.reason, thread_id=ctx.thread_id
+        )
+        note += (
+            f" {len(args.signature_changes)} change"
+            f"{'' if len(args.signature_changes) == 1 else 's'} to the base's signature were "
+            "stored with the draft: nothing changes until the person approves the draft, and "
+            "its card shows them. Say so."
+        )
+    try:
+        draft = await ctx.drafts.create_manual(
+            base_version_id=base_version_id,
+            document=document,
+            change_summary=args.reason,
+            notes="Proposed in chat.",
+            recipe_id=recipe_id,
+            prediction=prediction if recipe_id is not None else "",
+            compares_to_version_id=compares_to,
+            suggest_major=suggest_major,
+            major_reason=major_reason,
+            signature=carried,
+            signature_changes=changes,
+            new_profile_name=args.new_profile_name,
+        )
+    except SignatureRefused as refused:
+        raise ValueError(str(refused)) from None
     return DraftProfileOutput(
         draft_id=draft.id,
         status=draft.status,
@@ -2257,6 +2425,8 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         signature_proposed=(
             len(carried.expectations) - len(carried.skipped) if carried is not None else 0
         ),
+        affected_expectations=[a.model_dump(mode="json") for a in draft.affected_expectations],
+        signature_request_id=changes.request_id if changes is not None else None,
         note=note
         + (
             f" {len(carried.skipped)} of the expectations were not stored again: the draft's "
