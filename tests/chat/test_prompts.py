@@ -366,3 +366,18 @@ async def test_the_design_prompt_is_not_told_a_profile_is_already_given(
     )
     assert "already in" not in flat.split("get_profile")[0][-200:]
     assert "`get_profile` reads a profile's whole document" in flat
+
+
+def test_the_recipe_prompt_says_how_to_swap_the_override_in_force() -> None:
+    """The sentence the agent reads about swapping a version's different limit, pinned (the
+    golden pins the whole prompt; this names the rule so a rewrite has to keep it)."""
+    text = " ".join(
+        (Path(__file__).parents[2] / "gaggiclanker" / "prompts" / "chat-recipe.yaml")
+        .read_text()
+        .split()
+    )
+    assert (
+        "A version has one different limit at a time, so to swap the one in force for another "
+        "(for the same expectation or another), `propose_signature_override` cannot: ask with "
+        "`replace_override`."
+    ) in text

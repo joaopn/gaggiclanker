@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
-from gaggiclanker.domain.signature_changes import PutBackOverrideChange, StoredChanges
+from gaggiclanker.domain.signature_changes import OVERRIDE_CHANGES, StoredChanges
 
 log = structlog.get_logger(__name__)
 
@@ -264,7 +264,7 @@ class SignatureRequestsRepository(Repository):
                 continue
             for change in request.changes.changes:
                 if (
-                    isinstance(change, PutBackOverrideChange)
+                    isinstance(change, OVERRIDE_CHANGES)
                     and change.recipe_version_id == recipe_version_id
                     and change.override_id != except_override_id
                 ):
@@ -322,6 +322,34 @@ class SignatureRequestsRepository(Repository):
         )
         return [int(r["id"]) for r in rows]
 
+    async def open_prediction_of(self, recipe_version_id: int) -> str | None:
+        """This Recipe version's own name, when it has a prediction and no recorded outcome: the
+        only version an override of it can loosen anything for."""
+        row = await self.db.fetch_one(
+            f"""
+            SELECT r.name || ' ' || {label_sql("sv")} AS label FROM recipe_versions sv
+            JOIN recipes r ON r.id = sv.recipe_id
+            WHERE sv.id = ? AND sv.prediction != '' AND sv.outcome IS NULL
+            """,  # noqa: S608 - the one interpolation is the version label expression, a constant
+            (recipe_version_id,),
+        )
+        return None if row is None else str(row["label"])
+
+    async def shots_of_recipe_version(self, recipe_version_id: int) -> list[int]:
+        """The shots filed under this Recipe version that its checks are read for (the ones that
+        parsed and that the person has not discarded): the ones its override applies to."""
+        rows = await self.db.fetch_all(
+            """
+            SELECT s.id FROM shots s
+            LEFT JOIN shot_judgements j ON j.shot_id = s.id
+            WHERE s.quarantined = 0 AND COALESCE(j.discarded, 0) = 0
+              AND s.recipe_version_id = ?
+            ORDER BY s.id
+            """,
+            (recipe_version_id,),
+        )
+        return [int(r["id"]) for r in rows]
+
     async def open_prediction_label(self, profile_version_id: int) -> str | None:
         """The name of a Recipe version that brews this profile version (or its pin's copy), has
         a prediction and has no recorded outcome, with its Recipe's name ("Alturas v2"): the
@@ -340,6 +368,15 @@ class SignatureRequestsRepository(Repository):
             {"v": profile_version_id},
         )
         return None if row is None else str(row["label"])
+
+    async def recipe_version_label(self, recipe_version_id: int) -> str:
+        """A Recipe version as a person names it: "Alturas v2.3"."""
+        row = await self.db.fetch_one(
+            f"SELECT r.name || ' ' || {label_sql('sv')} AS label FROM recipe_versions sv "  # noqa: S608 - the one interpolation is the version label expression, a constant
+            "JOIN recipes r ON r.id = sv.recipe_id WHERE sv.id = ?",
+            (recipe_version_id,),
+        )
+        return "" if row is None else str(row["label"])
 
     async def version_label(self, profile_version_id: int) -> str | None:
         """How the Profiles page names this version (``"v3"``), counted from the profile's first

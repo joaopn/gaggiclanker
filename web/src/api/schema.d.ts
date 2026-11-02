@@ -4602,7 +4602,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "replace" | "retire" | "tier" | "put_back" | "put_back_override";
+            kind: "replace" | "retire" | "tier" | "put_back" | "put_back_override" | "replace_override";
             /**
              * New Limit Text
              * @default
@@ -4614,11 +4614,14 @@ export interface components {
              */
             new_sentence: string;
             new_tier?: components["schemas"]["ChangeTier"] | null;
+            /** Old Expectation Id */
+            old_expectation_id?: number | null;
             /**
              * Old Limit Text
              * @default
              */
             old_limit_text: string;
+            old_preview?: components["schemas"]["PreviewView"] | null;
             /**
              * Old Sentence
              * @default
@@ -4632,6 +4635,11 @@ export interface components {
             preview?: components["schemas"]["PreviewView"] | null;
             /** Reason */
             reason: string;
+            /**
+             * Recipe Version Label
+             * @default
+             */
+            recipe_version_label: string;
             /** Rejected At */
             rejected_at?: string | null;
             /**
@@ -4649,6 +4657,8 @@ export interface components {
             tier?: components["schemas"]["ChangeTier"] | null;
             /** Written Expectation Id */
             written_expectation_id?: number | null;
+            /** Written Override Id */
+            written_override_id?: number | null;
         };
         /** @enum {string} */
         ChatKind: "general" | "recipe";

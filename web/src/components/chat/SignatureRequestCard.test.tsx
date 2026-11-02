@@ -256,6 +256,178 @@ describe("SignatureRequestCard", () => {
     );
   });
 
+  describe("replacing the limit in force on a Recipe version", () => {
+    const swapChange = (overrides = {}) =>
+      requestChange({
+        kind: "replace_override",
+        override_id: 9,
+        expectation_id: 73,
+        old_expectation_id: 73,
+        recipe_version_label: "Regio Cappuccino v2.3",
+        tier: "important",
+        old_sentence: "lowest value of temperature in the Hold, at least 93 °C",
+        new_sentence: "lowest value of temperature in the Hold, at least 93 °C",
+        old_limit_text: "at least 91 °C",
+        new_limit_text: "at least 90.5 °C",
+        stays_in_force: [],
+        preview: { shots: 4, failing_now: 2, failing_after: 0 },
+        ...overrides,
+      });
+
+    it("names the Recipe version and the expectation, then the limit it was and will be", async () => {
+      getSignatureRequests.mockResolvedValue({
+        items: [signatureRequest({ changes: [swapChange()] })],
+      });
+      renderCard();
+
+      const card = await screen.findByTestId("signature-request-card");
+      expect(card).toHaveTextContent(
+        "Replace limit · Regio Cappuccino v2.3 · lowest value of temperature in the Hold",
+      );
+      expect(within(card).getByTestId("request-limits")).toHaveTextContent(
+        "at least 91 °C → at least 90.5 °C",
+      );
+      expect(within(card).getByTestId("request-preview")).toHaveTextContent(
+        "On this version's 4 shots: this check fails on 2 now, and would pass on all 4.",
+      );
+      expect(card).toHaveTextContent("Nothing changes until you press Approve");
+    });
+
+    it("names both expectations when the new limit is for another", async () => {
+      getSignatureRequests.mockResolvedValue({
+        items: [
+          signatureRequest({
+            changes: [
+              swapChange({
+                expectation_id: 77,
+                new_sentence: "highest value of temperature in the Hold, at most 96 °C",
+                new_limit_text: "at most 97 °C",
+              }),
+            ],
+          }),
+        ],
+      });
+      renderCard();
+
+      expect(await screen.findByTestId("request-limits")).toHaveTextContent(
+        "lowest value of temperature in the Hold, at least 91 °C → highest value of temperature in the Hold, at most 97 °C",
+      );
+    });
+
+    it("gives each expectation the swap touches its own line, and says the old one is handed back", async () => {
+      const swapped = swapChange({
+        expectation_id: 77,
+        new_sentence: "highest value of temperature in the Hold, at most 96 °C",
+        new_limit_text: "at most 97 °C",
+        preview: { shots: 4, failing_now: 1, failing_after: 0 },
+        old_preview: { shots: 4, failing_now: 2, failing_after: 4 },
+      });
+      getSignatureRequests.mockResolvedValue({ items: [signatureRequest({ changes: [swapped] })] });
+      const waiting = renderCard();
+
+      expect(await screen.findByTestId("request-preview")).toHaveTextContent(
+        "On this version's 4 shots: this check fails on 1 now, and would pass on all 4.",
+      );
+      expect(screen.getByTestId("request-old-preview")).toHaveTextContent(
+        "And “lowest value of temperature in the Hold”, back on the profile's limit: this check fails on 2 now, and would fail on 4.",
+      );
+      waiting.unmount();
+
+      getSignatureRequests.mockResolvedValue({
+        items: [
+          signatureRequest({
+            status: "approved",
+            answered_at: "2026-11-01T10:00:00.000Z",
+            changes: [{ ...swapped, preview: null, old_preview: null }],
+          }),
+        ],
+      });
+      renderCard();
+      expect(await screen.findByTestId("request-answer")).toHaveTextContent(
+        "“lowest value of temperature in the Hold, at least 91 °C” is rejected with the agent's reason; “highest value of temperature in the Hold, at most 97 °C” is in force for this version. “lowest value of temperature in the Hold, at least 93 °C” is back on the profile's limit.",
+      );
+    });
+
+    it("says what became of the rows once approved, declined or no longer open", async () => {
+      getSignatureRequests.mockResolvedValue({
+        items: [
+          signatureRequest({
+            status: "approved",
+            answered_at: "2026-11-01T10:00:00.000Z",
+            changes: [swapChange({ written_override_id: 12, preview: null })],
+          }),
+        ],
+      });
+      const approved = renderCard();
+      expect(await screen.findByTestId("request-answer")).toHaveTextContent(
+        "“at least 91 °C” is rejected with the agent's reason; “at least 90.5 °C” is in force for this version.",
+      );
+      expect(screen.getByTestId("request-answer")).toHaveTextContent(
+        "The replaced limit is under Rejected on the Recipe page",
+      );
+      approved.unmount();
+
+      getSignatureRequests.mockResolvedValue({
+        items: [
+          signatureRequest({
+            status: "declined",
+            answer_reason: "keep the old one",
+            answered_at: "2026-11-01T10:00:00.000Z",
+            changes: [swapChange({ preview: null })],
+          }),
+        ],
+      });
+      const declined = renderCard();
+      expect(await screen.findByTestId("request-declined")).toHaveTextContent(
+        "“keep the old one”. Nothing changed",
+      );
+      declined.unmount();
+
+      getSignatureRequests.mockResolvedValue({
+        items: [
+          signatureRequest({
+            status: "stale",
+            stale_reason: "You rejected the different limit for “lowest value” on the Recipe page.",
+            answered_at: "2026-11-01T10:00:00.000Z",
+            changes: [swapChange({ preview: null })],
+          }),
+        ],
+      });
+      renderCard();
+      expect(await screen.findByTestId("request-stale")).toHaveTextContent(
+        "No longer open. You rejected the different limit for “lowest value” on the Recipe page. Nothing was changed.",
+      );
+    });
+  });
+
+  it("lists, under a replacement, the other limits that stay in force on the same side", async () => {
+    getSignatureRequests.mockResolvedValue({
+      items: [
+        signatureRequest({
+          changes: [
+            requestChange({
+              stays_in_force: [
+                {
+                  expectation_id: 77,
+                  words: "lowest value of temperature in the Hold, at least 91 °C",
+                },
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    renderCard();
+
+    const stays = await screen.findAllByTestId("request-stays");
+    // The server sends floors under a floor: a ceiling is not among them, and the card says
+    // nothing of any other row.
+    expect(stays).toHaveLength(1);
+    expect(stays[0]).toHaveTextContent(
+      "#77 “lowest value of temperature in the Hold, at least 91 °C” stays in force.",
+    );
+  });
+
   it("approves on Approve and then says what became of the rows", async () => {
     const user = setupUser();
     const approved = signatureRequest({

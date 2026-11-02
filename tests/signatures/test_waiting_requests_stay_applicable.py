@@ -79,14 +79,89 @@ class World:
     async def setup(self) -> None:
         self.version = await _version(self.db, LEVER_PROFILE)
         self.rv1, self.rv2 = await make_recipe_versions(self.db, self.version)
+        # The Recipe's second version brews another profile version (a carried copy), so a swap
+        # for the wrong one of the two can be tried.
+        self.other_profile = await _version(
+            self.db, {**LEVER_PROFILE, "label": "the other", "temperature": 92.0}
+        )
         recipe_id = await self.repo.recipe_of_version(self.rv1)
         assert recipe_id is not None
         self.thread = await make_thread(self.db, recipe_id)
         await SignatureService(self.db).propose(
             self.version, [expectation(i) for i in range(INITIAL)], reason="What it is for."
         )
+        await SignatureService(self.db).carry(self.version, self.other_profile)
+        await self.db.execute(
+            "UPDATE recipe_versions SET profile_version_id = ? WHERE id = ?",
+            (self.other_profile, self.rv2),
+        )
+
+    async def ask_a_swap_for_the_wrong_profile(self) -> None:
+        """A swap for the Recipe's other version, named with the profile version it does not
+        brew: always refused, whatever is in force."""
+        copies = await self.repo.for_version(self.other_profile)
+        confirmed = [
+            r
+            for r in copies
+            if r.status == "confirmed"
+            and r.expression is not None
+            and r.expression.compare is not None
+            and r.expression.compare.op != "between"
+        ]
+        if not confirmed:
+            return
+        target = confirmed[0]
+        assert target.expression is not None and target.expression.compare is not None
+        live = await self.repo.overrides_for_recipe_version(self.rv2, statuses=["confirmed"])
+        if live:
+            override = live[0].id
+        else:
+            try:
+                override = (
+                    await SignatureService(self.db).propose_override(
+                        recipe_version_id=self.rv2,
+                        profile_version_id=self.other_profile,
+                        expectation_id=target.id,
+                        compare={
+                            "op": target.expression.compare.op,
+                            "value": (target.expression.compare.value or 0) + 0.25,
+                        },
+                        reason="This version's beans sag a bit more than the profile assumes.",
+                        thread_id=self.thread,
+                    )
+                ).id
+            except SignatureRefused:
+                return
+        with pytest.raises(SignatureRefused):
+            await self.service.request(
+                profile_version_id=self.version,
+                changes=[
+                    want(
+                        "replace_override",
+                        reason=REASON,
+                        override_id=override,
+                        expectation_id=(await self.rows())[0].id,
+                        override={"op": ">=", "value": 90.0},
+                    )
+                ],
+                reason="For the wrong profile version.",
+                thread_id=self.thread,
+                recipe_version_id=self.rv2,
+            )
+        self.log.append("wrong-profile swap refused")
 
     async def invariant(self, step: str) -> None:
+        # Every override in force is for an expectation of the profile version its Recipe
+        # version brews, however it got there.
+        for held in await self.db.fetch_all(
+            "SELECT o.id AS id, p.profile_version_id AS target, rv.profile_version_id AS brewed "
+            "FROM recipe_version_signature_overrides o "
+            "JOIN signature_expectations e ON e.id = o.expectation_id "
+            "JOIN profile_signatures p ON p.id = e.signature_id "
+            "JOIN recipe_versions rv ON rv.id = o.recipe_version_id "
+            "WHERE o.status IN ('proposed', 'confirmed')"
+        ):
+            assert held["target"] == held["brewed"], (step, "override for another profile", held)
         # Whatever staled a request, the card says why in one whole sentence.
         for stale in await self.db.fetch_all(
             "SELECT stale_reason FROM signature_change_requests WHERE status = 'stale'"
@@ -177,6 +252,42 @@ class World:
             self.log.append("ask put_back_override")
         except SignatureRefused:
             self.log.append("ask put_back_override refused")
+
+    async def ask_replace_override(self) -> None:
+        """Swap the override in force for a limit on a random expectation."""
+        live = [o for o in await self.overrides() if o["status"] == "confirmed"]
+        rows = [
+            r
+            for r in await self.rows()
+            if r.status == "confirmed"
+            and r.expression is not None
+            and r.expression.compare is not None
+            and r.expression.compare.op != "between"
+        ]
+        if not live or not rows:
+            return
+        target = self.rng.choice(rows)
+        assert target.expression is not None and target.expression.compare is not None
+        value = (target.expression.compare.value or 0) + self.rng.choice([-0.7, -0.2, 0.2])
+        try:
+            await self.service.request(
+                profile_version_id=self.version,
+                changes=[
+                    want(
+                        "replace_override",
+                        reason=REASON,
+                        override_id=int(live[0]["id"]),
+                        expectation_id=target.id,
+                        override={"op": target.expression.compare.op, "value": value},
+                    )
+                ],
+                reason="Another limit for this version.",
+                thread_id=self.thread,
+                recipe_version_id=self.rv1,
+            )
+            self.log.append("ask replace_override")
+        except SignatureRefused:
+            self.log.append("ask replace_override refused")
 
     async def person_on_an_overrides_row(self) -> None:
         """The person answers the expectation an override is a limit for."""
@@ -285,13 +396,15 @@ class World:
             [
                 self.ask,
                 self.ask_put_back,
+                self.ask_replace_override,
+                self.ask_a_swap_for_the_wrong_profile,
                 self.person_on_an_overrides_row,
                 self.answer,
                 self.person,
                 self.override,
                 self.propose,
             ],
-            weights=[20, 14, 8, 12, 12, 16, 6],
+            weights=[20, 14, 12, 6, 8, 12, 12, 16, 6],
         )[0]
         await action()
         await self.invariant(action.__name__)

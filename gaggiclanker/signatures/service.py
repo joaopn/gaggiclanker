@@ -26,6 +26,7 @@ from gaggiclanker.db.repos.signatures import (
     SignatureRepository,
 )
 from gaggiclanker.domain.metric_language import (
+    Compare,
     Expression,
     PhaseEndAnchor,
     PhaseStartAnchor,
@@ -37,13 +38,20 @@ from gaggiclanker.domain.signature import (
     ValidExpectation,
     expectation_identity,
     phase_key,
+    sentence_with_unit,
     validate_compare,
     validate_expectation,
 )
 
 log = structlog.get_logger(__name__)
 
-__all__ = ["DraftSignature", "SignatureService", "split_duplicates", "validate_all"]
+__all__ = [
+    "DraftSignature",
+    "OverrideInvalid",
+    "SignatureService",
+    "split_duplicates",
+    "validate_all",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +185,15 @@ def _named_phases(row: ExpectationRow) -> list[str]:
             elif isinstance(anchor, PhaseEndAnchor):
                 names.append(anchor.phase_end)
     return names
+
+
+class OverrideInvalid(SignatureRefused):
+    """An override that cannot be put in force, said for the agent (the message) and for the
+    person who reads it on a card (``person``)."""
+
+    def __init__(self, agent: str, person: str) -> None:
+        super().__init__(agent)
+        self.person = person
 
 
 class SignatureService:
@@ -324,6 +341,70 @@ class SignatureService:
 
     # ── overrides ────────────────────────────────────────────────────
 
+    async def validate_override(
+        self,
+        *,
+        recipe_version_id: int,
+        profile_version_id: int | None,
+        expectation_id: int,
+        compare: Mapping[str, Any],
+    ) -> tuple[ExpectationRow, Compare]:
+        """Whether this limit may be put in force for this expectation on this Recipe version.
+
+        **The one validation** of an override: ``propose_override`` runs it before it writes, and
+        a request to replace the override in force runs it again at ask and at approve. It does
+        not look at the one-at-a-time rule (the repository decides that in the transaction that
+        writes), so a swap, which withdraws the override first, can read the rest as it would be.
+        Raises :class:`OverrideInvalid`: the agent's sentence, and the person's.
+        """
+        target = await self.repo.get(expectation_id)
+        if (
+            target is None
+            or profile_version_id is None
+            or target.profile_version_id != profile_version_id
+        ):
+            raise OverrideInvalid(
+                "That expectation is not one of this version's profile signature.",
+                "The limit is for an expectation that is not on this version's profile.",
+            )
+        if target.status != "confirmed":
+            raise OverrideInvalid(
+                "Only an expectation in force can be overridden: the person rejected this one, "
+                "or it is waiting on a phase the profile no longer has.",
+                f"“{sentence_with_unit(target.sentence, target.expression)}” is not in force, "
+                "so it has no limit to replace.",
+            )
+        if (
+            target.kind != "measure"
+            or target.expression is None
+            or target.expression.compare is None
+        ):
+            raise OverrideInvalid(
+                "Only a measure has a limit to override.",
+                f"“{target.sentence}” is not a measure, so it has no limit to replace.",
+            )
+        try:
+            new = validate_compare(compare)
+        except SignatureRefused as refused:
+            raise OverrideInvalid(str(refused), "The new limit is not a valid limit.") from None
+        old = target.expression.compare
+        if new.op != old.op:
+            raise OverrideInvalid(
+                f"An override changes the limit's numbers, not its comparison: this one is "
+                f"{old.op!r}, so use {old.op!r} with other values.",
+                "The new limit would change the comparison, and only its numbers may change.",
+            )
+        for item in await self.repo.overrides_for_recipe_version(
+            recipe_version_id, statuses=["rejected"]
+        ):
+            if item.expectation_id == expectation_id and item.compare == new:
+                raise OverrideInvalid(
+                    "The person rejected exactly this limit for this version (only they can "
+                    "restore it): propose a different one, or say what you would change.",
+                    "You rejected exactly this limit for this version before.",
+                )
+        return target, new
+
     async def propose_override(
         self,
         *,
@@ -341,41 +422,12 @@ class SignatureService:
         expectation replaces the one in force (recorded as withdrawn, not as a rejection). Raises
         :class:`SignatureRefused` with what was wrong.
         """
-        target = await self.repo.get(expectation_id)
-        if (
-            target is None
-            or profile_version_id is None
-            or target.profile_version_id != profile_version_id
-        ):
-            raise SignatureRefused(
-                "That expectation is not one of this version's profile signature."
-            )
-        if target.status != "confirmed":
-            raise SignatureRefused(
-                "Only an expectation in force can be overridden: the person rejected this one, "
-                "or it is waiting on a phase the profile no longer has."
-            )
-        if (
-            target.kind != "measure"
-            or target.expression is None
-            or target.expression.compare is None
-        ):
-            raise SignatureRefused("Only a measure has a limit to override.")
-        new = validate_compare(compare)
-        old = target.expression.compare
-        if new.op != old.op:
-            raise SignatureRefused(
-                f"An override changes the limit's numbers, not its comparison: this one is "
-                f"{old.op!r}, so use {old.op!r} with other values."
-            )
-        for item in await self.repo.overrides_for_recipe_version(
-            recipe_version_id, statuses=["rejected"]
-        ):
-            if item.expectation_id == expectation_id and item.compare == new:
-                raise SignatureRefused(
-                    "The person rejected exactly this limit for this version (only they can "
-                    "restore it): propose a different one, or say what you would change."
-                )
+        _target, new = await self.validate_override(
+            recipe_version_id=recipe_version_id,
+            profile_version_id=profile_version_id,
+            expectation_id=expectation_id,
+            compare=compare,
+        )
         # One override is in force per Recipe version (the schema's partial unique index): a newer
         # one for the same expectation takes its place; one for another expectation would
         # silently drop that other limit, so the repository refuses it inside the same
@@ -393,7 +445,8 @@ class SignatureService:
         except AnotherOverrideInForce as other:
             raise SignatureRefused(
                 f"This version already has an override in force for expectation "
-                f"#{other.expectation_id}, and a version has one at a time. The person can "
-                "reject it on the Recipe page, and then you can put another in force. Say what "
-                "you would change instead of proposing one now."
+                f"#{other.expectation_id}, and a version has one at a time. To swap it for "
+                "another, call request_signature_change with a replace_override change (the "
+                "person approves it on a card in this conversation); or the person can reject "
+                "it on the Recipe page."
             ) from None

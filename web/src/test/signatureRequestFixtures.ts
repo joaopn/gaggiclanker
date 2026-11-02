@@ -20,6 +20,10 @@ export function requestChange(
     rejected_reason: "",
     rejected_at: null,
     written_expectation_id: null,
+    written_override_id: null,
+    old_preview: null,
+    old_expectation_id: null,
+    recipe_version_label: "",
     preview: { shots: 9, failing_now: 9, failing_after: 0 },
     summary: "lowest value of temperature in the Hold, at least 91.5 °C",
     stays_in_force: [

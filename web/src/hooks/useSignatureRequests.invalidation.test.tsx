@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAnswerSignatureRequest } from "@/hooks/useSignatureRequests";
 import { queryKeys } from "@/lib/queryKeys";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
-import { signatureRequest } from "@/test/signatureRequestFixtures";
+import { requestChange, signatureRequest } from "@/test/signatureRequestFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -83,5 +83,27 @@ describe("answering a signature request", () => {
 
     expect(keys).toContainEqual([...queryKeys.signatureRequests.all]);
     expect(keys).toContainEqual([...queryKeys.signatures.all]);
+  });
+});
+
+describe("what the toast says of an approval", () => {
+  it("says the Recipe version's limit changed for a swap, and the signature for the rest", async () => {
+    const { toast } = await import("sonner");
+    const swap = requestChange({ kind: "replace_override" });
+    approveSignatureRequest.mockResolvedValue({
+      request: signatureRequest({ status: "approved", changes: [swap] }),
+    });
+    const first = renderHookWithQueryClient(() => useAnswerSignatureRequest());
+    await first.result.current.mutateAsync({ requestId: 4, answer: "approve", threadId: 14 });
+    expect(toast.success).toHaveBeenLastCalledWith(
+      "Approved — this Recipe version's limit has changed",
+    );
+
+    approveSignatureRequest.mockResolvedValue({
+      request: signatureRequest({ status: "approved", changes: [swap, requestChange()] }),
+    });
+    const second = renderHookWithQueryClient(() => useAnswerSignatureRequest());
+    await second.result.current.mutateAsync({ requestId: 4, answer: "approve", threadId: 14 });
+    expect(toast.success).toHaveBeenLastCalledWith("Approved — the signature has changed");
   });
 });

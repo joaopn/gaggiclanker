@@ -1973,7 +1973,8 @@ class ProposeOverrideOutput(_Model):
         "the numbers of the compare change: never the expression, the tier or the phase. It "
         "is in force at once, unless the person rejects it on the Recipe page, and it applies to "
         "this version's shots alone. A version has one override at a time; a newer one for the "
-        "same expectation replaces it."
+        "same expectation replaces it, and to swap it for another expectation's, ask with "
+        "request_signature_change and a replace_override change."
     ),
 )
 async def propose_signature_override(
@@ -2031,7 +2032,11 @@ class RequestSignatureChangeInput(_Model):
             "propose_signature takes). retire: take one in force out. tier: move one in force "
             "to another tier. put_back: ask for one the person rejected to come back. "
             "put_back_override: ask for this version's rejected different limit to come back "
-            "(Recipe conversation only; override_id). At most one change per row."
+            "(Recipe conversation only; override_id). replace_override: swap the different limit "
+            "in force on this version for another, for the same expectation or another, in one "
+            "answer (Recipe conversation only; override_id of the one in force, expectation_id "
+            "and override, the new limit as for propose_signature_override). At most one change "
+            "per row."
         ),
     )
     reason: str = Field(
@@ -2062,15 +2067,17 @@ class RequestSignatureChangeOutput(_Model):
         "ASK for a change to a profile version's signature that you cannot make yourself: "
         "replace an expectation in force with another, retire one, move one to another tier, or "
         "put back one the person rejected (or, in a Recipe conversation, one of this version's "
-        "different limits they rejected). You cannot change, retire or put back an expectation "
-        "yourself; this writes one request and NOTHING changes until the person presses "
-        "Approve on its card in this conversation. The card shows each change with your reason "
-        "and, for a replacement or a retirement, how many of the version's shots fail the check "
-        "now and after. You are told their answer at your next message, and may ask again after "
-        "a Decline. Use it when a limit is wrong for the profile as it is now (a temperature "
-        "floor written under the old setpoint) and say what you saw; for a limit that follows "
-        "the setpoint write the replacement with offset_from. A refusal names every problem, "
-        "and writes nothing."
+        "different limits they rejected), or, in a Recipe conversation, swap the different "
+        "limit in force on this version for another (replace_override: "
+        "propose_signature_override cannot, since a version has one at a time). You cannot "
+        "change, retire or put back an expectation yourself; this writes one request and "
+        "NOTHING changes until the person presses Approve on its card in this conversation. "
+        "The card shows each change with your reason and, for a replacement or a retirement, "
+        "how many of the version's shots fail the check now and after. You are told their "
+        "answer at your next message, and may ask again after a Decline. Use it when a limit "
+        "is wrong for the profile as it is now (a temperature floor written under the old "
+        "setpoint) and say what you saw; for a limit that follows the setpoint write the "
+        "replacement with offset_from. A refusal names every problem, and writes nothing."
     ),
 )
 async def request_signature_change(
@@ -2133,6 +2140,12 @@ def _change_line(change: ChangeView) -> str:
         return f"move {target} {quoted} from {change.old_tier} to {change.new_tier}"
     if change.kind == "put_back_override":
         return f"put back the different limit {target} ({change.new_sentence}) for {quoted}"
+    if change.kind == "replace_override":
+        return (
+            f"replace the different limit {target} ({change.old_limit_text}) for "
+            f"#{change.old_expectation_id} {quoted} with "
+            f"{change.new_limit_text} for #{change.expectation_id} “{change.new_sentence}”"
+        )
     return f"{change.kind.replace('_', ' ')} {target} {quoted}".strip()
 
 

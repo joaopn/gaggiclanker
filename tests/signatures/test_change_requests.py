@@ -1212,6 +1212,10 @@ async def test_a_replacement_or_retirement_says_which_other_limits_stay_in_force
         ],
         reason="Two more.",
     )
+    # One phase spelt two ways: the same phase, whatever the case or the spaces around it.
+    await regio.db.execute(
+        "UPDATE signature_expectations SET phase = ' SoaK ' WHERE id = ?", (mean_here.id,)
+    )
     listed = await regio.service.view(await regio.ask(replacing(regio.high.id, floor(91.5))))
     by_id = {s.expectation_id: s.words for s in listed.changes[0].stays_in_force}
     assert elsewhere.id not in by_id

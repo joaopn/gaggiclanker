@@ -137,7 +137,7 @@ SIGNATURE_TABLES = (
 #: force. `propose` and `propose_override` are what the two propose tools call; `add_valid`
 #: (a draft's expectations, called by the draft store, not a tool) and the carrying are the
 #: service's other writers, none of them a tool's.
-SIGNATURE_SERVICE_READERS = frozenset({"phase_names", "count_in_force"})
+SIGNATURE_SERVICE_READERS = frozenset({"phase_names", "count_in_force", "validate_override"})
 SIGNATURES_IN_FORCE = frozenset({"propose", "propose_override"})
 SIGNATURE_SERVICE_WRITERS = frozenset(
     {"propose", "propose_override", "add_valid", "carry", "carry_quietly"}

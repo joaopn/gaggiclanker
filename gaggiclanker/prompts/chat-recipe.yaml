@@ -165,7 +165,9 @@ system: |
   is already in force, or what the person rejected, is theirs. Ask with
   `request_signature_change`: replace, retire, move a tier, or put back (a
   rejected expectation, or this version's rejected different limit), each
-  change with its own reason. The person answers on its card in this
+  change with its own reason. A version has one different limit at a time, so
+  to swap the one in force for another (for the same expectation or another),
+  `propose_signature_override` cannot: ask with `replace_override`. The person answers on its card in this
   conversation, and nothing changes until they press Approve. You are told
   their answer at your next message, in the record at the end; a request they
   declined is information, and you may ask again only with something new to say.

@@ -302,3 +302,78 @@ async def test_the_tool_descriptions_say_you_cannot_change_a_signature_yourself(
         "You cannot change, retire or put back an expectation yourself; this writes one request "
         "and NOTHING changes until the person presses Approve on its card in this conversation."
     ) in spec.description
+
+
+async def test_a_recipe_conversation_swaps_its_versions_override_and_a_design_cannot(
+    recipe_ctx: ToolContext, ctx: ToolContext, archive: Fixture
+) -> None:
+    rows = await _in_force(archive)
+    override = await SignatureService(archive.db).propose_override(
+        recipe_version_id=archive.version_id,
+        profile_version_id=archive.profile_version_id,
+        expectation_id=rows[0].id,
+        compare={"op": "<=", "value": 0.9},
+        reason="A coarser bean makes the cup run over.",
+        thread_id=None,
+    )
+    recipe_ctx.thread_id = await _thread(archive)
+    swap = {
+        "kind": "replace_override",
+        "override_id": override.id,
+        "expectation_id": rows[0].id,
+        "override": {"op": "<=", "value": 1.0},
+        "reason": SAME,
+    }
+    data = await call(recipe_ctx, "request_signature_change", **_ask(archive, swap))
+    assert data["status"] == "waiting"
+    assert data["changes"][0]["kind"] == "replace_override"
+    assert f"override #{override.id}" in data["changes"][0]["description"]
+    # Waiting changes nothing: the override is still the one in force.
+    assert (await SignatureRepository(archive.db).get_override(override.id)).status == "confirmed"  # type: ignore[union-attr]
+
+    # A design conversation has no Recipe version to swap on, and a draft never carries it.
+    from gaggiclanker.db.repos.recipes import DesignBrief, RecipesRepository, RecipeWrite
+
+    designed = await RecipesRepository(archive.db).create_design(
+        RecipeWrite(name="Designed", bean_id=archive.bean_id),
+        DesignBrief(fork_profile_version_id=archive.profile_version_id),
+    )
+    ctx.scope = ToolScope.for_thread(designed.id, designing=True)
+    created = await ChatRepository(archive.db).create_thread(
+        ChatThreadWrite(title="d", recipe_id=designed.id)
+    )
+    assert created.thread is not None
+    ctx.thread_id = created.thread.id
+    said = await refuse(ctx, "request_signature_change", **_ask(archive, swap))
+    assert "has none to replace one of" in said["detail"]
+
+
+async def test_the_override_tools_point_to_the_swap_in_words_that_are_pinned(
+    recipe_ctx: ToolContext, archive: Fixture
+) -> None:
+    from gaggiclanker.tools.registry import registry
+
+    rows = await _in_force(archive)
+    await call(
+        recipe_ctx,
+        "propose_signature_override",
+        expectation_id=rows[0].id,
+        compare={"op": "<=", "value": 0.9},
+        reason="A coarser bean makes the cup run over.",
+    )
+    refused = await refuse(
+        recipe_ctx,
+        "propose_signature_override",
+        expectation_id=rows[0].id + 1,
+        compare={"op": "<=", "value": 0.9},
+        reason="Another limit for the same version.",
+    )
+    assert refused["detail"]  # a sentence, whichever problem it names first
+    specs = {s.name: s.description for s in registry.specs()}
+    assert (
+        "swap it for another expectation's, ask with request_signature_change and a "
+        "replace_override change"
+    ) in specs["propose_signature_override"]
+    assert (
+        "replace_override: propose_signature_override cannot" in specs["request_signature_change"]
+    )

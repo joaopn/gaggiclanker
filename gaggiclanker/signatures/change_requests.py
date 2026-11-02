@@ -37,8 +37,14 @@ from gaggiclanker.db.repos.signature_requests import (
     SignatureRequestsRepository,
     SignatureRequestWrite,
 )
-from gaggiclanker.db.repos.signatures import ExpectationRow, ExpectationWrite, SignatureRepository
-from gaggiclanker.domain.metric_language import Expression, expression_unit
+from gaggiclanker.db.repos.signatures import (
+    ExpectationRow,
+    ExpectationWrite,
+    OverrideRow,
+    OverrideWrite,
+    SignatureRepository,
+)
+from gaggiclanker.domain.metric_language import Compare, Expression, expression_unit
 from gaggiclanker.domain.phase_names import phase_key, raw_phase_names
 from gaggiclanker.domain.signature import (
     ExpectationInput,
@@ -52,9 +58,11 @@ from gaggiclanker.domain.signature import (
 from gaggiclanker.domain.signature_changes import (
     CHANGE_REASON_MIN,
     MAX_CHANGES,
+    OVERRIDE_CHANGES,
     PutBackChange,
     PutBackOverrideChange,
     ReplaceChange,
+    ReplaceOverrideChange,
     RetireChange,
     RowKey,
     StoredChange,
@@ -62,13 +70,13 @@ from gaggiclanker.domain.signature_changes import (
     StoredReplacement,
     TierChange,
     compare_sides,
+    loosening_changes,
     replacement_words,
-    request_loosens,
     revision_words,
     rows_named,
 )
 from gaggiclanker.signatures.checks import checks_for_shots
-from gaggiclanker.signatures.service import split_duplicates
+from gaggiclanker.signatures.service import OverrideInvalid, SignatureService, split_duplicates
 
 log = structlog.get_logger(__name__)
 
@@ -94,14 +102,19 @@ class ChangeIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["replace", "retire", "tier", "put_back", "put_back_override"] = Field(
+    kind: Literal[
+        "replace", "retire", "tier", "put_back", "put_back_override", "replace_override"
+    ] = Field(
         description=(
             "replace: take an expectation in force out and put a new one in its place "
             "(expectation_id and expectation); retire: take one in force out (expectation_id); "
             "tier: move one in force to another tier (expectation_id and tier); put_back: ask "
             "for an expectation the person rejected to come back (expectation_id); "
             "put_back_override: ask for this version's rejected different limit to come back "
-            "(override_id; a Recipe conversation only)."
+            "(override_id; a Recipe conversation only); replace_override: swap the override in "
+            "force on this version for another limit, for the same expectation or another, in "
+            "one answer (override_id of the one in force, expectation_id and override: the new "
+            "limit, as for propose_signature_override; a Recipe conversation only)."
         )
     )
     reason: str = Field(
@@ -121,7 +134,17 @@ class ChangeIn(BaseModel):
     )
     tier: ChangeTier | None = Field(default=None, description="For tier: the tier to move it to.")
     override_id: int | None = Field(
-        default=None, gt=0, description="For put_back_override: the override's id."
+        default=None,
+        gt=0,
+        description="For put_back_override: the rejected override's id. For replace_override: "
+        "the override in force on this version.",
+    )
+    override: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "For replace_override: the new limit, with the same comparison as the profile's, as "
+            'for propose_signature_override: {"op": ">=", "value": 90.5}. Only the numbers change.'
+        ),
     )
 
 
@@ -183,9 +206,13 @@ class StayingView(BaseModel):
 class ChangeView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["replace", "retire", "tier", "put_back", "put_back_override"]
+    kind: Literal["replace", "retire", "tier", "put_back", "put_back_override", "replace_override"]
     reason: str
     expectation_id: int | None = None
+    #: replace_override: the override's own expectation before the swap (``expectation_id`` is
+    #: the one it is for after it), and the Recipe version it is about, named as the person does.
+    old_expectation_id: int | None = None
+    recipe_version_label: str = ""
     override_id: int | None = None
     #: The tier a card's header names: the replacement's, else the row's own now (a tier move
     #: says where it goes in ``new_tier``).
@@ -201,15 +228,21 @@ class ChangeView(BaseModel):
     new_tier: ChangeTier | None = None
     rejected_reason: str = ""
     rejected_at: str | None = None
-    #: The expectation an approved replacement wrote.
+    #: The expectation an approved replacement wrote, or the override an approved
+    #: replace_override put in force.
     written_expectation_id: int | None = None
+    written_override_id: int | None = None
     #: Waiting requests only, for replace, retire and put back.
     preview: PreviewView | None = None
+    #: replace_override for another expectation: the one the old override stood for, which goes
+    #: back to its profile's limit, on the same shots (``preview`` is the new one's).
+    old_preview: PreviewView | None = None
     #: What the change says in one clause, for a line that lists changes.
     summary: str = ""
     #: Waiting requests only, for replace and retire: the other expectations in force on the same
-    #: phase and the same channel, which the request leaves alone ("#77 “at least 91 °C” stays
-    #: in force."). Computed on the server from the rows in force now.
+    #: phase and channel that bound the same side (floors under a floor, ceilings under a
+    #: ceiling), which the request leaves alone ("#77 “at least 91 °C” stays in force.").
+    #: Computed on the server from the rows in force now.
     stays_in_force: list[StayingView] = Field(default_factory=list)
 
 
@@ -241,6 +274,17 @@ class RequestView(BaseModel):
 
 
 # ── the service ──────────────────────────────────────────────────────
+
+
+def _old_words(change: ReplaceOverrideChange) -> str:
+    """The limit a swap takes out as the override states it: the expectation's measure with the
+    override's own limit ("…in the soak, at least 92 °C"), not the profile's."""
+    head = change.old_sentence.rsplit(", ", 1)[0] if ", " in change.old_sentence else ""
+    return (
+        f"{head}, {change.old_limit_text}"
+        if head and change.old_limit_text
+        else change.old_sentence
+    )
 
 
 def _words(row: ExpectationRow) -> str:
@@ -347,9 +391,10 @@ class SignatureRequestService:
         mapped: list[ChangeIn] = []
         problems: list[str] = []
         for number, change in enumerate(changes, start=1):
-            if change.kind == "put_back_override":
+            if change.kind in ("put_back_override", "replace_override"):
+                what = "put back" if change.kind == "put_back_override" else "replace"
                 problems.append(
-                    f"change {number}: a draft cannot put back an override; that is for a "
+                    f"change {number}: a draft cannot {what} an override; that is for a "
                     "Recipe conversation, with request_signature_change."
                 )
                 continue
@@ -446,6 +491,7 @@ class SignatureRequestService:
                 "expectation": change.expectation is not None,
                 "tier": change.tier is not None,
                 "override_id": change.override_id is not None,
+                "override": change.override is not None,
             }
             takes = {
                 "replace": {"expectation_id", "expectation"},
@@ -453,6 +499,7 @@ class SignatureRequestService:
                 "tier": {"expectation_id", "tier"},
                 "put_back": {"expectation_id"},
                 "put_back_override": {"override_id"},
+                "replace_override": {"override_id", "expectation_id", "override"},
             }[change.kind]
             missing = sorted(takes - {k for k, v in given.items() if v})
             stray = sorted({k for k, v in given.items() if v} - takes)
@@ -460,11 +507,32 @@ class SignatureRequestService:
                 wrong.append(f"a {change.kind} needs {', '.join(missing)}")
             if stray:
                 wrong.append(f"a {change.kind} takes no {', '.join(stray)}")
-            if change.kind == "put_back_override" and recipe_version_id is None:
+            if (
+                change.kind in ("put_back_override", "replace_override")
+                and recipe_version_id is None
+            ):
+                to = "put it back on" if change.kind == "put_back_override" else "replace one of"
                 wrong.append(
-                    "an override belongs to a Recipe version, and this conversation has none "
-                    "to put it back on"
+                    f"an override belongs to a Recipe version, and this conversation has none "
+                    f"to {to}"
                 )
+            new_limit: Compare | None = None
+            old_override: OverrideRow | None = None
+            if change.kind == "replace_override" and not wrong and recipe_version_id is not None:
+                assert change.override_id is not None and change.expectation_id is not None
+                assert change.override is not None
+                old_override = await self.repo.get_override(change.override_id)
+                try:
+                    _target, new_limit = await SignatureService(self.db).validate_override(
+                        recipe_version_id=recipe_version_id,
+                        profile_version_id=profile_version_id,
+                        expectation_id=change.expectation_id,
+                        compare=change.override,
+                    )
+                except SignatureRefused as refused:
+                    wrong.append(str(refused).rstrip("."))
+                if old_override is None or old_override.compare is None:
+                    wrong.append(f"there is no override {change.override_id} to replace")
             replacement: StoredReplacement | None = None
             if change.kind == "replace" and change.expectation is not None:
                 try:
@@ -522,6 +590,35 @@ class SignatureRequestService:
                         **snapshot,
                     )
                 )
+            elif change.kind == "replace_override":
+                assert change.override_id is not None and change.expectation_id is not None
+                assert recipe_version_id is not None and new_limit is not None
+                assert old_override is not None and old_override.compare is not None
+                was = await self.repo.get(old_override.expectation_id)
+                now = await self.repo.get(change.expectation_id)
+                assert was is not None and now is not None and was.expression is not None
+                assert now.expression is not None
+                built.append(
+                    ReplaceOverrideChange(
+                        override_id=change.override_id,
+                        recipe_version_id=recipe_version_id,
+                        old_expectation_id=was.id,
+                        old_compare=old_override.compare,
+                        expectation_id=now.id,
+                        compare=new_limit,
+                        new_sentence=_words(now),
+                        new_limit_text=_limit_of(
+                            now.expression.model_copy(update={"compare": new_limit})
+                        ),
+                        reason=reason,
+                        phase=was.phase,
+                        old_sentence=_words(was),
+                        old_tier=was.tier,
+                        old_limit_text=_limit_of(
+                            was.expression.model_copy(update={"compare": old_override.compare})
+                        ),
+                    )
+                )
             else:
                 assert change.override_id is not None and recipe_version_id is not None
                 override = await self.repo.get_override(change.override_id)
@@ -563,7 +660,7 @@ class SignatureRequestService:
             override = await self.repo.get_override(change.override_id)
             if override is not None:
                 keys.append(("e", override.expectation_id))
-        return keys
+        return list(dict.fromkeys(keys))
 
     # ── the guard ────────────────────────────────────────────────────
 
@@ -643,6 +740,9 @@ class SignatureRequestService:
             where = f"change {number}"
             if isinstance(change, PutBackOverrideChange):
                 found += await self._override_problems(where, change, profile_version_id)
+                continue
+            if isinstance(change, ReplaceOverrideChange):
+                found += await self._replace_override_problems(where, change, profile_version_id)
                 continue
             row = rows.get(change.expectation_id)
             if row is None:
@@ -747,6 +847,96 @@ class SignatureRequestService:
             ]
         return []
 
+    async def _replace_override_problems(
+        self, where: str, change: ReplaceOverrideChange, profile_version_id: int
+    ) -> list[Problem]:
+        """Everything that would make the swap refuse: the override named is not the one in
+        force on the conversation's version, or the new limit is not one
+        :meth:`SignatureService.validate_override` lets in (the function ``propose_override``
+        runs; the one-at-a-time rule is read as if the old override were already withdrawn)."""
+        override = await self.repo.get_override(change.override_id)
+        # The limit being replaced, as the override states it (not the profile's own).
+        about = f"“{_old_words(change)}”"
+        brewed = await self._brewed_profile_version(change.recipe_version_id)
+        if brewed != profile_version_id:
+            return [
+                Problem(
+                    f"{where}: this conversation's Recipe version brews profile version "
+                    f"{brewed}, so a limit for it is for an expectation of that profile "
+                    f"version, not of profile version {profile_version_id}: ask about "
+                    f"profile version {brewed}.",
+                    f"The limit for {about} is for this Recipe version's own profile, and "
+                    "this request is about another version of it.",
+                )
+            ]
+        if override is None:
+            return [
+                Problem(
+                    f"{where}: there is no override {change.override_id}.",
+                    "The limit to replace no longer exists.",
+                )
+            ]
+        if override.recipe_version_id != change.recipe_version_id:
+            return [
+                Problem(
+                    f"{where}: override {change.override_id} is not one of this conversation's "
+                    "version's.",
+                    f"The limit for {about} belongs to another Recipe version.",
+                )
+            ]
+        if override.status != "confirmed":
+            return [
+                Problem(
+                    f"{where}: override {change.override_id} is not the one in force on this "
+                    "version, so there is nothing to replace; put a limit in force with "
+                    "propose_signature_override.",
+                    f"The limit for {about} is not in force any more, so there is nothing to "
+                    "replace.",
+                )
+            ]
+        live = await self.repo.overrides_for_recipe_version(
+            override.recipe_version_id, statuses=["proposed", "confirmed"]
+        )
+        if [o.id for o in live] != [override.id]:
+            return [
+                Problem(
+                    f"{where}: override {change.override_id} is not the only override in force "
+                    "on this version.",
+                    f"The limit for {about} is not the one in force on this version.",
+                )
+            ]
+        try:
+            await SignatureService(self.db).validate_override(
+                recipe_version_id=change.recipe_version_id,
+                profile_version_id=profile_version_id,
+                expectation_id=change.expectation_id,
+                compare=change.compare.model_dump(exclude_none=True),
+            )
+        except OverrideInvalid as invalid:
+            return [Problem(f"{where}: {invalid}", invalid.person)]
+        if (
+            change.expectation_id == change.old_expectation_id
+            and change.compare == override.compare
+        ):
+            return [
+                Problem(
+                    f"{where}: that is the limit already in force for expectation "
+                    f"#{change.expectation_id} ({change.new_limit_text}): there is nothing to "
+                    "replace; ask for a different limit, or leave it out.",
+                    f"“{_old_words(change)}” is the limit already in force, so there is nothing "
+                    "to replace.",
+                )
+            ]
+        return []
+
+    async def _brewed_profile_version(self, recipe_version_id: int) -> int | None:
+        """The profile version a Recipe version's shots are judged by: the one it brews (a pin's
+        copy is judged by the original), as ``propose_signature_override`` reads it."""
+        found = await self.db.fetch_value(
+            "SELECT profile_version_id FROM recipe_versions WHERE id = ?", (recipe_version_id,)
+        )
+        return None if found is None else await judged_profile_version(self.db, int(found))
+
     async def _refuse_a_pins_copy(self, profile_version_id: int) -> None:
         """A pin's copy carries no expectations of its own (see ``SignatureService``)."""
         from gaggiclanker.signatures.service import SignatureService
@@ -847,8 +1037,8 @@ class SignatureRequestService:
         unresolved: list[str] = []
         twins: dict[int, list[int]] = {}
         for change in changes:
-            if isinstance(change, PutBackOverrideChange):
-                unresolved.append("A draft cannot put back a different limit.")
+            if isinstance(change, OVERRIDE_CHANGES):
+                unresolved.append("A draft cannot change a different limit.")
                 continue
             found = by_chain.get(change.expectation_id)
             if found is None:
@@ -889,7 +1079,7 @@ class SignatureRequestService:
             # The row the change names, and any other in force that says the same thing.
             rows = (
                 [change.expectation_id, *(twins or {}).get(change.expectation_id, ())]
-                if not isinstance(change, PutBackOverrideChange)
+                if not isinstance(change, OVERRIDE_CHANGES)
                 else []
             )
             if isinstance(change, ReplaceChange):
@@ -932,6 +1122,30 @@ class SignatureRequestService:
                     _must(await self.repo.set_tier(row_id, change.tier))
             elif isinstance(change, PutBackChange):
                 _must(await self.repo.restore(change.expectation_id))
+            elif isinstance(change, ReplaceOverrideChange):
+                # Withdraw the one in force (the person's own Reject, with the agent's reason),
+                # then put the new limit in force through the write propose_signature_override
+                # reaches. The version has no override in force in between, so the repository's
+                # one-at-a-time rule has nothing to refuse.
+                _must(
+                    await self.repo.reject_override(
+                        change.override_id,
+                        reason=f"Replaced at the agent's request: {change.reason}",
+                    )
+                )
+                written.append(
+                    (
+                        await self.repo.add_override(
+                            OverrideWrite(
+                                recipe_version_id=change.recipe_version_id,
+                                expectation_id=change.expectation_id,
+                                compare=change.compare,
+                                reason=change.reason,
+                                proposed_by_thread_id=request.thread_id,
+                            )
+                        )
+                    ).id
+                )
             else:
                 _must(await self.repo.restore_override(change.override_id))
         await self.requests.set_written(request.id, written)
@@ -949,30 +1163,46 @@ class SignatureRequestService:
         changes: list[ChangeView] = []
         loosens: str | None = None
         if row.changes is not None:
-            previews = (
-                await self._previews(row)
-                if row.status == "waiting" and row.draft_id is None
-                else {}
-            )
+            waiting_card = row.status == "waiting" and row.draft_id is None
+            previews = await self._previews(row) if waiting_card else {}
+            swaps = await self._override_previews(row) if waiting_card else {}
             written = iter(row.written)
             staying = (
                 await self._staying(row) if row.status == "waiting" and row.draft_id is None else {}
             )
             for index, change in enumerate(row.changes.changes):
+                made = (
+                    next(written, None)
+                    if isinstance(change, ReplaceChange | ReplaceOverrideChange)
+                    else None
+                )
                 changes.append(
                     _change_view(
                         change,
-                        written_id=next(written, None)
-                        if isinstance(change, ReplaceChange)
-                        else None,
-                        preview=previews.get(index),
+                        written_id=made,
+                        preview=swaps[index][0] if index in swaps else previews.get(index),
+                        old_preview=swaps[index][1] if index in swaps else None,
                         staying=staying.get(index, []),
+                        recipe_label=(
+                            await self.requests.recipe_version_label(change.recipe_version_id)
+                            if isinstance(change, ReplaceOverrideChange)
+                            else ""
+                        ),
                     )
                 )
             if row.draft_id is None:
                 rows = {r.id: r for r in await self.repo.for_version(row.profile_version_id)}
-                if request_loosens(row.changes, rows):
+                loose = loosening_changes(row.changes, rows)
+                if any(not isinstance(c, OVERRIDE_CHANGES) for c in loose):
                     loosens = await self.requests.open_prediction_label(row.profile_version_id)
+                if loosens is None:
+                    # An override judges only its own Recipe version's shots, so only that
+                    # version's open prediction is graded under it.
+                    for c in loose:
+                        if isinstance(c, ReplaceOverrideChange):
+                            loosens = await self.requests.open_prediction_of(c.recipe_version_id)
+                            if loosens is not None:
+                                break
         return RequestView(
             id=row.id,
             status=row.status,
@@ -1116,9 +1346,61 @@ class SignatureRequestService:
                 )
         return previews
 
+    async def _override_previews(
+        self, row: SignatureRequestRow
+    ) -> dict[int, tuple[PreviewView, PreviewView | None]]:
+        """For each replace_override: over the Recipe version's own shots (the ones its override
+        applies to), how many fail the new limit's expectation now and how many would after the
+        swap, by the same check code with the new override standing in for the one in force."""
+        from gaggiclanker.shotinfo.render import load_shots
+
+        assert row.changes is not None
+        previews: dict[int, tuple[PreviewView, PreviewView | None]] = {}
+        for index, change in enumerate(row.changes.changes):
+            if not isinstance(change, ReplaceOverrideChange):
+                continue
+            shot_ids = await self.requests.shots_of_recipe_version(change.recipe_version_id)
+            subjects = [f.check_subject for f in await load_shots(self.db, shot_ids)]
+            now = await checks_for_shots(self.db, subjects)
+            swapped = OverrideRow(
+                id=-1,
+                recipe_version_id=change.recipe_version_id,
+                expectation_id=change.expectation_id,
+                compare=change.compare,
+                status="confirmed",
+                proposed_at=row.created_at,
+            )
+            after = await checks_for_shots(
+                self.db, subjects, as_overridden={change.recipe_version_id: swapped}
+            )
+            previews[index] = (
+                PreviewView(
+                    shots=len(subjects),
+                    failing_now=_failing_on(now, change.expectation_id),
+                    failing_after=_failing_on(after, change.expectation_id),
+                ),
+                None
+                if change.old_expectation_id == change.expectation_id
+                else PreviewView(
+                    shots=len(subjects),
+                    failing_now=_failing_on(now, change.old_expectation_id),
+                    failing_after=_failing_on(after, change.old_expectation_id),
+                ),
+            )
+        return previews
+
 
 def _identity_of(row: ExpectationRow) -> tuple[str, str, str]:
     return expectation_identity(row.kind, row.phase, row.expression, row.text, row.warning_fault)
+
+
+def _failing_on(checks: Mapping[int, Any], expectation_id: int) -> int:
+    """How many shots fail one expectation, in checks as ``checks_for_shots`` returns them."""
+    return sum(
+        1
+        for shot in checks.values()
+        if any(c.expectation_id == expectation_id and c.status == "failed" for c in shot.checks)
+    )
 
 
 def _said(problems: Sequence[Problem]) -> str:
@@ -1235,6 +1517,8 @@ def _change_view(
     written_id: int | None,
     preview: PreviewView | None,
     staying: list[StayingView],
+    recipe_label: str = "",
+    old_preview: PreviewView | None = None,
 ) -> ChangeView:
     common: dict[str, Any] = {
         "kind": change.kind,
@@ -1273,6 +1557,21 @@ def _change_view(
             tier=change.old_tier,
             rejected_reason=change.rejected_reason,
             rejected_at=change.rejected_at,
+            **common,
+        )
+    if isinstance(change, ReplaceOverrideChange):
+        # Replace limit · <Recipe> v2.3 · <expectation>, then the old limit → the new one (with
+        # the old expectation's words first when the new limit is for another expectation).
+        return ChangeView(
+            override_id=change.override_id,
+            expectation_id=change.expectation_id,
+            old_expectation_id=change.old_expectation_id,
+            recipe_version_label=recipe_label,
+            tier=change.old_tier,
+            new_sentence=change.new_sentence,
+            new_limit_text=change.new_limit_text,
+            old_preview=old_preview,
+            written_override_id=written_id,
             **common,
         )
     return ChangeView(

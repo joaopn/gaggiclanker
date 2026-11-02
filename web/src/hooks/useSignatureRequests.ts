@@ -53,10 +53,13 @@ export function useAnswerSignatureRequest(): UseMutationResult<
       answer === "approve"
         ? approveSignatureRequest(requestId)
         : declineSignatureRequest(requestId, reason ?? ""),
-    onSuccess: (_result, variables) =>
+    onSuccess: (result, variables) =>
       toast.success(
         variables.answer === "approve"
-          ? "Approved — the signature has changed"
+          ? // A change of the Recipe version's own limit is not a change of the signature.
+            result.request.changes.every((c) => c.kind.endsWith("_override"))
+            ? "Approved — this Recipe version's limit has changed"
+            : "Approved — the signature has changed"
           : "Declined — nothing changed, and the agent is told",
       ),
     onSettled: (_data, _error, variables) => {

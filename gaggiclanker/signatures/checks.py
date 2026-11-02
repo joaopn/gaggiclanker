@@ -37,7 +37,7 @@ from typing import Any
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.pins import judged_profile_versions
-from gaggiclanker.db.repos.signatures import ExpectationRow, SignatureRepository
+from gaggiclanker.db.repos.signatures import ExpectationRow, OverrideRow, SignatureRepository
 from gaggiclanker.domain.metric_language import Compare, ShotData
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_names import raw_phase_names
@@ -225,6 +225,7 @@ async def checks_for_shots(
     subjects: Sequence[CheckSubject],
     *,
     signatures: Mapping[int, Sequence[ExpectationRow]] | None = None,
+    as_overridden: Mapping[int, OverrideRow | None] | None = None,
 ) -> dict[int, ShotChecks]:
     """Each shot's ordered checks, by shot id.
 
@@ -233,6 +234,10 @@ async def checks_for_shots(
     rows given, by the id of the version that judges, take the place of its expectations in
     force, through the very same code. Nothing is stored, and the memo's key already holds the
     expectations, so a hypothetical signature is a different key from the real one.
+
+    ``as_overridden`` does the same for a Recipe version's override (by Recipe version id): the
+    row given (or ``None``, for none) stands in for the one in force, as a request to swap it
+    would leave it.
     """
     if not subjects:
         return {}
@@ -256,6 +261,11 @@ async def checks_for_shots(
     overrides = await repo.confirmed_overrides(
         {s.recipe_version_id for s in applying if s.recipe_version_id is not None}
     )
+    for recipe_version_id, standing_in in (as_overridden or {}).items():
+        if standing_in is None:
+            overrides.pop(recipe_version_id, None)
+        else:
+            overrides[recipe_version_id] = standing_in
 
     # The setpoint is read from the shot's own linked version (not the version that judges it),
     # one query for every shot a signature applies to, since it belongs in the memo's key.

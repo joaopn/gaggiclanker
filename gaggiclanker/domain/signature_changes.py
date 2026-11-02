@@ -9,7 +9,9 @@ A change names a row in force and says what should become of it:
 * ``retire``: take the row out;
 * ``tier``: move the row to another tier;
 * ``put_back``: put back a row the person rejected;
-* ``put_back_override``: put back an override the person rejected (a Recipe version's limit).
+* ``put_back_override``: put back an override the person rejected (a Recipe version's limit);
+* ``replace_override``: withdraw the override in force on a Recipe version and put another in
+  force, for the same expectation or another, in one approval.
 
 Each change carries a snapshot of what it was about when it was asked (the row's sentence, tier
 and phase, the person's rejection reason), so a card read after the answer still says what it
@@ -29,9 +31,11 @@ from gaggiclanker.domain.signature import ExpectationLike, sentence_with_unit
 __all__ = [
     "CHANGE_REASON_MIN",
     "MAX_CHANGES",
+    "OVERRIDE_CHANGES",
     "PutBackChange",
     "PutBackOverrideChange",
     "ReplaceChange",
+    "ReplaceOverrideChange",
     "RetireChange",
     "RowKey",
     "StoredChange",
@@ -41,6 +45,7 @@ __all__ = [
     "change_loosens",
     "compare_loosens",
     "compare_sides",
+    "loosening_changes",
     "replacement_words",
     "request_loosens",
     "revision_words",
@@ -123,8 +128,40 @@ class PutBackOverrideChange(_Change):
     rejected_at: str | None = None
 
 
+class ReplaceOverrideChange(_Change):
+    """Swap the Recipe version's override in force for another limit.
+
+    ``old_sentence``, ``old_limit_text`` and ``phase`` (of ``_Change``) are the override in force
+    now: its expectation's words and its limit.
+    """
+
+    kind: Literal["replace_override"] = "replace_override"
+    #: The override in force on the Recipe version, which is withdrawn.
+    override_id: int
+    #: The Recipe version it belongs to: the conversation's own.
+    recipe_version_id: int
+    #: The expectation that override is a limit for, as it was when asked.
+    old_expectation_id: int
+    #: The old override's limit.
+    old_compare: Compare
+    #: The expectation the new override is a limit for (the same, or another), and its limit.
+    expectation_id: int
+    compare: Compare
+    #: The new override's expectation as a card says it, and its limit in its unit.
+    new_sentence: str = ""
+    new_limit_text: str = ""
+
+
+#: The changes that are about an override, which is the Recipe version's and not the profile's.
+OVERRIDE_CHANGES = (PutBackOverrideChange, ReplaceOverrideChange)
+
 type StoredChange = Annotated[
-    ReplaceChange | RetireChange | TierChange | PutBackChange | PutBackOverrideChange,
+    ReplaceChange
+    | RetireChange
+    | TierChange
+    | PutBackChange
+    | PutBackOverrideChange
+    | ReplaceOverrideChange,
     Field(discriminator="kind"),
 ]
 
@@ -160,6 +197,17 @@ def rows_named(change: StoredChange) -> list[RowKey]:
         if change.expectation_id is not None:
             keys.append(("e", change.expectation_id))
         return keys
+    if isinstance(change, ReplaceOverrideChange):
+        # The override that goes, its expectation, and the new one's (often the same).
+        return list(
+            dict.fromkeys(
+                [
+                    ("o", change.override_id),
+                    ("e", change.old_expectation_id),
+                    ("e", change.expectation_id),
+                ]
+            )
+        )
     return [("e", change.expectation_id)]
 
 
@@ -207,7 +255,9 @@ def _without_compare(expression: Expression) -> str:
     return canonical_form(expression.model_copy(update={"compare": None}))
 
 
-def change_loosens(change: StoredChange, old: ExpectationLike | None) -> bool:
+def change_loosens(
+    change: StoredChange, old: ExpectationLike | None, *, was: ExpectationLike | None = None
+) -> bool:
     """Whether one change loosens a check: a retirement, a lower tier, a replacement with the
     same expression and a looser compare, and any replacement whose expression differs other
     than in its compare. Putting back, and tightening, do not."""
@@ -232,17 +282,44 @@ def change_loosens(change: StoredChange, old: ExpectationLike | None) -> bool:
         if new.expression.compare is None or old.expression.compare is None:
             return True
         return compare_loosens(old.expression.compare, new.expression.compare)
+    if isinstance(change, ReplaceOverrideChange):
+        # Looser than the limit that judges those shots now: the override in force when it is a
+        # limit for the same expectation, else the expectation's own.
+        if change.expectation_id == change.old_expectation_id:
+            return compare_loosens(change.old_compare, change.compare)
+        # Another expectation: it goes from its own limit to the new one, and the one the old
+        # override stood for goes back from that override to its own profile limit.
+        if old is None or old.expression is None or old.expression.compare is None:
+            return True
+        if compare_loosens(old.expression.compare, change.compare):
+            return True
+        return (
+            was is not None
+            and was.expression is not None
+            and was.expression.compare is not None
+            and compare_loosens(change.old_compare, was.expression.compare)
+        )
     return False
+
+
+def loosening_changes(
+    changes: StoredChanges, rows: Mapping[int, ExpectationLike]
+) -> list[StoredChange]:
+    """The changes of a request that loosen a check."""
+    return [
+        c
+        for c in changes.changes
+        if change_loosens(
+            c,
+            None if isinstance(c, PutBackOverrideChange) else rows.get(c.expectation_id),
+            was=rows.get(c.old_expectation_id) if isinstance(c, ReplaceOverrideChange) else None,
+        )
+    ]
 
 
 def request_loosens(changes: StoredChanges, rows: Mapping[int, ExpectationLike]) -> bool:
     """Whether any change of the request loosens a check."""
-    return any(
-        change_loosens(
-            c, rows.get(c.expectation_id) if not isinstance(c, PutBackOverrideChange) else None
-        )
-        for c in changes.changes
-    )
+    return bool(loosening_changes(changes, rows))
 
 
 def replacement_words(change: ReplaceChange) -> str:
@@ -260,4 +337,6 @@ def revision_words(change: StoredChange) -> str:
         return f"moved to {change.tier}"
     if isinstance(change, PutBackChange):
         return "put back"
+    if isinstance(change, ReplaceOverrideChange):
+        return change.new_limit_text or "another limit"
     return change.new_sentence or "put back"

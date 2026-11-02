@@ -28,6 +28,7 @@ from gaggiclanker.domain.signature import expectation_line
 from gaggiclanker.domain.signature_changes import (
     PutBackChange,
     ReplaceChange,
+    ReplaceOverrideChange,
     RetireChange,
     StoredChange,
     TierChange,
@@ -149,8 +150,15 @@ async def signature_requests_block(db: Database, thread_id: int) -> list[str]:
                     " on the draft" if request.draft_id is not None else ""
                 )
             elif request.status == "approved":
-                made = next(written, None) if isinstance(change, ReplaceChange) else None
-                state = "approved: in force now" + (f" as #{made}" if made is not None else "")
+                made = (
+                    next(written, None)
+                    if isinstance(change, ReplaceChange | ReplaceOverrideChange)
+                    else None
+                )
+                what = "limit " if isinstance(change, ReplaceOverrideChange) else ""
+                state = "approved: in force now" + (
+                    f" as {what}#{made}" if made is not None else ""
+                )
             elif request.status == "declined":
                 said = f': "{request.answer_reason}"' if request.answer_reason else ""
                 state = f"declined by the person{said}"
@@ -170,6 +178,12 @@ def _change_words(change: StoredChange) -> str:
         return f"move #{change.expectation_id} {old} from {change.old_tier} to {change.tier}"
     if isinstance(change, PutBackChange):
         return f"put back #{change.expectation_id} {old}"
+    if isinstance(change, ReplaceOverrideChange):
+        return (
+            f"replace the different limit {change.override_id} ({change.old_limit_text}) for "
+            f"#{change.old_expectation_id} {old} with {change.new_limit_text} for "
+            f"#{change.expectation_id} “{change.new_sentence}”"
+        )
     return f"put back the different limit {change.override_id} ({change.new_sentence}) for {old}"
 
 

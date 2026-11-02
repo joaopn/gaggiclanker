@@ -45,6 +45,24 @@ database.
   does not get the new sentences about asking for a signature change and preferring the setpoint
   offset; the tool descriptions carry the same rules either way.
 
+### The agent can ask to swap the different limit a Recipe version has in force
+
+- A Recipe version has one different limit (an override) in force at a time, so the agent could
+  not move it to another expectation: it could only say so in words. It can now ask with
+  `request_signature_change` and a `replace_override` change, in a Recipe conversation: a card
+  shows `Replace limit · <Recipe> v2.3 · <expectation>`, the limit now and the one asked for
+  (both expectations when they differ), how many of the version's shots fail now and after, and a
+  line when the new limit is looser than the one judging those shots. Approve rejects the old
+  limit with the agent's reason (the Recipe page lists it under Rejected) and puts the new one in
+  force, in one step, and a swap to another expectation hands the old one back to its profile's
+  limit (the card counts the shots for both); a swap is only for the profile version the Recipe
+  version brews. Decline changes nothing. It goes stale, with the reason, when you reject or
+  restore the limit, another limit comes into force, or either expectation is rejected or moved.
+  A person who edited `chat-recipe` keeps their text and so does not get the sentence about it;
+  the tool descriptions say it either way. No database change.
+- The card's "stays in force" lines for a replaced or retired limit now list only the limits that
+  bound the same side (floors under a floor, ceilings under a ceiling, both under a range).
+
 ### A signature limit can follow the profile's temperature
 
 - A temperature expectation can now be written as a distance from the shot's own profile

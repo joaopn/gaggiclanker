@@ -55,7 +55,7 @@ from gaggiclanker.domain.profile_policy import (
     clamp,
     diff_stop_conditions,
 )
-from gaggiclanker.domain.signature_changes import PutBackOverrideChange, revision_words
+from gaggiclanker.domain.signature_changes import OVERRIDE_CHANGES, revision_words
 from gaggiclanker.drafts.live_lineage import LiveLineage
 from gaggiclanker.drafts.taken_names import TakenNames
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
@@ -542,7 +542,7 @@ class DraftProposals:
         }
         revisions: dict[int, str] = {}
         for change in request.changes.changes:
-            if isinstance(change, PutBackOverrideChange):
+            if isinstance(change, OVERRIDE_CHANGES):
                 continue
             source = base_of.get(change.expectation_id)
             if source is not None:

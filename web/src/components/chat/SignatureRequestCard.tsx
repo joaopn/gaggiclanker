@@ -90,6 +90,7 @@ const KIND_WORDS: Record<SignatureRequestChange["kind"], string> = {
   tier: "Tier",
   put_back: "Put back",
   put_back_override: "Put back limit",
+  replace_override: "Replace limit",
 };
 
 function LiveCard({ row }: { row: SignatureRequest }) {
@@ -263,16 +264,54 @@ function limitChange(change: SignatureRequestChange): { head: string; from: stri
     : { head: "", from: change.old_sentence, to: change.new_sentence };
 }
 
+/** A sentence without its limit: "lowest value of temperature in the soak". */
+const withoutLimit = (sentence: string) =>
+  sentence.slice(0, Math.max(0, sentence.lastIndexOf(", ")));
+
+/**
+ * What a swap of the override in force says: the limit it stands for now and the one it gets,
+ * and the expectation each is for when they differ ("Replace limit · Alturas v2.3 · lowest
+ * value of temperature in the soak" over "at least 91 °C → at least 90.5 °C").
+ */
+function overrideSwap(change: SignatureRequestChange) {
+  const same = change.old_expectation_id === change.expectation_id;
+  return same
+    ? {
+        head: withoutLimit(change.new_sentence) || change.new_sentence,
+        from: change.old_limit_text,
+        to: change.new_limit_text,
+      }
+    : {
+        head: "",
+        from: `${withoutLimit(change.old_sentence)}, ${change.old_limit_text}`,
+        to: `${withoutLimit(change.new_sentence)}, ${change.new_limit_text}`,
+      };
+}
+
 function ChangeLines({ change }: { change: SignatureRequestChange }) {
-  const where = [change.tier, change.phase].filter(Boolean).join(" · ");
+  const swap = change.kind === "replace_override" ? overrideSwap(change) : null;
+  const where = swap
+    ? [change.recipe_version_label, swap.head].filter(Boolean).join(" · ")
+    : [change.tier, change.phase].filter(Boolean).join(" · ");
   const moved = change.kind === "replace" ? limitChange(change) : null;
   return (
     <div className="min-w-0 space-y-1">
       <p className="break-words text-sm">
         <span className="font-medium">{KIND_WORDS[change.kind]}</span>
-        {where ? <span className="text-muted-foreground"> {where}</span> : null}
+        {where ? (
+          <span className="text-muted-foreground">
+            {swap ? " · " : " "}
+            {where}
+          </span>
+        ) : null}
       </p>
-      {moved ? (
+      {swap ? (
+        <p className="break-words text-sm" data-testid="request-limits">
+          <span className="text-muted-foreground">{swap.from}</span>
+          {" → "}
+          <span className="font-medium">{swap.to}</span>
+        </p>
+      ) : moved ? (
         <p className="break-words text-sm" data-testid="request-limits">
           {moved.head ? <span>{moved.head} </span> : null}
           <span className="text-muted-foreground">{moved.from}</span>
@@ -319,6 +358,11 @@ function ChangeLines({ change }: { change: SignatureRequestChange }) {
           {previewWords(change.kind, change.preview)}
         </p>
       ) : null}
+      {change.old_preview && change.old_preview.shots > 0 ? (
+        <p className="break-words text-sm" data-testid="request-old-preview">
+          {backOnProfileWords(change, change.old_preview)}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -331,17 +375,37 @@ export function previewWords(
   kind: SignatureRequestChange["kind"],
   preview: { shots: number; failing_now: number; failing_after: number },
 ): string {
-  const { shots, failing_now: now, failing_after: after } = preview;
+  const { shots, failing_after: after } = preview;
   if (shots === 0) return "This version has no shots yet, so there is nothing to count.";
   const head = `On this version's ${shots} ${shots === 1 ? "shot" : "shots"}:`;
-  const would = (failing: number) =>
-    failing === 0 ? `would pass on all ${shots}` : `would fail on ${failing}`;
+  const { today, would } = previewClauses(preview);
   if (kind === "put_back") return `${head} once it is back, this check ${would(after)}.`;
-  const today = now === 0 ? `passes on all ${shots} now` : `fails on ${now} now`;
   if (kind === "retire") {
     return `${head} this check ${today}, and nothing is checked once it is retired.`;
   }
   return `${head} this check ${today}, and ${would(after)}.`;
+}
+
+/** The two halves of a preview sentence, from the numbers. */
+function previewClauses(preview: { shots: number; failing_now: number }) {
+  const { shots, failing_now: now } = preview;
+  return {
+    today: now === 0 ? `passes on all ${shots} now` : `fails on ${now} now`,
+    would: (failing: number) =>
+      failing === 0 ? `would pass on all ${shots}` : `would fail on ${failing}`,
+  };
+}
+
+/**
+ * A swap to another expectation hands the old one back to its profile's limit: its own line,
+ * on the same shots.
+ */
+export function backOnProfileWords(
+  change: SignatureRequestChange,
+  preview: { shots: number; failing_now: number; failing_after: number },
+): string {
+  const { today, would } = previewClauses(preview);
+  return `And “${withoutLimit(change.old_sentence)}”, back on the profile's limit: this check ${today}, and ${would(preview.failing_after)}.`;
 }
 
 function Answered({ request }: { request: SignatureRequest }) {
@@ -381,6 +445,12 @@ function Answered({ request }: { request: SignatureRequest }) {
           Restore it on the Profiles page, under Rejected.
         </p>
       ) : null}
+      {request.changes.some((c) => c.kind === "replace_override") ? (
+        <p className="break-words text-muted-foreground text-xs">
+          The replaced limit is under Rejected on the Recipe page; it can come back once the new one
+          is rejected.
+        </p>
+      ) : null}
     </>
   );
 }
@@ -399,6 +469,14 @@ function approvedLine(change: SignatureRequestChange): string {
   }
   if (change.kind === "tier") {
     return `${quoted(change.old_sentence)} is now ${change.new_tier}.`;
+  }
+  if (change.kind === "replace_override") {
+    const swap = overrideSwap(change);
+    const back =
+      change.old_expectation_id !== change.expectation_id
+        ? ` ${quoted(change.old_sentence)} is back on the profile's limit.`
+        : "";
+    return `${quoted(swap.from)} is rejected with the agent's reason; ${quoted(swap.to)} is in force for this version.${back}`;
   }
   if (change.kind === "put_back") return `${quoted(change.old_sentence)} is back in force.`;
   return `This version's limit for ${quoted(change.old_sentence)} is back in force.`;
