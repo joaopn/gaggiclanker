@@ -1801,7 +1801,12 @@ class ProposeSignatureInput(_Model):
             "the phase must begin. expects_warning: a universal warning (fast flow, skipped, "
             "over target, under target) is part of the design. free_text: what no expression "
             "says, with the fault word it fails with. Prefer values relative to the target "
-            "yield or the dose, so one signature carries across beans and doses."
+            "yield or the dose, so one signature carries across beans and doses. For a "
+            'temperature, prefer "offset_from": "profile_temperature" (the value is then its '
+            "distance from the profile's own temperature, so a floor of -2 holds when the "
+            'setpoint moves) to an absolute limit, for example {"channel": "temperature", '
+            '"op": "min", "window": {"phase": "hold"}, "offset_from": "profile_temperature", '
+            '"compare": {"op": ">=", "value": -2}}.'
         ),
     )
     reason: str = Field(

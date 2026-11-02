@@ -534,6 +534,11 @@ def _render_language() -> str:
             '"offset_s".',
             '`relative_to`: "target_yield", "dose" or "final_weight" turns the value into a '
             "share of it (0.15 is 15 %).",
+            '`offset_from`: "profile_temperature" (temperature channels, over a level such as '
+            "min, max or mean) turns the value into its distance from the shot's own profile "
+            "temperature in °C, so -2 means 2 °C below the setpoint; prefer it to an absolute "
+            "temperature, which stops fitting when the profile's temperature changes. It cannot "
+            "be combined with `relative_to`.",
             '`compare`: `{"op": "<" | "<=" | ">" | ">=", "value": n}` or `{"op": "between", '
             '"low": a, "high": b}`: the condition your claim asserts, so that it holds when the '
             "claim is true (a cup over its limit is `>` the limit). The server says whether it "

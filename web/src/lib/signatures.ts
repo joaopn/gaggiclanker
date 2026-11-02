@@ -40,3 +40,16 @@ export function signatureSummary(counts: {
 export function signatureHref(profileVersionId: number): string {
   return `/profiles#version-${profileVersionId}`;
 }
+
+/** The unit the server gives a value that is read as its distance from the setpoint. */
+export const SETPOINT_UNIT = "°C from the setpoint";
+
+/**
+ * A distance from the setpoint as a person says it: "0.8 °C below the setpoint", never
+ * "-0.8 °C from the setpoint".
+ */
+export function setpointValueText(value: number): string {
+  const size = String(Number(Math.abs(value).toFixed(2)));
+  if (Number(size) === 0) return "at the setpoint";
+  return `${size} °C ${value < 0 ? "below" : "above"} the setpoint`;
+}

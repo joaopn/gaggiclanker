@@ -49,6 +49,7 @@ __all__ = [
     "ABSENT_REASONS",
     "CHANNELS",
     "OPS",
+    "SETPOINT_UNIT",
     "Compare",
     "Expression",
     "Result",
@@ -59,9 +60,11 @@ __all__ = [
     "evaluate",
     "evaluate_in_phase",
     "expression_unit",
+    "limit_words",
     "method_id",
     "per_phase_method",
     "render",
+    "setpoint_words",
     "unsampled_phase_of",
     "water_by_sample",
     "window_span",
@@ -167,6 +170,9 @@ _CHANNEL_SPEC: Mapping[str, tuple[str | None, str, int, Kind]] = {
 }
 _NEEDS_SCALE = frozenset({"cup_weight", "scale_flow"})
 _NEEDS_PRESSURE = frozenset({"puck_flow", "pump_flow", "target_flow", "pressure", "resistance"})
+_OFFSET_CHANNELS = frozenset({"temperature", "target_temperature"})
+_OFFSET_OPS = frozenset({"mean", "min", "max", "at_start", "at_end"})
+SETPOINT_UNIT = "°C from the setpoint"
 _TIME_OPS = frozenset({"duration", "time_to", "time_above", "time_below"})
 _THRESHOLD_OPS = frozenset({"time_to", "time_above", "time_below"})
 
@@ -283,12 +289,32 @@ class Expression(BaseModel):
     op: OpName
     window: Window = Field(default_factory=Window)
     relative_to: Literal["target_yield", "dose", "final_weight"] | None = None
+    #: Read the value as its distance from the shot's own profile temperature (the setpoint),
+    #: so a limit follows the profile when the person changes the temperature. Temperature
+    #: channels only, over a level (not a rate, a time or a change), and never with ``relative_to``.
+    offset_from: Literal["profile_temperature"] | None = None
     compare: Compare | None = None
     threshold: float | None = None
     direction: Literal["rising", "falling"] | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
+        if self.offset_from is not None:
+            if self.channel not in _OFFSET_CHANNELS:
+                raise ValueError(
+                    "offset_from is for the temperature channels only (temperature and "
+                    "target_temperature)"
+                )
+            if self.relative_to is not None:
+                raise ValueError(
+                    "offset_from and relative_to cannot be combined: one subtracts the setpoint, "
+                    "the other divides by a filed weight"
+                )
+            if self.op not in _OFFSET_OPS:
+                raise ValueError(
+                    "offset_from is read over a level of the temperature (mean, min, max, "
+                    "at_start or at_end), not a change, a rate or a time"
+                )
         if self.op in _THRESHOLD_OPS:
             if self.threshold is None:
                 raise ValueError(f"{self.op} needs a threshold")
@@ -375,6 +401,8 @@ def _canonical_dict(expr: Expression) -> dict[str, Any]:
         out["window"] = window
     if expr.relative_to is not None:
         out["relative_to"] = expr.relative_to
+    if expr.offset_from is not None:
+        out["offset_from"] = expr.offset_from
     if expr.threshold is not None:
         out["threshold"] = _num(expr.threshold)
     if expr.op == "time_to" and expr.direction == "falling":
@@ -477,6 +505,9 @@ class ShotData:
     #: What ``relative_to`` divides by, from the shot's filing. ``None`` when not filed.
     target_yield_g: float | None = None
     dose_g: float | None = None
+    #: The temperature the shot's own linked profile version states (``profile_recipe``'s rule:
+    #: above 0, since 0 is the firmware's "not set"), for ``offset_from``. ``None`` without one.
+    setpoint_c: float | None = None
     #: The profile's phases that ended before the first sample of them was logged
     #: (:mod:`gaggiclanker.domain.unsampled`), as the derivation stores them.
     unsampled: Sequence[Mapping[str, Any]] = ()
@@ -497,6 +528,7 @@ class ShotData:
         final_weight_g: float | None = None,
         target_yield_g: float | None = None,
         dose_g: float | None = None,
+        setpoint_c: float | None = None,
         unsampled: Sequence[Mapping[str, Any]] = (),
     ) -> ShotData:
         count = len(samples)
@@ -521,6 +553,7 @@ class ShotData:
             final_weight_g=final_weight_g,
             target_yield_g=target_yield_g,
             dose_g=dose_g,
+            setpoint_c=setpoint_c,
             unsampled=unsampled,
         )
 
@@ -820,6 +853,8 @@ def _unit(expr: Expression) -> str:
     op = expr.op
     if expr.relative_to is not None:
         return "share"
+    if expr.offset_from is not None:
+        return SETPOINT_UNIT
     if op in _TIME_OPS:
         return "s"
     if op == "slope":
@@ -927,6 +962,12 @@ def _relative(expr: Expression, data: ShotData, value: float) -> float:
     return _round(value / divisor, _SHARE_DECIMALS)
 
 
+def _from_setpoint(expr: Expression, data: ShotData, value: float) -> float:
+    if data.setpoint_c is None or data.setpoint_c <= 0:
+        raise _Absent("no_target", "the profile states no temperature")
+    return _round(value - data.setpoint_c, _CHANNEL_SPEC[expr.channel][2])
+
+
 def _held(compare: Compare, value: float) -> bool:
     # Compared on a rounded difference: 44.0 against 40 x 1.1 must not be decided by a
     # float product.
@@ -950,6 +991,8 @@ def _finish(expr: Expression, data: ShotData, resolved: _Resolved) -> Result:
         value = _compute(expr, data, resolved)
         if expr.relative_to is not None:
             value = _relative(expr, data, value)
+        if expr.offset_from is not None:
+            value = _from_setpoint(expr, data, value)
     except _Absent as gone:
         return _absent(sentence, method, unit, kind, gone)
     held = _held(expr.compare, value) if expr.compare is not None else None
@@ -1160,8 +1203,30 @@ def render(expr: Expression, data: ShotData | None = None) -> str:
     if expr.relative_to is not None:
         text += f", as a share of {_RELATIVE_WORDS[expr.relative_to]}"
     if expr.compare is not None:
-        text += f", {compare_words(expr.compare)}"
+        text += f", {limit_words(expr, expr.compare)}"
     return text
+
+
+def setpoint_words(value: float, *, bound: bool = True) -> str:
+    """A distance from the setpoint as a person says it: ``2 °C below the setpoint`` for -2,
+    ``0.8 °C above the setpoint`` for 0.8. Zero is ``the setpoint`` as a limit ("at least the
+    setpoint") and ``at the setpoint`` as a value (``bound=False``)."""
+    if value < 0:
+        return f"{_g(-value)} °C below the setpoint"
+    if value > 0:
+        return f"{_g(value)} °C above the setpoint"
+    return "the setpoint" if bound else "at the setpoint"
+
+
+def limit_words(expr: Expression, compare: Compare) -> str:
+    """A comparison of this expression as words: "at most 0.15", or, for a limit that follows
+    the setpoint, "at least 2 °C below the setpoint". ``compare`` may be an override's."""
+    if expr.offset_from is None:
+        return compare_words(compare)
+    if compare.op == "between":
+        low, high = setpoint_words(compare.low or 0.0), setpoint_words(compare.high or 0.0)
+        return f"between {low} and {high}"
+    return f"{_COMPARE_WORDS[compare.op]} {setpoint_words(compare.value or 0.0)}"
 
 
 def compare_words(compare: Compare) -> str:

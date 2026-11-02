@@ -41,6 +41,7 @@ from gaggiclanker.db.repos.signatures import ExpectationRow, SignatureRepository
 from gaggiclanker.domain.metric_language import Compare, ShotData
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_names import raw_phase_names
+from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.signature import ShotChecks, SignatureState, build_checks
 from gaggiclanker.domain.unsampled import stored_unsampled
 from gaggiclanker.domain.warnings import ShotWarning
@@ -111,6 +112,7 @@ def stored_shot_data(
     phases: Sequence[Mapping[str, Any]],
     subject: CheckSubject,
     profile_phases: Sequence[str] | None,
+    setpoint_c: float | None = None,
 ) -> ShotData:
     """What the metric language reads of a shot, built from what the derivation stored.
 
@@ -149,6 +151,7 @@ def stored_shot_data(
         final_weight_g=final if final is not None and final > 0 else None,
         target_yield_g=subject.target_yield_g,
         dose_g=subject.dose_g,
+        setpoint_c=setpoint_c,
         unsampled=stored_unsampled(subject.metrics),
     )
 
@@ -179,6 +182,7 @@ def _key(
     judged: int | None,
     expectations: Sequence[ExpectationRow],
     override: tuple[int, Compare] | None,
+    setpoint_c: float | None,
 ) -> _Key:
     return (
         subject.shot_id,
@@ -196,6 +200,8 @@ def _key(
         subject.final_weight_g,
         subject.target_yield_g,
         subject.dose_g,
+        # The temperature of the shot's own linked profile version, for a limit that follows it.
+        setpoint_c,
         subject.per_phase,
         subject.duration_s,
         tuple(subject.warnings),
@@ -237,6 +243,15 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
         {s.recipe_version_id for s in applying if s.recipe_version_id is not None}
     )
 
+    # The setpoint is read from the shot's own linked version (not the version that judges it),
+    # one query for every shot a signature applies to, since it belongs in the memo's key.
+    documents = await repo.profile_documents(
+        {s.profile_version_id for s in applying if s.profile_version_id is not None}
+    )
+
+    def setpoint_of(subject: CheckSubject) -> float | None:
+        return profile_recipe(documents.get(subject.profile_version_id or 0)).temperature_c
+
     found: dict[int, ShotChecks] = {}
     pending: list[tuple[CheckSubject, Sequence[ExpectationRow], tuple[int, Compare] | None, _Key]]
     pending = []
@@ -254,7 +269,11 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
                 # Applied to the expectation it names and to nothing else; an expectation of
                 # another profile version's signature is never in this list to be hit.
                 override = (stored.expectation_id, stored.compare)
-        key = _key(subject, judged, expectations, override) if expectations else ()
+        key = (
+            _key(subject, judged, expectations, override, setpoint_of(subject))
+            if expectations
+            else ()
+        )
         hit = _MEMO.get(key) if expectations else None
         if hit is not None:
             _MEMO.move_to_end(key)
@@ -266,19 +285,16 @@ async def checks_for_shots(db: Database, subjects: Sequence[CheckSubject]) -> di
         s.shot_id for s, exps, _, _ in pending if any(e.kind in _NEEDS_THE_LOG for e in exps)
     ]
     samples = await repo.stored_samples(reading)
-    documents = await repo.profile_documents(
-        {
-            s.profile_version_id
-            for s, _, _, _ in pending
-            if s.shot_id in samples and s.profile_version_id
-        }
-    )
     for subject, expectations, override, key in pending:
         data = None
         if subject.shot_id in samples:
             document = documents.get(subject.profile_version_id or 0)
             data = stored_shot_data(
-                samples[subject.shot_id], subject.phases, subject, raw_phase_names(document)
+                samples[subject.shot_id],
+                subject.phases,
+                subject,
+                raw_phase_names(document),
+                setpoint_of(subject),
             )
         checks = build_checks(
             warnings=subject.warnings,

@@ -49,6 +49,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from gaggiclanker.domain.metric_language import (
+    SETPOINT_UNIT,
     Compare,
     Expression,
     PhaseEndAnchor,
@@ -57,7 +58,9 @@ from gaggiclanker.domain.metric_language import (
     ShotData,
     compare_words,
     evaluate,
+    limit_words,
     render,
+    setpoint_words,
 )
 from gaggiclanker.domain.phase_metrics import phase_began
 from gaggiclanker.domain.phase_names import clashing_names, phase_key, same_phase
@@ -223,7 +226,9 @@ class ExpectationInput(BaseModel):
     expression: dict[str, Any] | None = Field(
         default=None,
         description=(
-            "For a measure only: an expression {channel, op, window, relative_to, compare}. "
+            "For a measure only: an expression {channel, op, window, relative_to, offset_from, "
+            'compare}. For a temperature prefer offset_from: "profile_temperature", the value '
+            "as its distance from the profile's own temperature. "
             "It must carry a compare, and its failing direction must map to a fault word."
         ),
     )
@@ -754,11 +759,16 @@ def limit_text(expr: Expression, unit: str) -> str:
         return ""
     if expr.relative_to is not None:
         return f"{compare_words(_scaled(expr.compare, 100))} % {_OF_WORDS[expr.relative_to]}"
+    if expr.offset_from is not None:
+        # "at least 2 °C below the setpoint", never "at least -2 °C from the setpoint".
+        return limit_words(expr, expr.compare)
     return f"{compare_words(expr.compare)}{(' ' + unit) if unit else ''}"
 
 
 def value_text(value: float, unit: str, relative_to: str | None) -> str:
     """A result as a person reads it: ``117.2 % of target``, ``4.2 g/s``."""
+    if unit == SETPOINT_UNIT:
+        return setpoint_words(value, bound=False)
     if unit == "share":
         percent = _number_text(round(value * 100, 1))
         return f"{percent} % {_OF_WORDS.get(relative_to or '', '')}".rstrip()
@@ -996,7 +1006,7 @@ def build_checks(
             continue
         note = ""
         if override is not None and override[0] == exp.id and expr.compare is not None:
-            original = compare_words(expr.compare)
+            original = limit_words(expr, expr.compare)
             expr = expr.model_copy(update={"compare": override[1]})
             note = f" (this Recipe version's limit; the profile's is {original})"
         if data is None:
@@ -1084,9 +1094,8 @@ def expectation_line(exp: ExpectationLike, override: Compare | None = None) -> s
     note = ""
     if override is not None and exp.kind == "measure" and exp.expression is not None:
         if exp.expression.compare is not None:
-            note = (
-                f" (this version's limit; the profile's is {compare_words(exp.expression.compare)})"
-            )
+            profile_limit = limit_words(exp.expression, exp.expression.compare)
+            note = f" (this version's limit; the profile's is {profile_limit})"
         sentence = render(exp.expression.model_copy(update={"compare": override}))
     where = exp.phase if exp.phase else "whole shot"
     return f"{exp.tier}, {where}, {exp.kind} ({_fault_phrase(exp)}): {sentence}{note}"

@@ -400,3 +400,136 @@ async def test_what_the_shot_is_filed_under_is_part_of_the_key_even_when_the_sho
     )
     await db.execute("UPDATE shots SET recipe_version_id = ? WHERE id = ?", (second, shot))
     assert await statuses() == {by_dose.id: "failed", by_target.id: "failed"}
+
+
+async def test_a_limit_that_follows_the_setpoint_is_read_again_when_the_link_moves(
+    db: Database,
+) -> None:
+    """The setpoint of the shot's own linked version is part of the memo's key."""
+    import copy
+
+    from gaggiclanker.db.repos.profiles import ProfilesRepository
+    from gaggiclanker.domain.models import Profile
+
+    version = await _version(db, LEVER_PROFILE)
+    hotter = copy.deepcopy(LEVER_PROFILE)
+    hotter["temperature"] = 96.0
+    hotter["label"] = "hotter"
+    other, _ = await ProfilesRepository(db).ensure_version(
+        Profile.model_validate(hotter), owner=None
+    )
+    shot = await add_shot(db, recipe_version_id=None, profile_version_id=version)
+    expression = {
+        "channel": "temperature",
+        "op": "min",
+        "window": {"phase": "soak"},
+        "offset_from": "profile_temperature",
+        "compare": {"op": ">=", "value": -1.0},
+    }
+    await SignatureService(db).propose(
+        version,
+        [ExpectationInput(tier="critical", kind="measure", expression=expression)],
+        reason="r",
+    )
+    # A second version must carry the same expectation to judge a shot of its own.
+    await SignatureService(db).propose(
+        other.id,
+        [ExpectationInput(tier="critical", kind="measure", expression=expression)],
+        reason="r",
+    )
+
+    async def verdict() -> tuple[str, float | None]:
+        document = await shot_fields(db, shot)
+        assert document is not None
+        check = next(c for c in document.checks.items if c.kind == "measure")
+        return check.status, check.value
+
+    first = await verdict()
+    assert first[1] == pytest.approx(0.2, abs=0.01)  # the soak's low, 93.2, against 93
+    await db.execute("UPDATE shots SET profile_version_id = ? WHERE id = ?", (other.id, shot))
+    second = await verdict()
+    # Read against the new link's setpoint, not the memo's old answer.
+    assert second[1] == pytest.approx(-2.8, abs=0.01)  # against 96
+    # The setpoint is part of the key itself, not only the link: the same shot on the same version
+    # whose stored temperature reads differently is another answer, not the remembered one.
+    await db.execute(
+        "UPDATE profile_versions SET json = json_set(json, '$.temperature', 94) WHERE id = ?",
+        (other.id,),
+    )
+    third = await verdict()
+    assert third[1] == pytest.approx(-0.8, abs=0.01)  # against 94
+
+
+async def test_a_pin_copys_shot_reads_the_setpoint_of_its_own_version_not_the_judging_ones(
+    db: Database,
+) -> None:
+    """A pin's copy is judged by the original version, but the shot was brewed at the copy's
+    temperature: the limit "2 below the setpoint" is read against 92, not the original's 93."""
+    import copy
+
+    from gaggiclanker.db.repos.profiles import ProfilesRepository
+    from gaggiclanker.domain.models import Profile
+    from tests.signatures.helpers import make_recipe_versions, sagging_shot
+
+    version = await _version(db, LEVER_PROFILE)
+    recipe_version, _ = await make_recipe_versions(db, version)
+    cooler = copy.deepcopy(LEVER_PROFILE)
+    cooler["temperature"] = 92.0
+    cooler["label"] = "a pin copy"
+    pin_copy, _ = await ProfilesRepository(db).ensure_version(
+        Profile.model_validate(cooler), owner=None
+    )
+    board = await db.execute(
+        "INSERT INTO profile_board (label, current_version_id, origin) VALUES ('pin', ?, 'draft')",
+        (pin_copy.id,),
+    )
+    await db.execute(
+        "INSERT INTO recipe_version_pins (recipe_version_id, board_id, profile_version_id) "
+        "VALUES (?, ?, ?)",
+        (recipe_version, board.lastrowid, pin_copy.id),
+    )
+    (floor,) = await SignatureService(db).propose(
+        version,
+        [
+            ExpectationInput(
+                tier="important",
+                kind="measure",
+                phase="soak",
+                expression={
+                    "channel": "temperature",
+                    "op": "min",
+                    "window": {"phase": "soak"},
+                    "offset_from": "profile_temperature",
+                    "compare": {"op": ">=", "value": -2.0},
+                },
+            )
+        ],
+        reason="A floor that follows the setpoint.",
+    )
+    on_copy = await add_shot(
+        db,
+        recipe_version_id=None,
+        profile_version_id=pin_copy.id,
+        slog=sagging_shot(90.2),
+        device_id="000991",
+    )
+    on_original = await add_shot(
+        db,
+        recipe_version_id=recipe_version,
+        profile_version_id=version,
+        slog=sagging_shot(90.2),
+        device_id="000992",
+    )
+
+    async def check(shot: int) -> tuple[str, float | None]:
+        document = await shot_fields(db, shot)
+        assert document is not None
+        found = next(c for c in document.checks.items if c.expectation_id == floor.id)
+        return found.status, found.value
+
+    # The copy's own 92: 90.2 - 92 = -1.8 holds. Read against the judging version's 93 it would
+    # be -2.8 and fail, which is what the original version's own shot (same low) does.
+    copy_status, copy_value = await check(on_copy)
+    original_status, original_value = await check(on_original)
+    assert copy_status == "held" and copy_value == pytest.approx(-1.8, abs=0.01)
+    assert original_status == "failed" and original_value == pytest.approx(-2.8, abs=0.01)

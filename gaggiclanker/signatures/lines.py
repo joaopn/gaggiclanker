@@ -22,7 +22,7 @@ from __future__ import annotations
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.pins import judged_profile_version
 from gaggiclanker.db.repos.signatures import ExpectationRow, SignatureRepository
-from gaggiclanker.domain.metric_language import compare_words
+from gaggiclanker.domain.metric_language import compare_words, limit_words
 from gaggiclanker.domain.signature import expectation_line
 
 __all__ = [
@@ -132,6 +132,11 @@ async def signature_answers_block(db: Database, thread_id: int | None) -> list[s
             # `withdrawn`: a newer limit replaced it, its expectation was rejected, or (on an
             # older version) a person took it back. Why is not claimed.
             state = "no longer in force"
-        words = "an unreadable limit" if item.compare is None else compare_words(item.compare)
+        if item.compare is None:
+            words = "an unreadable limit"
+        elif target is not None and target.expression is not None:
+            words = limit_words(target.expression, item.compare)
+        else:
+            words = compare_words(item.compare)
         lines.append(f"- a different limit for {about}: {words} ({state})")
     return lines

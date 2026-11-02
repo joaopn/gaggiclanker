@@ -26,7 +26,12 @@ from gaggiclanker.db.repos.signatures import (
     OverrideRow,
     SignatureRepository,
 )
-from gaggiclanker.domain.metric_language import Compare, compare_words, expression_unit
+from gaggiclanker.domain.metric_language import (
+    Compare,
+    compare_words,
+    expression_unit,
+    limit_words,
+)
 from gaggiclanker.domain.phase_metrics import profile_phase_names
 from gaggiclanker.domain.signature import fault_words, limit_text
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
@@ -396,9 +401,17 @@ async def _override_out(row: OverrideRow, signatures: SignatureRepository) -> Ov
         proposed_at=row.proposed_at,
         answered_at=row.answered_at,
         compare=_compare_json(row.compare),
-        compare_text=compare_words(row.compare) if row.compare is not None else "",
+        compare_text=(
+            limit_words(expression, row.compare)
+            if row.compare is not None and expression is not None
+            else compare_words(row.compare)
+            if row.compare is not None
+            else ""
+        ),
         profile_compare=_compare_json(base),
-        profile_compare_text=compare_words(base) if base is not None else "",
+        profile_compare_text=(
+            limit_words(expression, base) if base is not None and expression is not None else ""
+        ),
         limit_text=(
             limit_text(expression.model_copy(update={"compare": row.compare}), unit)
             if expression is not None and row.compare is not None

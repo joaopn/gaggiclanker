@@ -4,6 +4,7 @@ import type { ClaimEvidence, ReviewClaim } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ClaimSpanControls } from "@/lib/claimSpan";
+import { SETPOINT_UNIT, setpointValueText } from "@/lib/signatures";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 /** A measured value as a person reads it: "6.1 bar", "117.2 %". */
 function measured(item: ClaimEvidence): string | null {
   if (item.value === null || item.value === undefined) return null;
+  if (item.unit === SETPOINT_UNIT) return setpointValueText(item.value);
   const number = String(Number(item.value.toFixed(2)));
   const unit = item.unit === "%" ? " %" : item.unit ? ` ${item.unit}` : "";
   return `${number}${unit}`;

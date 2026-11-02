@@ -342,6 +342,45 @@ async def test_an_override_of_a_limit_in_a_unit_words_both_limits_in_it(
     assert (item["limit_text"], item["profile_limit_text"]) == ("at most 4 g/s", "at most 3 g/s")
 
 
+async def test_an_override_of_a_limit_that_follows_the_setpoint_reads_below_and_above_it(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    """The Profiles page and the Recipe page word a distance from the setpoint as "2 °C below
+    the setpoint", never "-2 °C from the setpoint"."""
+    version = await _version(app.state.db, LEVER_PROFILE)
+    following = {
+        "channel": "temperature",
+        "op": "min",
+        "window": {"phase": "soak"},
+        "offset_from": "profile_temperature",
+        "compare": {"op": ">=", "value": -2.0},
+    }
+    (row,) = await SignatureService(app.state.db).propose(
+        version,
+        [ExpectationInput(tier="important", kind="measure", expression=following)],
+        reason="a floor that follows the setpoint",
+    )
+    first, _ = await make_recipe_versions(app.state.db, version)
+    recipe_id = await SignatureRepository(app.state.db).recipe_of_version(first)
+    await SignatureService(app.state.db).propose_override(
+        recipe_version_id=first,
+        profile_version_id=version,
+        expectation_id=row.id,
+        compare={"op": ">=", "value": -3.0},
+        reason="a boiler that sags more",
+        thread_id=None,
+    )
+
+    listed = _ok(await client.get(f"/api/recipes/{recipe_id}/versions/{first}/signature-overrides"))
+
+    (item,) = listed["items"]
+    assert (item["limit_text"], item["profile_limit_text"]) == (
+        "at least 3 °C below the setpoint",
+        "at least 2 °C below the setpoint",
+    )
+    assert item["compare_text"] == "at least 3 °C below the setpoint"
+
+
 async def test_a_row_from_before_signatures_were_in_force_is_counted_as_not_in_force(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:

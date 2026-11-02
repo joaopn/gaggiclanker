@@ -765,3 +765,33 @@ describe("the limit is said once", () => {
     expect(text.match(/at most 6/g)).toHaveLength(1);
   });
 });
+
+describe("evidence that follows the setpoint", () => {
+  it("says the value and the limit as distances from it, with no minus sign", () => {
+    renderWithQueryClient(
+      <Card
+        reviews={[
+          review({
+            claims: [
+              observation({
+                evidence: [
+                  evidence({
+                    sentence:
+                      "lowest value of temperature in the soak, at least 2 °C below the setpoint",
+                    value: -2.8,
+                    unit: "°C from the setpoint",
+                    limit_text: "at least 2 °C below the setpoint",
+                    held: false,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ]}
+      />,
+    );
+    const text = screen.getByTestId("claim-evidence").textContent ?? "";
+    expect(text).toContain("2.8 °C below the setpoint");
+    expect(text).not.toMatch(/-2\.8|from the setpoint/);
+  });
+});

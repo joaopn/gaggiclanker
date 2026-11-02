@@ -3,7 +3,7 @@ import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ReviewClaim, ShotCheck, ShotSignatureState } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { signatureHref } from "@/lib/signatures";
+import { SETPOINT_UNIT, setpointValueText, signatureHref } from "@/lib/signatures";
 import { cn } from "@/lib/utils";
 
 /**
@@ -111,6 +111,7 @@ const OF: Record<string, string> = {
 /** A measure's value as a person reads it: "117.2 % of target", "4 g/s". */
 export function valueText(check: ShotCheck): string | null {
   if (check.value === null || check.value === undefined) return null;
+  if (check.unit === SETPOINT_UNIT) return setpointValueText(check.value);
   const number = String(Number(check.value.toFixed(2)));
   const unit = check.unit === "%" ? " %" : check.unit ? ` ${check.unit}` : "";
   const of = check.unit === "%" && check.relative_to ? ` ${OF[check.relative_to] ?? ""}` : "";

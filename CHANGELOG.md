@@ -13,6 +13,17 @@ database.
 
 ## [Unreleased]
 
+### A signature limit can follow the profile's temperature
+
+- A temperature expectation can now be written as a distance from the shot's own profile
+  temperature (`offset_from: "profile_temperature"`): "lowest temperature in the hold, at least
+  2 °C below the setpoint" holds at 93 °C as it did at 95 °C, so changing the profile's
+  temperature no longer leaves a floor written for the old one. A profile that states no
+  temperature (the machine's 0) gives "not measured: the profile states no temperature". It is
+  not combined with a share of a weight, and reads a level (lowest, highest, mean, at the start
+  or at the end), not a change or a rate. The agent is told to prefer it for temperature. No
+  database change; the limit is a key inside the stored expression.
+
 ### The stars are the judgement, and Discard is its own column
 
 - **Breaking: the database changes (an upgrade step carries it; you do nothing).** What changes:

@@ -362,6 +362,7 @@ channels: cup_weight, scale_flow, puck_flow, pump_flow, target_flow, pressure, t
 operations: mean, min, max, at_start, at_end, change, gained, slope, integral, jitter, duration, time_to, time_above, time_below. `gained` reads the cup weight or the water pumped over one phase. `slope` is per second. `time_to`, `time_above` and `time_below` need a `threshold`.
 window: `{}` for the whole shot, `{"phase": "<a phase this shot logged>"}`, or a span `{"from": <anchor>, "to": <anchor>}`. An anchor is "shot_start", "shot_end", "first_drip" (the first puck flow), "peak_pressure", `{"phase_start": "<phase>"}`, `{"phase_end": "<phase>"}` or `{"at_s": <seconds>}`, each optionally with "offset_s".
 `relative_to`: "target_yield", "dose" or "final_weight" turns the value into a share of it (0.15 is 15 %).
+`offset_from`: "profile_temperature" (temperature channels, over a level such as min, max or mean) turns the value into its distance from the shot's own profile temperature in °C, so -2 means 2 °C below the setpoint; prefer it to an absolute temperature, which stops fitting when the profile's temperature changes. It cannot be combined with `relative_to`.
 `compare`: `{"op": "<" | "<=" | ">" | ">=", "value": n}` or `{"op": "between", "low": a, "high": b}`: the condition your claim asserts, so that it holds when the claim is true (a cup over its limit is `>` the limit). The server says whether it held; a claim whose comparison did not hold is marked as not borne out.
 
 === phases ===

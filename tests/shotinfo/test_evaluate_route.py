@@ -373,3 +373,33 @@ async def test_a_flag_set_shot_with_zero_weights_has_none_of_it(
     assert not {c.fault for c in served.checks.checks} & {"over target", "under target"}
     [cup] = await evaluate(client, shot, [{"channel": "cup_weight", "op": "at_end"}])
     assert (cup["value"], cup["absent"]) == (None, "not_recorded")
+
+
+async def test_a_limit_that_follows_the_setpoint_reads_the_filed_profiles_temperature(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    """The route, the parsed log and the stored rows (the review's evidence) agree."""
+    from gaggiclanker.domain.metric_language import Expression
+    from gaggiclanker.domain.metric_language import evaluate as run
+    from gaggiclanker.shotinfo.evaluation import shot_data, stored_data
+
+    shot, _, _ = await file_lever(app)
+    soak_low = {
+        "channel": "temperature",
+        "op": "min",
+        "window": {"phase": "soak"},
+        "offset_from": "profile_temperature",
+        "compare": {"op": ">=", "value": -2},
+    }
+    [result] = await evaluate(client, shot, [soak_low])
+    assert result["unit"] == "°C from the setpoint"
+    assert result["value"] == pytest.approx(0.2)  # the soak's low, 93.2, against the profile's 93
+    assert result["held"] is True
+    assert result["sentence"] == (
+        "lowest value of temperature in the soak, at least 2 °C below the setpoint"
+    )
+    expression = Expression.model_validate(soak_low)
+    for read in (shot_data, stored_data):
+        data_read = await read(app.state.db, shot)
+        assert data_read is not None and data_read.setpoint_c == 93.0
+        assert run(expression, data_read).value == pytest.approx(0.2)

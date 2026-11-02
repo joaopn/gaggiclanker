@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ShotChecksCard } from "@/components/shots/ShotChecksCard";
+import { ShotChecksCard, valueText } from "@/components/shots/ShotChecksCard";
 import { showClaim } from "@/lib/claimSpan";
 import { claim } from "@/test/claimFixtures";
 import { renderWithQueryClient } from "@/test/renderWithQueryClient";
@@ -282,5 +282,19 @@ describe("ShotChecksCard", () => {
       expect(element).toHaveFocus();
       expect(() => showClaim(999)).not.toThrow();
     });
+  });
+});
+
+describe("a value that follows the setpoint", () => {
+  const measure = leverSignedFields.checks.items.find((check) => check.kind === "measure");
+
+  it("is said as a distance below or above the setpoint, with no minus sign", () => {
+    if (!measure) throw new Error("the fixture has no measure");
+    const at = (value: number) => valueText({ ...measure, value, unit: "°C from the setpoint" });
+    expect(at(-0.8)).toBe("0.8 °C below the setpoint");
+    expect(at(1.25)).toBe("1.25 °C above the setpoint");
+    expect(at(0)).toBe("at the setpoint");
+    // Another unit is left alone.
+    expect(valueText({ ...measure, value: 4.2, unit: "g/s" })).toBe("4.2 g/s");
   });
 });

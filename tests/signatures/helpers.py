@@ -208,3 +208,17 @@ async def add_shot(
     if recipe_version_id is not None:
         assert await RecipesRepository(db).assign_shot(shot, recipe_version_id)
     return shot
+
+
+def sagging_shot(low: float, *, rest: float | None = None) -> Slog:
+    """The constructed lever shot, its soak's temperature edited so the lowest reading is
+    ``low`` (the rest sits 0.4 above it unless ``rest`` says): a boiler that sags under the
+    setpoint the profile states. Built from the real fixture's samples with ``ct`` rewritten."""
+    base = lever_shot()
+    hold = rest if rest is not None else round(low + 0.4, 1)
+    samples = []
+    for index, sample in enumerate(base.samples):
+        if 29 <= index <= 68:
+            sample = sample.model_copy(update={"ct": low if index == 40 else hold})
+        samples.append(sample)
+    return dataclasses.replace(base, samples=samples)
