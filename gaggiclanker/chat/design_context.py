@@ -50,6 +50,7 @@ from gaggiclanker.chat.context import (
     _quote,
     _recipe,
     _taste,
+    bean_lines,
 )
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
@@ -217,13 +218,7 @@ def _heading(row: RecipeRow, bean: BeanRow | None, grinder: GrinderRow | None) -
         "no dose, no yield. What you propose, once the person accepts it, becomes that "
         "version 1.",
     ]
-    # Whole, never cut: both fields are capped at 2000 characters on input, and
-    # the part a cut drops is where a roaster writes how to brew the coffee.
-    if bean is not None and bean.description:
-        lines.append(f"About the bean: {bean.description}")
-    if bean is not None and bean.notes:
-        lines.append(f"Their notes on the bean: {bean.notes}")
-    return lines
+    return [*lines, *bean_lines(bean)]
 
 
 def _brief(row: RecipeRow, grinder: GrinderRow | None) -> list[str]:

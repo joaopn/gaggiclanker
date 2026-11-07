@@ -439,6 +439,64 @@ async def test_a_bean_with_only_a_name_is_named_and_nothing_else(experiment: Exp
     assert "not stated" not in rendered.split("THIS VERSION IS")[0]
 
 
+async def test_the_bean_s_description_and_notes_come_whole_above_what_a_shot_moves(
+    experiment: Experiment,
+) -> None:
+    """A roaster's text puts the brew advice last, so the description is never cut.
+
+    It sits above the heading, whose shot and version counts move with every shot, so a new
+    shot's first changed byte comes after the bean: it stays in the part of the prompt the
+    provider can reuse.
+    """
+    farm = "Grown at 2000-2200 m by the washing station's smallholders, floated and pulped. " * 4
+    advice = "For espresso we brew at 90-91 °C, 18 g in, 45 g out."
+    assert len(farm) > 300  # the advice sits past the cut the design context once made
+    await BeansRepository(experiment.db).update(
+        1, BeanWrite(name="Chilicho", description=farm + advice, notes="Rest it 14 days.")
+    )
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
+    )
+
+    block = (
+        "THE BEAN, AS ITS RECORD DESCRIBES IT\n"
+        f"About the bean: {farm}{advice}\n"
+        "Their notes on the bean: Rest it 14 days.\n"
+    )
+    assert block in rendered
+    block_end = rendered.index(block) + len(block)
+
+    shot = await _shot(
+        experiment.db,
+        "000701",
+        started_at="2026-04-09T08:00:00.000Z",
+        duration_ms=30_000,
+        weight_g=36.0,
+        first_drip_s=7.0,
+        max_bar=9.0,
+        brew_flow=1.9,
+    )
+    assert await RecipesRepository(experiment.db).assign_shot(shot, experiment.v5)
+    after = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
+    )
+    assert after != rendered
+    assert _first_difference(rendered, after) >= block_end
+
+
+async def test_a_bean_with_no_description_or_notes_has_no_bean_block(
+    experiment: Experiment,
+) -> None:
+    await BeansRepository(experiment.db).update(1, BeanWrite(name="Mystery"))
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
+    )
+
+    assert "THE BEAN, AS ITS RECORD DESCRIBES IT" not in rendered
+
+
 async def test_a_general_conversation_gets_no_block(experiment: Experiment) -> None:
     assert await opening_context(experiment.db, ToolScope()) == ""
 

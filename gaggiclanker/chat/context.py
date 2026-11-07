@@ -77,6 +77,7 @@ __all__ = [
     "LEDGER_VERSIONS",
     "NOTE_CHARS",
     "RECENT_SHOTS",
+    "bean_lines",
     "opening_context",
     "thread_title_from",
 ]
@@ -125,6 +126,23 @@ def _taste(bean: BeanRow | None) -> str:
     """The heading's taste clause ("; taste acidity 4 (1 low to 5 high)"), or ""."""
     phrase = taste_scales(bean)
     return f"; taste {phrase}" if phrase else ""
+
+
+def bean_lines(bean: BeanRow | None) -> list[str]:
+    """The bean's description and the person's notes on it, whole, or nothing.
+
+    Never cut: both fields are capped at 2000 characters on input, and a roaster's
+    text puts the brew advice (a temperature, a ratio) last, after the farm and the
+    tasting notes, so a cut drops exactly that. Cut at 300 characters it once made a
+    design ignore the roaster's 90-91 °C for the generic light-roast rule. One
+    rendering for every conversation that is about a bean, so they cannot disagree.
+    """
+    if bean is None:
+        return []
+    lines = [f"About the bean: {bean.description}"] if bean.description else []
+    if bean.notes:
+        lines.append(f"Their notes on the bean: {bean.notes}")
+    return lines
 
 
 def _plural(count: int, noun: str) -> str:
@@ -210,6 +228,11 @@ async def opening_context(
     block = await drink_reference(db, version.drink)
     if block:
         lines += ["", *block.split("\n")]
+    # Then the bean in its own words: it changes only when the person edits the bean, so it
+    # too sits above everything that moves with a shot or a grade.
+    about = bean_lines(await BeansRepository(db).get(row.bean_id) if row.bean_id else None)
+    if about:
+        lines += ["", "THE BEAN, AS ITS RECORD DESCRIBES IT", *about]
     lines += [""]
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
     lines += await _reverts_block(recipes, version)
