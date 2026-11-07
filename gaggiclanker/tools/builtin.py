@@ -29,7 +29,7 @@ from typing import Any, Literal
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
-from gaggiclanker.db.repos.beans import BeansRepository
+from gaggiclanker.db.repos.beans import BeansRepository, agent_dump
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.insight_deletions import (
     REASON_MAX,
@@ -456,6 +456,9 @@ class GetRecipeInput(_Model):
 
 class RecipeOutput(_Model):
     recipe: dict[str, Any]
+    #: The Recipe's bean, its description (often the roaster's text, brew advice included)
+    #: and the person's notes whole; null when the Recipe names no bean.
+    bean: dict[str, Any] | None = None
     versions: list[dict[str, Any]]
     trajectory: list[dict[str, Any]]
     insights: list[str] = Field(default_factory=list)
@@ -509,8 +512,10 @@ def _shot_of_scope(ctx: ToolContext, shot_id: int, data: dict[str, Any] | None) 
     "get_recipe",
     permission="read",
     description=(
-        "One Recipe: what it is, every version with what changed and why, and the "
-        "per-version averages that say whether each change helped."
+        "One Recipe: what it is, its bean with the description and notes whole (the "
+        "description is often the roaster's text, brew advice included), every version with "
+        "what changed and why, and the per-version averages that say whether each change "
+        "helped."
     ),
 )
 async def get_recipe(ctx: ToolContext, args: GetRecipeInput) -> RecipeOutput:
@@ -524,6 +529,7 @@ async def get_recipe(ctx: ToolContext, args: GetRecipeInput) -> RecipeOutput:
     insights = await _recipe_insights(ctx, row)
     return RecipeOutput(
         recipe=named_dump(row),
+        bean=agent_dump(await BeansRepository(ctx.db).get(row.bean_id) if row.bean_id else None),
         versions=[named_dump(version) for version in versions],
         trajectory=[named_dump(version) for version in trends.versions],
         insights=[insight.render() for insight in insights],

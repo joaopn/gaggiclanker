@@ -192,6 +192,31 @@ async def test_get_recipe_returns_the_versions_and_the_trajectory(
     assert isinstance(data["trajectory"], list)
 
 
+@pytest.mark.parametrize("scoped", [False, True], ids=["general", "recipe"])
+async def test_get_recipe_carries_its_bean_with_the_description_and_notes_whole(
+    ctx: ToolContext, recipe_ctx: ToolContext, archive: Fixture, scoped: bool
+) -> None:
+    """Every conversation reads the bean through `get_recipe`, the roaster's advice included.
+
+    Without the archive-wide Recipe count: a Recipe conversation learns nothing of the others.
+    """
+    row = await RecipesRepository(archive.db).get(archive.recipe_id)
+    assert row is not None
+    bean = await BeansRepository(archive.db).get(row.bean_id)
+    assert bean is not None
+    description = "Smallholder farms. " * 30 + "For espresso we brew at 90-91 °C."
+    await BeansRepository(archive.db).update(
+        bean.id, BeanWrite(name=bean.name, description=description, notes="Rest it 14 days.")
+    )
+
+    data = await call(recipe_ctx if scoped else ctx, "get_recipe", recipe_id=archive.recipe_id)
+
+    assert data["bean"]["id"] == bean.id
+    assert data["bean"]["description"] == description
+    assert data["bean"]["notes"] == "Rest it 14 days."
+    assert "recipe_count" not in data["bean"]
+
+
 async def test_the_trajectory_serves_the_averages_the_chat_ledger_is_written_from(
     ctx: ToolContext, archive: Fixture
 ) -> None:

@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 from pydantic.fields import FieldInfo
 
 from gaggiclanker import __version__
+from gaggiclanker.db.repos.beans import BeansRepository, agent_dump
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.db.repos.version_names import named_dump
@@ -288,7 +289,7 @@ def _add_resources(
     @server.resource(
         f"{SERVER_NAME}://recipes/{{recipe_id}}",
         name="Recipe summary",
-        description="One Recipe: what it is, and every version with its intent.",
+        description="One Recipe: what it is, its bean, and every version with its intent.",
         mime_type="application/json",
     )
     async def one_recipe(recipe_id: str) -> str:
@@ -304,14 +305,17 @@ def _add_resources(
             raise ResourceError(
                 f"This conversation is about Recipe {scope.recipe_id} and can see no other"
             )
-        repo = RecipesRepository(await _db())
+        db = await _db()
+        repo = RecipesRepository(db)
         row = await repo.get(identifier)
         if row is None:
             raise ResourceError(f"No Recipe {identifier}")
         versions = await repo.versions(identifier)
+        bean = await BeansRepository(db).get(row.bean_id) if row.bean_id else None
         return json.dumps(
             {
                 "recipe": named_dump(row),
+                "bean": agent_dump(bean),
                 "versions": [named_dump(version) for version in versions],
             },
             indent=2,

@@ -16,6 +16,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from gaggiclanker.db.repos.beans import BeanRow
 from gaggiclanker.db.repos.recipes import RecipeRow, RecipeVersionRow
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, registry
 
@@ -58,8 +59,8 @@ def test_no_tool_input_or_output_has_an_ordinal() -> None:
 
 
 def test_the_rows_the_mcp_resource_serves_have_no_ordinal() -> None:
-    """The stdio `recipes/{id}` resource dumps these two models, nothing else."""
-    for model in (RecipeRow, RecipeVersionRow):
+    """The stdio `recipes/{id}` resource dumps these three models, nothing else."""
+    for model in (RecipeRow, RecipeVersionRow, BeanRow):
         assert _ordinal_names(model.model_json_schema(mode="serialization"), model.__name__) == []
 
 

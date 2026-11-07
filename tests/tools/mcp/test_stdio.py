@@ -128,7 +128,11 @@ async def test_a_recipe_scoped_server_refuses_another_recipe_s_shot_and_its_reso
             await session.read_resource(f"{SERVER_NAME}://recipes/{fixture.recipe_id + 1}")
         # And its own Recipe still reads, so the refusal is the scope and not the
         # resource being broken.
-        assert await session.read_resource(f"{SERVER_NAME}://recipes/{fixture.recipe_id}")
+        own = await session.read_resource(f"{SERVER_NAME}://recipes/{fixture.recipe_id}")
+        # With its bean, the same dump `get_recipe` serves, and no archive-wide Recipe count.
+        served = json.loads(own.contents[0].text)  # type: ignore[union-attr]
+        assert served["bean"]["name"]
+        assert "recipe_count" not in served["bean"]
 
     assert refused.is_error is True
     assert "can see no other" in str(refused.content)

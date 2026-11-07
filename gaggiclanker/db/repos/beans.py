@@ -112,6 +112,17 @@ class BeanRow(BeanWrite):
     recipe_count: int = 0
 
 
+def agent_dump(bean: BeanRow | None) -> dict[str, Any] | None:
+    """A Recipe's bean as an agent reads it: every recorded fact, description and notes whole.
+
+    Without ``recipe_count``: it counts Recipes across the archive, and a conversation
+    limited to one Recipe learns nothing about the others, not even how many there are.
+    """
+    if bean is None:
+        return None
+    return bean.model_dump(mode="json", exclude={"recipe_count"})
+
+
 class BeanDeletion(BaseModel):
     """What a delete did: nothing to delete, refused because Recipes use it, or done."""
 
