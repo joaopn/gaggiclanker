@@ -413,3 +413,27 @@ def test_the_starting_point_puts_the_roaster_s_numbers_before_the_roast_level() 
         "They are about this bean, so they outrank the roast-level ranges below, the rules and "
         "other beans' Recipes"
     ) in text
+
+
+def _prompt_text(name: str) -> str:
+    path = Path(__file__).parents[2] / "gaggiclanker" / "prompts" / f"{name}.yaml"
+    return " ".join(path.read_text().split())
+
+
+def test_the_recipe_prompt_ranks_the_roaster_s_numbers_below_the_shots() -> None:
+    """In a Recipe conversation the shots outrank the roaster; the rules rank below both."""
+    text = _prompt_text("chat-recipe")
+    assert "THE ROASTER'S NUMBERS ARE ABOUT THE COFFEE, THE SHOTS ARE ABOUT THIS KITCHEN" in text
+    assert (
+        "Here they rank below this Recipe's shots and the person's ratings, which were brewed "
+        "on this kit, and above the generic rules."
+    ) in text
+    assert "never move a number back to the roaster's against what the shots say" in text
+
+
+def test_the_general_prompt_says_get_recipe_carries_the_bean() -> None:
+    text = _prompt_text("chat-general")
+    assert (
+        "`get_recipe` also carries the Recipe's bean: its description, often the roaster's text "
+        "with their brew numbers, and the person's notes, both whole."
+    ) in text

@@ -13,10 +13,11 @@ database.
 
 ## [Unreleased]
 
-### Designing a Recipe reads the whole bean, and the roaster's brew numbers come first
+### Every conversation reads the whole bean, and the roaster's brew numbers rank above the rules
 
 - The conversation that designs a new Recipe now gets the bean's description whole, and its notes. It used to get the first 300 characters of the description and no notes, and a roaster's text usually puts the brew advice last, after the farm and the tasting notes. A light Ethiopian the roaster brews at 90-91 °C was designed at 94 °C from the generic light-roast rule, with the advice never seen.
 - The design conversation and the New Recipe starting point now put the roaster's numbers for the bean (temperature, dose, ratio or yield, shot time, as the description gives them) ahead of the generic rules and other beans' Recipes. Only the numbers you chose and this bean's own Recipes outrank them. The agent cites them as the roaster's and says where it departs from them. A roaster's grind setting is not taken, since it belongs to their grinder. If you edited the `chat-design` or `starting_point` prompt in Settings → Prompts, you keep your text and do not get this rule; reset the prompt to get it.
+- Every conversation can now read the bean's description and notes, not only the design. A Recipe's conversation gets both whole near the top of what it is told, and `get_recipe` returns the Recipe's bean with both, so a general conversation reads them too. In a Recipe's conversation the roaster's numbers rank below that Recipe's shots and your ratings and above the generic rules: the agent names them when the shots point that way and never moves a number back to the roaster's against what the shots say. If you edited `chat-recipe` or `chat-general` in Settings → Prompts, you keep your text and do not get the new sentences; reset the prompt to get them.
 
 ### The agent asks for changes to a signature, and a draft says what it breaks
 

@@ -34,7 +34,9 @@ system: |
   about many shots at once; `get_shot`, `get_recipe` and `compare_shots` answer
   questions about a few. `get_shot` gives a shot's base lines,
   `get_shot_extended` the rest of it (the diagnostics in detail, the phases,
-  the curve) and `get_shot_full` both.
+  the curve) and `get_shot_full` both. `get_recipe` also carries the Recipe's
+  bean: its description, often the roaster's text with their brew numbers, and
+  the person's notes, both whole.
 
   YOU CANNOT CHANGE A RECIPE HERE
 
