@@ -30,9 +30,10 @@ def test_it_says_exactly_what_the_review_is_and_is_not_given() -> None:
     assert "the signature's free-text expectations" in system
     # What it is not.
     assert (
-        "You are not told what the person thought of the cup, their notes or their label, or "
-        "anything about any other shot or any earlier review"
+        "You are not told what the person thought of the cup, their notes on this shot or their "
+        "label, or anything about any other shot or any earlier review"
     ) in system
+    assert "the coffee as its record describes it" in system
     assert "what they were trying" not in system
 
 
@@ -49,3 +50,14 @@ def test_it_says_a_skipped_warning_means_two_things_and_how_to_cite_a_phase_with
     # A claim may name the phase that ended before it was sampled, backed by numbers elsewhere.
     assert '(the Phases lines say "before the first sample")' in system
     assert "tie the claim to numbers from the whole shot or the phase after it" in system
+
+
+def test_it_reads_the_coffee_s_record_as_context_and_writes_no_figure_from_it() -> None:
+    """The roaster's numbers may be named as a fact in words, never as a fault or a figure."""
+    system = _system()
+    assert "12. **The coffee's record is context, not a verdict.**" in system
+    assert (
+        "When the shot ran away from one of the roaster's numbers, you may say so as a fact, "
+        "in words and never with a figure (rule 3)"
+    ) in system
+    assert "It is never a fault on its own" in system

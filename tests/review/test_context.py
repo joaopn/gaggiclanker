@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 import gaggiclanker.review.context as context_module
+from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch
 from gaggiclanker.db.repos.reviews import (
@@ -42,6 +43,7 @@ from gaggiclanker.domain.models import ShotNotes
 from gaggiclanker.review.context import (
     REVIEW_EXCLUDED_KEYS,
     VERDICT_FIELDS,
+    ReviewInput,
     build_review_input,
     review_keys,
 )
@@ -93,7 +95,8 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
     notes, notes text, a discard), a note typed on the machine, an earlier reading and
     is filed under a version with a prediction in a named Recipe that has five other shots
     and a confirmed insight. None of the person's side may reach the stored input or the
-    rendered prompt; the version's recipe and prediction do.
+    rendered prompt; the version's recipe and prediction do, and so does the bean's record
+    (its description and the person's notes on the coffee, never on a shot).
     """
     db = fixture.db
     subject = fixture.shots[-1]
@@ -155,12 +158,14 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
         "An earlier claim about this shot.",  # an earlier reading of it
         "An earlier one-line reading.",
         "earlier-model",
-        "peach, jasmine, lemon",  # the Recipe's bean
-        "Niche Zero",  # and its grinder
+        "Niche Zero",  # the Recipe's grinder
     ]
     for text in (stored_input, prompt):
         leaked = [needle for needle in distinctive if needle in text]
         assert not leaked, leaked
+        # The bean's record is the one thing about the Recipe a review is told: what the coffee
+        # is (often the roaster's text), never anything the person thought of a shot.
+        assert "About the bean: peach, jasmine, lemon" in text
         for other in fixture.shots[:-1]:
             assert f"shot {other}" not in text
             assert f'"shot_id":{other},' not in text
@@ -187,9 +192,10 @@ async def test_a_reading_never_sees_the_judgement_the_note_the_label_or_other_sh
     leaked = [needle for needle in lines if needle in review.shot]
     assert not leaked, leaked
 
-    # What it does see: the shot, the version it is filed under with its recipe, the
-    # prediction and what it is measured against.
-    assert prompt.startswith("=== drink ===\nDRINK: CAPPUCCINO")
+    # What it does see: the bean's record, the shot, the version it is filed under with its
+    # recipe, the prediction and what it is measured against.
+    assert prompt.startswith("=== bean ===\nAbout the bean: peach, jasmine, lemon\n")
+    assert "=== drink ===\nDRINK: CAPPUCCINO" in prompt
     assert f"shot {subject}" in prompt
     assert "Shot time: 24.0 s" in prompt
     assert review.version == "v1.1"
@@ -218,6 +224,8 @@ async def test_with_no_prediction_or_no_recipe_version_it_says_so(fixture: Fixtu
     unfiled = await build_review_input(fixture.db, shot_id)
     assert unfiled.version == "" and unfiled.prediction == ""
     assert "not filed under a Recipe version" in unfiled.render()["prediction"]
+    assert unfiled.bean == "" and not unfiled.filed
+    assert unfiled.render()["bean"] == "The shot is not filed under a Recipe, so no bean is named."
 
 
 async def test_a_prediction_measured_against_nothing_says_so(fixture: Fixture) -> None:
@@ -503,3 +511,44 @@ async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
     assert looks_like_verdict == set(VERDICT_FIELDS)
     for name, cleared in VERDICT_FIELDS.items():
         assert getattr(facts.shot, name) == cleared, name
+
+
+async def test_the_bean_s_description_and_notes_reach_the_review_whole(fixture: Fixture) -> None:
+    """A roaster's text puts the brew advice last, so the review gets it uncut, with the notes."""
+    beans = BeansRepository(fixture.db)
+    bean = await beans.get(fixture.bean_id)
+    assert bean is not None
+    farm = "Grown by smallholders around the washing station, floated and pulped. " * 5
+    advice = "For espresso we brew at 90-91 °C."
+    assert len(farm) > 300
+    kept = bean.model_dump(include=set(BeanWrite.model_fields))
+    await beans.update(
+        bean.id, BeanWrite(**{**kept, "description": farm + advice, "notes": "Rest it 14 days."})
+    )
+
+    review = await build_review_input(fixture.db, fixture.shots[-1])
+
+    assert review.filed
+    assert review.render()["bean"] == (
+        f"About the bean: {farm}{advice}\nTheir notes on the bean: Rest it 14 days."
+    )
+
+
+async def test_a_bean_with_neither_text_says_so(fixture: Fixture) -> None:
+    beans = BeansRepository(fixture.db)
+    bean = await beans.get(fixture.bean_id)
+    assert bean is not None
+    kept = bean.model_dump(include=set(BeanWrite.model_fields))
+    await beans.update(bean.id, BeanWrite(**{**kept, "description": "", "notes": ""}))
+
+    review = await build_review_input(fixture.db, fixture.shots[-1])
+
+    assert review.bean == "" and review.filed
+    assert review.render()["bean"] == "The bean's record has no description and no notes."
+
+
+def test_a_review_stored_before_the_bean_was_sent_reads_as_told_nothing() -> None:
+    """Old rows' `input_json` has no bean fields: they load, and say no bean text was sent."""
+    stored = ReviewInput(shot_id=1, shot="shot 1").model_dump(exclude={"bean", "filed"})
+    old = ReviewInput.model_validate(stored)
+    assert old.bean == "" and old.filed

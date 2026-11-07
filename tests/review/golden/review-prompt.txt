@@ -1,3 +1,6 @@
+=== bean ===
+About the bean: peach, jasmine, lemon
+
 === drink ===
 DRINK: CAPPUCCINO — the knowledge base's entry, whole, as it is stored
 Reference material about the drink in general, not a record of this Recipe: what this archive's own shots show outranks it.

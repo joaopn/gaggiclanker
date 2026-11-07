@@ -10,7 +10,8 @@ description: |
 
   The shot first, because that is the subject, its checks leading; what the
   signature asks the review to answer and what the Recipe version predicted next,
-  because those are the questions; the drink the version is for, when it states
+  because those are the questions; the coffee as its record describes it,
+  because a roaster's brew numbers say what this bean was meant for; the drink the version is for, when it states
   one, whose knowledge entry is handed over whole (and is left out of the
   retrieved excerpts), because it says what the shot has to do in the cup; the
   phases and the language the evidence is
@@ -26,6 +27,8 @@ variables:
     description: The free-text expectations of the profile's signature in force, each with its id, or why there are none.
   - name: prediction
     description: The prediction the Recipe version was filed with and what it is measured against, or why there is none.
+  - name: bean
+    description: The bean of the Recipe the shot is filed under, its description (often the roaster's text) and the person's notes on the coffee, whole; or why there are none.
   - name: drink
     description: The knowledge base's entry for the drink of the Recipe version the shot is filed under, whole, with a heading of its own; nothing for a shot that is not filed, or whose version states no drink or Other.
   - name: phases
@@ -52,6 +55,10 @@ user: |
   THE PREDICTION OF THE RECIPE VERSION THE SHOT IS FILED UNDER
 
   {{prediction}}
+
+  THE COFFEE, AS ITS RECORD DESCRIBES IT — what the coffee is, not a verdict on this shot
+
+  {{bean}}
 
   {{drink}}PHASES THIS SHOT LOGGED — the only names a window or an anchor may use
 

@@ -38,7 +38,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
+from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, bean_lines, taste_scales
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
@@ -77,7 +77,6 @@ __all__ = [
     "LEDGER_VERSIONS",
     "NOTE_CHARS",
     "RECENT_SHOTS",
-    "bean_lines",
     "opening_context",
     "thread_title_from",
 ]
@@ -126,23 +125,6 @@ def _taste(bean: BeanRow | None) -> str:
     """The heading's taste clause ("; taste acidity 4 (1 low to 5 high)"), or ""."""
     phrase = taste_scales(bean)
     return f"; taste {phrase}" if phrase else ""
-
-
-def bean_lines(bean: BeanRow | None) -> list[str]:
-    """The bean's description and the person's notes on it, whole, or nothing.
-
-    Never cut: both fields are capped at 2000 characters on input, and a roaster's
-    text puts the brew advice (a temperature, a ratio) last, after the farm and the
-    tasting notes, so a cut drops exactly that. Cut at 300 characters it once made a
-    design ignore the roaster's 90-91 °C for the generic light-roast rule. One
-    rendering for every conversation that is about a bean, so they cannot disagree.
-    """
-    if bean is None:
-        return []
-    lines = [f"About the bean: {bean.description}"] if bean.description else []
-    if bean.notes:
-        lines.append(f"Their notes on the bean: {bean.notes}")
-    return lines
 
 
 def _plural(count: int, noun: str) -> str:

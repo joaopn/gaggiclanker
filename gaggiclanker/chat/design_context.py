@@ -50,10 +50,9 @@ from gaggiclanker.chat.context import (
     _quote,
     _recipe,
     _taste,
-    bean_lines,
 )
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
+from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, bean_lines
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow, document_for
 from gaggiclanker.db.repos.recipe_proposals import RecipeProposalRow, RecipeProposalsRepository

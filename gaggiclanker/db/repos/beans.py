@@ -112,6 +112,29 @@ class BeanRow(BeanWrite):
     recipe_count: int = 0
 
 
+def bean_lines(bean: BeanRow | None) -> list[str]:
+    """The bean's description and the person's notes on it, whole, or nothing.
+
+    Never cut: both fields are capped at 2000 characters on input, and a roaster's
+    text puts the brew advice (a temperature, a ratio) last, after the farm and the
+    tasting notes, so a cut drops exactly that. Cut at 300 characters it once made a
+    design ignore the roaster's 90-91 °C for the generic light-roast rule. One
+    rendering for every conversation, review and pattern run that is about a bean, so they
+    cannot disagree.
+    """
+    if bean is None:
+        return []
+    return bean_text_lines(bean.description, bean.notes)
+
+
+def bean_text_lines(description: str, notes: str) -> list[str]:
+    """:func:`bean_lines` from the two texts, for a reader that holds them without the row."""
+    lines = [f"About the bean: {description}"] if description else []
+    if notes:
+        lines.append(f"Their notes on the bean: {notes}")
+    return lines
+
+
 def agent_dump(bean: BeanRow | None) -> dict[str, Any] | None:
     """A Recipe's bean as an agent reads it: every recorded fact, description and notes whole.
 

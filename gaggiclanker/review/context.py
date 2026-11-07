@@ -25,13 +25,17 @@ What goes in, and nothing else:
    the shot itself links to;
 5. **the detected shot style**, with its evidence;
 6. **the knowledge rules and reference excerpts** the deterministic signal
-   selection picks from the shot's telemetry.
+   selection picks from the shot's telemetry;
+7. **the bean of the Recipe the shot is filed under**: its description (often the roaster's
+   text, brew advice included) and the person's notes on the coffee, whole, through the one
+   rendering every conversation uses (:func:`~gaggiclanker.db.repos.beans.bean_lines`).
 
 **Independent by construction.** Nothing here reads the person's judgement (rating, balance,
 notes, discard), the note typed on the machine, the label, another shot, an earlier
 review, an insight or a conversation: the loader's judgement, note and review are dropped
 before rendering, and rule selection is given no Recipe attributes. A review of one shot
-cannot be told what the person thought of it, or what another shot did.
+cannot be told what the person thought of it, or what another shot did. The bean's notes
+are the person's words about the coffee, never about a shot, so they do not break that.
 
 Determinism is the property everything here is arranged around. Nothing reads
 the clock, nothing iterates a set, every list is sorted: two builds of the same
@@ -48,6 +52,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, bean_lines
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.pins import judged_profile_version
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
@@ -201,6 +206,13 @@ class ReviewInput(BaseModel):
     #: Other. Outside the excerpts and their budget, and the drink's document is never one of
     #: them.
     drink_reference: str = ""
+    #: The bean of the Recipe the shot is filed under, its description and notes as
+    #: `bean_lines` writes them, one per line; "" for an unfiled shot or a bean with neither.
+    #: Reviews stored before it was sent read "" here, which is what they were told.
+    bean: str = ""
+    #: Whether the shot is filed under a Recipe at all, so an empty `bean` can say which of
+    #: the two it means. True for a review stored before the field, whose bean was never sent.
+    filed: bool = True
 
     @property
     def rule_keys(self) -> frozenset[str]:
@@ -219,6 +231,7 @@ class ReviewInput(BaseModel):
             "signature": _render_expectations(self),
             "prediction": _render_prediction(self),
             "drink": f"{self.drink_reference}\n\n" if self.drink_reference else "",
+            "bean": _render_bean(self),
             "phases": _render_phases(self.phases),
             "metric_language": _render_language(),
             "profile": _render_profile(self.profile_label, self.profile),
@@ -368,7 +381,17 @@ async def build_review_input(
         ],
         excerpts=[excerpt.as_dict() for excerpt in excerpts],
         drink_reference=await drink_reference(db, drink) if drink_in_prompt else "",
+        bean="\n".join(bean_lines(await _bean_of(db, facts.recipe_id))),
+        filed=facts.recipe_id is not None,
     )
+
+
+async def _bean_of(db: Database, recipe_id: int | None) -> BeanRow | None:
+    """The bean of the Recipe a shot is filed under, or None."""
+    if recipe_id is None:
+        return None
+    recipe = await RecipesRepository(db).get(recipe_id)
+    return await BeansRepository(db).get(recipe.bean_id) if recipe is not None else None
 
 
 def signal_tokens(facts: ShotFacts, style: StyleVerdict) -> list[str]:
@@ -489,6 +512,14 @@ def _render_expectations(review: ReviewInput) -> str:
         for item in review.expectations
     ]
     return "\n".join(lines)
+
+
+def _render_bean(review: ReviewInput) -> str:
+    if review.bean:
+        return review.bean
+    if not review.filed:
+        return "The shot is not filed under a Recipe, so no bean is named."
+    return "The bean's record has no description and no notes."
 
 
 def _render_prediction(review: ReviewInput) -> str:
