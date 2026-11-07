@@ -10,6 +10,11 @@ attributes an insight's scope may name, the version it was learned at, and what 
 (each version's outcome then and now, from the insight's own provenance). Not shots, not
 telemetry: this call generalises lessons, it does not re-derive them.
 
+Each Recipe's bean comes with its description (often the roaster's text) and the person's
+notes on it, whole, through the one rendering every conversation uses (`bean_lines`), and
+**once per bean**: a later Recipe of the same bean points back to the first that showed it,
+so two Recipes of one coffee do not send the same 2000 characters twice.
+
 Only **confirmed** insights are read. A waiting or dismissed one is a proposal nobody
 accepted, and generalising from it would manufacture the run's own evidence.
 """
@@ -21,6 +26,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.beans import bean_text_lines
 from gaggiclanker.db.repos.knowledge_insights import (
     SCOPE_KEYS,
     InsightRow,
@@ -71,6 +77,11 @@ class PatternRecipe(BaseModel):
     bean: str | None = None
     roaster: str | None = None
     grinder: str | None = None
+    #: The bean's id (which Recipes share a coffee), and its description and notes, whole.
+    #: Runs stored before these were sent read None and "", which is what they were told.
+    bean_id: int | None = None
+    bean_description: str = ""
+    bean_notes: str = ""
     #: In the shape the matching rule reads (:func:`recipe_attributes`), unstated ones left out.
     #: The post-filter checks a proposal's scope against exactly this.
     attributes: dict[str, Any] = Field(default_factory=dict)
@@ -154,6 +165,9 @@ async def build_patterns_input(db: Database) -> PatternsInput:
                 bean=facts.bean_name,
                 roaster=facts.roaster or None,
                 grinder=facts.grinder_name,
+                bean_id=facts.bean_id,
+                bean_description=facts.bean_description,
+                bean_notes=facts.bean_notes,
                 attributes={
                     key: attributes[key]
                     for key in SCOPE_KEYS
@@ -195,8 +209,21 @@ def _scope_words(scope: dict[str, Any]) -> str:
     return InsightScope.model_validate(scope).label() if scope else "any Recipe"
 
 
+def _bean_block(item: PatternRecipe, shown_under: dict[int, int]) -> list[str]:
+    """The bean's description and notes the first time a bean appears, a pointer after that."""
+    if item.bean_id is not None and item.bean_id in shown_under:
+        first = shown_under[item.bean_id]
+        return [f"  the bean as described under RECIPE {first}"] if first >= 0 else []
+    lines = bean_text_lines(item.bean_description, item.bean_notes)
+    if item.bean_id is not None:
+        # -1: this bean was met and had nothing to say, so a later Recipe of it says nothing too.
+        shown_under[item.bean_id] = item.id if lines else -1
+    return [f"  {line}" for line in lines]
+
+
 def _render_recipes(recipes: list[PatternRecipe]) -> str:
     blocks: list[str] = []
+    shown_under: dict[int, int] = {}
     for item in recipes:
         names = [f'bean "{item.bean}"' if item.bean else "no bean"]
         if item.roaster:
@@ -207,6 +234,7 @@ def _render_recipes(recipes: list[PatternRecipe]) -> str:
             f'RECIPE {item.id} "{item.name}"{" (archived)" if item.archived else ""}: '
             f"{'; '.join(names)}",
             f"  scope attributes: {attributes or 'none stated'}",
+            *_bean_block(item, shown_under),
         ]
         for insight in item.insights:
             facts = [

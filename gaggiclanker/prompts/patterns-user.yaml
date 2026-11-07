@@ -11,7 +11,7 @@ description: |
   what to propose.
 variables:
   - name: recipe_insights
-    description: Every Recipe with a confirmed insight, with the attributes a scope may name, and each confirmed insight under it with its id, where it was learned and what it rests on.
+    description: Every Recipe with a confirmed insight, with the attributes a scope may name, its bean's description and notes (once per bean), and each confirmed insight under it with its id, where it was learned and what it rests on.
   - name: general_insights
     description: The confirmed general insights that already exist, with their ids and scopes.
   - name: declined

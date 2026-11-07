@@ -52,6 +52,12 @@ HOW TO FIND A PATTERN
    their sources. Do not propose the same thing again unless Recipe insights confirmed since
    then change the case, and if you do, say what is new in the wording.
 
+9. **The bean's record says what the coffee is, not what it taught.** A Recipe may show its
+   bean's description, often the roaster's text, and the person's notes on it (once per bean;
+   a later Recipe of the same bean points back). Read them to judge whether Recipes are alike,
+   never as a source: a finding comes from the Recipe insights alone, and a scope still names
+   only the attributes listed (rule 3), never a word from a description.
+
 WHAT EACH OUTPUT FIELD IS FOR
 
 - `proposals`: the general insights you propose, possibly none.

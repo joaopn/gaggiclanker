@@ -113,6 +113,10 @@ class PatternRecipeFacts(BaseModel):
     bean_name: str | None = None
     roaster: str | None = None
     grinder_name: str | None = None
+    #: The bean itself, and its description and the person's notes on it, whole.
+    bean_id: int | None = None
+    bean_description: str = ""
+    bean_notes: str = ""
 
 
 class PatternRunStart(BaseModel):
@@ -451,7 +455,9 @@ class PatternRunsRepository(Repository):
         rows = await self.db.fetch_all(
             """
             SELECT s.id, s.name, s.archived, b.name AS bean_name, b.roaster,
-                   g.name AS grinder_name
+                   g.name AS grinder_name, b.id AS bean_id,
+                   COALESCE(b.description, '') AS bean_description,
+                   COALESCE(b.notes, '') AS bean_notes
               FROM recipes s
               LEFT JOIN beans b ON b.id = s.bean_id
               LEFT JOIN grinders g ON g.id = s.grinder_id

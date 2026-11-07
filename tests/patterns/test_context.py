@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.knowledge_insights import InsightScope
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.patterns import (
@@ -19,6 +20,7 @@ from gaggiclanker.db.repos.patterns import (
     PatternRunStart,
     PatternSource,
 )
+from gaggiclanker.db.repos.recipes import RecipeVersionWrite, RecipeWrite
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.patterns.context import build_patterns_input
 from gaggiclanker.patterns.service import PATTERNS_PROMPT, PATTERNS_USER_PROMPT, PatternsService
@@ -210,3 +212,42 @@ async def test_general_and_declined_blocks_are_in_id_order_whatever_the_words(
         "Zeta: finer is always better.",
         "Alpha: coarser below 9.",
     ]
+
+
+async def test_each_bean_s_description_and_notes_are_told_once(talking: Talking) -> None:
+    """Whole, under the first Recipe of the bean; a later Recipe of it points back."""
+    world = talking.world
+    beans = BeansRepository(world.db)
+    guji = await beans.get(world.bean_a)
+    assert guji is not None
+    farm = "Grown by smallholders around the washing station, floated and pulped. " * 5
+    kept = guji.model_dump(include=set(BeanWrite.model_fields))
+    await beans.update(
+        guji.id,
+        BeanWrite(**{**kept, "description": farm + "We brew it at 90-91 °C.", "notes": "Rest it."}),
+    )
+    second = await world.recipes.create(
+        RecipeWrite(name="Guji weekend", bean_id=guji.id, grinder_id=world.grinder_id),
+        RecipeVersionWrite(drink="espresso", dose_g=18, target_yield_g=40, grind_setting="21"),
+    )
+    await world.own(second.id, "A longer ratio opened the florals.")
+
+    rendered = (await build_patterns_input(world.db)).render()["recipe_insights"]
+
+    whole = f"  About the bean: {farm}We brew it at 90-91 °C.\n  Their notes on the bean: Rest it."
+    assert rendered.count(whole) == 1
+    assert rendered.index(whole) < rendered.index(f'RECIPE {second.id} "Guji weekend"')
+    assert f"  the bean as described under RECIPE {world.a}" in rendered
+    # A bean whose record has neither text adds no line at all.
+    huila = rendered.split(f"RECIPE {world.c} ")[1].split("\n\nRECIPE")[0]
+    assert "About the bean" not in huila and "the bean as described under" not in huila
+
+
+def test_the_prompt_says_the_bean_s_record_is_never_a_source() -> None:
+    text = " ".join(
+        (Path(__file__).parents[2] / "gaggiclanker" / "prompts" / "patterns.yaml")
+        .read_text()
+        .split()
+    )
+    assert "9. **The bean's record says what the coffee is, not what it taught.**" in text
+    assert "a finding comes from the Recipe insights alone" in text
