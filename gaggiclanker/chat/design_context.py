@@ -5,8 +5,12 @@ ledger, no spread and no shot to put in front of the model. What it needs
 instead is what the person asked for and what this kitchen already knows about
 brewing this coffee on this kit:
 
-* **the Recipe and the brief** — the bean's facts, the grinder and its step unit,
-  what the person wants from it and where they usually grind;
+* **the Recipe and the brief** — the bean's facts, its description and notes
+  whole, the grinder and its step unit, what the person wants from it and where
+  they usually grind. The description is often the bag's or the roaster's text,
+  whose brew advice (a temperature, a ratio) tends to come last, after the farm
+  and the tasting notes: cut at 300 characters it lost exactly that, and a light
+  Ethiopian the roaster brews at 90-91 °C was designed at the rules' 94 °C;
 * **the profile they asked to fork**, whole, because "like this but with a
   bloom" needs the document it is a variation of — or, when they named none,
   the plain statement that the profile is written from zero;
@@ -99,7 +103,7 @@ SIBLING_VERSIONS = 6
 #: other beans only.
 SIMILAR_RECIPES = 3
 
-#: How much of a person's goal and a decline note is quoted.
+#: How much of a person's goal, a decline note and a sibling's intent is quoted.
 _GOAL_CHARS = 2000
 _NOTE_CHARS = 300
 
@@ -213,8 +217,12 @@ def _heading(row: RecipeRow, bean: BeanRow | None, grinder: GrinderRow | None) -
         "no dose, no yield. What you propose, once the person accepts it, becomes that "
         "version 1.",
     ]
+    # Whole, never cut: both fields are capped at 2000 characters on input, and
+    # the part a cut drops is where a roaster writes how to brew the coffee.
     if bean is not None and bean.description:
-        lines.append(f"About the bean: {_cut(bean.description, _NOTE_CHARS)}")
+        lines.append(f"About the bean: {bean.description}")
+    if bean is not None and bean.notes:
+        lines.append(f"Their notes on the bean: {bean.notes}")
     return lines
 
 

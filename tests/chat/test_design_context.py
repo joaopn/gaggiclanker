@@ -23,6 +23,7 @@ import pytest
 from gaggiclanker.chat.context import opening_context
 from gaggiclanker.chat.design_context import design_context
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
 from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
@@ -206,6 +207,36 @@ async def test_the_bare_design_matches_its_golden(kitchen: Fixture, update_golde
     rendered = await opening_context(kitchen.db, await ToolScope.resolve(kitchen.db, designed.id))
 
     _check_golden(rendered, "design-chat-context-bare.txt", update_golden)
+
+
+async def test_the_bean_s_description_and_notes_reach_the_design_whole(kitchen: Fixture) -> None:
+    """A roaster's text puts the brew advice last, after the farm and the tasting notes.
+
+    Cut at 300 characters, the description lost exactly that, so a light Ethiopian the
+    roaster brews at 90-91 °C was designed at the rules' 94 °C; the notes were not sent
+    at all. Both fields are capped at 2000 characters on input and reach the design whole.
+    """
+    farm = "Grown at 2000-2200 m by the washing station's smallholders, floated and pulped. " * 4
+    advice = "For espresso we brew at 90-91 °C, 18 g in, 45 g out."
+    assert len(farm) > 300  # the precondition: the advice sits past the old cut
+    bean = await BeansRepository(kitchen.db).create(
+        BeanWrite(
+            name="Chilicho",
+            roast_level="light",
+            process="washed",
+            description=farm + advice,
+            notes="Rest it 14 days.",
+        )
+    )
+    designed = await RecipesRepository(kitchen.db).create_design(
+        RecipeWrite(name="Chilicho", bean_id=bean.id, grinder_id=kitchen.grinder_id),
+        DesignBrief(),
+    )
+
+    rendered = await design_context(kitchen.db, designed.id)
+
+    assert f"About the bean: {farm}{advice}\n" in rendered
+    assert "Their notes on the bean: Rest it 14 days.\n" in rendered
 
 
 async def test_the_library_is_never_offered_as_somewhere_to_start(kitchen: Fixture) -> None:
