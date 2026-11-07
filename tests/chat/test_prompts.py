@@ -381,3 +381,35 @@ def test_the_recipe_prompt_says_how_to_swap_the_override_in_force() -> None:
         "(for the same expectation or another), `propose_signature_override` cannot: ask with "
         "`replace_override`."
     ) in text
+
+
+async def test_the_design_prompt_puts_the_roaster_s_numbers_before_the_rules(
+    prompts: PromptService,
+) -> None:
+    """With no Recipe of this bean, a light roast was designed at the rules' 94 °C while its
+    bag said 90-91 °C: the evidence order had no place for the roaster's advice (the golden
+    pins the whole prompt; this names the rule so a rewrite has to keep it)."""
+    flat = " ".join(
+        (await prompts.load(DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER})).system.split()
+    )
+    assert "THE ROASTER'S NUMBERS FOR THIS BEAN COME BEFORE THE RULES" in flat
+    assert (
+        "They are about this bean, so they outrank the rules, which are about roast levels and "
+        "processes in general, and other beans' Recipes on this grinder. Only the numbers the "
+        "person chose and this bean's own Recipes outrank them"
+    ) in flat
+    assert "A roaster's grind setting is never one of them" in flat
+
+
+def test_the_starting_point_puts_the_roaster_s_numbers_before_the_roast_level() -> None:
+    """The starting point's roast-level ranges are the same generic rule, so the same order."""
+    text = " ".join(
+        (Path(__file__).parents[2] / "gaggiclanker" / "prompts" / "starting_point.yaml")
+        .read_text()
+        .split()
+    )
+    assert "**The roaster's numbers come first, then the roast level, then the process.**" in text
+    assert (
+        "They are about this bean, so they outrank the roast-level ranges below, the rules and "
+        "other beans' Recipes"
+    ) in text
