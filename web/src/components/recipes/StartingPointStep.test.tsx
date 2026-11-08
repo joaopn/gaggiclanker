@@ -84,7 +84,7 @@ function render(props: Partial<Parameters<typeof StartingPointStep>[0]> = {}) {
     <StartingPointStep
       beanId={1}
       grinderId={1}
-      grindUnit="numbers"
+      grindUnit="numbers (lower is finer)"
       usualGrind="22"
       doseHint="18"
       drink="espresso"
@@ -99,6 +99,13 @@ function render(props: Partial<Parameters<typeof StartingPointStep>[0]> = {}) {
 }
 
 describe("StartingPointStep", () => {
+  it("asks for the usual setting in the grinder's own units, as the Hardware form words them", () => {
+    render();
+    expect(
+      screen.getByLabelText("What do you normally grind espresso at? In numbers (lower is finer)."),
+    ).toBeInTheDocument();
+  });
+
   it("says nothing about a match neither bean recorded", async () => {
     getSimilarRecipes.mockResolvedValue({
       bean_id: 1,

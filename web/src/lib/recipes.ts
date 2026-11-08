@@ -10,6 +10,7 @@ import type {
   RecipeRow,
   RecipeVersionDetail,
   RecipeVersionRow,
+  Vocabulary,
 } from "@/api/types";
 
 /**
@@ -273,6 +274,14 @@ export function recipeSummary(row: RecipeRow): string {
 /** How a bean reads in a picker: the name, and the roaster when there is one. */
 export function beanLabel(bean: Pick<BeanRow, "name" | "roaster">): string {
   return bean.roaster ? `${bean.name} — ${bean.roaster}` : bean.name;
+}
+
+/**
+ * A grinder's step unit in the Hardware form's words ("numbers (lower is finer)"), from the
+ * server's vocabulary; the value itself while the vocabulary is in flight.
+ */
+export function stepUnitLabel(units: Vocabulary["step_units"] | undefined, value: string): string {
+  return units?.find((unit) => unit.value === value)?.label ?? value;
 }
 
 /** A bean's taste scales, in the order every screen lists them. */

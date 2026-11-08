@@ -18,6 +18,8 @@ from tests.conftest import running_app
 from tests.test_restore_apply import env_in, no_signal
 from tests.test_restore_check import ROUTE, upload
 
+#: What this step must produce, now that a later step moved the schema file on.
+LEVEL_EIGHT = schema.describe_sql(frozen_schema_sql(8))
 NOW = datetime(2026, 11, 2, 12, 0, 0, tzinfo=UTC)
 
 
@@ -66,7 +68,7 @@ def test_the_upgrade_is_the_schema_file_and_every_row_is_carried_unchanged(tmp_p
     ).fetchall()
     before.close()
 
-    report = upgrade_database_file(path, tmp_path, steps=STEPS[:8], now=NOW)
+    report = upgrade_database_file(path, tmp_path, steps=STEPS[:8], expected=LEVEL_EIGHT, now=NOW)
 
     assert report is not None and (report.from_level, report.to_level) == (7, 8)
     assert report.steps[0].counts == {"tables_added": 1, "columns_added": 1}

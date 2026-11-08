@@ -9851,7 +9851,7 @@ export interface components {
             words: string;
         };
         /** @enum {string} */
-        StepUnit: "clicks" | "numbers" | "microns" | "free";
+        StepUnit: "clicks" | "numbers_lower_finer" | "numbers_lower_coarser" | "microns" | "free";
         /**
          * StopConditionChange
          * @description One stop condition that a draft added, removed or moved.

@@ -272,7 +272,7 @@ async def test_the_numbers_the_person_chose_are_kept_and_the_rest_left_open(
 
     every = await brief_of(DesignBrief(grind_setting="18", dose_g=18.5, target_yield_g=40))
     assert (
-        "Numbers they chose: grind 18 (numbers), dose 18.5 g, target yield 40 g. "
+        "Numbers they chose: grind 18 in numbers (lower is finer), dose 18.5 g, target yield 40 g. "
         "Propose exactly these" in every
     )
     assert "work out only what they left open" in every

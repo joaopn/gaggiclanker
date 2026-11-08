@@ -384,10 +384,12 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
     )
     grinders = GrindersRepository(db)
     niche = await grinders.create(
-        GrinderWrite(name="Niche Zero", model="NZ", burr_type="conical", step_unit="numbers")
+        GrinderWrite(
+            name="Niche Zero", model="NZ", burr_type="conical", step_unit="numbers_lower_finer"
+        )
     )
     mazzer = await grinders.create(
-        GrinderWrite(name="Mazzer Philos", burr_type="flat", step_unit="numbers")
+        GrinderWrite(name="Mazzer Philos", burr_type="flat", step_unit="numbers_lower_finer")
     )
     grinder_ids = {"niche": niche.id, "mazzer": mazzer.id}
 

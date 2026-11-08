@@ -369,7 +369,9 @@ async def build_fixture(db: Database) -> Fixture:
         )
     )
     grinder = await GrindersRepository(db).create(
-        GrinderWrite(name="Niche Zero", model="NZ", burr_type="conical", step_unit="numbers")
+        GrinderWrite(
+            name="Niche Zero", model="NZ", burr_type="conical", step_unit="numbers_lower_finer"
+        )
     )
     document = json.loads((FIXTURES / "profiles" / "docs-medium-18g.json").read_text())
     profile_version, _ = await ProfilesRepository(db).ensure_version(

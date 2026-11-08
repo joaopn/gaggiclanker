@@ -87,6 +87,14 @@ class TestVocab:
         self, client: httpx.AsyncClient
     ) -> None:
         body = data(await client.get("/api/vocab"))
+        # A numbered dial says which way it runs, in the words the Hardware form shows.
+        assert body["step_units"] == [
+            {"value": "clicks", "label": "clicks"},
+            {"value": "numbers_lower_finer", "label": "numbers (lower is finer)"},
+            {"value": "numbers_lower_coarser", "label": "numbers (lower is coarser)"},
+            {"value": "microns", "label": "microns"},
+            {"value": "free", "label": "free"},
+        ]
         assert [term["value"] for term in body["roast_levels"]] == [
             "light",
             "medium-light",
@@ -370,10 +378,14 @@ class TestGrinders:
         edited = data(
             await client.put(
                 f"/api/grinders/{created['id']}",
-                json={"name": "Niche Zero", "burr_type": "conical", "step_unit": "numbers"},
+                json={
+                    "name": "Niche Zero",
+                    "burr_type": "conical",
+                    "step_unit": "numbers_lower_finer",
+                },
             )
         )
-        assert edited["step_unit"] == "numbers"
+        assert edited["step_unit"] == "numbers_lower_finer"
         assert data(await client.get("/api/grinders"))["items"][0]["id"] == created["id"]
 
 

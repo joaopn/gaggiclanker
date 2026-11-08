@@ -149,7 +149,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
             )
         )
         grinder = await GrindersRepository(db).create(
-            GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
+            GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers_lower_finer")
         )
         profile = await make_profile_version(db, "Classic 9 bar", temperature=93.0)
         # The drink entries only: the whole knowledge base would be chunked for nothing here.

@@ -492,7 +492,9 @@ async def test_the_add_a_version_route_gives_a_design_its_profile_under_new_reci
     taken = await make_profile_version(db, "Taken")
     bean = (await client.post("/api/beans", json={"name": "Guji"})).json()["data"]["id"]
     grinder = (
-        await client.post("/api/grinders", json={"name": "Niche", "step_unit": "numbers"})
+        await client.post(
+            "/api/grinders", json={"name": "Niche", "step_unit": "numbers_lower_finer"}
+        )
     ).json()["data"]["id"]
     held = (
         await client.post(

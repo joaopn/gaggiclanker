@@ -101,7 +101,7 @@ export function StartingPointStep({
           htmlFor="starting-point-usual-grind"
           className="mb-1 block text-muted-foreground text-xs"
         >
-          What do you normally grind espresso at? ({grindUnit})
+          What do you normally grind espresso at? In {grindUnit}.
         </label>
         <input
           id="starting-point-usual-grind"

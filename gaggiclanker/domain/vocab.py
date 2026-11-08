@@ -76,6 +76,7 @@ __all__ = [
     "flavor_ancestors",
     "flavor_path",
     "in_wheel_order",
+    "step_unit_label",
     "vocabulary",
 ]
 
@@ -100,8 +101,10 @@ type BurrType = Literal["conical", "flat", "unknown"]
 
 #: What one step of this grinder's adjustment is called. Advice is given in the
 #: grinder's own units — "two clicks finer" is actionable, "15 microns finer" is
-#: not — so this is the field that stops a model inventing a scale.
-type StepUnit = Literal["clicks", "numbers", "microns", "free"]
+#: not — so this is the field that stops a model inventing a scale. A numbered
+#: dial also says which way it runs: most grind finer at a lower number, some the
+#: other way, and a model told only "numbers" assumes.
+type StepUnit = Literal["clicks", "numbers_lower_finer", "numbers_lower_coarser", "microns", "free"]
 
 # ── judgement ────────────────────────────────────────────────────────
 
@@ -586,6 +589,19 @@ def _terms(values: tuple[str, ...], labels: dict[str, str] | None = None) -> lis
     ]
 
 
+#: The Hardware form's words for a step unit. The two numbered dials differ only
+#: in which way they run, so the label says it.
+_STEP_UNIT_LABELS = {
+    "numbers_lower_finer": "numbers (lower is finer)",
+    "numbers_lower_coarser": "numbers (lower is coarser)",
+}
+
+
+def step_unit_label(unit: str) -> str:
+    """A step unit in the Hardware form's words: what a prompt says the grinder is adjusted in."""
+    return _STEP_UNIT_LABELS.get(unit, unit)
+
+
 #: Labels that are not just the slug with its punctuation softened. Short on
 #: purpose: they sit on a shot row and in a panel beside a curve, and the
 #: balance's three are the GaggiMate's own words.
@@ -664,7 +680,7 @@ def vocabulary() -> Vocabulary:
         roast_levels=_terms(ROAST_LEVELS),
         processes=_terms(PROCESSES),
         burr_types=_terms(BURR_TYPES),
-        step_units=_terms(STEP_UNITS),
+        step_units=_terms(STEP_UNITS, _STEP_UNIT_LABELS),
         balances=_terms(BALANCES, _BALANCE_LABELS),
         rating_bands=_terms(RATING_BANDS, _RATING_BAND_LABELS),
         origins=_terms(RECIPE_VERSION_ORIGINS, _ORIGIN_LABELS),

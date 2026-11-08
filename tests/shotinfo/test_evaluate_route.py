@@ -66,7 +66,7 @@ async def file_lever(
         BeanWrite(name="Constructed", roast_level="medium", process="washed")
     )
     grinder = await GrindersRepository(db).create(
-        GrinderWrite(name="Constructed", step_unit="numbers")
+        GrinderWrite(name="Constructed", step_unit="numbers_lower_finer")
     )
     recipes = RecipesRepository(db)
     await own_version(db, profile.id)

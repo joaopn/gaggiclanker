@@ -59,7 +59,7 @@ async def wired(db: Database) -> Fixtures:
         BeanWrite(name="Ethiopia Guji", roaster="Hasbean", roast_level="light", process="natural")
     )
     grinder = await GrindersRepository(db).create(
-        GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
+        GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers_lower_finer")
     )
     return Fixtures(
         db=db,

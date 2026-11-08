@@ -49,6 +49,7 @@ from gaggiclanker.db.repos.profiles import (
     version_name_sql,
 )
 from gaggiclanker.domain.drinks import Drink, drink_label
+from gaggiclanker.domain.vocab import step_unit_label
 from gaggiclanker.knowledge.drinks import drink_lines, drink_reference, drink_slug
 from gaggiclanker.knowledge.rules import RecipeContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
@@ -564,7 +565,8 @@ def _render_hardware(hardware: HardwareFacts) -> str:
             _line("burrs", hardware.burr_type),
             _line(
                 "grind unit",
-                f"{hardware.step_unit} — every grind figure you give is in these, never microns",
+                f"{step_unit_label(hardware.step_unit)} — every grind figure you give is in these, "
+                "never microns",
             ),
             _line(
                 "their usual espresso setting",

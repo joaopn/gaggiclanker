@@ -120,7 +120,7 @@ class TestTheRecipePage:
         grinder = data(
             await client.post(
                 "/api/grinders",
-                json={"name": "Niche", "burr_type": "conical", "step_unit": "numbers"},
+                json={"name": "Niche", "burr_type": "conical", "step_unit": "numbers_lower_finer"},
             )
         )
         designed = data(

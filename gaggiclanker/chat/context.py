@@ -63,7 +63,13 @@ from gaggiclanker.domain.spread import (
     pooled_spreads,
     version_evidence,
 )
-from gaggiclanker.domain.vocab import SPREAD_MEASURES, MeasureTerm, SpreadMeasure, vocabulary
+from gaggiclanker.domain.vocab import (
+    SPREAD_MEASURES,
+    MeasureTerm,
+    SpreadMeasure,
+    step_unit_label,
+    vocabulary,
+)
 from gaggiclanker.knowledge.drinks import drink_lines, drink_reference
 from gaggiclanker.shotinfo.catalogue import Tier, effective_tiers
 from gaggiclanker.shotinfo.downsample import CURVE_POINTS
@@ -287,7 +293,7 @@ async def _heading(
         if part
     ) + _taste(bean)
     grinder_line = (
-        f"{row.grinder_name}, adjusted in {grinder.step_unit}"
+        f"{row.grinder_name}, adjusted in {step_unit_label(grinder.step_unit)}"
         if grinder is not None and grinder.step_unit
         else (row.grinder_name or "")
     )

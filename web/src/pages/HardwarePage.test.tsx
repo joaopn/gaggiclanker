@@ -79,7 +79,7 @@ describe("HardwarePage", () => {
     // Burrs decide the profile; the step unit is what stops a model
     // inventing a scale.
     expect(list).toHaveTextContent("conical burrs");
-    expect(list).toHaveTextContent("steps in numbers");
+    expect(list).toHaveTextContent("steps in numbers (lower is finer)");
   });
 
   it("records a grinder from the served vocabularies", async () => {

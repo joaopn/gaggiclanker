@@ -16,6 +16,7 @@ import {
 } from "@/hooks/useCatalog";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { attempt } from "@/lib/mutations";
+import { stepUnitLabel } from "@/lib/recipes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,6 +43,7 @@ const FIELD = cn(
 export function HardwarePage() {
   const grinders = useGrinders();
   const machine = useMachine();
+  const vocab = useVocabulary();
   const [editing, setEditing] = useState<GrinderRow | "new" | null>(null);
   useQueryErrorToast(grinders.error, "Could not load the hardware");
 
@@ -108,7 +110,9 @@ export function HardwarePage() {
               >
                 <div className="flex flex-wrap gap-1">
                   <Badge variant="outline">{grinder.burr_type} burrs</Badge>
-                  <Badge variant="outline">steps in {grinder.step_unit}</Badge>
+                  <Badge variant="outline">
+                    steps in {stepUnitLabel(vocab.data?.step_units, grinder.step_unit)}
+                  </Badge>
                   {grinder.recipe_count > 0 ? (
                     <Badge variant="ghost" className="text-muted-foreground">
                       {grinder.recipe_count} Recipe{grinder.recipe_count === 1 ? "" : "s"}

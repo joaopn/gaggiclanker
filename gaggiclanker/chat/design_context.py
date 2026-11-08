@@ -71,6 +71,7 @@ from gaggiclanker.domain.models import (
     TargetType,
     TransitionType,
 )
+from gaggiclanker.domain.vocab import step_unit_label
 from gaggiclanker.knowledge.drinks import drink_lines, drink_reference
 from gaggiclanker.knowledge.rules import RecipeContext, render_rules
 from gaggiclanker.review.style import detect_style
@@ -203,7 +204,7 @@ def _heading(row: RecipeRow, bean: BeanRow | None, grinder: GrinderRow | None) -
     grinder_line = (
         f"{row.grinder_name}"
         + (f" ({grinder.burr_type} burrs)" if grinder.burr_type != "unknown" else "")
-        + f", adjusted in {grinder.step_unit}"
+        + f", adjusted in {step_unit_label(grinder.step_unit)}"
         if grinder is not None
         else "not recorded"
     )
@@ -222,14 +223,14 @@ def _heading(row: RecipeRow, bean: BeanRow | None, grinder: GrinderRow | None) -
 
 def _brief(row: RecipeRow, grinder: GrinderRow | None) -> list[str]:
     brief = row.design_brief
-    unit = grinder.step_unit if grinder is not None else "its units"
+    unit = step_unit_label(grinder.step_unit) if grinder is not None else "its units"
     return [
         "WHAT THEY ASKED FOR",
         *drink_lines(brief.drink, brief.drink_notes),
         f"Goal: {_quote(_cut(brief.goal, _GOAL_CHARS))}"
         if brief.goal
         else "Goal: not stated. Ask what they want from this Recipe before proposing anything.",
-        f"Their usual espresso setting on this grinder: {brief.usual_grind} ({unit})."
+        f"Their usual espresso setting on this grinder: {brief.usual_grind}, in {unit}."
         if brief.usual_grind
         else "Their usual espresso setting on this grinder: NOT GIVEN. Without it, or a Recipe "
         "below on this same grinder, you have no anchor on its scale.",
@@ -246,7 +247,7 @@ def _chosen(brief: DesignBrief, unit: str) -> str:
     decide" is as explicit as "keep this".
     """
     parts = [
-        f"grind {brief.grind_setting} ({unit})" if brief.grind_setting else "",
+        f"grind {brief.grind_setting} in {unit}" if brief.grind_setting else "",
         f"dose {brief.dose_g:g} g" if brief.dose_g is not None else "",
         f"target yield {brief.target_yield_g:g} g" if brief.target_yield_g is not None else "",
     ]

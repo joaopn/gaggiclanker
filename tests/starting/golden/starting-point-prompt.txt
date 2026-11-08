@@ -64,7 +64,7 @@ With this much milk, the milk is half of what is in the cup. Whole dairy gives t
 GRINDER
 grinder: Niche Zero NZ
 burrs: conical
-grind unit: numbers — every grind figure you give is in these, never microns
+grind unit: numbers (lower is finer) — every grind figure you give is in these, never microns
 their usual espresso setting: 22
 
 MACHINE

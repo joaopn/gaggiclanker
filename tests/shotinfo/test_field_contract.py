@@ -81,7 +81,7 @@ async def lever(tmp_path: Path) -> AsyncIterator[tuple[Database, int, int]]:
             BeanWrite(name="Constructed", roast_level="medium", process="washed")
         )
         grinder = await GrindersRepository(db).create(
-            GrinderWrite(name="Constructed", step_unit="numbers")
+            GrinderWrite(name="Constructed", step_unit="numbers_lower_finer")
         )
         await own_version(db, profile.id)
         row = await RecipesRepository(db).create(
@@ -383,7 +383,7 @@ async def test_the_fields_route_serves_the_document_and_follows_the_filing(
         BeanWrite(name="Constructed", roast_level="medium", process="washed")
     )
     grinder = await GrindersRepository(db).create(
-        GrinderWrite(name="Constructed", step_unit="numbers")
+        GrinderWrite(name="Constructed", step_unit="numbers_lower_finer")
     )
     recipes = RecipesRepository(db)
     await own_version(db, profile.id)

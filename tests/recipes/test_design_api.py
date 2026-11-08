@@ -39,7 +39,9 @@ def error(response: httpx.Response) -> dict[str, Any]:
 async def kit(client: httpx.AsyncClient) -> dict[str, Any]:
     bean = data(await client.post("/api/beans", json={"name": "Kenya AA", "roast_level": "light"}))
     grinder = data(
-        await client.post("/api/grinders", json={"name": "Niche Zero", "step_unit": "numbers"})
+        await client.post(
+            "/api/grinders", json={"name": "Niche Zero", "step_unit": "numbers_lower_finer"}
+        )
     )
     return {"bean_id": int(bean["id"]), "grinder_id": int(grinder["id"]), "drink": "espresso"}
 

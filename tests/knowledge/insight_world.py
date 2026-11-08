@@ -106,7 +106,7 @@ async def _graded(
 async def build_provenance_world(db: Database) -> ProvenanceWorld:
     bean = await BeansRepository(db).create(BeanWrite(name="Guji", roast_level="light"))
     grinder = await GrindersRepository(db).create(
-        GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
+        GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers_lower_finer")
     )
     recipes = RecipesRepository(db)
     row = await recipes.create(

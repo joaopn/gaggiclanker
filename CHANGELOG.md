@@ -13,6 +13,11 @@ database.
 
 ## [Unreleased]
 
+### A grinder says which way its numbers run
+
+- **Breaking: the database changes (an upgrade step carries it; you do nothing, but check your numbered grinders).** What changes: a grinder's "Steps are" no longer offers plain "numbers". It offers **numbers (lower is finer)** and **numbers (lower is coarser)** instead, beside clicks, microns and free. The allowed values are part of the `grinders` table, so the table is rebuilt. Whether your rows are carried forward: every grinder keeps its id, name, model, burrs, notes and date, and everything that refers to it still does. A grinder on "numbers" becomes "numbers (lower is finer)". That cannot be read off the old value, which never said which way the dial runs. It is the common dial, and it is what the agent assumed before. What you do: nothing to start the app. The first start backs the database up (`upgrade-backup-L8-…`) and upgrades it. Then open Hardware and switch any numbered grinder that grinds finer at a higher number to "numbers (lower is coarser)".
+- The Hardware page, the New Recipe dialog and what the agent is told name a numbered grinder's direction in those words ("adjusted in numbers (lower is finer)"), so the agent no longer has to assume which way the dial runs.
+
 ### Every conversation reads the whole bean, and the roaster's brew numbers rank above the rules
 
 - The conversation that designs a new Recipe now gets the bean's description whole, and its notes. It used to get the first 300 characters of the description and no notes, and a roaster's text usually puts the brew advice last, after the farm and the tasting notes. A light Ethiopian the roaster brews at 90-91 °C was designed at 94 °C from the generic light-roast rule, with the advice never seen.

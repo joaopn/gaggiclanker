@@ -63,7 +63,8 @@ export const vocabulary: Vocabulary = {
   ],
   step_units: [
     { value: "clicks", label: "clicks" },
-    { value: "numbers", label: "numbers" },
+    { value: "numbers_lower_finer", label: "numbers (lower is finer)" },
+    { value: "numbers_lower_coarser", label: "numbers (lower is coarser)" },
     { value: "microns", label: "microns" },
     { value: "free", label: "free" },
   ],
@@ -277,7 +278,7 @@ export function grinder(overrides: Partial<GrinderRow> = {}): GrinderRow {
     name: "Niche Zero",
     model: "NZ",
     burr_type: "conical",
-    step_unit: "numbers",
+    step_unit: "numbers_lower_finer",
     notes: "",
     created_at: "2026-04-01T00:00:00.000Z",
     recipe_count: 1,

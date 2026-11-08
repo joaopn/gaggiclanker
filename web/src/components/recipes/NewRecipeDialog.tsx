@@ -20,12 +20,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useProfileVersion, useProfileVersions } from "@/hooks/useArchive";
-import { useBeans, useGrinders } from "@/hooks/useCatalog";
+import { useBeans, useGrinders, useVocabulary } from "@/hooks/useCatalog";
 import { useSendChatMessage } from "@/hooks/useChat";
 import { useCreateRecipe, useProfileChoices, useStartDesign } from "@/hooks/useRecipes";
 import { DEFAULT_DRINK } from "@/lib/drinks";
 import { attempt } from "@/lib/mutations";
-import { beanLabel, beanScaleLabels } from "@/lib/recipes";
+import { beanLabel, beanScaleLabels, stepUnitLabel } from "@/lib/recipes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -338,6 +338,7 @@ export function NewRecipeDialog({
 }) {
   const beans = useBeans();
   const grinders = useGrinders();
+  const vocab = useVocabulary();
   // The server says what a Recipe may start on; the versions only say what a picked one brews, so
   // a profile older than the newest of them fills nothing.
   const choices = useProfileChoices();
@@ -450,6 +451,7 @@ export function NewRecipeDialog({
   const chosenGrinder = grinders.data?.items.find(
     (grinder) => String(grinder.id) === draft.grinderId,
   );
+  const grindUnit = stepUnitLabel(vocab.data?.step_units, chosenGrinder?.step_unit ?? "clicks");
   // What the form sends when the field was emptied by hand: the server's own
   // rule, which is the bean alone for pre-ground coffee with no grinder.
   const name =
@@ -693,7 +695,7 @@ export function NewRecipeDialog({
           onOpenChange={setSuggestOpen}
           beanId={draft.beanId ? Number(draft.beanId) : undefined}
           grinderId={draft.grinderId ? Number(draft.grinderId) : null}
-          grindUnit={chosenGrinder?.step_unit ?? "clicks"}
+          grindUnit={grindUnit}
           usualGrind={draft.usualGrind}
           doseHint={draft.doseG}
           drink={draft.drink}
@@ -723,7 +725,7 @@ export function NewRecipeDialog({
           beanChosen={Boolean(draft.beanId)}
           grinderChosen={Boolean(draft.grinderId)}
           forkLabel={chosenProfile?.profile_name ?? null}
-          grindUnit={chosenGrinder?.step_unit ?? "clicks"}
+          grindUnit={grindUnit}
           usualGrind={draft.usualGrind}
           onUsualGrindChange={(value) => set("usualGrind", value)}
           goal={draft.goal}
@@ -855,7 +857,7 @@ function DesignWithAgent({
             </p>
             <div>
               <label htmlFor={grindId} className="mb-1 block text-muted-foreground text-xs">
-                What do you normally grind espresso at? ({grindUnit})
+                What do you normally grind espresso at? In {grindUnit}.
               </label>
               <input
                 id={grindId}

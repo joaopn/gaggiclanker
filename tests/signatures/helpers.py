@@ -33,7 +33,9 @@ async def make_recipe_versions(
 ) -> tuple[int, int]:
     """A Recipe on one profile version with two versions of it (the second a grind change)."""
     bean = await BeansRepository(db).create(BeanWrite(name="Alturas", roast_level="light"))
-    grinder = await GrindersRepository(db).create(GrinderWrite(name="Niche", step_unit="numbers"))
+    grinder = await GrindersRepository(db).create(
+        GrinderWrite(name="Niche", step_unit="numbers_lower_finer")
+    )
     recipes = RecipesRepository(db)
     await own_version(db, profile_version_id)
     row = await recipes.create(

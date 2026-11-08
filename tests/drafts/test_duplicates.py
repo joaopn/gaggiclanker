@@ -529,7 +529,9 @@ async def test_a_new_bean_and_grinder_are_the_dialogs_not_the_sources(adopted: A
     recipe_id, version_id = await _recipe_with_version(app, client)
     bean = data(await client.post("/api/beans", json={"name": "Kenya AA", "roaster": "x"}))
     grinder = data(
-        await client.post("/api/grinders", json={"name": "Niche", "step_unit": "numbers"})
+        await client.post(
+            "/api/grinders", json={"name": "Niche", "step_unit": "numbers_lower_finer"}
+        )
     )
 
     made = data(

@@ -98,7 +98,7 @@ async def kitchen(db: Database) -> Kitchen:
     ).id
     grinder = (
         await GrindersRepository(db).create(
-            GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
+            GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers_lower_finer")
         )
     ).id
     recipes = RecipesRepository(db)
@@ -475,7 +475,7 @@ class TestOnlyInsightsAboutTheCoffeeMove:
         ).id
         grinder = (
             await GrindersRepository(db).create(
-                GrinderWrite(name="Niche", burr_type="conical", step_unit="numbers")
+                GrinderWrite(name="Niche", burr_type="conical", step_unit="numbers_lower_finer")
             )
         ).id
         recipes = RecipesRepository(db)

@@ -68,7 +68,7 @@ async def world(tmp_path: Path) -> AsyncIterator[World]:
             BeanWrite(name="Huila", roaster="Hasbean", roast_level="dark", process="washed")
         )
         grinder = await GrindersRepository(db).create(
-            GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers")
+            GrinderWrite(name="Niche Zero", burr_type="conical", step_unit="numbers_lower_finer")
         )
         recipes = RecipesRepository(db)
         made: list[Any] = []
@@ -372,7 +372,8 @@ async def _api_world(client: httpx.AsyncClient, app: FastAPI) -> dict[str, int]:
     ).json()["data"]["id"]
     grinder = (
         await client.post(
-            "/api/grinders", json={"name": "Niche", "burr_type": "conical", "step_unit": "numbers"}
+            "/api/grinders",
+            json={"name": "Niche", "burr_type": "conical", "step_unit": "numbers_lower_finer"},
         )
     ).json()["data"]["id"]
     out: dict[str, int] = {"bean": bean, "grinder": grinder}

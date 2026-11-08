@@ -112,7 +112,7 @@ async def archive(tmp_path: Path) -> AsyncIterator[Archive]:
             BeanWrite(name="Amigo Alturas", roast_level="light", process="washed")
         )
         grinder = await GrindersRepository(db).create(
-            GrinderWrite(name="Niche Zero", step_unit="numbers")
+            GrinderWrite(name="Niche Zero", step_unit="numbers_lower_finer")
         )
         profile = await make_profile_version(db, "Alturas bloom", temperature=93.0)
         recipes = RecipesRepository(db)

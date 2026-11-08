@@ -204,7 +204,8 @@ CREATE TABLE grinders (
     burr_type  TEXT    NOT NULL DEFAULT 'unknown'
                CHECK (burr_type IN ('conical', 'flat', 'unknown')),
     step_unit  TEXT    NOT NULL DEFAULT 'clicks'
-               CHECK (step_unit IN ('clicks', 'numbers', 'microns', 'free')),
+               CHECK (step_unit IN ('clicks', 'numbers_lower_finer', 'numbers_lower_coarser',
+                                    'microns', 'free')),
     notes      TEXT    NOT NULL DEFAULT '',
     created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
@@ -1413,4 +1414,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 8;
+PRAGMA user_version = 9;

@@ -166,7 +166,7 @@ async def test_the_list_and_the_recipe_routes_serve_the_curve_check_and_the_sort
         BeanWrite(name="Constructed", roast_level="medium", process="washed")
     )
     grinder = await GrindersRepository(db).create(
-        GrinderWrite(name="Constructed", step_unit="numbers")
+        GrinderWrite(name="Constructed", step_unit="numbers_lower_finer")
     )
     recipes = RecipesRepository(db)
     await own_version(db, profile.id)
