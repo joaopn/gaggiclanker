@@ -24,6 +24,7 @@ from gaggiclanker.chat.context import opening_context
 from gaggiclanker.chat.design_context import design_context
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
+from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
 from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
@@ -237,6 +238,31 @@ async def test_the_bean_s_description_and_notes_reach_the_design_whole(kitchen: 
 
     assert f"About the bean: {farm}{advice}\n" in rendered
     assert "Their notes on the bean: Rest it 14 days.\n" in rendered
+
+
+async def test_the_grinder_s_record_reaches_the_design_whole(kitchen: Fixture) -> None:
+    """A design proposes a grind on this dial, so it is told which way the dial runs."""
+    await GrindersRepository(kitchen.db).update(
+        kitchen.grinder_id,
+        GrinderWrite(
+            name="Niche Zero",
+            model="NZ",
+            burr_type="conical",
+            step_unit="numbers_lower_finer",
+            notes="Lower grind number means finer.",
+        ),
+    )
+    designed = await _bare_design(kitchen)
+
+    rendered = await design_context(kitchen.db, designed.id)
+
+    assert (
+        "THE GRINDER, AS ITS RECORD DESCRIBES IT\n"
+        f"Grinder {kitchen.grinder_id}: Niche Zero (NZ, conical burrs).\n"
+        "Its dial is numbered, and a LOWER number grinds FINER (a higher number grinds coarser).\n"
+        "Their notes on the grinder: Lower grind number means finer.\n"
+    ) in rendered
+    assert rendered.index("THE GRINDER, AS ITS RECORD") < rendered.index("WHAT THEY ASKED FOR")
 
 
 async def test_the_library_is_never_offered_as_somewhere_to_start(kitchen: Fixture) -> None:

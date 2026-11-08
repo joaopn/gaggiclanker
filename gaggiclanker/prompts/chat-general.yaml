@@ -7,11 +7,19 @@ description: |
 
   There is no `user` section: the user turn is the person's own message with
   the history before it, and there is no one Recipe to put in front of the model —
-  that is what the Recipe conversations are for. `shot_fields` is the base half of the
+  that is what the Recipe conversations are for. `scope` is the kitchen's grinders,
+  each as its record describes it (which way its dial runs, the person's notes on it),
+  assembled by `gaggiclanker/chat/context.py`, and empty with no grinder recorded.
+  `shot_fields` is the base half of the
   glossary of shot fields, generated from the shot information catalogue; the
   extended half comes once in what the model is sent, with the newest extended read
   in the history or the answer's first one.
 variables:
+  - name: scope
+    description: >
+      Every grinder in the kitchen as its record describes it: name, model, burrs,
+      which way its dial runs, and the person's notes on it, whole. Empty when no
+      grinder is recorded.
   - name: shot_fields
     description: >
       What every base shot field means, for every item in the base tier. The
@@ -97,3 +105,5 @@ system: |
   concrete numbers, no preamble about what you are about to do. Do not restate
   the question. When you have run tools, give the answer first and the working
   after it. Markdown is fine; tables for more than three rows of numbers.
+
+  {{scope}}

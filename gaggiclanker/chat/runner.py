@@ -320,29 +320,26 @@ class ChatRunner:
 
     async def _loop(self, state: _RunState, scope: ToolScope, *, model: str) -> None:
         budget = await self._budget()
-        # The Recipe prompt is handed the experiment and the design prompt the
-        # brief and its evidence. The Recipe and General prompts are also handed
-        # the glossary of shot fields, since both read shots; the design prompt
-        # reads none, and a prompt is passed only what it declares.
+        # Every prompt is handed its opening context: the Recipe prompt the
+        # experiment, the design prompt the brief and its evidence, and the General
+        # prompt the kitchen's grinders, so every conversation knows which way each
+        # dial runs. The Recipe and General prompts are also handed the glossary of
+        # shot fields, since both read shots; the design prompt reads none.
         prompt = prompt_for(scope)
         # Which shot items are base is read once per turn, like the scope: the
         # opening context written now and every shot tool this turn calls then
         # render the same lines.
         tiers = await effective_tiers(self.db)
-        variables = (
-            {
-                "scope": await opening_context(
-                    self.db,
-                    scope,
-                    recent_shots=int(await self.llm.settings.get("chatRecentShots")),
-                    tiers=tiers,
-                    curve_points=int(await self.llm.settings.get("chatCurvePoints")),
-                    thread_id=state.thread_id,
-                )
-            }
-            if prompt in (RECIPE_CHAT_PROMPT, DESIGN_CHAT_PROMPT)
-            else {}
-        )
+        variables = {
+            "scope": await opening_context(
+                self.db,
+                scope,
+                recent_shots=int(await self.llm.settings.get("chatRecentShots")),
+                tiers=tiers,
+                curve_points=int(await self.llm.settings.get("chatCurvePoints")),
+                thread_id=state.thread_id,
+            )
+        }
         if prompt in (RECIPE_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
             variables["shot_fields"] = render_glossary(tiers, "base")
         rendered = await self.prompts.load(prompt, variables)

@@ -34,7 +34,7 @@ from gaggiclanker.chat.context import (
 )
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
-from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
+from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite, step_sentence
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.knowledge_insights import (
     InsightScope,
@@ -59,6 +59,7 @@ from gaggiclanker.db.schema import create_schema
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.signature import ExpectationInput
 from gaggiclanker.domain.spread import CountedShot
+from gaggiclanker.domain.vocab import STEP_UNITS
 from gaggiclanker.knowledge.service import DEFAULT_DOCS_DIR, KnowledgeService
 from gaggiclanker.settings import SETTINGS_REGISTRY
 from gaggiclanker.settings_service import SettingsService
@@ -497,8 +498,120 @@ async def test_a_bean_with_no_description_or_notes_has_no_bean_block(
     assert "THE BEAN, AS ITS RECORD DESCRIBES IT" not in rendered
 
 
-async def test_a_general_conversation_gets_no_block(experiment: Experiment) -> None:
-    assert await opening_context(experiment.db, ToolScope()) == ""
+async def test_the_grinder_s_record_comes_whole_above_what_a_shot_moves(
+    experiment: Experiment,
+) -> None:
+    """Which way the dial runs and the person's notes on it reach the conversation.
+
+    The agent once said "assuming lower number means finer" with the grinder's notes saying so:
+    the notes reached no conversation. The block sits above the heading, like the bean's, so a
+    new shot leaves it in the part of the prompt the provider can reuse.
+    """
+    notes = "Lower grind number means finer. Espresso lives between 18 and 24. " * 3
+    await GrindersRepository(experiment.db).update(
+        1,
+        GrinderWrite(
+            name="Niche Zero",
+            model="NZ",
+            burr_type="conical",
+            step_unit="numbers_lower_finer",
+            notes=notes.strip(),
+        ),
+    )
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
+    )
+
+    block = (
+        "THE GRINDER, AS ITS RECORD DESCRIBES IT\n"
+        "Grinder 1: Niche Zero (NZ, conical burrs).\n"
+        "Its dial is numbered, and a LOWER number grinds FINER (a higher number grinds coarser).\n"
+        f"Their notes on the grinder: {notes.strip()}\n"
+    )
+    assert block in rendered
+    assert rendered.index(block) < rendered.index("THIS CONVERSATION IS ABOUT ONE VERSION")
+    block_end = rendered.index(block) + len(block)
+
+    shot = await _shot(
+        experiment.db,
+        "000702",
+        started_at="2026-04-09T08:00:00.000Z",
+        duration_ms=30_000,
+        weight_g=36.0,
+        first_drip_s=7.0,
+        max_bar=9.0,
+        brew_flow=1.9,
+    )
+    assert await RecipesRepository(experiment.db).assign_shot(shot, experiment.v5)
+    after = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
+    )
+    assert after != rendered
+    assert _first_difference(rendered, after) >= block_end
+
+
+async def test_a_dial_that_runs_the_other_way_is_told_so(experiment: Experiment) -> None:
+    await GrindersRepository(experiment.db).update(
+        1, GrinderWrite(name="Niche Zero", step_unit="numbers_lower_coarser")
+    )
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.recipe_id, experiment.v5)
+    )
+
+    assert (
+        "Grinder 1: Niche Zero.\n"
+        "Its dial is numbered, and a LOWER number grinds COARSER (a higher number grinds finer).\n"
+    ) in rendered
+    assert "Their notes on the grinder" not in rendered
+    assert "grinds FINER" not in rendered
+
+
+def test_every_step_unit_has_its_own_sentence() -> None:
+    sentences = [step_sentence(unit) for unit in STEP_UNITS]
+    assert len(set(sentences)) == len(STEP_UNITS)
+    # None falls through to the bare unit, which says nothing about which way is finer.
+    assert all("Its grind setting is in" not in sentence for sentence in sentences)
+
+
+async def test_a_general_conversation_is_handed_every_grinder_in_the_kitchen(
+    experiment: Experiment,
+) -> None:
+    grinders = GrindersRepository(experiment.db)
+    await grinders.update(
+        1,
+        GrinderWrite(
+            name="Niche Zero",
+            burr_type="conical",
+            step_unit="numbers_lower_finer",
+            notes="Lower grind number means finer.",
+        ),
+    )
+    await grinders.create(GrinderWrite(name="Comandante C40", step_unit="clicks"))
+
+    rendered = await opening_context(experiment.db, ToolScope())
+
+    assert rendered == (
+        "THE GRINDERS IN THIS KITCHEN, AS THEIR RECORDS DESCRIBE THEM\n"
+        "\n"
+        "Grinder 2: Comandante C40.\n"
+        "It is adjusted in clicks: give a grind change as a number of clicks finer or coarser.\n"
+        "\n"
+        "Grinder 1: Niche Zero (conical burrs).\n"
+        "Its dial is numbered, and a LOWER number grinds FINER (a higher number grinds coarser).\n"
+        "Their notes on the grinder: Lower grind number means finer."
+    )
+
+
+async def test_a_general_conversation_with_no_grinder_gets_no_block(tmp_path: Path) -> None:
+    db = Database(tmp_path / "empty.db")
+    await db.connect()
+    try:
+        await create_schema(db)
+        assert await opening_context(db, ToolScope()) == ""
+    finally:
+        await db.close()
 
 
 async def test_it_is_about_the_thread_s_version_not_the_current_one(

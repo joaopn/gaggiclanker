@@ -18,6 +18,7 @@ import pytest
 
 from gaggiclanker.chat.runner import ChatRunner, _to_chat_message, run_task_name
 from gaggiclanker.db.repos.chat import ChatEventsRepository, ChatRepository, ChatThreadWrite
+from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, InsightWrite
 from gaggiclanker.db.repos.recipes import DesignBrief, RecipesRepository, RecipeWrite
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
@@ -1010,6 +1011,43 @@ async def test_an_unscoped_thread_gets_no_scope_block(
     await send(runner, tasks, plain.id, "what is a 1:2 ratio?")
 
     assert "THIS CONVERSATION IS ABOUT" not in chat_provider.chat_calls[0].system
+
+
+async def test_every_conversation_s_prompt_carries_the_grinder_s_record(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """The person's notes on the grinder reach a Recipe's conversation and a general one.
+
+    The agent said "assuming lower number means finer" although the grinder's notes said so:
+    the notes reached no conversation, and a general one was told of no grinder at all.
+    """
+    from gaggiclanker.db.repos.chat import ChatThreadWrite
+
+    await GrindersRepository(archive.db).update(
+        archive.grinder_id,
+        GrinderWrite(
+            name="Niche Zero",
+            burr_type="conical",
+            step_unit="numbers_lower_finer",
+            notes="Lower grind number means finer.",
+        ),
+    )
+    general = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
+    assert general.thread is not None
+    chat_provider.chat_script = [ChatTurn(text="ok")]
+
+    await send(runner, tasks, thread)
+    await send(runner, tasks, general.thread.id, "how fine should I go?")
+
+    assert len(chat_provider.chat_calls) == 2
+    for request in chat_provider.chat_calls:
+        assert "Their notes on the grinder: Lower grind number means finer." in request.system
+        assert "a LOWER number grinds FINER" in request.system
+    assert "THE GRINDERS IN THIS KITCHEN" in chat_provider.chat_calls[1].system
 
 
 # -- the tool surface handed to the provider -------------------------------

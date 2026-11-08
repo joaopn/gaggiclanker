@@ -20,7 +20,9 @@ description: |
 variables:
   - name: scope
     description: >
-      The design context: the Recipe and the bean, what the person asked for, the
+      The design context: the Recipe, the bean and the grinder as their records
+      describe them (which way the grinder's dial runs, the person's notes), what
+      the person asked for, the
       profile to fork (or that there is none), the card waiting or last
       declined, this bean's other Recipes, similar Recipes on this grinder and the
       rules.

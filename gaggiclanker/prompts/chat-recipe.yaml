@@ -18,7 +18,9 @@ description: |
 variables:
   - name: scope
     description: >
-      The opening context: the Recipe and this version, the prediction ledger with
+      The opening context: the bean and the grinder as their records describe them
+      (which way the grinder's dial runs, the person's notes), the Recipe and this
+      version, the prediction ledger with
       its outcomes, the spread, the evidence table, this version's newest shots
       in their base information, the Good shots and the confirmed insights that
       apply, the profile this version brews in full (and the compared version's

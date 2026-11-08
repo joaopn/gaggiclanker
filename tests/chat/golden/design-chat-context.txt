@@ -1,7 +1,11 @@
 THIS CONVERSATION IS DESIGNING A NEW RECIPE
 
-Recipe 8: Kenya AA, more body. Bean: Kenya AA, light roast, washed process, from Kenya. Grinder: Niche Zero (conical burrs), adjusted in numbers (lower is finer).
+Recipe 8: Kenya AA, more body. Bean: Kenya AA, light roast, washed process, from Kenya. Grinder: Niche Zero.
 Nothing has been brewed on it. Its version 1 is empty: no profile, no grind, no dose, no yield. What you propose, once the person accepts it, becomes that version 1.
+
+THE GRINDER, AS ITS RECORD DESCRIBES IT
+Grinder 1: Niche Zero (NZ, conical burrs).
+Its dial is numbered, and a LOWER number grinds FINER (a higher number grinds coarser).
 
 WHAT THEY ASKED FOR
 Drink: Cappuccino (a little milk: macchiato, cortado, flat white, cappuccino)

@@ -40,7 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
-from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
+from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository, step_sentence
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.machines import MachineRepository
 from gaggiclanker.db.repos.profiles import (
@@ -120,6 +120,9 @@ class HardwareFacts(BaseModel):
     grinder_model: str = ""
     burr_type: str = "unknown"
     step_unit: str = "clicks"
+    #: The person's notes on the grinder, whole: often how its dial reads, or where it
+    #: usually sits for espresso.
+    grinder_notes: str = ""
     #: What the user says they normally grind espresso at, verbatim and in the
     #: grinder's own units. Empty is the common case and the prompt handles it.
     usual_grind: str = ""
@@ -279,6 +282,7 @@ async def build_context(
         grinder_model=(inputs.grinder.model or "") if inputs.grinder else "",
         burr_type=inputs.grinder.burr_type if inputs.grinder else "unknown",
         step_unit=inputs.grinder.step_unit if inputs.grinder else "clicks",
+        grinder_notes=inputs.grinder.notes if inputs.grinder else "",
         usual_grind=usual_grind.strip(),
         dose_hint_g=dose_hint_g,
     )
@@ -568,6 +572,10 @@ def _render_hardware(hardware: HardwareFacts) -> str:
                 f"{step_unit_label(hardware.step_unit)} — every grind figure you give is in these, "
                 "never microns",
             ),
+            _line("which way it runs", step_sentence(hardware.step_unit))
+            if hardware.grinder_name
+            else None,
+            _line("their notes on the grinder", hardware.grinder_notes),
             _line(
                 "their usual espresso setting",
                 hardware.usual_grind

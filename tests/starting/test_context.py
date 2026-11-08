@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
+from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.starting.context import DEFAULT_STYLE, build_context, render_similar
 from gaggiclanker.starting.similar import SimilarRecipe
 from tests.starting.conftest import AS_OF, Fixture
@@ -112,6 +113,33 @@ async def test_the_usual_grind_reaches_the_prompt_and_its_absence_is_loud(
     without = await _build(fixture, usual_grind="")
     rendered = without.render()["hardware_facts"]  # type: ignore[attr-defined]
     assert "NOT GIVEN" in rendered
+
+
+async def test_the_grinder_s_notes_and_which_way_its_dial_runs_reach_the_prompt(
+    fixture: Fixture,
+) -> None:
+    """The starting point gives a grind number, so it has to know which way the dial runs."""
+    before = (await _build(fixture)).render()["hardware_facts"]  # type: ignore[attr-defined]
+    assert "their notes on the grinder" not in before  # no notes, no line
+
+    await GrindersRepository(fixture.db).update(
+        fixture.grinder_id,
+        GrinderWrite(
+            name="Niche Zero",
+            model="NZ",
+            burr_type="conical",
+            step_unit="numbers_lower_coarser",
+            notes="Reversed dial: 30 is finer than 20.",
+        ),
+    )
+    rendered = (await _build(fixture)).render()["hardware_facts"]  # type: ignore[attr-defined]
+
+    assert "grind unit: numbers (lower is coarser) — every grind figure" in rendered
+    assert (
+        "which way it runs: Its dial is numbered, and a LOWER number grinds COARSER "
+        "(a higher number grinds finer).\n"
+    ) in rendered
+    assert "their notes on the grinder: Reversed dial: 30 is finer than 20.\n" in rendered
 
 
 async def test_the_planned_style_comes_from_the_closest_similar_recipe(

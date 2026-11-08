@@ -65,6 +65,7 @@ GRINDER
 grinder: Niche Zero NZ
 burrs: conical
 grind unit: numbers (lower is finer) — every grind figure you give is in these, never microns
+which way it runs: Its dial is numbered, and a LOWER number grinds FINER (a higher number grinds coarser).
 their usual espresso setting: 22
 
 MACHINE

@@ -39,7 +39,7 @@ from typing import Any
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, bean_lines, taste_scales
-from gaggiclanker.db.repos.grinders import GrindersRepository
+from gaggiclanker.db.repos.grinders import GrindersRepository, grinder_lines, kitchen_lines
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
@@ -67,7 +67,6 @@ from gaggiclanker.domain.vocab import (
     SPREAD_MEASURES,
     MeasureTerm,
     SpreadMeasure,
-    step_unit_label,
     vocabulary,
 )
 from gaggiclanker.knowledge.drinks import drink_lines, drink_reference
@@ -147,7 +146,7 @@ async def opening_context(
     curve_points: int = CURVE_POINTS,
     thread_id: int | None = None,
 ) -> str:
-    """The experiment so far, as markdown, or an empty string for a general chat.
+    """The experiment so far, as markdown; for a general chat, the kitchen's grinders.
 
     ``scope.recipe_version_id`` is the version being argued. A scope that names a
     Recipe and no version falls back to the current one rather than refusing: a
@@ -160,7 +159,9 @@ async def opening_context(
     the turn, so the context and the tools of one turn agree.
     """
     if scope.kind != "recipe" or scope.recipe_id is None:
-        return ""
+        # A general conversation is about no one Recipe, so it is handed every grinder: grind
+        # advice is in a grinder's own units, and which way its dial runs is in its record.
+        return "\n".join(kitchen_lines(await GrindersRepository(db).list_all()))
     if scope.designing:
         # A Recipe being designed has no experiment yet: its conversation is told
         # the brief and the evidence to design from instead. Imported here
@@ -221,6 +222,13 @@ async def opening_context(
     about = bean_lines(await BeansRepository(db).get(row.bean_id) if row.bean_id else None)
     if about:
         lines += ["", "THE BEAN, AS ITS RECORD DESCRIBES IT", *about]
+    # And the grinder, for the same reason: it changes only when the person edits it. Every grind
+    # figure in the context is on its dial, and its record says which way the dial runs.
+    grinder = grinder_lines(
+        await GrindersRepository(db).get(row.grinder_id) if row.grinder_id else None
+    )
+    if grinder:
+        lines += ["", "THE GRINDER, AS ITS RECORD DESCRIBES IT", *grinder]
     lines += [""]
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
     lines += await _reverts_block(recipes, version)
@@ -282,7 +290,6 @@ async def _heading(
     dead_ends: set[int],
 ) -> list[str]:
     bean = await BeansRepository(db).get(row.bean_id) if row.bean_id else None
-    grinder = await GrindersRepository(db).get(row.grinder_id) if row.grinder_id else None
     bean_line = ", ".join(
         part
         for part in (
@@ -292,11 +299,6 @@ async def _heading(
         )
         if part
     ) + _taste(bean)
-    grinder_line = (
-        f"{row.grinder_name}, adjusted in {step_unit_label(grinder.step_unit)}"
-        if grinder is not None and grinder.step_unit
-        else (row.grinder_name or "")
-    )
     parent = by_id.get(version.parent_version_id or 0)
     changes = version_changes(version, parent, _profile_labels(versions))
 
@@ -305,7 +307,7 @@ async def _heading(
         "",
         f"Recipe {row.id}: {row.name}."
         + (f" Bean: {bean_line}." if bean_line else "")
-        + (f" Grinder: {grinder_line}." if grinder_line else ""),
+        + (f" Grinder: {row.grinder_name}." if row.grinder_name else ""),
         f"{_plural(row.version_count, 'version')}, {_plural(row.shot_count, 'shot')}. "
         + ("Archived." if row.archived else "In use.")
         + (" New shots on its profile are filed here." if row.automatch else ""),

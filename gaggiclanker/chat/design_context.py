@@ -53,7 +53,7 @@ from gaggiclanker.chat.context import (
 )
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, bean_lines
-from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
+from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository, grinder_lines
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow, document_for
 from gaggiclanker.db.repos.recipe_proposals import RecipeProposalRow, RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import (
@@ -201,13 +201,7 @@ def _heading(row: RecipeRow, bean: BeanRow | None, grinder: GrinderRow | None) -
         f"from {bean.origin}" if bean is not None and bean.origin else "",
         "decaf" if bean is not None and bean.decaf else "",
     ]
-    grinder_line = (
-        f"{row.grinder_name}"
-        + (f" ({grinder.burr_type} burrs)" if grinder.burr_type != "unknown" else "")
-        + f", adjusted in {step_unit_label(grinder.step_unit)}"
-        if grinder is not None
-        else "not recorded"
-    )
+    grinder_line = grinder.name if grinder is not None else "not recorded"
     lines = [
         "THIS CONVERSATION IS DESIGNING A NEW RECIPE",
         "",
@@ -218,7 +212,12 @@ def _heading(row: RecipeRow, bean: BeanRow | None, grinder: GrinderRow | None) -
         "no dose, no yield. What you propose, once the person accepts it, becomes that "
         "version 1.",
     ]
-    return [*lines, *bean_lines(bean)]
+    about = grinder_lines(grinder)
+    return [
+        *lines,
+        *bean_lines(bean),
+        *(["", "THE GRINDER, AS ITS RECORD DESCRIBES IT", *about] if about else []),
+    ]
 
 
 def _brief(row: RecipeRow, grinder: GrinderRow | None) -> list[str]:

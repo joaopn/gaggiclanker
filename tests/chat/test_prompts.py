@@ -69,7 +69,11 @@ async def prompts(tmp_path: Path) -> AsyncIterator[PromptService]:
             "chat-recipe-prompt.txt",
         ),
         (DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER}, "chat-design-prompt.txt"),
-        (GENERAL_CHAT_PROMPT, {"shot_fields": FIELDS_MARKER}, "chat-general-prompt.txt"),
+        (
+            GENERAL_CHAT_PROMPT,
+            {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER},
+            "chat-general-prompt.txt",
+        ),
     ],
 )
 async def test_the_rendered_prompt_matches_the_golden_file(
@@ -103,13 +107,29 @@ async def test_every_variable_the_recipe_prompt_uses_is_declared_and_provided(
     assert FIELDS_MARKER in rendered.system
 
 
-async def test_the_general_prompt_takes_only_the_shot_field_glossary(
+async def test_the_general_prompt_takes_the_kitchen_s_grinders_and_the_glossary(
     prompts: PromptService,
 ) -> None:
-    rendered = await prompts.load(GENERAL_CHAT_PROMPT, {"shot_fields": FIELDS_MARKER})
+    rendered = await prompts.load(
+        GENERAL_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER}
+    )
 
-    assert rendered.declared == ["shot_fields"]
+    assert rendered.declared == ["scope", "shot_fields"]
     assert FIELDS_MARKER in rendered.system
+    # Last, as in the Recipe prompt: what the conversation is handed follows the instructions.
+    assert rendered.system.rstrip().endswith(SCOPE_MARKER)
+
+
+async def test_every_chat_prompt_says_the_grinder_s_record_settles_which_way_its_dial_runs(
+    prompts: PromptService,
+) -> None:
+    """The agent said "assuming lower number means finer" with the grinder's notes saying so."""
+    for name in (RECIPE_CHAT_PROMPT, DESIGN_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
+        system = " ".join(
+            (await prompts.load(name, {"scope": "", "shot_fields": ""})).system.split()
+        )
+        assert "Which way a numbered dial runs, and anything else the person wrote" in system
+        assert 'Never write "assuming a lower number is finer" — the record says.' in system
 
 
 @pytest.mark.parametrize("name", [RECIPE_CHAT_PROMPT, GENERAL_CHAT_PROMPT])
@@ -249,7 +269,7 @@ async def test_the_recipe_prompt_answers_a_declined_card_in_the_same_conversatio
 async def test_the_general_prompt_sends_a_recipe_change_to_that_recipe_s_badge(
     prompts: PromptService,
 ) -> None:
-    system = (await prompts.load(GENERAL_CHAT_PROMPT, {"shot_fields": ""})).system
+    system = (await prompts.load(GENERAL_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system
 
     assert "YOU CANNOT CHANGE A RECIPE HERE" in system
     # The Chat page picks a Recipe with a badge above the conversation; the agent
@@ -278,7 +298,7 @@ GLOSSARY = render_glossary(default_tiers())
             {"scope": SCOPE_MARKER},
             ToolScope.for_thread(3, 9, designing=True),
         ),
-        (GENERAL_CHAT_PROMPT, {"shot_fields": GLOSSARY}, ToolScope()),
+        (GENERAL_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": GLOSSARY}, ToolScope()),
     ],
 )
 async def test_a_prompt_names_no_tool_this_conversation_does_not_have(
@@ -303,7 +323,7 @@ async def test_both_prompts_carry_the_shared_rules(prompts: PromptService) -> No
     """The fragment is expanded, not merely referenced."""
     for name, variables in (
         (RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""}),
-        (GENERAL_CHAT_PROMPT, {"shot_fields": ""}),
+        (GENERAL_CHAT_PROMPT, {"scope": "", "shot_fields": ""}),
     ):
         system = " ".join((await prompts.load(name, variables)).system.split())
 
