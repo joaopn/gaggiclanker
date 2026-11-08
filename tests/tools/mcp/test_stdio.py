@@ -368,6 +368,60 @@ async def test_insight_provenance_and_deletion_proposals_over_stdio(
         await db.close()
 
 
+async def test_a_general_insight_is_requested_over_stdio_and_never_added(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The child asks the same way: a quote from the person's message, a closed scope, a row."""
+    data_dir, _ = archive_dir
+    world, _ids = await _provenance_world(data_dir)
+    said = "never suggest going finer than 8 on the Niche"
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        from gaggiclanker.db.repos.chat import ChatMessageWrite, ChatRepository
+
+        await ChatRepository(db).add_message(
+            ChatMessageWrite(thread_id=world.thread, role="user", content=said)
+        )
+    finally:
+        await db.close()
+    async with AsyncExitStack() as stack:
+        session = await session_for(
+            stack,
+            data_dir,
+            GAGGICLANKER_MCP_RECIPE_ID=str(world.recipe_id),
+            GAGGICLANKER_MCP_RECIPE_VERSION_ID=str(world.v3),
+            GAGGICLANKER_MCP_THREAD_ID=str(world.thread),
+        )
+        bare = await session_for(
+            stack,
+            data_dir,
+            GAGGICLANKER_MCP_RECIPE_ID=str(world.recipe_id),
+            GAGGICLANKER_MCP_RECIPE_VERSION_ID=str(world.v3),
+        )
+        asked = await session.call_tool(
+            "request_general_insight",
+            {"text": "Never go finer than 8.", "said": said, "scope": {"roast_level": "light"}},
+        )
+        nothing = await bare.call_tool(
+            "request_general_insight", {"text": "Never go finer than 8.", "said": said}
+        )
+
+    assert nothing.is_error is True and "no conversation" in str(nothing.content), nothing
+    assert asked.is_error is False, asked.content
+    assert asked.structured_content is not None
+    assert asked.structured_content["scope"] == {"roast_level": "light"}
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+
+        row = await InsightsRepository(db).get(asked.structured_content["insight_id"])
+        assert row is not None and row.confirmed is False and row.recipe_id is None
+    finally:
+        await db.close()
+
+
 # -- a scope that does not parse is a server that does not start -----------
 
 

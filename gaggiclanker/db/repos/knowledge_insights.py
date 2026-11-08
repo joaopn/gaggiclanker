@@ -44,13 +44,15 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 
 from gaggiclanker.db.repos.base import JsonList, dumps, utc_now
 from gaggiclanker.db.repos.beans import BeansRepository
+from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
-from gaggiclanker.domain.vocab import VersionOutcome
+from gaggiclanker.domain.vocab import VersionOutcome, vocabulary
 
 log = structlog.get_logger(__name__)
 
 __all__ = [
+    "PICKER_KEYS",
     "SCOPE_KEYS",
     "InsightProposeRefusal",
     "InsightProposeResult",
@@ -61,6 +63,8 @@ __all__ = [
     "InsightsRepository",
     "RestsOn",
     "RestsOnRow",
+    "ScopeOption",
+    "collapsed",
     "recipe_attributes",
     "scope_matches",
 ]
@@ -109,6 +113,96 @@ class InsightScope(BaseModel):
         if not stated:
             return "any shot"
         return " · ".join(f"{key}={value}" for key, value in stated.items())
+
+
+def collapsed(text: str) -> str:
+    """Whitespace collapsed and case folded: how two sentences are compared for "the same".
+
+    One function for the duplicate check on a request and the search for a quote in the person's
+    messages, so the two cannot disagree about what counts as the same words.
+    """
+    return " ".join(text.split()).casefold()
+
+
+#: The keys a person may narrow a general insight by. ``profile_style`` is detected per shot, so a
+#: Recipe has none, and Find patterns refuses it.
+PICKER_KEYS = tuple(key for key in SCOPE_KEYS if key != "profile_style")
+
+_KEY_WORDS = {
+    "bean_id": "bean",
+    "roast_level": "roast",
+    "process": "process",
+    "origin": "origin",
+    "grinder_id": "grinder",
+}
+
+
+class ScopeChoice(BaseModel):
+    """A bean or a grinder the General picker offers: by name, with its id behind it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    label: str
+
+
+class ScopeTerm(BaseModel):
+    """A roast level, a process or an origin the General picker offers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+    label: str
+
+
+class GeneralScopeOptions(BaseModel):
+    """What a General conversation, and the Knowledge page, may narrow a general insight to.
+
+    **The one definition**, read by the picker's route and by the tool's refusal, so every option
+    the select offers is accepted by the tool and nothing else is. Archived beans are out of
+    both; a grinder cannot be archived.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    beans: list[ScopeChoice]
+    grinders: list[ScopeChoice]
+    roast_levels: list[ScopeTerm]
+    processes: list[ScopeTerm]
+    origins: list[ScopeTerm]
+
+    def canonical(self, key: str, value: Any) -> Any | None:
+        """The option's own value that ``value`` names, or ``None`` when no option does.
+
+        Ids by equality; words with whitespace collapsed and case folded, answered in the
+        option's own spelling, so what is stored is what the select shows.
+        """
+        if key in ("bean_id", "grinder_id"):
+            choices = self.beans if key == "bean_id" else self.grinders
+            return next((c.id for c in choices if c.id == value), None)
+        terms = {
+            "roast_level": self.roast_levels,
+            "process": self.processes,
+            "origin": self.origins,
+        }.get(key, [])
+        return next((t.value for t in terms if collapsed(t.value) == collapsed(str(value))), None)
+
+
+#: What makes a general row a request or a save made in a conversation: no Recipe, written as the
+#: person's own, filed under a thread. One definition for the block that tells a conversation what
+#: became of them, the dismiss route and the Recipe block's exclusion.
+GENERAL_REQUEST_SQL = "i.recipe_id IS NULL AND i.source = 'user' AND i.thread_id IS NOT NULL"
+
+
+class ScopeOption(BaseModel):
+    """One thing a general insight from a Recipe's conversation may be narrowed to."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    value: int | str
+    #: What the picker shows: ``grinder Niche Zero``. Never an id.
+    label: str
 
 
 def scope_matches(scope: dict[str, Any] | None, attributes: dict[str, Any]) -> bool:
@@ -302,6 +396,8 @@ class InsightWrite(BaseModel):
     copied_from_insight_id: int | None = None
     #: The Recipe that original was learned in; written with it, by the duplicate only.
     copied_from_recipe_id: int | None = None
+    #: The person's own message this general insight was requested from or saved from.
+    from_message_id: int | None = None
 
     @model_validator(mode="after")
     def _a_recipe_insight_has_no_scope(self) -> InsightWrite:
@@ -309,6 +405,8 @@ class InsightWrite(BaseModel):
             raise ValueError("only a Recipe's insight rests on versions or replaces another")
         if self.recipe_version_id is not None and self.recipe_id is None:
             raise ValueError("an insight learned at a version belongs to that version's Recipe")
+        if self.from_message_id is not None and self.recipe_id is not None:
+            raise ValueError("only a general insight is made from the person's message")
         if self.recipe_id is not None and self.scope.stated():
             raise ValueError("an insight that belongs to a Recipe states no attribute scope")
         return self
@@ -379,12 +477,26 @@ class InsightRow(BaseModel):
     #: The Recipe that original was learned in: this copy's home Recipe when insights are weighed
     #: across Recipes, whatever became of the original.
     copied_from_recipe_id: int | None = None
+    #: The person's own message a general insight was requested from or saved from; ``None``
+    #: for every other insight, and once that message is gone.
+    from_message_id: int | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def general(self) -> bool:
         """Whether it is general knowledge rather than one Recipe's."""
         return self.recipe_id is None
+
+    @property
+    def is_general_request(self) -> bool:
+        """Whether this general row was made in a conversation: a request an agent asked for or
+        a save from the person's message. The rule :data:`GENERAL_REQUEST_SQL` states."""
+        return self.recipe_id is None and self.source == "user" and self.thread_id is not None
+
+    @property
+    def is_waiting_general_request(self) -> bool:
+        """Whether this is a general request nobody has answered."""
+        return self.is_general_request and not self.confirmed and not self.dismissed
 
     @property
     def scope_label(self) -> str:
@@ -411,6 +523,15 @@ class InsightRow(BaseModel):
         if text_chars is not None and len(text) > text_chars:
             text = text[:text_chars].rstrip() + "…"
         facts = [self.scope_label]
+        if self.recipe_id is None:
+            # Who a general insight is from, so a person's instruction reads as an instruction and
+            # not as one more heuristic. An old chat or analysis insight gets no mark.
+            if self.pattern_run_id is not None:
+                facts.insert(0, "from Find patterns")
+            elif self.source == "user" and self.confirmed:
+                # A note the person has added. A request still waiting for their Add is nobody's
+                # instruction yet.
+                facts.insert(0, "your note")
         if self.recipe_id is not None:
             if self.rests_on:
                 facts.append("rests on " + ", ".join(item.render() for item in self.rests_on))
@@ -514,10 +635,12 @@ class InsightsRepository(Repository):
 
         The one reader of a dismissed insight: the conversation that proposed it
         is told what the person did with it, so it does not offer it again. The
-        newest ``limit`` are returned, oldest first among them.
+        newest ``limit`` are returned, oldest first among them. A general request the person
+        answers (or saved) in this conversation is not here: :meth:`requests_in` is its reader.
         """
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE i.thread_id = ? ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+            f"{_SELECT} WHERE i.thread_id = ? AND NOT ({GENERAL_REQUEST_SQL}) "
+            "ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
             (thread_id, limit),
         )
         return [self._decode(row) for row in reversed(rows)]
@@ -554,6 +677,115 @@ class InsightsRepository(Repository):
         general = await self.select(attributes)
         return sorted([*mine, *general], key=lambda item: (item.created_at, item.id))
 
+    async def recipe_scope_options(self, recipe_id: int) -> list[ScopeOption] | None:
+        """What a general insight from this Recipe's conversation may be narrowed to, or ``None``
+        for no such Recipe.
+
+        **The one definition**: the picker's checkboxes and the tool's refusal both read it, so
+        every option the picker offers is accepted and nothing else is. The Recipe's own stated
+        attributes, in :data:`SCOPE_KEYS` order, without ``profile_style``.
+        """
+        attributes = await self.attributes_of(recipe_id)
+        if attributes is None:
+            return None
+        options: list[ScopeOption] = []
+        for key in PICKER_KEYS:
+            value = attributes.get(key)
+            if value is None:
+                continue
+            options.append(
+                ScopeOption(key=key, value=value, label=await self._option_label(key, value))
+            )
+        return options
+
+    async def _option_label(self, key: str, value: int | str) -> str:
+        word = _KEY_WORDS[key]
+        if key == "bean_id":
+            bean = await BeansRepository(self.db).get(int(value))
+            return f"{word} {bean.name if bean else value}"
+        if key == "grinder_id":
+            row = await self.db.fetch_one("SELECT name FROM grinders WHERE id = ?", (value,))
+            return f"{word} {row['name'] if row else value}"
+        return f"{word} {value}"
+
+    async def general_scope_options(self) -> GeneralScopeOptions:
+        """What a General conversation or the Knowledge page may narrow to (see the model)."""
+        terms = vocabulary()
+        beans = await BeansRepository(self.db).list_all()
+        grinders = await GrindersRepository(self.db).list_all()
+        # Once each however it was typed; the spelling that sorts first stands for the others.
+        seen: dict[str, str] = {}
+        for origin in sorted({(bean.origin or "").strip() for bean in beans} - {""}):
+            seen.setdefault(collapsed(origin), origin)
+        return GeneralScopeOptions(
+            beans=[ScopeChoice(id=bean.id, label=bean.name) for bean in beans],
+            grinders=[ScopeChoice(id=grinder.id, label=grinder.name) for grinder in grinders],
+            roast_levels=[ScopeTerm(value=t.value, label=t.label) for t in terms.roast_levels],
+            processes=[ScopeTerm(value=t.value, label=t.label) for t in terms.processes],
+            origins=[ScopeTerm(value=v, label=v) for _key, v in sorted(seen.items())],
+        )
+
+    async def scope_labels(self, scope: InsightScope) -> list[str]:
+        """The names a card shows for a scope, in :data:`SCOPE_KEYS` order, never ids."""
+        stated = scope.stated()
+        return [await self._option_label(key, stated[key]) for key in PICKER_KEYS if key in stated]
+
+    async def reach(self, scope: InsightScope | dict[str, Any]) -> int:
+        """How many Recipes a general insight with this scope applies to now.
+
+        The Recipes that are neither archived nor being designed, whose attributes the scope
+        matches by :func:`scope_matches`. An empty scope counts them all.
+        """
+        stated = scope.stated() if isinstance(scope, InsightScope) else scope
+        rows = await self.db.fetch_all(
+            "SELECT id FROM recipes WHERE archived = 0 AND designing = 0 ORDER BY id"
+        )
+        count = 0
+        for row in rows:
+            attributes = await self.attributes_of(row["id"])
+            if attributes is not None and scope_matches(stated, attributes):
+                count += 1
+        return count
+
+    async def added_general_like(self, text: str, scope: InsightScope) -> int | None:
+        """The id of an added general insight with the same words and the same scope, or ``None``.
+
+        The same sentence compared with whitespace collapsed and case folded.
+        """
+        wanted = collapsed(text)
+        for item in await self.list_insights(confirmed=True):
+            if collapsed(item.text) == wanted and item.scope.stated() == scope.stated():
+                return item.id
+        return None
+
+    async def requests_in(self, thread_id: int) -> list[InsightRow]:
+        """The general insights this conversation asked for or the person saved from it, in
+        every state, oldest first.
+
+        The only reader of a dismissed one besides :meth:`proposed_in`: the conversation is told
+        what the person did with each. ``source = 'user'`` is what separates these from the
+        general insights older chat code wrote with a thread.
+        """
+        rows = await self.db.fetch_all(
+            f"{_SELECT} WHERE i.thread_id = ? AND {GENERAL_REQUEST_SQL} "
+            "ORDER BY i.created_at, i.id",
+            (thread_id,),
+        )
+        return [self._decode(row) for row in rows]
+
+    async def saved_from_messages(self, thread_id: int) -> dict[int, list[int]]:
+        """For each message of the thread, the added insights made from it that still exist."""
+        rows = await self.db.fetch_all(
+            "SELECT i.from_message_id AS message_id, i.id AS insight_id "
+            "FROM knowledge_insights i JOIN chat_messages m ON m.id = i.from_message_id "
+            "WHERE m.thread_id = ? AND i.confirmed = 1 ORDER BY i.id",
+            (thread_id,),
+        )
+        found: dict[int, list[int]] = {}
+        for row in rows:
+            found.setdefault(row["message_id"], []).append(row["insight_id"])
+        return found
+
     async def attributes_of(self, recipe_id: int) -> dict[str, Any] | None:
         """A Recipe's attributes in the shape :func:`scope_matches` reads, or ``None`` for no such
         Recipe.
@@ -588,11 +820,11 @@ class InsightsRepository(Repository):
                 (scope_json, text, evidence_shot_ids_json, source,
                  confirmed, created_at, updated_at, confirmed_at, recipe_id, recipe_version_id,
                  thread_id, rests_on_json, replaces_id, replaces_text, pattern_run_id,
-                 copied_from_insight_id, copied_from_recipe_id)
+                 copied_from_insight_id, copied_from_recipe_id, from_message_id)
             VALUES (:scope, :text, :evidence, :source,
                     :confirmed, :now, :now, :confirmed_at, :recipe_id, :recipe_version_id,
                     :thread_id, :rests_on, :replaces_id, :replaces_text, :pattern_run_id,
-                    :copied_from, :copied_from_recipe)
+                    :copied_from, :copied_from_recipe, :from_message_id)
             """,
             {
                 "rests_on": dumps(
@@ -606,6 +838,7 @@ class InsightsRepository(Repository):
                 "pattern_run_id": insight.pattern_run_id,
                 "copied_from": insight.copied_from_insight_id,
                 "copied_from_recipe": insight.copied_from_recipe_id,
+                "from_message_id": insight.from_message_id,
                 "recipe_id": insight.recipe_id,
                 "recipe_version_id": insight.recipe_version_id,
                 "thread_id": insight.thread_id,

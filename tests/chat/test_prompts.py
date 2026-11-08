@@ -132,6 +132,30 @@ async def test_every_chat_prompt_says_the_grinder_s_record_settles_which_way_its
         assert 'Never write "assuming a lower number is finer" — the record says.' in system
 
 
+async def test_every_chat_prompt_pins_what_to_do_with_a_general_insight(
+    prompts: PromptService,
+) -> None:
+    """The sentences are pinned: the agent asks on a card, never says it is saved before the
+    block says it was added, and treats a `your note` line as the person's instruction."""
+    for name in (RECIPE_CHAT_PROMPT, DESIGN_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
+        system = " ".join(
+            (await prompts.load(name, {"scope": "", "shot_fields": ""})).system.split()
+        )
+        assert (
+            "When the person asks you to remember something everywhere, or to always or never "
+            "do something, call `request_general_insight` quoting their words, and say the "
+            "card is waiting for them to press Add."
+        ) in system
+        assert (
+            'Never say it is saved before the section "GENERAL INSIGHTS FROM THIS '
+            'CONVERSATION" in what you were handed says it was added.'
+        ) in system
+        assert (
+            "A general insight marked `your note` is the person's standing instruction: follow "
+            "it, and when the shots contradict it say so in words."
+        ) in system
+
+
 @pytest.mark.parametrize("name", [RECIPE_CHAT_PROMPT, GENERAL_CHAT_PROMPT])
 async def test_the_glossary_comes_after_the_shared_rules(prompts: PromptService, name: str) -> None:
     system = (

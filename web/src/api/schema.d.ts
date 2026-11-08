@@ -815,11 +815,13 @@ export interface paths {
          * Turn a Recipe's insight down
          * @description A person's press: the card's Dismiss.
          *
-         *     Only for an insight a Recipe conversation proposed that is still waiting (409
+         *     Only for an insight a Recipe conversation proposed that is still waiting, or a general
+         *     request an agent made in a conversation that is still waiting (409
          *     `INSIGHT_NOT_WAITING` on an added or already dismissed one: an added insight is
-         *     taken back instead). It is kept, so that
+         *     taken back instead; a general row made in a conversation and answered is the same 409, one
+         *     with no conversation `INSIGHT_NOT_RECIPE_OWNED`). It is kept, so that
          *     conversation can be told what happened to it, and it reaches no prompt and
-         *     is shown nowhere else; a general insight has the confirm switch and the
+         *     is shown nowhere else; any other general insight has the confirm switch and the
          *     delete, not this. Adding it afterwards (`PATCH` with `confirmed: true`)
          *     undoes the dismissal. There is no tool for this.
          */
@@ -1002,6 +1004,46 @@ export interface paths {
          *     reachable over HTTP — the same shape `POST /api/prompts/reload` has.
          */
         post: operations["reload_rules_api_knowledge_rules_reload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/scope-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a general insight may be narrowed to
+         * @description The picker's choices, from the same function the agent's request is checked against.
+         */
+        get: operations["scope_options_api_knowledge_scope_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/scope-reach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many Recipes a scope applies to now
+         * @description The Recipes, neither archived nor being designed, that the scope matches. Empty: all.
+         */
+        get: operations["scope_reach_api_knowledge_scope_reach_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3996,6 +4038,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ScopeOptionsData] */
+        ApiResponse_ScopeOptionsData_: {
+            data?: components["schemas"]["ScopeOptionsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ScopeReachData] */
+        ApiResponse_ScopeReachData_: {
+            data?: components["schemas"]["ScopeReachData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[SearchData] */
         ApiResponse_SearchData_: {
             data?: components["schemas"]["SearchData"] | null;
@@ -4683,6 +4741,8 @@ export interface components {
             role: string;
             /** Run Id */
             run_id?: number | null;
+            /** Saved Insights */
+            saved_insights?: components["schemas"]["SavedInsight"][];
             /** Thread Id */
             thread_id: number;
             /** Tool Calls */
@@ -6156,6 +6216,8 @@ export interface components {
             confirmed: boolean;
             /** Evidence Shot Ids */
             evidence_shot_ids?: number[];
+            /** From Message Id */
+            from_message_id?: number | null;
             scope?: components["schemas"]["InsightScope"];
             /** Text */
             text: string;
@@ -6260,6 +6322,8 @@ export interface components {
              */
             dismissed: boolean;
             evidence_shot_ids?: components["schemas"]["JsonList"];
+            /** From Message Id */
+            from_message_id?: number | null;
             /**
              * General
              * @description Whether it is general knowledge rather than one Recipe's.
@@ -8845,6 +8909,69 @@ export interface components {
         RunKind: "all" | "shots" | "backfill" | "notes" | "profiles" | "identity";
         /** @enum {string} */
         RunStatus: "running" | "ok" | "failed" | "cancelled" | "interrupted";
+        /**
+         * SavedInsight
+         * @description A general insight made from a message of the person's, still present.
+         */
+        SavedInsight: {
+            /** Id */
+            id: number;
+        };
+        /**
+         * ScopeChoice
+         * @description A bean or a grinder the General picker offers: by name, with its id behind it.
+         */
+        ScopeChoice: {
+            /** Id */
+            id: number;
+            /** Label */
+            label: string;
+        };
+        /**
+         * ScopeOption
+         * @description One thing a general insight from a Recipe's conversation may be narrowed to.
+         */
+        ScopeOption: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Value */
+            value: number | string;
+        };
+        /**
+         * ScopeOptionsData
+         * @description What the scope picker offers: a Recipe's own attributes, or the whole archive's choices.
+         */
+        ScopeOptionsData: {
+            /** Beans */
+            beans: components["schemas"]["ScopeChoice"][];
+            /** Grinders */
+            grinders: components["schemas"]["ScopeChoice"][];
+            /** Origins */
+            origins: components["schemas"]["ScopeTerm"][];
+            /** Processes */
+            processes: components["schemas"]["ScopeTerm"][];
+            /** Recipe */
+            recipe: components["schemas"]["ScopeOption"][] | null;
+            /** Roast Levels */
+            roast_levels: components["schemas"]["ScopeTerm"][];
+        };
+        /** ScopeReachData */
+        ScopeReachData: {
+            /** Recipes */
+            recipes: number;
+        };
+        /**
+         * ScopeTerm
+         * @description A roast level, a process or an origin the General picker offers.
+         */
+        ScopeTerm: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
         /**
          * SearchData
          * @description What a search found, best first.
@@ -12112,6 +12239,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["gaggiclanker__infra__envelope__ApiResponse_ReloadData___2"];
+                };
+            };
+        };
+    };
+    scope_options_api_knowledge_scope_options_get: {
+        parameters: {
+            query?: {
+                /** @description A Recipe conversation's Recipe: its own attributes. */
+                recipe_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ScopeOptionsData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scope_reach_api_knowledge_scope_reach_get: {
+        parameters: {
+            query?: {
+                bean_id?: number | null;
+                grinder_id?: number | null;
+                origin?: string | null;
+                process?: string | null;
+                roast_level?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ScopeReachData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -30,6 +30,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from gaggiclanker.db.repos.beans import BeansRepository, agent_dump
+from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.insight_deletions import (
     REASON_MAX,
@@ -41,8 +42,10 @@ from gaggiclanker.db.repos.insight_deletions import (
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.knowledge_insights import (
     InsightProposeRefusal,
+    InsightScope,
     InsightsRepository,
     InsightWrite,
+    collapsed,
 )
 from gaggiclanker.db.repos.lineage import name_key
 from gaggiclanker.db.repos.outcome_proposals import (
@@ -61,13 +64,18 @@ from gaggiclanker.db.repos.recipe_proposals import (
 )
 from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, version_changes
 from gaggiclanker.db.repos.version_names import named_dump, next_names
+from gaggiclanker.domain.automatic_turns import is_automatic_turn
 from gaggiclanker.domain.drinks import Drink
 from gaggiclanker.domain.phase_names import raw_phase_names
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.recipes import grind_value, parse_version_label
 from gaggiclanker.domain.signature import ExpectationInput, SignatureRefused
 from gaggiclanker.domain.signature_changes import CHANGE_REASON_MIN, MAX_CHANGES
-from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance, ShotLabel
+from gaggiclanker.domain.vocab import (
+    VERSION_OUTCOMES,
+    Balance,
+    ShotLabel,
+)
 from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, Tier, effective_tiers
@@ -3125,5 +3133,221 @@ async def propose_insight_deletion(
             f"Nothing is deleted: insight #{args.insight_id} stays, and every conversation of "
             "this Recipe is still told it, until the person presses Delete on the card. They can "
             "also Keep it. Say in one sentence why you think it no longer fits."
+        ),
+    )
+
+
+# ── request_general_insight ──────────────────────────────────────────
+
+
+#: The least a quote may be, whitespace collapsed: a word or two would be found in nearly any
+#: message and prove nothing about what the person asked for.
+QUOTE_MIN_CHARS = 12
+
+
+class RequestedScope(_Model):
+    """What a general insight is narrowed to. Every field optional; none means every Recipe."""
+
+    bean_id: int | None = Field(default=None, description="A bean of the archive.")
+    roast_level: str | None = None
+    process: str | None = None
+    origin: str | None = None
+    grinder_id: int | None = Field(default=None, description="A grinder of the archive.")
+    profile_style: str | None = Field(default=None, description="Never accepted: leave it out.")
+
+
+class RequestGeneralInsightInput(_Model):
+    text: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="The sentence to remember, in your words, as it should read in every prompt.",
+    )
+    said: str = Field(
+        min_length=1,
+        max_length=500,
+        description=(
+            "The person's own words, quoted exactly as they wrote them in this conversation, "
+            f"at least {QUOTE_MIN_CHARS} characters. The card shows them beside your text."
+        ),
+    )
+    scope: RequestedScope = Field(
+        default_factory=RequestedScope,
+        description=(
+            "What it applies to. Leave out for every Recipe. In a Recipe conversation only this "
+            "Recipe's own bean, grinder, roast level, process or origin; elsewhere any bean or "
+            "grinder of the archive, or a roast level or process."
+        ),
+    )
+    reason: str = Field(
+        default="", max_length=300, description="Optional: why this should be remembered."
+    )
+
+
+class RequestGeneralInsightOutput(_Model):
+    insight_id: int
+    text: str
+    said: str
+    scope: dict[str, Any]
+    scope_labels: list[str]
+    #: How many Recipes it would apply to now.
+    reach: int
+    note: str = ""
+
+
+#: Said when the quote is not in anything the person wrote here.
+QUOTE_NOT_FOUND = (
+    "Quote the person's words exactly as they wrote them in this conversation: a general "
+    "insight is saved only from what they said."
+)
+#: Said for a quote shorter than that.
+QUOTE_TOO_SHORT = (
+    f"Quote the person's own words exactly, at least {QUOTE_MIN_CHARS} characters of them: what "
+    "they wrote that asks for this to be remembered."
+)
+#: Said in a Recipe or Design conversation for any scope value that is not the Recipe's own, the
+#: same whether or not the value exists anywhere else.
+SCOPE_NOT_THIS_RECIPE = (
+    "A general insight from this conversation can be narrowed only to this Recipe's own bean, "
+    "grinder, roast, process or origin."
+)
+
+
+async def _scope_problems(
+    ctx: ToolContext, requested: RequestedScope
+) -> tuple[InsightScope | None, list[str]]:
+    """The scope this conversation may name, or every reason it may not.
+
+    A Recipe or Design conversation is held to the options the picker offers for its own Recipe
+    (:meth:`InsightsRepository.recipe_scope_options`, the one definition). A General one may name
+    anything the archive has.
+    """
+    problems: list[str] = []
+    if requested.profile_style is not None:
+        problems.append(
+            "A general insight cannot be narrowed to a profile style: leave profile_style out."
+        )
+    given = {
+        key: getattr(requested, key)
+        for key in ("bean_id", "roast_level", "process", "origin", "grinder_id")
+        if getattr(requested, key) is not None
+    }
+    chosen: dict[str, Any] = {}
+    if ctx.scope.kind == "recipe":
+        assert ctx.scope.recipe_id is not None
+        options = await InsightsRepository(ctx.db).recipe_scope_options(ctx.scope.recipe_id) or []
+        bad = False
+        for key, value in given.items():
+            match = next(
+                (
+                    option
+                    for option in options
+                    if option.key == key
+                    and (
+                        option.value == value
+                        if isinstance(option.value, int) and isinstance(value, int)
+                        else str(option.value).strip().casefold() == str(value).strip().casefold()
+                    )
+                ),
+                None,
+            )
+            if match is None:
+                bad = True
+            else:
+                chosen[key] = match.value
+        if bad:
+            problems.append(SCOPE_NOT_THIS_RECIPE)
+    else:
+        # The same options the picker's selects show, answered in their own spelling.
+        general = await InsightsRepository(ctx.db).general_scope_options()
+        for key, value in given.items():
+            found = general.canonical(key, value)
+            if found is not None:
+                chosen[key] = found
+            elif key == "bean_id":
+                problems.append("The archive has no bean with that bean_id.")
+            elif key == "grinder_id":
+                problems.append("The archive has no grinder with that grinder_id.")
+            elif key == "origin":
+                problems.append("No bean in the archive has that origin.")
+            else:
+                allowed = general.roast_levels if key == "roast_level" else general.processes
+                problems.append(f"{key} must be one of: {', '.join(t.value for t in allowed)}.")
+    if problems:
+        return None, problems
+    return InsightScope.model_validate(chosen), []
+
+
+@tool(
+    "request_general_insight",
+    permission="propose",
+    description=(
+        "ASK the person to keep a sentence as a GENERAL insight: one that is put in front of "
+        "every conversation about a Recipe it applies to, from their next message on. Use it only "
+        "when the person asked you to remember something beyond this conversation, or to always "
+        f"or never do something. Quote their words exactly in `said`, at least {QUOTE_MIN_CHARS} "
+        "characters: it is refused without a "
+        "quote found in something they wrote in this conversation. Never use it for a lesson you "
+        "drew from shots (that is record_insight, in a Recipe conversation). Nothing is saved "
+        "until the person presses Add on its card in this conversation; they may change the "
+        "words and what it applies to first, or dismiss it. You are told their answer at your "
+        "next message. A refusal names every problem and writes nothing."
+    ),
+)
+async def request_general_insight(
+    ctx: ToolContext, args: RequestGeneralInsightInput
+) -> RequestGeneralInsightOutput:
+    """A request as an unconfirmed general row the person answers. Never an added insight."""
+    if ctx.thread_id is None:
+        raise ValueError(
+            "A general insight is requested inside a conversation, where the person sees the "
+            "card and answers it. This session has no conversation, so nothing was written."
+        )
+    problems: list[str] = []
+    wanted = collapsed(args.said)
+    # Only the person's own words count: a card's "Accepted:" or "Declined:" turn is stored as
+    # their message but is the button's sentence.
+    found = [
+        message_id
+        for message_id, content in await ChatRepository(ctx.db).user_messages(ctx.thread_id)
+        if not is_automatic_turn(content) and wanted in collapsed(content)
+    ]
+    if len(wanted) < QUOTE_MIN_CHARS:
+        problems.append(QUOTE_TOO_SHORT)
+    elif not found:
+        problems.append(QUOTE_NOT_FOUND)
+    scope, scope_problems = await _scope_problems(ctx, args.scope)
+    problems += scope_problems
+    insights = InsightsRepository(ctx.db)
+    if scope is not None:
+        same = await insights.added_general_like(args.text, scope)
+        if same is not None:
+            problems.append(f"That is already general insight #{same}.")
+    if problems or scope is None:
+        raise ValueError(" ".join(problems))
+    insight_id = await insights.insert(
+        InsightWrite(
+            scope=scope,
+            text=args.text,
+            source="user",
+            confirmed=False,
+            thread_id=ctx.thread_id,
+            # The newest of the person's messages that contains the quote.
+            from_message_id=found[-1],
+        )
+    )
+    stored = await insights.get(insight_id)
+    assert stored is not None  # just inserted
+    return RequestGeneralInsightOutput(
+        insight_id=insight_id,
+        text=stored.text,
+        said=args.said.strip(),
+        scope=stored.scope.stated(),
+        scope_labels=await insights.scope_labels(stored.scope),
+        reach=await insights.reach(stored.scope),
+        note=(
+            "Nothing is saved: this is a card waiting for the person in this conversation. "
+            "They press Add on it (they may change the words and what it applies to first) or "
+            "Dismiss. Say the card is waiting, and never say it is saved before your context "
+            "says it was added. You are told their answer at your next message."
         ),
     )

@@ -22,6 +22,9 @@ from tests.test_restore_check import ROUTE, upload
 
 NOW = datetime(2026, 11, 8, 12, 0, 0, tzinfo=UTC)
 
+#: What this step must produce, now that a later step moved the schema file on.
+LEVEL_NINE = schema.describe_sql(frozen_schema_sql(9))
+
 #: (id, name, model, burr_type, step_unit, notes, created_at) as level 8 stores them.
 GRINDERS = [
     (1, "Niche Zero", "NZ", "conical", "numbers", "Lower grind number means finer.", "t1"),
@@ -64,7 +67,7 @@ def test_the_step_is_the_ninth_and_expects_the_frozen_level_8_schema() -> None:
 def test_numbers_becomes_lower_is_finer_and_everything_else_is_carried(tmp_path: Path) -> None:
     path = level_eight(tmp_path)
 
-    report = upgrade_database_file(path, tmp_path, steps=STEPS[:9], now=NOW)
+    report = upgrade_database_file(path, tmp_path, steps=STEPS[:9], expected=LEVEL_NINE, now=NOW)
 
     assert report is not None and (report.from_level, report.to_level) == (8, 9)
     assert report.steps[0].counts == {"grinders": 5, "numbers_read_as_lower_finer": 2}

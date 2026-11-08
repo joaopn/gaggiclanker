@@ -37,6 +37,7 @@ __all__ = [
     "ChatRunRow",
     "ChatThreadRow",
     "ChatThreadWrite",
+    "SavedInsight",
     "ThreadRefusal",
     "ThreadWriteResult",
     "ToolCallRow",
@@ -109,6 +110,12 @@ class ChatMessageWrite(BaseModel):
     usage: dict[str, Any] | None = None
 
 
+class SavedInsight(BaseModel):
+    """A general insight made from a message of the person's, still present."""
+
+    id: int
+
+
 class ChatMessageRow(BaseModel):
     """One turn as stored."""
 
@@ -121,6 +128,10 @@ class ChatMessageRow(BaseModel):
     tool_results: list[dict[str, Any]] = Field(default_factory=list)
     usage: dict[str, Any] | None = None
     created_at: str = ""
+    #: On a person's message: the added general insights made from it that still exist (a request
+    #: they added, or the message saved with "Save as general insight"). Empty on every other
+    #: message, and on one just stored.
+    saved_insights: list[SavedInsight] = Field(default_factory=list)
 
 
 class ChatRunRow(BaseModel):
@@ -360,12 +371,61 @@ class ChatRepository(Repository):
         assert row is not None  # just inserted
         return self._message(row)
 
+    async def get_message(self, message_id: int) -> ChatMessageRow | None:
+        row = await self.db.fetch_one(f"{_MESSAGE_SELECT} WHERE id = ?", (message_id,))
+        return None if row is None else self._message(row)
+
+    async def user_messages(self, thread_id: int) -> list[tuple[int, str]]:
+        """The person's own messages of a conversation as ``(id, content)``, oldest first."""
+        rows = await self.db.fetch_all(
+            "SELECT id, content FROM chat_messages WHERE thread_id = ? AND role = 'user' "
+            "ORDER BY id",
+            (thread_id,),
+        )
+        return [(row["id"], row["content"]) for row in rows]
+
+    async def requested_general_insights(self, thread_id: int) -> dict[int, dict[str, Any]]:
+        """What this conversation's agent asked to keep as general insights, as it asked.
+
+        Read from the stored results of its ``request_general_insight`` calls (``insight_id``,
+        ``text`` and ``scope``, the words and scope it proposed), so a request whose row is gone
+        or was edited can still be told apart from what the person made of it. A result is
+        recognised by its content and not by the tool name, which the claude_code provider
+        cannot always pair.
+        """
+        rows = await self.db.fetch_all(
+            "SELECT tool_results_json FROM chat_messages WHERE thread_id = ? AND role = 'tool' "
+            "AND tool_results_json LIKE '%insight_id%' ORDER BY id",
+            (thread_id,),
+        )
+        asked: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            for result in _loads(row["tool_results_json"], []):
+                if not isinstance(result, dict) or not result.get("ok"):
+                    continue
+                content = _loads(result.get("content"), None)
+                if (
+                    isinstance(content, dict)
+                    and isinstance(content.get("insight_id"), int)
+                    and "said" in content
+                    and "scope_labels" in content
+                ):
+                    asked[content["insight_id"]] = {
+                        "text": content.get("text", ""),
+                        "scope": content.get("scope") or {},
+                    }
+        return asked
+
     async def messages(self, thread_id: int, limit: int = 500) -> list[ChatMessageRow]:
         rows = await self.db.fetch_all(
             f"{_MESSAGE_SELECT} WHERE thread_id = ? ORDER BY id LIMIT ?",
             (thread_id, limit),
         )
-        return [self._message(row) for row in rows]
+        saved = await InsightsRepository(self.db).saved_from_messages(thread_id)
+        messages = [self._message(row) for row in rows]
+        for message in messages:
+            message.saved_insights = [SavedInsight(id=i) for i in saved.get(message.id, [])]
+        return messages
 
     def _message(self, row: Any) -> ChatMessageRow:
         data = dict(zip(row.keys(), tuple(row), strict=True))

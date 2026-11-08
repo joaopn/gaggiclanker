@@ -50,6 +50,7 @@ from gaggiclanker.chat.context import (
     _quote,
     _recipe,
     _taste,
+    general_insights_block,
 )
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, bean_lines
@@ -181,6 +182,9 @@ async def design_context(db: Database, recipe_id: int, *, thread_id: int | None 
         f"THE RULES THAT MATCH (planned style: {style} — {style_reason})",
         render_rules(rules),
     ]
+    requested = await general_insights_block(db, thread_id)
+    if requested:
+        lines += ["", *requested]
     lines += [
         "",
         "That is a snapshot, assembled when this turn began. The other Recipes above are "

@@ -77,8 +77,10 @@ MCP_INSTRUCTIONS = (
     "Start with describe_schema, then query_shots for anything about many shots at once; "
     "get_shot reads one shot's base information, get_shot_extended the rest of it and "
     "get_shot_full both. Cite shots by id and knowledge passages by their heading_path. Tools "
-    "whose names begin with propose_, draft_ or record_ create something the user must "
-    "confirm; nothing here writes to the espresso machine."
+    "whose names begin with propose_, draft_, record_ or request_ create something the user "
+    "must confirm; request_general_insight asks the user to keep a sentence as a general "
+    "insight, and nothing is saved until they press Add. Nothing here writes to the espresso "
+    "machine."
 )
 
 #: The same, for a server serving one Recipe's conversation. It names the tools
@@ -94,9 +96,10 @@ RECIPE_INSTRUCTIONS = (
     "get_recipe gives the experiment so far, and list_recipe_shots searches the shots "
     "outside that context on their base information; get_shot_full reads one shot in full. "
     "Cite shots by id and knowledge passages by their heading_path. Tools whose names begin "
-    "with propose_, draft_ or record_ create something the user answers: most wait for "
-    "the user's confirmation, while a signature you propose with propose_signature is in "
-    "force at once until the user rejects it; "
+    "with propose_, draft_, record_ or request_ create something the user answers: most wait "
+    "for the user's confirmation, while a signature you propose with propose_signature is in "
+    "force at once until the user rejects it; request_general_insight asks the user to keep a "
+    "sentence as a general insight, and nothing is saved until they press Add; "
     "nothing here writes to the espresso machine."
 )
 
@@ -110,7 +113,9 @@ DESIGN_INSTRUCTIONS = (
     "Start with get_recipe for the Recipe and what the person asked for, list_profiles and "
     "get_profile for the profiles a Recipe can start from, and get_rules and search_knowledge "
     "for the knowledge base. propose_initial_recipe proposes the whole first version for the "
-    "person to accept; nothing here writes to the espresso machine."
+    "person to accept, and request_general_insight asks the person to keep a sentence they "
+    "said as a general insight, saved only when they press Add; nothing here writes to the "
+    "espresso machine."
 )
 
 

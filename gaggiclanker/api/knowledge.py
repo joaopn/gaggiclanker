@@ -31,12 +31,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from gaggiclanker.api.deps import (
+    DatabaseDep,
     InsightDeletionsRepoDep,
     InsightsRepoDep,
     KnowledgeDocsRepoDep,
     KnowledgeServiceDep,
     RulesRepoDep,
 )
+from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionRow
 from gaggiclanker.db.repos.knowledge import RuleRow, RulesRepository
 from gaggiclanker.db.repos.knowledge_docs import ChunkHit, ChunkRow, DocRow
@@ -45,6 +47,9 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightRow,
     InsightScope,
     InsightWrite,
+    ScopeChoice,
+    ScopeOption,
+    ScopeTerm,
 )
 from gaggiclanker.domain.vocab import RULE_CATEGORIES
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
@@ -347,6 +352,9 @@ class InsightCreate(BaseModel):
     #: the person who would confirm it, and a form that makes you save and then
     #: press confirm is a form with a bug in it.
     confirmed: bool = True
+    #: The person's own message this insight is saved from ("Save as general insight"). It must
+    #: be a message of theirs; the insight is then filed under that message's conversation.
+    from_message_id: int | None = None
 
 
 class InsightPatch(BaseModel):
@@ -419,6 +427,80 @@ async def list_insights(
     )
 
 
+# ── what the scope picker reads ───────────────────────────────────────
+
+
+class ScopeOptionsData(BaseModel):
+    """What the scope picker offers: a Recipe's own attributes, or the whole archive's choices."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: With `?recipe_id=`: the Recipe's own stated attributes (a checkbox each), without
+    #: `profile_style`, in scope-key order. ``None`` without a Recipe.
+    recipe: list[ScopeOption] | None
+    beans: list[ScopeChoice]
+    grinders: list[ScopeChoice]
+    roast_levels: list[ScopeTerm]
+    processes: list[ScopeTerm]
+    origins: list[ScopeTerm]
+
+
+class ScopeReachData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: How many Recipes (not archived, not being designed) the scope applies to now.
+    recipes: int
+
+
+@router.get(
+    "/scope-options",
+    response_model=ApiResponse[ScopeOptionsData],
+    summary="What a general insight may be narrowed to",
+)
+async def scope_options(
+    insights: InsightsRepoDep,
+    recipe_id: Annotated[
+        int | None, Query(description="A Recipe conversation's Recipe: its own attributes.")
+    ] = None,
+) -> JSONResponse:
+    """The picker's choices, from the same function the agent's request is checked against."""
+    recipe: list[ScopeOption] | None = None
+    if recipe_id is not None:
+        recipe = await insights.recipe_scope_options(recipe_id)
+        if recipe is None:
+            raise NotFound(f"No Recipe {recipe_id}")
+    general = await insights.general_scope_options()
+    return envelope_response(
+        ScopeOptionsData(recipe=recipe, **general.model_dump()).model_dump(mode="json")
+    )
+
+
+@router.get(
+    "/scope-reach",
+    response_model=ApiResponse[ScopeReachData],
+    summary="How many Recipes a scope applies to now",
+)
+async def scope_reach(
+    insights: InsightsRepoDep,
+    bean_id: Annotated[int | None, Query()] = None,
+    grinder_id: Annotated[int | None, Query()] = None,
+    roast_level: Annotated[str | None, Query()] = None,
+    process: Annotated[str | None, Query()] = None,
+    origin: Annotated[str | None, Query()] = None,
+) -> JSONResponse:
+    """The Recipes, neither archived nor being designed, that the scope matches. Empty: all."""
+    scope = InsightScope(
+        bean_id=bean_id,
+        grinder_id=grinder_id,
+        roast_level=roast_level or None,
+        process=process or None,
+        origin=origin or None,
+    )
+    return envelope_response(
+        ScopeReachData(recipes=await insights.reach(scope)).model_dump(mode="json")
+    )
+
+
 @router.get(
     "/insights/{insight_id}",
     response_model=ApiResponse[InsightRow],
@@ -438,7 +520,21 @@ async def get_insight(insight_id: int, insights: InsightsRepoDep) -> JSONRespons
     status_code=201,
     summary="Write an insight by hand",
 )
-async def create_insight(body: InsightCreate, insights: InsightsRepoDep) -> JSONResponse:
+async def create_insight(
+    body: InsightCreate, insights: InsightsRepoDep, db: DatabaseDep
+) -> JSONResponse:
+    thread_id: int | None = None
+    if body.from_message_id is not None:
+        message = await ChatRepository(db).get_message(body.from_message_id)
+        if message is None or message.role != "user":
+            raise Unprocessable(
+                "Only one of your own messages can be saved as a general insight",
+                details={
+                    "field": "from_message_id",
+                    "message": "name a message you wrote in a conversation",
+                },
+            )
+        thread_id = message.thread_id
     insight_id = await insights.insert(
         InsightWrite(
             scope=body.scope,
@@ -446,6 +542,8 @@ async def create_insight(body: InsightCreate, insights: InsightsRepoDep) -> JSON
             evidence_shot_ids=body.evidence_shot_ids,
             source="user",
             confirmed=body.confirmed,
+            thread_id=thread_id,
+            from_message_id=body.from_message_id,
         )
     )
     stored = await insights.get(insight_id)
@@ -498,18 +596,31 @@ async def patch_insight(
 async def dismiss_insight(insight_id: int, insights: InsightsRepoDep) -> JSONResponse:
     """A person's press: the card's Dismiss.
 
-    Only for an insight a Recipe conversation proposed that is still waiting (409
+    Only for an insight a Recipe conversation proposed that is still waiting, or a general
+    request an agent made in a conversation that is still waiting (409
     `INSIGHT_NOT_WAITING` on an added or already dismissed one: an added insight is
-    taken back instead). It is kept, so that
+    taken back instead; a general row made in a conversation and answered is the same 409, one
+    with no conversation `INSIGHT_NOT_RECIPE_OWNED`). It is kept, so that
     conversation can be told what happened to it, and it reaches no prompt and
-    is shown nowhere else; a general insight has the confirm switch and the
+    is shown nowhere else; any other general insight has the confirm switch and the
     delete, not this. Adding it afterwards (`PATCH` with `confirmed: true`)
     undoes the dismissal. There is no tool for this.
     """
     existing = await insights.get(insight_id)
     if existing is None:
         raise NotFound(f"No insight {insight_id}")
-    if existing.recipe_id is None:
+    if existing.recipe_id is None and not existing.is_waiting_general_request:
+        if existing.is_general_request:
+            # A request or a save made in a conversation, answered already.
+            raise Conflict(
+                f"Insight {insight_id} is not waiting for an answer",
+                code="INSIGHT_NOT_WAITING",
+                details={
+                    "field": "confirmed",
+                    "message": "only a waiting request is dismissed; an added one is changed "
+                    "or deleted on the Knowledge page",
+                },
+            )
         raise Conflict(
             f"Insight {insight_id} is general knowledge, not a Recipe's",
             code="INSIGHT_NOT_RECIPE_OWNED",

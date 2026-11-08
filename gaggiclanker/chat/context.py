@@ -39,9 +39,10 @@ from typing import Any
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, bean_lines, taste_scales
+from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository, grinder_lines, kitchen_lines
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
-from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, collapsed
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document_json
@@ -161,7 +162,11 @@ async def opening_context(
     if scope.kind != "recipe" or scope.recipe_id is None:
         # A general conversation is about no one Recipe, so it is handed every grinder: grind
         # advice is in a grinder's own units, and which way its dial runs is in its record.
-        return "\n".join(kitchen_lines(await GrindersRepository(db).list_all()))
+        kitchen = kitchen_lines(await GrindersRepository(db).list_all())
+        asked = await general_insights_block(db, thread_id)
+        if asked:
+            kitchen = [*kitchen, *([""] if kitchen else []), *asked]
+        return "\n".join(kitchen)
     if scope.designing:
         # A Recipe being designed has no experiment yet: its conversation is told
         # the brief and the evidence to design from instead. Imported here
@@ -262,6 +267,9 @@ async def opening_context(
     deletions = await _proposed_deletions_block(db, thread_id)
     if deletions:
         lines += ["", *deletions]
+    requested = await general_insights_block(db, thread_id)
+    if requested:
+        lines += ["", *requested]
     lines += [
         "",
         "Those facts are the record, not the whole archive: use the tools for anything else, "
@@ -1220,6 +1228,69 @@ async def _proposed_insights_block(db: Database, thread_id: int | None) -> list[
                 state += "; the insight it was meant to replace is already gone"
         lines.append(f"- {_cut(item.text, INSIGHT_CHARS)} ({state})")
     return lines
+
+
+GENERAL_INSIGHTS_TITLE = "GENERAL INSIGHTS FROM THIS CONVERSATION"
+
+
+async def general_insights_block(db: Database, thread_id: int | None) -> list[str]:
+    """What this conversation asked to keep as general insights, or saved from the person's
+    messages, and what became of each.
+
+    **One function for the three opening contexts** (Recipe, design and General), placed after
+    everything that does not change from turn to turn. **This conversation's only.** One line per
+    request or saved message: waiting (nothing is saved, it is not evidence), added by the person
+    (with their changes when the words or scope differ from what was asked), dismissed, saved by
+    the person from their message, or deleted since. A deleted insight has no text left to quote,
+    so its line says only that. A thread with none gets no block.
+    """
+    if thread_id is None:
+        return []
+    rows = await InsightsRepository(db).requests_in(thread_id)
+    asked = await ChatRepository(db).requested_general_insights(thread_id)
+    if not rows and not asked:
+        return []
+    by_id = {row.id: row for row in rows}
+    lines = [GENERAL_INSIGHTS_TITLE]
+    for insight_id in sorted({*by_id, *asked}):
+        row = by_id.get(insight_id)
+        if row is None:
+            # Gone: no text is left to quote.
+            lines.append(f"- #{insight_id} was deleted since")
+            continue
+        text = _cut(row.text, INSIGHT_CHARS)
+        scope = row.scope.label()
+        lines.append(f"- #{row.id} [{scope}] {text} ({_request_state(row, asked.get(insight_id))})")
+    return lines
+
+
+def _request_state(row: Any, asked: dict[str, Any] | None) -> str:
+    """What became of one request or saved message, read from the row and nothing else.
+
+    ``asked`` is what the agent proposed (from the stored result of its call), when its result
+    was stored; it is used only to say whether the person's Add changed the words or the scope.
+    A line never claims more than the row does: a row that is not added is never "saved".
+    """
+    if row.dismissed:
+        return "dismissed by the person — do not ask for it again"
+    if row.confirmed:
+        if asked is not None:
+            changed = (
+                collapsed(row.text) != collapsed(str(asked["text"]))
+                or row.scope.stated() != asked["scope"]
+            )
+            return "added by the person" + (" with their changes" if changed else "")
+        if row.from_message_id is not None:
+            return "saved by the person from their message: it is a general insight now"
+        return "added by the person"
+    if row.updated_at == row.created_at:
+        return "waiting: the person has not pressed Add, so nothing is saved yet"
+    # Not added now, yet touched since it was made: taken back after an Add, or edited on the
+    # Knowledge page without one. Either way it is not saved and reaches no prompt.
+    return (
+        "not added now: the person took it back or has not added it since changing it, so "
+        "nothing is saved and it reaches no prompt"
+    )
 
 
 async def _proposed_deletions_block(db: Database, thread_id: int | None) -> list[str]:

@@ -513,6 +513,7 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
         "propose_signature",
         "propose_signature_override",
         "record_insight",
+        "request_general_insight",
         "request_signature_change",
     }
 

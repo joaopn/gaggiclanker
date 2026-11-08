@@ -401,7 +401,7 @@ class TestWhatTheSourceRecipesAreToldAfterApproval:
 
         written = response.json()["data"]["proposal"]["insight_id"]
         line = (
-            f"- #{written} [roast_level=light · grinder_id={world.grinder_id}] "
+            f"- #{written} [from Find patterns; roast_level=light · grinder_id={world.grinder_id}] "
             "The Niche channels below 9 clicks with light roasts."
         )
         gone = {world.a: talking.a_grinder, world.b: talking.b_grinder}

@@ -677,7 +677,11 @@ CREATE TABLE knowledge_insights (
     -- The Recipe the first original was learned in, written with the flag above and carried through a
     -- copy of a copy: a copy's home Recipe when insights are weighed across Recipes, whatever became of
     -- the original or its Recipe. No foreign key, for the same reason.
-    copied_from_recipe_id INTEGER
+    copied_from_recipe_id INTEGER,
+    -- The person's own message this insight was made from: the message a request quotes, or the one
+    -- the person saved with "Save as general insight". NULL for every other insight. Cleared if the
+    -- message (or its conversation) is deleted; the insight stays.
+    from_message_id INTEGER REFERENCES chat_messages(id) ON DELETE SET NULL
 ) STRICT;
 CREATE INDEX idx_knowledge_insights_confirmed
     ON knowledge_insights(confirmed, created_at, id);
@@ -1414,4 +1418,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 9;
+PRAGMA user_version = 10;

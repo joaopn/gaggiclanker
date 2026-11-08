@@ -6,5 +6,6 @@
   "declined": "Declined: <note>",
   "declined_no_reason": "Declined: no reason given.",
   "accepted_first_recipe": "Accepted: your first version is now <version label> of this Recipe.",
-  "accepted_first_recipe_renamed_clause": ", with its profile named <name>"
+  "accepted_first_recipe_renamed_clause": ", with its profile named <name>",
+  "automatic_turn_prefixes": ["Accepted:", "Approved:", "Declined:"]
 }

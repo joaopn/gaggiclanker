@@ -419,6 +419,23 @@ boot by `InsightPlacementBuilder` (marker table `insight_placement_build`), whic
 the live `scope_matches` and the Recipe's filed shots rather than repeating the rule
 in SQL.
 
+**A general insight can be asked for by the agent, or saved from the person's own
+message.** `request_general_insight` (Recipe, General and Design chats) writes an ordinary
+unconfirmed general row (`source = 'user'`, the conversation as `thread_id`, and
+`from_message_id`, the newest of the person's messages that contains the quote it was
+given): it is refused without a quote found in one of that conversation's `user` messages,
+and in a Recipe or Design chat a scope can only be one of the options
+`InsightsRepository.recipe_scope_options` returns for that Recipe, the same function the
+picker's `GET /api/knowledge/scope-options` serves. Only the person's Add (`PATCH` with
+`confirmed`) confirms it, and Dismiss (`POST .../dismiss`) accepts a waiting general
+request; neither is a tool. `POST /api/knowledge/insights` with `from_message_id` is the
+"Save as general insight" under a message of theirs, and `GET /api/chat/threads/{id}` serves
+each person's message with the added insights still made from it (`saved_insights`). A
+general insight's prompt line says who it is from (`your note` for `source = 'user'`, `from
+Find patterns` for an approved pattern, nothing for the older ones), and each opening context
+ends with one block, `general_insights_block`, telling the conversation what became of the
+requests it made and the messages saved from it.
+
 **An insight rests on versions, and an agent's removal is a proposal.** The
 `knowledge_insights` carries `rests_on_json` (each version the insight rests on with the
 outcome it had when written, never rewritten), `replaces_id`, `replaces_text` and `replaced`,
