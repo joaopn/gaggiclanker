@@ -22,7 +22,13 @@ property true.
   one `superseded` in the same transaction.
 
 * **What may be named** is an *added* insight of this Recipe: never a waiting or
-  dismissed one, a general one, or another Recipe's.
+  dismissed one, a general one, or another Recipe's. A general insight is named only through
+  :meth:`~InsightDeletionsRepository.propose_general`, which stores a proposal with no Recipe,
+  and a Recipe's methods never answer one (nor the general methods a Recipe's).
+
+* **Words that changed are not deleted.** If the insight's text is not the one the card showed
+  (whitespace collapsed, case folded) when the person presses Delete, the proposal becomes
+  `stale` and nothing is deleted.
 
 * **Every answer is one transaction.** The proposal is still waiting, the
   insight is still there and still added, and the write happens, in one go; a
@@ -35,16 +41,18 @@ from dataclasses import dataclass
 from typing import Annotated, Literal
 
 import structlog
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, computed_field
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
-from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, collapsed
 from gaggiclanker.db.repository import Repository
 
 log = structlog.get_logger(__name__)
 
 __all__ = [
+    "INSIGHT_CHANGED_SENTENCE",
+    "INSIGHT_GONE_SENTENCE",
     "REASON_MAX",
     "REASON_MIN",
     "DeletionResult",
@@ -68,6 +76,15 @@ type InsightDeletionRefusal = Literal[
     "not_waiting",
     "insight_changed",
 ]
+
+#: What the person is told when Delete found the insight's words changed (or the insight gone).
+INSIGHT_CHANGED_SENTENCE = "It was changed since the agent asked: nothing was deleted."
+#: What the person is told of a proposal whose insight was deleted another way.
+INSIGHT_GONE_SENTENCE = (
+    "It was deleted another way since the agent asked: nothing was left to delete."
+)
+
+type StaleCause = Literal["deleted", "changed"]
 
 REASON_MIN = 20
 REASON_MAX = 500
@@ -93,7 +110,8 @@ class InsightDeletionRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    recipe_id: int
+    #: ``None`` for the deletion of a general insight.
+    recipe_id: int | None = None
     thread_id: int
     #: ``None`` once the insight is gone, whichever way it went.
     insight_id: int | None = None
@@ -103,6 +121,26 @@ class InsightDeletionRow(BaseModel):
     status: InsightDeletionStatus = "proposed"
     created_at: str
     decided_at: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def stale_cause(self) -> StaleCause | None:
+        """Why a stale proposal is stale: **the one place** that says it.
+
+        The context, the 409 and the card's read all take it from here. No insight left
+        (``insight_id`` is NULL) means it was deleted; one still there means its words changed
+        or it was taken back since the agent asked, and nothing was deleted.
+        """
+        if self.status != "stale":
+            return None
+        return "deleted" if self.insight_id is None else "changed"
+
+    @property
+    def stale_sentence(self) -> str:
+        """The person's sentence for :attr:`stale_cause`; empty when the proposal is not stale."""
+        if self.stale_cause == "deleted":
+            return INSIGHT_GONE_SENTENCE
+        return INSIGHT_CHANGED_SENTENCE if self.stale_cause == "changed" else ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,8 +168,17 @@ class InsightDeletionsRepository(Repository):
     # ── reading ──────────────────────────────────────────────────────
 
     async def get(self, recipe_id: int, proposal_id: int) -> InsightDeletionRow | None:
+        """A Recipe's proposal. Never a general one: that is :meth:`get_general`."""
+        return await self._get(recipe_id, proposal_id)
+
+    async def get_general(self, proposal_id: int) -> InsightDeletionRow | None:
+        """A proposal to delete a general insight. Never a Recipe's."""
+        return await self._get(None, proposal_id)
+
+    async def _get(self, recipe_id: int | None, proposal_id: int) -> InsightDeletionRow | None:
+        # `IS` reads NULL as a value, so a general route finds general proposals only.
         row = await self.db.fetch_one(
-            f"{_SELECT} WHERE d.id = ? AND d.recipe_id = ?", (proposal_id, recipe_id)
+            f"{_SELECT} WHERE d.id = ? AND d.recipe_id IS ?", (proposal_id, recipe_id)
         )
         return self.to_model(InsightDeletionRow, row)
 
@@ -224,11 +271,61 @@ class InsightDeletionsRepository(Repository):
             proposal_id = int(cursor.lastrowid or 0)
         return DeletionResult(proposal=await self.get(recipe_id, proposal_id), replaced=waiting)
 
-    async def accept(self, recipe_id: int, proposal_id: int) -> DeletionResult:
-        """Delete the insight. A person's press, and the only way a proposal removes anything."""
+    async def propose_general(self, spec: InsightDeletionWrite) -> DeletionResult:
+        """Write down the deletion of a general insight the person has not agreed to yet.
+
+        Stored with no Recipe, whichever conversation proposed it. Whether *this conversation*
+        may name the insight is the tool's question
+        (:meth:`~gaggiclanker.db.repos.knowledge_insights.InsightsRepository.told_general`); here
+        the insight is read again inside the transaction and must still be an added general one.
+        """
         now = utc_now()
         async with self.db.transaction():
-            proposal = await self.get(recipe_id, proposal_id)
+            thread = await self.db.fetch_value(
+                "SELECT 1 FROM chat_threads WHERE id = ?", (spec.thread_id,)
+            )
+            if thread is None:
+                return DeletionResult(refused="bad_thread")
+            insight = await self.db.fetch_one(
+                "SELECT recipe_id, text, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
+                (spec.insight_id,),
+            )
+            if insight is None or insight["recipe_id"] is not None:
+                return DeletionResult(refused="bad_insight", subject=spec.insight_id)
+            if not insight["confirmed"] or insight["dismissed"]:
+                return DeletionResult(refused="not_added", subject=spec.insight_id)
+            waiting = await self._waiting_for_insight(spec.insight_id)
+            if waiting is not None:
+                await self._decide(waiting.id, "superseded", now)
+            cursor = await self.db.execute(
+                """
+                INSERT INTO recipe_insight_deletions
+                    (recipe_id, thread_id, insight_id, insight_text, reason, status, created_at)
+                VALUES (NULL, :thread_id, :insight_id, :text, :reason, 'proposed', :now)
+                """,
+                {
+                    "thread_id": spec.thread_id,
+                    "insight_id": spec.insight_id,
+                    "text": insight["text"],
+                    "reason": spec.reason,
+                    "now": now,
+                },
+            )
+            proposal_id = int(cursor.lastrowid or 0)
+        return DeletionResult(proposal=await self.get_general(proposal_id), replaced=waiting)
+
+    async def accept(self, recipe_id: int, proposal_id: int) -> DeletionResult:
+        """Delete the insight. A person's press, and the only way a proposal removes anything."""
+        return await self._accept(recipe_id, proposal_id)
+
+    async def accept_general(self, proposal_id: int) -> DeletionResult:
+        """:meth:`accept` for the deletion of a general insight (and only that)."""
+        return await self._accept(None, proposal_id)
+
+    async def _accept(self, recipe_id: int | None, proposal_id: int) -> DeletionResult:
+        now = utc_now()
+        async with self.db.transaction():
+            proposal = await self._get(recipe_id, proposal_id)
             if proposal is None:
                 return DeletionResult(refused="no_proposal")
             if proposal.status != "proposed":
@@ -237,7 +334,7 @@ class InsightDeletionsRepository(Repository):
                 None
                 if proposal.insight_id is None
                 else await self.db.fetch_one(
-                    "SELECT recipe_id, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
+                    "SELECT text, confirmed, dismissed FROM knowledge_insights WHERE id = ?",
                     (proposal.insight_id,),
                 )
             )
@@ -246,14 +343,21 @@ class InsightDeletionsRepository(Repository):
                 # the same transaction; said as a refusal rather than assumed.
                 await self._decide(proposal_id, "stale", now)
                 return DeletionResult(
-                    refused="not_waiting", proposal=await self.get(recipe_id, proposal_id)
+                    refused="not_waiting", proposal=await self._get(recipe_id, proposal_id)
                 )
             if not insight["confirmed"] or insight["dismissed"]:
                 # Taken back since: it is no longer an added insight, so there is
                 # nothing the agent's reason applies to. Nothing is deleted.
                 await self._decide(proposal_id, "stale", now)
                 return DeletionResult(
-                    refused="insight_changed", proposal=await self.get(recipe_id, proposal_id)
+                    refused="insight_changed", proposal=await self._get(recipe_id, proposal_id)
+                )
+            if collapsed(insight["text"]) != collapsed(proposal.insight_text):
+                # Edited since the card was written: the person pressed Delete on words that
+                # are no longer there. Nothing is deleted.
+                await self._decide(proposal_id, "stale", now)
+                return DeletionResult(
+                    refused="insight_changed", proposal=await self._get(recipe_id, proposal_id)
                 )
             # Decide first: the delete marks every *waiting* proposal for the insight
             # stale, and this one must end `deleted`.
@@ -263,19 +367,26 @@ class InsightDeletionsRepository(Repository):
                 proposal.insight_id, deciding_proposal_id=proposal_id
             )
         log.info("insight_deletion_accepted", proposal_id=proposal_id, recipe_id=recipe_id)
-        return DeletionResult(proposal=await self.get(recipe_id, proposal_id))
+        return DeletionResult(proposal=await self._get(recipe_id, proposal_id))
 
     async def keep(self, recipe_id: int, proposal_id: int) -> DeletionResult:
         """Leave the insight where it is. A person's press; nothing else is written."""
+        return await self._keep(recipe_id, proposal_id)
+
+    async def keep_general(self, proposal_id: int) -> DeletionResult:
+        """:meth:`keep` for the deletion of a general insight (and only that)."""
+        return await self._keep(None, proposal_id)
+
+    async def _keep(self, recipe_id: int | None, proposal_id: int) -> DeletionResult:
         now = utc_now()
         async with self.db.transaction():
-            proposal = await self.get(recipe_id, proposal_id)
+            proposal = await self._get(recipe_id, proposal_id)
             if proposal is None:
                 return DeletionResult(refused="no_proposal")
             if proposal.status != "proposed":
                 return DeletionResult(refused="not_waiting", proposal=proposal)
             await self._decide(proposal_id, "kept", now)
-        return DeletionResult(proposal=await self.get(recipe_id, proposal_id))
+        return DeletionResult(proposal=await self._get(recipe_id, proposal_id))
 
     async def _waiting_for_insight(self, insight_id: int) -> InsightDeletionRow | None:
         row = await self.db.fetch_one(

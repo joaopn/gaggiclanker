@@ -2909,9 +2909,11 @@ def _insight_refusal(refused: InsightProposeRefusal, subject: int | None, label:
         )
     if refused == "replaces_general":
         return (
-            f"Insight #{subject} is general knowledge, not this Recipe's, and only the person "
-            "edits or deletes those (on the Knowledge page). Leave replaces_insight_id out "
-            "to propose a new insight of this Recipe on its own."
+            f"Insight #{subject} is general knowledge, not this Recipe's. A general insight is "
+            "changed only from what the person said: use request_general_insight with "
+            "replaces_insight_id (to change it) or propose_insight_deletion (to remove it), "
+            "quoting their words. Leave replaces_insight_id out to propose a new insight of "
+            "this Recipe on its own."
         )
     if refused == "replaces_not_added":
         return (
@@ -3023,12 +3025,26 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
     )
 
 
+#: The least a quote may be, whitespace collapsed: a word or two would be found in nearly any
+#: message and prove nothing about what the person asked for.
+QUOTE_MIN_CHARS = 12
+
+
 class ProposeInsightDeletionInput(_Model):
     insight_id: int = Field(
         description=(
-            "The number of an ADDED insight of this Recipe (get_insights lists them, and the "
-            "opening context shows each with its number)."
+            "The number of an ADDED insight of this Recipe, or of an added GENERAL insight "
+            "(get_insights lists them, and the opening context shows each with its number)."
         )
+    )
+    said: str = Field(
+        default="",
+        max_length=500,
+        description=(
+            "Required for a GENERAL insight, ignored for a Recipe's: the person's own words "
+            "asking for it to go, quoted exactly as they wrote them in this conversation, at "
+            f"least {QUOTE_MIN_CHARS} characters."
+        ),
     )
     reason: str = Field(
         default="",
@@ -3041,12 +3057,19 @@ class ProposeInsightDeletionInput(_Model):
 
 class ProposeInsightDeletionOutput(_Model):
     proposal_id: int
-    recipe_id: int
+    #: ``None`` for the deletion of a general insight, which belongs to no Recipe.
+    recipe_id: int | None = None
     insight_id: int
     insight_text: str
     status: str = "proposed"
     #: Whether this replaced a deletion of the same insight that was still waiting.
     replaced_waiting_proposal: bool = False
+    #: Set for a general insight, with the person's words, what it applies to and how many
+    #: Recipes it is told to now.
+    general: bool = False
+    said: str = ""
+    scope_labels: list[str] = Field(default_factory=list)
+    reach: int = 0
     note: str = ""
 
 
@@ -3081,7 +3104,9 @@ def _deletion_refusal(refused: InsightDeletionRefusal, insight_id: int) -> str:
     description=(
         "Propose deleting one ADDED insight of THIS Recipe that the shots no longer support "
         "and nothing replaces (when something replaces it, propose that with record_insight "
-        "and replaces_insight_id instead). It deletes nothing: the person sees a card with "
+        "and replaces_insight_id instead). Or propose deleting an added GENERAL insight, but "
+        "only when the person asked for it to go: quote their words in `said`; never because of "
+        "shots. It deletes nothing: the person sees a card with "
         "your reason and presses Delete or Keep, and until they press Delete the insight "
         "stays and is still told to every conversation of this Recipe. A second call for the "
         "same insight replaces the first while the person has not answered."
@@ -3096,15 +3121,31 @@ async def propose_insight_deletion(
     the runner's, so a call with no thread (a bare stdio session) is refused: the
     card would have nowhere to be.
     """
-    if ctx.scope.designing:
-        raise ValueError(DESIGN_RULE)
-    recipe_id = _resolve_recipe(ctx, None)
+    insights = InsightsRepository(ctx.db)
+    named = await insights.get(args.insight_id)
+    general = named is not None and named.recipe_id is None
+    if not general and (ctx.scope.designing or ctx.scope.kind != "recipe"):
+        # A General or Design conversation has no Recipe insights to delete.
+        raise ValueError(
+            _not_told(args.insight_id)
+            + (
+                " A conversation designing a Recipe can propose deleting general insights only."
+                if ctx.scope.designing
+                else ""
+            )
+        )
+    recipe_id = None if general else _resolve_recipe(ctx, None)
     reason = args.reason.strip()
     if len(reason) < REASON_MIN:
         raise ValueError(
             "A deletion needs its reason: the person reads it on the card before pressing "
-            f"Delete or Keep, at least {REASON_MIN} characters. Say which shots contradict "
-            "the insight or why it no longer applies, then call this again."
+            f"Delete or Keep, at least {REASON_MIN} characters. "
+            + (
+                "Say what the person asked for, then call this again."
+                if general
+                else "Say which shots contradict the insight or why it no longer applies, then "
+                "call this again."
+            )
         )
     if len(reason) > REASON_MAX:
         raise ValueError(
@@ -3115,6 +3156,9 @@ async def propose_insight_deletion(
             "A deletion is proposed inside a conversation, where the person sees the card "
             "and answers it. This session has no conversation, so nothing was written."
         )
+    if general:
+        return await _propose_general_deletion(ctx, args, reason)
+    assert recipe_id is not None  # a Recipe's insight: the general path returned above
     result = await InsightDeletionsRepository(ctx.db).propose(
         recipe_id,
         InsightDeletionWrite(thread_id=ctx.thread_id, insight_id=args.insight_id, reason=reason),
@@ -3137,12 +3181,98 @@ async def propose_insight_deletion(
     )
 
 
+def _recipes_words(count: int) -> str:
+    """ "1 Recipe", "2 Recipes"."""
+    return f"{count} Recipe" + ("" if count == 1 else "s")
+
+
+async def _propose_general_deletion(
+    ctx: ToolContext, args: ProposeInsightDeletionInput, reason: str
+) -> ProposeInsightDeletionOutput:
+    """The deletion of a general insight, on the person's own words and no one else's.
+
+    ``said`` is checked by the function the request uses; whether this conversation is told the
+    insight by the one :meth:`InsightsRepository.told_general`. Both refusals come back at once.
+    """
+    assert ctx.thread_id is not None  # checked by the caller
+    insights = InsightsRepository(ctx.db)
+    problems, _found = await _quote_problems(ctx, args.said)
+    if problems:
+        problems.append("A general insight is changed only from what the person said.")
+    told = await insights.told_general(
+        args.insight_id, ctx.scope.recipe_id if ctx.scope.kind == "recipe" else None
+    )
+    if told is None:
+        problems.append(_not_told(args.insight_id))
+    if problems or told is None:
+        raise ValueError(" ".join(problems))
+    result = await InsightDeletionsRepository(ctx.db).propose_general(
+        InsightDeletionWrite(thread_id=ctx.thread_id, insight_id=args.insight_id, reason=reason)
+    )
+    if result.proposal is None:
+        raise ValueError(
+            _deletion_refusal(result.refused, args.insight_id)
+            if result.refused == "bad_thread"
+            else _not_told(args.insight_id)
+        )
+    stored = result.proposal
+    reach = await insights.reach(told.scope)
+    return ProposeInsightDeletionOutput(
+        proposal_id=stored.id,
+        insight_id=args.insight_id,
+        insight_text=stored.insight_text,
+        status=stored.status,
+        replaced_waiting_proposal=result.replaced is not None,
+        general=True,
+        said=args.said.strip(),
+        scope_labels=await insights.scope_labels(told.scope),
+        reach=reach,
+        note=(
+            f"Nothing is deleted: #{args.insight_id} stays"
+            + (
+                ", though no Recipe is told it now,"
+                if reach == 0
+                else f" and every matching conversation ({_recipes_words(reach)} now) is still "
+                "told it"
+            )
+            + " until the person presses Delete. They can also Keep it. Say the card is waiting."
+        ),
+    )
+
+
 # ── request_general_insight ──────────────────────────────────────────
 
 
-#: The least a quote may be, whitespace collapsed: a word or two would be found in nearly any
-#: message and prove nothing about what the person asked for.
-QUOTE_MIN_CHARS = 12
+async def _quote_problems(ctx: ToolContext, said: str) -> tuple[list[str], list[int]]:
+    """Whether ``said`` is the person's own words in this conversation: the one check.
+
+    Used by the request (add and replace) and by a general deletion, so the three cannot
+    disagree: the same function for the match (:func:`collapsed`), the same minimum length and
+    the same refusal sentences. Returns the problems and the ids of the person's messages that
+    contain the quote, oldest first (the newest is the last).
+    """
+    assert ctx.thread_id is not None
+    wanted = collapsed(said)
+    # Only the person's own words count: a card's "Accepted:" or "Declined:" turn is stored as
+    # their message but is the button's sentence.
+    found = [
+        message_id
+        for message_id, content in await ChatRepository(ctx.db).user_messages(ctx.thread_id)
+        if not is_automatic_turn(content) and wanted in collapsed(content)
+    ]
+    if len(wanted) < QUOTE_MIN_CHARS:
+        return [QUOTE_TOO_SHORT], found
+    if not found:
+        return [QUOTE_NOT_FOUND], found
+    return [], found
+
+
+def _not_told(insight_id: int) -> str:
+    """The one sentence for a general insight this conversation may not replace or delete."""
+    return (
+        f"#{insight_id} is not a general insight this conversation is told, so it cannot be "
+        "replaced or deleted from here."
+    )
 
 
 class RequestedScope(_Model):
@@ -3181,6 +3311,15 @@ class RequestGeneralInsightInput(_Model):
     reason: str = Field(
         default="", max_length=300, description="Optional: why this should be remembered."
     )
+    replaces_insight_id: int | None = Field(
+        default=None,
+        description=(
+            "To CHANGE a general insight the person has added and this conversation is told "
+            "(it is in the opening context with its number), set this to its number: adding "
+            "your request deletes that one. Only when the person asked for that, quoted in "
+            "`said`; never because of shots."
+        ),
+    )
 
 
 class RequestGeneralInsightOutput(_Model):
@@ -3191,6 +3330,9 @@ class RequestGeneralInsightOutput(_Model):
     scope_labels: list[str]
     #: How many Recipes it would apply to now.
     reach: int
+    #: The general insight adding this deletes, and its words as they were when asked.
+    replaces_insight_id: int | None = None
+    replaces_text: str = ""
     note: str = ""
 
 
@@ -3290,7 +3432,9 @@ async def _scope_problems(
         "drew from shots (that is record_insight, in a Recipe conversation). Nothing is saved "
         "until the person presses Add on its card in this conversation; they may change the "
         "words and what it applies to first, or dismiss it. You are told their answer at your "
-        "next message. A refusal names every problem and writes nothing."
+        "next message. To change a general insight the person said is wrong, set "
+        "replaces_insight_id to its number, still quoting their words. A refusal names every "
+        "problem and writes nothing."
     ),
 )
 async def request_general_insight(
@@ -3302,19 +3446,13 @@ async def request_general_insight(
             "A general insight is requested inside a conversation, where the person sees the "
             "card and answers it. This session has no conversation, so nothing was written."
         )
-    problems: list[str] = []
-    wanted = collapsed(args.said)
-    # Only the person's own words count: a card's "Accepted:" or "Declined:" turn is stored as
-    # their message but is the button's sentence.
-    found = [
-        message_id
-        for message_id, content in await ChatRepository(ctx.db).user_messages(ctx.thread_id)
-        if not is_automatic_turn(content) and wanted in collapsed(content)
-    ]
-    if len(wanted) < QUOTE_MIN_CHARS:
-        problems.append(QUOTE_TOO_SHORT)
-    elif not found:
-        problems.append(QUOTE_NOT_FOUND)
+    problems, found = await _quote_problems(ctx, args.said)
+    conversation_recipe = ctx.scope.recipe_id if ctx.scope.kind == "recipe" else None
+    if args.replaces_insight_id is not None and (
+        await InsightsRepository(ctx.db).told_general(args.replaces_insight_id, conversation_recipe)
+        is None
+    ):
+        problems.append(_not_told(args.replaces_insight_id))
     scope, scope_problems = await _scope_problems(ctx, args.scope)
     problems += scope_problems
     insights = InsightsRepository(ctx.db)
@@ -3324,7 +3462,7 @@ async def request_general_insight(
             problems.append(f"That is already general insight #{same}.")
     if problems or scope is None:
         raise ValueError(" ".join(problems))
-    insight_id = await insights.insert(
+    written = await insights.request_general(
         InsightWrite(
             scope=scope,
             text=args.text,
@@ -3333,10 +3471,22 @@ async def request_general_insight(
             thread_id=ctx.thread_id,
             # The newest of the person's messages that contains the quote.
             from_message_id=found[-1],
-        )
+            replaces_id=args.replaces_insight_id,
+        ),
+        conversation_recipe_id=conversation_recipe,
     )
+    if written.insight_id is None:
+        # Changed between the check above and the write.
+        raise ValueError(_not_told(written.subject or 0))
+    insight_id = written.insight_id
     stored = await insights.get(insight_id)
     assert stored is not None  # just inserted
+    replaces = (
+        f" Adding it deletes #{stored.replaces_id}; until then #{stored.replaces_id} stays and "
+        "every matching conversation is still told it."
+        if stored.replaces_id is not None
+        else ""
+    )
     return RequestGeneralInsightOutput(
         insight_id=insight_id,
         text=stored.text,
@@ -3344,10 +3494,12 @@ async def request_general_insight(
         scope=stored.scope.stated(),
         scope_labels=await insights.scope_labels(stored.scope),
         reach=await insights.reach(stored.scope),
+        replaces_insight_id=stored.replaces_id,
+        replaces_text=stored.replaces_text,
         note=(
             "Nothing is saved: this is a card waiting for the person in this conversation. "
             "They press Add on it (they may change the words and what it applies to first) or "
             "Dismiss. Say the card is waiting, and never say it is saved before your context "
-            "says it was added. You are told their answer at your next message."
+            "says it was added. You are told their answer at your next message." + replaces
         ),
     )

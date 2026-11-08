@@ -853,7 +853,8 @@ CREATE TABLE insight_placement_build (
 
 CREATE TABLE recipe_insight_deletions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    recipe_id    INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    -- NULL for the deletion of a general insight, which belongs to no Recipe.
+    recipe_id    INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
     thread_id    INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
     insight_id   INTEGER REFERENCES knowledge_insights(id) ON DELETE SET NULL,
     insight_text TEXT    NOT NULL,
@@ -1418,4 +1419,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 10;
+PRAGMA user_version = 11;

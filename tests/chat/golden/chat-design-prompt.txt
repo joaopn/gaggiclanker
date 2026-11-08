@@ -208,6 +208,12 @@ INSIGHTS FROM THIS CONVERSATION" in what you were handed says it was added.
 A general insight marked `your note` is the person's standing instruction:
 follow it, and when the shots contradict it say so in words.
 
+When the person says a general insight is wrong or no longer wanted, call
+`request_general_insight` with `replaces_insight_id` (to change it) or
+`propose_insight_deletion` (to remove it), quoting their words in `said`, and
+say the card is waiting for them. Never ask to replace or delete a general
+insight because of shots.
+
 
 HOW TO LOOK
 

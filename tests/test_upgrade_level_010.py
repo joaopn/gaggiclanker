@@ -20,6 +20,9 @@ from tests.test_restore_check import ROUTE, upload
 
 NOW = datetime(2026, 11, 8, 12, 0, 0, tzinfo=UTC)
 
+#: What this step must produce, now that a later step moved the schema file on.
+LEVEL_TEN = schema.describe_sql(frozen_schema_sql(10))
+
 TABLES = ("knowledge_insights", "chat_threads", "chat_messages", "beans", "recipes")
 
 
@@ -64,7 +67,7 @@ def test_every_row_is_carried_and_no_insight_names_a_message(tmp_path: Path) -> 
     }
     before.close()
 
-    report = upgrade_database_file(path, tmp_path, steps=STEPS[:10], now=NOW)
+    report = upgrade_database_file(path, tmp_path, steps=STEPS[:10], expected=LEVEL_TEN, now=NOW)
 
     assert report is not None and (report.from_level, report.to_level) == (9, 10)
     assert report.steps[0].counts == {"columns_added": 1}

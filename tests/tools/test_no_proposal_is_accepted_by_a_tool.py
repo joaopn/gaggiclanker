@@ -78,6 +78,12 @@ DECIDING = (
     "delete",
     "delete_in_transaction",
     "keep",
+    # The same two buttons on the deletion of a general insight, and the private methods that
+    # both pairs share.
+    "accept_general",
+    "keep_general",
+    "_accept",
+    "_keep",
     # The private methods behind them: the add of a replacement and the take back, which
     # also stales waiting deletion proposals.
     "_add_in_transaction",
@@ -225,6 +231,8 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     assert callable(InsightsRepository._take_back_in_transaction)
     assert callable(InsightDeletionsRepository.accept)
     assert callable(InsightDeletionsRepository.keep)
+    assert callable(InsightDeletionsRepository.accept_general)
+    assert callable(InsightDeletionsRepository.keep_general)
     assert callable(SignatureRepository.reject)
     assert callable(SignatureRepository.restore)
     assert callable(SignatureRepository.reject_override)

@@ -94,8 +94,9 @@ RECIPE_TOOLS: frozenset[str] = frozenset(
 #: not exist yet, so every tool that reads shots or changes a recipe is absent:
 #: there are no shots, ``propose_recipe_version`` and ``draft_profile`` change a
 #: recipe that is not there (their refusal points at the tool that is), and
-#: ``record_insight`` would be a lesson drawn from nothing brewed (and a design has
-#: no added insights to propose deleting). What is here
+#: ``record_insight`` would be a lesson drawn from nothing brewed. A design has no Recipe
+#: insights to propose deleting, so ``propose_insight_deletion`` is here for a *general* insight
+#: only, on the person's own words. What is here
 #: is what designing needs — the Recipe and its brief, the profile library and any
 #: one profile's whole document, the knowledge tiers — and
 #: ``propose_initial_recipe``, which proposes the whole first recipe as one card.
@@ -110,6 +111,7 @@ DESIGN_TOOLS: frozenset[str] = frozenset(
         "get_recipe",
         "list_profiles",
         "propose_initial_recipe",
+        "propose_insight_deletion",
         "propose_signature",
         "request_general_insight",
         "request_signature_change",
@@ -121,8 +123,9 @@ DESIGN_TOOLS: frozenset[str] = frozenset(
 #: proposals that belong to no Recipe — a starting point for a bean nobody has
 #: brewed yet, and a profile draft, which waits for a person on its card either way.
 #:
-#: Absent: ``propose_recipe_version``, ``record_insight`` and
-#: ``propose_insight_deletion``, because a Recipe is
+#: ``propose_insight_deletion`` is here for a general insight only, on the person's own words.
+#:
+#: Absent: ``propose_recipe_version`` and ``record_insight``, because a Recipe is
 #: changed and learned about in its own folder, where the ledger and the
 #: evidence are in front of the model; and ``list_recipe_shots``, which has no
 #: Recipe to list.
@@ -143,6 +146,7 @@ GENERAL_TOOLS: frozenset[str] = frozenset(
         "list_grinders",
         "list_profiles",
         "list_recipes",
+        "propose_insight_deletion",
         "query_shots",
         "request_general_insight",
         "search_knowledge",

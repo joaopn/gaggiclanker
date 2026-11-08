@@ -47,6 +47,7 @@ from gaggiclanker.chat.context import (
     _OUTCOMES,
     _cut,
     _plural,
+    _proposed_deletions_block,
     _quote,
     _recipe,
     _taste,
@@ -182,6 +183,9 @@ async def design_context(db: Database, recipe_id: int, *, thread_id: int | None 
         f"THE RULES THAT MATCH (planned style: {style} — {style_reason})",
         render_rules(rules),
     ]
+    deletions = await _proposed_deletions_block(db, thread_id)
+    if deletions:
+        lines += ["", *deletions]
     requested = await general_insights_block(db, thread_id)
     if requested:
         lines += ["", *requested]

@@ -24,7 +24,7 @@ shapes because the tiers are owned by different people:
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
@@ -39,7 +39,11 @@ from gaggiclanker.api.deps import (
     RulesRepoDep,
 )
 from gaggiclanker.db.repos.chat import ChatRepository
-from gaggiclanker.db.repos.insight_deletions import InsightDeletionRow
+from gaggiclanker.db.repos.insight_deletions import (
+    INSIGHT_CHANGED_SENTENCE,
+    DeletionResult,
+    InsightDeletionRow,
+)
 from gaggiclanker.db.repos.knowledge import RuleRow, RulesRepository
 from gaggiclanker.db.repos.knowledge_docs import ChunkHit, ChunkRow, DocRow
 from gaggiclanker.db.repos.knowledge_insights import (
@@ -643,6 +647,137 @@ async def dismiss_insight(insight_id: int, insights: InsightsRepoDep) -> JSONRes
     if stored is None:  # pragma: no cover - checked above, same request
         raise NotFound(f"No insight {insight_id}")
     return envelope_response(stored.model_dump(mode="json"))
+
+
+# ── general insights an agent proposed deleting ──────────────────────
+
+
+class GeneralInsightDeletion(BaseModel):
+    """A proposal to delete a general insight, as the card reads it.
+
+    ``scope_labels`` and ``reach`` describe the insight as it stands now, so they are empty and
+    ``None`` once it is gone.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    thread_id: int
+    insight_id: int | None
+    insight_text: str
+    reason: str
+    status: str
+    created_at: str
+    decided_at: str | None
+    #: Why it is stale, when it is: ``deleted`` (the insight is gone) or ``changed`` (its words
+    #: changed or it was taken back; it still stands). From the one place that says it.
+    stale_cause: Literal["deleted", "changed"] | None = None
+    scope_labels: list[str] = Field(default_factory=list)
+    reach: int | None = None
+
+
+async def _general_deletion(
+    row: InsightDeletionRow, insights: InsightsRepoDep
+) -> GeneralInsightDeletion:
+    labels: list[str] = []
+    reach: int | None = None
+    live = None if row.insight_id is None else await insights.get(row.insight_id)
+    if live is not None:
+        # Its scope is true whenever it exists, added or not.
+        labels = await insights.scope_labels(live.scope)
+        # Only an insight that is still added is told to any conversation.
+        if live.is_added_general:
+            reach = await insights.reach(live.scope)
+    return GeneralInsightDeletion(
+        id=row.id,
+        thread_id=row.thread_id,
+        insight_id=row.insight_id,
+        insight_text=row.insight_text,
+        reason=row.reason,
+        status=row.status,
+        created_at=row.created_at,
+        decided_at=row.decided_at,
+        stale_cause=row.stale_cause,
+        scope_labels=labels,
+        reach=reach,
+    )
+
+
+@router.get(
+    "/insight-deletions/{proposal_id}",
+    response_model=ApiResponse[GeneralInsightDeletion],
+    summary="A proposal to delete a general insight",
+)
+async def get_general_deletion(
+    proposal_id: int, deletions: InsightDeletionsRepoDep, insights: InsightsRepoDep
+) -> JSONResponse:
+    """What the chat's card reads. A Recipe's proposal is not here: 404."""
+    row = await deletions.get_general(proposal_id)
+    if row is None:
+        raise NotFound(f"No general insight deletion {proposal_id}")
+    return envelope_response((await _general_deletion(row, insights)).model_dump(mode="json"))
+
+
+_DECIDED_WORDS = {
+    "deleted": "It was deleted already.",
+    "kept": "It was kept already.",
+    "superseded": "A newer proposal replaced it.",
+}
+
+
+async def _general_decided(
+    result: DeletionResult, proposal_id: int, insights: InsightsRepoDep
+) -> JSONResponse:
+    """The row, or a 409 that says what became of the proposal: never "already answered"."""
+    if result.refused == "no_proposal":
+        raise NotFound(f"No general insight deletion {proposal_id}")
+    if result.refused == "insight_changed" or (
+        result.refused is not None and result.proposal is not None
+    ):
+        status = result.proposal.status if result.proposal is not None else "stale"
+        message = (
+            result.proposal.stale_sentence
+            if result.proposal is not None and result.proposal.status == "stale"
+            else INSIGHT_CHANGED_SENTENCE
+            if result.refused == "insight_changed"
+            else _DECIDED_WORDS.get(status, "It is no longer waiting.")
+        )
+        raise Conflict(
+            f"General insight deletion {proposal_id} is {status}",
+            code="INSIGHT_DELETION_DECIDED",
+            details={"field": "status", "message": message},
+        )
+    if result.proposal is None:  # pragma: no cover - a refusal is always set
+        raise NotFound(f"No general insight deletion {proposal_id}")
+    return envelope_response(
+        (await _general_deletion(result.proposal, insights)).model_dump(mode="json")
+    )
+
+
+@router.post(
+    "/insight-deletions/{proposal_id}/accept",
+    response_model=ApiResponse[GeneralInsightDeletion],
+    summary="Delete the general insight an agent proposed deleting",
+)
+async def accept_general_deletion(
+    proposal_id: int, deletions: InsightDeletionsRepoDep, insights: InsightsRepoDep
+) -> JSONResponse:
+    """The card's Delete: a person's press. There is no tool for this."""
+    return await _general_decided(
+        await deletions.accept_general(proposal_id), proposal_id, insights
+    )
+
+
+@router.post(
+    "/insight-deletions/{proposal_id}/keep",
+    response_model=ApiResponse[GeneralInsightDeletion],
+    summary="Keep the general insight an agent proposed deleting",
+)
+async def keep_general_deletion(
+    proposal_id: int, deletions: InsightDeletionsRepoDep, insights: InsightsRepoDep
+) -> JSONResponse:
+    """The card's Keep: the insight stays exactly as it is."""
+    return await _general_decided(await deletions.keep_general(proposal_id), proposal_id, insights)
 
 
 @router.delete(

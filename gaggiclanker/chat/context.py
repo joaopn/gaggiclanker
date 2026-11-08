@@ -163,9 +163,13 @@ async def opening_context(
         # A general conversation is about no one Recipe, so it is handed every grinder: grind
         # advice is in a grinder's own units, and which way its dial runs is in its record.
         kitchen = kitchen_lines(await GrindersRepository(db).list_all())
-        asked = await general_insights_block(db, thread_id)
-        if asked:
-            kitchen = [*kitchen, *([""] if kitchen else []), *asked]
+        # After the grinders, which move only when the person edits one.
+        for part in (
+            await _proposed_deletions_block(db, thread_id),
+            await general_insights_block(db, thread_id),
+        ):
+            if part:
+                kitchen = [*kitchen, *([""] if kitchen else []), *part]
         return "\n".join(kitchen)
     if scope.designing:
         # A Recipe being designed has no experiment yet: its conversation is told
@@ -1246,7 +1250,8 @@ async def general_insights_block(db: Database, thread_id: int | None) -> list[st
     """
     if thread_id is None:
         return []
-    rows = await InsightsRepository(db).requests_in(thread_id)
+    insights = InsightsRepository(db)
+    rows = await insights.requests_in(thread_id)
     asked = await ChatRepository(db).requested_general_insights(thread_id)
     if not rows and not asked:
         return []
@@ -1260,17 +1265,24 @@ async def general_insights_block(db: Database, thread_id: int | None) -> list[st
             continue
         text = _cut(row.text, INSIGHT_CHARS)
         scope = row.scope.label()
-        lines.append(f"- #{row.id} [{scope}] {text} ({_request_state(row, asked.get(insight_id))})")
+        # Whether Add would still delete the insight this one replaces: the same rule the card
+        # reads (an added general insight).
+        old = None if row.replaces_id is None else await insights.get(row.replaces_id)
+        replaceable = old is not None and old.is_added_general
+        state = _request_state(row, asked.get(insight_id), replaceable=replaceable)
+        lines.append(f"- #{row.id} [{scope}] {text} ({state})")
     return lines
 
 
-def _request_state(row: Any, asked: dict[str, Any] | None) -> str:
+def _request_state(row: Any, asked: dict[str, Any] | None, *, replaceable: bool = False) -> str:
     """What became of one request or saved message, read from the row and nothing else.
 
     ``asked`` is what the agent proposed (from the stored result of its call), when its result
-    was stored; it is used only to say whether the person's Add changed the words or the scope.
-    A line never claims more than the row does: a row that is not added is never "saved".
+    was stored; it is used to say whether the person's Add changed the words or the scope, and
+    which insight a replacement named (the row forgets that once it is added). A line never
+    claims more than the row does: a row that is not added is never "saved".
     """
+    old = None if asked is None else asked.get("replaces_id")
     if row.dismissed:
         return "dismissed by the person — do not ask for it again"
     if row.confirmed:
@@ -1279,12 +1291,29 @@ def _request_state(row: Any, asked: dict[str, Any] | None) -> str:
                 collapsed(row.text) != collapsed(str(asked["text"]))
                 or row.scope.stated() != asked["scope"]
             )
-            return "added by the person" + (" with their changes" if changed else "")
+            added = "added by the person" + (" with their changes" if changed else "")
+            if row.replaced == "deleted":
+                return added + (
+                    f", replaced #{old}" if old is not None else ", replaced the old one"
+                )
+            if row.replaced == "old_changed" and old is not None:
+                return added + f"; #{old} had already changed or gone, so nothing was replaced"
+            return added
         if row.from_message_id is not None:
             return "saved by the person from their message: it is a general insight now"
         return "added by the person"
     if row.updated_at == row.created_at:
-        return "waiting: the person has not pressed Add, so nothing is saved yet"
+        waiting = "waiting: the person has not pressed Add, so nothing is saved yet"
+        if row.replaces_id is not None and replaceable:
+            return waiting + f", replacing #{row.replaces_id}"
+        named = row.replaces_id if row.replaces_id is not None else old
+        if named is not None:
+            # The card's own words: Add will add this one and delete nothing.
+            return (
+                waiting
+                + f"; #{named} has changed or gone since: adding this will not delete anything"
+            )
+        return waiting
     # Not added now, yet touched since it was made: taken back after an Add, or edited on the
     # Knowledge page without one. Either way it is not saved and reaches no prompt.
     return (
@@ -1309,16 +1338,28 @@ async def _proposed_deletions_block(db: Database, thread_id: int | None) -> list
         return []
     lines = ["INSIGHT DELETIONS YOU PROPOSED IN THIS CONVERSATION"]
     for item in proposed:
+        # A stale one says why, from the one place that knows: the insight was deleted, or it is
+        # still there but its words changed or it was taken back, and nothing was deleted.
+        # Where it still is depends on the kind: the Knowledge page lists general insights only.
+        place = "the Knowledge page" if item.recipe_id is None else "this Recipe's page"
+        stale = (
+            "already gone, nothing to do"
+            if item.stale_cause == "deleted"
+            else "the insight was changed or taken back since you asked, so nothing was deleted; "
+            f"it is still on {place}"
+        )
         state = {
             "deleted": "deleted by the person",
             "kept": "kept by the person",
-            "stale": "already gone, nothing to do",
+            "stale": stale,
         }.get(item.status, "waiting: nothing is deleted until the person presses Delete")
         # The number is there while the insight is: once it is gone, only the text is.
         number = "" if item.insight_id is None else f"#{item.insight_id} "
         # A proposal whose insight went another way has lost its copy of the text.
         text = _cut(item.insight_text, INSIGHT_CHARS) or "an insight that has since been removed"
-        lines.append(f"- {number}{text} ({state})")
+        # A general insight's deletion has no Recipe, whichever conversation proposed it.
+        kind = "general; " if item.recipe_id is None else ""
+        lines.append(f"- {number}{text} ({kind}{state})")
     return lines
 
 

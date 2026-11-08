@@ -179,7 +179,8 @@ class TestReplacing:
             evidence_shot_ids=[world.shot1],
             replaces_insight_id=general,
         )
-        assert "is general knowledge" in detail and "Knowledge page" in detail
+        assert "is general knowledge" in detail
+        assert "request_general_insight" in detail and "propose_insight_deletion" in detail
 
     async def test_it_refuses_another_recipes_and_a_missing_one_alike(
         self, conversation: ToolContext, world: ProvenanceWorld
@@ -292,7 +293,9 @@ class TestProposingADeletion:
 
         assert "is not an added insight" in details["waiting"]
         assert "is not an added insight" in details["dismissed"]
-        assert "is general knowledge" in details["general"]
+        # A general insight is changed only from what the person said, so a call with no
+        # quote is refused for that (the quote paths are in test_general_replace_delete).
+        assert "A general insight is changed only from what the person said." in details["general"]
         assert "is not an insight of this Recipe" in details["theirs"]
         assert "is not an insight of this Recipe" in details["missing"]
         assert await world.deletions.for_recipe(world.recipe_id) == []

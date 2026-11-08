@@ -104,6 +104,7 @@ export function insightDeletion(overrides: Partial<InsightDeletion> = {}): Insig
     insight_text: "Two clicks finer on the Niche.",
     reason: "The last two shots contradict it on both measures.",
     status: "proposed",
+    stale_cause: null,
     created_at: "2026-10-03T09:00:00.000Z",
     decided_at: null,
     ...overrides,

@@ -79,8 +79,9 @@ MCP_INSTRUCTIONS = (
     "get_shot_full both. Cite shots by id and knowledge passages by their heading_path. Tools "
     "whose names begin with propose_, draft_, record_ or request_ create something the user "
     "must confirm; request_general_insight asks the user to keep a sentence as a general "
-    "insight, and nothing is saved until they press Add. Nothing here writes to the espresso "
-    "machine."
+    "insight (or to replace one) and propose_insight_deletion asks to delete one, both only from "
+    "what the user said, and nothing changes until they press the button on the card. Nothing "
+    "here writes to the espresso machine."
 )
 
 #: The same, for a server serving one Recipe's conversation. It names the tools
@@ -99,8 +100,9 @@ RECIPE_INSTRUCTIONS = (
     "with propose_, draft_, record_ or request_ create something the user answers: most wait "
     "for the user's confirmation, while a signature you propose with propose_signature is in "
     "force at once until the user rejects it; request_general_insight asks the user to keep a "
-    "sentence as a general insight, and nothing is saved until they press Add; "
-    "nothing here writes to the espresso machine."
+    "sentence as a general insight, or to replace one, and propose_insight_deletion asks to "
+    "delete a general insight, both only from what the user said, and nothing changes until "
+    "they press the button on the card; nothing here writes to the espresso machine."
 )
 
 
@@ -114,8 +116,9 @@ DESIGN_INSTRUCTIONS = (
     "get_profile for the profiles a Recipe can start from, and get_rules and search_knowledge "
     "for the knowledge base. propose_initial_recipe proposes the whole first version for the "
     "person to accept, and request_general_insight asks the person to keep a sentence they "
-    "said as a general insight, saved only when they press Add; nothing here writes to the "
-    "espresso machine."
+    "said as a general insight (or to replace one), and propose_insight_deletion asks to delete a "
+    "general insight, both only from what the person said and only when they press the button "
+    "on the card; nothing here writes to the espresso machine."
 )
 
 

@@ -436,6 +436,19 @@ Find patterns` for an approved pattern, nothing for the older ones), and each op
 ends with one block, `general_insights_block`, telling the conversation what became of the
 requests it made and the messages saved from it.
 
+**A general insight is replaced or deleted only on the person's own words.**
+`request_general_insight` takes `replaces_insight_id` and `propose_insight_deletion` takes
+`said`; both are refused without a quote found in the conversation's `user` messages (one
+function, `_quote_problems`) and only for an insight `InsightsRepository.told_general`
+allows: added, general, and, in a Recipe or Design chat, one whose scope matches the Recipe
+(the rule `for_recipe` uses). A replacement is a waiting general request with `replaces_id`;
+Add runs `_add_in_transaction`, which deletes the old insight in the same transaction only
+while it is still an added general one. A deletion is a `recipe_insight_deletions` row whose
+`recipe_id` is NULL (upgrade step 11), answered by `/api/knowledge/insight-deletions/{id}` and
+its `accept` and `keep`, never by a Recipe route. Delete refuses, and marks the proposal
+stale, when the insight's words are no longer the ones the card showed. Shots never lead to
+either: nothing here can be called by an agent that confirms, deletes or keeps.
+
 **An insight rests on versions, and an agent's removal is a proposal.** The
 `knowledge_insights` carries `rests_on_json` (each version the insight rests on with the
 outcome it had when written, never rewritten), `replaces_id`, `replaces_text` and `replaced`,

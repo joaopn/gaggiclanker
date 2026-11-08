@@ -401,8 +401,13 @@ class InsightWrite(BaseModel):
 
     @model_validator(mode="after")
     def _a_recipe_insight_has_no_scope(self) -> InsightWrite:
-        if (self.rests_on or self.replaces_id is not None) and self.recipe_id is None:
-            raise ValueError("only a Recipe's insight rests on versions or replaces another")
+        if self.rests_on and self.recipe_id is None:
+            raise ValueError("only a Recipe's insight rests on versions")
+        if self.replaces_id is not None and self.recipe_id is None and self.from_message_id is None:
+            raise ValueError(
+                "only a Recipe's insight, or a general request made from the person's words, "
+                "replaces another"
+            )
         if self.recipe_version_id is not None and self.recipe_id is None:
             raise ValueError("an insight learned at a version belongs to that version's Recipe")
         if self.from_message_id is not None and self.recipe_id is not None:
@@ -486,6 +491,12 @@ class InsightRow(BaseModel):
     def general(self) -> bool:
         """Whether it is general knowledge rather than one Recipe's."""
         return self.recipe_id is None
+
+    @property
+    def is_added_general(self) -> bool:
+        """Whether this is an added general insight: the only kind a general request replaces or
+        a general deletion names."""
+        return self.recipe_id is None and self.confirmed and not self.dismissed
 
     @property
     def is_general_request(self) -> bool:
@@ -758,6 +769,48 @@ class InsightsRepository(Repository):
                 return item.id
         return None
 
+    async def told_general(
+        self, insight_id: int, conversation_recipe_id: int | None
+    ) -> InsightRow | None:
+        """The added general insight a conversation may name, or ``None``.
+
+        **The one function** that decides whether a conversation may name a general insight, for
+        the replace path, the delete path and their refusals. It must be *added* (no Recipe,
+        confirmed, not dismissed). In a General conversation (``conversation_recipe_id`` is
+        ``None``) any such insight qualifies; in a Recipe or Design conversation only one whose
+        scope matches the Recipe's attributes does, by :func:`scope_matches`: the rule
+        :meth:`for_recipe` uses, so "told" means the same thing in both places.
+        """
+        row = await self.get(insight_id)
+        if row is None or not row.is_added_general:
+            return None
+        if conversation_recipe_id is not None:
+            attributes = await self.attributes_of(conversation_recipe_id)
+            if attributes is None or not scope_matches(row.scope.stated(), attributes):
+                return None
+        return row
+
+    async def request_general(
+        self, insight: InsightWrite, *, conversation_recipe_id: int | None
+    ) -> InsightProposeResult:
+        """Write a general request, and when it replaces an insight, check that one in the same
+        transaction.
+
+        The old insight is read by :meth:`told_general` (refused as ``bad_replaces`` when this
+        conversation may not name it) and its text is copied onto the request for the card.
+        """
+        async with self.db.transaction():
+            replaces_text = ""
+            if insight.replaces_id is not None:
+                old = await self.told_general(insight.replaces_id, conversation_recipe_id)
+                if old is None:
+                    return InsightProposeResult(refused="bad_replaces", subject=insight.replaces_id)
+                replaces_text = old.text
+            insight_id = await self.insert(
+                insight.model_copy(update={"replaces_text": replaces_text})
+            )
+        return InsightProposeResult(insight_id=insight_id)
+
     async def requests_in(self, thread_id: int) -> list[InsightRow]:
         """The general insights this conversation asked for or the person saved from it, in
         every state, oldest first.
@@ -920,7 +973,12 @@ class InsightsRepository(Repository):
         scope: InsightScope | None = None,
         evidence_shot_ids: list[int] | None = None,
     ) -> bool:
-        """Edit what an insight says or what it is about. Confirmation is separate."""
+        """Edit what an insight says or what it is about. Confirmation is separate.
+
+        Changing the **words** (whitespace collapsed, case folded) stales every deletion proposal
+        waiting for the insight in the same transaction, the way taking it back does: a card
+        written about other words must not stay open. A scope or evidence change leaves them.
+        """
         assignments: list[str] = []
         params: dict[str, Any] = {"id": insight_id, "now": utc_now()}
         if text is not None:
@@ -934,11 +992,22 @@ class InsightsRepository(Repository):
             params["evidence"] = dumps(sorted(set(evidence_shot_ids)))
         if not assignments:
             return await self.get(insight_id) is not None
-        cursor = await self.db.execute(
-            f"UPDATE knowledge_insights SET {', '.join(assignments)}, updated_at = :now "  # noqa: S608 - assignments are literals, values are bound
-            "WHERE id = :id",
-            params,
-        )
+        async with self.db.transaction():
+            if text is not None:
+                before = await self.db.fetch_value(
+                    "SELECT text FROM knowledge_insights WHERE id = ?", (insight_id,)
+                )
+                if before is not None and collapsed(before) != collapsed(params["text"]):
+                    await self.db.execute(
+                        "UPDATE recipe_insight_deletions SET status = 'stale', decided_at = ? "
+                        "WHERE insight_id = ? AND status = 'proposed'",
+                        (params["now"], insight_id),
+                    )
+            cursor = await self.db.execute(
+                f"UPDATE knowledge_insights SET {', '.join(assignments)}, updated_at = :now "  # noqa: S608 - assignments are literals, values are bound
+                "WHERE id = :id",
+                params,
+            )
         return cursor.rowcount > 0
 
     async def set_confirmed(self, insight_id: int, confirmed: bool) -> bool:
@@ -983,9 +1052,10 @@ class InsightsRepository(Repository):
     async def _add_in_transaction(self, insight_id: int) -> bool:
         """Confirm, and when this insight replaces another, delete the other in the same step.
 
-        The old insight is deleted only if it is **still an added insight of this Recipe**
-        when the person presses Add; otherwise this one is added as an ordinary
-        insight and says the old one had already changed (``replaced = 'old_changed'``).
+        The old insight is deleted only if it is **still an added insight of this Recipe** (or
+        still an added general insight, for a general request) when the person presses Add;
+        otherwise this one is added as an ordinary insight and says the old one had already
+        changed (``replaced = 'old_changed'``).
         Either way the link is dropped, so a later take back and re-add never deletes
         anything a second time, and no copy of the old text stays on the row.
         """
@@ -1006,12 +1076,17 @@ class InsightsRepository(Repository):
             await self.db.execute(
                 "UPDATE knowledge_insights SET replaces_id = NULL WHERE id = ?", (insight_id,)
             )
-            if (
-                old is not None
-                and old["recipe_id"] == row["recipe_id"]
-                and old["confirmed"]
-                and not old["dismissed"]
-            ):
+            # Both general, or both of the same Recipe: said outright, so that a general
+            # request never depends on two NULLs comparing equal.
+            same_home = old is not None and (
+                (old["recipe_id"] is None and row["recipe_id"] is None)
+                or (
+                    old["recipe_id"] is not None
+                    and row["recipe_id"] is not None
+                    and old["recipe_id"] == row["recipe_id"]
+                )
+            )
+            if same_home and old is not None and old["confirmed"] and not old["dismissed"]:
                 await self.delete_in_transaction(row["replaces_id"])
                 replaced = "deleted"
             else:

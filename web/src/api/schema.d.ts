@@ -735,6 +735,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/knowledge/insight-deletions/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A proposal to delete a general insight
+         * @description What the chat's card reads. A Recipe's proposal is not here: 404.
+         */
+        get: operations["get_general_deletion_api_knowledge_insight_deletions__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/insight-deletions/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete the general insight an agent proposed deleting
+         * @description The card's Delete: a person's press. There is no tool for this.
+         */
+        post: operations["accept_general_deletion_api_knowledge_insight_deletions__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/insight-deletions/{proposal_id}/keep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep the general insight an agent proposed deleting
+         * @description The card's Keep: the insight stays exactly as it is.
+         */
+        post: operations["keep_general_deletion_api_knowledge_insight_deletions__proposal_id__keep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/knowledge/insights": {
         parameters: {
             query?: never;
@@ -3573,6 +3633,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[GeneralInsightDeletion] */
+        ApiResponse_GeneralInsightDeletion_: {
+            data?: components["schemas"]["GeneralInsightDeletion"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[GrinderListData] */
         ApiResponse_GrinderListData_: {
             data?: components["schemas"]["GrinderListData"] | null;
@@ -6062,6 +6130,37 @@ export interface components {
         };
         /** @enum {string} */
         gaggiclanker__review__reading__Verdict: "entries" | "as_intended" | "no_faults";
+        /**
+         * GeneralInsightDeletion
+         * @description A proposal to delete a general insight, as the card reads it.
+         *
+         *     ``scope_labels`` and ``reach`` describe the insight as it stands now, so they are empty and
+         *     ``None`` once it is gone.
+         */
+        GeneralInsightDeletion: {
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Id */
+            id: number;
+            /** Insight Id */
+            insight_id: number | null;
+            /** Insight Text */
+            insight_text: string;
+            /** Reach */
+            reach?: number | null;
+            /** Reason */
+            reason: string;
+            /** Scope Labels */
+            scope_labels?: string[];
+            /** Stale Cause */
+            stale_cause?: ("deleted" | "changed") | null;
+            /** Status */
+            status: string;
+            /** Thread Id */
+            thread_id: number;
+        };
         /** GrinderListData */
         GrinderListData: {
             /** Items */
@@ -6256,7 +6355,15 @@ export interface components {
             /** Reason */
             reason: string;
             /** Recipe Id */
-            recipe_id: number;
+            recipe_id?: number | null;
+            /**
+             * @description Why a stale proposal is stale: **the one place** that says it.
+             *
+             *     The context, the 409 and the card's read all take it from here. No insight left
+             *     (``insight_id`` is NULL) means it was deleted; one still there means its words changed
+             *     or it was taken back since the agent asked, and nothing was deleted.
+             */
+            readonly stale_cause: components["schemas"]["StaleCause"] | null;
             /** @default proposed */
             status: components["schemas"]["InsightDeletionStatus"];
             /** Thread Id */
@@ -9830,6 +9937,8 @@ export interface components {
         /** @enum {string} */
         SpreadMeasure: "shot_time_s" | "cup_first_drip_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "cup_flow_g_s" | "brew_flow_ml_s" | "rating";
         /** @enum {string} */
+        StaleCause: "deleted" | "changed";
+        /** @enum {string} */
         StandingState: "waiting" | "approved" | "on_machine" | "not_on_machine" | "declined" | "replaced";
         /** StarredBody */
         StarredBody: {
@@ -11799,6 +11908,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DocDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_general_deletion_api_knowledge_insight_deletions__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_GeneralInsightDeletion_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_general_deletion_api_knowledge_insight_deletions__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_GeneralInsightDeletion_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    keep_general_deletion_api_knowledge_insight_deletions__proposal_id__keep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_GeneralInsightDeletion_"];
                 };
             };
             /** @description Validation Error */

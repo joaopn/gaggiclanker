@@ -409,10 +409,14 @@ class ChatRepository(Repository):
                     and isinstance(content.get("insight_id"), int)
                     and "said" in content
                     and "scope_labels" in content
+                    # A general deletion's result carries the same three keys, and a proposal
+                    # id: it is no request.
+                    and "proposal_id" not in content
                 ):
                     asked[content["insight_id"]] = {
                         "text": content.get("text", ""),
                         "scope": content.get("scope") or {},
+                        "replaces_id": content.get("replaces_insight_id"),
                     }
         return asked
 

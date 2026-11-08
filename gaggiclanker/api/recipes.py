@@ -54,6 +54,7 @@ from gaggiclanker.api.deps import (
 )
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.insight_deletions import (
+    INSIGHT_CHANGED_SENTENCE,
     DeletionResult,
     InsightDeletionRefusal,
     InsightDeletionRow,
@@ -1574,10 +1575,7 @@ def _deletion_error(refusal: InsightDeletionRefusal, recipe_id: int, proposal_id
         return Conflict(
             f"The insight behind deletion {proposal_id} is no longer added",
             code="INSIGHT_NOT_ADDED",
-            details={
-                "field": "confirmed",
-                "message": "it was taken back since, so there is nothing left to delete",
-            },
+            details={"field": "confirmed", "message": INSIGHT_CHANGED_SENTENCE},
         )
     return NotFound(f"No insight deletion {proposal_id} in Recipe {recipe_id}")
 
