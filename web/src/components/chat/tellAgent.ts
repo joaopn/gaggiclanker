@@ -36,6 +36,19 @@ export function useChatThreadId(): number | null {
 }
 
 /**
+ * The Recipe the conversation on screen is about, or `null` for a General one.
+ *
+ * The scope picker on a general-insight card and under a message reads it: in a Recipe's
+ * conversation a general insight can be narrowed to that Recipe's own bean, grinder, roast,
+ * process or origin and nothing else. Provided by the Chat page.
+ */
+export const ChatRecipeContext = createContext<number | null>(null);
+
+export function useChatRecipeId(): number | null {
+  return useContext(ChatRecipeContext);
+}
+
+/**
  * A turn's text with its `<placeholders>` filled, in one pass: a name the person typed that
  * happens to contain another placeholder is never filled in a second time.
  */

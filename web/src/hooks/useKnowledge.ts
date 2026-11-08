@@ -17,6 +17,8 @@ import {
   getKnowledgeInsight,
   getKnowledgeInsights,
   getKnowledgeRules,
+  getScopeOptions,
+  getScopeReach,
   keepInsightDeletion,
   patchKnowledgeInsight,
   patchKnowledgeRule,
@@ -34,12 +36,19 @@ import type {
   KnowledgeInsightCreate,
   KnowledgeInsightListData,
   KnowledgeInsightPatch,
+  KnowledgeInsightScope,
   KnowledgeRule,
   KnowledgeRuleListData,
   KnowledgeRulePatch,
   KnowledgeSearchData,
+  ScopeOptionsData,
+  ScopeReachData,
 } from "@/api/types";
-import { invalidateChatThread, invalidateKnowledge } from "@/lib/invalidate";
+import {
+  invalidateChatThread,
+  invalidateChatTranscripts,
+  invalidateKnowledge,
+} from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -197,18 +206,29 @@ export function useKnowledgeInsight(
 export function useAnswerInsight(): UseMutationResult<
   KnowledgeInsight,
   Error,
-  { id: number; answer: "add" | "dismiss" | "take_back"; threadId?: number | null }
+  {
+    id: number;
+    answer: "add" | "dismiss" | "take_back";
+    threadId?: number | null;
+    /**
+     * A general request's Add: the words and the scope the person settled on, sent with the
+     * confirmation in one PATCH, so the row is never added as the agent worded it by accident.
+     */
+    edit?: { text: string; scope: KnowledgeInsightScope };
+  }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, answer }) =>
+    mutationFn: ({ id, answer, edit }) =>
       answer === "dismiss"
         ? dismissKnowledgeInsight(id)
-        : patchKnowledgeInsight(id, { confirmed: answer === "add" }),
+        : patchKnowledgeInsight(id, { ...edit, confirmed: answer === "add" }),
     onSuccess: (_insight, variables) =>
       toast.success(
         variables.answer === "add"
-          ? "Added — this Recipe's later conversations will be told this"
+          ? variables.edit
+            ? "Added — conversations about matching Recipes will be told this"
+            : "Added — this Recipe's later conversations will be told this"
           : variables.answer === "dismiss"
             ? "Dismissed — it will not be put in front of the model"
             : "Taken back — it will not be put in front of the model",
@@ -276,6 +296,50 @@ export function useAnswerInsightDeletion(): UseMutationResult<
   });
 }
 
+/** What the scope picker offers: a Recipe's own attributes with a Recipe, the archive's choices without. */
+export function useScopeOptions(recipeId: number | null): UseQueryResult<ScopeOptionsData, Error> {
+  return useQuery({
+    queryKey: queryKeys.knowledge.scopeOptions(recipeId),
+    queryFn: () => getScopeOptions(recipeId),
+  });
+}
+
+/** How many Recipes a scope applies to now: refreshed with every change to the scope. */
+export function useScopeReach(scope: KnowledgeInsightScope): UseQueryResult<ScopeReachData, Error> {
+  return useQuery({
+    queryKey: queryKeys.knowledge.scopeReach({ ...scope }),
+    queryFn: () => getScopeReach(scope),
+    // The previous number stays on screen while the next one is read, so a click does not flicker.
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * "Save as general insight": the person's own message kept, with the scope they chose.
+ *
+ * Invalidates the knowledge prefix (the Knowledge list, the Recipes' insights) and the
+ * conversation, whose message then says it was saved.
+ */
+export function useSaveMessageAsInsight(): UseMutationResult<
+  KnowledgeInsight,
+  Error,
+  { text: string; scope: KnowledgeInsightScope; messageId: number; threadId: number | null }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ text, scope, messageId }) =>
+      createKnowledgeInsight({ text, scope, from_message_id: messageId, confirmed: true }),
+    onSuccess: () => toast.success("Saved as a general insight"),
+    onError: (error) => toast.error(`Could not save it: ${error.message}`),
+    onSettled: (_data, _error, variables) => {
+      void invalidateKnowledge(queryClient);
+      if (variables.threadId !== null) {
+        void invalidateChatThread(queryClient, String(variables.threadId));
+      }
+    },
+  });
+}
+
 export function useCreateKnowledgeInsight(): UseMutationResult<
   KnowledgeInsight,
   Error,
@@ -314,6 +378,9 @@ export function usePatchKnowledgeInsight(): UseMutationResult<
     onError: (error) => toast.error(`Could not save the insight: ${error.message}`),
     onSettled: () => {
       void invalidateKnowledge(queryClient);
+      // A message says "Saved as general insight #N" from the insight; an edit or a delete here
+      // moves that line too.
+      void invalidateChatTranscripts(queryClient);
     },
   });
 }
@@ -330,6 +397,9 @@ export function useDeleteKnowledgeInsight(): UseMutationResult<
     onError: (error) => toast.error(`Could not delete the insight: ${error.message}`),
     onSettled: () => {
       void invalidateKnowledge(queryClient);
+      // A message says "Saved as general insight #N" from the insight; an edit or a delete here
+      // moves that line too.
+      void invalidateChatTranscripts(queryClient);
     },
   });
 }

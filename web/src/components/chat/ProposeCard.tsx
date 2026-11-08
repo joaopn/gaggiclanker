@@ -1,7 +1,17 @@
 import type { LucideIcon } from "lucide-react";
-import { FilePen, Gauge, Layers, Lightbulb, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import {
+  FilePen,
+  Gauge,
+  Globe,
+  Layers,
+  Lightbulb,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { ChatInsightCard } from "@/components/chat/ChatInsightCard";
+import { GeneralInsightRequestCard } from "@/components/chat/GeneralInsightRequestCard";
 import { InsightDeletionCard } from "@/components/chat/InsightDeletionCard";
 import { OutcomeCard } from "@/components/chat/OutcomeCard";
 import { SignatureRequestCard } from "@/components/chat/SignatureRequestCard";
@@ -31,7 +41,8 @@ export type Proposal = {
     | "insight"
     | "insight_deletion"
     | "outcome"
-    | "signature_request";
+    | "signature_request"
+    | "general_insight_request";
   label: string;
   detail: string;
   href: string;
@@ -46,6 +57,14 @@ export type Proposal = {
   deletion?: { insightId: number; text: string };
   /** A requested signature change: which request, and what the tool said until it is read. */
   signatureRequest?: { profileVersionId: number; profileLabel: string; changes: string[] };
+  /** A requested general insight: which, and what the tool said until the live row is read. */
+  generalRequest?: {
+    insightId: number;
+    text: string;
+    said: string;
+    scopeLabels: string[];
+    reach: number | null;
+  };
   /** A proposed grade: what the tool said, shown until the live row is read. */
   grade?: { version: string; outcome: string; countedShots: number };
   /** A proposed profile version: which draft, and the name the call gave it, if it gave one. */
@@ -200,6 +219,27 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
+  if (name === "request_general_insight") {
+    const insightId = output.insight_id;
+    if (insightId === undefined) return null;
+    const text = String(output.text ?? "");
+    return {
+      kind: "general_insight_request",
+      // "Asked for", not "saved": nothing is kept until the person presses Add on its card.
+      label: "A general insight",
+      detail: `${text} — waiting for you to add or dismiss it`,
+      href: "/knowledge",
+      icon: Globe,
+      generalRequest: {
+        insightId: Number(insightId),
+        text,
+        said: String(output.said ?? ""),
+        scopeLabels: Array.isArray(output.scope_labels) ? output.scope_labels.map(String) : [],
+        reach: typeof output.reach === "number" ? output.reach : null,
+      },
+    };
+  }
+
   if (name === "record_insight") {
     const insightId = output.insight_id;
     if (insightId === undefined) return null;
@@ -276,6 +316,10 @@ export function ProposeCard({ proposal }: { proposal: Proposal }) {
   }
   if (proposal.kind === "insight" && proposal.insightId !== undefined) {
     return <ChatInsightCard insightId={proposal.insightId} text={proposal.insightText ?? ""} />;
+  }
+  if (proposal.kind === "general_insight_request" && proposal.generalRequest) {
+    const { insightId, ...told } = proposal.generalRequest;
+    return <GeneralInsightRequestCard insightId={insightId} fallback={told} />;
   }
   if (
     proposal.kind === "insight_deletion" &&

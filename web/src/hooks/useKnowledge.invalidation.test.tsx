@@ -6,6 +6,7 @@ import {
   useAnswerInsightDeletion,
   useDeleteKnowledgeInsight,
   usePatchKnowledgeInsight,
+  useSaveMessageAsInsight,
 } from "@/hooks/useKnowledge";
 import { queryKeys } from "@/lib/queryKeys";
 import { insightDeletion, knowledgeInsight } from "@/test/knowledgeFixtures";
@@ -19,10 +20,12 @@ vi.mock("sonner", () => ({
 const {
   patchKnowledgeInsight,
   dismissKnowledgeInsight,
+  createKnowledgeInsight,
   deleteKnowledgeInsight,
   acceptInsightDeletion,
   keepInsightDeletion,
 } = vi.hoisted(() => ({
+  createKnowledgeInsight: vi.fn(),
   deleteKnowledgeInsight: vi.fn(),
   patchKnowledgeInsight: vi.fn(),
   dismissKnowledgeInsight: vi.fn(),
@@ -33,6 +36,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   patchKnowledgeInsight,
   dismissKnowledgeInsight,
+  createKnowledgeInsight,
   deleteKnowledgeInsight,
   acceptInsightDeletion,
   keepInsightDeletion,
@@ -43,6 +47,7 @@ beforeEach(() => {
   deleteKnowledgeInsight.mockResolvedValue({ deleted: true });
   acceptInsightDeletion.mockResolvedValue({ proposal: insightDeletion({ status: "deleted" }) });
   keepInsightDeletion.mockResolvedValue({ proposal: insightDeletion({ status: "kept" }) });
+  createKnowledgeInsight.mockResolvedValue(knowledgeInsight({ id: 12, confirmed: true }));
   patchKnowledgeInsight.mockResolvedValue(knowledgeInsight({ recipe_id: 3, general: false }));
   dismissKnowledgeInsight.mockResolvedValue(
     knowledgeInsight({ recipe_id: 3, general: false, dismissed: true }),
@@ -102,6 +107,65 @@ describe("answering a Recipe's insight", () => {
   });
 });
 
+describe("answering and saving a general insight", () => {
+  it("an Add with the person's edits is one PATCH carrying the words, the scope and the confirmation", async () => {
+    const { result } = renderHookWithQueryClient(() => useAnswerInsight());
+
+    await result.current.mutateAsync({
+      id: 4,
+      answer: "add",
+      edit: { text: "Reworded.", scope: { grinder_id: 2 } },
+    });
+
+    expect(patchKnowledgeInsight).toHaveBeenCalledTimes(1);
+    expect(patchKnowledgeInsight).toHaveBeenCalledWith(4, {
+      text: "Reworded.",
+      scope: { grinder_id: 2 },
+      confirmed: true,
+    });
+  });
+
+  it.each(["add", "dismiss"] as const)(
+    "%s invalidates the knowledge lists (the Recipe's insights among them) and the thread's messages",
+    async (answer) => {
+      const { result, queryClient } = renderHookWithQueryClient(() => useAnswerInsight());
+      const keys = spyOn(queryClient);
+
+      await result.current.mutateAsync({ id: 4, answer, threadId: 9 });
+
+      await waitFor(() => expect(keys.length).toBe(2));
+      expect(keys).toContainEqual(queryKeys.knowledge.all);
+      expect(keys).toContainEqual(queryKeys.chat.thread("9"));
+      // `knowledge` holds ["knowledge", "insights", {}] and ["knowledge", "insights", {recipe_id}].
+      expect(queryKeys.knowledge.insights({ recipe_id: 3 }).slice(0, 1)).toEqual(
+        queryKeys.knowledge.all,
+      );
+    },
+  );
+
+  it("a save from a message writes it from that message, confirmed, and reaches the same", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useSaveMessageAsInsight());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({
+      text: "Always rinse.",
+      scope: { grinder_id: 2 },
+      messageId: 31,
+      threadId: 9,
+    });
+
+    expect(createKnowledgeInsight).toHaveBeenCalledWith({
+      text: "Always rinse.",
+      scope: { grinder_id: 2 },
+      from_message_id: 31,
+      confirmed: true,
+    });
+    await waitFor(() => expect(keys.length).toBe(2));
+    expect(keys).toContainEqual(queryKeys.knowledge.all);
+    expect(keys).toContainEqual(queryKeys.chat.thread("9"));
+  });
+});
+
 describe("editing or deleting a Recipe's insight", () => {
   it("an edit reaches the knowledge prefix, which holds the Recipe's list and the Knowledge list", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => usePatchKnowledgeInsight());
@@ -109,8 +173,10 @@ describe("editing or deleting a Recipe's insight", () => {
 
     await result.current.mutateAsync({ id: 4, patch: { text: "Reworded." } });
 
-    await waitFor(() => expect(keys.length).toBe(1));
-    expect(keys).toEqual([queryKeys.knowledge.all]);
+    // And the open conversations, whose messages say "Saved as general insight #N" from it.
+    await waitFor(() => expect(keys.length).toBe(2));
+    expect(keys).toContainEqual(queryKeys.knowledge.all);
+    expect(keys).toContainEqual(["chat", "thread"]);
   });
 
   it("a delete reaches the same, and no Recipe or shot", async () => {
@@ -119,8 +185,9 @@ describe("editing or deleting a Recipe's insight", () => {
 
     await result.current.mutateAsync(4);
 
-    await waitFor(() => expect(keys.length).toBe(1));
-    expect(keys).toEqual([queryKeys.knowledge.all]);
+    await waitFor(() => expect(keys.length).toBe(2));
+    expect(keys).toContainEqual(queryKeys.knowledge.all);
+    expect(keys).toContainEqual(["chat", "thread"]);
     expect(keys.flat()).not.toContain("recipes");
   });
 });

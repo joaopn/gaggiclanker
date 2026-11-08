@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { KnowledgeInsightScope } from "@/api/types";
 import { InsightCard } from "@/components/knowledge/InsightCard";
 import { PatternsSection } from "@/components/knowledge/PatternsSection";
+import { ScopePicker, statedScope } from "@/components/knowledge/ScopePicker";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -27,8 +28,7 @@ export function InsightsTab() {
   const insights = useKnowledgeInsights();
   const create = useCreateKnowledgeInsight();
   const [text, setText] = useState("");
-  const [scope, setScope] = useState("{}");
-  const [problem, setProblem] = useState("");
+  const [scope, setScope] = useState<KnowledgeInsightScope>({});
   useQueryErrorToast(insights.error, "Could not load the insights");
 
   // Newest first, against the server's oldest-first order. That order is the
@@ -38,7 +38,6 @@ export function InsightsTab() {
   const items = [...(insights.data?.items ?? [])].reverse();
   const proposed = items.filter((insight) => !insight.confirmed);
   const confirmed = items.filter((insight) => insight.confirmed);
-  const keys = insights.data?.scope_keys ?? [];
 
   return (
     <div className="space-y-4">
@@ -49,31 +48,21 @@ export function InsightsTab() {
       <PatternsSection />
       <SectionCard
         title="Write one yourself"
-        description="Scope it with any of the keys below; an insight applies to a Recipe when every key it names matches. An empty scope is a claim about every shot you pull, so it should be rare."
+        description="Choose what it applies to; an insight applies to a Recipe when everything you choose matches. An empty choice is a claim about every shot you pull, so it should be rare."
       >
         <form
           className="space-y-2"
           onSubmit={async (event) => {
             event.preventDefault();
-            let parsed: KnowledgeInsightScope;
-            try {
-              parsed = JSON.parse(scope) as KnowledgeInsightScope;
-            } catch (error) {
-              // Parsed here rather than sent, so a stray comma is a message
-              // beside the box instead of a 400 from three layers away.
-              setProblem(error instanceof Error ? error.message : "that is not valid JSON");
-              return;
-            }
-            setProblem("");
             const saved = await attempt(() =>
               // Confirmed on the way in: the person writing it is the person who
               // would confirm it, and a form that makes you save and then press
               // confirm is a form with a bug in it.
-              create.mutateAsync({ scope: parsed, text, confirmed: true }),
+              create.mutateAsync({ scope: statedScope(scope), text, confirmed: true }),
             );
             if (saved) {
               setText("");
-              setScope("{}");
+              setScope({});
             }
           }}
         >
@@ -85,15 +74,7 @@ export function InsightsTab() {
             value={text}
             onChange={(event) => setText(event.target.value)}
           />
-          <textarea
-            className="h-16 w-full rounded-md border border-input bg-background p-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Scope"
-            data-testid="insight-scope-input"
-            value={scope}
-            onChange={(event) => setScope(event.target.value)}
-          />
-          <p className="text-muted-foreground text-xs">Scope keys: {keys.join(", ")}</p>
-          {problem ? <p className="text-status-bad-text text-xs">{problem}</p> : null}
+          <ScopePicker recipeId={null} value={scope} onChange={setScope} />
           <Button type="submit" size="sm" disabled={create.isPending || !text.trim()}>
             Save
           </Button>
@@ -113,7 +94,7 @@ export function InsightsTab() {
           {proposed.length > 0 ? (
             <SectionCard
               title="Waiting for you"
-              description="Agent-written insights the app could not place on a single Recipe: they fit none or several. Open the shots they were drawn from before you confirm — a claim with unchecked evidence is an opinion."
+              description="Agent-written insights the app could not place on a single Recipe (they fit none or several), and general insights an agent asked for in a conversation that you have not answered there. Open the shots they were drawn from before you confirm — a claim with unchecked evidence is an opinion."
             >
               <ul className="space-y-2" data-testid="proposed-insights">
                 {proposed.map((insight) => (

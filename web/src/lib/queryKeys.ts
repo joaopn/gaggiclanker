@@ -207,6 +207,14 @@ export const queryKeys = {
     /** One insight in whatever state it is: what a card in the chat reads. */
     insight: (id: string) => ["knowledge", "insight", id] as const,
     /**
+     * What the scope picker offers, and how many Recipes a scope reaches. Under `knowledge`
+     * because adding, deleting or editing an insight (or a Recipe or bean changing under it)
+     * moves both, and the one prefix refreshes them with the cards.
+     */
+    scopeOptions: (recipeId: number | null) =>
+      ["knowledge", "scope-options", recipeId ?? "archive"] as const,
+    scopeReach: (scope: Record<string, unknown>) => ["knowledge", "scope-reach", scope] as const,
+    /**
      * Every deletion an agent proposed for one Recipe's insights, waiting and
      * answered. Under `knowledge`, though the route is the Recipe's: a deletion is
      * answered by removing (or keeping) an insight, so everything that touches an

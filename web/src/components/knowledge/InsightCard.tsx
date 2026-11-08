@@ -83,7 +83,7 @@ export function InsightCard({
       {editing ? (
         <InsightEditForm insight={insight} onDone={() => setEditing(false)} />
       ) : (
-        <p className="mt-1.5 text-sm">{insight.text}</p>
+        <p className="mt-1.5 break-words text-sm">{insight.text}</p>
       )}
 
       {evidence.length > 0 ? (

@@ -1,8 +1,10 @@
 import { Loader2 } from "lucide-react";
 import type { ChatMessage, ChatRun } from "@/api/types";
 import { AnswerText } from "@/components/chat/markdown";
+import { SaveAsGeneralInsight } from "@/components/chat/SaveAsGeneralInsight";
 import { ToolTrace } from "@/components/chat/ToolTrace";
 import type { TraceEntry } from "@/hooks/useChat";
+import { isAutomaticTurn } from "@/lib/automaticTurns";
 import { answerLine } from "@/lib/chatUsage";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +36,9 @@ type Turn = {
   trace: TraceEntry[];
   usage?: Record<string, unknown> | null;
   runId?: number | null;
+  /** A person's message: its id, and the added insights still made from it. */
+  messageId?: number;
+  saved?: number[];
 };
 
 /** Fold the stored rows into the turns a reader sees. */
@@ -48,7 +53,14 @@ export function toTurns(messages: ChatMessage[]): Turn[] {
   for (const message of messages) {
     if (message.role === "user") {
       holder = null;
-      turns.push({ key: `m${message.id}`, role: "user", content: message.content, trace: [] });
+      turns.push({
+        key: `m${message.id}`,
+        role: "user",
+        content: message.content,
+        trace: [],
+        messageId: message.id,
+        saved: (message.saved_insights ?? []).map((item) => item.id),
+      });
       continue;
     }
     if (message.role === "assistant") {
@@ -132,7 +144,10 @@ export function ChatTranscript({ messages, runs, permissions, live }: ChatTransc
   return (
     <div className="space-y-4" data-testid="chat-transcript">
       {turns.map((turn) => (
-        <div key={turn.key} className={cn(turn.role === "user" ? "flex justify-end" : "")}>
+        <div
+          key={turn.key}
+          className={cn(turn.role === "user" ? "group flex flex-col items-end gap-1" : "")}
+        >
           <div
             className={cn(
               "max-w-full space-y-2",
@@ -155,6 +170,15 @@ export function ChatTranscript({ messages, runs, permissions, live }: ChatTransc
               <AnswerUsage usage={usageOfRun.get(turn.runId)} />
             ) : null}
           </div>
+          {turn.role === "user" &&
+          turn.messageId !== undefined &&
+          !isAutomaticTurn(turn.content) ? (
+            <SaveAsGeneralInsight
+              messageId={turn.messageId}
+              content={turn.content}
+              saved={turn.saved ?? []}
+            />
+          ) : null}
         </div>
       ))}
 

@@ -184,6 +184,9 @@ export type KnowledgeInsightListData = components["schemas"]["InsightListData"];
 export type KnowledgeInsightCreate = components["schemas"]["InsightCreate"];
 export type KnowledgeInsightPatch = components["schemas"]["InsightPatch"];
 export type KnowledgeInsightScope = components["schemas"]["InsightScope"];
+export type ScopeOptionsData = components["schemas"]["ScopeOptionsData"];
+export type ScopeOption = components["schemas"]["ScopeOption"];
+export type ScopeReachData = components["schemas"]["ScopeReachData"];
 
 /**
  * The three options a starting-point run answers with, decoded.

@@ -50,6 +50,7 @@ import type {
   KnowledgeInsightCreate,
   KnowledgeInsightListData,
   KnowledgeInsightPatch,
+  KnowledgeInsightScope,
   KnowledgeRule,
   KnowledgeRuleListData,
   KnowledgeRulePatch,
@@ -106,6 +107,8 @@ import type {
   RestoreApplyData,
   RestoreCheckData,
   RollbackWrite,
+  ScopeOptionsData,
+  ScopeReachData,
   SettingsMap,
   SettingsPatch,
   ShotDetailData,
@@ -1602,6 +1605,18 @@ export async function patchKnowledgeInsight(
     method: "PATCH",
     body: JSON.stringify(body),
   });
+}
+
+/** What the scope picker offers: a Recipe's own attributes, or the archive's choices. */
+export async function getScopeOptions(recipeId?: number | null): Promise<ScopeOptionsData> {
+  return fetchApi<ScopeOptionsData>(
+    `/knowledge/scope-options${queryString({ recipe_id: recipeId })}`,
+  );
+}
+
+/** How many Recipes a scope applies to now. Only the keys it names are sent. */
+export async function getScopeReach(scope: KnowledgeInsightScope): Promise<ScopeReachData> {
+  return fetchApi<ScopeReachData>(`/knowledge/scope-reach${queryString({ ...scope })}`);
 }
 
 export async function deleteKnowledgeInsight(id: number): Promise<{ deleted: boolean }> {

@@ -10,7 +10,11 @@ import {
   defaultFolderKey,
   folderKey,
 } from "@/components/chat/ConversationPicker";
-import { ChatThreadContext, TellAgentContext } from "@/components/chat/tellAgent";
+import {
+  ChatRecipeContext,
+  ChatThreadContext,
+  TellAgentContext,
+} from "@/components/chat/tellAgent";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -426,14 +430,16 @@ export function ChatPage() {
               <Skeleton className="h-32 w-full" />
             ) : (
               <ChatThreadContext.Provider value={selected}>
-                <TellAgentContext.Provider value={tellAgent}>
-                  <ChatTranscript
-                    messages={thread.data?.messages ?? []}
-                    runs={thread.data?.runs ?? []}
-                    permissions={permissions}
-                    live={live}
-                  />
-                </TellAgentContext.Provider>
+                <ChatRecipeContext.Provider value={thread.data?.thread.recipe_id ?? null}>
+                  <TellAgentContext.Provider value={tellAgent}>
+                    <ChatTranscript
+                      messages={thread.data?.messages ?? []}
+                      runs={thread.data?.runs ?? []}
+                      permissions={permissions}
+                      live={live}
+                    />
+                  </TellAgentContext.Provider>
+                </ChatRecipeContext.Provider>
               </ChatThreadContext.Provider>
             )}
             <div ref={scrollAnchor} />

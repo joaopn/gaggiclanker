@@ -15,7 +15,11 @@ const {
   createKnowledgeInsight,
   patchKnowledgeInsight,
   deleteKnowledgeInsight,
+  getScopeOptions,
+  getScopeReach,
 } = vi.hoisted(() => ({
+  getScopeOptions: vi.fn(),
+  getScopeReach: vi.fn(),
   getPatterns: vi.fn(),
   getKnowledgeInsights: vi.fn(),
   createKnowledgeInsight: vi.fn(),
@@ -29,6 +33,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   createKnowledgeInsight,
   patchKnowledgeInsight,
   deleteKnowledgeInsight,
+  getScopeOptions,
+  getScopeReach,
 }));
 
 const INSIGHTS = {
@@ -58,6 +64,18 @@ beforeEach(() => {
     ...patch,
   }));
   deleteKnowledgeInsight.mockResolvedValue({ deleted: true });
+  getScopeOptions.mockResolvedValue({
+    recipe: null,
+    beans: [{ id: 5, label: "Guji" }],
+    grinders: [
+      { id: 2, label: "Niche Zero" },
+      { id: 3, label: "Comandante" },
+    ],
+    roast_levels: [{ value: "light", label: "light" }],
+    processes: [{ value: "washed", label: "washed" }],
+    origins: [{ value: "Ethiopia", label: "Ethiopia" }],
+  });
+  getScopeReach.mockResolvedValue({ recipes: 3 });
 });
 
 describe("InsightsTab", () => {
@@ -143,14 +161,12 @@ describe("InsightsTab", () => {
     );
   });
 
-  it("writes one by hand, already confirmed", async () => {
+  it("writes one by hand, already confirmed, with the scope chosen in the picker", async () => {
     const user = setupUser();
     renderWithQueryClient(<InsightsTab />);
 
     await user.type(await screen.findByTestId("insight-text"), "The Niche drifts as it warms.");
-    const scope = screen.getByTestId("insight-scope-input");
-    await user.clear(scope);
-    await user.type(scope, '{{"grinder_id": 2}');
+    await user.selectOptions(await screen.findByLabelText("Grinder"), "Niche Zero");
     await user.click(screen.getAllByRole("button", { name: "Save" })[0]);
 
     await waitFor(() =>
@@ -162,18 +178,23 @@ describe("InsightsTab", () => {
     );
   });
 
-  it("reports a scope that is not JSON beside the box rather than sending it", async () => {
-    const user = setupUser();
+  it("has no JSON box: the picker names things and shows no id", async () => {
     renderWithQueryClient(<InsightsTab />);
 
-    await user.type(await screen.findByTestId("insight-text"), "Something.");
-    const scope = screen.getByTestId("insight-scope-input");
-    await user.clear(scope);
-    await user.type(scope, "not json");
-    await user.click(screen.getAllByRole("button", { name: "Save" })[0]);
+    expect(await screen.findByLabelText("Grinder")).toBeInTheDocument();
+    expect(screen.queryByTestId("insight-scope-input")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Scope")).not.toBeInTheDocument();
+    const picker = screen.getByTestId("scope-picker");
+    expect(picker).toHaveTextContent("Nothing chosen: every Recipe.");
+    expect(picker).not.toHaveTextContent(/grinder_id|bean_id/);
+  });
 
-    expect(createKnowledgeInsight).not.toHaveBeenCalled();
-    expect((await screen.findAllByText(/not valid JSON/i)).length).toBeGreaterThan(0);
+  it("keeps the warning that an empty scope applies to every shot", async () => {
+    renderWithQueryClient(<InsightsTab />);
+
+    expect(
+      await screen.findByText(/An empty choice is a claim about every shot you pull/),
+    ).toBeInTheDocument();
   });
 
   it("says so when nothing has been learned yet", async () => {
