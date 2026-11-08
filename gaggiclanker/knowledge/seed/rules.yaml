@@ -156,8 +156,9 @@ rules:
         Move the grinder in its own smallest meaningful step — one or two — and
         say which way in the grinder's units, never in microns. The step size
         and how far the dial can still go finer are the grinder's: read them
-        from its record and notes, and when the record does not say, ask
-        rather than assume a step or a free setting.
+        from the person's notes on the grinder, and when the notes do not say,
+        ask rather than assume a step or a free setting, and suggest writing
+        the answer in those notes so it is not asked again.
       min: 1
       max: 2
     unit: grinder_steps

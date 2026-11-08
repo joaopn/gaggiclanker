@@ -336,4 +336,7 @@ def test_the_roaster_s_temperature_outranks_every_roast_window() -> None:
 
 def test_a_grind_step_is_never_assumed() -> None:
     seed = {(rule.category, rule.key): rule.value["text"] for rule in load_seed_rules()}
-    assert "ask rather than assume a step" in seed[("increments", "grind")]
+    grind = seed[("increments", "grind")]
+    assert "notes on the grinder" in grind
+    assert "ask rather than assume a step" in grind
+    assert "suggest writing" in grind
