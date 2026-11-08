@@ -190,3 +190,29 @@ describe("InsightDeletionCard", () => {
     expect(insightDeletionFailure(new Error("the box fell over"))).toBe("the box fell over");
   });
 });
+
+describe("a Recipe proposal staled because its insight's words changed", () => {
+  it("says it was changed, not that the insight was removed", async () => {
+    getInsightDeletions.mockResolvedValue({
+      items: [insightDeletion({ status: "stale", insight_id: 7, stale_cause: "changed" })],
+    });
+    renderCard();
+
+    const decided = await screen.findByTestId("insight-deletion-decided");
+    expect(decided).toHaveTextContent("It was changed since the agent asked: nothing was deleted.");
+    expect(screen.getByTestId("insight-deletion-card")).not.toHaveTextContent(
+      "removed another way",
+    );
+  });
+
+  it("keeps today's sentence when the insight went another way", async () => {
+    getInsightDeletions.mockResolvedValue({
+      items: [insightDeletion({ status: "stale", insight_id: null, stale_cause: "deleted" })],
+    });
+    renderCard();
+
+    expect(await screen.findByTestId("insight-deletion-decided")).toHaveTextContent(
+      "Already gone: the insight was removed another way",
+    );
+  });
+});

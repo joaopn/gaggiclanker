@@ -11,6 +11,7 @@ import {
   ChatThreadContext,
   TellAgentContext,
 } from "@/components/chat/tellAgent";
+import { queryKeys } from "@/lib/queryKeys";
 import { knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
@@ -47,6 +48,8 @@ const FALLBACK: GeneralRequestFallback = {
   said: "never suggest going finer than 8 on the Niche, it chokes",
   scopeLabels: ["grinder Niche Zero"],
   reach: 4,
+  replacesId: null,
+  replacesText: "",
 };
 
 function row(overrides: Parameters<typeof knowledgeInsight>[0] = {}) {
@@ -401,6 +404,8 @@ describe("the dispatch", () => {
       said: FALLBACK.said,
       scopeLabels: ["grinder Niche Zero"],
       reach: 4,
+      replacesId: null,
+      replacesText: "",
     });
     expect(
       proposalFrom({
@@ -412,4 +417,191 @@ describe("the dispatch", () => {
       }),
     ).toBeNull();
   });
+});
+
+describe("a replacement", () => {
+  const OLD_ID = 7;
+  const OLD_TEXT = "Never go finer than 6 on the Niche Zero.";
+  const REPLACING: GeneralRequestFallback = {
+    ...FALLBACK,
+    replacesId: OLD_ID,
+    replacesText: OLD_TEXT,
+  };
+
+  function oldRow(overrides: Parameters<typeof knowledgeInsight>[0] = {}) {
+    return knowledgeInsight({
+      id: OLD_ID,
+      text: OLD_TEXT,
+      scope: { grinder_id: 2 },
+      source: "user",
+      recipe_id: null,
+      general: true,
+      confirmed: true,
+      ...overrides,
+    });
+  }
+
+  function serve(request: ReturnType<typeof row>, old: ReturnType<typeof oldRow> | Error) {
+    getKnowledgeInsight.mockImplementation(async (id: number) => {
+      if (id === OLD_ID) {
+        if (old instanceof Error) throw old;
+        return old;
+      }
+      return request;
+    });
+  }
+
+  function renderReplacing(fallback = REPLACING) {
+    return renderWithQueryClient(
+      <ChatThreadContext.Provider value={9}>
+        <ChatRecipeContext.Provider value={3}>
+          <GeneralInsightRequestCard insightId={31} fallback={fallback} />
+        </ChatRecipeContext.Provider>
+      </ChatThreadContext.Provider>,
+    );
+  }
+
+  it("says what it replaces, read live, and what Adding does, next to the reach", async () => {
+    serve(row({ replaces_id: OLD_ID, replaces_text: OLD_TEXT }), oldRow());
+    renderReplacing();
+
+    const line = await screen.findByTestId("general-request-replaces");
+    await waitFor(() =>
+      expect(line).toHaveTextContent(`Replaces #${OLD_ID} (your note; grinder Niche Zero):`),
+    );
+    expect(screen.getByTestId("general-request-replaces-text")).toHaveTextContent(OLD_TEXT);
+    const note = screen.getByTestId("general-request-note");
+    expect(note).toHaveTextContent(
+      `Adding it deletes #${OLD_ID} and tells every matching Recipe's conversation the new one.`,
+    );
+    await waitFor(() => expect(note).toHaveTextContent("Matches 4 Recipes now."));
+    expect(getKnowledgeInsight).toHaveBeenCalledWith(OLD_ID);
+  });
+
+  it("shows the words stored when it asked until the old insight is read, and the live words after", async () => {
+    getKnowledgeInsight.mockImplementation((id: number) =>
+      id === OLD_ID
+        ? new Promise(() => {})
+        : Promise.resolve(row({ replaces_id: OLD_ID, replaces_text: OLD_TEXT })),
+    );
+    renderReplacing();
+
+    expect(await screen.findByTestId("general-request-replaces-text")).toHaveTextContent(OLD_TEXT);
+  });
+
+  it("uses the live words when the old insight was edited since", async () => {
+    serve(
+      row({ replaces_id: OLD_ID, replaces_text: OLD_TEXT }),
+      oldRow({ text: "Never go finer than 7 on the Niche Zero." }),
+    );
+    renderReplacing();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("general-request-replaces-text")).toHaveTextContent(
+        "Never go finer than 7 on the Niche Zero.",
+      ),
+    );
+  });
+
+  it.each([
+    ["deleted on the Knowledge page", new ApiClientError("No insight 7", { status: 404 })],
+    ["taken back", oldRow({ confirmed: false })],
+    ["dismissed", oldRow({ dismissed: true })],
+    ["no longer general", oldRow({ recipe_id: 3, general: false })],
+  ])("says the old insight has changed or gone when it was %s", async (_case, old) => {
+    serve(row({ replaces_id: OLD_ID, replaces_text: OLD_TEXT }), old);
+    renderReplacing();
+
+    const gone = await screen.findByTestId("general-request-replaces-gone");
+    expect(gone).toHaveTextContent(
+      `#${OLD_ID} has changed or gone since: adding this will not delete anything.`,
+    );
+    expect(screen.queryByTestId("general-request-replaces")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add" })).toBeEnabled();
+  });
+
+  it("says so when the server has already cleared the link because the old one was deleted", async () => {
+    serve(row({ replaces_id: null, replaces_text: "", replaced: "old_changed" }), oldRow());
+    renderReplacing();
+
+    expect(await screen.findByTestId("general-request-replaces-gone")).toHaveTextContent(
+      `#${OLD_ID} has changed or gone since`,
+    );
+    // The old insight is not even read: nothing links to it any more.
+    expect(getKnowledgeInsight).not.toHaveBeenCalledWith(OLD_ID);
+  });
+
+  it("is quiet about replacing when it replaces nothing", async () => {
+    renderCard();
+
+    await screen.findByTestId("general-request-note");
+    expect(screen.queryByTestId("general-request-replaces")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("general-request-replaces-gone")).not.toBeInTheDocument();
+  });
+
+  it("once added says it replaced the old one", async () => {
+    getKnowledgeInsight.mockResolvedValue(row({ confirmed: true, replaced: "deleted" }));
+    renderReplacing();
+
+    expect(await screen.findByTestId("general-request-replaced")).toHaveTextContent(
+      `Replaced #${OLD_ID}`,
+    );
+  });
+
+  it("once added says when the old one had already changed or gone, so nothing was replaced", async () => {
+    getKnowledgeInsight.mockResolvedValue(row({ confirmed: true, replaced: "old_changed" }));
+    renderReplacing();
+
+    expect(await screen.findByTestId("general-request-replaced")).toHaveTextContent(
+      `#${OLD_ID} had already changed or gone, so nothing was replaced`,
+    );
+  });
+
+  it("an Add without a replacement says nothing about replacing", async () => {
+    getKnowledgeInsight.mockResolvedValue(row({ confirmed: true }));
+    renderCard();
+
+    await screen.findByTestId("general-request-text-live");
+    expect(screen.queryByTestId("general-request-replaced")).not.toBeInTheDocument();
+  });
+
+  it("reads the replacement out of the tool's result", () => {
+    const made = proposalFrom({
+      id: "t1",
+      name: "request_general_insight",
+      arguments: {},
+      ok: true,
+      content: JSON.stringify({
+        insight_id: 31,
+        text: FALLBACK.text,
+        said: FALLBACK.said,
+        scope: {},
+        scope_labels: [],
+        reach: 4,
+        replaces_insight_id: OLD_ID,
+        replaces_text: OLD_TEXT,
+      }),
+    });
+
+    expect(made?.generalRequest).toMatchObject({ replacesId: OLD_ID, replacesText: OLD_TEXT });
+  });
+});
+
+describe("the conversation it answers in", () => {
+  it.each(["Add", "Dismiss"])(
+    "%s refreshes the conversation the card is in, by its real thread id",
+    async (name) => {
+      const user = setupUser();
+      const { queryClient } = renderCard();
+      const spy = vi.spyOn(queryClient, "invalidateQueries");
+
+      await user.click(await screen.findByRole("button", { name }));
+
+      await waitFor(() =>
+        expect(spy).toHaveBeenCalledWith(
+          expect.objectContaining({ queryKey: queryKeys.chat.thread("9") }),
+        ),
+      );
+    },
+  );
 });

@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  useAnswerGeneralInsightDeletion,
   useAnswerInsight,
   useAnswerInsightDeletion,
   useDeleteKnowledgeInsight,
@@ -9,7 +10,11 @@ import {
   useSaveMessageAsInsight,
 } from "@/hooks/useKnowledge";
 import { queryKeys } from "@/lib/queryKeys";
-import { insightDeletion, knowledgeInsight } from "@/test/knowledgeFixtures";
+import {
+  generalInsightDeletion,
+  insightDeletion,
+  knowledgeInsight,
+} from "@/test/knowledgeFixtures";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -24,6 +29,8 @@ const {
   deleteKnowledgeInsight,
   acceptInsightDeletion,
   keepInsightDeletion,
+  acceptGeneralInsightDeletion,
+  keepGeneralInsightDeletion,
 } = vi.hoisted(() => ({
   createKnowledgeInsight: vi.fn(),
   deleteKnowledgeInsight: vi.fn(),
@@ -31,6 +38,8 @@ const {
   dismissKnowledgeInsight: vi.fn(),
   acceptInsightDeletion: vi.fn(),
   keepInsightDeletion: vi.fn(),
+  acceptGeneralInsightDeletion: vi.fn(),
+  keepGeneralInsightDeletion: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -40,6 +49,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   deleteKnowledgeInsight,
   acceptInsightDeletion,
   keepInsightDeletion,
+  acceptGeneralInsightDeletion,
+  keepGeneralInsightDeletion,
 }));
 
 beforeEach(() => {
@@ -47,6 +58,8 @@ beforeEach(() => {
   deleteKnowledgeInsight.mockResolvedValue({ deleted: true });
   acceptInsightDeletion.mockResolvedValue({ proposal: insightDeletion({ status: "deleted" }) });
   keepInsightDeletion.mockResolvedValue({ proposal: insightDeletion({ status: "kept" }) });
+  acceptGeneralInsightDeletion.mockResolvedValue(generalInsightDeletion({ status: "deleted" }));
+  keepGeneralInsightDeletion.mockResolvedValue(generalInsightDeletion({ status: "kept" }));
   createKnowledgeInsight.mockResolvedValue(knowledgeInsight({ id: 12, confirmed: true }));
   patchKnowledgeInsight.mockResolvedValue(knowledgeInsight({ recipe_id: 3, general: false }));
   dismissKnowledgeInsight.mockResolvedValue(
@@ -227,4 +240,75 @@ describe("answering an agent's proposed deletion", () => {
       14,
     ]);
   });
+});
+
+describe("answering a proposal to delete a general insight", () => {
+  it.each([
+    ["delete", acceptGeneralInsightDeletion, keepGeneralInsightDeletion],
+    ["keep", keepGeneralInsightDeletion, acceptGeneralInsightDeletion],
+  ] as const)(
+    "%s invalidates the knowledge prefix and the conversation's messages, and no Recipe or shot",
+    async (answer, call, other) => {
+      const { result, queryClient } = renderHookWithQueryClient(() =>
+        useAnswerGeneralInsightDeletion(),
+      );
+      const keys = spyOn(queryClient);
+
+      await result.current.mutateAsync({ proposalId: 12, answer, threadId: 14 });
+
+      await waitFor(() => expect(keys.length).toBe(2));
+      expect(keys).toContainEqual(queryKeys.knowledge.all);
+      expect(keys).toContainEqual(queryKeys.chat.thread("14"));
+      expect(keys.flat()).not.toContain("recipes");
+      expect(keys.flat()).not.toContain("shots");
+      expect(call).toHaveBeenCalledWith(12);
+      expect(other).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps everything it must refresh under the knowledge prefix", () => {
+    const prefix = queryKeys.knowledge.all;
+    // The knowledge insights list, every Recipe's insights, one insight (a request card), and the
+    // general proposal itself: one invalidation of the prefix reaches all four.
+    for (const key of [
+      queryKeys.knowledge.insights({}),
+      queryKeys.knowledge.insights({ recipe_id: 3 }),
+      queryKeys.knowledge.insight("7"),
+      queryKeys.knowledge.generalInsightDeletion(12),
+    ]) {
+      expect(key.slice(0, prefix.length)).toEqual(prefix);
+    }
+  });
+});
+
+describe("the Knowledge page's own edit or delete of a general insight", () => {
+  it.each([
+    ["edit", () => usePatchKnowledgeInsight(), { id: 7, patch: { text: "Reworded." } }],
+    ["delete", () => useDeleteKnowledgeInsight(), 7],
+  ] as const)(
+    "%s refreshes the general proposals and request cards on screen, and the open conversations",
+    async (_name, hook, variables) => {
+      const { result, queryClient } = renderHookWithQueryClient(hook as never);
+      queryClient.setQueryData(
+        queryKeys.knowledge.generalInsightDeletion(12),
+        generalInsightDeletion(),
+      );
+      queryClient.setQueryData(queryKeys.knowledge.insight("31"), knowledgeInsight({ id: 31 }));
+      queryClient.setQueryData(queryKeys.chat.thread("14"), { thread: {} });
+
+      await (result.current as { mutateAsync: (v: unknown) => Promise<unknown> }).mutateAsync(
+        variables,
+      );
+
+      await waitFor(() => {
+        expect(
+          queryClient.getQueryState(queryKeys.knowledge.generalInsightDeletion(12))?.isInvalidated,
+        ).toBe(true);
+        expect(queryClient.getQueryState(queryKeys.knowledge.insight("31"))?.isInvalidated).toBe(
+          true,
+        );
+        expect(queryClient.getQueryState(queryKeys.chat.thread("14"))?.isInvalidated).toBe(true);
+      });
+    },
+  );
 });

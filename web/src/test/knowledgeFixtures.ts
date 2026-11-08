@@ -1,4 +1,5 @@
 import type {
+  GeneralInsightDeletion,
   InsightDeletion,
   KnowledgeChunk,
   KnowledgeDoc,
@@ -107,6 +108,25 @@ export function insightDeletion(overrides: Partial<InsightDeletion> = {}): Insig
     stale_cause: null,
     created_at: "2026-10-03T09:00:00.000Z",
     decided_at: null,
+    ...overrides,
+  };
+}
+
+/** An agent's proposal to delete a general insight, waiting for the person. */
+export function generalInsightDeletion(
+  overrides: Partial<GeneralInsightDeletion> = {},
+): GeneralInsightDeletion {
+  return {
+    id: 12,
+    thread_id: 14,
+    insight_id: 7,
+    insight_text: "Never go finer than 8 on the Niche Zero: it chokes.",
+    reason: "The person said 7 is fine now.",
+    status: "proposed",
+    created_at: "2026-11-08T09:00:00.000Z",
+    decided_at: null,
+    scope_labels: ["grinder Niche Zero"],
+    reach: 4,
     ...overrides,
   };
 }

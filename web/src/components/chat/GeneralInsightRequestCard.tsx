@@ -6,6 +6,7 @@ import type { KnowledgeInsight, KnowledgeInsightScope } from "@/api/types";
 import { InlineMarkdown } from "@/components/chat/markdown";
 import { useChatRecipeId, useChatThreadId } from "@/components/chat/tellAgent";
 import {
+  reachSentence,
   recipesWords,
   ScopePicker,
   scopeLabels,
@@ -27,6 +28,9 @@ export type GeneralRequestFallback = {
   said: string;
   scopeLabels: string[];
   reach: number | null;
+  /** The general insight adding it deletes, and its words as they were when asked. */
+  replacesId: number | null;
+  replacesText: string;
 };
 
 /**
@@ -87,8 +91,10 @@ export function GeneralInsightRequestCard({
       </Shell>
     );
   }
-  if (row.confirmed) return <Added row={row} named={fallback.scopeLabels} />;
-  return <Waiting row={row} said={fallback.said} named={fallback.scopeLabels} />;
+  if (row.confirmed) return <Added row={row} named={fallback.scopeLabels} fallback={fallback} />;
+  return (
+    <Waiting row={row} said={fallback.said} named={fallback.scopeLabels} fallback={fallback} />
+  );
 }
 
 function Shell({
@@ -129,7 +135,17 @@ function sentenceOf(error: Error): string {
   return error instanceof ApiClientError ? error.sentence : error.message;
 }
 
-function Waiting({ row, said, named }: { row: KnowledgeInsight; said: string; named: string[] }) {
+function Waiting({
+  row,
+  said,
+  named,
+  fallback,
+}: {
+  row: KnowledgeInsight;
+  said: string;
+  named: string[];
+  fallback: GeneralRequestFallback;
+}) {
   const answer = useAnswerInsight();
   const threadId = useChatThreadId();
   const recipeId = useChatRecipeId();
@@ -169,9 +185,7 @@ function Waiting({ row, said, named }: { row: KnowledgeInsight; said: string; na
       <div className="mt-2">
         <ScopePicker recipeId={recipeId} value={scope} onChange={setScope} named={named} />
       </div>
-      <p className="mt-2 text-muted-foreground text-xs" data-testid="general-request-note">
-        Adding it tells every matching Recipe's conversation, from its next message.
-      </p>
+      <Replacing row={row} fallback={fallback} scope={scope} />
       <div className="mt-2 flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -201,7 +215,93 @@ function Waiting({ row, said, named }: { row: KnowledgeInsight; said: string; na
   );
 }
 
-function Added({ row, named }: { row: KnowledgeInsight; named: string[] }) {
+/** Whether an insight is still an added general one: the only kind adding a replacement deletes. */
+function stillAddedGeneral(old: KnowledgeInsight): boolean {
+  return old.recipe_id === null && old.confirmed && !old.dismissed;
+}
+
+/**
+ * What a replacement does, said above the buttons. Read live from the old insight by its number,
+ * falling back to the words stored when it was asked. When the old one has changed or gone, it
+ * says adding this will delete nothing, because that is what the Add will do.
+ */
+function Replacing({
+  row,
+  fallback,
+  scope,
+}: {
+  row: KnowledgeInsight;
+  fallback: GeneralRequestFallback;
+  scope: KnowledgeInsightScope;
+}) {
+  const recipeId = useChatRecipeId();
+  // The link is cleared when the old insight is deleted; the number is still the tool's.
+  const oldId = row.replaces_id ?? fallback.replacesId;
+  const linked = row.replaces_id !== null && row.replaces_id !== undefined;
+  const old = useKnowledgeInsight(linked ? (row.replaces_id ?? undefined) : undefined);
+  const options = useScopeOptions(recipeId);
+  const reach = useScopeReach(statedScope(scope));
+  if (oldId === null || oldId === undefined) {
+    return (
+      <p className="mt-2 text-muted-foreground text-xs" data-testid="general-request-note">
+        Adding it tells every matching Recipe's conversation, from its next message.
+      </p>
+    );
+  }
+  const gone =
+    !linked ||
+    (old.data !== undefined && !stillAddedGeneral(old.data)) ||
+    (old.error instanceof ApiClientError && old.error.status === 404);
+  if (gone) {
+    return (
+      <p
+        className="mt-2 break-words text-muted-foreground text-xs"
+        data-testid="general-request-replaces-gone"
+      >
+        #{oldId} has changed or gone since: adding this will not delete anything. Adding it tells
+        every matching Recipe's conversation the new one.
+      </p>
+    );
+  }
+  const live = old.data;
+  const labels = live ? scopeLabels(statedScope(live.scope), options.data, []) : [];
+  const who = live
+    ? [
+        live.pattern_run_id ? "from Find patterns" : live.source === "user" ? "your note" : null,
+        labels.length > 0 ? labels.join(" · ") : "every Recipe",
+      ]
+        .filter(Boolean)
+        .join("; ")
+    : "";
+  return (
+    <div className="mt-2 text-xs" data-testid="general-request-replaces">
+      <p className="break-words text-muted-foreground">
+        Replaces #{oldId}
+        {who ? ` (${who})` : ""}:
+      </p>
+      <p
+        className="mt-0.5 break-words rounded-md border border-border bg-muted/40 p-2 text-sm"
+        data-testid="general-request-replaces-text"
+      >
+        {live ? live.text : fallback.replacesText || row.replaces_text}
+      </p>
+      <p className="mt-1 break-words text-muted-foreground" data-testid="general-request-note">
+        Adding it deletes #{oldId} and tells every matching Recipe's conversation the new one.
+        {reach.data ? ` ${reachSentence(reach.data.recipes)}` : ""}
+      </p>
+    </div>
+  );
+}
+
+function Added({
+  row,
+  named,
+  fallback,
+}: {
+  row: KnowledgeInsight;
+  named: string[];
+  fallback: GeneralRequestFallback;
+}) {
   const recipeId = useChatRecipeId();
   const options = useScopeOptions(recipeId);
   const scope = statedScope(row.scope);
@@ -221,6 +321,16 @@ function Added({ row, named }: { row: KnowledgeInsight; named: string[] }) {
         >
           Applies to {labels.length > 0 ? labels.join(" · ") : "every Recipe"}
           {reach.data ? ` · matches ${recipesWords(reach.data.recipes)} now` : ""}
+        </p>
+      ) : null}
+      {row.replaced === "deleted" ? (
+        <p className="mt-1 text-sm" data-testid="general-request-replaced">
+          Replaced #{fallback.replacesId ?? "the old insight"}
+        </p>
+      ) : null}
+      {row.replaced === "old_changed" && fallback.replacesId !== null ? (
+        <p className="mt-1 text-sm" data-testid="general-request-replaced">
+          #{fallback.replacesId} had already changed or gone, so nothing was replaced
         </p>
       ) : null}
       <p className="mt-2 text-sm">

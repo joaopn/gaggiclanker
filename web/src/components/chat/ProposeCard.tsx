@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ChatInsightCard } from "@/components/chat/ChatInsightCard";
+import { GeneralInsightDeletionCard } from "@/components/chat/GeneralInsightDeletionCard";
 import { GeneralInsightRequestCard } from "@/components/chat/GeneralInsightRequestCard";
 import { InsightDeletionCard } from "@/components/chat/InsightDeletionCard";
 import { OutcomeCard } from "@/components/chat/OutcomeCard";
@@ -40,6 +41,7 @@ export type Proposal = {
     | "draft"
     | "insight"
     | "insight_deletion"
+    | "general_insight_deletion"
     | "outcome"
     | "signature_request"
     | "general_insight_request";
@@ -55,6 +57,14 @@ export type Proposal = {
   insightText?: string;
   /** A proposed deletion: which Recipe and insight, and its text until the live row is read. */
   deletion?: { insightId: number; text: string };
+  /** A proposed deletion of a general insight (no Recipe): its proposal, and what the tool said. */
+  generalDeletion?: {
+    insightId: number;
+    text: string;
+    said: string;
+    scopeLabels: string[];
+    reach: number | null;
+  };
   /** A requested signature change: which request, and what the tool said until it is read. */
   signatureRequest?: { profileVersionId: number; profileLabel: string; changes: string[] };
   /** A requested general insight: which, and what the tool said until the live row is read. */
@@ -64,6 +74,9 @@ export type Proposal = {
     said: string;
     scopeLabels: string[];
     reach: number | null;
+    /** The general insight adding it deletes, and its words as they were when asked. */
+    replacesId: number | null;
+    replacesText: string;
   };
   /** A proposed grade: what the tool said, shown until the live row is read. */
   grade?: { version: string; outcome: string; countedShots: number };
@@ -176,6 +189,29 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
+  if (name === "propose_insight_deletion" && output.general === true) {
+    const proposalId = output.proposal_id;
+    if (proposalId === undefined) return null;
+    const text = String(output.insight_text ?? "");
+    return {
+      kind: "general_insight_deletion",
+      // "Proposed", not "deleted": it stays, and is told to every matching Recipe's
+      // conversation, until the person presses Delete.
+      label: "Deleting a general insight",
+      detail: `${text} — waiting for you to delete or keep it`,
+      href: "/knowledge",
+      icon: Trash2,
+      proposalId: Number(proposalId),
+      generalDeletion: {
+        insightId: Number(output.insight_id ?? 0),
+        text,
+        said: String(output.said ?? ""),
+        scopeLabels: Array.isArray(output.scope_labels) ? output.scope_labels.map(String) : [],
+        reach: typeof output.reach === "number" ? output.reach : null,
+      },
+    };
+  }
+
   if (name === "propose_insight_deletion") {
     const proposalId = output.proposal_id;
     const recipeId = recipeIdOf(output);
@@ -236,6 +272,9 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
         said: String(output.said ?? ""),
         scopeLabels: Array.isArray(output.scope_labels) ? output.scope_labels.map(String) : [],
         reach: typeof output.reach === "number" ? output.reach : null,
+        replacesId:
+          typeof output.replaces_insight_id === "number" ? output.replaces_insight_id : null,
+        replacesText: String(output.replaces_text ?? ""),
       },
     };
   }
@@ -320,6 +359,18 @@ export function ProposeCard({ proposal }: { proposal: Proposal }) {
   if (proposal.kind === "general_insight_request" && proposal.generalRequest) {
     const { insightId, ...told } = proposal.generalRequest;
     return <GeneralInsightRequestCard insightId={insightId} fallback={told} />;
+  }
+  if (
+    proposal.kind === "general_insight_deletion" &&
+    proposal.proposalId &&
+    proposal.generalDeletion
+  ) {
+    return (
+      <GeneralInsightDeletionCard
+        proposalId={proposal.proposalId}
+        fallback={proposal.generalDeletion}
+      />
+    );
   }
   if (
     proposal.kind === "insight_deletion" &&

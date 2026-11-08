@@ -5,6 +5,7 @@ import { useChatThreadId } from "@/components/chat/tellAgent";
 import { Button } from "@/components/ui/button";
 import { useAnswerInsightDeletion, useInsightDeletions } from "@/hooks/useKnowledge";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
+import { staleWords } from "@/lib/insightDeletionWords";
 import { attempt } from "@/lib/mutations";
 import { formatTime } from "@/lib/shots";
 
@@ -163,7 +164,10 @@ function decidedWords(row: InsightDeletion): string {
     return "Kept: the insight stays as it was, and the agent is told you kept it.";
   }
   if (row.status === "stale") {
-    return "Already gone: the insight was removed another way, so there was nothing to delete.";
+    return staleWords(
+      row.stale_cause,
+      "Already gone: the insight was removed another way, so there was nothing to delete.",
+    );
   }
   return "A newer proposal for this insight replaced this one.";
 }

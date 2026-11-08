@@ -7,10 +7,12 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  acceptGeneralInsightDeletion,
   acceptInsightDeletion,
   createKnowledgeInsight,
   deleteKnowledgeInsight,
   dismissKnowledgeInsight,
+  getGeneralInsightDeletion,
   getInsightDeletions,
   getKnowledgeDoc,
   getKnowledgeDocs,
@@ -19,6 +21,7 @@ import {
   getKnowledgeRules,
   getScopeOptions,
   getScopeReach,
+  keepGeneralInsightDeletion,
   keepInsightDeletion,
   patchKnowledgeInsight,
   patchKnowledgeRule,
@@ -28,6 +31,7 @@ import {
   searchKnowledge,
 } from "@/api/client";
 import type {
+  GeneralInsightDeletion,
   InsightDeletionDecision,
   InsightDeletionListData,
   KnowledgeDocDetail,
@@ -284,6 +288,52 @@ export function useAnswerInsightDeletion(): UseMutationResult<
       toast.success(
         variables.answer === "delete"
           ? "Insight deleted"
+          : "Kept — the insight stays, and the agent is told",
+      ),
+    onError: (error) => toast.error(error.message),
+    onSettled: (_data, _error, variables) => {
+      void invalidateKnowledge(queryClient);
+      if (variables.threadId !== null && variables.threadId !== undefined) {
+        void invalidateChatThread(queryClient, String(variables.threadId));
+      }
+    },
+  });
+}
+
+/** One proposal to delete a general insight, in whatever state it is: what the chat's card reads. */
+export function useGeneralInsightDeletion(
+  proposalId: number | undefined,
+): UseQueryResult<GeneralInsightDeletion, Error> {
+  return useQuery({
+    queryKey: queryKeys.knowledge.generalInsightDeletion(proposalId),
+    queryFn: () => getGeneralInsightDeletion(proposalId as number),
+    enabled: proposalId !== undefined && Number.isFinite(proposalId),
+  });
+}
+
+/**
+ * Delete or keep the general insight an agent proposed deleting: the general card's buttons.
+ *
+ * The `knowledge` prefix holds the insight, the Knowledge list, every Recipe's insights (the
+ * general ones that apply are listed beside a Recipe's own), the proposal itself and the
+ * request cards; the conversation is invalidated too, because its card is drawn from the
+ * transcript. Nothing is sent to the agent: it is told at its next turn, from the record.
+ */
+export function useAnswerGeneralInsightDeletion(): UseMutationResult<
+  GeneralInsightDeletion,
+  Error,
+  { proposalId: number; answer: "delete" | "keep"; threadId?: number | null }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ proposalId, answer }) =>
+      answer === "delete"
+        ? acceptGeneralInsightDeletion(proposalId)
+        : keepGeneralInsightDeletion(proposalId),
+    onSuccess: (_result, variables) =>
+      toast.success(
+        variables.answer === "delete"
+          ? "General insight deleted"
           : "Kept — the insight stays, and the agent is told",
       ),
     onError: (error) => toast.error(error.message),

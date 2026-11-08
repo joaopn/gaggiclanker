@@ -221,6 +221,13 @@ export const queryKeys = {
      * insight (an Add that replaces one, the Recipe page's Delete) has to refresh
      * these cards too, and the one prefix does that.
      */
+    /**
+     * One proposal to delete a general insight (it has no Recipe). Under `knowledge` for the same
+     * reason: an Add that replaces the insight, the Knowledge page's edit or delete, and the
+     * card's own answer all have to refresh it.
+     */
+    generalInsightDeletion: (proposalId: number | undefined) =>
+      ["knowledge", "general-insight-deletion", proposalId ?? "none"] as const,
     insightDeletions: (recipeId: string, threadId?: number | null) =>
       ["knowledge", "insight-deletions", recipeId, threadId ?? "all"] as const,
     /**

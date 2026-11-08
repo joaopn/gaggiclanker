@@ -107,6 +107,8 @@ export type DraftSignatureRequest = components["schemas"]["DraftSignatureRequest
 export type InsightDeletion = components["schemas"]["InsightDeletionRow"];
 export type InsightDeletionListData = components["schemas"]["InsightDeletionListData"];
 export type InsightDeletionDecision = components["schemas"]["InsightDeletionDecision"];
+/** A proposal to delete a general insight: it belongs to no Recipe. */
+export type GeneralInsightDeletion = components["schemas"]["GeneralInsightDeletion"];
 export type PatternsData = components["schemas"]["PatternsData"];
 export type PatternRun = components["schemas"]["PatternRunRow"];
 export type PatternProposal = components["schemas"]["PatternProposalRow"];

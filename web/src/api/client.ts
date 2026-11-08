@@ -36,6 +36,7 @@ import type {
   DuplicateRequest,
   FlavorPicks,
   FlushData,
+  GeneralInsightDeletion,
   GrinderRow,
   GrinderWrite,
   HealthData,
@@ -1400,6 +1401,31 @@ export async function keepInsightDeletion(
   proposalId: number,
 ): Promise<InsightDeletionDecision> {
   return fetchApi<InsightDeletionDecision>(`/recipes/${id}/insight-deletions/${proposalId}/keep`, {
+    method: "POST",
+  });
+}
+
+/** What the general-deletion card reads: one proposal to delete a general insight. */
+export async function getGeneralInsightDeletion(
+  proposalId: number,
+): Promise<GeneralInsightDeletion> {
+  return fetchApi<GeneralInsightDeletion>(`/knowledge/insight-deletions/${proposalId}`);
+}
+
+/** Delete the general insight an agent proposed deleting. A person's press. */
+export async function acceptGeneralInsightDeletion(
+  proposalId: number,
+): Promise<GeneralInsightDeletion> {
+  return fetchApi<GeneralInsightDeletion>(`/knowledge/insight-deletions/${proposalId}/accept`, {
+    method: "POST",
+  });
+}
+
+/** Keep the general insight an agent proposed deleting. A person's press. */
+export async function keepGeneralInsightDeletion(
+  proposalId: number,
+): Promise<GeneralInsightDeletion> {
+  return fetchApi<GeneralInsightDeletion>(`/knowledge/insight-deletions/${proposalId}/keep`, {
     method: "POST",
   });
 }
