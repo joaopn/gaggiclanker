@@ -272,3 +272,68 @@ async def test_a_retired_rule_stays_in_an_older_archive_and_is_never_selected(
         repo, LIGHT_NATURAL, "classic", {"taste:sour_fermented.sour", "balance:sour"}
     )
     assert "high_altitude" not in selection.keys
+
+
+async def test_a_sour_cup_is_told_to_read_the_flow_before_adding_yield(db: Database) -> None:
+    """More yield through a puck that is giving way makes a sour cup thinner, not sweeter.
+
+    A dial-in where the grinder could not go finer went straight from "sour" to
+    "+5 g out" while puck flow rose and resistance fell through the decline: the
+    hierarchy and the sour rule both offered yield with no look at the flow. The
+    check is always selected beside the hierarchy, and both texts route through it.
+    """
+    repo = RulesRepository(db)
+    await seed_rules(repo)
+    selection = await select_rules(
+        repo, LIGHT_NATURAL, "classic", {"taste:sour_fermented.sour", "balance:sour"}
+    )
+    assert {"hierarchy", "rising_flow_before_yield", "sour"} <= set(selection.keys)
+    assert (
+        "rising_flow_before_yield"
+        in (await select_rules(repo, RecipeContext(), "unknown", set())).keys
+    )
+
+    texts = {rule.key: (rule.value or {}).get("text", "") for rule in selection.rules}
+    check = texts["rising_flow_before_yield"]
+    assert "resistance slope" in check and "20 %" in check
+    assert "flow-limited tail" in check and "bigger dose" in check
+    # Yield in the hierarchy is conditional on a steady flow, and points at the check.
+    assert "held roughly steady" in texts["hierarchy"]
+    assert "rising_flow_before_yield" in texts["hierarchy"]
+    # The sour rule no longer goes from "already fine" straight to yield.
+    assert "if it is already fine, add 5 g of yield" not in texts["sour"]
+    assert "do not add yield" in texts["sour"]
+
+
+async def test_puck_prep_is_never_given_instead_of_a_change(db: Database) -> None:
+    """The person's standing instruction: always offer a change, and judge prep separately.
+
+    It sorts first in its category, so it is read before the hierarchy that
+    names puck prep, and every rule that points at prep now says "beside a
+    change", never "instead".
+    """
+    repo = RulesRepository(db)
+    await seed_rules(repo)
+    selection = await select_rules(repo, RecipeContext(), "unknown", set())
+    dial_in = [rule.key for rule in selection.rules if rule.category == "dial_in_order"]
+    assert dial_in[0] == "always_propose_a_change"
+
+    seed = {(rule.category, rule.key): rule.value["text"] for rule in load_seed_rules()}
+    assert "always offer a change" in seed[("dial_in_order", "always_propose_a_change")]
+    assert "never one to give instead of it" in seed[("dial_in_order", "hierarchy")]
+    assert "never instead of one" in seed[("equipment_hints", "distribution_before_tamping")]
+    assert "still propose a change" in seed[("taste_to_suspect", "astringent")]
+
+
+def test_the_roaster_s_temperature_outranks_every_roast_window() -> None:
+    seed = {(rule.category, rule.key): rule.value["text"] for rule in load_seed_rules()}
+    for key in ("light", "medium_light", "medium", "medium_dark", "dark"):
+        assert (
+            "roaster states for this bean takes precedence" in seed[("temperature_by_roast", key)]
+        ), key
+    assert "roaster's stated temperature" in seed[("temperature_by_roast", "taste_adjustment")]
+
+
+def test_a_grind_step_is_never_assumed() -> None:
+    seed = {(rule.category, rule.key): rule.value["text"] for rule in load_seed_rules()}
+    assert "ask rather than assume a step" in seed[("increments", "grind")]

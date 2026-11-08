@@ -190,13 +190,15 @@ SIMILAR RECIPES ON THIS GRINDER (other beans)
 
 THE RULES THAT MATCH (planned style: bloom — the profile to fork (Library 18g))
 dial_in_order:
+  [always_propose_a_change] Whenever you say what to do next, always offer a change. Puck prep is never the answer in place of one: "pull another shot with better prep" is not a proposal. Give the best change the data supports, and say separately whether puck prep is a good explanation for the data, and why. This outranks any rule that points at puck prep.
   [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
-  [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency).
+  [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine and puck flow held roughly steady through the brew phases, but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out; when flow rose as the puck gave way, control the flow instead, see rising_flow_before_yield), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction, and the flow through the last phase), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency) — a reason to name beside a change from 1-4, never one to give instead of it. A variable that cannot move (the grinder already at its finest usable setting) is skipped; the next item still has to meet its own condition.
   [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Recipe version is to be able to say what a single change did.
+  [rising_flow_before_yield] Before adding yield for a sour shot, read the flow through the brew phases. If puck flow rises through the last phase (by more than about 20 %) while pressure holds or falls, or the resistance slope is clearly negative, the puck is giving way and the sourness comes from too little contact time. More yield then runs extra water through the weakened puck at high flow, and the cup gets thinner and harsher, not sweeter. Control the flow instead: a flow-limited tail, a steeper decline, or a bigger dose. Add yield only when the flow held roughly steady.
   [taste_is_ground_truth] The user's tasting notes outrank the telemetry. Sour, weak or fast means under-extracted; bitter, harsh or slow means over-extracted — whatever the curve looked like. Never contradict a recorded taste with a number.
 
 increments:
-  [grind] Move the grinder in its own smallest meaningful step — one or two — and say which way in the grinder's units, never in microns.
+  [grind] Move the grinder in its own smallest meaningful step — one or two — and say which way in the grinder's units, never in microns. The step size and how far the dial can still go finer are the grinder's: read them from its record and notes, and when the record does not say, ask rather than assume a step or a free setting.
   [preinfusion_flow] Adjust pre-infusion flow in 0.5 ml/s steps.
   [preinfusion_time] Adjust pre-infusion in 2-3 s steps.
   [pressure] Adjust pressure in 0.5-1 bar steps.
@@ -204,7 +206,7 @@ increments:
   [yield] Adjust yield in 5 g steps — about half a ratio point on a normal dose.
 
 temperature_by_roast:
-  [light] Light roasts extract at 94-96 °C: the cell structure is dense and needs the heat.
+  [light] Light roasts extract at 94-96 °C: the cell structure is dense and needs the heat. A brew temperature the roaster states for this bean takes precedence over this window.
 
 pressure_matrix:
   [compression_floor] A puck compresses at about 4 bar, so pre-infusion belongs below that: pressure applied before the bed has set is what opens a channel.
@@ -225,7 +227,7 @@ profile_design_defaults:
 
 equipment_hints:
   [conical] Conical burrs make more fines: run 7-8 bar with a gentle ramp and a longer pre-infusion, and expect a tighter bed at the same setting than a flat burr would give.
-  [distribution_before_tamping] Distribution matters more than tamping, and tamping more than pressure. Almost every inconsistency that survives a grind change is a distribution problem.
+  [distribution_before_tamping] Distribution matters more than tamping, and tamping more than pressure. Almost every inconsistency that survives a grind change is a distribution problem: say so beside the change you propose, never instead of one.
   [dose_is_the_basket] Dose to the basket's rating plus or minus 1 g. Underdosing leaves headspace, water pools above the puck and channels; a deeper basket wants a coarser grind for the same time.
 
 safety_bounds:

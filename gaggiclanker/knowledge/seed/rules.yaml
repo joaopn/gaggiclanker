@@ -54,16 +54,58 @@ rules:
       text: >-
         Work the variables in order and stop at the first that explains the
         problem: 1 grind (shot time more than 5 s off target, or clearly sour or
-        bitter), 2 dose and yield (time is fine but the taste is not — sour or
-        salty means +5 g out, bitter or drying means -5 g out), 3 temperature
-        (flat, sharp, or no sweetness), 4 pressure and profile (character rather
-        than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot
-        inconsistency).
+        bitter), 2 dose and yield (time is fine and puck flow held roughly
+        steady through the brew phases, but the taste is not — sour or salty
+        means +5 g out, bitter or drying means -5 g out; when flow rose as the
+        puck gave way, control the flow instead, see rising_flow_before_yield),
+        3 temperature (flat, sharp, or no sweetness), 4 pressure and profile
+        (character rather than extraction, and the flow through the last
+        phase), 5 puck prep (sour AND bitter together, or shot-to-shot
+        inconsistency) — a reason to name beside a change from 1-4, never one
+        to give instead of it. A variable that cannot move (the grinder already
+        at its finest usable setting) is skipped; the next item still has to
+        meet its own condition.
       order: [grind, yield, temperature, pressure, puck_prep]
     unit: none
     confidence: expert
     source: gaggimate-barista
     source_ref: "gaggimate-mcp.md §7 — Hierarchy"
+
+  - category: dial_in_order
+    key: rising_flow_before_yield
+    applies: {}
+    value:
+      text: >-
+        Before adding yield for a sour shot, read the flow through the brew
+        phases. If puck flow rises through the last phase (by more than about
+        20 %) while pressure holds or falls, or the resistance slope is clearly
+        negative, the puck is giving way and the sourness comes from too little
+        contact time. More yield then runs extra water through the weakened
+        puck at high flow, and the cup gets thinner and harsher, not sweeter.
+        Control the flow instead: a flow-limited tail, a steeper decline, or a
+        bigger dose. Add yield only when the flow held roughly steady.
+      flow_rise_fraction: 0.2
+      do_not: [yield_up]
+      fix: [flow_limited_tail, steeper_decline, dose_up]
+    unit: none
+    confidence: anecdotal
+    source: the person using gaggiclanker
+    source_ref: "a dial-in the person corrected: sour, puck giving way, more yield declined"
+
+  - category: dial_in_order
+    key: always_propose_a_change
+    applies: {}
+    value:
+      text: >-
+        Whenever you say what to do next, always offer a change. Puck prep is
+        never the answer in place of one: "pull another shot with better prep"
+        is not a proposal. Give the best change the data supports, and say
+        separately whether puck prep is a good explanation for the data, and
+        why. This outranks any rule that points at puck prep.
+    unit: none
+    confidence: learned
+    source: the person using gaggiclanker
+    source_ref: "their standing instruction for every dial-in"
 
   - category: dial_in_order
     key: one_variable_at_a_time
@@ -112,7 +154,10 @@ rules:
     value:
       text: >-
         Move the grinder in its own smallest meaningful step — one or two — and
-        say which way in the grinder's units, never in microns.
+        say which way in the grinder's units, never in microns. The step size
+        and how far the dial can still go finer are the grinder's: read them
+        from its record and notes, and when the record does not say, ask
+        rather than assume a step or a free setting.
       min: 1
       max: 2
     unit: grinder_steps
@@ -184,7 +229,10 @@ rules:
     key: light
     applies: { roast_level: [light] }
     value:
-      text: "Light roasts extract at 94-96 °C: the cell structure is dense and needs the heat."
+      text: >-
+        Light roasts extract at 94-96 °C: the cell structure is dense and needs
+        the heat. A brew temperature the roaster states for this bean takes
+        precedence over this window.
       min_c: 94
       max_c: 96
     unit: c
@@ -196,7 +244,10 @@ rules:
     key: medium_light
     applies: { roast_level: [medium-light] }
     value:
-      text: "Medium-light roasts sit at 93-95 °C, between the light and medium windows."
+      text: >-
+        Medium-light roasts sit at 93-95 °C, between the light and medium
+        windows. A brew temperature the roaster states for this bean takes
+        precedence over this window.
       min_c: 93
       max_c: 95
     unit: c
@@ -208,7 +259,9 @@ rules:
     key: medium
     applies: { roast_level: [medium] }
     value:
-      text: "Medium roasts extract at 92-94 °C."
+      text: >-
+        Medium roasts extract at 92-94 °C. A brew temperature the roaster
+        states for this bean takes precedence over this window.
       min_c: 92
       max_c: 94
     unit: c
@@ -220,7 +273,10 @@ rules:
     key: medium_dark
     applies: { roast_level: [medium-dark] }
     value:
-      text: "Medium-dark roasts extract at 90-92 °C; above that the bitters come out early."
+      text: >-
+        Medium-dark roasts extract at 90-92 °C; above that the bitters come out
+        early. A brew temperature the roaster states for this bean takes
+        precedence over this window.
       min_c: 90
       max_c: 92
     unit: c
@@ -232,7 +288,10 @@ rules:
     key: dark
     applies: { roast_level: [dark] }
     value:
-      text: "Dark roasts extract at 88-90 °C: the cell walls are already broken down."
+      text: >-
+        Dark roasts extract at 88-90 °C: the cell walls are already broken
+        down. A brew temperature the roaster states for this bean takes
+        precedence over this window.
       min_c: 88
       max_c: 90
     unit: c
@@ -260,7 +319,8 @@ rules:
                         "taste:other.chemical.bitter", "taste:roasted.burnt"] }
     value:
       text: >-
-        Within the roast's window, sour moves the temperature up 1-2 °C and
+        From the roaster's stated temperature when the bean has one, otherwise
+        within the roast's window, sour moves the temperature up 1-2 °C and
         bitter or astringent moves it down 1-2 °C — after grind and yield have
         been ruled out, not before.
       sour_offset_c: 1.5
@@ -660,10 +720,13 @@ rules:
     value:
       text: >-
         Sour: under-extracted. Expect high flow, an early first drip, or a low
-        temperature. Grind finer first; if it is already fine, add 5 g of yield
-        and a degree of heat.
-      suspects: [flow_high, first_drip_early, temperature_low]
-      fix: [grind_finer, yield_up, temperature_up]
+        temperature. Grind finer first. If the grind cannot go finer, read the
+        flow through the brew phases before anything else: when puck flow rose
+        as the puck gave way, slow it (a flow-limited tail, a steeper decline,
+        or a bigger dose) and do not add yield; when it held steady, add 5 g of
+        yield; a degree of heat after either.
+      suspects: [flow_high, flow_rising, first_drip_early, temperature_low]
+      fix: [grind_finer, flow_control, dose_up, yield_up, temperature_up]
     unit: none
     confidence: expert
     source: gaggimate-barista
@@ -706,7 +769,9 @@ rules:
     value:
       text: >-
         Astringent and drying: a pressure spike followed by a drop, erratic flow,
-        or fines migration. Look at puck prep before touching the grind.
+        or fines migration. Suspect puck prep before the grind, say whether it
+        explains the data, and still propose a change that leaves the grind
+        alone (a longer or gentler pre-infusion, a softer ramp).
       suspects: [pressure_spike_then_drop, flow_erratic, fines]
     unit: none
     confidence: expert
@@ -1092,7 +1157,8 @@ rules:
       text: >-
         Distribution matters more than tamping, and tamping more than pressure.
         Almost every inconsistency that survives a grind change is a
-        distribution problem.
+        distribution problem: say so beside the change you propose, never
+        instead of one.
       order: [distribution, tamping, pressure]
     unit: none
     confidence: expert
