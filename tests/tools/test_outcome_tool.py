@@ -10,9 +10,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from gaggiclanker.chat.context import opening_context
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
-from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
-from gaggiclanker.db.repos.recipe_proposals import RecipeProposalsRepository
+from gaggiclanker.db.repos.outcome_proposals import (
+    OutcomeProposalsRepository,
+    OutcomeProposalWrite,
+)
+from gaggiclanker.db.repos.recipe_proposals import ProposalWrite, RecipeProposalsRepository
 from gaggiclanker.db.repos.recipes import RecipesRepository, RecipeVersionPatch, RecipeVersionRow
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import ToolContext, registry
@@ -294,3 +298,90 @@ class TestTheNextChangeAfterAGrade:
         await call(ctx, "propose_outcome", outcome="held", note=NOTE)
         drafted = await call(ctx, "draft_profile", **arguments)
         assert drafted["status"] == "draft"
+
+
+def test_the_description_says_when_a_grade_is_proposed_again() -> None:
+    spec = registry.get("propose_outcome")
+    assert spec is not None
+    description = " ".join(spec.description.split())
+
+    assert "Once the person has answered, call it again only when shots were counted" in description
+    assert "accepting it replaces that outcome" in description
+
+
+async def _recorded_inconclusive_then_two_more_shots(archive: Fixture) -> RecipeVersionRow:
+    version = await _predicted_version(archive, shots=1)
+    grades = OutcomeProposalsRepository(archive.db)
+    first = await grades.create(
+        archive.recipe_id,
+        version.id,
+        OutcomeProposalWrite.model_validate({"outcome": "inconclusive", "note": NOTE}),
+    )
+    assert first.proposal is not None
+    assert (await grades.accept(archive.recipe_id, first.proposal.id)).refused is None
+    recipes = RecipesRepository(archive.db)
+    for number in range(2):
+        shot_id = await make_shot(archive.db, f"0008{number:02d}")
+        assert await recipes.assign_shot(shot_id, version.id)
+        await JudgementsRepository(archive.db).upsert(
+            shot_id, JudgementWrite.model_validate({"rating": 4})
+        )
+    return version
+
+
+async def test_a_grade_again_on_a_recorded_outcome_is_not_recorded_by_accepting_a_version(
+    archive: Fixture, settings: SettingsService
+) -> None:
+    """The real path: the outcome is recorded, so the next version's accept leaves it alone."""
+    version = await _recorded_inconclusive_then_two_more_shots(archive)
+    ctx = _in_version(archive, settings, version)
+
+    data = await call(ctx, "propose_outcome", outcome="held", note=NOTE)
+
+    # The tool says so, in the vocabulary's words, and the context says so too.
+    assert "inconclusive as they recorded it" in data["note"]
+    assert "does not record this grade" in data["note"]
+    assert "accepting that version records this grade" not in data["note"]
+    context = await opening_context(
+        archive.db, ToolScope.for_thread(archive.recipe_id, version.id), thread_id=None
+    )
+    assert "A GRADE YOU PROPOSED IS WAITING FOR THE PERSON" in context
+    assert "does not record this grade" in context
+    assert "accepting that version records this grade" not in context
+
+    # The next version can be proposed (the outcome is recorded) and accepted.
+    proposals = RecipeProposalsRepository(archive.db)
+    made = await proposals.create(
+        archive.recipe_id,
+        ProposalWrite(
+            patch=RecipeVersionPatch(grind_setting="20"),
+            reason="one click finer, chasing the sourness out",
+            prediction="Compared to the last version: two seconds longer and less sour.",
+        ),
+    )
+    assert made.proposal is not None
+    assert await proposals.records_a_grade(made.proposal) is False
+    accepted = await proposals.accept(archive.recipe_id, made.proposal.id)
+    assert accepted.refused is None
+
+    recorded = await RecipesRepository(archive.db).get_version(version.id)
+    assert recorded is not None and recorded.outcome == "inconclusive"
+    waiting = await OutcomeProposalsRepository(archive.db).waiting_for_version(version.id)
+    assert waiting is not None and waiting.outcome == "held"
+
+
+async def test_an_open_outcome_still_says_accepting_a_version_records_the_grade(
+    archive: Fixture, settings: SettingsService
+) -> None:
+    """The other half: the promise holds, and is made, only while the outcome is open."""
+    version = await _predicted_version(archive, shots=1)
+    ctx = _in_version(archive, settings, version)
+
+    data = await call(ctx, "propose_outcome", outcome="held", note=NOTE)
+
+    assert "accepting that version records this grade" in data["note"]
+    assert "does not record this grade" not in data["note"]
+    context = await opening_context(
+        archive.db, ToolScope.for_thread(archive.recipe_id, version.id), thread_id=None
+    )
+    assert "accepting that version records this grade" in context

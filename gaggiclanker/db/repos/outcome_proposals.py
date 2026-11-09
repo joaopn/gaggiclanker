@@ -134,6 +134,15 @@ class OutcomeProposalRow(BaseModel):
     #: beside a waiting grade so a card that disagrees with the Recipe page says so.
     version_outcome: VersionOutcome | None = None
     version_outcome_note: str = ""
+    #: How many counted shots that outcome was recorded on; ``None`` when none is recorded or
+    #: the count is not known.
+    version_outcome_counted_shots: int | None = None
+    #: Whether the version states a prediction: one half of the rule for recording an outcome by
+    #: hand (the other is a counted shot), so a card can offer exactly what the server accepts.
+    version_has_prediction: bool = False
+    #: No proposal of the same version has a higher id, whatever its status. The one card a
+    #: screen may offer to change the version's outcome from.
+    newest_for_version: bool = False
     created_at: str
     decided_at: str | None = None
 
@@ -155,6 +164,11 @@ _SELECT = f"""
            {label_sql("v")} AS version_label,
            v.outcome AS version_outcome,
            v.outcome_note AS version_outcome_note,
+           v.outcome_counted_shots AS version_outcome_counted_shots,
+           (v.prediction <> '') AS version_has_prediction,
+           NOT EXISTS (SELECT 1 FROM recipe_outcome_proposals newer
+                        WHERE newer.recipe_version_id = p.recipe_version_id
+                          AND newer.id > p.id) AS newest_for_version,
            (SELECT COUNT(*) FROM shots s
               LEFT JOIN shot_judgements j ON j.shot_id = s.id
               LEFT JOIN device_shot_notes n ON n.shot_id = s.id
@@ -325,6 +339,9 @@ class OutcomeProposalsRepository(Repository):
                 recipe_id,
                 proposal.recipe_version_id,
                 VersionOutcomeWrite(outcome=outcome, note=proposal.note if note is None else note),
+                # An accepted card records what it was written on; another grade is the
+                # person's own, on the shots counted now.
+                counted_shots=proposal.counted_shots if change is None else None,
             )
             if written.refused is not None:
                 return OutcomeResult(refused=_refusal_of(written.refused), proposal=proposal)
@@ -355,6 +372,7 @@ class OutcomeProposalsRepository(Repository):
             proposal.recipe_id,
             proposal.recipe_version_id,
             VersionOutcomeWrite(outcome=proposal.outcome, note=proposal.note),
+            counted_shots=proposal.counted_shots,
         )
         if written.refused is not None:
             return OutcomeResult(refused=_refusal_of(written.refused), proposal=proposal)

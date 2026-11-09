@@ -6950,6 +6950,11 @@ export interface components {
             decision_note: string;
             /** Id */
             id: number;
+            /**
+             * Newest For Version
+             * @default false
+             */
+            newest_for_version: boolean;
             /** Note */
             note: string;
             outcome: components["schemas"]["VersionOutcome"];
@@ -6962,9 +6967,16 @@ export interface components {
             status: components["schemas"]["OutcomeProposalStatus"];
             /** Thread Id */
             thread_id?: number | null;
+            /**
+             * Version Has Prediction
+             * @default false
+             */
+            version_has_prediction: boolean;
             /** Version Label */
             version_label?: string | null;
             version_outcome?: components["schemas"]["VersionOutcome"] | null;
+            /** Version Outcome Counted Shots */
+            version_outcome_counted_shots?: number | null;
             /**
              * Version Outcome Note
              * @default
@@ -8543,6 +8555,8 @@ export interface components {
             outcome?: components["schemas"]["VersionOutcome"] | null;
             /** Outcome At */
             outcome_at?: string | null;
+            /** Outcome Counted Shots */
+            outcome_counted_shots?: number | null;
             /**
              * Outcome Note
              * @default

@@ -451,3 +451,42 @@ class TestTheNextVersionCardSaysItRecordsTheGrade:
         assert error(response)["code"] == "PROPOSAL_GRADE_UNRECORDABLE"
         message = error(response)["details"]["message"]
         assert "is rated any more" in message and "a discarded shot does not count" in message
+
+
+class TestTheCountOnTheRoutes:
+    async def test_the_hand_route_stores_the_count_and_the_version_routes_serve_it(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        recipe_id, version_id = await _graded_recipe(client, app, bean_id, shots=2)
+        before = data(await client.get(f"/api/recipes/{recipe_id}"))
+        assert before["versions"][0]["version"]["outcome_counted_shots"] is None
+
+        put = await client.put(
+            f"/api/recipes/{recipe_id}/versions/{version_id}/outcome",
+            json={"outcome": "inconclusive", "note": "two shots"},
+        )
+
+        assert put.status_code == 200, put.text
+        assert data(put)["outcome_counted_shots"] == 2
+        after = data(await client.get(f"/api/recipes/{recipe_id}"))
+        assert after["versions"][0]["version"]["outcome_counted_shots"] == 2
+        cleared = await client.delete(f"/api/recipes/{recipe_id}/versions/{version_id}/outcome")
+        assert data(cleared)["outcome_counted_shots"] is None
+
+    async def test_the_card_list_serves_the_count_and_which_card_is_newest(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        recipe_id, version_id = await _graded_recipe(client, app, bean_id, shots=1)
+        first = await _propose(app, recipe_id, version_id, "inconclusive")
+        accepted = await client.post(_url(recipe_id, first, "accept"))
+        assert accepted.status_code == 200, accepted.text
+        second = await _propose(app, recipe_id, version_id, "held")
+
+        listed = data(await client.get(f"/api/recipes/{recipe_id}/outcome-proposals"))["items"]
+
+        by_id = {card["id"]: card for card in listed}
+        assert by_id[first]["version_outcome_counted_shots"] == 1
+        assert (by_id[first]["newest_for_version"], by_id[second]["newest_for_version"]) == (
+            False,
+            True,
+        )

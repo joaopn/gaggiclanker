@@ -19,6 +19,9 @@ from tests.test_restore_check import ROUTE, upload
 
 NOW = datetime(2026, 11, 8, 12, 0, 0, tzinfo=UTC)
 
+#: What this step must produce, now that a later step moved the schema file on.
+LEVEL_ELEVEN = schema.describe_sql(frozen_schema_sql(11))
+
 STATUSES = ("proposed", "deleted", "kept", "stale", "superseded")
 REASON = "The shots no longer support it at all."
 
@@ -75,7 +78,7 @@ def test_every_row_is_carried_with_its_id_and_the_column_now_takes_null(tmp_path
     before.close()
     assert [row[6] for row in kept] == list(STATUSES[:4])
 
-    report = upgrade_database_file(path, tmp_path, steps=STEPS[:11], now=NOW)
+    report = upgrade_database_file(path, tmp_path, steps=STEPS[:11], expected=LEVEL_ELEVEN, now=NOW)
 
     assert report is not None and (report.from_level, report.to_level) == (10, 11)
     assert report.steps[0].counts == {"recipe_insight_deletions": 4}

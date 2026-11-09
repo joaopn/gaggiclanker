@@ -75,6 +75,7 @@ from gaggiclanker.domain.vocab import (
     VERSION_OUTCOMES,
     Balance,
     ShotLabel,
+    outcome_label,
 )
 from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -1709,9 +1710,12 @@ class ProposeOutcomeOutput(_Model):
         "was. Refused when the version has no prediction (there is nothing to grade) or no "
         "rated shot (a discarded shot does not count, whatever its stars). Call it at the "
         "end of your grade, "
-        "once; a second call replaces the first while the person has not answered. Once it "
-        "is waiting you may propose the next version in the same answer, and accepting that "
-        "version records the grade."
+        "once; a second call replaces the first while the person has not answered. Once the "
+        "person has answered, call it again only when shots were counted after the recorded "
+        "outcome; accepting it replaces that outcome. While the version's outcome is open and "
+        "the grade is waiting you may propose the next version in the same answer, and "
+        "accepting that version records the grade. When an outcome is already recorded, the "
+        "grade is answered on its own card and accepting a version does not record it."
     ),
 )
 async def propose_outcome(ctx: ToolContext, args: ProposeOutcomeInput) -> ProposeOutcomeOutput:
@@ -1788,13 +1792,22 @@ async def propose_outcome(ctx: ToolContext, args: ProposeOutcomeInput) -> Propos
         note=(
             f"Nothing is recorded until the person accepts it: {version.version_label}'s outcome "
             "is still "
-            + ("open" if version.outcome is None else f"{version.outcome} as they recorded it")
-            + f". They see a card with your grade ({stored.outcome.replace('_', ' ')}, on "
+            + (
+                "open"
+                if version.outcome is None
+                else f"{outcome_label(version.outcome).lower()} as they recorded it"
+            )
+            + f". They see a card with your grade ({outcome_label(stored.outcome).lower()}, on "
             f"{stored.counted_shots} counted shot{'' if stored.counted_shots == 1 else 's'}) and "
             "can accept it, record another outcome, or dismiss it. Say the grade in one "
-            "sentence with the per-claim lines above it. If you also propose the next version "
-            "now, accepting that version records this grade; do not name the next version "
-            "as decided."
+            "sentence with the per-claim lines above it. "
+            + (
+                "If you also propose the next version now, accepting that version records this "
+                "grade; do not name the next version as decided."
+                if version.outcome is None
+                else "The outcome is already recorded, so accepting a next version does not "
+                "record this grade: it is answered on its own card."
+            )
         ),
     )
 

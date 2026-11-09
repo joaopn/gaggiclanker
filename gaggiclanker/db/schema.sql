@@ -950,7 +950,11 @@ CREATE TABLE recipe_versions (
     drink                TEXT    CHECK (drink IS NULL OR drink IN
                               ('espresso', 'americano', 'cappuccino', 'latte', 'other')),
     -- How the drink is made around the shot, in the person's words. Inherited; '' is none.
-    drink_notes          TEXT    NOT NULL DEFAULT ''
+    drink_notes          TEXT    NOT NULL DEFAULT '',
+    -- How many counted shots (rated, not discarded) the recorded outcome was recorded on, so a
+    -- screen can say "2 more counted since". NULL when no outcome is recorded or the count is
+    -- not known (an outcome from before it was stored, and not an accepted grade).
+    outcome_counted_shots INTEGER
 ) STRICT;
 CREATE INDEX idx_recipe_versions_parent ON recipe_versions(parent_version_id);
 CREATE INDEX idx_recipe_versions_profile ON recipe_versions(profile_version_id);
@@ -1419,4 +1423,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 11;
+PRAGMA user_version = 12;

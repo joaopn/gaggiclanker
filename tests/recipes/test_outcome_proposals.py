@@ -561,3 +561,201 @@ class TestTheNextVersionRecordsTheGrade:
 
         _, result = await _next_version(wired, recipe_id)
         assert result.refused == "outcome_open"
+
+
+async def _stored_count(wired: Fixtures, version_id: int) -> int | None:
+    version = await wired.recipes.get_version(version_id)
+    assert version is not None
+    return version.outcome_counted_shots
+
+
+class TestTheCountAnOutcomeIsRecordedOn:
+    """Every writer stores the number of counted shots in the statement that writes the grade."""
+
+    async def test_a_version_with_no_outcome_has_no_count(self, wired: Fixtures) -> None:
+        _, version_id = await _graded_ready(wired, shots=2)
+        assert await _stored_count(wired, version_id) is None
+
+    async def test_the_recipe_page_records_the_count_now(self, wired: Fixtures) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=2)
+
+        written = await wired.recipes.set_outcome(
+            recipe_id, version_id, VersionOutcomeWrite(outcome="held", note="by hand")
+        )
+
+        assert written.version is not None and written.version.outcome_counted_shots == 2
+        assert await _stored_count(wired, version_id) == 2
+
+    async def test_a_discarded_shot_is_not_in_the_count(self, wired: Fixtures) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=2)
+        shot_id = await _keep_shot(wired, version_id, "000890")
+        await JudgementsRepository(wired.db).upsert(
+            shot_id, JudgementWrite.model_validate({"rating": 4, "discarded": True})
+        )
+        assert await wired.recipes.gradable_shot_count(version_id) == 2
+
+        await wired.recipes.set_outcome(
+            recipe_id, version_id, VersionOutcomeWrite(outcome="held", note="")
+        )
+
+        assert await _stored_count(wired, version_id) == 2
+
+    async def test_accepting_a_card_records_the_cards_count_not_the_count_now(
+        self, wired: Fixtures
+    ) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=1)
+        proposals = OutcomeProposalsRepository(wired.db)
+        card = (await proposals.create(recipe_id, version_id, _write("inconclusive"))).proposal
+        assert card is not None and card.counted_shots == 1
+        await _keep_shot(wired, version_id, "000891")
+        await _keep_shot(wired, version_id, "000892")
+        assert await wired.recipes.gradable_shot_count(version_id) == 3
+
+        assert (await proposals.accept(recipe_id, card.id)).refused is None
+
+        assert await _stored_count(wired, version_id) == 1
+
+    async def test_recording_another_outcome_from_a_card_records_the_count_now(
+        self, wired: Fixtures
+    ) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=1)
+        proposals = OutcomeProposalsRepository(wired.db)
+        card = (await proposals.create(recipe_id, version_id, _write("inconclusive"))).proposal
+        assert card is not None
+        await _keep_shot(wired, version_id, "000891")
+        await _keep_shot(wired, version_id, "000892")
+
+        assert (await proposals.change(recipe_id, card.id, "failed")).refused is None
+
+        assert await _stored_count(wired, version_id) == 3
+
+    async def test_the_version_proposal_that_records_a_waiting_grade_records_the_cards_count(
+        self, wired: Fixtures
+    ) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=1)
+        grades = OutcomeProposalsRepository(wired.db)
+        grade = (await grades.create(recipe_id, version_id, _write("held"))).proposal
+        assert grade is not None
+        await _keep_shot(wired, version_id, "000891")
+        await _keep_shot(wired, version_id, "000892")
+        proposals, made = await _next_version(wired, recipe_id)
+        assert made.proposal is not None
+
+        result = await proposals.accept(recipe_id, made.proposal.id)
+
+        assert result.refused is None and result.graded is not None
+        assert await _stored_count(wired, version_id) == 1
+
+    async def test_clearing_the_outcome_clears_the_count(self, wired: Fixtures) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=2)
+        await wired.recipes.set_outcome(
+            recipe_id, version_id, VersionOutcomeWrite(outcome="held", note="")
+        )
+        assert await _stored_count(wired, version_id) == 2
+
+        cleared = await wired.recipes.clear_outcome(recipe_id, version_id)
+
+        assert cleared.version is not None and cleared.version.outcome is None
+        assert await _stored_count(wired, version_id) is None
+
+    async def test_a_grade_again_replaces_the_count(self, wired: Fixtures) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=1)
+        proposals = OutcomeProposalsRepository(wired.db)
+        first = (await proposals.create(recipe_id, version_id, _write("inconclusive"))).proposal
+        assert first is not None
+        await proposals.accept(recipe_id, first.id)
+        await _keep_shot(wired, version_id, "000891")
+        again = (await proposals.create(recipe_id, version_id, _write("held"))).proposal
+        assert again is not None and again.counted_shots == 2
+
+        await proposals.accept(recipe_id, again.id)
+
+        assert await _stored_count(wired, version_id) == 2
+
+
+class TestWhatACardServes:
+    async def test_the_version_count_and_the_outcome_beside_the_card(self, wired: Fixtures) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=1)
+        proposals = OutcomeProposalsRepository(wired.db)
+        card = (await proposals.create(recipe_id, version_id, _write("inconclusive"))).proposal
+        assert card is not None
+        # Precondition: the count is not there until an outcome is recorded.
+        assert card.version_outcome_counted_shots is None
+        await proposals.accept(recipe_id, card.id)
+        await _keep_shot(wired, version_id, "000891")
+
+        read = await proposals.get(recipe_id, card.id)
+
+        assert read is not None
+        assert read.version_outcome_counted_shots == 1
+        assert read.version_has_prediction is True
+        # Half two: the flag follows the version's prediction (cleared by hand in the table, since
+        # no write takes a prediction off a version that has shots).
+        await wired.db.execute(
+            "UPDATE recipe_versions SET prediction = '' WHERE id = ?", (version_id,)
+        )
+        cleared = await proposals.get(recipe_id, card.id)
+        assert cleared is not None and cleared.version_has_prediction is False
+        assert (read.counted_shots, read.counted_shots_now) == (1, 2)
+
+    async def test_only_the_newest_card_of_a_version_is_newest_for_it(
+        self, wired: Fixtures
+    ) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=1)
+        proposals = OutcomeProposalsRepository(wired.db)
+        first = (await proposals.create(recipe_id, version_id, _write("held"))).proposal
+        assert first is not None
+        # A lone card is the newest of its version, whatever its status.
+        assert first.newest_for_version is True
+
+        second = (await proposals.create(recipe_id, version_id, _write("failed"))).proposal
+        assert second is not None
+        await proposals.dismiss(recipe_id, second.id)
+
+        older = await proposals.get(recipe_id, first.id)
+        newer = await proposals.get(recipe_id, second.id)
+        assert older is not None and older.status == "superseded"
+        assert older.newest_for_version is False
+        # Dismissed is still the newest: a later proposal is what makes a card not the newest.
+        assert newer is not None and newer.status == "dismissed"
+        assert newer.newest_for_version is True
+
+    async def test_another_versions_card_does_not_make_a_card_older(self, wired: Fixtures) -> None:
+        recipe_id, version_id = await _graded_ready(wired, shots=1)
+        other_recipe, other_version = await _graded_ready(wired, shots=1, name="Other", base=900)
+        proposals = OutcomeProposalsRepository(wired.db)
+        mine = (await proposals.create(recipe_id, version_id, _write())).proposal
+        await proposals.create(other_recipe, other_version, _write())
+        assert mine is not None
+
+        read = await proposals.get(recipe_id, mine.id)
+
+        assert read is not None and read.newest_for_version is True
+
+
+class TestWhatCountsIsOneNumber:
+    async def test_the_pages_label_counts_add_up_to_the_counted_shots(
+        self, wired: Fixtures
+    ) -> None:
+        """The web compares ``good + neutral + bad`` with an outcome's stored count."""
+        _, version_id = await _graded_ready(wired, shots=0)
+        judgements = JudgementsRepository(wired.db)
+        for device, body in (
+            ("000931", {"rating": 5}),
+            ("000932", {"rating": 4}),
+            ("000933", {"rating": 3}),
+            ("000934", {"rating": 1}),
+            ("000935", {"rating": 4, "discarded": True}),
+            ("000936", {}),
+        ):
+            shot_id = await make_shot(wired.db, device)
+            assert await wired.recipes.assign_shot(shot_id, version_id)
+            await judgements.upsert(shot_id, JudgementWrite.model_validate(body))
+        recipe_id = (await wired.recipes.get_version(version_id)).recipe_id  # type: ignore[union-attr]
+
+        labels = (await wired.recipes.label_counts(recipe_id))[version_id]
+
+        # Half one: the shots that must not count are there, so the equality says something.
+        assert (labels.discarded, labels.unrated) == (1, 1)
+        assert labels.good + labels.neutral + labels.bad == 4
+        assert await wired.recipes.gradable_shot_count(version_id) == 4

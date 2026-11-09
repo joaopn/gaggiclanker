@@ -509,3 +509,46 @@ def test_the_general_prompt_says_get_recipe_carries_the_bean() -> None:
         "`get_recipe` also carries the Recipe's bean: its description, often the roaster's text "
         "with their brew numbers, and the person's notes, both whole."
     ) in text
+
+
+async def test_the_recipe_prompt_grades_a_recorded_outcome_again_when_shots_were_counted_since(
+    prompts: PromptService,
+) -> None:
+    system = " ".join(
+        (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+    )
+
+    assert "is graded again when the record says shots were counted since it was recorded" in system
+    assert "accepting it replaces the recorded outcome" in system
+    # The old rule is now the otherwise: it must not read as a ban on grading twice.
+    assert "Otherwise, if the person has already answered a grade of yours" in system
+
+
+async def test_the_inconclusive_exception_names_the_rule_it_is_an_exception_to(
+    prompts: PromptService,
+) -> None:
+    system = " ".join(
+        (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+    )
+    rule = "propose the outcome first and then the next version in the same answer"
+
+    assert "When your grade is inconclusive, your answer is another shot on this version" in system
+    sentence = next(part for part in system.split(". ") if "the one exception to" in part)
+    assert rule in sentence
+    # And the rule it excepts is still there, so the name points at something.
+    assert (
+        "Propose its outcome first (`propose_outcome`) and then propose the next version" in system
+    )
+
+
+async def test_the_recipe_prompt_promises_a_recorded_grade_only_for_an_open_outcome(
+    prompts: PromptService,
+) -> None:
+    system = " ".join(
+        (await prompts.load(RECIPE_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+    )
+
+    assert "accepting that version records the grade you proposed" in system
+    assert "This is for a version whose outcome is still open." in system
+    assert "accepting a version does not record it" in system
+    assert "when you had proposed a grade for this version while its outcome was open" in system

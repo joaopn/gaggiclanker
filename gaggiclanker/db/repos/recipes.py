@@ -366,6 +366,10 @@ class RecipeVersionRow(BaseModel):
     outcome: VersionOutcome | None = None
     outcome_note: str = ""
     outcome_at: str | None = None
+    #: How many counted shots (rated, not discarded) the recorded outcome was recorded on.
+    #: ``None`` when no outcome is recorded, or when it is not known (an outcome from before
+    #: the count was stored that no accepted grade vouches for).
+    outcome_counted_shots: int | None = None
     created_at: str
     shot_count: int = 0
 
@@ -2027,7 +2031,12 @@ class RecipesRepository(Repository):
             return await self.grade_in_transaction(recipe_id, version_id, spec)
 
     async def grade_in_transaction(
-        self, recipe_id: int, version_id: int, spec: VersionOutcomeWrite
+        self,
+        recipe_id: int,
+        version_id: int,
+        spec: VersionOutcomeWrite,
+        *,
+        counted_shots: int | None = None,
     ) -> VersionWriteResult:
         """The grade itself, inside a transaction the caller already holds.
 
@@ -2037,6 +2046,10 @@ class RecipesRepository(Repository):
         this connection's ``transaction()`` refuses to nest. Both callers go
         through the same guards, so a grade a person typed on the Recipe page and
         one they accepted in the chat are held to one rule.
+
+        The grade is stored with the number of counted shots it was recorded on, in the same
+        statement: ``counted_shots`` when the caller says what the grade was written on (an
+        accepted card carries it), otherwise the count now.
         """
         now = utc_now()
         version = await self.version_of_recipe(recipe_id, version_id)
@@ -2046,13 +2059,25 @@ class RecipesRepository(Repository):
             return VersionWriteResult(refused="no_prediction")
         if not await self._has_gradable_shot(version_id):
             return VersionWriteResult(refused="nothing_to_grade")
+        recorded_on = (
+            counted_shots
+            if counted_shots is not None
+            else await self.gradable_shot_count(version_id)
+        )
         await self.db.execute(
             """
             UPDATE recipe_versions
-               SET outcome = :outcome, outcome_note = :note, outcome_at = :now
+               SET outcome = :outcome, outcome_note = :note, outcome_at = :now,
+                   outcome_counted_shots = :counted
              WHERE id = :id
             """,
-            {"outcome": spec.outcome, "note": spec.note, "now": now, "id": version_id},
+            {
+                "outcome": spec.outcome,
+                "note": spec.note,
+                "now": now,
+                "counted": recorded_on,
+                "id": version_id,
+            },
         )
         return VersionWriteResult(version=await self.get_version(version_id))
 
@@ -2063,8 +2088,8 @@ class RecipesRepository(Repository):
             if version is None:
                 return VersionWriteResult(refused="no_version")
             await self.db.execute(
-                "UPDATE recipe_versions SET outcome = NULL, outcome_note = '', outcome_at = NULL "
-                "WHERE id = ?",
+                "UPDATE recipe_versions SET outcome = NULL, outcome_note = '', outcome_at = NULL, "
+                "outcome_counted_shots = NULL WHERE id = ?",
                 (version_id,),
             )
         return VersionWriteResult(version=await self.get_version(version_id))

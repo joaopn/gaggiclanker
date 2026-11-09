@@ -339,7 +339,9 @@ async def _heading(
     ]
     if version.intent:
         lines.append(f"What you are trying: {version.intent}")
-    lines.append(_prediction_line(version))
+    counted_now = await RecipesRepository(db).gradable_shot_count(version.id)
+    last = await OutcomeProposalsRepository(db).last_answered(version.id)
+    lines.append(_prediction_line(version, counted_now, _since_baseline(version, last)))
     return lines
 
 
@@ -465,7 +467,53 @@ def _changes(changes: Sequence[Any]) -> str:
     )
 
 
-def _prediction_line(version: RecipeVersionRow) -> str:
+def _since_baseline(version: RecipeVersionRow, last: OutcomeProposalRow | None) -> int | None:
+    """The count "since" is measured from, for the agent; None when it is not known.
+
+    Normally the count the outcome was recorded on. When the person dismissed a grade written
+    after the outcome was recorded, they said to keep the outcome as it is, so what they have
+    already looked at is the shots that card was written on: the agent hears of more only when
+    shots come beyond those. (The Recipe page and the card keep the stored count: that is the
+    person's own button.)
+    """
+    recorded = version.outcome_counted_shots
+    if version.outcome is None or recorded is None:
+        return None
+    if (
+        last is not None
+        and last.status == "dismissed"
+        and version.outcome_at is not None
+        and last.created_at > version.outcome_at
+    ):
+        return max(recorded, last.counted_shots)
+    return recorded
+
+
+def _recorded_on(version: RecipeVersionRow, counted_now: int, baseline: int | None) -> str:
+    """Which shots a recorded outcome rests on, and how many were counted after it.
+
+    Empty when no outcome is recorded or its count is not known (an outcome from before the
+    count was stored), so such a line reads as it always did.
+    """
+    recorded = version.outcome_counted_shots
+    if version.outcome is None or recorded is None or baseline is None:
+        return ""
+    since = counted_now - baseline
+    # The baseline is a dismissed grade's count when the person dismissed one written after the
+    # outcome; "since it was recorded" would then name the wrong moment.
+    after = (
+        "since it was recorded"
+        if baseline == recorded
+        else f"since the grade they dismissed, written on {_plural(baseline, 'counted shot')}"
+    )
+    return f", recorded on {_plural(recorded, 'counted shot')}" + (
+        f"; {since} more counted {after}" if since > 0 else ""
+    )
+
+
+def _prediction_line(
+    version: RecipeVersionRow, counted_now: int, baseline: int | None = None
+) -> str:
     if not version.prediction:
         return "Prediction: none was written for this version, so there is nothing to grade."
     against = (
@@ -474,10 +522,8 @@ def _prediction_line(version: RecipeVersionRow) -> str:
         else " (compared to nothing: grade it on the numbers it states)"
     )
     note = f" Note: {version.outcome_note}" if version.outcome_note else ""
-    return (
-        f"Prediction{against}: {version.prediction}\n"
-        f"Outcome: {_OUTCOMES[version.outcome_state]}.{note}"
-    )
+    outcome = f"{_OUTCOMES[version.outcome_state]}{_recorded_on(version, counted_now, baseline)}"
+    return f"Prediction{against}: {version.prediction}\nOutcome: {outcome}.{note}"
 
 
 def _recipe(version: RecipeVersionRow, *, profile: bool = True) -> str:
@@ -679,8 +725,14 @@ async def _grade_block(db: Database, recipe_id: int, version: RecipeVersionRow) 
                 "picture, propose the grade again and it replaces this one."
             )
         lines.append(
-            "Talk about it — do not propose it again unless you have a reason. If you propose "
-            "the next version while it waits, accepting that version records this grade."
+            "Talk about it — do not propose it again unless you have a reason. "
+            + (
+                "If you propose the next version while it waits, accepting that version records "
+                "this grade."
+                if version.outcome is None
+                else "The outcome is already recorded, so accepting a next version does not "
+                "record this grade: it is answered on its own card."
+            )
         )
         return lines
     last = await outcomes.last_answered(version.id)
@@ -688,7 +740,7 @@ async def _grade_block(db: Database, recipe_id: int, version: RecipeVersionRow) 
         return []
     return [
         "THE LAST ANSWER TO YOUR GRADE",
-        f"You proposed {_grade_words(last)}. {_grade_answer(last)}",
+        f"You proposed {_grade_words(last)}. {_grade_answer(last, version)}{_since(last, version)}",
     ]
 
 
@@ -705,7 +757,22 @@ def _recorded_words(version: RecipeVersionRow) -> str:
     return f"{_OUTCOMES[version.outcome]}, as the person recorded it"
 
 
-def _grade_answer(row: OutcomeProposalRow) -> str:
+def _since(row: OutcomeProposalRow, version: RecipeVersionRow) -> str:
+    """What the person did to the outcome after answering, when it no longer says what they did.
+
+    The answer above is a record of the press; the person can change the outcome by hand
+    afterwards, and a sentence that says "recorded as Held" must not outlive that.
+    """
+    if row.status not in ("accepted", "changed"):
+        return ""
+    recorded = row.outcome if row.status == "accepted" else row.recorded_outcome or row.outcome
+    if version.outcome == recorded:
+        return ""
+    now = "open again" if version.outcome is None else _OUTCOMES[version.outcome]
+    return f" The outcome has since been recorded as {now}."
+
+
+def _grade_answer(row: OutcomeProposalRow, version: RecipeVersionRow) -> str:
     if row.status == "accepted":
         return f"They accepted it: the outcome is recorded as {_OUTCOMES[row.outcome]}."
     if row.status == "changed":
@@ -717,6 +784,25 @@ def _grade_answer(row: OutcomeProposalRow) -> str:
     note = (
         f' They said: "{_cut(row.decision_note.strip(), NOTE_CHARS)}"' if row.decision_note else ""
     )
+    if version.outcome is not None:
+        # "Stays" only when the outcome on record was there when they dismissed and nobody has
+        # recorded one since: every record moves `outcome_at`, so an outcome recorded after the
+        # dismissal (a first one, or a change) is told as recorded since, never as kept.
+        kept = (
+            version.outcome_at is not None
+            and row.decided_at is not None
+            and version.outcome_at < row.decided_at
+        )
+        recorded = _OUTCOMES[version.outcome]
+        told = (
+            f"Nothing changed: the outcome stays recorded as {recorded}."
+            if kept
+            else f"The outcome has since been recorded as {recorded}."
+        )
+        return (
+            f"They dismissed it.{note} {told} A dismissed grade is information about what they "
+            "want, not something to send again."
+        )
     return (
         f"They dismissed it.{note} Nothing is recorded, and the outcome is still open until "
         "they grade it; a dismissed grade is information about what they want, not something "

@@ -76,6 +76,7 @@ __all__ = [
     "flavor_ancestors",
     "flavor_path",
     "in_wheel_order",
+    "outcome_label",
     "step_unit_label",
     "vocabulary",
 ]
@@ -623,6 +624,13 @@ _OUTCOME_LABELS = {
     "open": "Open",
     "no_prediction": "No prediction",
 }
+
+
+def outcome_label(value: str) -> str:
+    """An outcome or outcome state as the vocabulary words it ("partly_held" is "Partly held")."""
+    return _OUTCOME_LABELS.get(value, value)
+
+
 #: How each spread measure reads, and what it is in. Short: they sit at the
 #: start of a line the reader finishes with a number.
 _MEASURE_LABELS = {
