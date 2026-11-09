@@ -572,16 +572,99 @@ def test_a_conversation_of_another_recipe_refuses_to_start(
     assert result.stdout == ""
 
 
-def test_a_conversation_without_a_recipe_refuses_to_start(
+async def _general_thread(data_dir: Path, said: str) -> int:
+    """A general conversation (no Recipe) in which the person has said ``said``."""
+    from gaggiclanker.db.repos.chat import ChatMessageWrite, ChatRepository
+
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        cursor = await db.execute("INSERT INTO chat_threads (title) VALUES (?)", ("General",))
+        thread_id = int(cursor.lastrowid or 0)
+        await ChatRepository(db).add_message(
+            ChatMessageWrite(thread_id=thread_id, role="user", content=said)
+        )
+        return thread_id
+    finally:
+        await db.close()
+
+
+async def test_a_general_conversation_s_child_starts_and_files_its_card_under_it(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
-    """A general conversation changes no Recipe, so it is the room of nothing."""
-    data_dir, _ = archive_dir
+    """The provider hands every conversation's child its thread, a general one included.
 
-    result = run_server(data_dir, GAGGICLANKER_MCP_THREAD_ID="1")
+    The config is built the way the provider builds it for a general conversation (a
+    thread, no Recipe), so the child this starts is the one the CLI would start. The
+    request card it files has to land in that conversation, where the person answers it.
+    """
+    data_dir, _ = archive_dir
+    said = "never suggest going finer than 8 on the Niche"
+    thread_id = await _general_thread(data_dir, said)
+    server = json.loads(
+        build_mcp_config(
+            data_dir=str(data_dir),
+            executable=sys.executable,
+            recipe_id=None,
+            recipe_version_id=None,
+            thread_id=thread_id,
+        )
+    )["mcpServers"][MCP_SERVER_NAME]
+    assert server["env"]["GAGGICLANKER_MCP_THREAD_ID"] == str(thread_id)
+    params = StdioServerParameters(
+        command=server["command"],
+        args=server["args"],
+        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(REPO_ROOT), **server["env"]},
+        cwd=str(REPO_ROOT),
+    )
+    async with AsyncExitStack() as stack:
+        read, write = await stack.enter_async_context(stdio_client(params))
+        session = await stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+
+        tools = {tool.name for tool in (await session.list_tools()).tools}
+        asked = await session.call_tool(
+            "request_general_insight", {"text": "Never go finer than 8.", "said": said}
+        )
+
+    assert tools == GENERAL_TOOLS
+    assert asked.is_error is False, asked.content
+    assert asked.structured_content is not None
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+
+        row = await InsightsRepository(db).get(asked.structured_content["insight_id"])
+        assert row is not None
+        assert (row.thread_id, row.recipe_id, row.confirmed) == (thread_id, None, False)
+    finally:
+        await db.close()
+
+
+async def test_a_recipe_s_conversation_given_to_a_general_child_refuses_to_start(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """A Recipe's room must not get the archive-wide surface, nor its cards filed from there."""
+    data_dir, fixture = archive_dir
+    thread_id = await _make_thread(data_dir, fixture)
+
+    result = run_server(data_dir, GAGGICLANKER_MCP_THREAD_ID=str(thread_id))
 
     assert result.returncode != 0
-    assert "changes no Recipe" in result.stderr
+    assert f"Conversation {thread_id} is not a general conversation." in result.stderr
+    assert result.stdout == ""
+
+
+def test_a_general_child_given_a_conversation_that_does_not_exist_refuses_to_start(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    data_dir, _ = archive_dir
+
+    result = run_server(data_dir, GAGGICLANKER_MCP_THREAD_ID="987654")
+
+    assert result.returncode != 0
+    assert "Conversation 987654 is not a general conversation." in result.stderr
     assert result.stdout == ""
 
 

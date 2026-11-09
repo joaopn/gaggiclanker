@@ -199,10 +199,11 @@ def thread_from(args: argparse.Namespace) -> int | None:
 
     Read with the same rule as the scope ids — anything present must parse, and
     :func:`_check_scope_exists` then requires it to be a conversation of the
-    scope's Recipe. It narrows nothing, so its *absence* is ordinary rather than a
-    fallback to something wider: a proposal made without it simply names no
-    chat. What is not ordinary is a thread that is not this Recipe's, because the
-    column is the record of where a change was argued.
+    scope's Recipe, or a general conversation when there is no Recipe. It narrows
+    nothing, so its *absence* is ordinary rather than a fallback to something
+    wider: a proposal made without it simply names no chat. What is not ordinary
+    is a thread of another kind or another Recipe, because the column is the
+    record of where a change was argued.
     """
     return _identifier(getattr(args, "thread_id", None), "GAGGICLANKER_MCP_THREAD_ID")
 
@@ -309,14 +310,20 @@ async def _check_scope_exists(db: Database, scope: ToolScope, thread_id: int | N
     else's transcript. A server that cannot record that truthfully serves
     nothing at all — the same answer the scope variables get, rather than
     starting and refusing every proposal later.
+
+    A server with no Recipe serves a general conversation, and the cards it
+    files (a general insight asked for, a general insight's deletion) are filed
+    under that conversation too, so its thread is checked the same way: it has
+    to be a general conversation. A Recipe's conversation handed to a general
+    server would put an archive-wide surface in that Recipe's room.
     """
     if scope.kind != "recipe" or scope.recipe_id is None:
         if thread_id is not None:
-            raise SystemExit(
-                "GAGGICLANKER_MCP_THREAD_ID is set without GAGGICLANKER_MCP_RECIPE_ID: a "
-                "conversation about the whole archive changes no Recipe, so there is nothing "
-                "for it to be the room of."
+            found = await db.fetch_value(
+                "SELECT 1 FROM chat_threads WHERE id = ? AND recipe_id IS NULL", (thread_id,)
             )
+            if found is None:
+                raise SystemExit(f"Conversation {thread_id} is not a general conversation.")
         return
     recipes = RecipesRepository(db)
     if await recipes.get(scope.recipe_id) is None:
