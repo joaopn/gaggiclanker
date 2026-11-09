@@ -35,6 +35,10 @@ database.
 - When you tell an agent that a general insight is wrong or no longer wanted, it can now put a card in the conversation: **Replace** (the request card says "Replaces #N", shows the old words and how many Recipes it would reach, and Add deletes the old one and adds the new one in one step) or **Delete general insight #N?** (Keep or Delete, with your quoted words and the agent's reason). Nothing changes until you press the button, and the old insight stays and is told to every matching conversation until then. Both are refused without a quote, at least a phrase long, of something you wrote in that conversation, and only for a general insight that conversation is told. The agent never asks for either because of shots.
 - Delete now also leaves the insight alone, and says so ("It was changed since the agent asked: nothing was deleted."), if its words were edited after the agent asked. This applies to a Recipe's insights too.
 
+### A Recipe's own insights come before the general ones
+
+- In a Recipe's conversation, the Recipe's own insights now come before the general ones, and a Recipe insight saying a general one does not hold here wins.
+
 ### A general conversation on the Claude Code provider has its tools again
 
 - On the Claude Code provider, a conversation that is not about a Recipe had no tools at all: the archive's tool server refused to start whenever it was told which conversation it served without a Recipe, and the CLI reported it as failed. The agent there could not read shots, query the archive, draft a profile, or ask for a general insight. The server now starts for a general conversation and files that conversation's cards under it. It still refuses a conversation that belongs to a Recipe, or one that does not exist. The other providers were not affected. Nothing in the database changes.

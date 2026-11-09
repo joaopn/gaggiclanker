@@ -42,7 +42,7 @@ from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, bean_lines, ta
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository, grinder_lines, kitchen_lines
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
-from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, collapsed
+from gaggiclanker.db.repos.knowledge_insights import InsightRow, InsightsRepository, collapsed
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
 from gaggiclanker.db.repos.pins import PinsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document_json
@@ -1162,28 +1162,60 @@ def _mean(shots: Sequence[Any], measure: SpreadMeasure) -> float | None:
 
 
 async def _insights_block(db: Database, row: RecipeRow) -> list[str]:
-    """The confirmed insights that apply, newest first and bounded.
+    """The confirmed insights that apply: this Recipe's own first, then the general ones.
 
     Bounded because this is the one section whose length is not a property of
     the Recipe: a kitchen that has been confirming insights for a year would push
     the experiment itself out of the model's attention with a wall of prose
-    about beans. The newest are the ones that supersede the others, the rest
-    are a sentence and a tool call away, and both the cut and the order are
-    fixed so the same archive renders the same text.
+    about beans. Within each kind the newest come first, because they are the ones
+    that supersede the others; the rest are a sentence and a tool call away.
+
+    The Recipe's own insights come before the general ones because that is the
+    order in which one of them can say a general one does not hold here and be
+    believed. So the cut drops general insights first, and a Recipe's own are cut
+    only when they alone exceed the limit. Both the order and the cut are fixed so
+    the same archive renders the same text.
     """
     insights = await _insights(db, row)
     if not insights:
         return ["CONFIRMED INSIGHTS THAT APPLY HERE", "- none yet."]
-    newest = sorted(insights, key=lambda item: item.id, reverse=True)
+    own = sorted((item for item in insights if item.recipe_id is not None), key=_newest)
+    general = sorted((item for item in insights if item.recipe_id is None), key=_newest)
+    shown_own = own[:INSIGHTS_SHOWN]
+    shown_general = general[: INSIGHTS_SHOWN - len(shown_own)]
     lines = [
         "CONFIRMED INSIGHTS THAT APPLY HERE",
-        *(f"- {item.render(text_chars=INSIGHT_CHARS)}" for item in newest[:INSIGHTS_SHOWN]),
+        "This Recipe's own insights first; where one contradicts a general insight below it, "
+        "this Recipe's wins.",
+        *(f"- {item.render(text_chars=INSIGHT_CHARS)}" for item in [*shown_own, *shown_general]),
     ]
-    if len(newest) > INSIGHTS_SHOWN:
+    left_own = len(own) - len(shown_own)
+    left_general = len(general) - len(shown_general)
+    left_out = [
+        f"{count} more {kind}"
+        for count, kind in (
+            (
+                left_own,
+                "insight of this Recipe's own"
+                if left_own == 1
+                else "insights of this Recipe's own",
+            ),
+            (left_general, "general insight" if left_general == 1 else "general insights"),
+        )
+        if count
+    ]
+    if left_out:
+        one = left_own + left_general == 1
         lines.append(
-            f"- and {len(newest) - INSIGHTS_SHOWN} more that apply here; get_insights lists them."
+            f"- and {' and '.join(left_out)} that {'applies' if one else 'apply'} here; "
+            f"get_insights lists {'it' if one else 'them'}."
         )
     return lines
+
+
+def _newest(item: InsightRow) -> int:
+    """Sort key for newest first: the highest id first."""
+    return -item.id
 
 
 def _cut(text: str, limit: int) -> str:

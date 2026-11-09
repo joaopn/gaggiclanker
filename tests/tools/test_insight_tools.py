@@ -181,6 +181,10 @@ class TestReplacing:
         )
         assert "is general knowledge" in detail
         assert "request_general_insight" in detail and "propose_insight_deletion" in detail
+        assert (
+            "When this Recipe's shots contradict it, record a Recipe insight saying it does "
+            "not hold here (record_insight)."
+        ) in detail
 
     async def test_it_refuses_another_recipes_and_a_missing_one_alike(
         self, conversation: ToolContext, world: ProvenanceWorld

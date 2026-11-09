@@ -176,6 +176,7 @@ THE GOLD STANDARD
 That is what good has tasted like here. A Bad shot is compared with it.
 
 CONFIRMED INSIGHTS THAT APPLY HERE
+This Recipe's own insights first; where one contradicts a general insight below it, this Recipe's wins.
 - #3 [this Recipe, learned at v2.2] The added lesson, which rests on the one Improve shot.
 - #1 [bean_id=1] This bag runs fast for the first week after roasting.
 

@@ -410,8 +410,15 @@ class TestWhatTheSourceRecipesAreToldAfterApproval:
             kept = [text for text in lines if not text.startswith(f"- #{insight_id} [")]
             assert len(kept) == len(lines) - 1
             header = kept.index("CONFIRMED INSIGHTS THAT APPLY HERE")
-            # Newest first, and the general insight is the newest row in the archive.
-            expected = "\n".join([*kept[: header + 1], line, *kept[header + 1 :]])
+            # This Recipe's own first, then the general ones newest first: the new insight is
+            # the newest row in the archive, so it heads the general ones.
+            rows = [
+                at
+                for at in range(header + 1, len(kept))
+                if kept[at].startswith("- #") and "[this Recipe" not in kept[at]
+            ]
+            at = rows[0] if rows else kept.index("", header)
+            expected = "\n".join([*kept[:at], line, *kept[at:]])
             assert await self._context(app, world, recipe_id) == expected
             assert (await self._context(app, world, recipe_id)).count(line) == 1
 

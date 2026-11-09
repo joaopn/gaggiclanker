@@ -549,8 +549,9 @@ async def _recipe_insights(ctx: ToolContext, row: Any) -> list[Any]:
 
     The same ``InsightsRepository.for_recipe`` the opening context and the Recipe page
     use, so the chat and the page cannot disagree about which insights apply —
-    reimplementing the rule here is how the two drift. The Recipe's own, then the
-    general ones whose scope matches it; never another Recipe's.
+    reimplementing the rule here is how the two drift. The Recipe's own first, then the
+    general ones whose scope matches it, so one of the Recipe's own saying a general one does
+    not hold here is read ahead of it; never another Recipe's.
     """
     return await InsightsRepository(ctx.db).for_recipe(row.id)
 
@@ -1225,7 +1226,8 @@ class GetInsightsOutput(_Model):
         "bean, a grinder, a roast level or their combination. In a conversation about "
         "one Recipe it answers with the confirmed insights that apply to that Recipe — its own "
         "and the general ones that match it, the same ones the opening context lists — "
-        "and nothing else."
+        "and nothing else. This Recipe's own insights come first; a general insight follows. "
+        "When one of this Recipe's own insights says a general one does not hold here, it wins."
     ),
 )
 async def get_insights(ctx: ToolContext, args: GetInsightsInput) -> GetInsightsOutput:
@@ -2912,8 +2914,8 @@ def _insight_refusal(refused: InsightProposeRefusal, subject: int | None, label:
             f"Insight #{subject} is general knowledge, not this Recipe's. A general insight is "
             "changed only from what the person said: use request_general_insight with "
             "replaces_insight_id (to change it) or propose_insight_deletion (to remove it), "
-            "quoting their words. Leave replaces_insight_id out to propose a new insight of "
-            "this Recipe on its own."
+            "quoting their words. " + CONTRADICTION_PATH + " Leave replaces_insight_id out to "
+            "propose a new insight of this Recipe on its own."
         )
     if refused == "replaces_not_added":
         return (
@@ -3197,6 +3199,7 @@ async def _propose_general_deletion(
     assert ctx.thread_id is not None  # checked by the caller
     insights = InsightsRepository(ctx.db)
     problems, _found = await _quote_problems(ctx, args.said)
+    quote_problems = bool(problems)
     if problems:
         problems.append("A general insight is changed only from what the person said.")
     told = await insights.told_general(
@@ -3205,6 +3208,8 @@ async def _propose_general_deletion(
     if told is None:
         problems.append(_not_told(args.insight_id))
     if problems or told is None:
+        if quote_problems and told is not None and _in_recipe_conversation(ctx):
+            problems.append(CONTRADICTION_PATH)
         raise ValueError(" ".join(problems))
     result = await InsightDeletionsRepository(ctx.db).propose_general(
         InsightDeletionWrite(thread_id=ctx.thread_id, insight_id=args.insight_id, reason=reason)
@@ -3265,6 +3270,19 @@ async def _quote_problems(ctx: ToolContext, said: str) -> tuple[list[str], list[
     if not found:
         return [QUOTE_NOT_FOUND], found
     return [], found
+
+
+#: Said where a general insight cannot be changed from shots, in a Recipe's conversation only
+#: (a General or Design conversation has no ``record_insight`` to point at).
+CONTRADICTION_PATH = (
+    "When this Recipe's shots contradict it, record a Recipe insight saying it does not hold "
+    "here (record_insight)."
+)
+
+
+def _in_recipe_conversation(ctx: ToolContext) -> bool:
+    """A conversation about a Recipe's version, not a General or Design one."""
+    return ctx.scope.kind == "recipe" and not ctx.scope.designing
 
 
 def _not_told(insight_id: int) -> str:
@@ -3447,11 +3465,16 @@ async def request_general_insight(
             "card and answers it. This session has no conversation, so nothing was written."
         )
     problems, found = await _quote_problems(ctx, args.said)
+    quote_refused = bool(problems)
     conversation_recipe = ctx.scope.recipe_id if ctx.scope.kind == "recipe" else None
-    if args.replaces_insight_id is not None and (
-        await InsightsRepository(ctx.db).told_general(args.replaces_insight_id, conversation_recipe)
-        is None
-    ):
+    told = (
+        None
+        if args.replaces_insight_id is None
+        else await InsightsRepository(ctx.db).told_general(
+            args.replaces_insight_id, conversation_recipe
+        )
+    )
+    if args.replaces_insight_id is not None and told is None:
         problems.append(_not_told(args.replaces_insight_id))
     scope, scope_problems = await _scope_problems(ctx, args.scope)
     problems += scope_problems
@@ -3461,6 +3484,8 @@ async def request_general_insight(
         if same is not None:
             problems.append(f"That is already general insight #{same}.")
     if problems or scope is None:
+        if quote_refused and told is not None and _in_recipe_conversation(ctx):
+            problems.append(CONTRADICTION_PATH)
         raise ValueError(" ".join(problems))
     written = await insights.request_general(
         InsightWrite(

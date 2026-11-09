@@ -596,6 +596,11 @@ class InsightProposeResult:
     subject: int | None = None
 
 
+def _by_age(item: InsightRow) -> tuple[str, int]:
+    """Oldest first, the id breaking a tie."""
+    return (item.created_at, item.id)
+
+
 class InsightsRepository(Repository):
     """Reads and writes the learned tier."""
 
@@ -678,15 +683,17 @@ class InsightsRepository(Repository):
         ``get_insights``) and for the Recipe page. Another Recipe's insights are never
         selected, whatever bean and grinder they share with this one; a
         dismissed insight is never selected; an unconfirmed one never reaches a
-        prompt. Oldest first across both, so a later insight that qualifies an
-        earlier one reads after it.
+        prompt. **The Recipe's own first**, then the general ones, so an insight of this
+        Recipe saying a general one does not hold here is read ahead of it and wins. Within
+        each kind, oldest first, so a later insight that qualifies an earlier one reads after
+        it. Only the order says which wins; the set is the same either way.
         """
         attributes = await self.attributes_of(recipe_id)
         if attributes is None:
             return []
         mine = [item for item in await self.own(recipe_id) if item.confirmed]
         general = await self.select(attributes)
-        return sorted([*mine, *general], key=lambda item: (item.created_at, item.id))
+        return [*sorted(mine, key=_by_age), *sorted(general, key=_by_age)]
 
     async def recipe_scope_options(self, recipe_id: int) -> list[ScopeOption] | None:
         """What a general insight from this Recipe's conversation may be narrowed to, or ``None``

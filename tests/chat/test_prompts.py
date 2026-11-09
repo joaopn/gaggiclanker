@@ -156,6 +156,34 @@ async def test_every_chat_prompt_pins_what_to_do_with_a_general_insight(
         ) in system
 
 
+async def test_only_the_recipe_prompt_says_what_to_do_when_the_shots_contradict_a_general_insight(
+    prompts: PromptService,
+) -> None:
+    """The General and Design conversations have no `record_insight` to point at."""
+    sentence = (
+        "When this Recipe's shots contradict a general insight, do not ask to change it: "
+        "record an insight for this Recipe saying it does not hold here and why "
+        "(record_insight), and say so in words. This Recipe's own insights come first in "
+        "your list and win over a general one. This holds for a `your note` insight too: "
+        "follow it until one of this Recipe's own insights says it does not hold here, and "
+        "when this Recipe's shots contradict it, propose that Recipe insight rather than only "
+        "saying so."
+    )
+    said = {}
+    for name in (RECIPE_CHAT_PROMPT, DESIGN_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
+        system = " ".join(
+            (await prompts.load(name, {"scope": "", "shot_fields": ""})).system.split()
+        )
+        said[name] = sentence in system
+        if name != RECIPE_CHAT_PROMPT:
+            assert "record_insight" not in system, name
+    assert said == {
+        RECIPE_CHAT_PROMPT: True,
+        DESIGN_CHAT_PROMPT: False,
+        GENERAL_CHAT_PROMPT: False,
+    }
+
+
 @pytest.mark.parametrize("name", [RECIPE_CHAT_PROMPT, GENERAL_CHAT_PROMPT])
 async def test_the_glossary_comes_after_the_shared_rules(prompts: PromptService, name: str) -> None:
     system = (

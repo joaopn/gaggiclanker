@@ -12,6 +12,7 @@ each is tested against the same data.
 
 from __future__ import annotations
 
+import random
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,7 +23,7 @@ import pytest
 from fastapi import FastAPI
 from pydantic import ValidationError
 
-from gaggiclanker.chat.context import opening_context
+from gaggiclanker.chat.context import INSIGHTS_SHOWN, opening_context
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
@@ -215,17 +216,88 @@ class TestTheOneSelection:
             "Everything.",
         ]
 
-    async def test_a_recipes_own_come_with_the_general_ones_oldest_first(
+    async def test_a_recipes_own_come_first_then_the_general_ones_each_oldest_first(
         self, world: World
     ) -> None:
         await _general(world, "First, general.", process="natural")
         await _own(world, world.a, world.a_version, "Second, A's.")
         await _general(world, "Third, general.")
+        await _own(world, world.a, world.a_version, "Fourth, A's.")
         assert _texts(await world.insights.for_recipe(world.a)) == [
-            "First, general.",
             "Second, A's.",
+            "Fourth, A's.",
+            "First, general.",
             "Third, general.",
         ]
+
+    async def test_the_order_is_by_age_not_by_id_within_each_kind(self, world: World) -> None:
+        later = await _own(world, world.a, world.a_version, "Own, later.")
+        earlier = await _own(world, world.a, world.a_version, "Own, earlier.")
+        newer_general = await _general(world, "General, later.")
+        older_general = await _general(world, "General, earlier.")
+        for insight_id, stamp in (
+            (later, "2026-02-01T00:00:00+00:00"),
+            (earlier, "2026-01-01T00:00:00+00:00"),
+            (newer_general, "2026-04-01T00:00:00+00:00"),
+            (older_general, "2026-03-01T00:00:00+00:00"),
+        ):
+            await world.db.execute(
+                "UPDATE knowledge_insights SET created_at = ? WHERE id = ?", (stamp, insight_id)
+            )
+        assert _texts(await world.insights.for_recipe(world.a)) == [
+            "Own, earlier.",
+            "Own, later.",
+            "General, earlier.",
+            "General, later.",
+        ]
+
+    async def test_over_random_archives_the_set_is_the_same_and_only_the_order_differs(
+        self, world: World
+    ) -> None:
+        rng = random.Random(7)  # noqa: S311 - a reproducible test archive
+        for round_ in range(12):
+            for n in range(rng.randint(0, 14)):
+                kind = rng.choice(["own_a", "own_b", "general_all", "general_dark", "waiting"])
+                text = f"r{round_} n{n} {kind}"
+                if kind == "own_a":
+                    await _own(world, world.a, world.a_version, text)
+                elif kind == "own_b":
+                    await _own(world, world.b, world.b_version, text)
+                elif kind == "general_all":
+                    await _general(world, text, process="natural")
+                elif kind == "general_dark":
+                    await _general(world, text, roast_level="dark")
+                else:
+                    await _own(world, world.a, world.a_version, text, confirmed=False)
+            ids = [
+                row["id"] for row in await world.db.fetch_all("SELECT id FROM knowledge_insights")
+            ]
+            for insight_id in ids:
+                stamp = f"2026-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}T00:00:00+00:00"
+                await world.db.execute(
+                    "UPDATE knowledge_insights SET created_at = ? WHERE id = ?",
+                    (stamp, insight_id),
+                )
+
+            attributes = await world.insights.attributes_of(world.a)
+            assert attributes is not None
+            expected = {row.id for row in await world.insights.own(world.a) if row.confirmed} | {
+                row.id for row in await world.insights.select(attributes)
+            }
+            got = await world.insights.for_recipe(world.a)
+
+            assert {row.id for row in got} == expected
+            assert len(got) == len(expected)
+            flags = [row.recipe_id is None for row in got]
+            assert flags == sorted(flags), "a Recipe's own insights all come before the general"
+            for group in (
+                [r for r in got if r.recipe_id is not None],
+                [r for r in got if r.recipe_id is None],
+            ):
+                keys = [(r.created_at, r.id) for r in group]
+                assert keys == sorted(keys)
+            for insight_id in ids:
+                await world.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (insight_id,))
 
     async def test_unconfirmed_and_dismissed_ones_are_never_selected(self, world: World) -> None:
         await _own(world, world.a, world.a_version, "Waiting.", confirmed=False)
@@ -356,6 +428,153 @@ class TestEveryReaderAgrees:
         assert scope.designing
         outcome = await registry.dispatch(self._ctx(world, scope), "get_insights", {})
         assert [i["text"] for i in outcome.data["insights"]] == ["General, for naturals."]
+
+
+class TestTheRecipesOwnComeFirst:
+    """A Recipe insight saying a general one does not hold here must be read first and kept."""
+
+    def _ctx(self, world: World) -> ToolContext:
+        return ToolContext(
+            db=world.db,
+            settings=SettingsService(SettingsRepository(world.db)),
+            scope=ToolScope.for_thread(world.a, world.a_version),
+            caller="test",
+            permissions=CHAT_PERMISSIONS,
+        )
+
+    async def _block(self, world: World) -> list[str]:
+        text = await opening_context(world.db, ToolScope.for_thread(world.a, world.a_version))
+        return text.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1].split("\n\n")[0].split("\n")
+
+    async def test_get_insights_lists_the_recipes_own_first_even_when_a_general_is_newer(
+        self, world: World
+    ) -> None:
+        await _own(world, world.a, world.a_version, "7 is fine here.")
+        await _general(world, "Never go finer than 8.", grinder_id=world.grinder_id)
+
+        outcome = await registry.dispatch(self._ctx(world), "get_insights", {})
+
+        assert [i["text"] for i in outcome.data["insights"]] == [
+            "7 is fine here.",
+            "Never go finer than 8.",
+        ]
+
+    async def test_the_opening_context_says_the_rule_then_lists_own_then_general_newest_first(
+        self, world: World
+    ) -> None:
+        await _general(world, "General one.")
+        await _own(world, world.a, world.a_version, "Own one.")
+        await _general(world, "General two.")
+        await _own(world, world.a, world.a_version, "Own two.")
+
+        block = await self._block(world)
+
+        assert block[0] == (
+            "This Recipe's own insights first; where one contradicts a general insight below "
+            "it, this Recipe's wins."
+        )
+        order = [line.split("] ")[1] for line in block[1:]]
+        assert order == ["Own two.", "Own one.", "General two.", "General one."]
+
+    async def test_the_cut_drops_general_insights_first_and_says_how_many_of_each_kind(
+        self, world: World
+    ) -> None:
+        for n in range(INSIGHTS_SHOWN - 2):
+            await _own(world, world.a, world.a_version, f"Own {n}.")
+        for n in range(6):
+            await _general(world, f"General {n}.")
+
+        block = await self._block(world)
+
+        texts = [line.split("] ")[1] for line in block[1:-1]]
+        assert len(texts) == INSIGHTS_SHOWN
+        assert sum(text.startswith("Own") for text in texts) == INSIGHTS_SHOWN - 2
+        assert texts[-2:] == ["General 5.", "General 4."]
+        assert (
+            block[-1] == "- and 4 more general insights that apply here; get_insights lists them."
+        )
+
+    async def test_a_recipes_own_are_cut_only_when_they_alone_exceed_the_limit(
+        self, world: World
+    ) -> None:
+        for n in range(INSIGHTS_SHOWN + 3):
+            await _own(world, world.a, world.a_version, f"Own {n}.")
+        await _general(world, "General 0.")
+        await _general(world, "General 1.")
+
+        block = await self._block(world)
+
+        texts = [line.split("] ")[1] for line in block[1:-1]]
+        assert len(texts) == INSIGHTS_SHOWN
+        assert all(text.startswith("Own") for text in texts)
+        assert texts[0] == f"Own {INSIGHTS_SHOWN + 2}."
+        assert block[-1] == (
+            "- and 3 more insights of this Recipe's own and 2 more general insights that apply "
+            "here; get_insights lists them."
+        )
+
+    @pytest.mark.parametrize(
+        ("own_left", "general_left", "line"),
+        [
+            (0, 1, "- and 1 more general insight that applies here; get_insights lists it."),
+            (0, 2, "- and 2 more general insights that apply here; get_insights lists them."),
+            (
+                1,
+                0,
+                "- and 1 more insight of this Recipe's own that applies here; "
+                "get_insights lists it.",
+            ),
+            (
+                2,
+                0,
+                "- and 2 more insights of this Recipe's own that apply here; "
+                "get_insights lists them.",
+            ),
+            (
+                1,
+                1,
+                "- and 1 more insight of this Recipe's own and 1 more general insight that apply "
+                "here; get_insights lists them.",
+            ),
+            (
+                1,
+                2,
+                "- and 1 more insight of this Recipe's own and 2 more general insights that apply "
+                "here; get_insights lists them.",
+            ),
+            (
+                2,
+                1,
+                "- and 2 more insights of this Recipe's own and 1 more general insight that apply "
+                "here; get_insights lists them.",
+            ),
+            (
+                2,
+                2,
+                "- and 2 more insights of this Recipe's own and 2 more general insights that apply "
+                "here; get_insights lists them.",
+            ),
+        ],
+    )
+    async def test_every_combination_of_counts_reads_grammatically_and_names_only_kinds_cut(
+        self, world: World, own_left: int, general_left: int, line: str
+    ) -> None:
+        for n in range(INSIGHTS_SHOWN + own_left):
+            await _own(world, world.a, world.a_version, f"Own {n}.")
+        for n in range(general_left):
+            await _general(world, f"General {n}.")
+
+        block = await self._block(world)
+
+        assert block[-1] == line
+
+    def test_get_insights_says_the_recipes_own_come_first_and_win(self) -> None:
+        spec = registry.get("get_insights")
+        assert spec is not None
+        assert (
+            "This Recipe's own insights come first; a general insight follows. When one of "
+            "this Recipe's own insights says a general one does not hold here, it wins."
+        ) in spec.description
 
 
 def _brief() -> Any:

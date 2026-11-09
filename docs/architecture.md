@@ -411,9 +411,12 @@ not under `drafts/`.
 `recipe_id` (NULL is general), `recipe_version_id` and `dismissed`. `record_insight` in
 a Recipe chat writes the Recipe and the conversation's version and no attribute scope;
 `InsightsRepository.for_recipe` is the one selection (this Recipe's confirmed, then the
-confirmed general ones whose scope `scope_matches` its attributes) behind the
-opening context, `get_insights` and the Recipe page's `?recipe_id=` list, and another
-Recipe's insights are never in it. Add is the confirm switch, Dismiss its own route,
+confirmed general ones whose scope `scope_matches` its attributes; each kind oldest first)
+behind the opening context, `get_insights` and the Recipe page's `?recipe_id=` list, and
+another Recipe's insights are never in it. The order is what lets a Recipe insight saying a
+general one does not hold here win: the opening context lists this Recipe's own first,
+newest first, then the general ones, newest first, and its cut at `INSIGHTS_SHOWN` drops
+general insights first. Add is the confirm switch, Dismiss its own route,
 and neither is a tool. The agent-written insights that existed were placed once at
 boot by `InsightPlacementBuilder` (marker table `insight_placement_build`), which asks
 the live `scope_matches` and the Recipe's filed shots rather than repeating the rule

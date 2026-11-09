@@ -30,6 +30,10 @@ from tests.tools.conftest import _context
 SAID = "forget the Niche note, 7 is fine now"
 REASON = "The person said the Niche note is wrong now."
 ONLY_FROM_WORDS = "A general insight is changed only from what the person said."
+CONTRADICTION = (
+    "When this Recipe's shots contradict it, record a Recipe insight saying it does not hold "
+    "here (record_insight)."
+)
 NEW = "On the Niche Zero 7 is fine."
 
 
@@ -140,14 +144,14 @@ class TestReplacing:
             await refuse(
                 recipe_chat, "request_general_insight", text=NEW, said=SAID, replaces_insight_id=old
             )
-            == QUOTE_NOT_FOUND
+            == f"{QUOTE_NOT_FOUND} {CONTRADICTION}"
         )
         await say(world, SAID, role="assistant")
         assert (
             await refuse(
                 recipe_chat, "request_general_insight", text=NEW, said=SAID, replaces_insight_id=old
             )
-            == QUOTE_NOT_FOUND
+            == f"{QUOTE_NOT_FOUND} {CONTRADICTION}"
         )
         await say(world, "forget it")
         assert (
@@ -158,7 +162,7 @@ class TestReplacing:
                 said="forget it",
                 replaces_insight_id=old,
             )
-            == QUOTE_TOO_SHORT
+            == f"{QUOTE_TOO_SHORT} {CONTRADICTION}"
         )
         assert [r.id for r in await world.insights.requests_in(world.thread)] == []
 
@@ -183,6 +187,35 @@ class TestReplacing:
         assert await refuse(
             recipe_chat, "request_general_insight", text=NEW, said=SAID, replaces_insight_id=target
         ) == not_told(target)
+
+    async def test_the_contradiction_path_is_named_in_a_recipe_conversation_only(
+        self,
+        recipe_chat: ToolContext,
+        general_chat: ToolContext,
+        design_chat: ToolContext,
+        world: ProvenanceWorld,
+    ) -> None:
+        old = await added(world)
+        for ctx, named in ((recipe_chat, True), (general_chat, False), (design_chat, False)):
+            for call, arguments in (
+                (
+                    "request_general_insight",
+                    {"text": NEW, "said": SAID, "replaces_insight_id": old},
+                ),
+                (
+                    "propose_insight_deletion",
+                    {"insight_id": old, "said": SAID, "reason": REASON},
+                ),
+            ):
+                detail = await refuse(ctx, call, **arguments)
+                assert (CONTRADICTION in detail) is named, (call, detail)
+                assert ("record_insight" in detail) is named, (call, detail)
+
+    async def test_a_new_general_request_is_not_pointed_at_the_contradiction_path(
+        self, recipe_chat: ToolContext
+    ) -> None:
+        detail = await refuse(recipe_chat, "request_general_insight", text=NEW, said=SAID)
+        assert detail == QUOTE_NOT_FOUND
 
     async def test_a_general_conversation_may_name_any_added_one_and_a_matching_scope_is_told(
         self, general_chat: ToolContext, recipe_chat: ToolContext, world: ProvenanceWorld
@@ -359,7 +392,7 @@ class TestDeleting:
         )
         assert ONLY_FROM_WORDS in detail
         assert (QUOTE_TOO_SHORT if len(said) < 12 else QUOTE_NOT_FOUND) in detail
-        assert "record_insight" not in detail and "shots" not in detail
+        assert detail.endswith(CONTRADICTION)
         assert await world.deletions.get_general(1) is None
 
     async def test_the_newest_message_is_not_needed_any_matching_message_of_theirs_will_do(
@@ -707,3 +740,57 @@ class TestTheContext:
         await world.deletions.keep_general(proposal.id)
         text = await opening_context(world.db, general_chat.scope, thread_id=world.thread)
         assert f"- #{target} Old Niche note. (general; kept by the person)" in text
+
+
+# ── the contradiction clause only for a general insight this conversation is told ──
+
+UNSAID = "please drop that Niche note now"  # never said in the thread: unfound
+
+
+async def _target(world: ProvenanceWorld, case: str) -> int:
+    if case == "missing":
+        return 99999
+    if case == "recipe_own":
+        return await world.own("A Recipe lesson.")
+    return await added(world, "Other bean.", bean_id=987654)
+
+
+@pytest.mark.parametrize("case", ["missing", "recipe_own", "out_of_scope"])
+async def test_replace_not_told_with_bad_quote_has_no_contradiction_clause(
+    recipe_chat: ToolContext, world: ProvenanceWorld, case: str
+) -> None:
+    target = await _target(world, case)
+    detail = await refuse(
+        recipe_chat, "request_general_insight", text=NEW, said=UNSAID, replaces_insight_id=target
+    )
+    assert "is not a general insight this conversation is told" in detail
+    assert CONTRADICTION not in detail, detail
+
+
+async def test_delete_not_told_with_bad_quote_has_no_contradiction_clause(
+    recipe_chat: ToolContext, world: ProvenanceWorld
+) -> None:
+    target = await _target(world, "out_of_scope")
+    detail = await refuse(
+        recipe_chat, "propose_insight_deletion", insight_id=target, said=UNSAID, reason=REASON
+    )
+    assert "is not a general insight this conversation is told" in detail
+    assert CONTRADICTION not in detail, detail
+
+
+async def test_a_replace_refused_for_its_scope_with_the_quote_found_has_no_contradiction_clause(
+    recipe_chat: ToolContext, world: ProvenanceWorld
+) -> None:
+    """The contradiction path follows a refusal of the person's words, never one for the scope."""
+    old = await added(world)
+    await say(world, SAID)
+    detail = await refuse(
+        recipe_chat,
+        "request_general_insight",
+        text=NEW,
+        said=SAID,
+        replaces_insight_id=old,
+        scope={"bean_id": 987654},
+    )
+    assert "Quote" not in detail and "is not a general insight" not in detail, detail
+    assert CONTRADICTION not in detail, detail
