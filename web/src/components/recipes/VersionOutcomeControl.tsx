@@ -1,12 +1,9 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router-dom";
-import type { OutcomeProposal, RecipeVersionRow, VersionOutcome } from "@/api/types";
+import type { OutcomeProposal, RecipeVersionRow } from "@/api/types";
 import { OutcomeBadge } from "@/components/recipes/OutcomeBadge";
+import { OutcomePanel, outcomeButtonLabel, outcomeGate } from "@/components/recipes/OutcomePanel";
 import { Button } from "@/components/ui/button";
-import { useVocabulary } from "@/hooks/useCatalog";
-import { useSetVersionOutcome } from "@/hooks/useRecipes";
-import { attempt } from "@/lib/mutations";
-import { cn } from "@/lib/utils";
 
 /**
  * How a version's prediction turned out, and the control that records it.
@@ -31,13 +28,16 @@ import { cn } from "@/lib/utils";
 export function VersionOutcomeControl({
   recipeId,
   version,
-  gradable,
+  countedNow,
   proposed = null,
 }: {
   recipeId: number;
   version: RecipeVersionRow;
-  /** Has a rated shot (a discarded one does not count). */
-  gradable: boolean;
+  /**
+   * How many shots are counted now (rated, not discarded): the number a recorded outcome's own
+   * count is compared with, and whether there is anything to grade at all.
+   */
+  countedNow: number;
   /**
    * The grade an agent proposed for this version that nobody has answered. Shown
    * beside the recorded outcome and never as one: it is words until a person
@@ -45,43 +45,31 @@ export function VersionOutcomeControl({
    */
   proposed?: OutcomeProposal | null;
 }) {
-  const vocab = useVocabulary();
-  const save = useSetVersionOutcome();
   const [open, setOpen] = useState(false);
-  const [choice, setChoice] = useState<string>(version.outcome ?? "");
-  const [note, setNote] = useState(version.outcome_note ?? "");
   const panelId = useId();
-  const noteId = useId();
   const reasonId = useId();
-
-  // The panel is seeded from the row, and re-seeded when the row changes under
-  // it: somebody grading the same version in another tab, or the write's own
-  // answer coming back.
-  useEffect(() => {
-    setChoice(version.outcome ?? "");
-    setNote(version.outcome_note ?? "");
-  }, [version.outcome, version.outcome_note]);
 
   const state = version.outcome_state;
   const recorded = version.outcome != null;
   // Exactly the server's rule for `PUT .../outcome`.
-  const canRecord = Boolean(version.prediction) && gradable;
-  const reason = canRecord
-    ? undefined
-    : !version.prediction
-      ? "This version states no prediction, so there is nothing to grade."
-      : "No rated shot yet — a discarded one does not count. There is nothing to grade yet.";
-
-  async function write(body: { outcome: VersionOutcome; note: string } | null) {
-    const result = await attempt(() => save.mutateAsync({ recipeId, versionId: version.id, body }));
-    if (result !== undefined) setOpen(false);
-  }
+  const { canRecord, reason } = outcomeGate(Boolean(version.prediction), countedNow);
+  // How many shots were counted after the outcome was recorded; only known when the outcome
+  // says how many it was recorded on (an older one, or one typed before the count was kept,
+  // does not).
+  const recordedOn = recorded ? (version.outcome_counted_shots ?? null) : null;
+  const moreSince = recordedOn !== null ? Math.max(0, countedNow - recordedOn) : 0;
 
   return (
     <div className="space-y-1.5" data-testid="version-outcome" data-state={state}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-muted-foreground text-xs">Outcome</span>
         <OutcomeBadge state={state} />
+        {recordedOn !== null ? (
+          <span className="text-muted-foreground text-xs" data-testid="outcome-count">
+            on {recordedOn} counted {recordedOn === 1 ? "shot" : "shots"}
+            {moreSince > 0 ? ` · ${moreSince} more counted since` : ""}
+          </span>
+        ) : null}
         <Button
           type="button"
           size="sm"
@@ -95,12 +83,9 @@ export function VersionOutcomeControl({
           onClick={() => setOpen((shown) => !shown)}
         >
           {/* Named for what the panel will offer. "Change" on a version whose
-              shots are gone would promise a control the server refuses. */}
-          {recorded
-            ? canRecord
-              ? "Change the outcome"
-              : "Clear the outcome"
-            : "Record the outcome"}
+              shots are gone would promise a control the server refuses; "Grade again" says
+              that shots were counted after the recorded outcome. */}
+          {outcomeButtonLabel({ recorded, canRecord, moreSince })}
         </Button>
       </div>
 
@@ -151,84 +136,15 @@ export function VersionOutcomeControl({
         className="space-y-2 rounded-md border border-border bg-muted/30 p-2"
       >
         {open ? (
-          <>
-            {canRecord ? (
-              <>
-                {/* A fieldset rather than a div with `role="group"`: the four
-                    buttons are one question, and the legend is what names it
-                    for a reader landing on the first of them. */}
-                <fieldset className="border-0 p-0" data-testid="outcome-choices">
-                  <legend className="mb-1 text-muted-foreground text-xs">
-                    How did the prediction turn out?
-                  </legend>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {(vocab.data?.version_outcomes ?? []).map((term) => (
-                      <button
-                        key={term.value}
-                        type="button"
-                        aria-pressed={choice === term.value}
-                        onClick={() => setChoice(term.value)}
-                        className={cn(
-                          "rounded-full border px-2 py-0.5 text-xs transition-colors",
-                          choice === term.value
-                            ? "border-foreground/30 bg-muted"
-                            : "border-border text-muted-foreground",
-                        )}
-                      >
-                        {term.label}
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-                <div>
-                  <label htmlFor={noteId} className="mb-1 block text-muted-foreground text-xs">
-                    Why
-                  </label>
-                  <textarea
-                    id={noteId}
-                    rows={2}
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    placeholder="shorter, but still sharp at the end"
-                    className={cn(
-                      "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    )}
-                  />
-                </div>
-              </>
-            ) : (
-              <p className="text-muted-foreground text-xs" data-testid="outcome-clear-only">
-                {reason} This grade can still be taken back.
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {canRecord ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!choice || save.isPending}
-                  onClick={() => void write({ outcome: choice as VersionOutcome, note })}
-                >
-                  Save the outcome
-                </Button>
-              ) : null}
-              {recorded ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  disabled={save.isPending}
-                  onClick={() => void write(null)}
-                >
-                  Clear
-                </Button>
-              ) : null}
-              <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-            </div>
-          </>
+          <OutcomePanel
+            recipeId={recipeId}
+            versionId={version.id}
+            outcome={version.outcome ?? null}
+            outcomeNote={version.outcome_note ?? ""}
+            canRecord={canRecord}
+            reason={reason}
+            onClose={() => setOpen(false)}
+          />
         ) : null}
       </div>
     </div>

@@ -1,10 +1,11 @@
 import { Check, X } from "lucide-react";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
 import type { OutcomeProposal, VersionOutcome } from "@/api/types";
 import { useChatThreadId } from "@/components/chat/tellAgent";
 import { humanisedOutcome, OutcomeBadge } from "@/components/recipes/OutcomeBadge";
+import { OutcomePanel, outcomeButtonLabel, outcomeGate } from "@/components/recipes/OutcomePanel";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
 import {
@@ -269,12 +270,21 @@ function LiveOutcomeCard({ recipeId, row }: { recipeId: number; row: OutcomeProp
           </form>
 
           <p className="mt-2 text-muted-foreground text-xs">
-            Nothing is recorded until you accept it. If the agent also proposes the next version,
-            accepting that records this grade too.
+            Nothing is recorded until you accept it.{" "}
+            {shown.version_outcome == null
+              ? "If the agent also proposes the next version, accepting that records this grade too."
+              : "The outcome is already recorded, so accepting a version does not record this grade."}
           </p>
         </>
       ) : (
-        <Decided row={shown} labelOf={labelOf} recipeId={recipeId} />
+        <Decided
+          row={shown}
+          // After a press the answer in hand is the moment of the press; the live row is
+          // what a later write from the strip below moves, so it is read once it has caught up.
+          current={row.status === "proposed" ? shown : row}
+          labelOf={labelOf}
+          recipeId={recipeId}
+        />
       )}
 
       {failure ? (
@@ -288,10 +298,13 @@ function LiveOutcomeCard({ recipeId, row }: { recipeId: number; row: OutcomeProp
 
 function Decided({
   row,
+  current,
   labelOf,
   recipeId,
 }: {
   row: OutcomeProposal;
+  /** The same card read as late as possible: what the version says now. */
+  current: OutcomeProposal;
   labelOf: (value: string | null | undefined) => string;
   recipeId: number;
 }) {
@@ -301,33 +314,133 @@ function Decided({
       Recipe page
     </Link>
   );
+  let record: ReactNode;
   if (row.status === "accepted") {
-    return (
+    record = (
       <p className="text-sm" data-testid="outcome-card-decided">
         Accepted: {row.version_label}'s outcome is recorded as {labelOf(row.outcome)}.{" "}
         <span className="text-muted-foreground">{when}</span>
       </p>
     );
-  }
-  if (row.status === "changed") {
-    return (
+  } else if (row.status === "changed") {
+    record = (
       <p className="text-sm" data-testid="outcome-card-decided">
         You recorded {labelOf(row.recorded_outcome)} instead of {labelOf(row.outcome)} for{" "}
         {row.version_label}. <span className="text-muted-foreground">{when}</span>
       </p>
     );
-  }
-  if (row.status === "dismissed") {
-    return (
+  } else if (row.status === "dismissed") {
+    record = (
       <p className="text-sm" data-testid="outcome-card-decided">
-        Dismissed{row.decision_note ? `: “${row.decision_note}”` : "."} Nothing was recorded; the
+        Dismissed{row.decision_note ? `: “${row.decision_note}”.` : "."} Nothing was recorded; the
         outcome is still whatever the {page} says.
       </p>
     );
+  } else {
+    record = (
+      <p className="text-sm" data-testid="outcome-card-decided">
+        A newer grade replaced this one, so it was never applied.
+      </p>
+    );
   }
+  // Older cards of a version stay plain records: only the newest says what the version is now
+  // and offers to change it, or two cards of one version would offer the same write.
+  if (!current.newest_for_version) return record;
   return (
-    <p className="text-sm" data-testid="outcome-card-decided">
-      A newer grade replaced this one, so it was never applied.
-    </p>
+    <>
+      {record}
+      <VersionNow row={current} recordedByThisCard={recordedBy(row)} />
+    </>
+  );
+}
+
+/** What this card says it recorded, or undefined when it recorded nothing. */
+function recordedBy(row: OutcomeProposal): string | undefined {
+  if (row.status === "accepted") return row.outcome;
+  if (row.status === "changed") return row.recorded_outcome ?? row.outcome;
+  return undefined;
+}
+
+/**
+ * The version's outcome now, beside an answered card: when it differs from what the card says it
+ * recorded, how many shots were counted since, and the strip to change it from here.
+ *
+ * It writes through the Recipe page's route, so a grade recorded here is the same write as one
+ * recorded there, and the card never turns into a second way to answer the proposal.
+ */
+function VersionNow({
+  row,
+  recordedByThisCard,
+}: {
+  row: OutcomeProposal;
+  recordedByThisCard: string | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const reasonId = useId();
+  const recorded = row.version_outcome != null;
+  const differs =
+    recordedByThisCard !== undefined && (row.version_outcome ?? null) !== recordedByThisCard;
+  const recordedOn = recorded ? (row.version_outcome_counted_shots ?? null) : null;
+  const more = recordedOn !== null ? row.counted_shots_now - recordedOn : 0;
+  // The same gate as the Recipe page's row: the version's prediction and the counted shots now.
+  const { canRecord, reason } = outcomeGate(row.version_has_prediction, row.counted_shots_now);
+
+  return (
+    <div className="mt-2 space-y-1.5" data-testid="outcome-card-now">
+      {differs ? (
+        <p className="text-sm" data-testid="outcome-card-now-differs">
+          <span className="text-muted-foreground text-xs">
+            {row.version_label}'s outcome is {recorded ? "now recorded as " : "open again"}
+          </span>
+          {recorded ? <OutcomeBadge state={row.version_outcome as string} /> : null}
+          <span className="text-muted-foreground text-xs">.</span>
+        </p>
+      ) : null}
+      {more > 0 ? (
+        <p className="text-muted-foreground text-xs" data-testid="outcome-card-since">
+          {more} more counted {more === 1 ? "shot" : "shots"} since the outcome was recorded on{" "}
+          {recordedOn}.
+        </p>
+      ) : null}
+      {canRecord || recorded ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((shown) => !shown)}
+        >
+          {outcomeButtonLabel({ recorded, canRecord, moreSince: 0 })}
+        </Button>
+      ) : (
+        <p
+          id={reasonId}
+          className="text-muted-foreground text-xs"
+          data-testid="outcome-card-reason"
+        >
+          {reason}
+        </p>
+      )}
+      <div
+        id={panelId}
+        hidden={!open}
+        className="space-y-2 rounded-md border border-border bg-muted/30 p-2"
+        data-testid="outcome-card-strip"
+      >
+        {open ? (
+          <OutcomePanel
+            recipeId={row.recipe_id}
+            versionId={row.recipe_version_id}
+            outcome={row.version_outcome ?? null}
+            outcomeNote={row.version_outcome_note}
+            canRecord={canRecord}
+            reason={reason}
+            onClose={() => setOpen(false)}
+          />
+        ) : null}
+      </div>
+    </div>
   );
 }

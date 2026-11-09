@@ -429,7 +429,8 @@ export function VersionTimeline({
           <VersionOutcomeControl
             recipeId={recipeId}
             version={entry.version}
-            gradable={entry.labels.good + entry.labels.neutral + entry.labels.bad > 0}
+            // Good + Neutral + Bad is the server's count of rated, not discarded shots.
+            countedNow={entry.labels.good + entry.labels.neutral + entry.labels.bad}
             proposed={entry.outcome_proposal ?? null}
           />
 

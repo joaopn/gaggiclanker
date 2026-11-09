@@ -532,6 +532,104 @@ describe("VersionTimeline", () => {
     ]);
   });
 
+  describe("the count a recorded outcome rests on", () => {
+    function recorded(
+      over: Parameters<typeof version>[0],
+      labels: Parameters<typeof labelCounts>[0],
+    ) {
+      const detail = recipeDetail();
+      detail.versions[0].version = version({
+        id: 22,
+        version_major: 2,
+        prediction: "less bitter",
+        outcome: "inconclusive",
+        outcome_state: "inconclusive",
+        ...over,
+      });
+      detail.versions[0].labels = labelCounts(labels);
+      return renderWithQueryClient(
+        <VersionTimeline recipeId={3} versions={detail.versions} judgements={detail.judgements} />,
+      );
+    }
+
+    it("says how many counted shots the outcome was recorded on", () => {
+      recorded({ outcome_counted_shots: 1 }, { good: 1 });
+      expect(screen.getAllByTestId("outcome-count")[0]).toHaveTextContent("on 1 counted shot");
+      expect(screen.getAllByTestId("outcome-count")[0]).not.toHaveTextContent("more counted since");
+      expect(screen.getAllByRole("button", { name: "Change the outcome" })[0]).toBeEnabled();
+    });
+
+    it("says nothing about a count that is not known, with the same shots", () => {
+      // Half one: with the count known the line is there.
+      const first = recorded({ outcome_counted_shots: 1 }, { good: 1 });
+      expect(screen.queryAllByTestId("outcome-count")).toHaveLength(1);
+      first.unmount();
+
+      recorded({ outcome_counted_shots: null }, { good: 1 });
+      expect(screen.queryAllByTestId("outcome-count")).toHaveLength(0);
+      expect(screen.getAllByRole("button", { name: "Change the outcome" })[0]).toBeEnabled();
+    });
+
+    it("says nothing for an open outcome", () => {
+      recorded({ outcome: null, outcome_state: "open", outcome_counted_shots: 1 }, { good: 1 });
+      expect(screen.queryAllByTestId("outcome-count")).toHaveLength(0);
+    });
+
+    it("says how many were counted since, and offers to grade again", () => {
+      recorded({ outcome_counted_shots: 1 }, { good: 1, neutral: 1, bad: 1 });
+      expect(screen.getAllByTestId("outcome-count")[0]).toHaveTextContent(
+        "on 1 counted shot · 2 more counted since",
+      );
+      expect(screen.getAllByRole("button", { name: "Grade again" })[0]).toBeEnabled();
+      expect(screen.queryByRole("button", { name: "Change the outcome" })).toBeNull();
+    });
+
+    it("counts a Neutral shot, and never a discarded or an unrated one", () => {
+      recorded({ outcome_counted_shots: 2 }, { good: 1, neutral: 1, discarded: 3, unrated: 2 });
+      // Two counted now, two recorded on: nothing since, whatever else is filed.
+      expect(screen.getAllByTestId("outcome-count")[0]).toHaveTextContent("on 2 counted shots");
+      expect(screen.getAllByTestId("outcome-count")[0]).not.toHaveTextContent("since");
+      expect(screen.queryByRole("button", { name: "Grade again" })).toBeNull();
+    });
+
+    it("says nothing since when fewer shots count now than it was recorded on", () => {
+      recorded({ outcome_counted_shots: 3 }, { good: 1 });
+      expect(screen.getAllByTestId("outcome-count")[0]).not.toHaveTextContent("since");
+      expect(screen.queryByRole("button", { name: "Grade again" })).toBeNull();
+    });
+
+    it("offers Clear alone, not Grade again, when recording is not allowed", () => {
+      // Half one: the line says shots were counted since.
+      const first = recorded({ outcome_counted_shots: 1 }, { good: 2 });
+      expect(screen.getAllByTestId("outcome-count")[0]).toHaveTextContent("1 more counted since");
+      first.unmount();
+
+      // Half two: with no prediction the server refuses a record, so the button says Clear.
+      recorded({ outcome_counted_shots: 1, prediction: "" }, { good: 2 });
+      expect(screen.getAllByTestId("outcome-count")[0]).toHaveTextContent("1 more counted since");
+      expect(screen.queryByRole("button", { name: "Grade again" })).toBeNull();
+      expect(screen.getAllByRole("button", { name: "Clear the outcome" })[0]).toBeEnabled();
+    });
+
+    it("opens the same panel under Grade again and records through the Recipe page's route", async () => {
+      const user = setupUser();
+      recorded({ outcome_counted_shots: 1, outcome_note: "one shot" }, { good: 3 });
+
+      await user.click(screen.getAllByRole("button", { name: "Grade again" })[0]);
+      expect(screen.getByTestId("outcome-choices")).toBeInTheDocument();
+      expect(screen.getByLabelText("Why")).toHaveValue("one shot");
+      await user.click(await screen.findByRole("button", { name: "Held" }));
+      await user.click(screen.getByRole("button", { name: "Save the outcome" }));
+
+      await waitFor(() =>
+        expect(setVersionOutcome).toHaveBeenCalledWith(3, 22, {
+          outcome: "held",
+          note: "one shot",
+        }),
+      );
+    });
+  });
+
   it("will not offer a grade when there is nothing to grade, and says why in text", async () => {
     const detail = recipeDetail();
     detail.versions[0].version = version({
