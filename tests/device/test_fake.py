@@ -7,6 +7,7 @@ of the suite silently relies on.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, cast
 
@@ -210,3 +211,150 @@ async def test_a_save_without_an_id_gets_a_generated_one_and_a_star() -> None:
         await device.stop()
 
     assert reply["profile"]["id"] and reply["profile"]["id"] in device.favorite_profile_ids
+
+
+# ── the status frame names the selected profile ─────────────────────
+
+
+async def _status(socket: Any) -> dict[str, Any]:
+    """The next `evt:status` frame carrying the selected profile (`puid`)."""
+    while True:
+        frame = json.loads(await asyncio.wait_for(socket.recv(), 3))
+        if frame.get("tp") == "evt:status" and "puid" in frame:
+            return cast(dict[str, Any], frame)
+
+
+async def _request(socket: Any, tp: str, **payload: Any) -> dict[str, Any]:
+    """Send one request and return its reply, skipping the frames pushed in between."""
+    await socket.send(json.dumps({"tp": tp, "rid": "q", **payload}))
+    while True:
+        frame = json.loads(await asyncio.wait_for(socket.recv(), 3))
+        if frame.get("rid") == "q":
+            return cast(dict[str, Any], frame)
+
+
+def _two_profiles() -> FakeDevice:
+    device = FakeDevice()
+    device.profiles = [
+        {"id": "aaa", "label": "First", "temperature": 90, "phases": []},
+        {"id": "bbb", "label": "Second", "temperature": 92, "phases": []},
+    ]
+    return device
+
+
+async def test_the_status_names_the_profile_a_select_chose() -> None:
+    """`publishState` reads `getSelectedProfile()`: `p` and `puid` follow the select, and the
+    machine pushes the new state frame by itself, as it does whenever the frame changed."""
+    device = _two_profiles()
+    await device.start()
+    try:
+        async with connect(f"ws://{device.address}/ws") as socket:
+            before = await _status(socket)
+            assert (before["puid"], before["p"]) == ("", "")
+            await socket.send(json.dumps({"tp": "req:profiles:select", "rid": "q", "id": "bbb"}))
+            pushed = await _status(socket)
+            listed = (await _request(socket, "req:profiles:list"))["profiles"]
+    finally:
+        await device.stop()
+
+    assert (pushed["puid"], pushed["p"]) == ("bbb", "Second")
+    assert [(p["id"], p["selected"]) for p in listed] == [("aaa", False), ("bbb", True)]
+
+
+async def test_a_client_that_connects_later_is_told_the_selection() -> None:
+    device = _two_profiles()
+    await device.start()
+    try:
+        await device.select_profile("aaa")
+        async with connect(f"ws://{device.address}/ws") as socket:
+            status = await _status(socket)
+    finally:
+        await device.stop()
+
+    assert (status["puid"], status["p"]) == ("aaa", "First")
+
+
+async def test_selecting_an_id_with_no_file_leaves_the_display_naming_nothing() -> None:
+    """`selectProfile` stores the id, then `loadSelectedProfile` fails and the in-memory
+    profile is the empty one: no label, no id."""
+    device = _two_profiles()
+    await device.start()
+    try:
+        await device.select_profile("bbb")
+        async with connect(f"ws://{device.address}/ws") as socket:
+            assert (await _status(socket))["puid"] == "bbb"
+            await socket.send(json.dumps({"tp": "req:profiles:select", "rid": "q", "id": "nope"}))
+            status = await _status(socket)
+            listed = (await _request(socket, "req:profiles:list"))["profiles"]
+    finally:
+        await device.stop()
+
+    assert (status["puid"], status["p"]) == ("", "")
+    assert not any(p["selected"] for p in listed)
+
+
+async def test_renaming_the_selected_profile_reaches_the_status() -> None:
+    """`saveProfile` reloads the selected profile from its file, so a rename shows."""
+    device = _two_profiles()
+    await device.start()
+    try:
+        await device.select_profile("aaa")
+        async with connect(f"ws://{device.address}/ws") as socket:
+            assert (await _status(socket))["p"] == "First"
+            await socket.send(
+                json.dumps(
+                    {
+                        "tp": "req:profiles:save",
+                        "rid": "q",
+                        "profile": {"id": "aaa", "label": "Renamed", "phases": []},
+                    }
+                )
+            )
+            status = await _status(socket)
+    finally:
+        await device.stop()
+
+    assert (status["puid"], status["p"]) == ("aaa", "Renamed")
+
+
+async def test_deleting_the_selected_profile_leaves_the_status_naming_it() -> None:
+    """`deleteProfile` touches neither the setting nor the loaded copy: the status keeps
+    naming the file that is gone, and no listed profile is selected, until something selects
+    another (or a save reloads the selection and finds nothing)."""
+    device = _two_profiles()
+    await device.start()
+    try:
+        await device.select_profile("aaa")
+        async with connect(f"ws://{device.address}/ws") as socket:
+            await _status(socket)
+            await _request(socket, "req:profiles:delete", id="aaa")
+            listed = (await _request(socket, "req:profiles:list"))["profiles"]
+        async with connect(f"ws://{device.address}/ws") as socket:
+            after_delete = await _status(socket)
+            await socket.send(json.dumps({"tp": "req:profiles:select", "rid": "q", "id": "bbb"}))
+            after_select = await _status(socket)
+    finally:
+        await device.stop()
+
+    assert [(p["id"], p["selected"]) for p in listed] == [("bbb", False)]
+    assert (after_delete["puid"], after_delete["p"]) == ("aaa", "First")
+    assert (after_select["puid"], after_select["p"]) == ("bbb", "Second")
+
+
+async def test_a_selection_set_on_the_fake_before_any_client_survives_its_file_being_deleted() -> (
+    None
+):
+    """The display loads its selection at boot, so the stale name after a delete does not
+    depend on anyone having asked for the status first."""
+    device = _two_profiles()
+    device.selected_profile_id = "aaa"
+    await device.start()
+    try:
+        async with connect(f"ws://{device.address}/ws") as socket:
+            await _request(socket, "req:profiles:delete", id="aaa")
+        async with connect(f"ws://{device.address}/ws") as socket:
+            status = await _status(socket)
+    finally:
+        await device.stop()
+
+    assert (status["puid"], status["p"]) == ("aaa", "First")

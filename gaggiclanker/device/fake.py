@@ -270,6 +270,12 @@ class FakeDevice:
     #: on `favorite` is asserting on this, not on what it saved.
     favorite_profile_ids: set[str] = field(default_factory=set)
     selected_profile_id: str | None = None
+    #: The profile the display has loaded as selected, as `(id, label)`: the firmware's
+    #: in-memory `selectedProfile`, which the state frame's `p` and `puid` come from.
+    #: It is the setting's id loaded from its file when something selects or saves,
+    #: not the setting itself: a delete leaves it naming the file that is gone, and a
+    #: select of an id with no file leaves it empty. `None` until first needed.
+    _loaded_selection: tuple[str, str] | None = field(default=None, repr=False)
     #: How many `req:flush:start` frames arrived.
     flushes: int = 0
     #: The mode the state frame reports (`m`): 0 standby, 1 brew, 2 steam, 3 water, 4 grind.
@@ -649,11 +655,46 @@ class FakeDevice:
             with contextlib.suppress(Exception):
                 await oldest.close(code=1001, message=b"evicted by a newer client")
 
+    def _load_selection(self) -> bool:
+        """`ProfileManager::selectProfile`: load the selected id's file into memory.
+
+        A file that is missing leaves the empty `Profile{}` (no label, no id), as a
+        failed `loadSelectedProfile` does. Returns whether what the display names moved.
+        """
+        wanted = self.selected_profile_id or ""
+        found = next((p for p in self.profiles if p.get("id") == wanted), None)
+        loaded = (str(found.get("id", "")), str(found.get("label", ""))) if found else ("", "")
+        moved = loaded != self._loaded_selection
+        self._loaded_selection = loaded
+        return moved
+
+    async def select_profile(self, profile_id: str) -> None:
+        """Select a profile from the display, as `ProfileManager::selectProfile` does."""
+        self.selected_profile_id = profile_id
+        await self._publish_selection()
+
+    async def _publish_selection(self) -> None:
+        """`publishState` sends the state frame when its content changed."""
+        if self._load_selection():
+            await self.broadcast({"tp": "evt:status", **self._state_frame()})
+
+    def _loaded_copy(self) -> tuple[str, str]:
+        """What the display has loaded as selected: `(id, label)`.
+
+        A test that sets `selected_profile_id` directly has not loaded it yet; a copy whose
+        file was deleted still names the setting's id and is kept (see `_delete_profile`).
+        """
+        loaded = self._loaded_selection
+        if loaded is None or loaded[0] != (self.selected_profile_id or ""):
+            self._load_selection()
+        return self._loaded_selection or ("", "")
+
     def _state_frame(self) -> dict[str, Any]:
+        loaded_id, label = self._loaded_copy()
         return {
             "m": self.mode,
-            "p": "Test Profile",
-            "puid": "test",
+            "p": label,
+            "puid": loaded_id,
             "cp": True,
             "cd": True,
             "sys": {"s": "ready" if self.system_ready else "starting", "m": "", "c": 0},
@@ -709,6 +750,7 @@ class FakeDevice:
         elif tp == "req:profiles:select":
             self.selected_profile_id = str(message.get("id", ""))
             await self._reply(socket, tp, rid)
+            await self._publish_selection()
         elif tp == "req:profiles:favorite":
             self.favorite_profile_ids.add(str(message.get("id", "")))
             await self._reply(socket, tp, rid)
@@ -791,6 +833,10 @@ class FakeDevice:
         if is_new and self.auto_favorite_new:
             self.favorite_profile_ids.add(profile_id)
         await self._reply(socket, tp, rid, profile=self._serialise(stored))
+        # `saveProfile` ends in `selectProfile(<the setting>)`, whichever profile it saved,
+        # so a rename of the selected one reaches the display and a save made after the
+        # selected file was deleted drops the stale name.
+        await self._publish_selection()
 
     async def _delete_profile(
         self, socket: web.WebSocketResponse, tp: str, rid: Any, profile_id: str
@@ -799,14 +845,16 @@ class FakeDevice:
         if found is None:
             await self._reply(socket, tp, rid, error="Delete failed")
             return
+        self._loaded_copy()  # the display loaded its selection at boot, before the file goes
         self.profiles.remove(found)
         # Deleting removes it from favourites and clears the startup profile if
         # it matched (`ProfileManager::deleteProfile`).
         self.favorite_profile_ids.discard(profile_id)
-        # The selection is left pointing at the missing id: `deleteProfile` does not
-        # touch the selected-profile setting, so the display keeps naming a file that is
-        # gone until something selects another. An app that deletes a selected profile
-        # must select its replacement first.
+        # The selection is left pointing at the missing id: `deleteProfile` touches
+        # neither the selected-profile setting nor the loaded copy, so the state frame
+        # keeps naming a file that is gone (`p`, `puid`) and no listed profile is
+        # selected, until something selects another or a save reloads it. An app that
+        # deletes a selected profile must select its replacement first.
         if self.device_settings.get("startupProfile") == profile_id:
             self.device_settings["startupProfile"] = ""
         await self._reply(socket, tp, rid)

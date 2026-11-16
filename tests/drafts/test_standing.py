@@ -8,6 +8,7 @@ six states are total and exclusive.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import itertools
 import json
@@ -140,11 +141,17 @@ async def test_a_sync_that_put_it_on_the_machine_says_so_and_whether_it_is_selec
     assert got["state"] == "on_machine" and got["reason"] is None
     assert got["selected"] is False
     held = row_for(await get_board(client), BASE_LABEL)["machine"]["device_id"]
-    fake.selected_profile_id = held
-    # The mirror marks the selected profile from the status frame's id, which the sync keeps.
-    app.state.connection.engine._selected_profile_id = held
+    # Selected at the display: the machine's status frame then names the profile, which
+    # is what the mirror marks the selected profile from, so nothing here tells the engine.
+    await fake.select_profile(held)
+    engine = app.state.connection.engine
+    async with asyncio.timeout(5):
+        while engine._selected_profile_id != held:
+            await asyncio.sleep(0.01)
     await pull(app)
     assert (await standing(client, draft))["selected"] is True
+    marked = [r for r in await engine.profiles.list_device_profiles() if r.selected]
+    assert [r.device_id for r in marked] == [held]
 
 
 async def test_a_version_the_machine_read_back_differently_is_not_on_the_machine(
