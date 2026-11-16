@@ -156,6 +156,29 @@ describe("the list", () => {
     expect(within(rows[1]).getByTestId("row-recipe")).toHaveTextContent("No Recipe");
   });
 
+  it("says a profile's Recipe is archived, by name, instead of saying it has none", async () => {
+    window.localStorage.setItem("gaggiclanker.profiles.showOff", "1");
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          row({
+            row: { id: 1, label: "Huila Blooming", on_machine: false },
+            archived_recipe: { id: 9, name: "Huila decaf" },
+          }),
+          row({ row: { id: 2, label: "Without", device_profile_id: "two", on_machine: false } }),
+        ],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    const rows = await screen.findAllByTestId("profile-row");
+    expect(within(rows[0]).getByTestId("row-recipe")).toHaveTextContent(
+      "Recipe: Huila decaf (archived)",
+    );
+    expect(within(rows[0]).getByTestId("row-recipe")).not.toHaveTextContent("No Recipe");
+    expect(within(rows[1]).getByTestId("row-recipe")).toHaveTextContent("No Recipe");
+  });
+
   it.each([
     [
       "will be put on the machine",
@@ -365,6 +388,66 @@ describe("the two switches", () => {
 
     await waitFor(() => expect(api.setBoardOnMachine).toHaveBeenCalledWith(1, true));
     expect(screen.queryByTestId("switch-off-confirm")).not.toBeInTheDocument();
+  });
+
+  describe("a profile whose Recipe is archived", () => {
+    const archivedRow = () =>
+      row({
+        row: { id: 1, label: "Huila Blooming", on_machine: false },
+        archived_recipe: { id: 9, name: "Huila decaf" },
+      });
+
+    it("asks before it is switched on, names the Recipe and sends nothing until confirmed", async () => {
+      const user = setupUser();
+      window.localStorage.setItem("gaggiclanker.profiles.showOff", "1");
+      api.getProfileBoard.mockResolvedValue(boardView({ rows: [archivedRow()] }));
+      renderWithQueryClient(<ProfilesPage />);
+
+      await user.click(
+        await screen.findByRole("switch", { name: "Huila Blooming on the machine" }),
+      );
+
+      const strip = await screen.findByTestId("switch-on-confirm");
+      expect(within(strip).getByText("Switch Huila Blooming on the machine?")).toBeInTheDocument();
+      expect(strip).toHaveTextContent(
+        "Its Recipe, Huila decaf, is archived: shots brewed on this profile wait under “needs a Recipe”. To file them there, unarchive the Recipe instead (it switches the profile on too).",
+      );
+      expect(within(strip).getByRole("link", { name: "Open the Recipe" })).toHaveAttribute(
+        "href",
+        "/recipes/9",
+      );
+      expect(api.setBoardOnMachine).not.toHaveBeenCalled();
+
+      await user.click(within(strip).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByTestId("switch-on-confirm")).not.toBeInTheDocument();
+      expect(api.setBoardOnMachine).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("switch", { name: "Huila Blooming on the machine" }));
+      await user.click(
+        within(await screen.findByTestId("switch-on-confirm")).getByRole("button", {
+          name: "Switch on",
+        }),
+      );
+      await waitFor(() => expect(api.setBoardOnMachine).toHaveBeenCalledWith(1, true));
+    });
+
+    it("a profile with no archived Recipe is switched on at once", async () => {
+      const user = setupUser();
+      window.localStorage.setItem("gaggiclanker.profiles.showOff", "1");
+      api.getProfileBoard.mockResolvedValue(
+        boardView({
+          rows: [row({ row: { id: 1, label: "Huila Blooming", on_machine: false } })],
+        }),
+      );
+      renderWithQueryClient(<ProfilesPage />);
+
+      await user.click(
+        await screen.findByRole("switch", { name: "Huila Blooming on the machine" }),
+      );
+
+      await waitFor(() => expect(api.setBoardOnMachine).toHaveBeenCalledWith(1, true));
+      expect(screen.queryByTestId("switch-on-confirm")).not.toBeInTheDocument();
+    });
   });
 
   it("switching off a profile nobody brews and the machine has not selected asks nothing", async () => {

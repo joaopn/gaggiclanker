@@ -3,7 +3,7 @@ import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import { usePinVersion, useUnpin } from "@/hooks/usePins";
-import { useArchiveRecipe } from "@/hooks/useRecipes";
+import { useArchiveRecipe, useUnarchiveRecipe } from "@/hooks/useRecipes";
 import { queryKeys } from "@/lib/queryKeys";
 import { pinDetail } from "@/test/pinFixtures";
 import { recipeRow } from "@/test/recipesFixtures";
@@ -15,16 +15,18 @@ vi.mock("sonner", () => ({
 }));
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
-const { pinVersion, unpinPin, archiveRecipe } = vi.hoisted(() => ({
+const { pinVersion, unpinPin, archiveRecipe, unarchiveRecipe } = vi.hoisted(() => ({
   pinVersion: vi.fn(),
   unpinPin: vi.fn(),
   archiveRecipe: vi.fn(),
+  unarchiveRecipe: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   pinVersion,
   unpinPin,
   archiveRecipe,
+  unarchiveRecipe,
 }));
 
 beforeEach(() => {
@@ -35,6 +37,7 @@ beforeEach(() => {
     board_id: 7,
   });
   archiveRecipe.mockResolvedValue(recipeRow({ id: 3, archived: true }));
+  unarchiveRecipe.mockResolvedValue({ ...recipeRow({ id: 3 }), profile_switched_on: true });
 });
 
 function spyOn(queryClient: QueryClient): unknown[][] {
@@ -104,6 +107,16 @@ describe("pinning, unpinning and archiving refresh everything they write", () =>
     await result.current.mutateAsync(3);
 
     await expectTouched(keys);
+  });
+
+  it("unarchiving a Recipe, which switches its profile on in the same write", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useUnarchiveRecipe());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync(3);
+
+    await expectTouched(keys);
+    expect(unarchiveRecipe).toHaveBeenCalledWith(3);
   });
 });
 

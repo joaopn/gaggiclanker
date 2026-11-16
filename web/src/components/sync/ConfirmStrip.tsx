@@ -19,6 +19,7 @@ export function ConfirmStrip({
   testId,
   confirmVariant = "destructive",
   focusOnOpen = false,
+  extraAction,
 }: {
   title: string;
   children: ReactNode;
@@ -34,6 +35,8 @@ export function ConfirmStrip({
    * stray Enter is still not the decision.
    */
   focusOnOpen?: boolean;
+  /** A third choice between the confirm button and Cancel, such as a link to somewhere else. */
+  extraAction?: ReactNode;
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -56,6 +59,7 @@ export function ConfirmStrip({
         <Button size="sm" variant={confirmVariant} onClick={onConfirm}>
           {confirmLabel}
         </Button>
+        {extraAction}
         <Button ref={cancelRef} size="sm" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

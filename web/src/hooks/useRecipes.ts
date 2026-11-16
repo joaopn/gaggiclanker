@@ -52,6 +52,7 @@ import type {
   RecipeProposalListData,
   RecipeRow,
   RecipeTrends,
+  RecipeUnarchived,
   RecipeVersionAdd,
   RecipeVersionRow,
   RollbackWrite,
@@ -521,16 +522,28 @@ export function useArchiveRecipe(): UseMutationResult<RecipeRow, Error, number> 
   });
 }
 
-/** Bring an archived Recipe back: it files its profile's new shots again. Pins stay off. */
-export function useUnarchiveRecipe(): UseMutationResult<RecipeRow, Error, number> {
+/**
+ * Bring an archived Recipe back: it files its profile's new shots again and its profile is
+ * switched on. Pins stay off.
+ */
+export function useUnarchiveRecipe(): UseMutationResult<RecipeUnarchived, Error, number> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id) => unarchiveRecipe(id),
     onSuccess: (row) =>
-      toast.success(`"${row.name}" is back: new shots on its profile are filed here again`),
+      toast.success(
+        row.profile_switched_on
+          ? `"${row.name}" is back: new shots on its profile are filed here again, and the next sync puts the profile back on the machine.`
+          : `"${row.name}" is back: new shots on its profile are filed here again`,
+      ),
     onError: (error) =>
       toast.error(error instanceof ApiClientError ? error.message : noAnswerSentence("the page")),
-    onSettled: () => invalidateRecipes(queryClient),
+    // Unarchiving switches the profile on, so the board, the profile mirror and what the next
+    // sync does about it moved too.
+    onSettled: () =>
+      Promise.all([invalidateRecipes(queryClient), invalidateBoardWrites(queryClient)]).then(
+        () => undefined,
+      ),
   });
 }
 

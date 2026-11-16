@@ -100,7 +100,12 @@ export function useSetOnMachine(): UseMutationResult<
   return useMutation({
     mutationFn: ({ rowId, on }) => setBoardOnMachine(rowId, on),
     onError: (error) => toast.error(error.message),
-    onSettled: () => void invalidateBoardWrites(queryClient),
+    onSettled: () => {
+      void invalidateBoardWrites(queryClient);
+      // The Recipe page's Archive question is built from whether the profile is on, so a Recipe
+      // page opened before this switch must not answer from its cached copy.
+      void invalidateRecipes(queryClient);
+    },
   });
 }
 

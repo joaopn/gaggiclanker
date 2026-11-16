@@ -9,6 +9,7 @@ import { RenameProfile } from "@/components/profiles/RenameProfile";
 import { StateLine } from "@/components/profiles/StateLine";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useSetOnMachine, useSetStarred } from "@/hooks/useBoard";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
@@ -45,11 +46,14 @@ export function ProfileRow({
   const onMachine = useSetOnMachine();
   const starred = useSetStarred();
   const [confirming, setConfirming] = useState(false);
+  // Switching on a profile whose Recipe is archived asks first (its shots would not be filed).
+  const [confirmingOn, setConfirmingOn] = useState(false);
   // The Name field, opened by the open profile's Rename or by a name conflict's "Rename to …".
   const [renaming, setRenaming] = useState(false);
   const state = rowStateOf(view, entry);
   const nameConflict = nameConflictOf(entry);
   const recipe = entry.recipe ?? null;
+  const archivedRecipe = entry.archived_recipe ?? null;
   const selected = entry.machine.selected === true;
   const pin = entry.pin ?? null;
   const waiting = proposals.length > 0 ? proposals.length : (entry.proposed_versions ?? 0);
@@ -62,6 +66,10 @@ export function ProfileRow({
   const turn = (next: boolean) => {
     if (!next && (recipe !== null || selected)) {
       setConfirming(true);
+      return;
+    }
+    if (next && archivedRecipe !== null) {
+      setConfirmingOn(true);
       return;
     }
     send(next);
@@ -115,7 +123,11 @@ export function ProfileRow({
             </span>
             {pin ? null : (
               <span className="block text-muted-foreground text-xs" data-testid="row-recipe">
-                {recipe ? `Recipe: ${recipe.name} ${recipe.version_label}` : "No Recipe"}
+                {recipe
+                  ? `Recipe: ${recipe.name} ${recipe.version_label}`
+                  : archivedRecipe
+                    ? `Recipe: ${archivedRecipe.name} (archived)`
+                    : "No Recipe"}
               </span>
             )}
             <StateLine state={state} />
@@ -214,6 +226,34 @@ export function ProfileRow({
             {selected ? (
               <p data-testid="switch-off-selected">{selectedSuccessorSentence()}</p>
             ) : null}
+          </ConfirmStrip>
+        </div>
+      ) : null}
+
+      {confirmingOn && archivedRecipe !== null ? (
+        <div className="px-3 pb-3">
+          <ConfirmStrip
+            title={`Switch ${row.label} on the machine?`}
+            confirmLabel="Switch on"
+            confirmVariant="default"
+            testId="switch-on-confirm"
+            focusOnOpen
+            onCancel={() => setConfirmingOn(false)}
+            extraAction={
+              <Button asChild size="sm" variant="outline">
+                <Link to={`/recipes/${archivedRecipe.id}`}>Open the Recipe</Link>
+              </Button>
+            }
+            onConfirm={() => {
+              setConfirmingOn(false);
+              send(true);
+            }}
+          >
+            <p data-testid="switch-on-archived">
+              Its Recipe, {archivedRecipe.name}, is archived: shots brewed on this profile wait
+              under “needs a Recipe”. To file them there, unarchive the Recipe instead (it switches
+              the profile on too).
+            </p>
           </ConfirmStrip>
         </div>
       ) : null}

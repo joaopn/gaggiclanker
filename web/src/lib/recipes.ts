@@ -21,15 +21,39 @@ import type {
  * nobody notices until they are comparing two versions side by side.
  */
 
+/** What Archive would take off the machine: the Recipe's own profile, when it is switched on. */
+export function profileLeaving(profile: RecipeDetailData["profile"]): boolean {
+  return profile?.on_machine === true;
+}
+
+/** Whether Archive asks first: something leaves the machine, the profile or a pin. */
+export function archiveAsks(detail: Pick<RecipeDetailData, "pins" | "profile">): boolean {
+  return profileLeaving(detail.profile) || detail.pins.length > 0;
+}
+
 /**
- * What archiving a Recipe with pins does to them, naming each: the Recipe stops taking shots, and its
- * pins are unpinned in the same write, so the next sync takes their copies off the machine.
+ * What archiving a Recipe does to the machine, naming each file: the Recipe stops taking shots, its
+ * profile is switched off (when it was on) and its pins are unpinned in the same write, so the next
+ * sync takes their files off the machine.
  */
-export function archiveWords(pins: RecipeDetailData["pins"]): string {
-  const names = pins.map((pin) => `"${pin.name}"`);
+export function archiveWords(
+  pins: RecipeDetailData["pins"],
+  profile: RecipeDetailData["profile"] = null,
+): string {
+  const leaving = profileLeaving(profile);
+  const names = [
+    ...(leaving && profile ? [`"${profile.machine_name}"`] : []),
+    ...pins.map((pin) => `"${pin.name}"`),
+  ];
   const list = listWords(names);
-  const count = pins.length === 1 ? "Its pin is" : `Its ${pins.length} pins are`;
-  return `It receives no more shots. ${count} unpinned: the next sync takes ${list} off the machine.`;
+  const pinWords =
+    pins.length === 0 ? "" : pins.length === 1 ? "its pin is" : `its ${pins.length} pins are`;
+  const done = leaving
+    ? pins.length === 0
+      ? "Its profile is switched off"
+      : `Its profile is switched off and ${pinWords} unpinned`
+    : `${pinWords.charAt(0).toUpperCase()}${pinWords.slice(1)} unpinned`;
+  return `It receives no more shots. ${done}: the next sync takes ${list} off the machine.`;
 }
 
 // ── the log ──────────────────────────────────────────────────────────

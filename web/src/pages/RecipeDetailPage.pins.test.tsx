@@ -804,6 +804,129 @@ describe("Archive", () => {
     await waitFor(() => expect(archiveRecipe).toHaveBeenCalledTimes(1));
   });
 
+  it("with the profile on and no pins, says the profile is switched off and names what leaves", async () => {
+    getRecipe.mockResolvedValue(
+      pinnedDetail({
+        pins: [],
+        profile: { machine_name: "Huila Blooming v5", on_machine: true, selected: false },
+      }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<RecipeDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    const confirm = screen.getByTestId("archive-confirm");
+    expect(screen.getByTestId("archive-pins")).toHaveTextContent(
+      'It receives no more shots. Its profile is switched off: the next sync takes "Huila Blooming v5" off the machine.',
+    );
+    expect(screen.queryByTestId("archive-selected")).not.toBeInTheDocument();
+    expect(archiveRecipe).not.toHaveBeenCalled();
+    await user.click(within(confirm).getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(archiveRecipe).toHaveBeenCalledWith(3));
+  });
+
+  it.each([
+    [
+      "one pin",
+      [recipePin({ pin_id: 6, name: "Huila Blooming v3" })],
+      'It receives no more shots. Its profile is switched off and its pin is unpinned: the next sync takes "Huila Blooming v5" and "Huila Blooming v3" off the machine.',
+    ],
+    [
+      "two pins",
+      [recipePin({ pin_id: 6, name: "Huila Blooming v3" }), recipePin({ pin_id: 7, name: "Alt" })],
+      'It receives no more shots. Its profile is switched off and its 2 pins are unpinned: the next sync takes "Huila Blooming v5", "Huila Blooming v3" and "Alt" off the machine.',
+    ],
+  ])(
+    "with the profile on and %s, says all of it in one sentence",
+    async (_name, pins, sentence) => {
+      getRecipe.mockResolvedValue(
+        pinnedDetail({
+          pins,
+          profile: { machine_name: "Huila Blooming v5", on_machine: true, selected: false },
+        }),
+      );
+      const user = setupUser();
+      renderWithQueryClient(<RecipeDetailPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+      expect(screen.getByTestId("archive-pins")).toHaveTextContent(sentence);
+    },
+  );
+
+  it("with the profile already off, the pins' sentence is today's and does not mention it", async () => {
+    getRecipe.mockResolvedValue(
+      pinnedDetail({
+        pins: [recipePin({ pin_id: 6, name: "Huila Blooming v3" })],
+        profile: { machine_name: "Huila Blooming v5", on_machine: false, selected: true },
+      }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<RecipeDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    expect(screen.getByTestId("archive-pins")).toHaveTextContent(
+      'It receives no more shots. Its pin is unpinned: the next sync takes "Huila Blooming v3" off the machine.',
+    );
+    // Selected, but off: Archive does not remove it, so the successor line would be untrue.
+    expect(screen.queryByTestId("archive-selected")).not.toBeInTheDocument();
+  });
+
+  it("adds the selected profile's line when the profile is on and the one the machine has selected", async () => {
+    getRecipe.mockResolvedValue(
+      pinnedDetail({
+        pins: [],
+        profile: { machine_name: "Huila Blooming v5", on_machine: true, selected: true },
+      }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<RecipeDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    expect(screen.getByTestId("archive-selected")).toHaveTextContent(selectedSuccessorSentence());
+  });
+
+  it("archives at once when the profile is already off and there are no pins", async () => {
+    getRecipe.mockResolvedValue(
+      pinnedDetail({
+        pins: [],
+        profile: { machine_name: "Huila Blooming v5", on_machine: false, selected: false },
+      }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<RecipeDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    await waitFor(() => expect(archiveRecipe).toHaveBeenCalledWith(3));
+    expect(screen.queryByTestId("archive-confirm")).not.toBeInTheDocument();
+  });
+
+  it("says in the toast that the profile was switched on, and says nothing of it when none was", async () => {
+    getRecipe.mockResolvedValue(pinnedDetail({ pins: [], recipe: recipeRow({ archived: true }) }));
+    unarchiveRecipe.mockResolvedValueOnce({ ...recipeRow(), profile_switched_on: true });
+    const user = setupUser();
+    renderWithQueryClient(<RecipeDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Unarchive" }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        '"Guji on the Niche" is back: new shots on its profile are filed here again, and the next sync puts the profile back on the machine.',
+      ),
+    );
+
+    unarchiveRecipe.mockResolvedValueOnce({ ...recipeRow(), profile_switched_on: false });
+    await user.click(await screen.findByRole("button", { name: "Unarchive" }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        '"Guji on the Niche" is back: new shots on its profile are filed here again',
+      ),
+    );
+  });
+
   it("does not carry an open question over to another Recipe when the route moves", async () => {
     const user = setupUser();
     const { rerender } = renderWithQueryClient(<RecipeDetailPage />);

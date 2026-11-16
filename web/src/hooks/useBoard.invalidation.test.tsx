@@ -107,8 +107,22 @@ describe("every board mutation refreshes everything it changes", () => {
 
     await result.current.mutateAsync({ rowId: 4, on: false });
 
-    for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
+    // The Recipes too: a Recipe's page says whether its profile is on, and asks before Archive
+    // from that, so a cached page would ask the wrong question for thirty seconds.
+    for (const key of [...BOARD_WRITES, queryKeys.recipes.all]) {
+      await waitFor(() => expect(keys).toContainEqual([...key]));
+    }
     expect(setBoardOnMachine).toHaveBeenCalledWith(4, false);
+  });
+
+  it("a refused switch still refreshes the Recipes, since the server is the authority on it", async () => {
+    setBoardOnMachine.mockRejectedValue(new Error("pinned"));
+    const { result, queryClient } = renderHookWithQueryClient(() => useSetOnMachine());
+    const keys = spyOn(queryClient);
+
+    await expect(result.current.mutateAsync({ rowId: 4, on: true })).rejects.toThrow();
+
+    await waitFor(() => expect(keys).toContainEqual([...queryKeys.recipes.all]));
   });
 
   it("starring a profile", async () => {

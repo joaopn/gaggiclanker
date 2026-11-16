@@ -102,6 +102,7 @@ import type {
   RecipeProposalListData,
   RecipeRow,
   RecipeTrends,
+  RecipeUnarchived,
   RecipeVersionAdd,
   RecipeVersionRow,
   ResetData,
@@ -1434,9 +1435,12 @@ export async function archiveRecipe(id: number): Promise<RecipeRow> {
   return fetchApi<RecipeRow>(`/recipes/${id}/archive`, { method: "POST" });
 }
 
-/** Undo an archive: the Recipe files its profile's new shots again. Pins stay off. */
-export async function unarchiveRecipe(id: number): Promise<RecipeRow> {
-  return fetchApi<RecipeRow>(`/recipes/${id}/unarchive`, { method: "POST" });
+/**
+ * Undo an archive: the Recipe files its profile's new shots again and its profile is switched on
+ * (the answer says whether it was). Pins stay off.
+ */
+export async function unarchiveRecipe(id: number): Promise<RecipeUnarchived> {
+  return fetchApi<RecipeUnarchived>(`/recipes/${id}/unarchive`, { method: "POST" });
 }
 
 export async function getRecipeTrends(id: number): Promise<RecipeTrends> {

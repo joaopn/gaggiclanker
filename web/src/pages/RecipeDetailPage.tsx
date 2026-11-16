@@ -46,11 +46,14 @@ import {
   useUnarchiveRecipe,
 } from "@/hooks/useRecipes";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
+import { selectedSuccessorSentence } from "@/lib/board";
 import { attempt } from "@/lib/mutations";
 import {
+  archiveAsks,
   archiveWords,
   currentVersion,
   grindPatch,
+  profileLeaving,
   recipeSummary,
   trackRecordSentence,
   versionSummary,
@@ -190,8 +193,9 @@ export function RecipeDetailPage() {
                 size="sm"
                 disabled={archive.isPending || archivingId === row.id}
                 onClick={() =>
-                  // A Recipe with pins asks first: archiving takes them off the machine.
-                  detail.data.pins.length > 0
+                  // A Recipe asks first when archiving takes something off the machine: its
+                  // profile (switched on) or a pin.
+                  archiveAsks(detail.data)
                     ? setArchivingId(row.id)
                     : archiveOnce((release) => archive.mutate(row.id, { onSettled: release }))
                 }
@@ -218,7 +222,7 @@ export function RecipeDetailPage() {
         </p>
       ) : null}
 
-      {archivingId === row.id && detail.data.pins.length > 0 ? (
+      {archivingId === row.id && archiveAsks(detail.data) ? (
         <ConfirmStrip
           title={`Archive ${row.name}?`}
           confirmLabel="Archive"
@@ -235,7 +239,10 @@ export function RecipeDetailPage() {
             )
           }
         >
-          <p data-testid="archive-pins">{archiveWords(detail.data.pins)}</p>
+          <p data-testid="archive-pins">{archiveWords(detail.data.pins, detail.data.profile)}</p>
+          {profileLeaving(detail.data.profile) && detail.data.profile?.selected ? (
+            <p data-testid="archive-selected">{selectedSuccessorSentence()}</p>
+          ) : null}
         </ConfirmStrip>
       ) : null}
 

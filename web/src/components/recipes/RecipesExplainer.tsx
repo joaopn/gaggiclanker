@@ -65,7 +65,8 @@ export function RecipesExplainer({ dialling }: { dialling: boolean }) {
           <strong className="text-foreground">Shots.</strong> A shot brewed with a Recipe's profile
           is filed under that Recipe. Each Recipe has its own profile, so the profile you choose on
           the machine tells the archive which bean was in the hopper. An archived Recipe files
-          nothing: its profile's shots wait under “needs a Recipe”.
+          nothing: its profile is switched off, so the next sync takes it off the machine, and shots
+          brewed on it wait under “needs a Recipe”.
         </p>
         <p>
           <strong className="text-foreground">Versions.</strong> Every change is a new version. It
@@ -77,7 +78,8 @@ export function RecipesExplainer({ dialling }: { dialling: boolean }) {
         <p>
           <strong className="text-foreground">Starting and finishing.</strong> A new bean means a
           new Recipe. To try a bean on a copy of an existing Recipe's profile, use Duplicate Recipe.
-          When you've finished with a bean, archive its Recipe.
+          When you've finished with a bean, archive its Recipe: its profile and pins leave the
+          machine at the next sync, and Unarchive brings the profile back.
         </p>
       </div>
     </section>
