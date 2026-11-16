@@ -162,8 +162,15 @@ there is never a choice between live Recipes to make. A shot is filed when the
 live Recipe that has its profile names that profile version on its current
 version; otherwise it stays in the "needs a Recipe" inbox, because a mis-filed
 shot pollutes a trend chart nobody re-reads while an unfiled one is on a list
-with a button next to it. Unarchiving a Recipe files its next shots again and
-leaves the ones that arrived meanwhile in the inbox. The inbox leaves out quarantined shots and discarded shots
+with a button next to it. Archiving a Recipe takes everything it has off the machine, in one
+transaction (`RecipesRepository.archive`): its pins are unpinned and its own profile's
+"On the machine" switch is switched off, through the same board write the Profiles page's switch
+uses (the star is kept, a designing Recipe with no profile changes nothing), so the next sync with
+Writes on removes the files through the switch's usual removal. Unarchiving a Recipe files its
+next shots again, switches its profile on (whether or not it was on before the archive) and
+leaves the shots that arrived meanwhile in the inbox and the pins off. The profile list says
+whose profile it is while the Recipe is archived (`archived_recipe`, beside `recipe`, which keeps
+meaning "a live Recipe brews this"). The inbox leaves out quarantined shots and discarded shots
 (`NEEDS_RECIPE_SQL` in `db/repos/shots.py`, read by the count, the filter and the
 button alike): neither is waiting for an answer.
 

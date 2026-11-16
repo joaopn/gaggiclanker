@@ -104,16 +104,35 @@ async def test_a_pins_copy_keeps_its_own_name_with_no_second_suffix(adopted: Ado
     assert (await get_board(client))["actions"] == []
 
 
-async def test_an_archived_recipe_keeps_its_last_version_on_the_machine(adopted: Adopted) -> None:
+async def test_an_archived_recipes_profile_keeps_its_last_version_in_its_name_until_it_goes(
+    adopted: Adopted,
+) -> None:
     app, client, fake = adopted
     recipe_id, _ = await _recipe_with_version(app, client)
     await grind_change(client, recipe_id)
+    await pull(app)
+    file = (await own_row(client))["machine"]["device_id"]
+    assert file_called(fake, file) == V11, "the precondition: the file is there under v1.1"
     data(await client.post(f"/api/recipes/{recipe_id}/archive"))
 
     row = await own_row(client)
     assert row["machine_name"] == V11 and row["recipe"] is None
-    await pull(app)
-    assert file_called(fake, row["machine"]["device_id"]) == V11
+    # Archive switched the profile off, so the sync removes it; nothing renames it on the way.
+    assert [a["kind"] for a in row["planned"]] == ["remove"]
+    run = await pull(app)
+    assert run.status == "ok", run.error
+    assert [i["device_id"] for i in summary_of(run)["removed"]] == [file]
+    assert file not in [str(p["id"]) for p in fake.profiles], "the file itself is gone"
+    assert V11 not in [p["label"] for p in fake.profiles]
+
+    # Switched back on from the board, the Recipe's last version is still in the name it gets.
+    on = await client.put(f"/api/profile-board/{row['row']['id']}/on-machine", json={"on": True})
+    assert on.status_code == 200, on.text
+    run = await pull(app)
+    assert run.status == "ok", run.error
+    back = await own_row(client)
+    assert back["machine_name"] == V11 and back["machine"]["present"] is True
+    assert file_called(fake, back["machine"]["device_id"]) == V11
 
 
 async def test_a_new_current_version_renames_the_file_in_place_at_the_next_sync(

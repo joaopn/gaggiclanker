@@ -80,10 +80,12 @@ from gaggiclanker.db.repos.recipes import (
     DesignRefusal,
     FieldChange,
     LongText,
+    RecipeProfileStanding,
     RecipeRevertRow,
     RecipeRow,
     RecipeTrackRecord,
     RecipeTrends,
+    RecipeUnarchived,
     RecipeVersionChange,
     RecipeVersionPatch,
     RecipeVersionRow,
@@ -460,6 +462,10 @@ class RecipeDetailData(BaseModel):
     #: The versions of this Recipe kept on the machine as profiles of their own, newest pin first.
     #: Live pins only; empty when there are none.
     pins: list[RecipePin] = []
+    #: The Recipe's own profile, for the question Archive asks: what the machine shows for it,
+    #: whether it is switched on and whether it is the one the machine has selected (as the
+    #: archive last mirrored it). ``None`` when the Recipe has no live profile (a design).
+    profile: RecipeProfileStanding | None = None
 
 
 def _missing(field: str, value: int, noun: str) -> NoReturn:
@@ -1075,6 +1081,7 @@ async def get_recipe(
             reverts=await recipes.reverts(recipe_id),
             proposal=(await _proposal_detail(proposals, waiting) if waiting is not None else None),
             outcome_proposal=grades.get(row.current_version_id or 0),
+            profile=await recipes.profile_standing(recipe_id),
             pins=[
                 RecipePin(
                     pin_id=pin.id,
@@ -1467,6 +1474,8 @@ async def rollback(
     "/{recipe_id}/archive", response_model=ApiResponse[RecipeRow], summary="Retire a Recipe"
 )
 async def archive_recipe(recipe_id: int, recipes: RecipesRepoDep) -> JSONResponse:
+    """Retire a Recipe: it files no more shots, its pins are unpinned and its profile is switched
+    off, all in one transaction; the next sync with Writes on takes them off the machine."""
     row = await recipes.archive(recipe_id)
     if row is None:
         raise NotFound(f"No Recipe {recipe_id}")
@@ -1475,11 +1484,12 @@ async def archive_recipe(recipe_id: int, recipes: RecipesRepoDep) -> JSONRespons
 
 @router.post(
     "/{recipe_id}/unarchive",
-    response_model=ApiResponse[RecipeRow],
+    response_model=ApiResponse[RecipeUnarchived],
     summary="Bring a retired Recipe back",
 )
 async def unarchive_recipe(recipe_id: int, recipes: RecipesRepoDep) -> JSONResponse:
-    """Undo an archive: the Recipe files its profile's shots again. Pins stay off."""
+    """Undo an archive: the Recipe files its profile's shots again and its profile is switched
+    on again (`profile_switched_on` says whether that changed anything). Pins stay off."""
     row = await recipes.unarchive(recipe_id)
     if row is None:
         raise NotFound(f"No Recipe {recipe_id}")

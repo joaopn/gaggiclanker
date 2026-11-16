@@ -1968,7 +1968,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retire a Recipe */
+        /**
+         * Retire a Recipe
+         * @description Retire a Recipe: it files no more shots, its pins are unpinned and its profile is switched
+         *     off, all in one transaction; the next sync with Writes on takes them off the machine.
+         */
         post: operations["archive_recipe_api_recipes__recipe_id__archive_post"];
         delete?: never;
         options?: never;
@@ -2327,7 +2331,8 @@ export interface paths {
         put?: never;
         /**
          * Bring a retired Recipe back
-         * @description Undo an archive: the Recipe files its profile's shots again. Pins stay off.
+         * @description Undo an archive: the Recipe files its profile's shots again and its profile is switched
+         *     on again (`profile_switched_on` says whether that changed anything). Pins stay off.
          */
         post: operations["unarchive_recipe_api_recipes__recipe_id__unarchive_post"];
         delete?: never;
@@ -4025,6 +4030,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[RecipeUnarchived] */
+        ApiResponse_RecipeUnarchived_: {
+            data?: components["schemas"]["RecipeUnarchived"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[RecipeVersionRow] */
         ApiResponse_RecipeVersionRow_: {
             data?: components["schemas"]["RecipeVersionRow"] | null;
@@ -4330,6 +4343,16 @@ export interface components {
             ok: boolean;
         };
         /**
+         * ArchivedRecipe
+         * @description The archived Recipe that owns a profile, for the Profiles page's line about it.
+         */
+        ArchivedRecipe: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /**
          * AuthStatusData
          * @description ``auth_required`` is what the SPA reads before it has any token at all.
          */
@@ -4615,6 +4638,7 @@ export interface components {
          */
         BoardRowView: {
             active_version: components["schemas"]["ActiveVersion"];
+            archived_recipe?: components["schemas"]["ArchivedRecipe"] | null;
             conflict?: components["schemas"]["ConflictSummary"] | null;
             /**
              * In Conflict
@@ -7938,6 +7962,7 @@ export interface components {
              * @default []
              */
             pins: components["schemas"]["RecipePin"][];
+            profile?: components["schemas"]["RecipeProfileStanding"] | null;
             proposal?: components["schemas"]["RecipeProposalDetail"] | null;
             recipe: components["schemas"]["RecipeRow"];
             /**
@@ -7991,6 +8016,19 @@ export interface components {
             shot_count: number;
             /** Version Label */
             version_label: string;
+        };
+        /**
+         * RecipeProfileStanding
+         * @description A Recipe's own profile as Archive sees it: what the machine shows for it, whether it is
+         *     switched on, and whether it is the profile the machine has selected (as last mirrored).
+         */
+        RecipeProfileStanding: {
+            /** Machine Name */
+            machine_name: string;
+            /** On Machine */
+            on_machine: boolean;
+            /** Selected */
+            selected: boolean;
         };
         /**
          * RecipeProposalDecision
@@ -8382,6 +8420,82 @@ export interface components {
             shots: number;
             /** Version Label */
             version_label: string;
+        };
+        /**
+         * RecipeUnarchived
+         * @description The Recipe after Unarchive, and whether its profile was switched on by it.
+         */
+        RecipeUnarchived: {
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /** Bean Id */
+            bean_id: number;
+            /** Bean Name */
+            bean_name?: string | null;
+            /** Board Id */
+            board_id?: number | null;
+            copied_from?: components["schemas"]["CopiedFrom"] | null;
+            /** Created At */
+            created_at: string;
+            /** Current Version Id */
+            current_version_id?: number | null;
+            /**
+             * Current Version Label
+             * @default
+             */
+            current_version_label: string;
+            design_brief?: components["schemas"]["DesignBrief"];
+            /**
+             * Designing
+             * @default false
+             */
+            designing: boolean;
+            drink?: components["schemas"]["Drink"] | null;
+            /**
+             * Drink Notes
+             * @default
+             */
+            drink_notes: string;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Grinder Name */
+            grinder_name?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Next Major Label
+             * @default
+             */
+            next_major_label: string;
+            /**
+             * Next Minor Label
+             * @default
+             */
+            next_minor_label: string;
+            /** Profile Label */
+            profile_label?: string | null;
+            /**
+             * Profile Switched On
+             * @default false
+             */
+            profile_switched_on: boolean;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
+            /**
+             * Version Count
+             * @default 0
+             */
+            version_count: number;
         };
         /** RecipeUsingOut */
         RecipeUsingOut: {
@@ -14442,7 +14556,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_RecipeRow_"];
+                    "application/json": components["schemas"]["ApiResponse_RecipeUnarchived_"];
                 };
             };
             /** @description Validation Error */

@@ -68,6 +68,7 @@ from pydantic import (
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.pins import PinsRepository
+from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import version_name_sql
 from gaggiclanker.db.repos.shots import (
@@ -86,6 +87,7 @@ from gaggiclanker.db.repos.version_names import (
 )
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.drinks import Drink, drink_label
+from gaggiclanker.domain.machine_names import machine_name
 from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.recipes import version_label
 from gaggiclanker.domain.slog import FIELD_DEFS
@@ -105,6 +107,7 @@ __all__ = [
     "RECIPE_FIELDS",
     "SEARCH_COLUMNS",
     "VERSION_FIELDS",
+    "ArchivedRecipe",
     "DesignBrief",
     "DesignRefusal",
     "DrinkNotes",
@@ -112,11 +115,13 @@ __all__ = [
     "LiveRecipe",
     "ProfileMatch",
     "ProfileMatchSummary",
+    "RecipeProfileStanding",
     "RecipeRevertRow",
     "RecipeRow",
     "RecipeShotRow",
     "RecipeTrackRecord",
     "RecipeTrends",
+    "RecipeUnarchived",
     "RecipeVersionChange",
     "RecipeVersionPatch",
     "RecipeVersionRow",
@@ -596,6 +601,15 @@ class VersionWriteResult:
     refused: VersionRefusal | None = None
 
 
+class ArchivedRecipe(BaseModel):
+    """The archived Recipe that owns a profile, for the Profiles page's line about it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+
+
 @dataclass(frozen=True, slots=True)
 class LiveRecipe:
     """A profile's Recipe, for a page that warns before the profile changes."""
@@ -629,6 +643,18 @@ class ProfileMatchSummary(BaseModel):
     matched: int = 0
     #: No Recipe brews their profile, or the archive does not know which it was.
     unmatched: int = 0
+
+
+class RecipeProfileStanding(BaseModel):
+    """A Recipe's own profile as Archive sees it: what the machine shows for it, whether it is
+    switched on, and whether it is the profile the machine has selected (as last mirrored)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The profile's name and its Recipe's current version label ("Huila Blooming v5").
+    machine_name: str
+    on_machine: bool
+    selected: bool
 
 
 class CopiedFrom(BaseModel):
@@ -759,6 +785,14 @@ class RecipeRow(BaseModel):
         except ValidationError:
             log.warning("recipe_design_brief_unreadable")
             return DesignBrief()
+
+
+class RecipeUnarchived(RecipeRow):
+    """The Recipe after Unarchive, and whether its profile was switched on by it."""
+
+    #: ``True`` when the Recipe's profile row is live and Unarchive switched it on; ``False`` for
+    #: a Recipe with no profile, one whose profile was already on and one that was not archived.
+    profile_switched_on: bool = False
 
 
 class FieldChange(BaseModel):
@@ -1526,11 +1560,16 @@ class RecipesRepository(Repository):
         return self.to_models(RecipeRow, rows)
 
     async def archive(self, recipe_id: int) -> RecipeRow | None:
-        """Retire a Recipe: it files no more shots, and its profile's shots wait in the inbox.
+        """Retire a Recipe: it files no more shots, and everything it has leaves the machine.
 
         Its pins are unpinned in the same transaction: a copy left on the machine would brew
         shots nobody can file, so the next sync takes each one off (the pinned shots already
-        filed stay where they are).
+        filed stay where they are). Its own profile is switched off in the same transaction, for
+        the same reason: the next sync with Writes on removes the file through the switch's
+        usual removal (the content check first, the selected profile moving first), and the
+        shots brewed on it meanwhile wait in the inbox. The profile row stays, starred as it was.
+        A Recipe with no profile (one being designed) changes nothing about profiles, and a
+        profile that is already off or whose row is deleted is left as it is.
         """
         async with nullcontext() if self.db.in_transaction else self.db.transaction():
             cursor = await self.db.execute(
@@ -1539,22 +1578,81 @@ class RecipesRepository(Repository):
             if cursor.rowcount == 0:
                 return None
             await PinsRepository(self.db).unpin_recipe(recipe_id)
+            await self._switch_profile(recipe_id, on=False)
         return await self.get(recipe_id)
 
-    async def unarchive(self, recipe_id: int) -> RecipeRow | None:
+    async def unarchive(self, recipe_id: int) -> RecipeUnarchived | None:
         """Bring a retired Recipe back: the same bag again, or archived by mistake.
 
         From now on it files the shots brewed on its profile again. The shots that arrived while
         it was archived stay in the inbox: some may be another bean brewed on the old profile,
         and the inbox is where the person sees them before Match by profile files them. The pins
-        archiving took off stay off, since each one puts a profile on the machine. The profile
-        link needs no check, because a profile keeps its Recipe while the Recipe is archived
-        (`idx_recipes_profile` holds archived rows too), so nothing can have taken it.
+        archiving took off stay off, since each one puts a profile on the machine; the profile
+        is switched on again (whether or not it was on before the Archive: one rule is easier to
+        predict than one that remembers), so the next sync puts it back on the machine, starred
+        as it was. The answer says whether a profile was switched on, for the page's toast. The
+        profile link needs no check, because a profile keeps its Recipe while the Recipe is
+        archived (`idx_recipes_profile` holds archived rows too), so nothing can have taken it.
+        A Recipe that was not archived is left alone, its profile too.
         """
-        cursor = await self.db.execute("UPDATE recipes SET archived = 0 WHERE id = ?", (recipe_id,))
-        if cursor.rowcount == 0:
+        async with nullcontext() if self.db.in_transaction else self.db.transaction():
+            was_archived = await self.db.fetch_value(
+                "SELECT archived FROM recipes WHERE id = ?", (recipe_id,)
+            )
+            if was_archived is None:
+                return None
+            await self.db.execute("UPDATE recipes SET archived = 0 WHERE id = ?", (recipe_id,))
+            switched = bool(was_archived) and await self._switch_profile(recipe_id, on=True)
+        row = await self.get(recipe_id)
+        if row is None:  # pragma: no cover - the update above found it
             return None
-        return await self.get(recipe_id)
+        return RecipeUnarchived(**row.model_dump(), profile_switched_on=switched)
+
+    async def _switch_profile(self, recipe_id: int, *, on: bool) -> bool:
+        """Set the "on the machine" switch of the Recipe's own profile, in the caller's
+        transaction, through the board's one write (the Profiles page's switch writes the same
+        field). ``True`` when it changed: the row is live and was not already so."""
+        board_id = await self.db.fetch_value(
+            "SELECT board_id FROM recipes WHERE id = ?", (recipe_id,)
+        )
+        if board_id is None:
+            return False
+        board = ProfileBoardRepository(self.db)
+        row = await board.get(int(board_id))
+        if row is None or row.deleted_at is not None or row.on_machine == on:
+            return False
+        await board.update(row.id, BoardRowPatch(on_machine=on))
+        return True
+
+    async def profile_standing(self, recipe_id: int) -> RecipeProfileStanding | None:
+        """What Archive would take off the machine along with the Recipe's own profile.
+
+        ``None`` for a Recipe with no live profile row (a design, an old Recipe that never named
+        a profile). The name is the one the machine shows (the profile's name and its Recipe's
+        current version label); ``selected`` is read from the archive's mirror of the machine,
+        which is as fresh as the last sync, so the page asks nothing of the machine.
+        """
+        row = await self.db.fetch_one(
+            f"""
+            SELECT pb.label AS label, pb.on_machine AS on_machine,
+                   COALESCE({label_sql("cur")}, '') AS version_label,
+                   COALESCE(d.selected, 0) AS selected
+              FROM recipes s
+              JOIN profile_board pb ON pb.id = s.board_id AND pb.deleted_at IS NULL
+              LEFT JOIN recipe_versions cur ON cur.id = s.current_version_id
+              LEFT JOIN device_profiles d
+                     ON d.device_id = pb.device_profile_id AND d.deleted_at IS NULL
+             WHERE s.id = ?
+            """,  # noqa: S608 - the only interpolation is the version label expression, a constant
+            (recipe_id,),
+        )
+        if row is None:
+            return None
+        return RecipeProfileStanding(
+            machine_name=machine_name(str(row["label"]), str(row["version_label"]) or None),
+            on_machine=bool(row["on_machine"]),
+            selected=bool(row["selected"]),
+        )
 
     # ── versions ─────────────────────────────────────────────────────
 
@@ -2354,6 +2452,17 @@ class RecipesRepository(Repository):
                 next_minor_label=names.minor,
             )
         return found
+
+    async def archived_recipes_by_profile(self) -> dict[int, ArchivedRecipe]:
+        """The archived Recipe each profile has, by profile id. A profile has at most one Recipe
+        (`idx_recipes_profile`), so this and :meth:`live_recipes_by_profile` never name the same
+        profile."""
+        rows = await self.db.fetch_all(
+            "SELECT board_id, id, name FROM recipes WHERE archived = 1 AND board_id IS NOT NULL"
+        )
+        return {
+            int(r["board_id"]): ArchivedRecipe(id=int(r["id"]), name=str(r["name"])) for r in rows
+        }
 
     async def follow_profile(
         self,

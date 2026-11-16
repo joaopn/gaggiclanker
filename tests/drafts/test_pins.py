@@ -524,10 +524,10 @@ async def test_archiving_a_recipe_unpins_every_pin_in_one_step_and_the_sync_take
     assert board["proposals"] == []
     run = await pull(app)
     assert run.status == "ok", run.error
-    # An archived Recipe keeps its last version on the machine: only the profile's own file is
-    # left under the second name.
+    # The Recipe's own profile is switched off by the archive, so its file (called the second
+    # name too) goes with the pins' copies.
     labels = [p["label"] for p in fake.profiles]
-    assert names[0] not in labels and labels.count(names[1]) == 1
+    assert not set(names) & set(labels)
     assert (await client.post("/api/recipes/9999/archive")).status_code == 404
 
 

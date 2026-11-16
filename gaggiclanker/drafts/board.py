@@ -78,6 +78,7 @@ from gaggiclanker.db.repos.profiles import (
     stored_document,
 )
 from gaggiclanker.db.repos.recipes import (
+    ArchivedRecipe,
     LiveRecipe,
     RecipesRepository,
     RollbackWrite,
@@ -300,6 +301,10 @@ class BoardRowView(BaseModel):
     #: the active version gives it a version of its own, and switching the profile off changes what
     #: the machine holds for it.
     recipe: RecipeBrewing | None = None
+    #: The archived Recipe that owns this profile (``recipe`` stays ``None`` then): shots brewed on
+    #: the profile wait for a Recipe, and the page says why the profile is off and asks before it
+    #: is switched back on.
+    archived_recipe: ArchivedRecipe | None = None
     #: In conflict: the machine's file differs from everything the app knows, so a sync does
     #: nothing for this profile until a person chooses a side (``POST .../conflict``).
     in_conflict: bool = False
@@ -581,6 +586,7 @@ class BoardService:
             if proposal.row_id is not None:
                 proposed_by_row[proposal.row_id] = proposed_by_row.get(proposal.row_id, 0) + 1
         brews = await self.recipes.live_recipes_by_profile()
+        archived_owners = await self.recipes.archived_recipes_by_profile()
         counts = await self.board.shot_counts([p.version.id for p in computed.rows])
         pinned = await PinsRepository(self.db).live_for_boards(p.row.id for p in computed.rows)
         renamed = await self._renamed_on_machine()
@@ -613,6 +619,7 @@ class BoardService:
                         profile=stored_document(plan.version, plan.row.label),
                     ),
                     recipe=_recipe_brewing(brews.get(plan.row.id)),
+                    archived_recipe=archived_owners.get(plan.row.id),
                     in_conflict=plan.conflict_file is not None,
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),

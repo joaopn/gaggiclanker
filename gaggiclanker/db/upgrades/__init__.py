@@ -38,6 +38,7 @@ from gaggiclanker.db.upgrades.level_010 import STEP as _LEVEL_10
 from gaggiclanker.db.upgrades.level_011 import STEP as _LEVEL_11
 from gaggiclanker.db.upgrades.level_012 import STEP as _LEVEL_12
 from gaggiclanker.db.upgrades.level_013 import STEP as _LEVEL_13
+from gaggiclanker.db.upgrades.level_014 import STEP as _LEVEL_14
 from gaggiclanker.db.upgrades.step import Step, validate_steps
 
 __all__ = [
@@ -66,6 +67,7 @@ STEPS: tuple[Step, ...] = validate_steps(
         _LEVEL_11,
         _LEVEL_12,
         _LEVEL_13,
+        _LEVEL_14,
     )
 )
 
